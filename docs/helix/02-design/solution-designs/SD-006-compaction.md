@@ -28,13 +28,27 @@ have especially small windows (8K-32K) making this a practical blocker.
 
 ### Codex's Approach
 - **Trigger**: `total_usage_tokens >= auto_compact_token_limit` (per-model, e.g., 200K)
-- **Two modes**: Local (LLM-based) and remote (OpenAI server-side API)
+- **Two modes**: Local (LLM-based) and remote (OpenAI server-side `/responses/compact` API)
 - **Prompt**: Short — "Create a handoff summary for another LLM that will resume the task"
 - **Summary injection**: "Another language model started to solve this problem..."
 - **User messages**: Keeps up to 20K tokens of recent user messages alongside summary
 - **Timing**: Pre-turn (before user input) and mid-turn (between tool call rounds)
 - **Fallback**: Trims oldest history items if compaction prompt itself exceeds context
 - **Warning**: Alerts user that multiple compactions degrade accuracy
+- **Cache preservation**: When trimming oversize compaction input, trims from the
+  *beginning* to preserve prefix-based prompt cache hits. The comment explicitly
+  states: "Trim from the beginning to preserve cache (prefix-based) and keep
+  recent messages intact."
+- **Initial context reinjection**: Two modes — `DoNotInject` (pre-turn: clears
+  `reference_context_item` so the next regular turn reinjects system context
+  fresh) and `BeforeLastUserMessage` (mid-turn: injects system context into the
+  replacement history just above the last user message, because the model expects
+  the compaction summary as the last item)
+- **Window generation**: After compaction, advances a `window_generation` counter
+  that invalidates the websocket session / prompt cache, forcing the provider to
+  re-process the compacted history from scratch
+- **Ghost snapshots**: Preserves undo/redo state snapshots across compaction by
+  copying them into the replacement history
 
 ## Design: Forge Compaction
 
@@ -207,6 +221,79 @@ Like pi, forge tracks which files were read and modified across compactions.
 The file lists are appended to the summary in XML tags and carried forward
 through subsequent compactions.
 
+### Prompt Cache Preservation
+
+Both Anthropic and OpenAI support prefix-based prompt caching — the provider
+caches the tokenized prefix of the conversation, and subsequent requests that
+share the same prefix get a cache hit (faster, cheaper). Compaction destroys
+the prefix, but we can minimize the damage.
+
+**Post-compaction message ordering** (cache-optimized):
+
+```
+1. System prompt                    ← stable prefix, always cached
+2. Compaction summary (user msg)    ← new after compaction, but stable until next compaction
+3. Initial context (if mid-turn)    ← system context reinjected for mid-turn compaction
+4. Recent user messages (preserved) ← kept verbatim, extends the cacheable prefix
+5. Recent assistant/tool messages   ← the tail that changes each turn
+```
+
+The system prompt is always first and never changes — this maximizes the
+stable prefix for caching. The compaction summary is second and stays
+stable until the next compaction, giving it time to warm the cache.
+
+**Key rules** (learned from Codex):
+
+1. **Trim from the front when compaction overflows.** If the compaction
+   prompt itself exceeds the context window, trim the oldest messages from
+   the summarization input (not the newest). This preserves the prefix
+   cache for the summarization call itself.
+
+2. **System prompt reinjection.** After compaction replaces the history,
+   the system prompt must remain at position 0. Two strategies:
+   - **Pre-iteration compaction**: Replace history with
+     `[summary, recent_messages]`. The system prompt is injected by the
+     agent loop as usual on the next `Chat()` call — it's not part of
+     the history.
+   - **Mid-iteration compaction**: The loop is already mid-conversation.
+     Inject system context above the last user message in the replacement
+     history so the model sees it in the expected position.
+
+3. **Invalidate provider-side cache after compaction.** The conversation
+   prefix has fundamentally changed. If the provider uses sticky sessions
+   or incremental request tracking, signal that the window changed.
+   Forge exposes this via `EventCompactionEnd` — providers that maintain
+   session state should listen for it.
+
+### Token Counting — Cache-Aware
+
+Pi counts `cacheRead` and `cacheWrite` tokens in its usage calculation:
+```
+totalTokens = input + output + cacheRead + cacheWrite
+```
+
+Forge should do the same. The `TokenUsage` type already has `Input` and
+`Output` — add `CacheRead` and `CacheWrite` fields so compaction triggers
+account for the full context footprint, not just the billed tokens.
+
+```go
+type TokenUsage struct {
+    Input      int `json:"input"`
+    Output     int `json:"output"`
+    CacheRead  int `json:"cache_read,omitempty"`
+    CacheWrite int `json:"cache_write,omitempty"`
+    Total      int `json:"total"`
+}
+```
+
+For compaction trigger purposes:
+```
+effectiveTokens = usage.Input + usage.CacheRead
+```
+
+The `CacheRead` tokens represent context the model processed from cache —
+they still count against the context window even though they're cheaper.
+
 ### Token Counting
 
 Three approaches, in preference order:
@@ -226,10 +313,45 @@ EventCompactionEnd   EventType = "compaction.end"
 The `compaction.end` event data includes the summary text, tokens before/after,
 and file lists.
 
+### Split Turn Handling
+
+Following pi: if the cut point falls in the middle of a multi-message turn
+(e.g., between a user message and its assistant response with tool calls),
+generate a separate **turn prefix summary** with a smaller token budget.
+This summary is appended to the main compaction summary as:
+
+```
+---
+
+**Turn Context (split turn):**
+
+## Original Request
+[What the user asked]
+
+## Early Progress
+[Work done in the prefix]
+
+## Context for Suffix
+[Info needed to understand the kept suffix]
+```
+
+### Quality Degradation Warning
+
+Following Codex: after every compaction, emit a warning event:
+
+```
+"Long conversations and multiple compactions can cause the model to be
+less accurate. Consider starting a new session when possible."
+```
+
+This is emitted via `EventCallback` as an `EventCompactionEnd` with a
+`warning` field, not printed to stderr (library, not CLI concern).
+
 ### Graceful Degradation
 
 If the compaction prompt itself exceeds the context window:
-1. Trim oldest messages from the summarization input
+1. Trim oldest messages from the summarization input **(from the front,
+   to preserve prefix cache)**
 2. If still too large, fall back to aggressive truncation (keep only the
    most recent messages, drop the summarization attempt)
 3. Log a warning via callback
@@ -238,14 +360,26 @@ If the compaction prompt itself exceeds the context window:
 
 | # | Bead | Depends |
 |---|------|---------|
-| 1 | Token estimation (chars/4 + provider usage tracking) | — |
+| 1 | Token estimation (chars/4 + provider usage, cache-aware) | — |
 | 2 | Conversation serialization for summarization | — |
 | 3 | Compaction config types and trigger logic | 1 |
-| 4 | Summarization prompt and summary injection | 2, 3 |
+| 4 | Summarization prompt and summary injection (cache-optimized ordering) | 2, 3 |
 | 5 | File tracking across compactions | 4 |
-| 6 | Mid-turn compaction in agent loop | 4 |
-| 7 | Update mode (merge with previous summary) | 4 |
+| 6 | Mid-turn compaction in agent loop (with system context reinjection) | 4 |
+| 7 | Update mode (merge with previous summary) + split turn handling | 4 |
 | 8 | Integration test: multi-round task with compaction | 6 |
+
+## Design Decisions Not Taken
+
+- **Remote server-side compaction** (Codex has this for OpenAI's `/responses/compact`
+  endpoint). Not included — forge is provider-agnostic and shouldn't depend on
+  one provider's server-side API. If OpenAI or others expose this, it can be added
+  as a provider-specific optimization later.
+- **Branch summarization** (pi has this for conversation tree navigation). Not
+  included — forge is headless with linear conversations, no branching.
+- **Ghost snapshots / undo** (Codex preserves these across compaction). Not
+  included — forge has no undo mechanism. If added later, the compaction should
+  preserve snapshot items similarly to Codex.
 
 ## Risks
 
@@ -255,3 +389,6 @@ If the compaction prompt itself exceeds the context window:
 | Token estimation inaccurate | M | M | Conservative estimate (chars/4 overestimates); triggers early rather than late |
 | Multiple compactions degrade quality | M | M | Warn after compaction; update mode preserves prior summary content |
 | Summarization adds latency | L | M | Use faster model for summarization; only triggers when needed |
+| Compaction destroys prompt cache | H | M | Cache-optimized ordering (system prompt first, summary second); accepted cost |
+| Cache token accounting wrong | M | M | Include CacheRead in effective token count; use provider-reported usage |
+| Split turn summary inaccurate | L | L | Smaller token budget; separate focused prompt |
