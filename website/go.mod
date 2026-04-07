@@ -1,4 +1,4 @@
-module github.com/anthropics/forge/website
+module github.com/DocumentDrivenDX/forge/website
 
 go 1.26.1
 

@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/anthropics/forge"
-	"github.com/anthropics/forge/prompt"
-	"github.com/anthropics/forge/provider/anthropic"
-	oaiProvider "github.com/anthropics/forge/provider/openai"
-	"github.com/anthropics/forge/session"
-	"github.com/anthropics/forge/tool"
+	"github.com/DocumentDrivenDX/forge"
+	"github.com/DocumentDrivenDX/forge/prompt"
+	"github.com/DocumentDrivenDX/forge/provider/anthropic"
+	oaiProvider "github.com/DocumentDrivenDX/forge/provider/openai"
+	"github.com/DocumentDrivenDX/forge/session"
+	"github.com/DocumentDrivenDX/forge/tool"
 	"gopkg.in/yaml.v3"
 )
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/forge"
+	"github.com/DocumentDrivenDX/forge"
 )
 
 // ContextFile is a project instruction file (AGENTS.md, CLAUDE.md, etc.).

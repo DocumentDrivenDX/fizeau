@@ -1,4 +1,4 @@
-module github.com/anthropics/forge
+module github.com/DocumentDrivenDX/forge
 
 go 1.26.1
 
