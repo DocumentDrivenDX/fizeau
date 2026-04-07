@@ -92,6 +92,16 @@ type CompactionConfig struct {
     // SummarizationProvider overrides the provider for summarization.
     // If nil, uses the same provider as the agent loop.
     SummarizationProvider Provider
+
+    // SummarizationFocus is optional caller-provided text appended to
+    // the summarization prompt as "Additional focus: {text}". Lets
+    // embedders influence what the summary emphasizes.
+    SummarizationFocus string
+
+    // EffectivePercent is the percentage of ContextWindow to actually use.
+    // Default: 95. Provides safety margin since models may fail slightly
+    // below their advertised limit.
+    EffectivePercent int
 }
 ```
 
@@ -110,11 +120,18 @@ type Request struct {
 ### Trigger Logic
 
 ```
-shouldCompact = estimatedTokens > (contextWindow - reserveTokens)
+effectiveWindow = contextWindow * effectivePercent / 100  (default 95%)
+shouldCompact = estimatedTokens > (effectiveWindow - reserveTokens)
 ```
 
+The `effectivePercent` (default 95%, following Codex) applies a safety margin
+because models may fail slightly below their advertised context limit due to
+internal overhead. For a 32K model: effective = 30720, trigger at 30720 - 8192 = 22528.
+
 Token estimation: use the provider's reported usage from the last response
-(accurate), plus chars/4 heuristic for messages added since.
+(accurate), plus chars/4 heuristic for messages added since. For the trigger
+check, use `usage.Input + usage.CacheRead` as the effective token count (cache
+tokens still consume context window space).
 
 Checked at two points:
 1. **Pre-iteration**: Before sending the next prompt to the model
@@ -126,7 +143,15 @@ Checked at two points:
 1. Walk backwards from newest messages, accumulating token estimates
 2. Stop when `keepRecentTokens` is reached — everything after this point is kept
 3. Everything before the cut point is serialized and summarized
-4. The cut point must be at a message boundary (never mid-tool-call)
+4. The cut point must be at a message boundary (never mid-tool-call —
+   a tool result must follow its tool call)
+5. **Previous compaction entries are excluded** from the messages-to-summarize
+   (the previous summary is passed separately via `<previous-summary>` tags)
+6. **Session prefix messages are excluded** from the preserved user messages
+   (AGENTS.md injections, environment context, system prompt wrappers are not
+   "real" user messages — following Codex's `collect_user_messages` filter)
+7. **Overlong individual user messages are truncated** to fit within the
+   `keepRecentTokens` budget (following Codex's `build_compacted_history_with_limit`)
 
 ### Serialization for Summarization
 
@@ -140,12 +165,27 @@ Tool calls serialized compactly:
 
 Tool results truncated to `MaxToolResultTokens`.
 
-### Summarization Prompt
+### Summarization Call
 
-Forge uses pi's structured format (more useful for spec-driven work) with
-Codex's framing (handoff to another LLM):
+The summarization uses a **separate system prompt** (following pi) to prevent
+the model from continuing the conversation instead of summarizing:
 
+**System prompt** (for the summarization LLM call):
 ```
+You are a context summarization assistant. Your task is to read a
+conversation between a user and an AI coding assistant, then produce
+a structured summary following the exact format specified.
+
+Do NOT continue the conversation. Do NOT respond to any questions
+in the conversation. ONLY output the structured summary.
+```
+
+**User prompt** (initial summarization):
+```
+<conversation>
+{serialized conversation text}
+</conversation>
+
 You are performing a CONTEXT CHECKPOINT COMPACTION. Create a structured
 handoff summary for another LLM that will resume this task.
 
@@ -181,18 +221,37 @@ Use this EXACT format:
 - [Data, error messages, or references needed to continue]
 
 Keep each section concise. Preserve exact file paths, function names,
-and error messages. Do not continue the conversation — only output
-the summary.
+and error messages.
 ```
+
+**Max tokens for summary response**: `0.8 * ReserveTokens`. For the default
+8192 reserve, the summary can be at most ~6500 tokens. This prevents the
+summary itself from filling the context window.
+
+**Custom instructions**: The caller can provide a `SummarizationFocus` string
+(e.g., "focus on which spec requirements were completed") that is appended
+to the prompt as `"Additional focus: {instructions}"`. This lets embedders
+like HELIX influence summary content.
+
+**Reasoning effort**: If the provider/model supports reasoning levels, use
+high effort for summarization (better summaries justify the cost).
 
 ### Update Mode
 
-When a previous compaction summary exists, the prompt changes to:
+When a previous compaction summary exists, the prompt wraps both the
+conversation and previous summary in XML tags:
 
 ```
+<conversation>
+{serialized NEW conversation since last compaction}
+</conversation>
+
+<previous-summary>
+{previous compaction summary}
+</previous-summary>
+
 The messages above are NEW conversation since the last compaction.
-Update the existing summary (provided in <previous-summary> tags)
-by merging new information.
+Update the existing summary by merging new information.
 
 RULES:
 - PRESERVE all existing information from the previous summary
@@ -200,7 +259,13 @@ RULES:
 - UPDATE Progress: move completed items from In Progress to Done
 - UPDATE Next Steps based on what was accomplished
 - PRESERVE exact file paths and error messages
+- UPDATE Files section with any new reads or modifications
 ```
+
+**Previous compaction entries are excluded from the messages-to-summarize.**
+The previous summary text is passed separately via `<previous-summary>` tags,
+not re-serialized as conversation messages (following pi's
+`getMessageFromEntryForCompaction` pattern).
 
 ### Summary Injection
 
@@ -228,19 +293,29 @@ caches the tokenized prefix of the conversation, and subsequent requests that
 share the same prefix get a cache hit (faster, cheaper). Compaction destroys
 the prefix, but we can minimize the damage.
 
-**Post-compaction message ordering** (cache-optimized):
+**Post-compaction message ordering** — two variants depending on timing:
 
+**Pre-iteration compaction** (between turns):
 ```
-1. System prompt                    ← stable prefix, always cached
-2. Compaction summary (user msg)    ← new after compaction, but stable until next compaction
-3. Initial context (if mid-turn)    ← system context reinjected for mid-turn compaction
-4. Recent user messages (preserved) ← kept verbatim, extends the cacheable prefix
-5. Recent assistant/tool messages   ← the tail that changes each turn
+1. System prompt                    ← injected by loop on next Chat() call (not in history)
+2. Recent user messages (preserved) ← real user messages, truncated to budget
+3. Compaction summary (user msg)    ← LAST in history
 ```
+The system prompt is always first and never changes — maximum cache prefix
+stability. The summary is last because it's the most recent context for the
+model. On the next turn, the loop reinjects system context fresh.
 
-The system prompt is always first and never changes — this maximizes the
-stable prefix for caching. The compaction summary is second and stays
-stable until the next compaction, giving it time to warm the cache.
+**Mid-turn compaction** (during tool call rounds):
+```
+1. System prompt                    ← stable prefix
+2. Initial context (reinjected)     ← permissions, personality, developer instructions
+3. Recent user messages (preserved) ← real user messages, truncated to budget
+4. Compaction summary (user msg)    ← LAST (model trained to see summary last — per Codex)
+```
+Mid-turn compaction must inject initial context into the replacement history
+because the loop won't reinject it naturally. Context is placed before the
+last real user message (following Codex's
+`insert_initial_context_before_last_real_user_or_summary` pattern).
 
 **Key rules** (learned from Codex):
 
@@ -317,8 +392,10 @@ and file lists.
 
 Following pi: if the cut point falls in the middle of a multi-message turn
 (e.g., between a user message and its assistant response with tool calls),
-generate a separate **turn prefix summary** with a smaller token budget.
-This summary is appended to the main compaction summary as:
+generate a separate **turn prefix summary** with a smaller token budget
+(`0.5 * ReserveTokens`). Both summaries are generated **concurrently**
+(following pi's `Promise.all` pattern — in Go, use goroutines + errgroup).
+The turn prefix summary is appended to the main compaction summary as:
 
 ```
 ---
