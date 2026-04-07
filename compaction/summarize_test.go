@@ -94,8 +94,37 @@ func TestCompactMessages(t *testing.T) {
 	assert.Greater(t, result.TokensBefore, result.TokensAfter)
 	assert.NotEmpty(t, result.Warning)
 
-	// First message should be the summary injection
-	assert.True(t, IsCompactionSummary(newMsgs[0]))
+	// Summary should be LAST (per SD-006: recent messages first, summary last for prompt cache)
+	assert.True(t, IsCompactionSummary(newMsgs[len(newMsgs)-1]))
+	// First message should NOT be a summary
+	assert.False(t, IsCompactionSummary(newMsgs[0]))
+}
+
+func TestCompactMessages_SummaryIsLast(t *testing.T) {
+	provider := &mockSummarizer{response: "## Goal\nVerify ordering"}
+
+	var msgs []forge.Message
+	msgs = append(msgs, forge.Message{Role: forge.RoleUser, Content: "Start"})
+	for i := 0; i < 20; i++ {
+		msgs = append(msgs, forge.Message{Role: forge.RoleAssistant, Content: "Step " + string(rune('A'+i)) + string(make([]byte, 500))})
+		msgs = append(msgs, forge.Message{Role: forge.RoleUser, Content: "Continue"})
+	}
+
+	cfg := DefaultConfig()
+	cfg.KeepRecentTokens = 200
+
+	newMsgs, result, err := CompactMessages(context.Background(), provider, msgs, nil, "", nil, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Greater(t, len(newMsgs), 0)
+
+	// SD-006: summary must be the LAST message so recent user turns come first
+	assert.True(t, IsCompactionSummary(newMsgs[len(newMsgs)-1]), "summary must be last message")
+
+	// All messages before the last must NOT be summaries
+	for i := 0; i < len(newMsgs)-1; i++ {
+		assert.False(t, IsCompactionSummary(newMsgs[i]), "message %d should not be a summary", i)
+	}
 }
 
 func TestCompactMessages_NothingToCompact(t *testing.T) {

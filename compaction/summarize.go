@@ -195,10 +195,10 @@ func CompactMessages(
 		ops.Merge(previousFileOps)
 	}
 
-	// Build new message list: summary + kept messages
+	// Build new message list: kept messages + summary LAST (per SD-006 for prompt cache optimization)
 	var newMessages []forge.Message
-	newMessages = append(newMessages, InjectSummary(summary))
 	newMessages = append(newMessages, messages[cutIndex:]...)
+	newMessages = append(newMessages, InjectSummary(summary))
 
 	tokensAfter := EstimateConversationTokens(newMessages)
 
