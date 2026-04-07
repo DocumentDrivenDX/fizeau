@@ -62,7 +62,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		if req.MaxIterations > 0 && iteration >= req.MaxIterations {
 			result.Status = StatusIterationLimit
 			result.Duration = time.Since(start)
-			emitSessionEnd(req.Callback, sessionID, &seq, result)
+			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
 			return result, nil
 		}
 
@@ -70,7 +70,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		if ctx.Err() != nil {
 			result.Status = StatusCancelled
 			result.Duration = time.Since(start)
-			emitSessionEnd(req.Callback, sessionID, &seq, result)
+			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
 			return result, nil
 		}
 
@@ -104,13 +104,16 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			}
 		}
 
-		// Emit LLM request event
+		// Emit LLM request event with full message bodies and tool definitions
 		emitCallback(req.Callback, Event{
 			SessionID: sessionID,
 			Seq:       seq,
 			Type:      EventLLMRequest,
 			Timestamp: time.Now().UTC(),
-			Data:      mustMarshal(map[string]any{"messages_count": len(messages)}),
+			Data: mustMarshal(map[string]any{
+				"messages": messages,
+				"tools":    toolDefs,
+			}),
 		})
 		seq++
 
@@ -129,13 +132,13 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			if ctx.Err() != nil {
 				result.Status = StatusCancelled
 				result.Duration = time.Since(start)
-				emitSessionEnd(req.Callback, sessionID, &seq, result)
+				emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
 				return result, nil
 			}
 			result.Status = StatusError
 			result.Error = fmt.Errorf("forge: provider error: %w", err)
 			result.Duration = time.Since(start)
-			emitSessionEnd(req.Callback, sessionID, &seq, result)
+			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
 			return result, result.Error
 		}
 
@@ -154,7 +157,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			result.CostUSD += iterCost
 		}
 
-		// Emit LLM response event
+		// Emit LLM response event with full tool call bodies
 		emitCallback(req.Callback, Event{
 			SessionID: sessionID,
 			Seq:       seq,
@@ -162,9 +165,11 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			Timestamp: time.Now().UTC(),
 			Data: mustMarshal(map[string]any{
 				"content":       resp.Content,
-				"tool_calls":    len(resp.ToolCalls),
+				"tool_calls":    resp.ToolCalls,
 				"usage":         resp.Usage,
+				"cost_usd":      iterCost,
 				"latency_ms":    llmDuration.Milliseconds(),
+				"model":         resp.Model,
 				"finish_reason": resp.FinishReason,
 			}),
 		})
@@ -175,7 +180,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			result.Status = StatusSuccess
 			result.Output = resp.Content
 			result.Duration = time.Since(start)
-			emitSessionEnd(req.Callback, sessionID, &seq, result)
+			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
 			return result, nil
 		}
 
@@ -255,7 +260,7 @@ func emitCallback(cb EventCallback, e Event) {
 	}
 }
 
-func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result) {
+func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result, metadata map[string]string) {
 	errStr := ""
 	if result.Error != nil {
 		errStr = result.Error.Error()
@@ -271,6 +276,8 @@ func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result)
 			"tokens":      result.Tokens,
 			"cost_usd":    result.CostUSD,
 			"duration_ms": result.Duration.Milliseconds(),
+			"model":       result.Model,
+			"metadata":    metadata,
 			"error":       errStr,
 		}),
 	})

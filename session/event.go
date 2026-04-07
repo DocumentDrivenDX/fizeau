@@ -46,12 +46,14 @@ type ToolCallData struct {
 
 // SessionEndData is the data payload for a session.end event.
 type SessionEndData struct {
-	Status     forge.Status     `json:"status"`
-	Output     string           `json:"output"`
-	Tokens     forge.TokenUsage `json:"tokens"`
-	CostUSD    float64          `json:"cost_usd"`
-	DurationMs int64            `json:"duration_ms"`
-	Error      string           `json:"error,omitempty"`
+	Status     forge.Status      `json:"status"`
+	Output     string            `json:"output"`
+	Tokens     forge.TokenUsage  `json:"tokens"`
+	CostUSD    float64           `json:"cost_usd"`
+	DurationMs int64             `json:"duration_ms"`
+	Model      string            `json:"model,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+	Error      string            `json:"error,omitempty"`
 }
 
 // NewEvent creates an Event with the given type and data, auto-assigning

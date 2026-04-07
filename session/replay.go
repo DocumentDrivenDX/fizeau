@@ -18,6 +18,34 @@ func Replay(path string, w io.Writer) error {
 
 	for _, e := range events {
 		switch e.Type {
+		case forge.EventLLMRequest:
+			var data LLMRequestData
+			if err := json.Unmarshal(e.Data, &data); err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "\n[LLM Request] (%d messages, %d tools)\n", len(data.Messages), len(data.Tools))
+			for _, m := range data.Messages {
+				switch m.Role {
+				case forge.RoleSystem:
+					fmt.Fprintf(w, "  [system] %s\n", m.Content)
+				case forge.RoleUser:
+					fmt.Fprintf(w, "  [user] %s\n", m.Content)
+				case forge.RoleAssistant:
+					if m.Content != "" {
+						fmt.Fprintf(w, "  [assistant] %s\n", m.Content)
+					}
+					for _, tc := range m.ToolCalls {
+						fmt.Fprintf(w, "  [assistant tool_call] %s(%s)\n", tc.Name, compactJSON(tc.Arguments))
+					}
+				case forge.RoleTool:
+					content := m.Content
+					if len(content) > 200 {
+						content = content[:200] + "...[truncated]"
+					}
+					fmt.Fprintf(w, "  [tool result] %s\n", strings.ReplaceAll(content, "\n", "\n              "))
+				}
+			}
+
 		case forge.EventSessionStart:
 			var data SessionStartData
 			if err := json.Unmarshal(e.Data, &data); err != nil {
@@ -72,6 +100,9 @@ func Replay(path string, w io.Writer) error {
 				continue
 			}
 			fmt.Fprintf(w, "\n=== End (%s) ===\n", data.Status)
+			if data.Model != "" {
+				fmt.Fprintf(w, "Model: %s\n", data.Model)
+			}
 			fmt.Fprintf(w, "Duration: %dms | Tokens: %d in / %d out",
 				data.DurationMs, data.Tokens.Input, data.Tokens.Output)
 			if data.CostUSD > 0 {
@@ -82,6 +113,13 @@ func Replay(path string, w io.Writer) error {
 				fmt.Fprintf(w, " | Cost: unknown")
 			}
 			fmt.Fprintln(w)
+			if len(data.Metadata) > 0 {
+				fmt.Fprintf(w, "Metadata:")
+				for k, v := range data.Metadata {
+					fmt.Fprintf(w, " %s=%s", k, v)
+				}
+				fmt.Fprintln(w)
+			}
 			if data.Error != "" {
 				fmt.Fprintf(w, "Error: %s\n", data.Error)
 			}
