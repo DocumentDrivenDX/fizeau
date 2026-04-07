@@ -23,7 +23,7 @@ type WriteTool struct {
 
 func (t *WriteTool) Name() string { return "write" }
 func (t *WriteTool) Description() string {
-	return "Write content to a file, creating parent directories as needed."
+	return "Create or overwrite a file with the given content. Creates parent directories as needed. Use this tool whenever you need to create a new file or completely rewrite an existing one. You MUST use this tool to write files — do NOT output file contents as text in your response."
 }
 func (t *WriteTool) Schema() json.RawMessage {
 	return json.RawMessage(`{

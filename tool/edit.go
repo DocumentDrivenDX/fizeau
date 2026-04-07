@@ -23,7 +23,9 @@ type EditTool struct {
 }
 
 func (t *EditTool) Name() string        { return "edit" }
-func (t *EditTool) Description() string { return "Find and replace a unique string in a file." }
+func (t *EditTool) Description() string {
+	return "Make targeted edits to a file using exact string replacement. The old_string must appear exactly once in the file. Use this for precise changes to existing files — prefer edit over write when modifying files. Always read the file first to get the exact text to replace."
+}
 func (t *EditTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",

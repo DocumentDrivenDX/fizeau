@@ -29,7 +29,7 @@ type BashTool struct {
 
 func (t *BashTool) Name() string { return "bash" }
 func (t *BashTool) Description() string {
-	return "Execute a shell command and return stdout, stderr, and exit code."
+	return "Execute a shell command in the working directory. Returns stdout, stderr, and exit code. Use for running builds, tests, git commands, and other shell operations. Prefer the read tool over cat/head/tail for reading files."
 }
 func (t *BashTool) Schema() json.RawMessage {
 	return json.RawMessage(`{

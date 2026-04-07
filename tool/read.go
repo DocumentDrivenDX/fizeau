@@ -24,7 +24,9 @@ type ReadTool struct {
 }
 
 func (t *ReadTool) Name() string        { return "read" }
-func (t *ReadTool) Description() string { return "Read the contents of a file." }
+func (t *ReadTool) Description() string {
+	return "Read the contents of a file. Use this tool to examine files instead of cat or shell commands. For large files, use offset and limit to read specific sections. Always read a file before editing it."
+}
 func (t *ReadTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",

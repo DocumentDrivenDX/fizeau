@@ -41,7 +41,7 @@ func TestBuilder_WithTools(t *testing.T) {
 		WithDate("2026-04-06").
 		Build()
 
-	assert.Contains(t, result, "Available tools:")
+	assert.Contains(t, result, "# Tools")
 	assert.Contains(t, result, "- read: Read file contents")
 	assert.Contains(t, result, "- bash: Execute shell commands")
 }
@@ -115,7 +115,7 @@ func TestBuilder_FullComposition(t *testing.T) {
 
 	// Verify section order: base, tools, guidelines, append, context, dynamic
 	baseIdx := indexOf(result, "You are a coding assistant.")
-	toolsIdx := indexOf(result, "Available tools:")
+	toolsIdx := indexOf(result, "# Tools")
 	guidelinesIdx := indexOf(result, "Guidelines:")
 	appendIdx := indexOf(result, "Additional context.")
 	contextIdx := indexOf(result, "# Project Context")
