@@ -31,8 +31,6 @@ var (
 	GitCommit = ""
 )
 
-const defaultBasePrompt = `You are an expert coding assistant. You help users by reading files, executing commands, editing code, and writing new files. Use the available tools to complete tasks.`
-
 // config mirrors the YAML config file structure.
 type config struct {
 	Provider      string `yaml:"provider"`
@@ -68,7 +66,8 @@ func run() int {
 	maxIter := flag.Int("max-iter", 0, "Max iterations")
 	workDir := flag.String("work-dir", "", "Working directory")
 	version := flag.Bool("version", false, "Print version")
-	sysPromptFlag := flag.String("system", "", "System prompt")
+	sysPromptFlag := flag.String("system", "", "System prompt (appended to preset)")
+	presetFlag := flag.String("preset", "forge", "System prompt preset (forge, claude, codex, cursor, minimal)")
 
 	flag.Parse()
 
@@ -133,13 +132,9 @@ func run() int {
 		&tool.BashTool{WorkDir: wd},
 	}
 
-	// Build system prompt using prompt.Builder
-	sysPrompt := prompt.New(defaultBasePrompt).
+	// Build system prompt using preset + builder
+	sysPrompt := prompt.NewFromPreset(*presetFlag).
 		WithTools(tools).
-		WithGuidelines(
-			"Be concise in your responses",
-			"Show file paths clearly when working with files",
-		).
 		WithContextFiles(prompt.LoadContextFiles(wd)).
 		WithWorkDir(wd)
 
