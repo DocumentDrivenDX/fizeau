@@ -30,15 +30,19 @@ const (
 
 // TokenUsage tracks input and output token counts.
 type TokenUsage struct {
-	Input  int `json:"input"`
-	Output int `json:"output"`
-	Total  int `json:"total"`
+	Input      int `json:"input"`
+	Output     int `json:"output"`
+	CacheRead  int `json:"cache_read,omitempty"`
+	CacheWrite int `json:"cache_write,omitempty"`
+	Total      int `json:"total"`
 }
 
 // Add accumulates token counts from another TokenUsage.
 func (u *TokenUsage) Add(other TokenUsage) {
 	u.Input += other.Input
 	u.Output += other.Output
+	u.CacheRead += other.CacheRead
+	u.CacheWrite += other.CacheWrite
 	u.Total += other.Total
 }
 
