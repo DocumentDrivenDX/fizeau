@@ -65,13 +65,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Flatten artifacts into dist/
-          find dist/ -type f -name 'forge-*' -exec mv {} dist/ \;
-          find dist/ -type d -empty -delete
+          # Flatten artifacts — each is in a subdirectory
+          mkdir -p release/
+          for dir in dist/forge-*/; do
+            cp "$dir"forge-* release/ 2>/dev/null || true
+          done
 
           # Make binaries executable
-          chmod +x dist/forge-*
+          chmod +x release/forge-*
 
-          gh release create ${GITHUB_REF_NAME} dist/forge-* \
+          ls -la release/
+
+          gh release create ${GITHUB_REF_NAME} release/forge-* \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes
