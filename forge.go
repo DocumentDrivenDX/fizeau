@@ -116,11 +116,14 @@ type ToolCallLog struct {
 type EventType string
 
 const (
-	EventSessionStart EventType = "session.start"
-	EventLLMRequest   EventType = "llm.request"
-	EventLLMResponse  EventType = "llm.response"
-	EventToolCall     EventType = "tool.call"
-	EventSessionEnd   EventType = "session.end"
+	EventSessionStart    EventType = "session.start"
+	EventLLMRequest      EventType = "llm.request"
+	EventLLMResponse     EventType = "llm.response"
+	EventToolCall        EventType = "tool.call"
+	EventSessionEnd      EventType = "session.end"
+	EventLLMDelta        EventType = "llm.delta"
+	EventCompactionStart EventType = "compaction.start"
+	EventCompactionEnd   EventType = "compaction.end"
 )
 
 // Event is a structured event emitted during an agent run.
@@ -161,6 +164,9 @@ type Request struct {
 
 	// Metadata is correlation data (e.g., bead_id) stored on session events.
 	Metadata map[string]string
+
+	// NoStream disables streaming even if the provider supports it.
+	NoStream bool
 }
 
 // Result is the outcome of an agent run.
