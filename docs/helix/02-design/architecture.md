@@ -26,6 +26,11 @@ Anthropic, OpenAI).
             │  forge.Run()   │
             └───────┬───────┘
                     │
+       ┌────────────▼────────────┐
+       │ forge model catalog     │
+       │ + external manifest     │
+       └────────────┬────────────┘
+                    │
        ┌────────────┼────────────┐
        │            │            │
 ┌──────▼──────┐ ┌───▼────┐ ┌────▼─────┐
@@ -43,6 +48,9 @@ Forge is a Go module with the following package structure:
 forge/                          # root module: github.com/your-org/forge
 ├── forge.go                    # Run(), Request, Result, Provider, Tool interfaces
 ├── loop.go                     # agent loop implementation
+├── modelcatalog/               # shared model catalog loader/resolver (planned)
+│   ├── catalog.go              # catalog API and resolution helpers
+│   └── manifest.go             # manifest loading/validation
 ├── provider/
 │   ├── openai/
 │   │   └── openai.go           # OpenAI-compatible provider (LM Studio, Ollama, OpenAI, etc.)
@@ -61,6 +69,8 @@ forge/                          # root module: github.com/your-org/forge
 │   ├── replay.go               # session replay renderer
 │   ├── pricing.go              # model pricing table and cost estimation
 │   └── usage.go                # usage aggregation (P1)
+├── catalog/
+│   └── models.yaml             # externally maintained model manifest snapshot (planned)
 └── cmd/
     └── forge/
         └── main.go             # standalone CLI binary
@@ -81,20 +91,21 @@ forge/                          # root module: github.com/your-org/forge
 │  Interfaces:       │  - accumulate│    │ session.Logger │  │
 │  - Provider        │    tokens   │    │  (JSONL writer) │  │
 │  - Tool            └──────┬──────┘    └────────────────┘  │
+│  - Model Catalog          │                                │
 │                           │                                │
 └───────────────────────────┼────────────────────────────────┘
                             │
-              ┌─────────────┼─────────────┐
-              │             │             │
-      ┌───────▼──────┐ ┌───▼────┐ ┌──────▼──────┐
-      │  Provider     │ │  Tool  │ │  Session    │
-      │  Impls        │ │  Impls │ │  Services   │
-      │              │ │        │ │             │
-      │ openai/      │ │ read   │ │ logger      │
-      │ anthropic/   │ │ write  │ │ replay      │
-      │ virtual/     │ │ edit   │ │ pricing     │
-      │              │ │ bash   │ │ usage       │
-      └──────────────┘ └────────┘ └─────────────┘
+              ┌─────────────┼─────────────┬──────────────┐
+              │             │             │              │
+      ┌───────▼──────┐ ┌───▼────┐ ┌──────▼──────┐ ┌─────▼────────┐
+      │  Provider     │ │  Tool  │ │  Session    │ │ Model Catalog │
+      │  Impls        │ │  Impls │ │  Services   │ │  Services     │
+      │              │ │        │ │             │ │               │
+      │ openai/      │ │ read   │ │ logger      │ │ modelcatalog/ │
+      │ anthropic/   │ │ write  │ │ replay      │ │ catalog/*.yaml│
+      │ virtual/     │ │ edit   │ │ pricing     │ │               │
+      │              │ │ bash   │ │ usage       │ │               │
+      └──────────────┘ └────────┘ └─────────────┘ └───────────────┘
 ```
 
 ## Data Flow
@@ -132,6 +143,11 @@ Forge has two deployment modes:
 
 No containers, no services, no infrastructure. Forge is a library.
 
+The shared model catalog follows the same deployment shape: forge releases ship
+an embedded manifest snapshot, while consumers may point at a separately
+maintained external manifest file when they need newer model policy without a
+full binary refresh.
+
 ## Key Design Decisions
 
 See SD-001 for full decision log. Summary:
@@ -142,6 +158,7 @@ See SD-001 for full decision log. Summary:
 | Session logging | JSONL | Simple, appendable, jq-compatible |
 | Observability | JSONL-first, OTel P1 | Avoid premature dependency |
 | Provider interface | In consuming package | Go idiom |
+| Model policy | Shared catalog + external manifest | Separate volatile policy/data from runtime code and preserve one owner |
 | Tool interface | JSON Schema based | Model-agnostic |
 | CLI framework | `flag` stdlib | Minimal, no dependency |
 | Config format | YAML | DDx convention |

@@ -16,11 +16,15 @@ import (
 
 const (
 	defaultGitHubRepo = "DocumentDrivenDX/forge"
+	defaultGitHubAPI  = "https://api.github.com"
 	version           = "v0.0.8" // Updated by release script
 	updateCheckTTL    = time.Hour // Cache version check for 1 hour
 )
 
-var githubRepo = defaultGitHubRepo // Made var for testing
+var (
+	githubRepo    = defaultGitHubRepo // Made var for testing.
+	githubAPIBase = defaultGitHubAPI  // Injectable in tests to avoid live network calls.
+)
 
 // SemVer represents a semantic version.
 type SemVer struct {
@@ -104,7 +108,7 @@ func GetLatestRelease(repo string, cacheFile string) (*GitHubRelease, error) {
 		return &GitHubRelease{TagName: cached.Version}, nil
 	}
 
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	url := fmt.Sprintf("%s/repos/%s/releases/latest", strings.TrimRight(githubAPIBase, "/"), repo)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {

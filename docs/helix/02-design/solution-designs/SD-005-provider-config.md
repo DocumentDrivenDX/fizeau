@@ -7,43 +7,62 @@ ddx:
     - FEAT-006
     - SD-001
 ---
-# Solution Design: SD-005 — Multi-Provider Configuration
+# Solution Design: SD-005 — Provider Registry, Model Catalog, and Backend Pools
 
 ## Problem
 
-Forge currently supports a single provider configured via flat fields
-(`provider`, `base_url`, `api_key`, `model`). Real users need multiple
-providers configured simultaneously — local LM Studio on different hosts,
-OpenRouter for cloud fallback, Anthropic direct, etc. — and need to switch
-between them easily.
+Forge started with a single flat provider config (`provider`, `base_url`,
+`api_key`, `model`). That is sufficient for one local LM Studio instance, but
+real users need three separate concerns:
 
-## Design: Named Provider Registry
+1. **Named providers** — concrete backend definitions for Anthropic,
+   OpenRouter, LM Studio hosts, etc.
+2. **Shared model policy** — one forge-owned catalog for aliases,
+   tiers/profiles, canonical targets, and deprecations.
+3. **Simple routing across equivalent backends** — for example rotate among
+   several local inference servers that should all serve the same logical model
+   reference.
+
+Prompt presets already exist in forge and must remain a separate concern for
+system prompt behavior only.
+
+## Design: Three-Layer Resolution Model
+
+Forge keeps three layers above the runtime boundary:
+
+- **Providers** — transport/auth definitions and optional direct pinned models
+- **Model catalog** — forge-owned reusable policy/data loaded from an embedded
+  snapshot plus an optional external manifest override
+- **Backend pools** — routing targets that pick one provider before a run and
+  optionally attach a catalog model reference
+
+After resolution, forge still builds exactly one concrete `Provider` and passes
+it to `forge.Run()`.
 
 ### Config Format
 
 ```yaml
 # .forge/config.yaml
-providers:
-  local:
-    type: openai-compat
-    base_url: http://localhost:1234/v1
-    model: qwen3.5-7b
+model_catalog:
+  manifest: ~/.config/forge/models.yaml   # optional local override of the embedded snapshot
 
+providers:
   vidar:
     type: openai-compat
     base_url: http://vidar:1234/v1
-    model: qwen/qwen3-coder-next
+    api_key: lmstudio
+    model: qwen/qwen3-coder-next          # optional direct pin / fallback
 
   bragi:
     type: openai-compat
     base_url: http://bragi:1234/v1
-    model: qwen3.5-27b
+    api_key: lmstudio
+    model: qwen/qwen3-coder-next
 
   openrouter:
     type: openai-compat
     base_url: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
-    model: anthropic/claude-sonnet-4
     headers:
       HTTP-Referer: https://github.com/DocumentDrivenDX/forge
       X-Title: Forge
@@ -51,193 +70,129 @@ providers:
   anthropic:
     type: anthropic
     api_key: ${ANTHROPIC_API_KEY}
-    model: claude-sonnet-4-20250514
 
-default: local
+backends:
+  code-fast-local:
+    model_ref: code-fast
+    providers: [vidar, bragi]
+    strategy: round-robin
+
+  review-smart:
+    model_ref: code-smart
+    providers: [anthropic, openrouter]
+    strategy: first-available
+
+default: vidar
+default_backend: code-fast-local
+preset: forge
 max_iterations: 20
 session_log_dir: .forge/sessions
 ```
 
-### Key Design Decisions
+### Resolution Model
 
-**D1: Named providers, not a flat list.** Names are user-chosen identifiers
-(not provider types). A user can have `local`, `vidar`, `bragi` all as
-`openai-compat` type with different URLs. Names are used on the CLI:
-`forge -p "prompt" --provider vidar`.
+1. Load provider config and the forge model catalog.
+2. If `--backend` is provided, resolve that backend pool.
+3. Else if `default_backend` exists, resolve that backend pool.
+4. Else fall back to direct provider selection via `--provider` or `default`.
+5. If a backend or explicit `--model-ref` is used, resolve that reference
+   through the catalog for the requested consumer surface.
+6. If `--model` is provided, treat it as an explicit concrete pin and bypass
+   catalog policy for that run.
+7. Build exactly one provider with one concrete model string and pass it to
+   `forge.Run()`.
 
-**D2: Environment variable expansion in values.** `${OPENROUTER_API_KEY}` is
-expanded from the environment at config load time. This keeps secrets out of
-the config file. Only `${VAR}` syntax — no shell evaluation.
+This preserves the current architecture while making model policy reusable and
+terminology-safe.
 
-**D3: Extra headers for OpenRouter et al.** The `headers` map is passed through
-on every HTTP request. This supports OpenRouter's `HTTP-Referer` and `X-Title`,
-Azure's custom headers, or any other provider-specific headers.
+## Key Design Decisions
 
-**D4: Backwards compatible.** The old flat format still works:
-```yaml
-provider: openai-compat
-base_url: http://localhost:1234/v1
-model: qwen3.5-7b
-```
-This is equivalent to a single provider named `default`. If both `providers:`
-and flat fields exist, `providers:` takes precedence.
+**D1: Keep named providers as the concrete transport unit.** Providers hold
+endpoint URLs, credentials, and headers. They are not the canonical source of
+alias/profile policy.
 
-**D5: `default` key selects the provider when no `--provider` flag is given.**
-If omitted, the first provider in the map is the default (YAML map order).
+**D2: Add a forge-owned model catalog as a first-class layer.** The catalog is
+loaded from an embedded manifest snapshot with an optional external override,
+and it owns aliases, tiers/profiles, canonical targets, and deprecations.
 
-**D6: `forge providers` lists with live status.** Hits each provider's
-`/v1/models` endpoint (or equivalent) to show connectivity. This replaces the
-current `forge check` which only checks one provider.
+**D3: Preserve prompt preset terminology for prompts only.** The top-level
+`preset` field and CLI `--preset` flag refer to system prompt presets defined in
+SD-003. Model policy uses `model_ref`, `alias`, `profile`, or `catalog`, never
+`preset`.
 
-### CLI UX
+**D4: Backend pools resolve providers, not policy.** A backend pool selects one
+provider reference and one model reference before the run. It does not replace
+the catalog.
 
-```
-forge providers                      # list all configured providers with status
-forge providers --json               # machine-readable
+**D5: Phase 2A uses simple pre-run selection only.** Supported strategies are:
+- `round-robin` — rotate between configured providers per request
+- `first-available` — always use the first configured provider
 
-forge models                         # list models for default provider
-forge models --provider vidar        # list models for specific provider
-forge models --all                   # list models for ALL providers
+Phase 2A does **not** retry a failed request on another provider.
 
-forge check                          # check default provider (backwards compat)
-forge check --provider openrouter    # check specific provider
-forge check --all                    # check all providers
+**D6: Direct concrete model pins remain supported.** `--model` and provider
+defaults remain valid for exact control, imports, and back-compat, but catalog
+references are the preferred shared-policy surface.
 
-forge -p "prompt" --provider vidar   # use specific provider
-forge -p "prompt"                    # use default provider
-```
+**D7: Environment variable expansion still applies to values.** `${VAR}` is
+expanded at config load time. No shell evaluation.
 
-### Output Examples
+**D8: Backwards compatible with the legacy flat format.** Old flat config still
+maps to a single provider named `default`. Users can adopt catalog references
+and backend pools only when they need them.
 
-```
-$ forge providers
-NAME         TYPE           URL                              MODEL                      STATUS
-local        openai-compat  http://localhost:1234/v1          qwen3.5-7b                 unreachable
-vidar        openai-compat  http://vidar:1234/v1             qwen/qwen3-coder-next      connected (3 models)
-bragi        openai-compat  http://bragi:1234/v1             qwen3.5-27b                connected (10 models)
-openrouter   openai-compat  https://openrouter.ai/api/v1     anthropic/claude-sonnet-4   connected
-anthropic    anthropic      https://api.anthropic.com        claude-sonnet-4-20250514    api key set
-* default: vidar
+## CLI UX
 
-$ forge models --provider vidar
-qwen/qwen3-coder-next
-minimax/minimax-m2.5
-text-embedding-nomic-embed-text-v1.5
+### Prompt Preset Selection
 
-$ forge models --all
-[vidar]
-qwen/qwen3-coder-next
-minimax/minimax-m2.5
-
-[bragi]
-qwen3.5-27b
-qwen/qwen3.5-9b
-qwen/qwen3-coder-30b
-google/gemma-4-26b-a4b
-...
-
-[openrouter]
-(845 models — use forge models --provider openrouter to list)
-
-[anthropic]
-claude-sonnet-4-20250514 (configured)
+```bash
+forge -p "prompt" --preset forge
+forge -p "prompt" --preset claude
 ```
 
-### Library API
+Built-in preset names are defined by SD-003 and the implementation in
+`prompt/presets.go`.
 
-The library doesn't change much. `forge.Run()` still takes a `Provider` in
-the `Request`. The multi-provider config is CLI-layer concern — the CLI resolves
-the named provider to a `forge.Provider` instance and passes it in.
+### Direct Provider / Model Selection
 
-For library users who want the config system:
-
-```go
-// Package config provides multi-provider configuration loading.
-package config
-
-type ProviderConfig struct {
-    Type    string            `yaml:"type"`    // "openai-compat" or "anthropic"
-    BaseURL string            `yaml:"base_url"`
-    APIKey  string            `yaml:"api_key"`
-    Model   string            `yaml:"model"`
-    Headers map[string]string `yaml:"headers"`
-}
-
-type Config struct {
-    Providers     map[string]ProviderConfig `yaml:"providers"`
-    Default       string                    `yaml:"default"`
-    MaxIterations int                       `yaml:"max_iterations"`
-    SessionLogDir string                    `yaml:"session_log_dir"`
-}
-
-// Load reads config from .forge/config.yaml and ~/.config/forge/config.yaml
-// with env var expansion.
-func Load(workDir string) (*Config, error)
-
-// BuildProvider creates a forge.Provider from a named provider config.
-func (c *Config) BuildProvider(name string) (forge.Provider, error)
-
-// DefaultProvider creates the default provider.
-func (c *Config) DefaultProvider() (forge.Provider, error)
-
-// ProviderNames returns configured provider names in order.
-func (c *Config) ProviderNames() []string
+```bash
+forge -p "prompt" --provider vidar
+forge -p "prompt" --provider anthropic --model claude-sonnet-4-20250514
+forge -p "prompt" --model-ref code-smart
 ```
 
-### OpenAI Provider: Headers Support
+### Backend-Pool Selection
 
-Add an optional `Headers` field to the OpenAI provider config:
-
-```go
-type Config struct {
-    BaseURL string
-    APIKey  string
-    Model   string
-    Headers map[string]string // extra HTTP headers (OpenRouter, Azure, etc.)
-}
+```bash
+forge -p "prompt" --backend code-fast-local
+forge -p "prompt"                         # use default_backend if set, else default provider
 ```
 
-These are passed as `option.WithHeader(k, v)` on every request.
+Initial phase-2A scope only requires backend resolution for runs. Provider
+listing, checking, and model listing remain provider-oriented commands. Catalog
+inspection commands can be added later if needed.
 
-### Migration from Old Config
+## Library and Package Boundaries
 
-The `Load()` function detects the old flat format and converts it:
+The library runtime boundary does not change: `forge.Run()` still takes a
+single `Provider` in the `Request`.
 
-```yaml
-# Old format
-provider: openai-compat
-base_url: http://localhost:1234/v1
-model: qwen3.5-7b
-```
+Config and CLI code grow a catalog-aware layer above that boundary. The
+detailed package/API shape is defined in
+`docs/helix/02-design/plan-2026-04-08-shared-model-catalog.md`.
 
-Becomes internally:
+Expected package split:
 
-```yaml
-providers:
-  default:
-    type: openai-compat
-    base_url: http://localhost:1234/v1
-    model: qwen3.5-7b
-default: default
-```
+- `config/` — load provider config and optional manifest override path
+- `modelcatalog/` — load, validate, and resolve shared model policy
+- `cmd/forge/` — resolve `--provider`, `--backend`, `--model-ref`, or `--model`
+  into one concrete provider/model pair
 
-No user action needed. Old configs keep working.
+## Traceability
 
-## Implementation Plan
-
-| # | Bead | Depends |
-|---|------|---------|
-| 1 | Config types + loader with env expansion and migration | — |
-| 2 | OpenAI provider: add Headers support | — |
-| 3 | `forge providers` command | 1 |
-| 4 | `forge models --provider` + `--all` | 1, 2 |
-| 5 | `forge check` update for multi-provider | 1 |
-| 6 | Wire `--provider` flag into `forge -p` | 1 |
-
-## Risks
-
-| Risk | Prob | Impact | Mitigation |
-|------|------|--------|------------|
-| YAML map ordering | L | L | Go yaml.v3 preserves insertion order |
-| Env var expansion edge cases | L | L | Only `${VAR}` syntax, no shell eval |
-| OpenRouter model list very large | M | L | Truncate with count in `--all` mode |
+- FEAT-004 defines the ownership split and terminology
+- SD-003 reserves `preset` for system prompt behavior
+- `plan-2026-04-08-shared-model-catalog.md` defines the catalog package/API,
+  manifest format, and consumer examples
+- `forge-94b5d420` covers the converged design
+- `forge-66eef6fe` is the follow-on implementation bead

@@ -162,6 +162,17 @@ Forge ships with built-in system prompt presets that track the style and convent
 | `codex` | Tracks OpenAI Codex CLI style — pragmatic, direct |
 | `cursor` | Tracks Cursor style — fast, action-oriented |
 
+### Boundary with Model Catalog
+
+Prompt presets are strictly about system prompt behavior. They do **not**
+select providers, model aliases, tiers/profiles, or canonical model targets.
+Those belong to the forge model catalog and routing/config layer described in
+FEAT-004 and SD-005.
+
+This boundary is important because forge already uses `preset` in CLI/config
+surfaces. Future model-policy surfaces must use distinct terms such as
+`model_ref`, `profile`, or `alias`, never `preset`.
+
 ### Using Presets
 
 ```go

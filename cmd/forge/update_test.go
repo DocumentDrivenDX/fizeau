@@ -165,9 +165,11 @@ func TestGetLatestRelease(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Temporarily override githubRepo to use mock server as full path
-	originalRepo := githubRepo
-	githubRepo = strings.TrimPrefix(srv.URL, "https://") + "/repos/test/repo"
+	originalAPIBase := githubAPIBase
+	githubAPIBase = srv.URL
+	t.Cleanup(func() {
+		githubAPIBase = originalAPIBase
+	})
 
 	homeDir := t.TempDir()
 	cacheFile := filepath.Join(homeDir, "cache.json")
@@ -177,8 +179,6 @@ func TestGetLatestRelease(t *testing.T) {
 	assert.Equal(t, "v0.0.9", release.TagName)
 	assert.Contains(t, release.Body, "Added update command")
 
-	// Restore original repo
-	githubRepo = originalRepo
 }
 
 func TestGetLatestRelease_Cache(t *testing.T) {
@@ -253,13 +253,14 @@ func TestGetLatestRelease_ErrorHandling(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	originalRepo := githubRepo
-	githubRepo = strings.TrimPrefix(srv.URL, "https://")
+	originalAPIBase := githubAPIBase
+	githubAPIBase = srv.URL
+	t.Cleanup(func() {
+		githubAPIBase = originalAPIBase
+	})
 
 	_, err := GetLatestRelease("test/repo", "")
 	assert.Error(t, err)
-
-	githubRepo = originalRepo
 }
 
 func TestGetLatestRelease_NetworkError(t *testing.T) {

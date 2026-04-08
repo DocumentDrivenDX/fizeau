@@ -15,11 +15,15 @@ subprocess-based agent dispatch in DDx with an in-process alternative that
 eliminates process overhead, enables direct state sharing, and provides native
 cost control. Following the ghostty model — great library, proven by a usable
 app — Forge ships as a Go package plus a thin standalone CLI that showcases the
-library and serves as the DDx harness backend. Every LLM interaction and tool
-call is logged and replayable, with per-model cost tracking built in. Success
-means DDx can run a HELIX build pass where 70%+ of routine tasks use local
-models at near-zero cost, and the operator can replay any session to understand
-exactly what happened.
+library and serves as the DDx harness backend. Forge also owns a reusable
+shared model catalog and updateable manifest so DDx and related tooling can
+resolve aliases, tiers/profiles, canonical targets, and deprecations without
+copying model policy into each consumer. Every LLM interaction and tool call is
+logged and replayable, with per-model cost tracking built in. Success means DDx
+can run a HELIX build pass where 70%+ of routine tasks use local models at
+near-zero cost, the operator can replay any session to understand exactly what
+happened, and downstream tools consume forge's model catalog rather than
+duplicating release-policy tables.
 
 ## Problem and Goals
 
@@ -51,6 +55,9 @@ task the same: spawn a process, send to cloud, parse the result.
    cost-tracked. Pattern off DDx's session logging (JSONL + per-session detail)
 5. **Prove it with an app** — standalone `forge` CLI that showcases the library
    and serves as a DDx harness, following the ghostty pattern
+6. **Own reusable model policy** — provide a forge-owned shared model catalog
+   and updateable manifest so aliases, tiers/profiles, canonical targets, and
+   deprecations are maintained once and consumed by DDx and other clients
 
 ### Success Metrics
 
@@ -68,6 +75,9 @@ task the same: spawn a process, send to cloud, parse the result.
 - **MCP server** — Forge provides tools directly, not via MCP protocol.
 - **Prompt engineering** — Forge executes prompts; the caller (HELIX/DDx) owns
   prompt design and persona injection.
+- **Harness orchestration policy** — Forge owns reusable model catalog data and
+  policy, but DDx chooses harnesses/providers for a task and HELIX owns only
+  stage intent.
 - **Model hosting** — Forge connects to LM Studio/Ollama/cloud APIs. It does
   not run inference itself.
 - **IDE integration** — Forge is a library, not an editor plugin.
@@ -147,6 +157,9 @@ task the same: spawn a process, send to cloud, parse the result.
    surface.
 9. **Conversation compaction** — auto-summarize long conversation histories
    to fit within model context windows — **Implemented**
+10. **Shared model catalog** — a forge-owned catalog and updateable manifest
+    for model aliases, tiers/profiles (`smart`, `fast`, `cheap`), canonical
+    targets, and deprecation metadata, kept separate from prompt presets
 
 ### Nice to Have (P2)
 
@@ -190,11 +203,27 @@ task the same: spawn a process, send to cloud, parse the result.
 - Each provider MUST implement a common interface: `Chat(ctx, messages, tools,
   opts) (Response, error)`
 - Provider selection MUST be configurable per-request
+- Provider configuration MUST remain separate from forge's canonical model
+  catalog. Providers own transport/auth details; the catalog owns model policy.
 - Providers MUST report token usage when the upstream API provides it
 - Providers MUST support tool/function calling in the format the model expects
 - The LM Studio provider MUST connect to `http://localhost:1234/v1` by default
   with configurable host/port
 - The Ollama provider MUST connect to `http://localhost:11434` by default
+
+### Model Catalog
+
+- Forge MUST define a reusable shared model catalog for aliases, model
+  families, tiers/profiles, canonical current targets, and deprecation/stale
+  metadata
+- The shared catalog MUST be distinct from system prompt presets and use its
+  own naming/config surface
+- Forge MUST ship an embedded release snapshot of the catalog and support an
+  updateable external manifest for faster policy/data refresh where practical
+- DDx and other consumers MUST be able to resolve model references through the
+  forge-owned catalog without duplicating model policy in their own repos
+- HELIX stage intent MUST remain above this layer; HELIX selects intent, DDx
+  resolves harness/provider/model details using forge-owned catalog data
 
 ### Structured I/O
 
