@@ -10,9 +10,9 @@ import (
 // AuthEntry represents a single credential entry in auth.json.
 type AuthEntry struct {
 	AccessToken string `json:"access_token,omitempty"`
-	TokenType  string `json:"token_type,omitempty"`
-	Expires    int64  `json:"expires,omitempty"` // epoch milliseconds
-	APIKey     string `json:"api_key,omitempty"`
+	TokenType   string `json:"token_type,omitempty"`
+	Expires     int64  `json:"expires,omitempty"` // epoch milliseconds
+	APIKey      string `json:"api_key,omitempty"`
 }
 
 // AuthCredentials maps provider names to their credentials.

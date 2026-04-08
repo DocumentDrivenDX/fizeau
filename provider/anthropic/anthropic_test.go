@@ -100,11 +100,11 @@ func TestProvider_ConvertMessages(t *testing.T) {
 func TestProvider_TokenUsage(t *testing.T) {
 	// Test that TokenUsage can be marshaled correctly
 	usage := agent.TokenUsage{
-		Input:       100,
-		Output:      50,
-		CacheRead:   25,
-		CacheWrite:  10,
-		Total:       185,
+		Input:      100,
+		Output:     50,
+		CacheRead:  25,
+		CacheWrite: 10,
+		Total:      185,
 	}
 
 	data, err := json.Marshal(usage)
@@ -134,8 +134,8 @@ func TestProvider_TokenUsage_Add(t *testing.T) {
 
 func TestProvider_StreamDelta(t *testing.T) {
 	delta := agent.StreamDelta{
-		Content:   "Hello",
-		Model:    "claude-sonnet-4-20250514",
+		Content:      "Hello",
+		Model:        "claude-sonnet-4-20250514",
 		FinishReason: "end_turn",
 		Usage: &agent.TokenUsage{
 			Input:  100,
@@ -212,8 +212,8 @@ func TestProvider_Messages(t *testing.T) {
 		{Role: agent.RoleSystem, Content: "System prompt"},
 		{Role: agent.RoleUser, Content: "User message"},
 		{
-			Role:      agent.RoleAssistant,
-			Content:   "Assistant response",
+			Role:    agent.RoleAssistant,
+			Content: "Assistant response",
 			ToolCalls: []agent.ToolCall{
 				{ID: "tc1", Name: "read", Arguments: json.RawMessage(`{}`)},
 			},

@@ -41,7 +41,7 @@ func TestNewLogger_DirCreation(t *testing.T) {
 func TestNewLogger_Failures(t *testing.T) {
 	// Invalid path that can't be created
 	l := NewLogger("/invalid/path/that/cannot/exist", "test")
-	require.NotNil(t, l) // Should return non-nil even on failure
+	require.NotNil(t, l)  // Should return non-nil even on failure
 	assert.Nil(t, l.file) // But file should be nil
 }
 
@@ -135,7 +135,7 @@ invalid json here
 	require.NoError(t, os.WriteFile(path, []byte(content), 0644))
 
 	events, err := ReadEvents(path)
-	assert.Error(t, err) // Should error on malformed JSON
+	assert.Error(t, err)     // Should error on malformed JSON
 	assert.Len(t, events, 1) // But should return what was parsed
 }
 
@@ -180,7 +180,7 @@ func TestLogger_Write_MarshalError(t *testing.T) {
 		Type:      agent.EventLLMResponse,
 		Data:      []byte(`{"content": "test"}`),
 	}
-	
+
 	l.Write(event)
 	// Should succeed without panic
 }
@@ -243,11 +243,11 @@ func TestLogger_WarnedFlag(t *testing.T) {
 
 	// First write should succeed
 	l.Write(agent.Event{SessionID: "test", Type: agent.EventLLMResponse})
-	
+
 	// Close the file to simulate error condition
 	l.file.Close()
 	l.file = nil
-	
+
 	// Subsequent writes should not panic and should set warned flag
 	l.Write(agent.Event{SessionID: "test", Type: agent.EventLLMResponse})
 }
@@ -333,7 +333,7 @@ func TestLogger_Emit_EmptyData(t *testing.T) {
 func TestReadEvents_LargeFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "large.jsonl")
-	
+
 	// Write many events
 	var sb strings.Builder
 	for i := 0; i < 1000; i++ {

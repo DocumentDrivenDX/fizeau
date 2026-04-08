@@ -13,11 +13,11 @@ type OpenCodeConfig struct {
 
 // OpenCodeOptions contains the configuration options.
 type OpenCodeOptions struct {
-	BaseURL  string            `json:"baseURL,omitempty"`
-	APIKey   string            `json:"apiKey,omitempty"`
-	Model    string            `json:"model,omitempty"`
-	Headers  map[string]string `json:"headers,omitempty"`
-	NPM      string            `json:"npm,omitempty"` // e.g., "@ai-sdk/openai-compatible"
+	BaseURL string            `json:"baseURL,omitempty"`
+	APIKey  string            `json:"apiKey,omitempty"`
+	Model   string            `json:"model,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	NPM     string            `json:"npm,omitempty"` // e.g., "@ai-sdk/openai-compatible"
 }
 
 // LoadConfig reads the opencode.json file from the project or global location.

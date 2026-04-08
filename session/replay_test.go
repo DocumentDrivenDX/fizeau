@@ -131,9 +131,9 @@ func TestReplay_WithCost(t *testing.T) {
 
 	logger := NewLogger(dir, sessionID)
 	logger.Emit(agent.EventSessionStart, SessionStartData{
-		Provider:      "anthropic",
-		Model:         "claude-sonnet-4-20250514",
-		Prompt:        "Test with cost",
+		Provider: "anthropic",
+		Model:    "claude-sonnet-4-20250514",
+		Prompt:   "Test with cost",
 	})
 	logger.Emit(agent.EventLLMResponse, LLMResponseData{
 		Content:   "Hello",
@@ -453,8 +453,8 @@ func TestReplay_IterationLimitStatus(t *testing.T) {
 
 	logger := NewLogger(dir, sessionID)
 	logger.Emit(agent.EventSessionStart, SessionStartData{
-		Prompt:          "Test",
-		MaxIterations:  20,
+		Prompt:        "Test",
+		MaxIterations: 20,
 	})
 	logger.Emit(agent.EventSessionEnd, SessionEndData{
 		Status: agent.StatusIterationLimit,

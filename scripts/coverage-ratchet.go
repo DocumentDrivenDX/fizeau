@@ -16,14 +16,14 @@ import (
 
 // FloorConfig represents the coverage floor configuration.
 type FloorConfig struct {
-	Version    int               `json:"version"`
-	Metric     string            `json:"metric"`
-	Updated    string            `json:"updated"`
-	UpdatedBy  string            `json:"updated_by"`
-	Commit     string            `json:"commit"`
+	Version    int                `json:"version"`
+	Metric     string             `json:"metric"`
+	Updated    string             `json:"updated"`
+	UpdatedBy  string             `json:"updated_by"`
+	Commit     string             `json:"commit"`
 	Floors     map[string]float64 `json:"floors"`
 	Tolerances map[string]float64 `json:"tolerances"`
-	History    []HistoryEntry   `json:"history"`
+	History    []HistoryEntry     `json:"history"`
 }
 
 // HistoryEntry records a floor change.
