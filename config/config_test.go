@@ -167,6 +167,36 @@ func TestProviderNames_DefaultFirst(t *testing.T) {
 	assert.Equal(t, "local", names[0])
 }
 
+func TestProviderNames_MissingDefaultOmitsUnknownDefaultAndSortsExisting(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"zebra": {Type: "openai-compat"},
+			"alpha": {Type: "anthropic"},
+		},
+		Default: "missing",
+	}
+
+	names := cfg.ProviderNames()
+	assert.Equal(t, []string{"alpha", "zebra"}, names)
+}
+
+func TestBuildProvider_MissingConfiguredDefaultFails(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"alpha": {
+				Type:    "openai-compat",
+				BaseURL: "http://localhost:1234/v1",
+				Model:   "test-model",
+			},
+		},
+		Default: "missing",
+	}
+
+	_, err := cfg.DefaultProvider()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown provider "missing"`)
+}
+
 func TestBuildProvider(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{

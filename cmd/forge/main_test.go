@@ -1,7 +1,9 @@
 package main_test
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,6 +15,11 @@ func runForge(t *testing.T, args ...string) ([]byte, error) {
 	t.Helper()
 	cmd := exec.Command("go", append([]string{"run", "./cmd/forge"}, args...)...)
 	cmd.Dir = "/Users/erik/Projects/forge"
+	home := t.TempDir()
+	cmd.Env = append(os.Environ(),
+		"HOME="+home,
+		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+	)
 	out, err := cmd.CombinedOutput()
 	return out, err
 }
@@ -77,7 +84,7 @@ func TestCLI_Import_DiffFlag(t *testing.T) {
 func TestCLI_Subcommands(t *testing.T) {
 	tests := []struct {
 		name    string
-		args   []string
+		args    []string
 		matches string
 	}{
 		{"log", []string{"log"}, "s-"}, // session IDs start with s-
