@@ -5,16 +5,25 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DocumentDrivenDX/forge/modelcatalog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func isolateHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+}
+
 func TestLoad_NewFormat(t *testing.T) {
+	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".forge")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+model_catalog:
+  manifest: /tmp/models.yaml
 providers:
   local:
     type: openai-compat
@@ -34,6 +43,7 @@ max_iterations: 30
 	assert.Len(t, cfg.Providers, 2)
 	assert.Equal(t, "local", cfg.Default)
 	assert.Equal(t, 30, cfg.MaxIterations)
+	assert.Equal(t, "/tmp/models.yaml", cfg.ModelCatalog.Manifest)
 
 	local, ok := cfg.GetProvider("local")
 	require.True(t, ok)
@@ -47,6 +57,7 @@ max_iterations: 30
 }
 
 func TestLoad_LegacyMigration(t *testing.T) {
+	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".forge")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
@@ -72,6 +83,7 @@ max_iterations: 15
 }
 
 func TestLoad_EnvExpansion(t *testing.T) {
+	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".forge")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
@@ -95,6 +107,7 @@ providers:
 }
 
 func TestLoad_EnvExpansion_Unset(t *testing.T) {
+	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".forge")
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
@@ -115,6 +128,7 @@ providers:
 }
 
 func TestLoad_MissingFile(t *testing.T) {
+	isolateHome(t)
 	cfg, err := Load(t.TempDir())
 	require.NoError(t, err)
 
@@ -123,6 +137,7 @@ func TestLoad_MissingFile(t *testing.T) {
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
+	isolateHome(t)
 	t.Setenv("FORGE_PROVIDER", "anthropic")
 	t.Setenv("FORGE_API_KEY", "env-key")
 	t.Setenv("FORGE_MODEL", "env-model")
@@ -190,6 +205,143 @@ func TestBuildProvider_WithHeaders(t *testing.T) {
 	p, err := cfg.BuildProvider("openrouter")
 	require.NoError(t, err)
 	assert.NotNil(t, p)
+}
+
+func TestResolveProviderConfig_ModelRefOpenAI(t *testing.T) {
+	cfg := Config{
+		ModelCatalog: ModelCatalogConfig{},
+		Providers: map[string]ProviderConfig{
+			"local": {
+				Type:    "openai-compat",
+				BaseURL: "http://localhost:1234/v1",
+				Model:   "old-model",
+			},
+		},
+	}
+
+	pc, resolved, err := cfg.ResolveProviderConfig("local", ProviderOverrides{
+		ModelRef: "code-fast",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "qwen/qwen3-coder-next", pc.Model)
+	assert.Equal(t, "qwen3-coder-next", resolved.CanonicalID)
+}
+
+func TestResolveProviderConfig_ModelRefAnthropic(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"cloud": {
+				Type:   "anthropic",
+				APIKey: "test",
+			},
+		},
+	}
+
+	pc, resolved, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
+		ModelRef: "code-smart",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
+	assert.Equal(t, "claude-sonnet-4", resolved.CanonicalID)
+}
+
+func TestResolveProviderConfig_ExplicitModelBypassesCatalog(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"cloud": {
+				Type:   "anthropic",
+				APIKey: "test",
+				Model:  "configured-model",
+			},
+		},
+	}
+
+	pc, resolved, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
+		Model:    "exact-model",
+		ModelRef: "code-smart",
+	})
+	require.NoError(t, err)
+	assert.Nil(t, resolved)
+	assert.Equal(t, "exact-model", pc.Model)
+}
+
+func TestResolveProviderConfig_ExternalManifest(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "models.yaml")
+	require.NoError(t, os.WriteFile(manifestPath, []byte(`
+version: 1
+generated_at: 2026-04-09T00:00:00Z
+profiles:
+  code-smart:
+    target: gpt-4.1
+targets:
+  gpt-4.1:
+    family: gpt
+    aliases: [gpt-smart]
+    surfaces:
+      forge.openai: gpt-4.1
+`), 0o644))
+
+	cfg := Config{
+		ModelCatalog: ModelCatalogConfig{Manifest: manifestPath},
+		Providers: map[string]ProviderConfig{
+			"openrouter": {
+				Type:    "openai-compat",
+				BaseURL: "https://openrouter.ai/api/v1",
+				APIKey:  "test",
+			},
+		},
+	}
+
+	pc, resolved, err := cfg.ResolveProviderConfig("openrouter", ProviderOverrides{
+		ModelRef: "gpt-smart",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "gpt-4.1", pc.Model)
+	assert.Equal(t, manifestPath, resolved.ManifestSource)
+}
+
+func TestResolveProviderConfig_MissingSurface(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"cloud": {
+				Type:   "anthropic",
+				APIKey: "test",
+			},
+		},
+	}
+
+	_, _, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
+		ModelRef: "code-fast",
+	})
+	require.Error(t, err)
+
+	var missingSurfaceErr *modelcatalog.MissingSurfaceError
+	require.ErrorAs(t, err, &missingSurfaceErr)
+	assert.Equal(t, modelcatalog.SurfaceForgeAnthropic, missingSurfaceErr.Surface)
+}
+
+func TestBuildProviderWithOverrides(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"cloud": {
+				Type:   "anthropic",
+				APIKey: "test",
+			},
+		},
+	}
+
+	p, pc, resolved, err := cfg.BuildProviderWithOverrides("cloud", ProviderOverrides{
+		ModelRef: "code-smart",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "claude-sonnet-4", resolved.CanonicalID)
 }
 
 func TestExpandEnvVars(t *testing.T) {

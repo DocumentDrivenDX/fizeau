@@ -1,0 +1,69 @@
+package main
+
+import (
+	"testing"
+
+	forgeConfig "github.com/DocumentDrivenDX/forge/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestResolveProviderForRun_DefaultProvider(t *testing.T) {
+	cfg := &forgeConfig.Config{
+		Providers: map[string]forgeConfig.ProviderConfig{
+			"local": {
+				Type:    "openai-compat",
+				BaseURL: "http://localhost:1234/v1",
+				Model:   "configured-model",
+			},
+		},
+		Default: "local",
+	}
+
+	name, p, pc, err := resolveProviderForRun(cfg, "", forgeConfig.ProviderOverrides{})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "local", name)
+	assert.Equal(t, "configured-model", pc.Model)
+}
+
+func TestResolveProviderForRun_ModelRef(t *testing.T) {
+	cfg := &forgeConfig.Config{
+		Providers: map[string]forgeConfig.ProviderConfig{
+			"cloud": {
+				Type:   "anthropic",
+				APIKey: "test",
+			},
+		},
+		Default: "cloud",
+	}
+
+	name, p, pc, err := resolveProviderForRun(cfg, "", forgeConfig.ProviderOverrides{
+		ModelRef: "code-smart",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "cloud", name)
+	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
+}
+
+func TestResolveProviderForRun_ExplicitModelWins(t *testing.T) {
+	cfg := &forgeConfig.Config{
+		Providers: map[string]forgeConfig.ProviderConfig{
+			"cloud": {
+				Type:   "anthropic",
+				APIKey: "test",
+				Model:  "configured-model",
+			},
+		},
+		Default: "cloud",
+	}
+
+	_, p, pc, err := resolveProviderForRun(cfg, "", forgeConfig.ProviderOverrides{
+		Model:    "exact-model",
+		ModelRef: "code-smart",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "exact-model", pc.Model)
+}

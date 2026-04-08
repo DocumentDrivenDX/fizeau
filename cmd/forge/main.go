@@ -40,7 +40,8 @@ func run() int {
 	promptFlag := flag.String("p", "", "Prompt (use @file to read from file)")
 	jsonOutput := flag.Bool("json", false, "Output result as JSON")
 	providerFlag := flag.String("provider", "", "Named provider from config (e.g., vidar, openrouter)")
-	model := flag.String("model", "", "Model name override")
+	model := flag.String("model", "", "Explicit model name override (bypasses catalog)")
+	modelRef := flag.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target)")
 	maxIter := flag.Int("max-iter", 0, "Max iterations")
 	workDir := flag.String("work-dir", "", "Working directory")
 	version := flag.Bool("version", false, "Print version")
@@ -108,27 +109,13 @@ func run() int {
 		return 2
 	}
 
-	// Build provider
-	provName := *providerFlag
-	if provName == "" {
-		provName = cfg.DefaultName()
-	}
-	p, err := cfg.BuildProvider(provName)
+	_, p, _, err := resolveProviderForRun(cfg, *providerFlag, forgeConfig.ProviderOverrides{
+		Model:    *model,
+		ModelRef: *modelRef,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
-	}
-
-	// Apply model override
-	pc, _ := cfg.GetProvider(provName)
-	if *model != "" {
-		pc.Model = *model
-		// Rebuild with overridden model
-		p, err = cfg.BuildProvider(provName)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			return 2
-		}
 	}
 
 	// Resolve max iterations
@@ -212,6 +199,19 @@ func run() int {
 	default:
 		return 1
 	}
+}
+
+func resolveProviderForRun(cfg *forgeConfig.Config, providerName string, overrides forgeConfig.ProviderOverrides) (string, forge.Provider, forgeConfig.ProviderConfig, error) {
+	if providerName == "" {
+		providerName = cfg.DefaultName()
+	}
+
+	p, pc, _, err := cfg.BuildProviderWithOverrides(providerName, overrides)
+	if err != nil {
+		return "", nil, forgeConfig.ProviderConfig{}, err
+	}
+
+	return providerName, p, pc, nil
 }
 
 func resolvePrompt(p string) (string, error) {
@@ -1013,7 +1013,7 @@ func cmdUpdate(args []string) int {
 	// Prompt user
 	if !force {
 		fmt.Print("\nUpdate to " + release.TagName + "? [y/N] ")
-		
+
 		buf := make([]byte, 1)
 		if _, err := os.Stdin.Read(buf); err != nil {
 			fmt.Println("\nCancelled.")

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/DocumentDrivenDX/forge"
+	"github.com/DocumentDrivenDX/forge/modelcatalog"
 	"github.com/DocumentDrivenDX/forge/provider/anthropic"
 	oaiProvider "github.com/DocumentDrivenDX/forge/provider/openai"
 	"gopkg.in/yaml.v3"
@@ -35,10 +36,24 @@ type ImportMetadata struct {
 	SourceHash string `yaml:"source_hash"`
 }
 
+// ModelCatalogConfig configures how the shared model catalog is loaded.
+type ModelCatalogConfig struct {
+	Manifest string `yaml:"manifest,omitempty"`
+}
+
+// ProviderOverrides are per-run overrides applied before building a provider.
+type ProviderOverrides struct {
+	Model    string
+	ModelRef string
+}
+
 // Config is the top-level forge configuration.
 type Config struct {
 	// Providers is a map of named provider configurations.
 	Providers map[string]ProviderConfig `yaml:"providers"`
+
+	// ModelCatalog configures the optional external manifest path.
+	ModelCatalog ModelCatalogConfig `yaml:"model_catalog,omitempty"`
 
 	// Default is the name of the default provider. If empty, uses the first.
 	Default string `yaml:"default"`
@@ -224,6 +239,58 @@ func (c *Config) BuildProvider(name string) (forge.Provider, error) {
 	return buildProviderFromConfig(pc)
 }
 
+// ResolveProviderConfig applies per-run overrides to a named provider config.
+func (c *Config) ResolveProviderConfig(name string, overrides ProviderOverrides) (ProviderConfig, *modelcatalog.ResolvedTarget, error) {
+	pc, ok := c.Providers[name]
+	if !ok {
+		return ProviderConfig{}, nil, fmt.Errorf("config: unknown provider %q", name)
+	}
+
+	if overrides.Model != "" {
+		pc.Model = overrides.Model
+		return pc, nil, nil
+	}
+
+	if overrides.ModelRef == "" {
+		return pc, nil, nil
+	}
+
+	catalog, err := c.LoadModelCatalog()
+	if err != nil {
+		return ProviderConfig{}, nil, err
+	}
+
+	surface, err := surfaceForProviderType(pc.Type)
+	if err != nil {
+		return ProviderConfig{}, nil, err
+	}
+
+	resolved, err := catalog.Resolve(overrides.ModelRef, modelcatalog.ResolveOptions{
+		Surface: surface,
+	})
+	if err != nil {
+		return ProviderConfig{}, nil, err
+	}
+
+	pc.Model = resolved.ConcreteModel
+	return pc, &resolved, nil
+}
+
+// BuildProviderWithOverrides builds a provider after applying per-run overrides.
+func (c *Config) BuildProviderWithOverrides(name string, overrides ProviderOverrides) (forge.Provider, ProviderConfig, *modelcatalog.ResolvedTarget, error) {
+	pc, resolved, err := c.ResolveProviderConfig(name, overrides)
+	if err != nil {
+		return nil, ProviderConfig{}, nil, err
+	}
+
+	p, err := buildProviderFromConfig(pc)
+	if err != nil {
+		return nil, ProviderConfig{}, nil, err
+	}
+
+	return p, pc, resolved, nil
+}
+
 // DefaultProvider creates the default provider.
 func (c *Config) DefaultProvider() (forge.Provider, error) {
 	return c.BuildProvider(c.DefaultName())
@@ -251,6 +318,24 @@ func buildProviderFromConfig(pc ProviderConfig) (forge.Provider, error) {
 		}), nil
 	default:
 		return nil, fmt.Errorf("config: unknown provider type %q (use openai-compat or anthropic)", pc.Type)
+	}
+}
+
+// LoadModelCatalog loads the shared model catalog using the configured manifest override path.
+func (c *Config) LoadModelCatalog() (*modelcatalog.Catalog, error) {
+	return modelcatalog.Load(modelcatalog.LoadOptions{
+		ManifestPath: c.ModelCatalog.Manifest,
+	})
+}
+
+func surfaceForProviderType(providerType string) (modelcatalog.Surface, error) {
+	switch providerType {
+	case "openai-compat", "openai":
+		return modelcatalog.SurfaceForgeOpenAI, nil
+	case "anthropic":
+		return modelcatalog.SurfaceForgeAnthropic, nil
+	default:
+		return "", fmt.Errorf("config: cannot resolve model reference for provider type %q", providerType)
 	}
 }
 

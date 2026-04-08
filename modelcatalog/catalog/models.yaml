@@ -1,0 +1,39 @@
+version: 1
+generated_at: 2026-04-08T00:00:00Z
+
+profiles:
+  code-smart:
+    target: claude-sonnet-4
+  code-fast:
+    target: qwen3-coder-next
+  cheap:
+    target: qwen3-coder-next
+
+targets:
+  claude-sonnet-4:
+    family: claude-sonnet
+    aliases:
+      - claude-sonnet
+      - sonnet
+    status: active
+    surfaces:
+      forge.anthropic: claude-sonnet-4-20250514
+      forge.openai: anthropic/claude-sonnet-4
+      claude-code: sonnet
+
+  qwen3-coder-next:
+    family: qwen3-coder
+    aliases:
+      - qwen-coder-next
+      - qwen3-coder
+    status: active
+    surfaces:
+      forge.openai: qwen/qwen3-coder-next
+
+  claude-sonnet-3.7:
+    family: claude-sonnet
+    status: deprecated
+    replacement: claude-sonnet-4
+    deprecated_at: 2026-04-08
+    surfaces:
+      forge.anthropic: claude-3-7-sonnet-20250219
