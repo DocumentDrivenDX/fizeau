@@ -135,11 +135,33 @@ func main() {
 provider: openai-compat
 base_url: http://localhost:1234/v1
 model: qwen3.5-7b
+preset: agent                    # system prompt style (see below)
 max_iterations: 20
 session_log_dir: .agent/sessions
 ```
 
 Environment overrides: `AGENT_PROVIDER`, `AGENT_BASE_URL`, `AGENT_API_KEY`, `AGENT_MODEL`
+
+## System Prompt Presets
+
+DDX Agent ships built-in system prompt presets that track the style and
+conventions of well-known coding agents. Select one with `--preset` or the
+top-level `preset` config field:
+
+| Preset    | Description                                              |
+|-----------|----------------------------------------------------------|
+| `agent`   | DDX Agent default — balanced, tool-aware, structured     |
+| `minimal` | Bare minimum — one sentence                              |
+| `claude`  | Tracks Claude Code style — thorough, safety-conscious    |
+| `codex`   | Tracks OpenAI Codex CLI style — pragmatic, direct        |
+| `cursor`  | Tracks Cursor style — fast, action-oriented, edit-heavy  |
+
+```bash
+ddx-agent -p "prompt" --preset claude
+ddx-agent -p "prompt" --preset codex
+```
+
+When no preset is specified, `agent` is used.
 
 ## Session Replay
 

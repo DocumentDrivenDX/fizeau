@@ -145,12 +145,31 @@ and backend pools only when they need them.
 
 ### Prompt Preset Selection
 
+The `--preset` flag (or `preset` in config) selects the system prompt style.
+Built-in preset names:
+
+| Preset    | Description                                              |
+|-----------|----------------------------------------------------------|
+| `agent`   | DDX Agent default — balanced, tool-aware, structured     |
+| `minimal` | Bare minimum — one sentence, like pi                     |
+| `claude`  | Tracks Claude Code style — thorough, safety-conscious    |
+| `codex`   | Tracks OpenAI Codex CLI style — pragmatic, direct        |
+| `cursor`  | Tracks Cursor style — fast, action-oriented, edit-heavy  |
+
 ```bash
+ddx-agent -p "prompt"                  # uses preset from config, or "agent" by default
 ddx-agent -p "prompt" --preset agent
 ddx-agent -p "prompt" --preset claude
+ddx-agent -p "prompt" --preset codex
 ```
 
-Built-in preset names are defined by SD-003 and the implementation in
+The `preset` field may also be set in `.agent/config.yaml`:
+
+```yaml
+preset: claude
+```
+
+Built-in preset details are defined by SD-003 and implemented in
 `prompt/presets.go`.
 
 ### Direct Provider / Model Selection
