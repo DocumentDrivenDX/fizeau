@@ -43,6 +43,16 @@ func TestResolvePromptPlainJSONWithKindAndTitleIsNotEnvelope(t *testing.T) {
 	assert.Nil(t, metadata)
 }
 
+func TestResolvePromptMalformedEnvelopeWithNonStringKindInline(t *testing.T) {
+	raw := `{"kind":1,"title":"Inspect main"}`
+
+	promptText, metadata, err := resolvePrompt(raw)
+	require.Error(t, err)
+	assert.Empty(t, promptText)
+	assert.Nil(t, metadata)
+	assert.Contains(t, err.Error(), "invalid prompt envelope")
+}
+
 func TestResolvePromptPlainJSONWithKindAndTitleIsInvalidEnvelope(t *testing.T) {
 	raw := `{"kind":"prompt","title":"Inspect main"}`
 
@@ -141,6 +151,27 @@ func TestResolvePromptEnvelopeInvalidFromStdin(t *testing.T) {
 	assert.Contains(t, err.Error(), "prompt envelope")
 }
 
+func TestResolvePromptMalformedEnvelopeWithNullKindFromStdin(t *testing.T) {
+	raw := `{"kind":null,"id":"task-42"}`
+	oldStdin := os.Stdin
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		_ = r.Close()
+	})
+	_, err = w.WriteString(raw)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	os.Stdin = r
+
+	promptText, metadata, err := resolvePrompt("")
+	require.Error(t, err)
+	assert.Empty(t, promptText)
+	assert.Nil(t, metadata)
+	assert.Contains(t, err.Error(), "invalid prompt envelope")
+}
+
 func TestResolvePromptEnvelopeMissingIDFromStdin(t *testing.T) {
 	raw := `{"kind":"prompt","prompt":"Read main.go"}`
 	oldStdin := os.Stdin
@@ -194,6 +225,19 @@ func TestResolvePromptEnvelopeInvalidFromFile(t *testing.T) {
 	assert.Empty(t, promptText)
 	assert.Nil(t, metadata)
 	assert.Contains(t, err.Error(), "prompt envelope")
+}
+
+func TestResolvePromptMalformedEnvelopeWithNonStringKindFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "prompt.json")
+	raw := `{"kind":1,"inputs":{"paths":["main.go"]}}`
+	require.NoError(t, os.WriteFile(path, []byte(raw), 0o600))
+
+	promptText, metadata, err := resolvePrompt("@" + path)
+	require.Error(t, err)
+	assert.Empty(t, promptText)
+	assert.Nil(t, metadata)
+	assert.Contains(t, err.Error(), "invalid prompt envelope")
 }
 
 func TestResolvePromptEnvelopeMissingIDFromFile(t *testing.T) {

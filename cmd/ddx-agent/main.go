@@ -328,7 +328,19 @@ func parsePromptInput(raw string) (string, map[string]string, error) {
 	if err := json.Unmarshal([]byte(raw), &probe); err != nil {
 		return raw, nil, nil
 	}
+	kindRaw, kindOK := probe["kind"]
+	if !kindOK {
+		return raw, nil, nil
+	}
 	if !isPromptEnvelopeProbe(probe) {
+		var kindValue any
+		if err := json.Unmarshal(kindRaw, &kindValue); err == nil {
+			if _, ok := kindValue.(string); !ok && hasPromptEnvelopeFields(probe) {
+				return "", nil, fmt.Errorf("invalid prompt envelope: kind must be a string")
+			}
+		} else if hasPromptEnvelopeFields(probe) {
+			return "", nil, fmt.Errorf("invalid prompt envelope: kind must be a string")
+		}
 		return raw, nil, nil
 	}
 
@@ -389,6 +401,17 @@ func isPromptEnvelopeProbe(probe map[string]json.RawMessage) bool {
 	_, idOK := probe["id"]
 	_, titleOK := probe["title"]
 	_, promptOK := probe["prompt"]
+	_, inputsOK := probe["inputs"]
+	_, responseSchemaOK := probe["response_schema"]
+	_, callbackOK := probe["callback"]
+
+	return titleOK || promptOK || idOK || inputsOK || responseSchemaOK || callbackOK
+}
+
+func hasPromptEnvelopeFields(probe map[string]json.RawMessage) bool {
+	_, titleOK := probe["title"]
+	_, promptOK := probe["prompt"]
+	_, idOK := probe["id"]
 	_, inputsOK := probe["inputs"]
 	_, responseSchemaOK := probe["response_schema"]
 	_, callbackOK := probe["callback"]
