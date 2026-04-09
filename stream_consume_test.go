@@ -226,6 +226,58 @@ func TestRun_StreamingProviderPreservesAttemptMetadata(t *testing.T) {
 	assert.Equal(t, "unknown", cost["source"])
 }
 
+func TestRun_StreamingProviderMergesSplitUsage(t *testing.T) {
+	sp := &mockStreamingProvider{
+		deltas: []StreamDelta{
+			{
+				Content: "streamed ",
+				Model:   "gpt-4o",
+				Usage:   &TokenUsage{Input: 12},
+			},
+			{
+				Content: "response",
+				Usage:   &TokenUsage{Output: 8, CacheRead: 3},
+			},
+			{
+				FinishReason: "stop",
+				Usage:        &TokenUsage{CacheWrite: 4},
+				Done:         true,
+			},
+		},
+	}
+
+	expectedUsage := TokenUsage{Input: 12, Output: 8, CacheRead: 3, CacheWrite: 4, Total: 20}
+	var responseUsage TokenUsage
+	var sessionUsage TokenUsage
+
+	result, err := Run(context.Background(), Request{
+		Prompt:   "test",
+		Provider: sp,
+		Callback: func(e Event) {
+			switch e.Type {
+			case EventLLMResponse:
+				var payload struct {
+					Usage TokenUsage `json:"usage"`
+				}
+				require.NoError(t, json.Unmarshal(e.Data, &payload))
+				responseUsage = payload.Usage
+			case EventSessionEnd:
+				var payload struct {
+					Tokens TokenUsage `json:"tokens"`
+				}
+				require.NoError(t, json.Unmarshal(e.Data, &payload))
+				sessionUsage = payload.Tokens
+			}
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "streamed response", result.Output)
+	assert.Equal(t, expectedUsage, result.Tokens)
+	assert.Equal(t, expectedUsage, responseUsage)
+	assert.Equal(t, expectedUsage, sessionUsage)
+}
+
 func TestConsumeStream_StreamError(t *testing.T) {
 	netErr := errors.New("connection reset by peer")
 	sp := &mockStreamingProvider{

@@ -82,7 +82,7 @@ func consumeStream(
 			resp.FinishReason = delta.FinishReason
 		}
 		if delta.Usage != nil {
-			resp.Usage = *delta.Usage
+			resp.Usage.Add(*delta.Usage)
 		}
 
 		if delta.Err != nil {
@@ -95,6 +95,7 @@ func consumeStream(
 	}
 
 	resp.Content = contentBuf.String()
+	resp.Usage.Total = resp.Usage.Input + resp.Usage.Output
 
 	// Assemble tool calls from fragments
 	for _, id := range toolCallOrder {
