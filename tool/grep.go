@@ -83,7 +83,13 @@ func (t *GrepTool) Execute(_ context.Context, params json.RawMessage) (string, e
 	truncated := false
 
 	err = filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() {
+		if walkErr != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 

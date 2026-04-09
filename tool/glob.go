@@ -12,6 +12,15 @@ import (
 	"github.com/DocumentDrivenDX/agent"
 )
 
+// skipDirs are directories that WalkDir skips unconditionally.
+var skipDirs = map[string]bool{
+	".git":         true,
+	".hg":          true,
+	".svn":         true,
+	"node_modules": true,
+	"vendor":       true,
+}
+
 // GlobParams are the parameters for the glob tool.
 type GlobParams struct {
 	Pattern string `json:"pattern"`
@@ -55,7 +64,7 @@ func (t *GlobTool) Execute(_ context.Context, params json.RawMessage) (string, e
 	patParts := strings.Split(filepath.ToSlash(p.Pattern), "/")
 
 	var matches []string
-	err := filepath.WalkDir(baseDir, func(path string, _ fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil // skip unreadable entries
 		}
@@ -65,6 +74,9 @@ func (t *GlobTool) Execute(_ context.Context, params json.RawMessage) (string, e
 		}
 		if rel == "." {
 			return nil
+		}
+		if d.IsDir() && skipDirs[d.Name()] {
+			return filepath.SkipDir
 		}
 		nameParts := strings.Split(filepath.ToSlash(rel), "/")
 		ok, matchErr := matchParts(patParts, nameParts)

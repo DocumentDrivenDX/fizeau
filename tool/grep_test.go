@@ -93,6 +93,17 @@ func TestGrepTool_Execute(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid params")
 	})
 
+	t.Run("skips .git directory", func(t *testing.T) {
+		// Create a .git directory with a file containing a matchable pattern.
+		gitFile := filepath.Join(dir, ".git", "config")
+		require.NoError(t, os.MkdirAll(filepath.Dir(gitFile), 0o755))
+		require.NoError(t, os.WriteFile(gitFile, []byte("[core]\n\trepositoryformatversion = 0\n"), 0o644))
+
+		result, err := g.Execute(context.Background(), mustJSON(t, GrepParams{Pattern: "repositoryformatversion"}))
+		require.NoError(t, err)
+		assert.Equal(t, "(no matches)", result)
+	})
+
 	t.Run("results sorted by file then line", func(t *testing.T) {
 		result, err := g.Execute(context.Background(), mustJSON(t, GrepParams{Pattern: "package"}))
 		require.NoError(t, err)

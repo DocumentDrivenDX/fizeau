@@ -100,6 +100,17 @@ func TestGlobTool_Execute(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("skips .git directory", func(t *testing.T) {
+		// Create a .git directory with a file inside.
+		gitFile := filepath.Join(dir, ".git", "HEAD")
+		require.NoError(t, os.MkdirAll(filepath.Dir(gitFile), 0o755))
+		require.NoError(t, os.WriteFile(gitFile, []byte("ref: refs/heads/main\n"), 0o644))
+
+		result, err := g.Execute(context.Background(), mustJSON(t, GlobParams{Pattern: "**/*"}))
+		require.NoError(t, err)
+		assert.NotContains(t, result, ".git")
+	})
+
 	t.Run("output is sorted alphabetically", func(t *testing.T) {
 		result, err := g.Execute(context.Background(), mustJSON(t, GlobParams{Pattern: "**/*.go"}))
 		require.NoError(t, err)
