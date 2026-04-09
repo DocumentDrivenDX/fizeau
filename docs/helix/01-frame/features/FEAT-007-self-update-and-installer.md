@@ -1,12 +1,12 @@
 ---
 ddx:
-  id: FEAT-004
+  id: FEAT-007
   depends_on:
     - helix.prd
 ---
-# Feature Specification: FEAT-004 — Self-Update and Installer
+# Feature Specification: FEAT-007 — Self-Update and Installer
 
-**Feature ID**: FEAT-004  
+**Feature ID**: FEAT-007  
 **Status**: Draft  
 **Priority**: P1  
 **Owner**: DDX Agent Team
