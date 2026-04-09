@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,6 +40,32 @@ func (t *mockTool) Description() string     { return "mock tool" }
 func (t *mockTool) Schema() json.RawMessage { return json.RawMessage(`{"type":"object"}`) }
 func (t *mockTool) Execute(ctx context.Context, params json.RawMessage) (string, error) {
 	return t.result, t.err
+}
+
+type providerOutcome struct {
+	response Response
+	err      error
+}
+
+// retryProvider is a test provider that returns a sequence of outcomes.
+type retryProvider struct {
+	outcomes  []providerOutcome
+	callCount int
+}
+
+func (r *retryProvider) Chat(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (Response, error) {
+	if ctx.Err() != nil {
+		return Response{}, ctx.Err()
+	}
+	if r.callCount >= len(r.outcomes) {
+		return Response{}, errors.New("no more outcomes")
+	}
+	outcome := r.outcomes[r.callCount]
+	r.callCount++
+	if outcome.err != nil {
+		return Response{}, outcome.err
+	}
+	return outcome.response, nil
 }
 
 func TestRun_SimpleTextResponse(t *testing.T) {
@@ -113,6 +140,31 @@ func TestRun_IterationLimit(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, StatusIterationLimit, result.Status)
+}
+
+func TestRun_RetriesProviderFailures(t *testing.T) {
+	provider := &retryProvider{
+		outcomes: []providerOutcome{
+			{err: errors.New("temporary provider failure 1")},
+			{err: errors.New("temporary provider failure 2")},
+			{
+				response: Response{
+					Content: "done",
+					Usage:   TokenUsage{Input: 12, Output: 3, Total: 15},
+					Model:   "gpt-4o",
+				},
+			},
+		},
+	}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:   "retry until success",
+		Provider: provider,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "done", result.Output)
+	assert.Equal(t, 3, provider.callCount)
 }
 
 func TestRun_ContextCancellation(t *testing.T) {

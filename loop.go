@@ -11,6 +11,7 @@ import (
 // the model produces a final text response or limits are reached.
 func Run(ctx context.Context, req Request) (Result, error) {
 	start := time.Now()
+	const maxProviderAttempts = 3
 
 	sessionID := fmt.Sprintf("s-%d", start.UnixNano())
 	result := Result{
@@ -140,76 +141,114 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		// Run compaction before iteration (pre-iteration check)
 		runCompaction()
 
-		// Emit LLM request event with full message bodies and tool definitions
-		emitCallback(req.Callback, Event{
-			SessionID: sessionID,
-			Seq:       seq,
-			Type:      EventLLMRequest,
-			Timestamp: time.Now().UTC(),
-			Data: mustMarshal(map[string]any{
-				"messages": messages,
-				"tools":    toolDefs,
-			}),
-		})
-		seq++
-
-		// Call the provider (streaming if supported)
-		llmStart := time.Now()
 		var resp Response
 		var err error
-		if sp, ok := req.Provider.(StreamingProvider); ok && !req.NoStream {
-			resp, err = consumeStream(ctx, sp, messages, toolDefs, opts, req.Callback, sessionID, &seq)
-		} else {
-			resp, err = req.Provider.Chat(ctx, messages, toolDefs, opts)
-		}
-		llmDuration := time.Since(llmStart)
+		for attempt := 1; attempt <= maxProviderAttempts; attempt++ {
+			// Emit LLM request event with full message bodies and tool definitions.
+			emitCallback(req.Callback, Event{
+				SessionID: sessionID,
+				Seq:       seq,
+				Type:      EventLLMRequest,
+				Timestamp: time.Now().UTC(),
+				Data: mustMarshal(map[string]any{
+					"attempt_index": attempt,
+					"messages":      messages,
+					"tools":         toolDefs,
+				}),
+			})
+			seq++
 
-		if err != nil {
-			if ctx.Err() != nil {
-				result.Status = StatusCancelled
+			llmStart := time.Now()
+			if sp, ok := req.Provider.(StreamingProvider); ok && !req.NoStream {
+				resp, err = consumeStream(ctx, sp, messages, toolDefs, opts, req.Callback, sessionID, &seq)
+			} else {
+				resp, err = req.Provider.Chat(ctx, messages, toolDefs, opts)
+			}
+			llmDuration := time.Since(llmStart)
+
+			if err != nil {
+				emitCallback(req.Callback, Event{
+					SessionID: sessionID,
+					Seq:       seq,
+					Type:      EventLLMResponse,
+					Timestamp: time.Now().UTC(),
+					Data: mustMarshal(map[string]any{
+						"attempt_index": attempt,
+						"error":         err.Error(),
+						"latency_ms":    llmDuration.Milliseconds(),
+					}),
+				})
+				seq++
+
+				if ctx.Err() != nil {
+					result.Status = StatusCancelled
+					result.Duration = time.Since(start)
+					emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+					return result, nil
+				}
+
+				if attempt < maxProviderAttempts {
+					delay := time.Second * time.Duration(1<<uint(attempt-1))
+					select {
+					case <-ctx.Done():
+						result.Status = StatusCancelled
+						result.Duration = time.Since(start)
+						emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+						return result, nil
+					case <-time.After(delay):
+					}
+					continue
+				}
+
+				result.Status = StatusError
+				result.Error = fmt.Errorf("agent: provider error: %w", err)
 				result.Duration = time.Since(start)
 				emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
-				return result, nil
+				return result, result.Error
 			}
-			result.Status = StatusError
-			result.Error = fmt.Errorf("agent: provider error: %w", err)
-			result.Duration = time.Since(start)
-			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
-			return result, result.Error
-		}
 
-		// Accumulate tokens
-		result.Tokens.Add(resp.Usage)
-		result.Model = resp.Model
-
-		// Accumulate cost
-		iterCost := DefaultPricing.EstimateCost(resp.Model, resp.Usage.Input, resp.Usage.Output)
-		if iterCost < 0 {
-			// Unknown model — mark total cost as unknown if not already set
-			if result.CostUSD == 0 {
-				result.CostUSD = -1
+			if resp.Attempt == nil {
+				resp.Attempt = &AttemptMetadata{}
 			}
-		} else if result.CostUSD >= 0 {
-			result.CostUSD += iterCost
-		}
+			resp.Attempt.AttemptIndex = attempt
 
-		// Emit LLM response event with full tool call bodies
-		emitCallback(req.Callback, Event{
-			SessionID: sessionID,
-			Seq:       seq,
-			Type:      EventLLMResponse,
-			Timestamp: time.Now().UTC(),
-			Data: mustMarshal(map[string]any{
-				"content":       resp.Content,
-				"tool_calls":    resp.ToolCalls,
-				"usage":         resp.Usage,
-				"cost_usd":      iterCost,
-				"latency_ms":    llmDuration.Milliseconds(),
-				"model":         resp.Model,
-				"finish_reason": resp.FinishReason,
-			}),
-		})
-		seq++
+			// Accumulate tokens
+			result.Tokens.Add(resp.Usage)
+			result.Model = resp.Model
+
+			// Accumulate cost
+			iterCost := DefaultPricing.EstimateCost(resp.Model, resp.Usage.Input, resp.Usage.Output)
+			if iterCost < 0 {
+				// Unknown model — mark total cost as unknown if not already set
+				if result.CostUSD == 0 {
+					result.CostUSD = -1
+				}
+			} else if result.CostUSD >= 0 {
+				result.CostUSD += iterCost
+			}
+
+			// Emit LLM response event with full tool call bodies.
+			emitCallback(req.Callback, Event{
+				SessionID: sessionID,
+				Seq:       seq,
+				Type:      EventLLMResponse,
+				Timestamp: time.Now().UTC(),
+				Data: mustMarshal(map[string]any{
+					"attempt_index": attempt,
+					"content":       resp.Content,
+					"tool_calls":    resp.ToolCalls,
+					"usage":         resp.Usage,
+					"cost_usd":      iterCost,
+					"latency_ms":    llmDuration.Milliseconds(),
+					"model":         resp.Model,
+					"finish_reason": resp.FinishReason,
+					"attempt":       resp.Attempt,
+				}),
+			})
+			seq++
+
+			break
+		}
 
 		// If no tool calls, we're done — the model returned a final response
 		if len(resp.ToolCalls) == 0 {

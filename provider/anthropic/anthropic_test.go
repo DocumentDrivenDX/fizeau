@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/DocumentDrivenDX/agent"
@@ -293,4 +294,26 @@ func TestProvider_ToolDefs(t *testing.T) {
 
 	assert.Equal(t, "read", decoded.Name)
 	assert.Equal(t, "Read a file", decoded.Description)
+}
+
+func TestProvider_Chat_SingleAttemptPerCall(t *testing.T) {
+	var requests int32
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	})
+	defer srv.Close()
+
+	p := anthropic.New(anthropic.Config{
+		APIKey:  "test-key",
+		Model:   "claude-sonnet-4-20250514",
+		BaseURL: srv.URL,
+	})
+
+	_, err := p.Chat(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "hello"},
+	}, nil, agent.Options{})
+	require.Error(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&requests))
 }

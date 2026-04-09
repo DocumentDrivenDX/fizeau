@@ -78,11 +78,12 @@ type Options struct {
 
 // Response is the result of a single provider Chat call.
 type Response struct {
-	Content      string     `json:"content"`
-	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
-	Usage        TokenUsage `json:"usage"`
-	Model        string     `json:"model"`
-	FinishReason string     `json:"finish_reason"`
+	Content      string           `json:"content"`
+	ToolCalls    []ToolCall       `json:"tool_calls,omitempty"`
+	Usage        TokenUsage       `json:"usage"`
+	Model        string           `json:"model"`
+	FinishReason string           `json:"finish_reason"`
+	Attempt      *AttemptMetadata `json:"attempt,omitempty"`
 }
 
 // Provider is the interface that LLM backends implement.
@@ -138,6 +139,55 @@ type Event struct {
 // EventCallback receives events during an agent run. The session logger is
 // one implementation; callers can also use it for progress reporting.
 type EventCallback func(Event)
+
+// CostSource identifies where the recorded cost originated.
+type CostSource string
+
+const (
+	CostSourceProviderReported CostSource = "provider_reported"
+	CostSourceGatewayReported  CostSource = "gateway_reported"
+	CostSourceConfigured       CostSource = "configured"
+	CostSourceUnknown          CostSource = "unknown"
+)
+
+// CostAttribution captures the provenance of the cost associated with one
+// provider attempt.
+type CostAttribution struct {
+	Source           CostSource      `json:"source,omitempty"`
+	Currency         string          `json:"currency,omitempty"`
+	Amount           *float64        `json:"amount,omitempty"`
+	InputAmount      *float64        `json:"input_amount,omitempty"`
+	OutputAmount     *float64        `json:"output_amount,omitempty"`
+	CacheReadAmount  *float64        `json:"cache_read_amount,omitempty"`
+	CacheWriteAmount *float64        `json:"cache_write_amount,omitempty"`
+	ReasoningAmount  *float64        `json:"reasoning_amount,omitempty"`
+	PricingRef       string          `json:"pricing_ref,omitempty"`
+	Raw              json.RawMessage `json:"raw,omitempty"`
+}
+
+// TimingBreakdown captures optional provider timing windows for one attempt.
+type TimingBreakdown struct {
+	FirstToken *time.Duration `json:"first_token,omitempty"`
+	Queue      *time.Duration `json:"queue,omitempty"`
+	Prefill    *time.Duration `json:"prefill,omitempty"`
+	Generation *time.Duration `json:"generation,omitempty"`
+	CacheRead  *time.Duration `json:"cache_read,omitempty"`
+	CacheWrite *time.Duration `json:"cache_write,omitempty"`
+}
+
+// AttemptMetadata captures the structured identity and attribution data for a
+// single provider attempt.
+type AttemptMetadata struct {
+	AttemptIndex   int              `json:"attempt_index,omitempty"`
+	ProviderName   string           `json:"provider_name,omitempty"`
+	ProviderSystem string           `json:"provider_system,omitempty"`
+	Route          string           `json:"route,omitempty"`
+	RequestedModel string           `json:"requested_model,omitempty"`
+	ResponseModel  string           `json:"response_model,omitempty"`
+	ResolvedModel  string           `json:"resolved_model,omitempty"`
+	Cost           *CostAttribution `json:"cost,omitempty"`
+	Timing         *TimingBreakdown `json:"timing,omitempty"`
+}
 
 // Request configures a single agent run.
 type Request struct {

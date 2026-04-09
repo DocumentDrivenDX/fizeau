@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/DocumentDrivenDX/agent"
@@ -82,4 +83,26 @@ func TestChatStream_ToolCallIndexIDMapping(t *testing.T) {
 	require.Contains(t, argsByID, "call_abc", "tool call ID must be present on all arg deltas")
 	assert.Equal(t, `{"path":"main.go"}`, argsByID["call_abc"], "arguments must be assembled from all chunks")
 	assert.Equal(t, "read", idNames["call_abc"])
+}
+
+func TestChat_SingleAttemptPerCall(t *testing.T) {
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer srv.Close()
+
+	p := openai.New(openai.Config{
+		BaseURL: srv.URL + "/v1",
+		APIKey:  "test",
+		Model:   "gpt-4o",
+	})
+
+	_, err := p.Chat(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "hello"},
+	}, nil, agent.Options{})
+	require.Error(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&requests))
 }

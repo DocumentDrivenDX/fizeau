@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/DocumentDrivenDX/agent"
 	oai "github.com/openai/openai-go"
@@ -32,6 +31,7 @@ type Config struct {
 func New(cfg Config) *Provider {
 	opts := []option.RequestOption{
 		option.WithBaseURL(cfg.BaseURL),
+		option.WithMaxRetries(0),
 	}
 	if cfg.APIKey != "" {
 		opts = append(opts, option.WithAPIKey(cfg.APIKey))
@@ -74,47 +74,42 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 	}
 
 	var resp agent.Response
-	var lastErr error
-
-	for attempt := range 3 {
-		completion, err := p.client.Chat.Completions.New(ctx, params)
-		if err != nil {
-			lastErr = err
-			if attempt < 2 {
-				select {
-				case <-ctx.Done():
-					return resp, fmt.Errorf("openai: %w", ctx.Err())
-				case <-time.After(time.Duration(1<<uint(attempt)) * time.Second):
-					continue
-				}
-			}
-			return resp, fmt.Errorf("openai: after %d attempts: %w", attempt+1, lastErr)
-		}
-
-		resp.Model = completion.Model
-		if completion.Usage.TotalTokens != 0 {
-			resp.Usage = agent.TokenUsage{
-				Input:  int(completion.Usage.PromptTokens),
-				Output: int(completion.Usage.CompletionTokens),
-				Total:  int(completion.Usage.TotalTokens),
-			}
-			// Extract cached tokens if present
-			if completion.Usage.PromptTokensDetails.CachedTokens > 0 {
-				resp.Usage.CacheRead = int(completion.Usage.PromptTokensDetails.CachedTokens)
-			}
-		}
-
-		if len(completion.Choices) > 0 {
-			choice := completion.Choices[0]
-			resp.Content = choice.Message.Content
-			resp.FinishReason = string(choice.FinishReason)
-			resp.ToolCalls = extractToolCalls(choice.Message.ToolCalls)
-		}
-
-		return resp, nil
+	completion, err := p.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return resp, fmt.Errorf("openai: %w", err)
 	}
 
-	return resp, fmt.Errorf("openai: after 3 attempts: %w", lastErr)
+	resp.Model = completion.Model
+	resp.Attempt = &agent.AttemptMetadata{
+		ProviderName:   "openai",
+		ProviderSystem: "openai",
+		RequestedModel: model,
+		ResponseModel:  completion.Model,
+		ResolvedModel:  completion.Model,
+		Cost: &agent.CostAttribution{
+			Source: agent.CostSourceUnknown,
+		},
+	}
+	if completion.Usage.TotalTokens != 0 {
+		resp.Usage = agent.TokenUsage{
+			Input:  int(completion.Usage.PromptTokens),
+			Output: int(completion.Usage.CompletionTokens),
+			Total:  int(completion.Usage.TotalTokens),
+		}
+		// Extract cached tokens if present
+		if completion.Usage.PromptTokensDetails.CachedTokens > 0 {
+			resp.Usage.CacheRead = int(completion.Usage.PromptTokensDetails.CachedTokens)
+		}
+	}
+
+	if len(completion.Choices) > 0 {
+		choice := completion.Choices[0]
+		resp.Content = choice.Message.Content
+		resp.FinishReason = string(choice.FinishReason)
+		resp.ToolCalls = extractToolCalls(choice.Message.ToolCalls)
+	}
+
+	return resp, nil
 }
 
 func convertMessages(msgs []agent.Message) []oai.ChatCompletionMessageParamUnion {

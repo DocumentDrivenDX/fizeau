@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/DocumentDrivenDX/agent"
 	ant "github.com/anthropics/anthropic-sdk-go"
@@ -20,13 +19,17 @@ type Provider struct {
 
 // Config holds configuration for the Anthropic provider.
 type Config struct {
-	APIKey string
-	Model  string // e.g., "claude-sonnet-4-20250514"
+	APIKey  string
+	Model   string // e.g., "claude-sonnet-4-20250514"
+	BaseURL string
 }
 
 // New creates a new Anthropic provider.
 func New(cfg Config) *Provider {
-	opts := []option.RequestOption{}
+	opts := []option.RequestOption{option.WithMaxRetries(0)}
+	if cfg.BaseURL != "" {
+		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
+	}
 	if cfg.APIKey != "" {
 		opts = append(opts, option.WithAPIKey(cfg.APIKey))
 	}
@@ -78,58 +81,53 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 	}
 
 	var resp agent.Response
-	var lastErr error
-
-	for attempt := range 3 {
-		msg, err := p.client.Messages.New(ctx, params)
-		if err != nil {
-			lastErr = err
-			if attempt < 2 {
-				select {
-				case <-ctx.Done():
-					return resp, fmt.Errorf("anthropic: %w", ctx.Err())
-				case <-time.After(time.Duration(1<<uint(attempt)) * time.Second):
-					continue
-				}
-			}
-			return resp, fmt.Errorf("anthropic: after %d attempts: %w", attempt+1, lastErr)
-		}
-
-		resp.Model = string(msg.Model)
-		resp.Usage = agent.TokenUsage{
-			Input:  int(msg.Usage.InputTokens),
-			Output: int(msg.Usage.OutputTokens),
-			Total:  int(msg.Usage.InputTokens + msg.Usage.OutputTokens),
-		}
-
-		// Extract cache tokens if present
-		if msg.Usage.CacheCreationInputTokens > 0 {
-			resp.Usage.CacheWrite = int(msg.Usage.CacheCreationInputTokens)
-		}
-		if msg.Usage.CacheReadInputTokens > 0 {
-			resp.Usage.CacheRead = int(msg.Usage.CacheReadInputTokens)
-		}
-
-		resp.FinishReason = string(msg.StopReason)
-
-		// Extract content and tool calls from content blocks
-		for _, block := range msg.Content {
-			switch block.Type {
-			case "text":
-				resp.Content += block.Text
-			case "tool_use":
-				resp.ToolCalls = append(resp.ToolCalls, agent.ToolCall{
-					ID:        block.ID,
-					Name:      block.Name,
-					Arguments: json.RawMessage(block.Input),
-				})
-			}
-		}
-
-		return resp, nil
+	msg, err := p.client.Messages.New(ctx, params)
+	if err != nil {
+		return resp, fmt.Errorf("anthropic: %w", err)
 	}
 
-	return resp, fmt.Errorf("anthropic: after 3 attempts: %w", lastErr)
+	resp.Model = string(msg.Model)
+	resp.Attempt = &agent.AttemptMetadata{
+		ProviderName:   "anthropic",
+		ProviderSystem: "anthropic",
+		RequestedModel: model,
+		ResponseModel:  string(msg.Model),
+		ResolvedModel:  string(msg.Model),
+		Cost: &agent.CostAttribution{
+			Source: agent.CostSourceUnknown,
+		},
+	}
+	resp.Usage = agent.TokenUsage{
+		Input:  int(msg.Usage.InputTokens),
+		Output: int(msg.Usage.OutputTokens),
+		Total:  int(msg.Usage.InputTokens + msg.Usage.OutputTokens),
+	}
+
+	// Extract cache tokens if present
+	if msg.Usage.CacheCreationInputTokens > 0 {
+		resp.Usage.CacheWrite = int(msg.Usage.CacheCreationInputTokens)
+	}
+	if msg.Usage.CacheReadInputTokens > 0 {
+		resp.Usage.CacheRead = int(msg.Usage.CacheReadInputTokens)
+	}
+
+	resp.FinishReason = string(msg.StopReason)
+
+	// Extract content and tool calls from content blocks
+	for _, block := range msg.Content {
+		switch block.Type {
+		case "text":
+			resp.Content += block.Text
+		case "tool_use":
+			resp.ToolCalls = append(resp.ToolCalls, agent.ToolCall{
+				ID:        block.ID,
+				Name:      block.Name,
+				Arguments: json.RawMessage(block.Input),
+			})
+		}
+	}
+
+	return resp, nil
 }
 
 func convertMessages(msgs []agent.Message) []ant.MessageParam {
