@@ -1,0 +1,79 @@
+# Fixed benchmark subset for ddx-agent — v1 (2026-04-08)
+# See docs/helix/02-design/solution-designs/SD-009-benchmark-mode.md for rationale.
+#
+# IMPORTANT: Do not modify task IDs without updating the version field and filing a bead.
+# Task IDs are placeholders pending adapter validation (agent-a3ce467a).
+#
+version: "1"
+captured: "2026-04-08"
+dataset: terminal-bench/terminal-bench-2
+
+# NOTE: IDs below are representative identifiers. The Harbor adapter bead (agent-a3ce467a)
+# will replace these with validated real task IDs from the live Terminal-Bench dataset.
+tasks:
+  # --- File navigation and read (2 tasks) ---
+  - id: tb2-read-and-describe
+    category: navigation
+    rationale: Baseline read capability; should always pass; smoke-run task
+
+  - id: tb2-find-and-summarize
+    category: navigation
+    rationale: Multi-file reading; validates read-tool-first behavior
+
+  # --- Targeted edits (3 tasks) ---
+  - id: tb2-rename-symbol
+    category: edit
+    rationale: Edit tool single-occurrence correctness
+
+  - id: tb2-add-function-signature
+    category: edit
+    rationale: Edit with import addition; tests multi-edit batching
+
+  - id: tb2-fix-type-error
+    category: edit
+    rationale: Edit with type signature mismatch; tests structural understanding
+
+  # --- Error handling and guards (2 tasks) ---
+  - id: tb2-add-error-guard
+    category: edit
+    rationale: Add guard clauses; mirrors baseline T3 pattern
+
+  - id: tb2-propagate-error
+    category: edit
+    rationale: Multi-site edit; propagate error return through a call chain
+
+  # --- Test writing (2 tasks) ---
+  - id: tb2-write-unit-test
+    category: test
+    rationale: Write a test case from scratch for an existing function
+
+  - id: tb2-fix-failing-test
+    category: test
+    rationale: Diagnose and fix a failing test; multi-round with bash execution
+
+  # --- Shell / bash (2 tasks) ---
+  - id: tb2-rewrite-script
+    category: bash
+    rationale: Bash refactoring; detects shell anti-pattern regression
+
+  - id: tb2-automate-task
+    category: bash
+    rationale: Write a new shell script from a spec; bash-first is correct here
+
+  # --- Multi-file navigation (2 tasks) ---
+  - id: tb2-cross-file-refactor
+    category: navigation
+    rationale: Read multiple files, apply consistent edits; tests glob/read coverage
+
+  - id: tb2-trace-call-chain
+    category: navigation
+    rationale: Follow a call chain without bash exploration; validates structured nav
+
+  # --- Compound (2 tasks) ---
+  - id: tb2-implement-feature
+    category: compound
+    rationale: Read + edit + test in one task; hardest category; mirrors PRD success criteria
+
+  - id: tb2-debug-and-fix
+    category: compound
+    rationale: Identify and fix a bug via bash diagnosis + edit; tests full loop
