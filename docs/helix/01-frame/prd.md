@@ -7,7 +7,8 @@ ddx:
 ## Summary
 
 DDX Agent is a Go library that implements a coding agent runtime — a tool-calling
-LLM loop with file read/write, shell execution, and structured I/O — designed
+LLM loop with file read/write, shell execution, navigation helpers, task
+tracking, and structured I/O — designed
 to be embedded in DDx and other build orchestrators. It prioritizes local
 model inference via LM Studio and Ollama, with transparent escalation to cloud
 providers when local models are insufficient. DDX Agent replaces the
@@ -108,8 +109,8 @@ task the same: spawn a process, send to cloud, parse the result.
 
 1. **Agent loop** — tool-calling LLM loop: send prompt → model responds with
    tool calls or text → execute tools → repeat until done or max iterations
-2. **Tool set** — read (file contents), write (create/overwrite file), edit
-   (find-replace in file), bash (execute shell command with timeout)
+2. **Tool set** — shipped built-ins include read, write, edit, bash, glob,
+   grep, ls, patch, and task
 3. **OpenAI-compatible provider** — generic provider for any OpenAI-compatible
    endpoint. Covers LM Studio (localhost:1234), Ollama (localhost:11434),
    OpenAI, Azure, Groq, Together, OpenRouter. Single implementation, configure
@@ -163,14 +164,12 @@ task the same: spawn a process, send to cloud, parse the result.
 
 ### Nice to Have (P2)
 
-1. **Grep tool** — search file contents (read-only, useful for codebase nav)
-2. **Find/glob tool** — find files by pattern
-3. **Caching** — cache file reads within a session to reduce redundant I/O
-4. **Multi-provider round robin** — configure multiple providers, distribute
+1. **Caching** — cache file reads within a session to reduce redundant I/O
+2. **Multi-provider round robin** — configure multiple providers, distribute
    requests across them. Phase 2 routing strategy.
-5. **Multi-model consensus** — run same prompt on N models, return majority
+3. **Multi-model consensus** — run same prompt on N models, return majority
    answer (mirrors DDx quorum)
-6. **Model selection optimization** — choose model based on task
+4. **Model selection optimization** — choose model based on task
    characteristics (context length, complexity heuristics)
 
 ## Functional Requirements

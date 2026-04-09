@@ -62,7 +62,12 @@ agent/                          # root module: github.com/your-org/agent
 │   ├── read.go                 # file read tool
 │   ├── write.go                # file write tool
 │   ├── edit.go                 # find-replace edit tool
-│   └── bash.go                 # shell command tool
+│   ├── bash.go                 # shell command tool
+│   ├── glob.go                 # file pattern discovery tool
+│   ├── grep.go                 # read-only content search tool
+│   ├── ls.go                   # directory listing tool
+│   ├── patch.go                # structured patch editing tool
+│   └── task.go                 # task-tracking tool
 ├── session/
 │   ├── logger.go               # JSONL session event logger
 │   ├── event.go                # event type definitions
@@ -105,6 +110,11 @@ agent/                          # root module: github.com/your-org/agent
       │ anthropic/   │ │ write  │ │ replay      │ │ catalog/*.yaml│
       │ virtual/     │ │ edit   │ │ pricing     │ │               │
       │              │ │ bash   │ │ usage       │ │               │
+      │              │ │ glob   │ │             │ │               │
+      │              │ │ grep   │ │             │ │               │
+      │              │ │ ls     │ │             │ │               │
+      │              │ │ patch  │ │             │ │               │
+      │              │ │ task   │ │             │ │               │
       └──────────────┘ └────────┘ └─────────────┘ └───────────────┘
 ```
 

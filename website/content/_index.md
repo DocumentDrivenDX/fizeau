@@ -40,8 +40,8 @@ layout: hextra-home
     subtitle="Every LLM turn and tool call logged to JSONL. Sessions are replayable and cost-tracked."
   >}}
   {{< hextra/feature-card
-    title="Pi-Style Tools"
-    subtitle="Minimal tool set — read, write, edit, bash. Simple, auditable, no permission complexity."
+    title="Structured Tools"
+    subtitle="Shipped tools — read, write, edit, bash, glob, grep, ls, patch, task. Simple, auditable, benchmark-ready."
   >}}
   {{< hextra/feature-card
     title="Multi-Provider"

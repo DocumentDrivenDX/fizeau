@@ -177,8 +177,8 @@ EventCallback func(Event)     // optional real-time event sink
 ### Package: `agent/tool`
 
 - **Purpose**: Built-in tool implementations
-- **Responsibilities**: File read/write/edit, bash execution, working directory
-  scoping, output truncation
+- **Responsibilities**: File read/write/edit, bash execution, file discovery,
+  search, patching, task tracking, working directory scoping, output truncation
 - **Requirements**: FEAT-002 (all)
 - **Interfaces**: Each tool implements `agent.Tool`
 
@@ -216,6 +216,9 @@ EventCallback func(Event)     // optional real-time event sink
     │ tool/*  │          │provider│
     │read,write│         │openai/ │
     │edit,bash │         │anthropic/
+    │glob,grep │
+    │ls,patch  │
+    │task      │
     └─────────┘          └────────┘
 ```
 

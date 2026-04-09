@@ -170,9 +170,11 @@ The model correctly diagnosed the error and ran `go mod init` to fix it before r
    unambiguous about `old_string`/`new_string` vs array format. Track via `agent-4dde1671`.
 3. **duration_ms bug**: Affects observability of task timing in JSON output. File and fix
    before automated baseline capture (agent-78c86322).
-4. **Missing glob/grep tools**: T6 used bash for file discovery. Adding glob/grep tools
-   (PRD P2) would eliminate the root cause of shell anti-patterns for navigation.
-   Track via `agent-4dde1671`.
+4. **Navigation tools now exist, but benchmark prompts still need steering**: T6 used
+   bash for file discovery before the navigation surface was fully exposed. Keep the
+   benchmark-mode prompt explicit about preferring structured tools (`glob`, `grep`,
+   `ls`, `patch`, `task`) over shell discovery. Track navigation anti-patterns via
+   `agent-4dde1671`.
 
 ---
 

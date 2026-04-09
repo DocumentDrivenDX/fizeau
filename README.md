@@ -7,10 +7,11 @@ Embeddable Go agent runtime — local-model-first via LM Studio.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 DDX Agent is a Go library that implements a coding agent runtime — a tool-calling
-LLM loop with file read/write, shell execution, and structured I/O. Designed
-to be embedded in [DDx](https://github.com/DocumentDrivenDX/ddx) and other
-build orchestrators. Prioritizes local model inference via LM Studio and Ollama,
-with transparent escalation to cloud providers.
+LLM loop with file read/write, shell execution, navigation helpers, and
+structured I/O. Designed to be embedded in
+[DDx](https://github.com/DocumentDrivenDX/ddx) and other build orchestrators.
+Prioritizes local model inference via LM Studio and Ollama, with transparent
+escalation to cloud providers.
 
 ## Install
 
@@ -123,7 +124,7 @@ func main() {
 - **Embeddable library** — `agent.Run(ctx, request)`, no subprocess overhead
 - **Local-model-first** — LM Studio, Ollama via OpenAI-compatible API
 - **Multi-provider** — OpenAI-compatible, Anthropic Claude, virtual (test replay)
-- **4 built-in tools** — read, write, edit, bash
+- **9 built-in tools** — read, write, edit, bash, glob, grep, ls, patch, task
 - **Session logging** — JSONL with replay and cost tracking
 - **System prompt composition** — pi-style builder with context file discovery
 - **Standalone CLI** — `ddx-agent -p "prompt"` with config, logging, replay

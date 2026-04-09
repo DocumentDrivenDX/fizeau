@@ -13,14 +13,19 @@ ddx:
 
 ## Overview
 
-DDX Agent provides a minimal, pi-style tool set — read, write, edit, bash — that
-the LLM uses to interact with the filesystem and shell. Tools are the agent's
-hands. This implements PRD P0 requirement 2.
+DDX Agent provides a structured tool surface for filesystem and shell work:
+read, write, edit, bash, glob, grep, ls, patch, and task. The LLM uses these
+tools to interact with the workspace, discover files, make precise changes,
+and track work. Tools are the agent's hands. This implements PRD P0
+requirement 2 and reflects the benchmark-driven navigation and task-tracking
+capabilities already shipped.
 
 ## Problem Statement
 
 - **Current situation**: Each agent CLI implements its own tools with different
   semantics (Claude Code has ~20 tools, pi has 4-7, codex has its own set).
+  DDX Agent now ships a broader, benchmark-informed surface than the original
+  four-tool minimum.
 - **Pain points**: Tool behavior varies across agents. DDx can't predict what
   file operations an agent will perform or constrain them.
 - **Desired outcome**: A small, well-defined tool set with consistent behavior
@@ -30,45 +35,29 @@ hands. This implements PRD P0 requirement 2.
 
 ### Functional Requirements
 
-#### read
+#### Core file and shell tools
 
-1. Accepts: path (string), offset (int, optional), limit (int, optional)
-2. Resolves path relative to working directory
-3. Returns file contents as string
-4. Supports line offset and limit for partial reads
-5. Returns error if file does not exist
+1. `read` accepts path, optional line offset, and optional line limit
+2. `read` resolves relative paths against the working directory
+3. `read` returns file contents as string and errors when the file is missing
+4. `write` accepts path and content, creates parent directories, and overwrites
+   the file
+5. `edit` accepts either multi-edit `edits[]` or legacy `old_string` + `new_string`
+6. `edit` applies multi-edits atomically, from original content, with no overlap
+7. `edit` fails when the match is missing or ambiguous
+8. `bash` accepts a command and optional timeout, runs in the working directory,
+   and captures stdout, stderr, and exit code
+9. `bash` kills on timeout or context cancellation
 
-#### write
+#### Navigation, patching, and task-tracking tools
 
-7. Accepts: path (string), content (string)
-8. Creates parent directories if they don't exist
-9. Overwrites existing file entirely
-10. Returns bytes written
-
-#### edit
-
-12. Accepts: path (string), plus one of:
-    - edits[] array for multi-edit (preferred, pi-style)
-    - old_string + new_string for single edit (legacy/backward compat)
-13. **Multi-edit form**: path + edits[] where each entry has oldText and newText
-    - Multiple disjoint edits applied atomically in one file write
-    - Each oldText must appear exactly once in the original file
-    - Edits are matched against the original file content, not incrementally
-    - Edits must not overlap or be nested
-14. **Single-edit form**: path + old_string + new_string
-    - Reads file, finds old_string, replaces with new_string
-15. Fails if old_string/edits oldText not found in the file
-16. Fails if old_string appears more than once (ambiguous edit)
-17. Writes modified content back to file
-18. Returns success/failure with context
-
-#### bash
-
-18. Accepts: command (string), timeout_ms (int, optional, default 120000)
-19. Executes command via `sh -c` in the working directory
-20. Captures stdout, stderr, exit code
-21. Kills process on timeout, returns partial output with timeout error
-22. Kills process on context cancellation
+10. `glob` finds files by pattern for codebase navigation
+11. `grep` searches file contents in a read-only way
+12. `ls` lists directory contents without requiring a shell command
+13. `patch` applies structured search-and-replace edits
+14. `task` creates and updates task-tracking records for multi-step work
+15. Navigation and patch tools reduce the need for shell `ls`, `find`, and
+    `grep` anti-patterns in benchmark workloads
 
 ### Non-Functional Requirements
 
@@ -90,7 +79,7 @@ hands. This implements PRD P0 requirement 2.
 
 ## Success Metrics
 
-- All four tools pass acceptance tests with both local and cloud models
+- All shipped tools pass acceptance tests with both local and cloud models
 - All file operations are logged with resolved paths
 - Bash timeout reliably kills runaway processes
 
@@ -107,7 +96,6 @@ hands. This implements PRD P0 requirement 2.
 
 ## Out of Scope
 
-- Grep/find tools (P2)
 - File watching or filesystem events
 - Tool permission management (all tools are available; the caller controls
   scope via working directory)
