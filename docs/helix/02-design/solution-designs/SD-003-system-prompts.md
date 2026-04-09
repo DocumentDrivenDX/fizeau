@@ -156,11 +156,11 @@ DDX Agent ships with built-in system prompt presets that track the style and con
 
 | Preset | Description |
 |--------|-------------|
-| `agent` | DDX Agent default — balanced, tool-aware, structured |
+| `agent` | DDX Agent default — balanced, tool-aware, structured output |
 | `minimal` | Bare minimum — one sentence, like pi |
-| `claude` | Tracks Claude Code style — thorough, safety-conscious |
-| `codex` | Tracks OpenAI Codex CLI style — pragmatic, direct |
-| `cursor` | Tracks Cursor style — fast, action-oriented |
+| `claude` | Tracks Claude Code style — thorough, safety-conscious, tool-aware |
+| `codex` | Tracks OpenAI Codex CLI style — pragmatic, direct, no fluff |
+| `cursor` | Tracks Cursor style — fast, action-oriented, edit-heavy |
 
 ### Boundary with Model Catalog
 
