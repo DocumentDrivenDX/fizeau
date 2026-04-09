@@ -116,7 +116,7 @@ func classifyPromptInput(raw string) promptInputClassification {
 		return promptInputPlain
 	}
 
-	var env ddxPromptEnvelope
+	var env promptEnvelopeOracle
 	if err := json.Unmarshal([]byte(raw), &env); err != nil {
 		return promptInputMalformedEnvelope
 	}
@@ -125,6 +125,16 @@ func classifyPromptInput(raw string) promptInputClassification {
 	}
 
 	return promptInputValidEnvelope
+}
+
+type promptEnvelopeOracle struct {
+	Kind           string          `json:"kind"`
+	ID             string          `json:"id"`
+	Title          string          `json:"title,omitempty"`
+	Prompt         string          `json:"prompt"`
+	Inputs         json.RawMessage `json:"inputs,omitempty"`
+	ResponseSchema json.RawMessage `json:"response_schema,omitempty"`
+	Callback       json.RawMessage `json:"callback,omitempty"`
 }
 
 func localHasPromptEnvelopeFields(probe map[string]json.RawMessage) bool {
