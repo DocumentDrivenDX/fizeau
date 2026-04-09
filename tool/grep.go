@@ -23,15 +23,17 @@ const (
 
 // GrepParams are the parameters for the grep tool.
 type GrepParams struct {
-	Pattern         string `json:"pattern"`
-	Dir             string `json:"dir,omitempty"`
-	Glob            string `json:"glob,omitempty"`
-	CaseInsensitive bool   `json:"case_insensitive,omitempty"`
+	Pattern         string   `json:"pattern"`
+	Dir             string   `json:"dir,omitempty"`
+	Glob            string   `json:"glob,omitempty"`
+	CaseInsensitive bool     `json:"case_insensitive,omitempty"`
+	ExcludeDirs     *[]string `json:"exclude_dirs,omitempty"` // override default skip dirs; nil uses defaults, empty slice means no skips
 }
 
 // GrepTool searches file contents for a regex pattern.
 type GrepTool struct {
-	WorkDir string
+	WorkDir     string
+	ExcludeDirs []string // optional override for skipDirs; if empty, uses default skipDirs
 }
 
 func (t *GrepTool) Name() string { return "grep" }
@@ -45,7 +47,8 @@ func (t *GrepTool) Schema() json.RawMessage {
 			"pattern":          {"type": "string", "description": "Regular expression to search for"},
 			"dir":              {"type": "string", "description": "Directory to search in (relative or absolute; defaults to working directory)"},
 			"glob":             {"type": "string", "description": "Restrict to files whose base names match this glob (e.g. '*.go', '*.ts')"},
-			"case_insensitive": {"type": "boolean", "description": "Case-insensitive matching (default false)"}
+			"case_insensitive": {"type": "boolean", "description": "Case-insensitive matching (default false)"},
+			"exclude_dirs":     {"type": "array", "items": {"type": "string"}, "description": "Override default excluded directories. By default, skips .git, .hg, .svn, node_modules, and vendor/. Set to empty array [] to search all directories."}
 		},
 		"required": ["pattern"]
 	}`)
@@ -87,7 +90,15 @@ func (t *GrepTool) Execute(_ context.Context, params json.RawMessage) (string, e
 			return nil
 		}
 		if d.IsDir() {
-			if skipDirs[d.Name()] {
+			// Determine which dirs to skip: use ExcludeDirs if set, otherwise default skipDirs
+			skipMap := skipDirs
+			if p.ExcludeDirs != nil {
+				skipMap = make(map[string]bool, len(*p.ExcludeDirs))
+				for _, d := range *p.ExcludeDirs {
+					skipMap[d] = true
+				}
+			}
+			if skipMap[d.Name()] {
 				return filepath.SkipDir
 			}
 			return nil

@@ -122,4 +122,60 @@ func TestGrepTool_Execute(t *testing.T) {
 			assert.LessOrEqual(t, files[i-1], files[i])
 		}
 	})
+
+	t.Run("respects ExcludeDirs override", func(t *testing.T) {
+		// Create a vendor directory with files containing the pattern
+		vendorFile := filepath.Join(dir, "vendor", "example.com", "pkg", "file.go")
+		require.NoError(t, os.MkdirAll(filepath.Dir(vendorFile), 0o755))
+		require.NoError(t, os.WriteFile(vendorFile, []byte("// TODO: vendor code\n"), 0o644))
+
+		// Default behavior: skip vendor/
+		result, err := g.Execute(context.Background(), mustJSON(t, GrepParams{Pattern: "TODO"}))
+		require.NoError(t, err)
+		assert.NotContains(t, result, "vendor")
+
+		// With ExcludeDirs set to empty array: search all directories including vendor/
+		emptySlice := []string{}
+		result, err = g.Execute(context.Background(), mustJSON(t, GrepParams{
+			Pattern:     "TODO",
+			ExcludeDirs: &emptySlice,
+		}))
+		require.NoError(t, err)
+		assert.Contains(t, result, "vendor")
+
+		// With custom ExcludeDirs: only skip specified dirs
+		customSlice := []string{".git"}
+		result, err = g.Execute(context.Background(), mustJSON(t, GrepParams{
+			Pattern:     "TODO",
+			ExcludeDirs: &customSlice,
+		}))
+		require.NoError(t, err)
+		assert.Contains(t, result, "vendor")
+	})
+
+	t.Run("ExcludeDirs overrides all default skip dirs", func(t *testing.T) {
+		// Create files in multiple skipped directories
+		gitFile := filepath.Join(dir, ".git", "config")
+		require.NoError(t, os.MkdirAll(filepath.Dir(gitFile), 0o755))
+		require.NoError(t, os.WriteFile(gitFile, []byte("[core]\n\tTODO: git config\n"), 0o644))
+
+		vendorFile := filepath.Join(dir, "vendor", "pkg.go")
+		require.NoError(t, os.MkdirAll(filepath.Dir(vendorFile), 0o755))
+		require.NoError(t, os.WriteFile(vendorFile, []byte("// vendor TODO\n"), 0o644))
+
+		nodeModulesFile := filepath.Join(dir, "node_modules", "pkg.js")
+		require.NoError(t, os.MkdirAll(filepath.Dir(nodeModulesFile), 0o755))
+		require.NoError(t, os.WriteFile(nodeModulesFile, []byte("// node_modules TODO\n"), 0o644))
+
+		// With empty ExcludeDirs, all should be found
+		emptySlice := []string{}
+		result, err := g.Execute(context.Background(), mustJSON(t, GrepParams{
+			Pattern:     "TODO",
+			ExcludeDirs: &emptySlice,
+		}))
+		require.NoError(t, err)
+		assert.Contains(t, result, ".git")
+		assert.Contains(t, result, "vendor")
+		assert.Contains(t, result, "node_modules")
+	})
 }

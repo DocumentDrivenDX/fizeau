@@ -25,13 +25,15 @@ var skipDirs = map[string]bool{
 
 // GlobParams are the parameters for the glob tool.
 type GlobParams struct {
-	Pattern string `json:"pattern"`
-	Dir     string `json:"dir,omitempty"` // base dir; defaults to WorkDir
+	Pattern     string   `json:"pattern"`
+	Dir         string   `json:"dir,omitempty"`    // base dir; defaults to WorkDir
+	ExcludeDirs *[]string `json:"exclude_dirs,omitempty"` // override default skip dirs; nil uses defaults, empty slice means no skips
 }
 
 // GlobTool finds files matching a glob pattern.
 type GlobTool struct {
-	WorkDir string
+	WorkDir    string
+	ExcludeDirs []string // optional override for skipDirs; if empty, uses default skipDirs
 }
 
 func (t *GlobTool) Name() string { return "glob" }
@@ -42,8 +44,9 @@ func (t *GlobTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"pattern": {"type": "string", "description": "Glob pattern to match (e.g. '**/*.go', 'cmd/**/main.go'). Use ** to match across directories."},
-			"dir":     {"type": "string", "description": "Directory to search in (relative to working directory or absolute; defaults to working directory)"}
+			"pattern":      {"type": "string", "description": "Glob pattern to match (e.g. '**/*.go', 'cmd/**/main.go'). Use ** to match across directories."},
+			"dir":          {"type": "string", "description": "Directory to search in (relative to working directory or absolute; defaults to working directory)"},
+			"exclude_dirs": {"type": "array", "items": {"type": "string"}, "description": "Override default excluded directories. By default, skips .git, .hg, .svn, node_modules, and vendor/. Set to empty array [] to search all directories."}
 		},
 		"required": ["pattern"]
 	}`)
@@ -78,7 +81,15 @@ func (t *GlobTool) Execute(_ context.Context, params json.RawMessage) (string, e
 		if rel == "." {
 			return nil
 		}
-		if d.IsDir() && skipDirs[d.Name()] {
+		// Determine which dirs to skip: use ExcludeDirs if set, otherwise default skipDirs
+		skipMap := skipDirs
+		if p.ExcludeDirs != nil {
+			skipMap = make(map[string]bool, len(*p.ExcludeDirs))
+			for _, d := range *p.ExcludeDirs {
+				skipMap[d] = true
+			}
+		}
+		if d.IsDir() && skipMap[d.Name()] {
 			return filepath.SkipDir
 		}
 		nameParts := strings.Split(filepath.ToSlash(rel), "/")
