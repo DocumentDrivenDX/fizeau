@@ -117,6 +117,111 @@ func TestResolveProviderForRun_ExplicitModelWins(t *testing.T) {
 	assert.Equal(t, "exact-model", pc.Model)
 }
 
+func TestResolveProviderForRun_ModelRouteByExplicitModel(t *testing.T) {
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	cfg := &agentConfig.Config{
+		Providers: map[string]agentConfig.ProviderConfig{
+			"bragi": {
+				Type:    "openai-compat",
+				BaseURL: "http://bragi:1234/v1",
+				Model:   "provider-default",
+			},
+		},
+		ModelRoutes: map[string]agentConfig.ModelRouteConfig{
+			"qwen3.5-27b": {
+				Strategy: "ordered-failover",
+				Candidates: []agentConfig.ModelRouteCandidateConfig{
+					{Provider: "bragi", Model: "qwen3.5-27b"},
+				},
+			},
+		},
+		Default: "bragi",
+	}
+
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{
+		Model: "qwen3.5-27b",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "qwen3.5-27b", selection.Route)
+	assert.Equal(t, "bragi", selection.Provider)
+	assert.Equal(t, "qwen3.5-27b", selection.ResolvedModel)
+	assert.Equal(t, "qwen3.5-27b", pc.Model)
+}
+
+func TestResolveProviderForRun_DefaultModelRouteOverridesDefaultProvider(t *testing.T) {
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	cfg := &agentConfig.Config{
+		Providers: map[string]agentConfig.ProviderConfig{
+			"vidar": {
+				Type:    "openai-compat",
+				BaseURL: "http://vidar:1234/v1",
+				Model:   "provider-default",
+			},
+			"openrouter": {
+				Type:    "openai-compat",
+				BaseURL: "https://openrouter.ai/api/v1",
+				Model:   "provider-fallback",
+			},
+		},
+		Routing: agentConfig.RoutingConfig{
+			DefaultModel: "qwen3.5-27b",
+		},
+		ModelRoutes: map[string]agentConfig.ModelRouteConfig{
+			"qwen3.5-27b": {
+				Strategy: "ordered-failover",
+				Candidates: []agentConfig.ModelRouteCandidateConfig{
+					{Provider: "openrouter", Model: "qwen/qwen3.5-27b"},
+				},
+			},
+		},
+		Default: "vidar",
+	}
+
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "qwen3.5-27b", selection.Route)
+	assert.Equal(t, "openrouter", selection.Provider)
+	assert.Equal(t, "qwen/qwen3.5-27b", selection.ResolvedModel)
+	assert.Equal(t, "qwen/qwen3.5-27b", pc.Model)
+}
+
+func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))
+	cfg := &agentConfig.Config{
+		Providers: map[string]agentConfig.ProviderConfig{
+			"cloud": {
+				Type:    "openai-compat",
+				BaseURL: "https://openrouter.ai/api/v1",
+			},
+		},
+		ModelRoutes: map[string]agentConfig.ModelRouteConfig{
+			"qwen3-coder-next": {
+				Strategy: "ordered-failover",
+				Candidates: []agentConfig.ModelRouteCandidateConfig{
+					{Provider: "cloud", Model: "qwen/qwen3-coder-next"},
+				},
+			},
+		},
+		Default: "cloud",
+	}
+
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{
+		ModelRef: "code-fast",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, p)
+	assert.Equal(t, "qwen3-coder-next", selection.Route)
+	assert.Equal(t, "code-fast", selection.RequestedModelRef)
+	assert.Equal(t, "qwen3-coder-next", selection.ResolvedModelRef)
+	assert.Equal(t, "qwen/qwen3-coder-next", selection.ResolvedModel)
+	assert.Equal(t, "qwen/qwen3-coder-next", pc.Model)
+}
+
 func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.T) {
 	workDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".agent"), 0o755))

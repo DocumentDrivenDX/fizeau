@@ -37,6 +37,15 @@ func (m *mockProvider) Chat(ctx context.Context, messages []Message, tools []Too
 	return resp, nil
 }
 
+type routingReportProvider struct {
+	mockProvider
+	report RoutingReport
+}
+
+func (p *routingReportProvider) RoutingReport() RoutingReport {
+	return p.report
+}
+
 // mockTool is a test tool that returns a fixed result.
 type mockTool struct {
 	name   string
@@ -1260,6 +1269,54 @@ func TestRun_EmitsTraceSpansWithTurnAndAttemptIdentity(t *testing.T) {
 	require.Equal(t, int64(1), attrInt(t, toolSpan.Attributes(), telemetry.KeyTurnIndex))
 	require.Equal(t, int64(1), attrInt(t, toolSpan.Attributes(), telemetry.KeyToolExecutionIndex))
 	require.Equal(t, "read", attrString(t, toolSpan.Attributes(), telemetry.KeyToolName))
+}
+
+func TestRun_RoutingReportUpdatesResultAndRootSpan(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+	provider := &routingReportProvider{
+		mockProvider: mockProvider{
+			responses: []Response{{
+				Content: "done",
+				Usage:   TokenUsage{Input: 8, Output: 4, Total: 12},
+				Model:   "healthy-runtime-model",
+			}},
+		},
+		report: RoutingReport{
+			SelectedProvider:   "openrouter",
+			SelectedRoute:      "qwen3.5-27b",
+			AttemptedProviders: []string{"bragi", "openrouter"},
+			FailoverCount:      1,
+		},
+	}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:            "say hi",
+		Provider:          provider,
+		Telemetry:         tel,
+		SelectedProvider:  "bragi",
+		SelectedRoute:     "qwen3.5-27b",
+		RequestedModel:    "qwen3.5-27b",
+		RequestedModelRef: "code-fast",
+		ResolvedModel:     "qwen/qwen3.5-27b",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "openrouter", result.SelectedProvider)
+	assert.Equal(t, "qwen3.5-27b", result.SelectedRoute)
+	assert.Equal(t, []string{"bragi", "openrouter"}, result.AttemptedProviders)
+	assert.Equal(t, 1, result.FailoverCount)
+
+	root := spanByName(t, recorder.Ended(), "invoke_agent agent")
+	assert.Equal(t, "openrouter", attrString(t, root.Attributes(), telemetry.KeyProviderName))
+	assert.Equal(t, "qwen3.5-27b", attrString(t, root.Attributes(), telemetry.KeyProviderRoute))
+	assert.Equal(t, "qwen3.5-27b", attrString(t, root.Attributes(), telemetry.KeyRequestModel))
+	assert.Equal(t, "code-fast", attrString(t, root.Attributes(), telemetry.KeyRequestedModelRef))
+	assert.Equal(t, "qwen/qwen3.5-27b", attrString(t, root.Attributes(), telemetry.KeyProviderModelResolved))
+	assert.Equal(t, "bragi,openrouter", attrString(t, root.Attributes(), telemetry.KeyAttemptedProviders))
+	assert.Equal(t, int64(1), attrInt(t, root.Attributes(), telemetry.KeyFailoverCount))
 }
 
 func TestRun_EmitsRetryIndexedChatSpans(t *testing.T) {

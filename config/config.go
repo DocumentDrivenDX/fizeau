@@ -43,6 +43,34 @@ type ModelCatalogConfig struct {
 	Manifest string `yaml:"manifest,omitempty"`
 }
 
+// RoutingConfig configures model-first route selection defaults.
+type RoutingConfig struct {
+	// DefaultModel is the default requested model-route key to use when the
+	// caller does not set --model, --model-ref, or --provider.
+	DefaultModel string `yaml:"default_model,omitempty"`
+
+	// DefaultModelRef resolves through the model catalog to a canonical route
+	// key when no explicit provider or model input is supplied.
+	DefaultModelRef string `yaml:"default_model_ref,omitempty"`
+
+	// HealthCooldown controls how long a failed candidate remains deprioritized
+	// before it is retried.
+	HealthCooldown string `yaml:"health_cooldown,omitempty"`
+}
+
+// ModelRouteCandidateConfig describes one provider candidate inside a route.
+type ModelRouteCandidateConfig struct {
+	Provider string `yaml:"provider"`
+	Model    string `yaml:"model,omitempty"`
+	Priority int    `yaml:"priority,omitempty"`
+}
+
+// ModelRouteConfig describes a model-first routing target.
+type ModelRouteConfig struct {
+	Strategy   string                      `yaml:"strategy,omitempty"`
+	Candidates []ModelRouteCandidateConfig `yaml:"candidates"`
+}
+
 // BackendPoolConfig describes a named routing target that selects one provider
 // before a run using a specified strategy.
 type BackendPoolConfig struct {
@@ -74,6 +102,13 @@ const (
 type Config struct {
 	// Providers is a map of named provider configurations.
 	Providers map[string]ProviderConfig `yaml:"providers"`
+
+	// Routing configures default model-first resolution behavior.
+	Routing RoutingConfig `yaml:"routing,omitempty"`
+
+	// ModelRoutes is the canonical model-first routing table keyed by requested
+	// model or canonical target.
+	ModelRoutes map[string]ModelRouteConfig `yaml:"model_routes,omitempty"`
 
 	// Backends is a map of named backend pool configurations.
 	Backends map[string]BackendPoolConfig `yaml:"backends,omitempty"`
@@ -110,6 +145,9 @@ type Config struct {
 	LegacyBaseURL  string `yaml:"base_url,omitempty"`
 	LegacyAPIKey   string `yaml:"api_key,omitempty"`
 	LegacyModel    string `yaml:"model,omitempty"`
+
+	warnings          []string                    `yaml:"-"`
+	legacyModelRoutes map[string]ModelRouteConfig `yaml:"-"`
 }
 
 // Defaults returns a Config with sensible defaults.
@@ -151,6 +189,10 @@ func Load(workDir string) (*Config, error) {
 
 	// Apply env var overrides to default provider
 	cfg.applyEnvOverrides()
+
+	if err := cfg.finalize(); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
 }
@@ -371,6 +413,19 @@ func (c *Config) GetBackend(name string) (BackendPoolConfig, bool) {
 	return bc, ok
 }
 
+// GetModelRoute returns the canonical model-route config for a route key.
+func (c *Config) GetModelRoute(name string) (ModelRouteConfig, bool) {
+	mr, ok := c.ModelRoutes[name]
+	return mr, ok
+}
+
+// GetDeprecatedBackendRoute returns the translated model-route config for a
+// deprecated backend compatibility input.
+func (c *Config) GetDeprecatedBackendRoute(name string) (ModelRouteConfig, bool) {
+	mr, ok := c.legacyModelRoutes[name]
+	return mr, ok
+}
+
 // BackendNames returns configured backend pool names in stable alphabetical order.
 func (c *Config) BackendNames() []string {
 	if c.Backends == nil {
@@ -388,6 +443,35 @@ func (c *Config) BackendNames() []string {
 		}
 	}
 	return names
+}
+
+// ModelRouteNames returns configured model-route names in stable alphabetical order.
+func (c *Config) ModelRouteNames() []string {
+	if c.ModelRoutes == nil {
+		return nil
+	}
+	names := make([]string, 0, len(c.ModelRoutes))
+	for name := range c.ModelRoutes {
+		names = append(names, name)
+	}
+	for i := 0; i < len(names); i++ {
+		for j := i + 1; j < len(names); j++ {
+			if names[j] < names[i] {
+				names[i], names[j] = names[j], names[i]
+			}
+		}
+	}
+	return names
+}
+
+// Warnings returns config-load warnings that the CLI may surface.
+func (c *Config) Warnings() []string {
+	if len(c.warnings) == 0 {
+		return nil
+	}
+	out := make([]string, len(c.warnings))
+	copy(out, c.warnings)
+	return out
 }
 
 // selectProviderIndex returns the provider list index to use for a backend pool
@@ -461,6 +545,125 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 	default:
 		return nil, fmt.Errorf("config: unknown provider type %q (use openai-compat or anthropic)", pc.Type)
 	}
+}
+
+func (c *Config) finalize() error {
+	c.warnings = nil
+	c.legacyModelRoutes = make(map[string]ModelRouteConfig)
+
+	if c.ModelRoutes == nil {
+		c.ModelRoutes = make(map[string]ModelRouteConfig)
+	}
+
+	if err := c.translateLegacyBackends(); err != nil {
+		return err
+	}
+	if err := c.validateModelRoutes(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Config) translateLegacyBackends() error {
+	for name, bc := range c.Backends {
+		translated, err := c.translateLegacyBackend(name, bc)
+		if err != nil {
+			return err
+		}
+		c.legacyModelRoutes[name] = translated
+		c.warnings = append(c.warnings, fmt.Sprintf("backend %q is deprecated; use model_routes plus --model/--model-ref instead", name))
+	}
+	if c.DefaultBackend != "" {
+		if _, ok := c.legacyModelRoutes[c.DefaultBackend]; !ok {
+			return fmt.Errorf("config: unknown default backend pool %q", c.DefaultBackend)
+		}
+		c.warnings = append(c.warnings, "default_backend is deprecated; use routing.default_model or routing.default_model_ref")
+	}
+	return nil
+}
+
+func (c *Config) translateLegacyBackend(name string, bc BackendPoolConfig) (ModelRouteConfig, error) {
+	if strings.TrimSpace(name) == "" {
+		return ModelRouteConfig{}, fmt.Errorf("config: backend pool name must not be empty")
+	}
+	if len(bc.Providers) == 0 {
+		return ModelRouteConfig{}, fmt.Errorf("config: backend pool %q has no providers", name)
+	}
+
+	route := ModelRouteConfig{
+		Strategy: translateLegacyBackendStrategy(bc.Strategy),
+	}
+	for _, providerName := range bc.Providers {
+		providerName = strings.TrimSpace(providerName)
+		if providerName == "" {
+			return ModelRouteConfig{}, fmt.Errorf("config: backend pool %q references an empty provider name", name)
+		}
+		if _, ok := c.Providers[providerName]; !ok {
+			return ModelRouteConfig{}, fmt.Errorf("config: backend pool %q references unknown provider %q", name, providerName)
+		}
+		route.Candidates = append(route.Candidates, ModelRouteCandidateConfig{
+			Provider: providerName,
+			Model:    "",
+			Priority: 100,
+		})
+	}
+
+	return route, nil
+}
+
+func translateLegacyBackendStrategy(strategy string) string {
+	switch strings.TrimSpace(strategy) {
+	case "", "first-available":
+		return "ordered-failover"
+	case "round-robin":
+		return "priority-round-robin"
+	default:
+		return strategy
+	}
+}
+
+func (c *Config) validateModelRoutes() error {
+	for _, name := range c.ModelRouteNames() {
+		route := c.ModelRoutes[name]
+		if err := c.validateModelRoute(name, route); err != nil {
+			return err
+		}
+	}
+	for name, route := range c.legacyModelRoutes {
+		if err := c.validateModelRoute(name, route); err != nil {
+			return err
+		}
+	}
+	if c.Routing.DefaultModel != "" {
+		if _, ok := c.ModelRoutes[c.Routing.DefaultModel]; !ok {
+			return fmt.Errorf("config: unknown routing.default_model %q", c.Routing.DefaultModel)
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateModelRoute(name string, route ModelRouteConfig) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("config: model route name must not be empty")
+	}
+	if len(route.Candidates) == 0 {
+		return fmt.Errorf("config: model route %q has no candidates", name)
+	}
+	switch strings.TrimSpace(route.Strategy) {
+	case "", "priority-round-robin", "ordered-failover":
+	default:
+		return fmt.Errorf("config: model route %q has unknown strategy %q", name, route.Strategy)
+	}
+	for i, candidate := range route.Candidates {
+		if strings.TrimSpace(candidate.Provider) == "" {
+			return fmt.Errorf("config: model route %q candidate %d is missing provider", name, i+1)
+		}
+		if _, ok := c.Providers[candidate.Provider]; !ok {
+			return fmt.Errorf("config: model route %q candidate %d references unknown provider %q", name, i+1, candidate.Provider)
+		}
+	}
+	return nil
 }
 
 // LoadModelCatalog loads the shared model catalog using the configured manifest override path.

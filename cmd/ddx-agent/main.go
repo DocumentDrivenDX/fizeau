@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/DocumentDrivenDX/agent"
 	agentConfig "github.com/DocumentDrivenDX/agent/config"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/agent/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/occompat"
 	"github.com/DocumentDrivenDX/agent/picompat"
 	"github.com/DocumentDrivenDX/agent/prompt"
@@ -38,21 +40,29 @@ func main() {
 }
 
 func run() int {
-	// Define flags
-	promptFlag := flag.String("p", "", "Prompt (use @file to read from file)")
-	jsonOutput := flag.Bool("json", false, "Output result as JSON")
-	providerFlag := flag.String("provider", "", "Named provider from config (e.g., vidar, openrouter)")
-	backendFlag := flag.String("backend", "", "Named backend pool from config (e.g., code-fast-local)")
-	model := flag.String("model", "", "Explicit model name override (bypasses catalog)")
-	modelRef := flag.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target)")
-	allowDeprecatedModel := flag.Bool("allow-deprecated-model", false, "Allow deprecated model catalog references")
-	maxIter := flag.Int("max-iter", 0, "Max iterations")
-	workDir := flag.String("work-dir", "", "Working directory")
-	version := flag.Bool("version", false, "Print version")
-	sysPromptFlag := flag.String("system", "", "System prompt (appended to preset)")
-	presetFlag := flag.String("preset", "", "System prompt preset (agent, benchmark, claude, codex, cursor, minimal)")
+	cliArgs := os.Args[1:]
+	runSubcommand, cliArgs := normalizeRunSubcommand(cliArgs)
 
-	flag.Parse()
+	fs := flag.NewFlagSet("ddx-agent", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	// Define flags
+	promptFlag := fs.String("p", "", "Prompt (use @file to read from file)")
+	jsonOutput := fs.Bool("json", false, "Output result as JSON")
+	providerFlag := fs.String("provider", "", "Named provider from config (e.g., vidar, openrouter)")
+	backendFlag := fs.String("backend", "", "Deprecated named backend pool from config")
+	model := fs.String("model", "", "Model route key or explicit concrete model override")
+	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target)")
+	allowDeprecatedModel := fs.Bool("allow-deprecated-model", false, "Allow deprecated model catalog references")
+	maxIter := fs.Int("max-iter", 0, "Max iterations")
+	workDir := fs.String("work-dir", "", "Working directory")
+	version := fs.Bool("version", false, "Print version")
+	sysPromptFlag := fs.String("system", "", "System prompt (appended to preset)")
+	presetFlag := fs.String("preset", "", "System prompt preset (agent, benchmark, claude, codex, cursor, minimal)")
+
+	if err := fs.Parse(cliArgs); err != nil {
+		return 2
+	}
 
 	if *version {
 		fmt.Printf("ddx-agent %s (commit %s, built %s)\n", Version, GitCommit, BuildTime)
@@ -66,8 +76,8 @@ func run() int {
 	}
 
 	// Handle subcommands
-	args := flag.Args()
-	if len(args) > 0 {
+	args := fs.Args()
+	if !runSubcommand && len(args) > 0 {
 		switch args[0] {
 		case "log":
 			return cmdLog(wd, args[1:])
@@ -96,6 +106,12 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
 	}
+	for _, warning := range cfg.Warnings() {
+		fmt.Fprintf(os.Stderr, "ddx-agent: warning: %s\n", warning)
+	}
+	if *backendFlag != "" {
+		fmt.Fprintln(os.Stderr, "ddx-agent: warning: --backend is deprecated; use --model or --model-ref instead")
+	}
 
 	// Check for zero-config discovery
 	checkZeroConfigDiscovery(cfg)
@@ -104,14 +120,20 @@ func run() int {
 	checkDrift(cfg, wd)
 
 	// Resolve prompt
-	promptText, promptMetadata, err := resolvePrompt(*promptFlag)
+	var promptText string
+	var promptMetadata map[string]string
+	if runSubcommand && *promptFlag == "" && len(args) > 0 {
+		promptText, promptMetadata, err = parsePromptInput(strings.Join(args, " "))
+	} else {
+		promptText, promptMetadata, err = resolvePrompt(*promptFlag)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
 	}
 	if promptText == "" {
 		fmt.Fprintln(os.Stderr, "error: no prompt provided (use -p or pipe to stdin)")
-		flag.Usage()
+		fs.Usage()
 		return 2
 	}
 
@@ -170,19 +192,22 @@ func run() int {
 
 	// Build request
 	req := agent.Request{
-		Prompt:           promptText,
-		SystemPrompt:     sysPrompt.Build(),
-		Provider:         p,
-		Tools:            tools,
-		MaxIterations:    iterations,
-		WorkDir:          wd,
-		Metadata:         promptMetadata,
-		SelectedProvider: selection.Provider,
-		SelectedRoute:    selection.Route,
-		ResolvedModelRef: selection.ResolvedModelRef,
-		ResolvedModel:    selection.ResolvedModel,
-		Callback:         logger.Callback(),
-		Telemetry:        cfg.BuildTelemetry(),
+		Prompt:            promptText,
+		SystemPrompt:      sysPrompt.Build(),
+		Provider:          p,
+		Tools:             tools,
+		MaxIterations:     iterations,
+		WorkDir:           wd,
+		Metadata:          promptMetadata,
+		SelectedProvider:  selection.Provider,
+		SelectedRoute:     selection.Route,
+		RequestedModel:    selection.RequestedModel,
+		RequestedModelRef: selection.RequestedModelRef,
+		ResolvedModelRef:  selection.ResolvedModelRef,
+		ResolvedModel:     selection.ResolvedModel,
+		NoStream:          selection.NoStream,
+		Callback:          logger.Callback(),
+		Telemetry:         cfg.BuildTelemetry(),
 	}
 
 	// Run with signal handling
@@ -221,6 +246,50 @@ func run() int {
 	}
 }
 
+func normalizeRunSubcommand(args []string) (bool, []string) {
+	if len(args) == 0 {
+		return false, args
+	}
+	boolFlags := map[string]bool{
+		"allow-deprecated-model": true,
+		"json":                   true,
+		"version":                true,
+	}
+	valueFlags := map[string]bool{
+		"backend":   true,
+		"max-iter":  true,
+		"model":     true,
+		"model-ref": true,
+		"p":         true,
+		"preset":    true,
+		"provider":  true,
+		"system":    true,
+		"work-dir":  true,
+	}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "run":
+			out := append([]string{}, args[:i]...)
+			out = append(out, args[i+1:]...)
+			return true, out
+		case strings.HasPrefix(arg, "-"):
+			flagName := strings.TrimLeft(arg, "-")
+			if boolFlags[flagName] {
+				continue
+			}
+			if valueFlags[flagName] && i+1 < len(args) {
+				i++
+			}
+		default:
+			return false, args
+		}
+	}
+
+	return false, args
+}
+
 // resolveProviderForRun selects and builds the provider for a run.
 //
 // Resolution order (matching SD-005):
@@ -229,34 +298,42 @@ func run() int {
 //     the default backend pool.
 //  3. Else fall back to direct provider selection (providerName or cfg.DefaultName).
 type providerSelection struct {
-	Route            string
-	Provider         string
-	ResolvedModelRef string
-	ResolvedModel    string
+	Route             string
+	Provider          string
+	RequestedModel    string
+	RequestedModelRef string
+	ResolvedModelRef  string
+	ResolvedModel     string
+	NoStream          bool
 }
 
 func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, agent.Provider, agentConfig.ProviderConfig, error) {
-	// Determine whether to use a backend pool.
-	effectiveBackend := backendName
-	if effectiveBackend == "" && providerName == "" {
-		effectiveBackend = cfg.DefaultBackend
+	routeKey, routeModelRef, useLegacyBackend, treatModelAsPin, err := resolveRouteTarget(cfg, backendName, providerName, overrides)
+	if err != nil {
+		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}
-
-	if effectiveBackend != "" {
-		counter, err := readAndIncrementBackendCounter(workDir, effectiveBackend)
+	if routeKey != "" {
+		selection, p, pc, err := buildRouteSelection(cfg, workDir, routeKey, routeModelRef, overrides, treatModelAsPin)
 		if err != nil {
-			// Non-fatal: fall back to counter 0.
+			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
+		}
+		return selection, p, pc, nil
+	}
+	if useLegacyBackend != "" {
+		counter, err := readAndIncrementRouteCounter(workDir, legacyRouteCounterName(useLegacyBackend))
+		if err != nil {
 			counter = 0
 		}
-		p, pc, resolved, err := cfg.ResolveBackend(effectiveBackend, counter, overrides)
+		p, pc, resolved, err := cfg.ResolveBackend(useLegacyBackend, counter, overrides)
 		if err != nil {
 			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 		}
 		selection := providerSelection{
-			Route:         effectiveBackend,
-			ResolvedModel: pc.Model,
+			Route:             useLegacyBackend,
+			ResolvedModel:     pc.Model,
+			RequestedModelRef: overrides.ModelRef,
 		}
-		if bc, ok := cfg.GetBackend(effectiveBackend); ok && len(bc.Providers) > 0 {
+		if bc, ok := cfg.GetBackend(useLegacyBackend); ok && len(bc.Providers) > 0 {
 			idx := selectBackendProviderIndex(bc.Strategy, counter, len(bc.Providers))
 			selection.Provider = bc.Providers[idx]
 		}
@@ -269,7 +346,7 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 		return selection, p, pc, nil
 	}
 
-	// Direct provider selection.
+	// Direct provider selection or exact model pin.
 	if providerName == "" {
 		providerName = cfg.DefaultName()
 	}
@@ -278,17 +355,156 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}
 	selection := providerSelection{
-		Route:         providerName,
-		Provider:      providerName,
-		ResolvedModel: pc.Model,
+		Route:             providerName,
+		Provider:          providerName,
+		RequestedModel:    overrides.Model,
+		RequestedModelRef: overrides.ModelRef,
+		ResolvedModel:     pc.Model,
 	}
 	if resolved != nil {
 		selection.ResolvedModelRef = resolved.CanonicalID
 		if resolved.ConcreteModel != "" {
 			selection.ResolvedModel = resolved.ConcreteModel
 		}
+	} else if routeModelRef != "" {
+		selection.ResolvedModelRef = routeKey
 	}
 	return selection, p, pc, nil
+}
+
+func resolveRouteTarget(cfg *agentConfig.Config, backendName, providerName string, overrides agentConfig.ProviderOverrides) (routeKey string, routeModelRef string, legacyBackend string, treatModelAsPin bool, err error) {
+	if providerName != "" {
+		return "", "", "", false, nil
+	}
+	if backendName != "" {
+		return "", "", backendName, false, nil
+	}
+	if overrides.Model != "" {
+		if _, ok := cfg.GetModelRoute(overrides.Model); ok {
+			return overrides.Model, "", "", false, nil
+		}
+		return "", "", "", true, nil
+	}
+	if overrides.ModelRef != "" {
+		resolved, err := resolveCanonicalModelRef(cfg, overrides.ModelRef, overrides.AllowDeprecated)
+		if err != nil {
+			return "", "", "", false, err
+		}
+		if _, ok := cfg.GetModelRoute(resolved.CanonicalID); ok {
+			return resolved.CanonicalID, overrides.ModelRef, "", false, nil
+		}
+		if _, ok := cfg.GetModelRoute(overrides.ModelRef); ok {
+			return overrides.ModelRef, overrides.ModelRef, "", false, nil
+		}
+		return "", "", "", false, nil
+	}
+	if cfg.Routing.DefaultModel != "" {
+		return cfg.Routing.DefaultModel, "", "", false, nil
+	}
+	if cfg.Routing.DefaultModelRef != "" {
+		resolved, err := resolveCanonicalModelRef(cfg, cfg.Routing.DefaultModelRef, true)
+		if err != nil {
+			return "", "", "", false, err
+		}
+		if _, ok := cfg.GetModelRoute(resolved.CanonicalID); ok {
+			return resolved.CanonicalID, cfg.Routing.DefaultModelRef, "", false, nil
+		}
+		if _, ok := cfg.GetModelRoute(cfg.Routing.DefaultModelRef); ok {
+			return cfg.Routing.DefaultModelRef, cfg.Routing.DefaultModelRef, "", false, nil
+		}
+	}
+	if cfg.DefaultBackend != "" {
+		return "", "", cfg.DefaultBackend, false, nil
+	}
+	return "", "", "", false, nil
+}
+
+func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, overrides agentConfig.ProviderOverrides, treatModelAsPin bool) (providerSelection, agent.Provider, agentConfig.ProviderConfig, error) {
+	route, ok := cfg.GetModelRoute(routeKey)
+	if !ok {
+		return providerSelection{}, nil, agentConfig.ProviderConfig{}, fmt.Errorf("config: unknown model route %q", routeKey)
+	}
+	counter, err := readAndIncrementRouteCounter(workDir, routeKey)
+	if err != nil {
+		counter = 0
+	}
+	healthState, err := loadRouteHealthState(workDir, routeKey)
+	if err != nil {
+		healthState = routeHealthState{Failures: make(map[string]time.Time)}
+	}
+	order := routeAttemptOrder(route, counter, healthState, routeHealthCooldown(cfg))
+	if len(order) == 0 {
+		return providerSelection{}, nil, agentConfig.ProviderConfig{}, fmt.Errorf("config: model route %q has no candidates", routeKey)
+	}
+	candidate := route.Candidates[order[0]]
+
+	candidateOverrides := agentConfig.ProviderOverrides{
+		AllowDeprecated: overrides.AllowDeprecated,
+	}
+	if treatModelAsPin {
+		candidateOverrides.Model = overrides.Model
+	}
+	if routeModelRef != "" && candidate.Model == "" {
+		candidateOverrides.ModelRef = routeModelRef
+	}
+
+	p, pc, resolved, err := cfg.BuildProviderWithOverrides(candidate.Provider, candidateOverrides)
+	if err != nil {
+		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
+	}
+	if candidate.Model != "" {
+		pc.Model = candidate.Model
+	}
+	p = newRouteProvider(cfg, workDir, routeKey, routeKey, routeModelRef, route, order, candidate.Provider, overrides.AllowDeprecated)
+
+	selection := providerSelection{
+		Route:             routeKey,
+		Provider:          candidate.Provider,
+		RequestedModel:    routeKey,
+		RequestedModelRef: routeModelRef,
+		ResolvedModel:     pc.Model,
+		NoStream:          true,
+	}
+	if resolved != nil {
+		selection.ResolvedModelRef = resolved.CanonicalID
+		if resolved.ConcreteModel != "" {
+			selection.ResolvedModel = resolved.ConcreteModel
+		}
+	} else if routeModelRef != "" {
+		selection.ResolvedModelRef = routeKey
+	}
+	return selection, p, pc, nil
+}
+
+func resolveCanonicalModelRef(cfg *agentConfig.Config, ref string, allowDeprecated bool) (*modelcatalog.ResolvedTarget, error) {
+	catalog, err := cfg.LoadModelCatalog()
+	if err != nil {
+		return nil, err
+	}
+	surfaces := []modelcatalog.Surface{
+		modelcatalog.SurfaceAgentOpenAI,
+		modelcatalog.SurfaceAgentAnthropic,
+	}
+	var lastErr error
+	for _, surface := range surfaces {
+		resolved, err := catalog.Resolve(ref, modelcatalog.ResolveOptions{
+			Surface:         surface,
+			AllowDeprecated: allowDeprecated,
+		})
+		if err == nil {
+			return &resolved, nil
+		}
+		var missingSurfaceErr *modelcatalog.MissingSurfaceError
+		if errors.As(err, &missingSurfaceErr) {
+			lastErr = err
+			continue
+		}
+		return nil, err
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("config: cannot resolve model reference %q", ref)
 }
 
 func selectBackendProviderIndex(strategy string, counter, n int) int {
@@ -301,22 +517,33 @@ func selectBackendProviderIndex(strategy string, counter, n int) int {
 	return 0
 }
 
-// backendStateFile returns the path to the per-backend round-robin counter file.
-func backendStateFile(workDir, backendName string) string {
-	return filepath.Join(workDir, ".agent", "backend-state-"+backendName+".counter")
+func buildProviderFromResolvedConfig(name string, pc agentConfig.ProviderConfig) (agent.Provider, error) {
+	cfg := &agentConfig.Config{
+		Providers: map[string]agentConfig.ProviderConfig{name: pc},
+	}
+	return cfg.BuildProvider(name)
 }
 
-// backendCounterMu serializes counter reads and writes within a process.
-var backendCounterMu sync.Mutex
+func legacyRouteCounterName(backendName string) string {
+	return "backend-" + backendName
+}
 
-// readAndIncrementBackendCounter reads the current round-robin counter for a
-// backend pool, increments it, writes it back, and returns the value that was
+// routeStateFile returns the path to the per-route rotation counter file.
+func routeStateFile(workDir, routeName string) string {
+	return filepath.Join(workDir, ".agent", "route-state-"+routeStateKey(routeName)+".counter")
+}
+
+// routeCounterMu serializes counter reads and writes within a process.
+var routeCounterMu sync.Mutex
+
+// readAndIncrementRouteCounter reads the current rotation counter for a route,
+// increments it, writes it back, and returns the value that was
 // read (i.e. the counter to use for this request).
-func readAndIncrementBackendCounter(workDir, backendName string) (int, error) {
-	backendCounterMu.Lock()
-	defer backendCounterMu.Unlock()
+func readAndIncrementRouteCounter(workDir, routeName string) (int, error) {
+	routeCounterMu.Lock()
+	defer routeCounterMu.Unlock()
 
-	path := backendStateFile(workDir, backendName)
+	path := routeStateFile(workDir, routeName)
 
 	// Read existing counter; treat missing file as counter 0.
 	var counter int

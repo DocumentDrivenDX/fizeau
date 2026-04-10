@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -23,11 +24,13 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 	sessionID := fmt.Sprintf("s-%d", start.UnixNano())
 	result := Result{
-		SessionID:        sessionID,
-		SelectedProvider: req.SelectedProvider,
-		SelectedRoute:    req.SelectedRoute,
-		ResolvedModelRef: req.ResolvedModelRef,
-		ResolvedModel:    req.ResolvedModel,
+		SessionID:         sessionID,
+		SelectedProvider:  req.SelectedProvider,
+		SelectedRoute:     req.SelectedRoute,
+		RequestedModel:    req.RequestedModel,
+		RequestedModelRef: req.RequestedModelRef,
+		ResolvedModelRef:  req.ResolvedModelRef,
+		ResolvedModel:     req.ResolvedModel,
 	}
 
 	if req.Provider == nil {
@@ -52,6 +55,8 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	sessionCostPricingRef := ""
 	sessionCostStable := true
 	defer func() {
+		applyRoutingReport(req.Provider, &result)
+		applyRoutingSpanAttributes(rootSpan, result)
 		applySessionCostAttributes(rootSpan, sessionCostObserved, sessionCostKnown, sessionCostSource, result.CostUSD, sessionCostCurrency, sessionCostPricingRef, sessionCostStable)
 		if result.Error != nil {
 			recordSpanError(rootSpan, result.Error)
@@ -87,17 +92,19 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		Type:      EventSessionStart,
 		Timestamp: time.Now().UTC(),
 		Data: mustMarshal(map[string]any{
-			"provider":           sessionProvider,
-			"model":              sessionModel,
-			"selected_provider":  req.SelectedProvider,
-			"selected_route":     req.SelectedRoute,
-			"resolved_model_ref": req.ResolvedModelRef,
-			"resolved_model":     req.ResolvedModel,
-			"work_dir":           req.WorkDir,
-			"prompt":             req.Prompt,
-			"system_prompt":      req.SystemPrompt,
-			"max_iterations":     req.MaxIterations,
-			"metadata":           req.Metadata,
+			"provider":            sessionProvider,
+			"model":               sessionModel,
+			"selected_provider":   req.SelectedProvider,
+			"selected_route":      req.SelectedRoute,
+			"requested_model":     req.RequestedModel,
+			"requested_model_ref": req.RequestedModelRef,
+			"resolved_model_ref":  req.ResolvedModelRef,
+			"resolved_model":      req.ResolvedModel,
+			"work_dir":            req.WorkDir,
+			"prompt":              req.Prompt,
+			"system_prompt":       req.SystemPrompt,
+			"max_iterations":      req.MaxIterations,
+			"metadata":            req.Metadata,
 		}),
 	})
 
@@ -197,7 +204,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			result.Status = StatusIterationLimit
 			result.Duration = time.Since(start)
 			snapshotMessages()
-			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+			emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 			return result, nil
 		}
 
@@ -206,7 +213,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			result.Status = StatusCancelled
 			result.Duration = time.Since(start)
 			snapshotMessages()
-			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+			emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 			return result, nil
 		}
 
@@ -216,7 +223,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			result.Error = compErr
 			result.Duration = time.Since(start)
 			snapshotMessages()
-			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+			emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 			return result, compErr
 		}
 
@@ -363,7 +370,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 					result.Status = StatusCancelled
 					result.Duration = time.Since(start)
 					snapshotMessages()
-					emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+					emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 					return result, nil
 				}
 
@@ -375,7 +382,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 						result.Status = StatusCancelled
 						result.Duration = time.Since(start)
 						snapshotMessages()
-						emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+						emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 						return result, nil
 					case <-time.After(delay):
 					}
@@ -386,7 +393,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				result.Error = fmt.Errorf("agent: provider error: %w", err)
 				result.Duration = time.Since(start)
 				snapshotMessages()
-				emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+				emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 				return result, result.Error
 			}
 
@@ -431,7 +438,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			result.Output = resp.Content
 			result.Duration = time.Since(start)
 			snapshotMessages()
-			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+			emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 			return result, nil
 		}
 
@@ -518,7 +525,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			result.Error = compErr
 			result.Duration = time.Since(start)
 			snapshotMessages()
-			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+			emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 			return result, compErr
 		}
 	}
@@ -545,23 +552,32 @@ func emitCallback(cb EventCallback, e Event) {
 	}
 }
 
+func emitFinalSessionEnd(cb EventCallback, sessionID string, seq *int, provider Provider, result *Result, metadata map[string]string) {
+	applyRoutingReport(provider, result)
+	emitSessionEnd(cb, sessionID, seq, *result, metadata)
+}
+
 func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result, metadata map[string]string) {
 	errStr := ""
 	if result.Error != nil {
 		errStr = result.Error.Error()
 	}
 	data := map[string]any{
-		"status":             result.Status,
-		"output":             result.Output,
-		"tokens":             result.Tokens,
-		"duration_ms":        result.Duration.Milliseconds(),
-		"model":              result.Model,
-		"selected_provider":  result.SelectedProvider,
-		"selected_route":     result.SelectedRoute,
-		"resolved_model_ref": result.ResolvedModelRef,
-		"resolved_model":     result.ResolvedModel,
-		"metadata":           metadata,
-		"error":              errStr,
+		"status":              result.Status,
+		"output":              result.Output,
+		"tokens":              result.Tokens,
+		"duration_ms":         result.Duration.Milliseconds(),
+		"model":               result.Model,
+		"selected_provider":   result.SelectedProvider,
+		"selected_route":      result.SelectedRoute,
+		"requested_model":     result.RequestedModel,
+		"requested_model_ref": result.RequestedModelRef,
+		"resolved_model_ref":  result.ResolvedModelRef,
+		"resolved_model":      result.ResolvedModel,
+		"attempted_providers": result.AttemptedProviders,
+		"failover_count":      result.FailoverCount,
+		"metadata":            metadata,
+		"error":               errStr,
 	}
 	if result.CostUSD >= 0 {
 		data["cost_usd"] = result.CostUSD
@@ -574,6 +590,41 @@ func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result,
 		Data:      mustMarshal(data),
 	})
 	*seq++
+}
+
+func applyRoutingReport(provider Provider, result *Result) {
+	reporter, ok := provider.(RoutingReporter)
+	if !ok {
+		return
+	}
+	report := reporter.RoutingReport()
+	if report.SelectedProvider != "" {
+		result.SelectedProvider = report.SelectedProvider
+	}
+	if report.SelectedRoute != "" {
+		result.SelectedRoute = report.SelectedRoute
+	}
+	if len(report.AttemptedProviders) > 0 {
+		result.AttemptedProviders = append([]string(nil), report.AttemptedProviders...)
+	}
+	result.FailoverCount = report.FailoverCount
+}
+
+func applyRoutingSpanAttributes(span trace.Span, result Result) {
+	if span == nil {
+		return
+	}
+	attrs := make([]attribute.KeyValue, 0, 7)
+	attrs = appendStringAttr(attrs, telemetry.KeyProviderName, result.SelectedProvider)
+	attrs = appendStringAttr(attrs, telemetry.KeyProviderRoute, result.SelectedRoute)
+	attrs = appendStringAttr(attrs, telemetry.KeyRequestModel, result.RequestedModel)
+	attrs = appendStringAttr(attrs, telemetry.KeyRequestedModelRef, result.RequestedModelRef)
+	attrs = appendStringAttr(attrs, telemetry.KeyProviderModelResolved, result.ResolvedModel)
+	if len(result.AttemptedProviders) > 0 {
+		attrs = append(attrs, attribute.String(telemetry.KeyAttemptedProviders, strings.Join(result.AttemptedProviders, ",")))
+	}
+	attrs = append(attrs, attribute.Int(telemetry.KeyFailoverCount, result.FailoverCount))
+	span.SetAttributes(attrs...)
 }
 
 func mustMarshal(v any) json.RawMessage {

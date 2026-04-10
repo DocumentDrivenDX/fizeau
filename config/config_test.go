@@ -770,6 +770,15 @@ default: vidar
 	assert.Equal(t, "code-fast", bc.ModelRef)
 	assert.Equal(t, []string{"vidar", "bragi"}, bc.Providers)
 	assert.Equal(t, "round-robin", bc.Strategy)
+
+	translated, ok := cfg.GetDeprecatedBackendRoute("local-pool")
+	require.True(t, ok)
+	assert.Equal(t, "priority-round-robin", translated.Strategy)
+	require.Len(t, translated.Candidates, 2)
+	assert.Equal(t, "vidar", translated.Candidates[0].Provider)
+	assert.Equal(t, "bragi", translated.Candidates[1].Provider)
+	assert.Contains(t, cfg.Warnings(), `backend "local-pool" is deprecated; use model_routes plus --model/--model-ref instead`)
+	assert.Contains(t, cfg.Warnings(), "default_backend is deprecated; use routing.default_model or routing.default_model_ref")
 }
 
 func TestBackendNames(t *testing.T) {
@@ -786,6 +795,145 @@ func TestBackendNames(t *testing.T) {
 func TestBackendNames_Empty(t *testing.T) {
 	cfg := Config{}
 	assert.Nil(t, cfg.BackendNames())
+}
+
+func TestLoad_ModelRoutesAndRoutingDefaults(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  bragi:
+    type: openai-compat
+    base_url: http://bragi:1234/v1
+  grendel:
+    type: openai-compat
+    base_url: http://grendel:1234/v1
+routing:
+  default_model: qwen3.5-27b
+  default_model_ref: code-fast
+  health_cooldown: 45s
+model_routes:
+  qwen3.5-27b:
+    strategy: priority-round-robin
+    candidates:
+      - provider: bragi
+        model: qwen3.5-27b
+        priority: 100
+      - provider: grendel
+        model: qwen3.5-27b
+        priority: 50
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	assert.Equal(t, "qwen3.5-27b", cfg.Routing.DefaultModel)
+	assert.Equal(t, "code-fast", cfg.Routing.DefaultModelRef)
+	assert.Equal(t, "45s", cfg.Routing.HealthCooldown)
+
+	route, ok := cfg.GetModelRoute("qwen3.5-27b")
+	require.True(t, ok)
+	assert.Equal(t, "priority-round-robin", route.Strategy)
+	require.Len(t, route.Candidates, 2)
+	assert.Equal(t, "bragi", route.Candidates[0].Provider)
+	assert.Equal(t, "qwen3.5-27b", route.Candidates[0].Model)
+	assert.Equal(t, 100, route.Candidates[0].Priority)
+	assert.Equal(t, []string{"qwen3.5-27b"}, cfg.ModelRouteNames())
+}
+
+func TestLoad_ModelRoutesRejectUnknownProvider(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  bragi:
+    type: openai-compat
+    base_url: http://bragi:1234/v1
+model_routes:
+  qwen3.5-27b:
+    strategy: ordered-failover
+    candidates:
+      - provider: missing
+`), 0o644))
+
+	_, err := Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown provider "missing"`)
+}
+
+func TestLoad_ModelRoutesRejectEmptyCandidates(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  bragi:
+    type: openai-compat
+    base_url: http://bragi:1234/v1
+model_routes:
+  qwen3.5-27b:
+    strategy: ordered-failover
+    candidates: []
+`), 0o644))
+
+	_, err := Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `model route "qwen3.5-27b" has no candidates`)
+}
+
+func TestLoad_RoutingDefaultModelMustExist(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  bragi:
+    type: openai-compat
+    base_url: http://bragi:1234/v1
+routing:
+  default_model: missing-route
+model_routes:
+  qwen3.5-27b:
+    strategy: ordered-failover
+    candidates:
+      - provider: bragi
+`), 0o644))
+
+	_, err := Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown routing.default_model "missing-route"`)
+}
+
+func TestLoad_BackendPoolsRejectUnknownProviderDuringTranslation(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  bragi:
+    type: openai-compat
+    base_url: http://bragi:1234/v1
+backends:
+  local-pool:
+    providers: [missing]
+    strategy: first-available
+`), 0o644))
+
+	_, err := Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `backend pool "local-pool" references unknown provider "missing"`)
 }
 
 func TestImportMetadata(t *testing.T) {

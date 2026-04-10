@@ -193,6 +193,20 @@ type AttemptMetadata struct {
 	Timing         *TimingBreakdown `json:"timing,omitempty"`
 }
 
+// RoutingReport summarizes dynamic routing behavior from wrapper providers.
+type RoutingReport struct {
+	SelectedProvider   string   `json:"selected_provider,omitempty"`
+	SelectedRoute      string   `json:"selected_route,omitempty"`
+	AttemptedProviders []string `json:"attempted_providers,omitempty"`
+	FailoverCount      int      `json:"failover_count,omitempty"`
+}
+
+// RoutingReporter is implemented by providers that can expose route-attribution
+// details such as failover attempts.
+type RoutingReporter interface {
+	RoutingReport() RoutingReport
+}
+
 // Request configures a single agent run.
 type Request struct {
 	// Prompt is the user's task description.
@@ -229,6 +243,12 @@ type Request struct {
 	// SelectedRoute is the routing key used to choose the provider (for example
 	// a backend pool name or direct provider name).
 	SelectedRoute string
+
+	// RequestedModel is the route key or canonical target that drove selection.
+	RequestedModel string
+
+	// RequestedModelRef is the caller-supplied model catalog reference.
+	RequestedModelRef string
 
 	// ResolvedModelRef is the resolved catalog target reference when model
 	// selection came from a model_ref.
@@ -285,11 +305,23 @@ type Result struct {
 	// SelectedRoute is the routing key used to choose the provider.
 	SelectedRoute string `json:"selected_route,omitempty"`
 
+	// RequestedModel is the route key or canonical target that drove selection.
+	RequestedModel string `json:"requested_model,omitempty"`
+
+	// RequestedModelRef is the caller-supplied model catalog reference.
+	RequestedModelRef string `json:"requested_model_ref,omitempty"`
+
 	// ResolvedModelRef is the resolved catalog target reference.
 	ResolvedModelRef string `json:"resolved_model_ref,omitempty"`
 
 	// ResolvedModel is the resolved concrete model selected before the run.
 	ResolvedModel string `json:"resolved_model,omitempty"`
+
+	// AttemptedProviders records providers tried in order by any routing wrapper.
+	AttemptedProviders []string `json:"attempted_providers,omitempty"`
+
+	// FailoverCount records how many times routing advanced to another candidate.
+	FailoverCount int `json:"failover_count,omitempty"`
 
 	// Error is non-nil when Status is StatusError.
 	Error error `json:"-"`

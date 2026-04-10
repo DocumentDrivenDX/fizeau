@@ -127,6 +127,192 @@ func latestSessionLogPath(t *testing.T, workDir string) string {
 	return latest
 }
 
+func TestCLI_Run_ModelRouteByModelName(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	bragi := newCountedOpenAIServer(t, http.StatusOK, "bragi-runtime-model", "bragi ok")
+	grendel := newCountedOpenAIServer(t, http.StatusOK, "grendel-runtime-model", "grendel ok")
+
+	writeTempConfig(t, workDir, `
+providers:
+  bragi:
+    type: openai-compat
+    base_url: `+bragi.baseURL()+`
+    api_key: test
+  grendel:
+    type: openai-compat
+    base_url: `+grendel.baseURL()+`
+    api_key: test
+routing:
+  default_model: qwen3.5-27b
+model_routes:
+  qwen3.5-27b:
+    strategy: priority-round-robin
+    candidates:
+      - provider: bragi
+        model: qwen3.5-27b
+        priority: 100
+      - provider: grendel
+        model: qwen3.5-27b
+        priority: 100
+default: bragi
+`)
+
+	type routingResult struct {
+		Status            string `json:"status"`
+		SessionID         string `json:"session_id"`
+		Model             string `json:"model"`
+		SelectedProvider  string `json:"selected_provider"`
+		SelectedRoute     string `json:"selected_route"`
+		RequestedModel    string `json:"requested_model"`
+		RequestedModelRef string `json:"requested_model_ref"`
+		ResolvedModelRef  string `json:"resolved_model_ref"`
+		ResolvedModel     string `json:"resolved_model"`
+	}
+
+	first := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "first request")
+	require.Equal(t, 0, first.exitCode, "stderr=%s", first.stderr)
+	var firstResult routingResult
+	require.NoError(t, json.Unmarshal([]byte(first.stdout), &firstResult), "stdout=%s", first.stdout)
+	assert.Equal(t, "success", firstResult.Status)
+	assert.Equal(t, "qwen3.5-27b", firstResult.SelectedRoute)
+	assert.Equal(t, "bragi", firstResult.SelectedProvider)
+	assert.Equal(t, "qwen3.5-27b", firstResult.RequestedModel)
+	assert.Equal(t, "", firstResult.RequestedModelRef)
+	assert.Equal(t, "qwen3.5-27b", firstResult.ResolvedModel)
+	assert.Equal(t, "qwen3.5-27b", bragi.requestedModel())
+
+	firstSessionPath := latestSessionLogPath(t, workDir)
+	firstEvents, err := session.ReadEvents(firstSessionPath)
+	require.NoError(t, err)
+	firstStart := eventDataByType(t, firstEvents, agent.EventSessionStart)
+	assert.Equal(t, "qwen3.5-27b", firstStart["requested_model"])
+	assert.Equal(t, "qwen3.5-27b", firstStart["selected_route"])
+	firstEnd := eventDataByType(t, firstEvents, agent.EventSessionEnd)
+	assert.Equal(t, "qwen3.5-27b", firstEnd["requested_model"])
+	assert.Equal(t, "bragi", firstEnd["selected_provider"])
+
+	second := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "run", "second request")
+	require.Equal(t, 0, second.exitCode, "stderr=%s", second.stderr)
+	var secondResult routingResult
+	require.NoError(t, json.Unmarshal([]byte(second.stdout), &secondResult), "stdout=%s", second.stdout)
+	assert.Equal(t, "qwen3.5-27b", secondResult.SelectedRoute)
+	assert.Equal(t, "grendel", secondResult.SelectedProvider)
+	assert.Equal(t, "qwen3.5-27b", secondResult.RequestedModel)
+	assert.Equal(t, "qwen3.5-27b", secondResult.ResolvedModel)
+	assert.Equal(t, "qwen3.5-27b", grendel.requestedModel())
+
+	secondSessionPath := latestSessionLogPath(t, workDir)
+	secondEvents, err := session.ReadEvents(secondSessionPath)
+	require.NoError(t, err)
+	secondEnd := eventDataByType(t, secondEvents, agent.EventSessionEnd)
+	assert.Equal(t, "qwen3.5-27b", secondEnd["requested_model"])
+	assert.Equal(t, "grendel", secondEnd["selected_provider"])
+
+	assert.Equal(t, 1, bragi.chatCallCount())
+	assert.Equal(t, 1, grendel.chatCallCount())
+}
+
+func TestCLI_ModelRouteFailoverOnAvailabilityError(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	dead := newCountedOpenAIServer(t, http.StatusServiceUnavailable, "", "")
+	healthy := newCountedOpenAIServer(t, http.StatusOK, "healthy-runtime-model", "healthy ok")
+
+	writeTempConfig(t, workDir, `
+providers:
+  bragi:
+    type: openai-compat
+    base_url: `+dead.baseURL()+`
+    api_key: test
+  openrouter:
+    type: openai-compat
+    base_url: `+healthy.baseURL()+`
+    api_key: test
+model_routes:
+  qwen3.5-27b:
+    strategy: ordered-failover
+    candidates:
+      - provider: bragi
+        model: qwen3.5-27b
+        priority: 100
+      - provider: openrouter
+        model: qwen/qwen3.5-27b
+        priority: 10
+`)
+
+	type routingResult struct {
+		Status             string   `json:"status"`
+		Model              string   `json:"model"`
+		SelectedProvider   string   `json:"selected_provider"`
+		SelectedRoute      string   `json:"selected_route"`
+		RequestedModel     string   `json:"requested_model"`
+		AttemptedProviders []string `json:"attempted_providers"`
+		FailoverCount      int      `json:"failover_count"`
+	}
+
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "route failover")
+	require.Equal(t, 0, res.exitCode, "stderr=%s", res.stderr)
+
+	var parsed routingResult
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &parsed), "stdout=%s", res.stdout)
+	assert.Equal(t, "success", parsed.Status)
+	assert.Equal(t, "qwen3.5-27b", parsed.SelectedRoute)
+	assert.Equal(t, "openrouter", parsed.SelectedProvider)
+	assert.Equal(t, "qwen3.5-27b", parsed.RequestedModel)
+	assert.Equal(t, []string{"bragi", "openrouter"}, parsed.AttemptedProviders)
+	assert.Equal(t, 1, parsed.FailoverCount)
+
+	sessionPath := latestSessionLogPath(t, workDir)
+	events, err := session.ReadEvents(sessionPath)
+	require.NoError(t, err)
+	end := eventDataByType(t, events, agent.EventSessionEnd)
+	assert.Equal(t, "openrouter", end["selected_provider"])
+	assert.Equal(t, float64(1), end["failover_count"])
+
+	assert.Equal(t, 1, dead.chatCallCount())
+	assert.Equal(t, 1, healthy.chatCallCount())
+}
+
+func TestCLI_ModelRouteDoesNotFailoverOnDeterministic400(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	badRequest := newCountedOpenAIServer(t, http.StatusBadRequest, "", "")
+	healthy := newCountedOpenAIServer(t, http.StatusOK, "healthy-runtime-model", "healthy ok")
+
+	writeTempConfig(t, workDir, `
+providers:
+  bragi:
+    type: openai-compat
+    base_url: `+badRequest.baseURL()+`
+    api_key: test
+  openrouter:
+    type: openai-compat
+    base_url: `+healthy.baseURL()+`
+    api_key: test
+model_routes:
+  qwen3.5-27b:
+    strategy: ordered-failover
+    candidates:
+      - provider: bragi
+        model: qwen3.5-27b
+      - provider: openrouter
+        model: qwen/qwen3.5-27b
+`)
+
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "no failover")
+	require.Equal(t, 1, res.exitCode, "stdout=%s stderr=%s", res.stdout, res.stderr)
+	assert.Contains(t, res.stderr, "agent: provider error")
+	assert.Equal(t, 3, badRequest.chatCallCount(), "runtime should retry the selected provider only")
+	assert.Equal(t, 0, healthy.chatCallCount())
+}
+
 func TestCLI_BackendRoutingAttributionFlowsIntoResultAndSession(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
