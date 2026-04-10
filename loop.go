@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/DocumentDrivenDX/agent/telemetry"
 )
 
 // Run executes the agent loop: send prompt, process tool calls, repeat until
@@ -20,6 +22,10 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 	if req.Provider == nil {
 		return result, fmt.Errorf("agent: provider is required")
+	}
+	runtimeTelemetry := req.Telemetry
+	if runtimeTelemetry == nil {
+		runtimeTelemetry = telemetry.NewNoop()
 	}
 
 	// Build tool definitions for the provider
@@ -216,6 +222,18 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				resp.Attempt = &AttemptMetadata{}
 			}
 			resp.Attempt.AttemptIndex = attempt
+			if (resp.Attempt.Cost == nil || resp.Attempt.Cost.Source == CostSourceUnknown) &&
+				resp.Attempt.ProviderSystem != "" &&
+				resp.Attempt.ResolvedModel != "" {
+				if configuredCost, ok := runtimeTelemetry.ResolveCost(resp.Attempt.ProviderSystem, resp.Attempt.ResolvedModel); ok {
+					resp.Attempt.Cost = &CostAttribution{
+						Source:     CostSourceConfigured,
+						Currency:   configuredCost.Currency,
+						Amount:     configuredCost.Amount,
+						PricingRef: configuredCost.PricingRef,
+					}
+				}
+			}
 
 			// Accumulate tokens
 			result.Tokens.Add(resp.Usage)

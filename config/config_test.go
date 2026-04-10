@@ -24,6 +24,14 @@ func TestLoad_NewFormat(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 model_catalog:
   manifest: /tmp/models.yaml
+telemetry:
+  enabled: true
+  pricing:
+    openai:
+      gpt-4o:
+        amount: 0.0125
+        currency: USD
+        pricing_ref: openai/gpt-4o
 providers:
   local:
     type: openai-compat
@@ -44,6 +52,15 @@ max_iterations: 30
 	assert.Equal(t, "local", cfg.Default)
 	assert.Equal(t, 30, cfg.MaxIterations)
 	assert.Equal(t, "/tmp/models.yaml", cfg.ModelCatalog.Manifest)
+	assert.True(t, cfg.Telemetry.Enabled)
+
+	cost, ok := cfg.BuildTelemetry().ResolveCost("openai", "gpt-4o")
+	require.True(t, ok)
+	require.NotNil(t, cost.Amount)
+	assert.Equal(t, "configured", cost.Source)
+	assert.Equal(t, "USD", cost.Currency)
+	assert.Equal(t, "openai/gpt-4o", cost.PricingRef)
+	assert.Equal(t, 0.0125, *cost.Amount)
 
 	local, ok := cfg.GetProvider("local")
 	require.True(t, ok)

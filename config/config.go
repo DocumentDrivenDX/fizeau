@@ -14,6 +14,7 @@ import (
 	"github.com/DocumentDrivenDX/agent/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/provider/anthropic"
 	oaiProvider "github.com/DocumentDrivenDX/agent/provider/openai"
+	"github.com/DocumentDrivenDX/agent/telemetry"
 	"gopkg.in/yaml.v3"
 )
 
@@ -83,6 +84,10 @@ type Config struct {
 
 	// ModelCatalog configures the optional external manifest path.
 	ModelCatalog ModelCatalogConfig `yaml:"model_catalog,omitempty"`
+
+	// Telemetry configures OTel export enablement and runtime-specific
+	// pricing keyed by provider system and resolved model.
+	Telemetry telemetry.Config `yaml:"telemetry,omitempty"`
 
 	// Default is the name of the default provider. If empty, uses the first.
 	Default string `yaml:"default"`
@@ -282,6 +287,17 @@ func (c *Config) BuildProvider(name string) (agent.Provider, error) {
 		return nil, fmt.Errorf("config: unknown provider %q", name)
 	}
 	return buildProviderFromConfig(pc)
+}
+
+// BuildTelemetry constructs the telemetry runtime from config.
+func (c *Config) BuildTelemetry() telemetry.Telemetry {
+	return telemetry.New(telemetry.Config{
+		Enabled:        c.Telemetry.Enabled,
+		Pricing:        c.Telemetry.Pricing,
+		TracerProvider: c.Telemetry.TracerProvider,
+		MeterProvider:  c.Telemetry.MeterProvider,
+		Shutdown:       c.Telemetry.Shutdown,
+	})
 }
 
 // ResolveProviderConfig applies per-run overrides to a named provider config.

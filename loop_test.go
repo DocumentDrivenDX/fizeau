@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/DocumentDrivenDX/agent/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -502,6 +503,114 @@ func TestRun_UnknownCostDoesNotUseDefaultPricing(t *testing.T) {
 	require.NotNil(t, responsePayload)
 	_, ok := responsePayload["cost_usd"]
 	assert.False(t, ok, "unknown-cost llm.response must omit cost_usd")
+}
+
+func TestRun_ConfiguredRuntimeCostAppliesWhenExactMatch(t *testing.T) {
+	configuredCost := 0.0125
+	provider := &mockProvider{
+		responses: []Response{
+			{
+				Content: "done",
+				Usage:   TokenUsage{Input: 100, Output: 50, Total: 150},
+				Model:   "gpt-4o",
+				Attempt: &AttemptMetadata{
+					ProviderName:   "openai",
+					ProviderSystem: "openai",
+					RequestedModel: "gpt-4o",
+					ResponseModel:  "gpt-4o",
+					ResolvedModel:  "gpt-4o",
+					Cost: &CostAttribution{
+						Source: CostSourceUnknown,
+					},
+				},
+			},
+		},
+	}
+
+	tel := telemetry.New(telemetry.Config{
+		Pricing: telemetry.RuntimePricing{
+			"openai": {
+				"gpt-4o": {
+					Amount:     &configuredCost,
+					Currency:   "USD",
+					PricingRef: "openai/gpt-4o",
+				},
+			},
+		},
+	})
+
+	var responseCost float64
+	result, err := Run(context.Background(), Request{
+		Prompt:    "test",
+		Provider:  provider,
+		Telemetry: tel,
+		Callback: func(e Event) {
+			if e.Type != EventLLMResponse {
+				return
+			}
+			payload := findResponsePayload(t, e.Data)
+			costVal, ok := payload["cost_usd"].(float64)
+			require.True(t, ok, "configured-cost llm.response must include cost_usd")
+			responseCost = costVal
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.InDelta(t, configuredCost, result.CostUSD, 1e-9)
+	assert.InDelta(t, configuredCost, responseCost, 1e-9)
+}
+
+func TestRun_ConfiguredRuntimeCostRequiresExactMatch(t *testing.T) {
+	configuredCost := 0.0125
+	provider := &mockProvider{
+		responses: []Response{
+			{
+				Content: "done",
+				Usage:   TokenUsage{Input: 100, Output: 50, Total: 150},
+				Model:   "gpt-4o",
+				Attempt: &AttemptMetadata{
+					ProviderName:   "openai",
+					ProviderSystem: "openai",
+					RequestedModel: "gpt-4o",
+					ResponseModel:  "gpt-4o",
+					ResolvedModel:  "gpt-4o",
+					Cost: &CostAttribution{
+						Source: CostSourceUnknown,
+					},
+				},
+			},
+		},
+	}
+
+	tel := telemetry.New(telemetry.Config{
+		Pricing: telemetry.RuntimePricing{
+			"openai": {
+				"gpt-4.1": {
+					Amount:     &configuredCost,
+					Currency:   "USD",
+					PricingRef: "openai/gpt-4.1",
+				},
+			},
+		},
+	})
+
+	var responsePayload map[string]any
+	result, err := Run(context.Background(), Request{
+		Prompt:    "test",
+		Provider:  provider,
+		Telemetry: tel,
+		Callback: func(e Event) {
+			if e.Type == EventLLMResponse {
+				responsePayload = findResponsePayload(t, e.Data)
+			}
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, -1.0, result.CostUSD)
+	require.NotNil(t, responsePayload)
+	_, ok := responsePayload["cost_usd"]
+	assert.False(t, ok, "non-matching runtime pricing must not invent cost")
 }
 
 func TestRun_SessionEndEventIncludesKnownCost(t *testing.T) {

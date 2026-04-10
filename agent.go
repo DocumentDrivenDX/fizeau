@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/DocumentDrivenDX/agent/telemetry"
 )
 
 // Status represents the outcome of an agent run.
@@ -217,6 +219,10 @@ type Request struct {
 
 	// NoStream disables streaming even if the provider supports it.
 	NoStream bool
+
+	// Telemetry carries the runtime telemetry implementation. If nil, the
+	// agent loop falls back to a no-op runtime.
+	Telemetry telemetry.Telemetry
 
 	// Compactor is called before each agent loop iteration (and after tool
 	// results). If non-nil, it may compact the message history to fit within

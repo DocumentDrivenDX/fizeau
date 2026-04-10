@@ -53,17 +53,38 @@ type Telemetry interface {
 	StartInvokeAgent(ctx context.Context, attrs InvokeAgentSpan) (context.Context, trace.Span)
 	StartChat(ctx context.Context, attrs ChatSpan) (context.Context, trace.Span)
 	StartExecuteTool(ctx context.Context, attrs ExecuteToolSpan) (context.Context, trace.Span)
+	// ResolveCost returns the configured runtime-specific cost for an exact
+	// provider system / resolved model match.
+	ResolveCost(providerSystem, resolvedModel string) (Cost, bool)
 	// Shutdown is best-effort. Exporter or flush failures are swallowed so
 	// telemetry cannot break the agent loop.
 	Shutdown(ctx context.Context)
 }
 
+// Cost captures runtime-specific configured pricing for an exact model match.
+type Cost struct {
+	Source     string   `json:"source,omitempty" yaml:"-"`
+	Amount     *float64 `json:"amount,omitempty"`
+	Currency   string   `json:"currency,omitempty"`
+	PricingRef string   `json:"pricing_ref,omitempty"`
+}
+
+// RuntimePricing maps provider system -> resolved model -> exact configured
+// cost for that runtime/model pair.
+type RuntimePricing map[string]map[string]Cost
+
 // Config controls how a telemetry runtime is constructed.
 type Config struct {
-	TracerProvider trace.TracerProvider
-	MeterProvider  metric.MeterProvider
+	// Enabled is a configuration switch that callers can use to decide whether
+	// to wire a real exporter-backed runtime or a no-op runtime.
+	Enabled bool `yaml:"enabled,omitempty"`
+	// Pricing contains exact runtime-specific cost entries keyed by provider
+	// system and resolved model.
+	Pricing        RuntimePricing       `yaml:"pricing,omitempty"`
+	TracerProvider trace.TracerProvider `yaml:"-"`
+	MeterProvider  metric.MeterProvider `yaml:"-"`
 	// Shutdown is called during best-effort shutdown if provided.
-	Shutdown func(context.Context) error
+	Shutdown func(context.Context) error `yaml:"-"`
 }
 
 // InvokeAgentSpan carries the attributes for the root run span.
@@ -120,6 +141,7 @@ type ctxKey struct{}
 type runtime struct {
 	tracer   trace.Tracer
 	meter    metric.Meter
+	pricing  RuntimePricing
 	shutdown func(context.Context) error
 }
 
@@ -140,6 +162,7 @@ func New(cfg Config) Telemetry {
 	return &runtime{
 		tracer:   tp.Tracer(InstrumentationName),
 		meter:    m,
+		pricing:  cfg.Pricing,
 		shutdown: cfg.Shutdown,
 	}
 }
@@ -185,6 +208,36 @@ func (r *runtime) StartExecuteTool(ctx context.Context, attrs ExecuteToolSpan) (
 		trace.WithAttributes(toolAttributes(merged)...),
 	)
 	return ctx, span
+}
+
+func (r *runtime) ResolveCost(providerSystem, resolvedModel string) (Cost, bool) {
+	if r == nil {
+		return Cost{}, false
+	}
+
+	systemPricing, ok := r.pricing[providerSystem]
+	if !ok {
+		return Cost{}, false
+	}
+
+	cost, ok := systemPricing[resolvedModel]
+	if !ok {
+		return Cost{}, false
+	}
+
+	if cost.Source == "" {
+		cost.Source = "configured"
+	}
+	if cost.Amount == nil {
+		return Cost{}, false
+	}
+	if cost.Currency == "" {
+		cost.Currency = "USD"
+	}
+	if cost.PricingRef == "" {
+		cost.PricingRef = fmt.Sprintf("%s/%s", providerSystem, resolvedModel)
+	}
+	return cost, true
 }
 
 func mergeInvokeAgent(ctx context.Context, attrs InvokeAgentSpan) InvokeAgentSpan {

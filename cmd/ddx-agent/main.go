@@ -177,6 +177,7 @@ func run() int {
 		WorkDir:       wd,
 		Metadata:      promptMetadata,
 		Callback:      logger.Callback(),
+		Telemetry:     cfg.BuildTelemetry(),
 	}
 
 	// Run with signal handling
