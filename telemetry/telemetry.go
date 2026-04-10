@@ -63,10 +63,11 @@ const (
 	KeyUsageOutput     = "gen_ai.usage.output_tokens"
 	KeyUsageCacheRead  = "gen_ai.usage.cache_read.input_tokens"
 	KeyUsageCacheWrite = "gen_ai.usage.cache_creation.input_tokens"
-	KeyTokenType       = "gen_ai.token.type"
-	KeyServerAddress   = "server.address"
-	KeyServerPort      = "server.port"
-	KeyErrorType       = "error.type"
+	// #nosec G101 -- OTel semantic convention key, not a credential.
+	KeyTokenType     = "gen_ai.token.type"
+	KeyServerAddress = "server.address"
+	KeyServerPort    = "server.port"
+	KeyErrorType     = "error.type"
 )
 
 // Usage captures token counts for metric recording without depending on the

@@ -38,6 +38,24 @@ func (p *externalMockProvider) Chat(ctx context.Context, messages []agent.Messag
 	return resp, nil
 }
 
+type oversizedOutputTool struct {
+	output string
+}
+
+func (t oversizedOutputTool) Name() string { return "oversized-output" }
+
+func (t oversizedOutputTool) Description() string {
+	return "returns a large payload"
+}
+
+func (t oversizedOutputTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{}}`)
+}
+
+func (t oversizedOutputTool) Execute(ctx context.Context, params json.RawMessage) (string, error) {
+	return t.output, nil
+}
+
 func TestRun_FailedOpenAICompatibleChatSpansIncludeServerIdentity(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
@@ -134,6 +152,44 @@ func TestRun_FailsClosedForNoFitPrefixCompaction(t *testing.T) {
 	assert.Equal(t, true, endPayload["no_compaction"])
 	assert.Equal(t, float64(3), endPayload["messages_before"])
 	assert.Equal(t, float64(3), endPayload["messages_after"])
+}
+
+func TestRun_FailsClosedWhenToolOutputMakesCompactionNoFit(t *testing.T) {
+	provider := &externalMockProvider{
+		responses: []agent.Response{
+			{
+				ToolCalls: []agent.ToolCall{{
+					ID:        "tool-1",
+					Name:      "oversized-output",
+					Arguments: json.RawMessage(`{}`),
+				}},
+				Usage: agent.TokenUsage{Total: 10},
+			},
+			{Content: "should not be reached", Usage: agent.TokenUsage{Total: 10}},
+		},
+	}
+
+	compactionCalls := 0
+	compactor := func(ctx context.Context, messages []agent.Message, provider agent.Provider, toolCalls []agent.ToolCallLog) ([]agent.Message, *agent.CompactionResult, error) {
+		compactionCalls++
+		if compactionCalls == 2 {
+			return messages, nil, agent.ErrCompactionNoFit
+		}
+		return messages, nil, nil
+	}
+
+	result, err := agent.Run(context.Background(), agent.Request{
+		Prompt:   "use the tool",
+		Provider: provider,
+		Tools: []agent.Tool{
+			oversizedOutputTool{output: strings.Repeat("O", 600)},
+		},
+		Compactor: compactor,
+	})
+	require.ErrorIs(t, err, agent.ErrCompactionNoFit)
+	assert.Equal(t, agent.StatusError, result.Status)
+	assert.Equal(t, 1, provider.callCount, "run should stop before a second provider call")
+	assert.Equal(t, 2, compactionCalls, "compaction should run once before the iteration and once after tool output")
 }
 
 func spansWithOperation(spans []sdktrace.ReadOnlySpan, operation string) []sdktrace.ReadOnlySpan {

@@ -48,7 +48,7 @@ DDX Agent is a Go module with the following package structure:
 agent/                          # root module: github.com/your-org/agent
 ├── agent.go                    # Run(), Request, Result, Provider, Tool interfaces
 ├── loop.go                     # agent loop implementation
-├── modelcatalog/               # shared model catalog loader/resolver (planned)
+├── modelcatalog/               # shared model catalog loader/resolver
 │   ├── catalog.go              # catalog API and resolution helpers
 │   └── manifest.go             # manifest loading/validation
 ├── provider/
@@ -72,12 +72,12 @@ agent/                          # root module: github.com/your-org/agent
 │   ├── logger.go               # JSONL session event logger
 │   ├── event.go                # event type definitions
 │   ├── replay.go               # session replay renderer
-│   ├── pricing.go              # model pricing table and cost estimation
+│   ├── pricing.go              # cost attribution policy and runtime pricing
 │   └── usage.go                # usage aggregation (P1)
 ├── catalog/
-│   └── models.yaml             # externally maintained model manifest snapshot (planned)
+│   └── models.yaml             # externally maintained model manifest snapshot
 └── cmd/
-    └── agent/
+    └── ddx-agent/
         └── main.go             # standalone CLI binary
 ```
 
@@ -166,8 +166,9 @@ See SD-001 for full decision log. Summary:
 |----------|--------|-----------|
 | Package layout | Layered with internal | Idiomatic Go, testable |
 | Session logging | JSONL | Simple, appendable, jq-compatible |
-| Observability | JSONL-first, OTel P1 | Avoid premature dependency |
+| Observability | JSONL replay + OTel analytics | Preserve replay while standardizing cross-tool analytics |
 | Provider interface | In consuming package | Go idiom |
+| Retry ownership | Runtime loop | Attempt-scoped telemetry and one-attempt provider calls |
 | Model policy | Shared catalog + external manifest | Separate volatile policy/data from runtime code and preserve one owner |
 | Tool interface | JSON Schema based | Model-agnostic |
 | CLI framework | `flag` stdlib | Minimal, no dependency |

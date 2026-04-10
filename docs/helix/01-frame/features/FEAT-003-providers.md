@@ -69,8 +69,10 @@ Ollama, OpenAI, Azure, Groq, Together, OpenRouter) and an Anthropic provider
 
 - **Performance**: Provider overhead (request serialization, response parsing)
   < 10ms beyond network round-trip
-- **Reliability**: Retry with exponential backoff for transient errors (429,
-  500, 503). Max 3 retries.
+- **Reliability**: The runtime owns retry with exponential backoff for
+  transient errors (429, 500, 503). Providers execute one request attempt per
+  call and surface enough metadata for attempt-scoped observability. Max 3
+  runtime retries.
 - **Observability**: Each provider call logs model, token counts, latency,
   and any error
 

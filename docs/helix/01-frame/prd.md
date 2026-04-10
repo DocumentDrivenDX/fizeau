@@ -129,9 +129,10 @@ task the same: spawn a process, send to cloud, parse the result.
     JSONL log (patterned on DDx `SessionEntry`). Full prompt and response bodies
     stored. Logs must support replay — reading a session log reproduces the
     complete conversation including tool calls and results.
-11. **Cost tracking** — per-model pricing table (patterned on DDx
-    `agent.Pricing`), cost estimated per session and accumulated across sessions.
-    `agent.Result` includes `CostUSD`.
+11. **Cost tracking** — preserve provider- or gateway-reported cost when
+    available. If no reported cost exists, use only runtime-specific configured
+    pricing for the exact provider system and resolved model; otherwise record
+    cost as unknown. `agent.Result` includes `CostUSD` (`-1` when unknown).
 12. **Standalone CLI** — `ddx-agent` binary wrapping the library. Proves the library
     works, serves as the DDx harness backend. Reads its own config file
     (patterned on `.ddx/config.yaml`). Accepts prompt via `-p` flag or stdin.
@@ -152,10 +153,11 @@ task the same: spawn a process, send to cloud, parse the result.
 7. **Session replay** — `ddx-agent replay <session-id>` reads a session log and
    prints the conversation in human-readable form (every turn, tool call,
    result, tokens, timing)
-8. **OpenTelemetry spans** — optionally emit OTel spans for each agent loop
-   iteration, LLM call, and tool execution. If OTel overhead or complexity is
-   unreasonable, fall back to the JSONL log as the primary observability
-   surface.
+8. **OpenTelemetry observability** — emit OTel GenAI-aligned spans and metrics
+   for agent, LLM, and tool activity while retaining JSONL session logs for
+   replay. Use standard OTel token/timing fields where available and
+   project-namespaced attributes for cost/runtime details not yet covered by
+   the standard.
 9. **Conversation compaction** — auto-summarize long conversation histories
    to fit within model context windows — **Implemented**
 10. **Shared model catalog** — a agent-owned catalog and updateable manifest
@@ -246,8 +248,8 @@ task the same: spawn a process, send to cloud, parse the result.
 | Token tracking | Count tokens | Any successful completion | Result.tokens has non-zero input and output counts |
 | Session logging | Run any task | Any successful completion | JSONL log entry with full prompt, response, tool calls, tokens, timing |
 | Session replay | Read logged session | `ddx-agent replay <id>` on a completed session | Human-readable dump of every turn, tool call, and result |
-| Cost tracking | Run cloud task | Claude API completion | Result.CostUSD > 0, matches pricing table estimate |
-| Cost tracking | Run local task | LM Studio completion | Result.CostUSD == 0 (local model, no cost) |
+| Cost tracking | Run cloud task with billed cost returned | Claude or gateway completion with reported billing | Result.CostUSD > 0 and matches reported cost |
+| Cost tracking | Run task without pricing data | Unconfigured runtime or provider with no reported billing | Result.CostUSD == -1 (unknown, not guessed) |
 | Standalone CLI | End-to-end | `ddx-agent -p "Read main.go"` with config file | Successful completion, session logged |
 
 ## Technical Context
@@ -312,15 +314,15 @@ task the same: spawn a process, send to cloud, parse the result.
 - **File paths**: Allow paths outside working directory. Expectation is the
   agent runs in a sandbox. Log all file operations regardless.
 - **Architecture**: Ghostty model — great library, proven by usable app.
+- **Observability**: JSONL remains the replay artifact, while OTel is the
+  canonical analytics surface. Report provider/gateway cost when available,
+  otherwise use runtime-specific configured pricing or record cost as unknown.
+  Do not guess cost from generic stale price tables.
 
 ## Open Questions
 
-- [ ] OTel vs custom logging: Is OTel span overhead acceptable for per-tool-call
-  granularity, or should we rely on JSONL as primary and OTel as optional? —
-  blocks logging architecture, resolve during design
-- [ ] Session log format: JSONL (one line per event, DDx-compatible) vs
-  per-session directories with separate files for prompt/response bodies (DDx
-  FEAT-006 attachment model)? — blocks FEAT-005, resolve during design
+None at this time. JSONL is the local replay artifact, and OTel is the
+canonical analytics surface per ADR-001.
 
 ## Success Criteria
 

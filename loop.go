@@ -494,8 +494,15 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		}
 
 		// Mid-iteration compaction check (after tool results)
-		// This handles cases where large bash output increases token count
-		runCompaction()
+		// This handles cases where large bash output increases token count.
+		if _, _, compErr := runCompaction(); compErr != nil {
+			result.Status = StatusError
+			result.Error = compErr
+			result.Duration = time.Since(start)
+			snapshotMessages()
+			emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
+			return result, compErr
+		}
 	}
 }
 

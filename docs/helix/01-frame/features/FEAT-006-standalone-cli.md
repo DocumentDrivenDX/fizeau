@@ -69,8 +69,8 @@ Patterned on pi's CLI interface (`pi -p "prompt"`) and DDx's config conventions
 11. `ddx-agent log` — list recent sessions (patterned on `ddx agent log`)
 12. `ddx-agent log <session-id>` — show full session detail
 13. `ddx-agent replay <session-id>` — human-readable conversation replay
-14. `ddx-agent usage` — per-model token and cost summary (patterned on
-    `ddx agent usage`)
+14. `ddx-agent usage` — per-model token, known-cost, unknown-cost, and
+    throughput summary (patterned on `ddx agent usage`)
 
 #### DDx Harness Integration
 
@@ -97,7 +97,8 @@ Patterned on pi's CLI interface (`pi -p "prompt"`) and DDx's config conventions
 - `ddx-agent -p "Read main.go and tell me the package name"` works end-to-end
   with LM Studio
 - `ddx-agent replay` accurately reproduces any completed session
-- `ddx-agent usage` produces correct cost summary
+- `ddx-agent usage` produces correct token, known-cost, unknown-cost, and
+  throughput summaries
 - DDx can invoke `ddx-agent` as a harness and parse the result
 
 ## Constraints and Assumptions

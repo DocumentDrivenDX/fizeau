@@ -35,7 +35,7 @@ interface, session logging, and cost tracking.
 | Iteration limit (PRD P0-8) | Configurable max iterations | `ddx-agent` | P0 |
 | Working directory (PRD P0-9) | File ops scoped to root | `agent/tool` | P0 |
 | Session logging (PRD P0-10) | JSONL event log | `agent/session` | P0 |
-| Cost tracking (PRD P0-11) | Per-model pricing table | `agent/session` | P0 |
+| Cost tracking (PRD P0-11) | Known-cost preservation + runtime-specific pricing policy | `agent/session` | P0 |
 
 ### NFR Impact on Architecture
 
@@ -145,16 +145,17 @@ EventCallback func(Event)     // optional real-time event sink
    executed one at a time in order. No parallel tool execution in P0.
 3. **Provider immutability**: A Provider instance is configured once and
    reused across calls. No per-call reconfiguration.
-4. **Cost unknown vs free**: CostUSD = -1 means "model not in pricing table"
-   (unknown). CostUSD = 0 means "free" (local model with $0 pricing entry).
+4. **Cost unknown vs free**: CostUSD = -1 means "unknown" because neither the
+   provider/gateway nor runtime-specific pricing configuration could supply a
+   reliable value. CostUSD = 0 means explicitly known free.
 
 ## System Decomposition
 
 ### Package: `ddx-agent` (root)
 
 - **Purpose**: Public API surface — `Run()`, `Request`, `Result`, interfaces
-- **Responsibilities**: Orchestrate the agent loop, accumulate tokens/cost,
-  manage iteration counting, handle context cancellation
+- **Responsibilities**: Orchestrate the agent loop, accumulate tokens and
+  known-cost state, manage iteration counting, handle context cancellation
 - **Requirements**: FEAT-001 (all), FEAT-004 P0 (single provider config)
 - **Interfaces**: Consumes `Provider` and `Tool` interfaces; produces `Result`
 
@@ -184,9 +185,10 @@ EventCallback func(Event)     // optional real-time event sink
 
 ### Package: `agent/session`
 
-- **Purpose**: Session logging, replay, and cost tracking
-- **Responsibilities**: Write JSONL event logs, pricing table lookup,
-  cost estimation, replay rendering
+- **Purpose**: Session logging, replay, telemetry mapping, and cost tracking
+- **Responsibilities**: Write JSONL event logs, map events to OTel telemetry,
+  preserve reported cost, apply runtime-specific pricing policy when
+  configured, replay rendering
 - **Requirements**: FEAT-005 (all)
 - **Interfaces**: Implements `agent.EventCallback` for the agent loop to emit
   events; provides `Logger` for session lifecycle
@@ -243,12 +245,14 @@ JSONL with one event per line. Full prompt/response bodies inline in the event
 `jq` friendly, DDx-compatible. Per-session directories with external
 attachments can be added later if body sizes become a problem.
 
-### D2: JSONL-first observability, OTel optional (resolves PRD open question)
+### D2: Split observability surfaces: JSONL for replay, OTel for analytics
 
-JSONL session log is the primary observability surface. OTel span emission is
-P1 — if OTel is added, it wraps the same events. Rationale: OTel adds
-dependency weight and configuration complexity. The JSONL log provides full
-replay capability without it. OTel is additive, not a replacement.
+JSONL session logs remain the local replay and forensic artifact. OTel
+GenAI-aligned spans and metrics are the canonical analytics surface for usage,
+performance, and cross-tool comparison. Rationale: replay and analytics have
+different needs. JSONL preserves exact turn order and bodies for reconstruction
+without an external collector; OTel gives a standard shape for token, timing,
+tool, and provider data.
 
 ### D3: Provider interface defined in `ddx-agent` package
 
@@ -271,6 +275,14 @@ calls this for every event (LLM request, LLM response, tool call, tool result).
 The session logger is one implementation of this callback. Callers can also
 use it for progress reporting. This avoids coupling the loop to the logger.
 
+### D6: Preserve known cost, never guess unknown cost
+
+When a provider or gateway reports billed cost, that value wins and is
+preserved in telemetry and session logs. If no reported cost exists, DDX Agent
+may use explicit runtime-specific pricing configuration keyed by provider
+system and resolved model. If neither exists, cost remains unknown. Generic
+stale pricing tables must not be used as a fallback.
+
 ## Session Log Format
 
 Each line is a JSON object with a common envelope:
@@ -278,28 +290,30 @@ Each line is a JSON object with a common envelope:
 ```json
 {"session_id":"s-abc123","seq":0,"type":"session.start","ts":"2026-04-06T10:00:00Z","data":{...}}
 {"session_id":"s-abc123","seq":1,"type":"llm.request","ts":"...","data":{"messages":[...],"tools":[...]}}
-{"session_id":"s-abc123","seq":2,"type":"llm.response","ts":"...","data":{"content":"...","tool_calls":[...],"usage":{"input":150,"output":42},"cost_usd":0.003,"latency_ms":1200}}
+{"session_id":"s-abc123","seq":2,"type":"llm.response","ts":"...","data":{"content":"...","tool_calls":[...],"usage":{"input":150,"output":42},"cost_usd":0.003,"cost_source":"provider_reported","latency_ms":1200}}
 {"session_id":"s-abc123","seq":3,"type":"tool.call","ts":"...","data":{"tool":"read","input":{"path":"main.go"},"output":"package main...","duration_ms":2}}
 {"session_id":"s-abc123","seq":4,"type":"session.end","ts":"...","data":{"status":"success","output":"...","tokens":{"input":500,"output":200},"cost_usd":0.01,"duration_ms":5000}}
 ```
 
-## Pricing Table
+## Telemetry Model
 
-Built-in pricing for common models. Extensible via config.
+OTel spans and metrics mirror the session event stream rather than replacing
+it. The normative telemetry schema lives in
+`docs/helix/02-design/contracts/CONTRACT-001-otel-telemetry-capture.md`.
 
-```go
-var DefaultPricing = map[string]ModelPricing{
-    "claude-sonnet-4-20250514":  {InputPerMTok: 3.00, OutputPerMTok: 15.00},
-    "claude-haiku-4-20250414":   {InputPerMTok: 0.80, OutputPerMTok: 4.00},
-    "gpt-4o":                    {InputPerMTok: 2.50, OutputPerMTok: 10.00},
-    "gpt-4o-mini":               {InputPerMTok: 0.15, OutputPerMTok: 0.60},
-    // Local models — free
-    "qwen3.5-7b":                {InputPerMTok: 0, OutputPerMTok: 0},
-    "llama-3.2-8b":              {InputPerMTok: 0, OutputPerMTok: 0},
-}
-```
+LLM spans use OTel GenAI semantic conventions for standard fields such as
+model identity, token usage, tool correlation, and conversation IDs. Tool
+execution uses tool spans with standard OTel error semantics. Gaps in the
+standard, especially billed cost and runtime-specific timing, are recorded
+under a `ddx.*` namespace as defined by `CONTRACT-001`.
 
-Unknown models: CostUSD = -1, logged as warning.
+## Cost Attribution Policy
+
+Cost attribution follows the precedence order in `CONTRACT-001`:
+provider-reported billed cost, then gateway-reported billed cost, then
+explicit runtime-specific pricing for the exact provider system and resolved
+model, then unknown cost. Session totals remain unknown if any contributing
+LLM turn has unknown cost.
 
 ## Error Handling
 
@@ -330,7 +344,7 @@ Unknown models: CostUSD = -1, logged as warning.
 ## Test Strategy
 
 - **Unit**: Agent loop (mock provider), tool implementations (temp directories),
-  session logger (write + read back), pricing calculator
+  session logger (write + read back), telemetry mapping, cost attribution
 - **Integration**: OpenAI provider against LM Studio (build tag `integration`),
   Anthropic provider against Claude API (build tag `e2e`)
 - **E2E**: Full `agent.Run()` with real LM Studio model completing a
@@ -349,7 +363,7 @@ Unknown models: CostUSD = -1, logged as warning.
 | FEAT-003 anthropic | `agent/provider/anthropic` | AnthropicProvider | E2E: Claude API |
 | FEAT-004 P0 | `ddx-agent` | Request.Provider field | Unit: provider selection |
 | FEAT-005 logging | `agent/session` | Logger, Event types | Unit: write + replay |
-| FEAT-005 cost | `agent/session` | PricingTable, CostEstimate | Unit: calculation tests |
+| FEAT-005 cost | `agent/session` | Cost attribution policy, telemetry cost fields | Unit: attribution tests |
 
 ### Gaps
 
@@ -361,7 +375,8 @@ Unknown models: CostUSD = -1, logged as warning.
 - **Constraints honored**: `gofmt`, `go vet`, `golangci-lint`, `context.Context`
   as first param, error wrapping with context, `log/slog` for structured logging,
   interfaces in consumer package
-- **ADRs referenced**: None yet (first design pass)
+- **ADRs referenced**: ADR-001
+- **Contracts referenced**: CONTRACT-001
 - **Departures**: CLI framework override — using `flag` stdlib instead of Cobra
   (applies to SD-002, not this design)
 
