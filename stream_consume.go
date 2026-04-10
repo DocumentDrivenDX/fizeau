@@ -17,9 +17,9 @@ func consumeStream(
 	opts Options,
 	callback EventCallback,
 	sessionID string,
+	streamStart time.Time,
 	seq *int,
 ) (Response, error) {
-	streamStart := time.Now()
 	ch, err := sp.ChatStream(ctx, messages, tools, opts)
 	if err != nil {
 		return Response{}, err

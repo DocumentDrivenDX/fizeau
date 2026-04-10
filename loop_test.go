@@ -858,6 +858,48 @@ func TestRun_StreamingChatSpanIncludesServerUsageAndTiming(t *testing.T) {
 	assert.GreaterOrEqual(t, attrFloat(t, chatSpan.Attributes(), telemetry.KeyTimingGenerationMS), 18.0)
 }
 
+func TestRun_StreamingChatSpanIncludesRequestCallbackLatency(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+	sp := &mockStreamingProvider{
+		deltas: []StreamDelta{
+			{
+				Content: "streamed",
+				Model:   "gpt-4o",
+				Attempt: &AttemptMetadata{
+					ProviderName:   "openai",
+					ProviderSystem: "openai",
+					RequestedModel: "gpt-4o",
+					ResponseModel:  "gpt-4o",
+					ResolvedModel:  "gpt-4o",
+				},
+			},
+			{Done: true},
+		},
+	}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:    "test",
+		Provider:  sp,
+		Telemetry: tel,
+		Callback: func(e Event) {
+			if e.Type == EventLLMRequest {
+				time.Sleep(30 * time.Millisecond)
+			}
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+
+	ended := recorder.Ended()
+	require.Len(t, ended, 2)
+	chatSpan := spansWithOperation(t, ended, "chat")[0]
+
+	assert.GreaterOrEqual(t, attrFloat(t, chatSpan.Attributes(), telemetry.KeyTimingFirstTokenMS), 30.0)
+}
+
 func TestRun_ToolSpanRecordsErrors(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))

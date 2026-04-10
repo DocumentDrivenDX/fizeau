@@ -172,12 +172,14 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		var resp Response
 		var err error
 		for attempt := 1; attempt <= maxProviderAttempts; attempt++ {
+			chatStart := time.Now()
 			chatCtx, chatSpan := runtimeTelemetry.StartChat(ctx, telemetry.ChatSpan{
 				HarnessName:    "agent",
 				SessionID:      sessionID,
 				ConversationID: sessionID,
 				TurnIndex:      iteration + 1,
 				AttemptIndex:   attempt,
+				StartTime:      chatStart,
 				ProviderName:   sessionProvider,
 				ProviderSystem: chatProviderSystem,
 				RequestedModel: sessionModel,
@@ -200,7 +202,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 			llmStart := time.Now()
 			if sp, ok := req.Provider.(StreamingProvider); ok && !req.NoStream {
-				resp, err = consumeStream(chatCtx, sp, messages, toolDefs, opts, req.Callback, sessionID, &seq)
+				resp, err = consumeStream(chatCtx, sp, messages, toolDefs, opts, req.Callback, sessionID, chatStart, &seq)
 			} else {
 				resp, err = req.Provider.Chat(chatCtx, messages, toolDefs, opts)
 			}

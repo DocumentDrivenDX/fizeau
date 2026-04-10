@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -119,6 +120,7 @@ type ChatSpan struct {
 	ParentSessionID string
 	TurnIndex       int
 	AttemptIndex    int
+	StartTime       time.Time
 	ProviderName    string
 	ProviderSystem  string
 	ProviderRoute   string
@@ -204,10 +206,14 @@ func (r *runtime) StartInvokeAgent(ctx context.Context, attrs InvokeAgentSpan) (
 func (r *runtime) StartChat(ctx context.Context, attrs ChatSpan) (context.Context, trace.Span) {
 	merged := mergeChat(ctx, attrs)
 	spanName := spanName(operationChat, merged.RequestedModel)
-	ctx, span := r.tracer.Start(ctx, spanName,
+	opts := []trace.SpanStartOption{
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(chatAttributes(merged)...),
-	)
+	}
+	if !merged.StartTime.IsZero() {
+		opts = append(opts, trace.WithTimestamp(merged.StartTime))
+	}
+	ctx, span := r.tracer.Start(ctx, spanName, opts...)
 	return ctx, span
 }
 

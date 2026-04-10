@@ -67,8 +67,9 @@ func TestConsumeStream_TextStreaming(t *testing.T) {
 	var events []Event
 	cb := func(e Event) { events = append(events, e) }
 	seq := 0
+	start := time.Now()
 
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, cb, "test", &seq)
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, cb, "test", start, &seq)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Hello, world!", resp.Content)
@@ -95,7 +96,8 @@ func TestConsumeStream_ToolCallAssembly(t *testing.T) {
 	}
 
 	seq := 0
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.NoError(t, err)
 
 	require.Len(t, resp.ToolCalls, 1)
@@ -117,7 +119,8 @@ func TestConsumeStream_MultipleToolCalls(t *testing.T) {
 	}
 
 	seq := 0
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.NoError(t, err)
 	require.Len(t, resp.ToolCalls, 2)
 	assert.Equal(t, "tc1", resp.ToolCalls[0].ID)
@@ -134,7 +137,8 @@ func TestConsumeStream_ContentAndToolCalls(t *testing.T) {
 	}
 
 	seq := 0
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.NoError(t, err)
 	assert.Equal(t, "I'll read that. ", resp.Content)
 	require.Len(t, resp.ToolCalls, 1)
@@ -160,7 +164,8 @@ func TestConsumeStream_CapturesTimingWhenStreamingOutputArrives(t *testing.T) {
 	}
 
 	seq := 0
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Attempt)
 	require.NotNil(t, resp.Attempt.Timing)
@@ -189,7 +194,8 @@ func TestConsumeStream_CapturesTimingFromChatStreamSetup(t *testing.T) {
 	}
 
 	seq := 0
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Attempt)
 	require.NotNil(t, resp.Attempt.Timing)
@@ -215,7 +221,8 @@ func TestConsumeStream_OmitsTimingWhenNoOutputBearingDeltaArrives(t *testing.T) 
 	}
 
 	seq := 0
-	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Attempt)
 	assert.Nil(t, resp.Attempt.Timing)
@@ -399,7 +406,8 @@ func TestConsumeStream_StreamError(t *testing.T) {
 	}
 
 	seq := 0
-	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	start := time.Now()
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.ErrorIs(t, err, netErr)
 }
 
@@ -414,6 +422,7 @@ func TestConsumeStream_StreamErrorAfterToolCall(t *testing.T) {
 	}
 
 	seq := 0
-	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", &seq)
+	start := time.Now()
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.ErrorIs(t, err, netErr)
 }
