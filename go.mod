@@ -1,6 +1,6 @@
 module github.com/DocumentDrivenDX/agent
 
-go 1.26.1
+go 1.26.2
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.30.0

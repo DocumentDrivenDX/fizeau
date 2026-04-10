@@ -1,5 +1,5 @@
 module github.com/DocumentDrivenDX/agent/website
 
-go 1.26.1
+go 1.26.2
 
 require github.com/imfing/hextra v0.12.1 // indirect
