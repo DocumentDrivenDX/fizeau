@@ -83,6 +83,17 @@ capabilities already shipped.
 - All file operations are logged with resolved paths
 - Bash timeout reliably kills runaway processes
 
+## Acceptance Criteria
+
+| ID | Criterion | Suggested Verification |
+|----|-----------|------------------------|
+| AC-FEAT-002-01 | `read`, `write`, `edit`, and `bash` implement the documented core semantics: relative-path resolution, parent-directory creation, atomic multi-edit behavior, ambiguous/missing edit failures, and timeout/cancellation handling without panics. | `go test ./tool ./...` |
+| AC-FEAT-002-02 | Binary reads are rejected, `grep` skips binary files, interactive `bash` commands receive no interactive stdin, and oversized command output is truncated with the documented marker. | `go test ./tool ./...` |
+| AC-FEAT-002-03 | File-path handling resolves chained symlinks to the final target, records the resolved path for tool-visible/log-visible reporting, and preserves the documented outside-workdir behavior instead of silently rebasing paths. | `go test ./tool ./...` |
+| AC-FEAT-002-04 | Navigation tools (`glob`, `grep`, `ls`) and the `patch` tool implement the documented search, truncation, line-ending, Unicode, and search/replace behaviors without requiring shell fallbacks for the common benchmark navigation cases. | `go test ./tool ./eval/navigation ./...` |
+| AC-FEAT-002-05 | The `task` tool supports create/update/get/list operations with structured validation errors and remains concurrency-safe for multi-step agent workflows. | `go test ./tool ./...` |
+| AC-FEAT-002-06 | At least one model-backed acceptance path exercises the shipped tool surface end-to-end so the benchmark-oriented semantics are validated against real provider/tool interaction rather than unit tests alone. | `go test -tags=integration ./...` |
+
 ## Constraints and Assumptions
 
 - No network-access tool (bash can do network operations, but there's no

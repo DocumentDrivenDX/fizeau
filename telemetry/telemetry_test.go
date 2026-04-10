@@ -1,8 +1,10 @@
 package telemetry
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -140,9 +142,10 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 }
 
 func TestShutdownBestEffort(t *testing.T) {
-	t.Parallel()
-
 	called := false
+	logs, restore := captureTelemetryLogs(t)
+	defer restore()
+
 	tel := New(Config{
 		Shutdown: func(context.Context) error {
 			called = true
@@ -152,6 +155,8 @@ func TestShutdownBestEffort(t *testing.T) {
 
 	tel.Shutdown(context.Background())
 	require.True(t, called)
+	assert.Contains(t, logs.String(), "telemetry: shutdown failed")
+	assert.Contains(t, logs.String(), "boom")
 }
 
 func TestRecordChatMetrics(t *testing.T) {
@@ -297,6 +302,18 @@ func pointByTokenType(t *testing.T, points []metricdata.HistogramDataPoint[int64
 
 	require.Failf(t, "metric point not found", "missing token type %q", tokenType)
 	return metricdata.HistogramDataPoint[int64]{}
+}
+
+func captureTelemetryLogs(t *testing.T) (*bytes.Buffer, func()) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	slog.SetDefault(logger)
+	return &buf, func() {
+		slog.SetDefault(prev)
+	}
 }
 
 func metricAttrString(t *testing.T, attrs attribute.Set, key string) string {

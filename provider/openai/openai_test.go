@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/provider/openai"
@@ -148,4 +149,126 @@ func TestChat_SingleAttemptPerCall(t *testing.T) {
 	}, nil, agent.Options{})
 	require.Error(t, err)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&requests))
+}
+
+func TestChatStream_PartialContentPreservedWhenStreamErrors(t *testing.T) {
+	chunks := []string{
+		`{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"partial-response"},"finish_reason":null}]}`,
+		`{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"oops"}`,
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		streamSSE(w, chunks)
+	}))
+	defer srv.Close()
+
+	p := openai.New(openai.Config{
+		BaseURL: srv.URL + "/v1",
+		APIKey:  "test",
+		Model:   "gpt-4o",
+	})
+
+	ch, err := p.ChatStream(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "stream"},
+	}, nil, agent.Options{})
+	require.NoError(t, err)
+
+	var content string
+	var streamErr error
+	for delta := range ch {
+		content += delta.Content
+		if delta.Err != nil {
+			streamErr = delta.Err
+		}
+	}
+
+	assert.Contains(t, content, "partial-response")
+	require.Error(t, streamErr)
+}
+
+func TestChat_UnreachableEndpointFailsQuicklyAndMentionsEndpoint(t *testing.T) {
+	baseURL := "http://127.0.0.1:1/v1"
+	p := openai.New(openai.Config{
+		BaseURL: baseURL,
+		APIKey:  "test",
+		Model:   "gpt-4o",
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := p.Chat(ctx, []agent.Message{
+		{Role: agent.RoleUser, Content: "hello"},
+	}, nil, agent.Options{})
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.Less(t, elapsed, 2*time.Second)
+	assert.Contains(t, err.Error(), "openai:")
+	assert.Contains(t, err.Error(), "127.0.0.1:1")
+}
+
+func TestChat_MissingAPIKeyFailsAtCallTime(t *testing.T) {
+	var requests int32
+	var authHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		authHeader = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key","type":"invalid_request_error"}}`))
+	}))
+	defer srv.Close()
+
+	p := openai.New(openai.Config{
+		BaseURL: srv.URL + "/v1",
+		Model:   "gpt-4o",
+	})
+
+	_, err := p.Chat(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "hello"},
+	}, nil, agent.Options{})
+
+	require.Error(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&requests), "constructor should not fail; request should fail at call time")
+	assert.Equal(t, "Bearer not-needed", authHeader)
+	assert.Contains(t, err.Error(), "401")
+}
+
+func TestNew_LocalOpenAICompatibleBaseURLsResolveProviderIdentity(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		system  string
+		host    string
+		port    int
+	}{
+		{
+			name:    "lmstudio default local endpoint",
+			baseURL: "http://localhost:1234/v1",
+			system:  "lmstudio",
+			host:    "localhost",
+			port:    1234,
+		},
+		{
+			name:    "ollama openai-compatible endpoint",
+			baseURL: "http://127.0.0.1:11434/v1",
+			system:  "ollama",
+			host:    "127.0.0.1",
+			port:    11434,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := openai.New(openai.Config{
+				BaseURL: tt.baseURL,
+				Model:   "gpt-4o",
+			})
+			system, host, port := p.ChatStartMetadata()
+			assert.Equal(t, tt.system, system)
+			assert.Equal(t, tt.host, host)
+			assert.Equal(t, tt.port, port)
+		})
+	}
 }

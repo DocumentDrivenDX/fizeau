@@ -101,6 +101,17 @@ Patterned on pi's CLI interface (`pi -p "prompt"`) and DDx's config conventions
   throughput summaries
 - DDx can invoke `ddx-agent` as a harness and parse the result
 
+## Acceptance Criteria
+
+| ID | Criterion | Suggested Verification |
+|----|-----------|------------------------|
+| AC-FEAT-006-01 | Prompt input resolves correctly from `-p`, `@file`, stdin, and DDx prompt-envelope inputs, with malformed envelopes failing as usage/config errors rather than falling through to execution. | `go test ./cmd/ddx-agent ./...` |
+| AC-FEAT-006-02 | Success, agent failure, and usage/config failure each produce deterministic stdout/stderr behavior, `--json` output, and exit codes `0`, `1`, and `2` respectively. | `go test ./cmd/ddx-agent ./...` |
+| AC-FEAT-006-03 | Config precedence is verified end-to-end as built-in defaults < global config < project config < environment variables < CLI flags, including the zero-config local-default path when no config file exists. | `go test ./cmd/ddx-agent ./config ./...` |
+| AC-FEAT-006-04 | `log`, `replay`, and `usage` operate against the effective session-log directory for the selected workdir, list/show precise session data, and return clear errors for malformed input or missing sessions. | `go test ./cmd/ddx-agent ./session ./...` |
+| AC-FEAT-006-05 | The DDx harness path returns structured JSON containing output, token usage, cost semantics, session identity, and continuity-ready fields so DDx can parse one invocation without scraping human output. | `go test ./cmd/ddx-agent ./...` |
+| AC-FEAT-006-06 | Cancellation via signal/context writes a final `session.end` record, returns a non-zero exit, and leaves replay/usage artifacts readable instead of truncated or corrupt. | `go test ./cmd/ddx-agent ./session ./...` |
+
 ## Constraints and Assumptions
 
 - The CLI is intentionally minimal — it's a showcase, not a feature-rich app

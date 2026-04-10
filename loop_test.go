@@ -1,9 +1,12 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -92,6 +95,40 @@ func (r *retryProvider) Chat(ctx context.Context, messages []Message, tools []To
 		return Response{}, outcome.err
 	}
 	return outcome.response, nil
+}
+
+type barrierProvider struct {
+	id        string
+	responses []Response
+	callCount int
+	ready     chan<- string
+	release   <-chan struct{}
+}
+
+func (p *barrierProvider) Chat(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (Response, error) {
+	if ctx.Err() != nil {
+		return Response{}, ctx.Err()
+	}
+
+	if p.callCount == 0 && p.ready != nil && p.release != nil {
+		select {
+		case p.ready <- p.id:
+		case <-ctx.Done():
+			return Response{}, ctx.Err()
+		}
+		select {
+		case <-p.release:
+		case <-ctx.Done():
+			return Response{}, ctx.Err()
+		}
+	}
+
+	if p.callCount >= len(p.responses) {
+		return Response{Content: "no more responses"}, nil
+	}
+	resp := p.responses[p.callCount]
+	p.callCount++
+	return resp, nil
 }
 
 type identityProvider struct {
@@ -239,6 +276,44 @@ func TestRun_RetriesProviderFailures(t *testing.T) {
 	assert.Equal(t, 3, provider.callCount)
 }
 
+func TestRun_RetryExhaustionStopsAtRetryCeiling(t *testing.T) {
+	provider := &retryProvider{
+		outcomes: []providerOutcome{
+			{err: errors.New("temporary provider failure 1")},
+			{err: errors.New("temporary provider failure 2")},
+			{err: errors.New("temporary provider failure 3")},
+			{response: Response{Content: "must never execute"}},
+		},
+	}
+
+	var attempts []int
+	var llmErrors []string
+	result, err := Run(context.Background(), Request{
+		Prompt:   "retry until exhausted",
+		Provider: provider,
+		Callback: func(e Event) {
+			if e.Type != EventLLMResponse {
+				return
+			}
+			payload := findResponsePayload(t, e.Data)
+			if attempt, ok := payload["attempt_index"].(float64); ok {
+				attempts = append(attempts, int(attempt))
+			}
+			if errVal, ok := payload["error"].(string); ok {
+				llmErrors = append(llmErrors, errVal)
+			}
+		},
+	})
+	require.Error(t, err)
+	assert.Equal(t, StatusError, result.Status)
+	require.Error(t, result.Error)
+	assert.Contains(t, result.Error.Error(), "provider error")
+	assert.Contains(t, result.Error.Error(), "temporary provider failure 3")
+	assert.Equal(t, 3, provider.callCount, "runtime retry ceiling should prevent a fourth provider call")
+	assert.Equal(t, []int{1, 2, 3}, attempts)
+	require.Len(t, llmErrors, 3)
+}
+
 func TestRun_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -379,6 +454,121 @@ func TestRun_ConversationHistoryCarriesAcrossRuns(t *testing.T) {
 	})
 }
 
+func TestRun_ConcurrentRunsKeepIndependentState(t *testing.T) {
+	ready := make(chan string, 2)
+	release := make(chan struct{})
+
+	providerA := &barrierProvider{
+		id: "A",
+		responses: []Response{
+			{
+				ToolCalls: []ToolCall{{ID: "a-tc1", Name: "read", Arguments: json.RawMessage(`{"path":"a.go"}`)}},
+				Usage:     TokenUsage{Input: 11, Output: 7, Total: 18},
+			},
+			{
+				Content: "run A done",
+				Usage:   TokenUsage{Input: 13, Output: 5, Total: 18},
+			},
+		},
+		ready:   ready,
+		release: release,
+	}
+	providerB := &barrierProvider{
+		id: "B",
+		responses: []Response{
+			{
+				ToolCalls: []ToolCall{{ID: "b-tc1", Name: "read", Arguments: json.RawMessage(`{"path":"b.go"}`)}},
+				Usage:     TokenUsage{Input: 19, Output: 3, Total: 22},
+			},
+			{
+				Content: "run B done",
+				Usage:   TokenUsage{Input: 23, Output: 2, Total: 25},
+			},
+		},
+		ready:   ready,
+		release: release,
+	}
+
+	readToolA := &mockTool{name: "read", result: "alpha"}
+	readToolB := &mockTool{name: "read", result: "bravo"}
+
+	var wg sync.WaitGroup
+	var resultA, resultB Result
+	var errA, errB error
+	var eventsA, eventsB []Event
+	var muA, muB sync.Mutex
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		resultA, errA = Run(context.Background(), Request{
+			Prompt:   "run-a",
+			Provider: providerA,
+			Tools:    []Tool{readToolA},
+			Callback: func(e Event) {
+				muA.Lock()
+				defer muA.Unlock()
+				eventsA = append(eventsA, e)
+			},
+		})
+	}()
+	go func() {
+		defer wg.Done()
+		resultB, errB = Run(context.Background(), Request{
+			Prompt:   "run-b",
+			Provider: providerB,
+			Tools:    []Tool{readToolB},
+			Callback: func(e Event) {
+				muB.Lock()
+				defer muB.Unlock()
+				eventsB = append(eventsB, e)
+			},
+		})
+	}()
+
+	seen := map[string]bool{}
+	for len(seen) < 2 {
+		select {
+		case id := <-ready:
+			seen[id] = true
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for both concurrent runs to enter provider chat")
+		}
+	}
+	close(release)
+	wg.Wait()
+
+	require.NoError(t, errA)
+	require.NoError(t, errB)
+	assert.Equal(t, StatusSuccess, resultA.Status)
+	assert.Equal(t, StatusSuccess, resultB.Status)
+	assert.Equal(t, 2, providerA.callCount)
+	assert.Equal(t, 2, providerB.callCount)
+	assert.NotEmpty(t, resultA.SessionID)
+	assert.NotEmpty(t, resultB.SessionID)
+	assert.NotEqual(t, resultA.SessionID, resultB.SessionID)
+
+	assert.Equal(t, TokenUsage{Input: 24, Output: 12, Total: 36}, resultA.Tokens)
+	assert.Equal(t, TokenUsage{Input: 42, Output: 5, Total: 47}, resultB.Tokens)
+	require.Len(t, resultA.ToolCalls, 1)
+	require.Len(t, resultB.ToolCalls, 1)
+	assert.Equal(t, "alpha", resultA.ToolCalls[0].Output)
+	assert.Equal(t, "bravo", resultB.ToolCalls[0].Output)
+	assert.Equal(t, "run A done", resultA.Output)
+	assert.Equal(t, "run B done", resultB.Output)
+
+	require.NotEmpty(t, eventsA)
+	require.NotEmpty(t, eventsB)
+	for i, e := range eventsA {
+		assert.Equal(t, resultA.SessionID, e.SessionID, "run A event %d leaked session id", i)
+		assert.Equal(t, i, e.Seq, "run A event seq should be contiguous")
+	}
+	for i, e := range eventsB {
+		assert.Equal(t, resultB.SessionID, e.SessionID, "run B event %d leaked session id", i)
+		assert.Equal(t, i, e.Seq, "run B event seq should be contiguous")
+	}
+}
+
 func TestRun_EventCallback(t *testing.T) {
 	provider := &mockProvider{
 		responses: []Response{
@@ -405,6 +595,36 @@ func TestRun_EventCallback(t *testing.T) {
 	assert.Equal(t, EventLLMRequest, events[1].Type)
 	assert.Equal(t, EventLLMResponse, events[2].Type)
 	assert.Equal(t, EventSessionEnd, events[3].Type)
+}
+
+func TestRun_TelemetryShutdownFailureIsBestEffort(t *testing.T) {
+	provider := &mockProvider{
+		responses: []Response{
+			{Content: "done", Usage: TokenUsage{Input: 4, Output: 2, Total: 6}},
+		},
+	}
+
+	logs, restore := captureLoopLogs(t)
+	defer restore()
+
+	shutdownCalled := false
+	tel := telemetry.New(telemetry.Config{
+		Shutdown: func(context.Context) error {
+			shutdownCalled = true
+			return errors.New("flush failed")
+		},
+	})
+
+	result, err := Run(context.Background(), Request{
+		Prompt:    "test",
+		Provider:  provider,
+		Telemetry: tel,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.True(t, shutdownCalled)
+	assert.Contains(t, logs.String(), "telemetry: shutdown failed")
+	assert.Contains(t, logs.String(), "flush failed")
 }
 
 func TestRun_SessionStartEventIncludesMetadata(t *testing.T) {
@@ -1429,6 +1649,18 @@ func hasAttr(attrs []attribute.KeyValue, key string) bool {
 		}
 	}
 	return false
+}
+
+func captureLoopLogs(t *testing.T) (*bytes.Buffer, func()) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	slog.SetDefault(logger)
+	return &buf, func() {
+		slog.SetDefault(prev)
+	}
 }
 
 func findSpan(t *testing.T, ended []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {

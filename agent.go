@@ -223,6 +223,20 @@ type Request struct {
 	// Metadata is correlation data (e.g., bead_id) stored on session events.
 	Metadata map[string]string
 
+	// SelectedProvider is the concrete provider chosen by the CLI/config layer.
+	SelectedProvider string
+
+	// SelectedRoute is the routing key used to choose the provider (for example
+	// a backend pool name or direct provider name).
+	SelectedRoute string
+
+	// ResolvedModelRef is the resolved catalog target reference when model
+	// selection came from a model_ref.
+	ResolvedModelRef string
+
+	// ResolvedModel is the resolved concrete model selected before the run.
+	ResolvedModel string
+
 	// NoStream disables streaming even if the provider supports it.
 	NoStream bool
 
@@ -264,6 +278,18 @@ type Result struct {
 
 	// Model is the model that was used.
 	Model string `json:"model"`
+
+	// SelectedProvider is the concrete provider chosen before the run.
+	SelectedProvider string `json:"selected_provider,omitempty"`
+
+	// SelectedRoute is the routing key used to choose the provider.
+	SelectedRoute string `json:"selected_route,omitempty"`
+
+	// ResolvedModelRef is the resolved catalog target reference.
+	ResolvedModelRef string `json:"resolved_model_ref,omitempty"`
+
+	// ResolvedModel is the resolved concrete model selected before the run.
+	ResolvedModel string `json:"resolved_model,omitempty"`
 
 	// Error is non-nil when Status is StatusError.
 	Error error `json:"-"`

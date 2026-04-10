@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,6 +48,28 @@ func TestResolvePath(t *testing.T) {
 		assert.Equal(t, "absolute", string(data))
 	})
 
+	t.Run("relative traversal outside workdir is preserved and reported", func(t *testing.T) {
+		dir := t.TempDir()
+		outsideDir := t.TempDir()
+		outsidePath := filepath.Join(outsideDir, "outside.txt")
+
+		rel, err := filepath.Rel(dir, outsidePath)
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(rel, ".."))
+
+		tool := &WriteTool{WorkDir: dir}
+		result, err := tool.Execute(context.Background(), mustJSON(t, WriteParams{
+			Path:    rel,
+			Content: "outside",
+		}))
+		require.NoError(t, err)
+		assert.Contains(t, result, outsidePath)
+
+		data, err := os.ReadFile(outsidePath)
+		require.NoError(t, err)
+		assert.Equal(t, "outside", string(data))
+	})
+
 	t.Run("chained symlinks resolve to the final target", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("symlinks are not reliably available in this environment")
@@ -73,7 +96,9 @@ func TestResolvePath(t *testing.T) {
 		require.NoError(t, err)
 
 		expected := filepath.Join(realDir, "nested", "target.txt")
+		aliasPath := filepath.Join(dir, "link1", "nested", "target.txt")
 		assert.Contains(t, result, expected)
+		assert.NotContains(t, result, aliasPath)
 
 		data, err := os.ReadFile(expected)
 		require.NoError(t, err)

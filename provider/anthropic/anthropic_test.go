@@ -3,12 +3,14 @@ package anthropic_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/provider/anthropic"
@@ -19,6 +21,25 @@ import (
 // newTestServer creates a mock Anthropic API server for testing.
 func newTestServer(t *testing.T, handler func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(handler))
+}
+
+type anthropicSSEEvent struct {
+	name string
+	data string
+}
+
+func streamAnthropicSSE(w http.ResponseWriter, events []anthropicSSEEvent) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	flusher, _ := w.(http.Flusher)
+	for _, ev := range events {
+		fmt.Fprintf(w, "event: %s\n", ev.name)
+		fmt.Fprintf(w, "data: %s\n\n", ev.data)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
 }
 
 func TestProvider_Chat_Basic(t *testing.T) {
@@ -366,4 +387,102 @@ func TestProvider_Chat_SingleAttemptPerCall(t *testing.T) {
 	}, nil, agent.Options{})
 	require.Error(t, err)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&requests))
+}
+
+func TestProvider_ChatStream_PartialContentPreservedWhenStreamErrors(t *testing.T) {
+	events := []anthropicSSEEvent{
+		{
+			name: "message_start",
+			data: `{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4-20250514"},"usage":{"input_tokens":5}}`,
+		},
+		{
+			name: "content_block_start",
+			data: `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		},
+		{
+			name: "content_block_delta",
+			data: `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial-response"}}`,
+		},
+		{
+			name: "content_block_delta",
+			data: `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"oops"}`,
+		},
+	}
+
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		streamAnthropicSSE(w, events)
+	})
+	defer srv.Close()
+
+	p := anthropic.New(anthropic.Config{
+		APIKey:  "test-key",
+		Model:   "claude-sonnet-4-20250514",
+		BaseURL: srv.URL,
+	})
+
+	ch, err := p.ChatStream(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "stream"},
+	}, nil, agent.Options{})
+	require.NoError(t, err)
+
+	var content string
+	var streamErr error
+	for delta := range ch {
+		content += delta.Content
+		if delta.Err != nil {
+			streamErr = delta.Err
+		}
+	}
+
+	assert.Contains(t, content, "partial-response")
+	require.Error(t, streamErr)
+}
+
+func TestProvider_Chat_UnreachableEndpointFailsQuicklyAndMentionsEndpoint(t *testing.T) {
+	baseURL := "http://127.0.0.1:1"
+	p := anthropic.New(anthropic.Config{
+		APIKey:  "test-key",
+		Model:   "claude-sonnet-4-20250514",
+		BaseURL: baseURL,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := p.Chat(ctx, []agent.Message{
+		{Role: agent.RoleUser, Content: "hello"},
+	}, nil, agent.Options{})
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.Less(t, elapsed, 2*time.Second)
+	assert.Contains(t, err.Error(), "anthropic:")
+	assert.Contains(t, err.Error(), "127.0.0.1:1")
+}
+
+func TestProvider_Chat_MissingAPIKeyFailsAtCallTime(t *testing.T) {
+	var requests int32
+	var apiKeyHeader string
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		apiKeyHeader = r.Header.Get("X-Api-Key")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`))
+	})
+	defer srv.Close()
+
+	p := anthropic.New(anthropic.Config{
+		Model:   "claude-sonnet-4-20250514",
+		BaseURL: srv.URL,
+	})
+
+	_, err := p.Chat(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "hello"},
+	}, nil, agent.Options{})
+
+	require.Error(t, err)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&requests), "constructor should succeed; auth failure should occur when calling Chat")
+	assert.Empty(t, apiKeyHeader)
+	assert.Contains(t, err.Error(), "401")
 }

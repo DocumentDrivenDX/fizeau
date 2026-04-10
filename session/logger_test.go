@@ -1,8 +1,11 @@
 package session
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +15,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type loggerTestProvider struct {
+	response agent.Response
+}
+
+func (p *loggerTestProvider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {
+	if ctx.Err() != nil {
+		return agent.Response{}, ctx.Err()
+	}
+	return p.response, nil
+}
 
 func TestNewLogger(t *testing.T) {
 	dir := t.TempDir()
@@ -44,6 +58,33 @@ func TestNewLogger_Failures(t *testing.T) {
 	l := NewLogger("/invalid/path/that/cannot/exist", "test")
 	require.NotNil(t, l)  // Should return non-nil even on failure
 	assert.Nil(t, l.file) // But file should be nil
+}
+
+func TestNewLogger_FailureWarnsAndRunStillCompletes(t *testing.T) {
+	parent := t.TempDir()
+	blocker := filepath.Join(parent, "not-a-directory")
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o644))
+
+	logs, restore := captureLoggerLogs(t)
+	defer restore()
+
+	logger := NewLogger(filepath.Join(blocker, "sessions"), "blocked-session")
+	require.NotNil(t, logger)
+	assert.Nil(t, logger.file)
+
+	result, err := agent.Run(context.Background(), agent.Request{
+		Prompt: "test",
+		Provider: &loggerTestProvider{
+			response: agent.Response{
+				Content: "done",
+				Usage:   agent.TokenUsage{Input: 4, Output: 2, Total: 6},
+			},
+		},
+		Callback: logger.Callback(),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agent.StatusSuccess, result.Status)
+	assert.Contains(t, logs.String(), "session logger: cannot create directory")
 }
 
 func TestLogger_Emit(t *testing.T) {
@@ -281,6 +322,34 @@ func TestLogger_WarnedFlag(t *testing.T) {
 	l.Write(agent.Event{SessionID: "test", Type: agent.EventLLMResponse})
 }
 
+func TestLogger_WriteErrorLeavesReadablePartialLog(t *testing.T) {
+	dir := t.TempDir()
+	l := NewLogger(dir, "partial-log")
+
+	logs, restore := captureLoggerLogs(t)
+	defer restore()
+
+	l.Emit(agent.EventSessionStart, SessionStartData{
+		Provider: "test-provider",
+		Model:    "test-model",
+		Prompt:   "prompt",
+	})
+
+	require.NoError(t, l.file.Close())
+	l.Write(agent.Event{
+		SessionID: "partial-log",
+		Type:      agent.EventSessionEnd,
+		Data:      []byte(`{"status":"success"}`),
+	})
+
+	assert.Contains(t, logs.String(), "session logger: write error")
+
+	events, err := ReadEvents(filepath.Join(dir, "partial-log.jsonl"))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, agent.EventSessionStart, events[0].Type)
+}
+
 func TestReadEvents_BinaryData(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "binary.jsonl")
@@ -357,6 +426,18 @@ func TestLogger_Emit_EmptyData(t *testing.T) {
 	events, err := ReadEvents(filepath.Join(dir, "empty-data-test.jsonl"))
 	require.NoError(t, err)
 	assert.Len(t, events, 1)
+}
+
+func captureLoggerLogs(t *testing.T) (*bytes.Buffer, func()) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	slog.SetDefault(logger)
+	return &buf, func() {
+		slog.SetDefault(prev)
+	}
 }
 
 func TestReadEvents_LargeFile(t *testing.T) {

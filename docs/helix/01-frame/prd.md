@@ -237,6 +237,11 @@ task the same: spawn a process, send to cloud, parse the result.
 
 ## Acceptance Test Sketches
 
+Detailed, authoritative acceptance criteria live with the feature specs in
+`docs/helix/01-frame/features/FEAT-00X-*.md`. The sketches below remain the
+product-level smoke matrix; feature-level AC should be used when creating
+tests, review findings, or execution beads.
+
 | Requirement | Scenario | Input | Expected Output |
 |-------------|----------|-------|-----------------|
 | Agent loop basics | Simple file read task | "Read main.go and tell me the package name" | Result with status=success, output contains package name |
@@ -251,6 +256,9 @@ task the same: spawn a process, send to cloud, parse the result.
 | Cost tracking | Run cloud task with billed cost returned | Claude or gateway completion with reported billing | Result.CostUSD > 0 and matches reported cost |
 | Cost tracking | Run task without pricing data | Unconfigured runtime or provider with no reported billing | Result.CostUSD == -1 (unknown, not guessed) |
 | Standalone CLI | End-to-end | `ddx-agent -p "Read main.go"` with config file | Successful completion, session logged |
+| Shared model catalog | Resolve model reference | `ddx-agent -p "hi" --model-ref code-smart` | Concrete model resolved from the agent catalog for the selected surface |
+| DDx harness path | Structured harness invocation | Prompt envelope or DDx harness execution path | Machine-readable JSON output includes tokens, session ID, and cost semantics |
+| Self-update check | Scripted version check | `ddx-agent update --check-only` | Exit code reflects update availability and output shows current/latest versions |
 
 ## Technical Context
 

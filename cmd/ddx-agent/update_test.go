@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -297,4 +300,227 @@ func TestGetLatestRelease_NetworkError(t *testing.T) {
 	// Test with non-existent server (should timeout or fail)
 	// Skip this test as it requires network access and may flake
 	t.Skip("Skipping network-dependent test")
+}
+
+func TestCmdVersion_CheckOnlySkipsUpdateLookup(t *testing.T) {
+	oldVersion := Version
+	oldRepo := githubRepo
+	oldAPIBase := githubAPIBase
+	t.Cleanup(func() {
+		Version = oldVersion
+		githubRepo = oldRepo
+		githubAPIBase = oldAPIBase
+	})
+
+	Version = "v0.0.8"
+	githubRepo = "test/repo"
+
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	githubAPIBase = srv.URL
+
+	_, _, code := captureStdIO(t, func() int {
+		return cmdVersion([]string{"--check-only"})
+	})
+	assert.Equal(t, 0, code)
+	assert.Equal(t, 0, calls, "check-only version path should not query release API")
+}
+
+func TestCmdVersion_ShowsUpdateAvailability(t *testing.T) {
+	oldVersion := Version
+	oldRepo := githubRepo
+	oldAPIBase := githubAPIBase
+	t.Cleanup(func() {
+		Version = oldVersion
+		githubRepo = oldRepo
+		githubAPIBase = oldAPIBase
+	})
+
+	Version = "v0.0.8"
+	githubRepo = "test/repo"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/repos/test/repo/releases/latest", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"tag_name":"v0.0.9","name":"v0.0.9","body":"","published_at":"2026-04-08T00:00:00Z"}`)
+	}))
+	defer srv.Close()
+	githubAPIBase = srv.URL
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	stdout, stderr, code := captureStdIO(t, func() int {
+		return cmdVersion(nil)
+	})
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stderr)
+	assert.Contains(t, stdout, "ddx-agent v0.0.8")
+	assert.Contains(t, stdout, "Update available: v0.0.9")
+}
+
+func TestCmdUpdate_CheckOnly_OutdatedReturnsOne(t *testing.T) {
+	oldVersion := Version
+	oldRepo := githubRepo
+	oldAPIBase := githubAPIBase
+	t.Cleanup(func() {
+		Version = oldVersion
+		githubRepo = oldRepo
+		githubAPIBase = oldAPIBase
+	})
+
+	Version = "v0.0.8"
+	githubRepo = "test/repo"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/repos/test/repo/releases/latest", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"tag_name":"v0.0.9","name":"v0.0.9","body":"","published_at":"2026-04-08T00:00:00Z"}`)
+	}))
+	defer srv.Close()
+	githubAPIBase = srv.URL
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	stdout, stderr, code := captureStdIO(t, func() int {
+		return cmdUpdate([]string{"--check-only"})
+	})
+	assert.Equal(t, 1, code)
+	assert.Empty(t, stderr)
+	assert.Contains(t, stdout, "Current: v0.0.8")
+	assert.Contains(t, stdout, "Latest:  v0.0.9")
+	assert.Contains(t, stdout, "Update available")
+}
+
+func TestCmdUpdate_CheckOnly_UpToDateReturnsZero(t *testing.T) {
+	oldVersion := Version
+	oldRepo := githubRepo
+	oldAPIBase := githubAPIBase
+	t.Cleanup(func() {
+		Version = oldVersion
+		githubRepo = oldRepo
+		githubAPIBase = oldAPIBase
+	})
+
+	Version = "v0.0.9"
+	githubRepo = "test/repo"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/repos/test/repo/releases/latest", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"tag_name":"v0.0.9","name":"v0.0.9","body":"","published_at":"2026-04-08T00:00:00Z"}`)
+	}))
+	defer srv.Close()
+	githubAPIBase = srv.URL
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	stdout, stderr, code := captureStdIO(t, func() int {
+		return cmdUpdate([]string{"--check-only"})
+	})
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stderr)
+	assert.Contains(t, stdout, "You are up to date")
+}
+
+func TestReplaceBinary_PreservesOriginalPermissions(t *testing.T) {
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "ddx-agent")
+	newPath := filepath.Join(dir, "ddx-agent.new")
+
+	require.NoError(t, os.WriteFile(oldPath, []byte("old"), 0o700))
+	require.NoError(t, os.WriteFile(newPath, []byte("new"), 0o755))
+
+	var out bytes.Buffer
+	require.NoError(t, ReplaceBinary(oldPath, newPath, &out))
+
+	data, err := os.ReadFile(oldPath)
+	require.NoError(t, err)
+	assert.Equal(t, "new", string(data))
+
+	info, err := os.Stat(oldPath)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm())
+
+	_, err = os.Stat(newPath)
+	assert.Error(t, err, "new temporary binary path should be consumed")
+}
+
+func TestDownloadBinary_RemovesTempFileOnSmallDownload(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	oldTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := io.NopCloser(strings.NewReader("tiny"))
+		return &http.Response{
+			StatusCode:    http.StatusOK,
+			Status:        "200 OK",
+			Body:          body,
+			ContentLength: int64(len("tiny")),
+			Header:        make(http.Header),
+			Request:       req,
+		}, nil
+	})
+	t.Cleanup(func() {
+		http.DefaultTransport = oldTransport
+	})
+
+	var out bytes.Buffer
+	_, err := DownloadBinary("v0.0.9", &out)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "too small")
+
+	matches, globErr := filepath.Glob(filepath.Join(tmp, "ddx-agent-update-*"))
+	require.NoError(t, globErr)
+	assert.Len(t, matches, 0, "temporary update artifacts should be cleaned up")
+}
+
+func captureStdIO(t *testing.T, fn func() int) (stdout string, stderr string, code int) {
+	t.Helper()
+
+	origStdout := os.Stdout
+	origStderr := os.Stderr
+	stdoutR, stdoutW, err := os.Pipe()
+	require.NoError(t, err)
+	stderrR, stderrW, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = stdoutW
+	os.Stderr = stderrW
+
+	doneOut := make(chan string, 1)
+	doneErr := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, stdoutR)
+		doneOut <- buf.String()
+	}()
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, stderrR)
+		doneErr <- buf.String()
+	}()
+
+	code = fn()
+
+	require.NoError(t, stdoutW.Close())
+	require.NoError(t, stderrW.Close())
+	os.Stdout = origStdout
+	os.Stderr = origStderr
+
+	stdout = <-doneOut
+	stderr = <-doneErr
+	return stdout, stderr, code
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

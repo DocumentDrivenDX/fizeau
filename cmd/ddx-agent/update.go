@@ -225,9 +225,6 @@ func DownloadBinary(tag string, w io.Writer) (string, error) {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	if err := tmpFile.Close(); err != nil {
-		return "", fmt.Errorf("closing temp file: %w", err)
-	}
 
 	// Download to temp file
 	client := &http.Client{Timeout: 2 * time.Minute}
@@ -266,9 +263,15 @@ func DownloadBinary(tag string, w io.Writer) (string, error) {
 			return "", fmt.Errorf("download interrupted: %w", err)
 		}
 		if _, writeErr := tmpFile.Write(buf[:n]); writeErr != nil {
+			_ = tmpFile.Close()
 			_ = safefs.Remove(tmpPath)
 			return "", fmt.Errorf("writing temp file: %w", writeErr)
 		}
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		_ = safefs.Remove(tmpPath)
+		return "", fmt.Errorf("closing temp file: %w", err)
 	}
 
 	fmt.Fprintln(w) // Newline after progress
@@ -324,6 +327,11 @@ func ReplaceBinary(oldPath, newPath string, w io.Writer) error {
 
 		// Clean up temp file
 		_ = safefs.Remove(newPath)
+	}
+
+	// Preserve prior permission bits.
+	if err := safefs.Chmod(oldPath, info.Mode()); err != nil {
+		return fmt.Errorf("restoring original permissions: %w", err)
 	}
 
 	fmt.Fprintf(w, "Successfully updated ddx-agent\n")

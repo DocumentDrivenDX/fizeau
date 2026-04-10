@@ -4,6 +4,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +12,9 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/agent"
+	antProvider "github.com/DocumentDrivenDX/agent/provider/anthropic"
 	oaiProvider "github.com/DocumentDrivenDX/agent/provider/openai"
+	"github.com/DocumentDrivenDX/agent/session"
 	"github.com/DocumentDrivenDX/agent/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,6 +51,23 @@ func lmStudioModel(t *testing.T) string {
 	}
 	// Prefer coding models, fall back to general
 	return "qwen/qwen3-coder-next"
+}
+
+func anthropicAPIKey(t *testing.T) string {
+	t.Helper()
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if key == "" {
+		t.Skip("ANTHROPIC_API_KEY not set; skipping Anthropic integration")
+	}
+	return key
+}
+
+func anthropicModel(t *testing.T) string {
+	t.Helper()
+	if model := os.Getenv("ANTHROPIC_MODEL"); model != "" {
+		return model
+	}
+	return "claude-sonnet-4-20250514"
 }
 
 func TestIntegration_SimpleCompletion(t *testing.T) {
@@ -165,4 +185,133 @@ func TestIntegration_FileEditTask(t *testing.T) {
 	for _, tc := range result.ToolCalls {
 		t.Logf("  Tool: %s, Error: %q", tc.Tool, tc.Error)
 	}
+}
+
+func TestIntegration_OpenAICompatibleProviderIdentity(t *testing.T) {
+	url := lmStudioURL(t)
+	model := lmStudioModel(t)
+
+	p := oaiProvider.New(oaiProvider.Config{
+		BaseURL: url,
+		Model:   model,
+	})
+
+	var start session.SessionStartData
+	var sawSessionStart bool
+
+	result, err := agent.Run(context.Background(), agent.Request{
+		Prompt:        "Reply with exactly: OPENAI_MATRIX_OK",
+		SystemPrompt:  "Return only the requested token.",
+		Provider:      p,
+		MaxIterations: 3,
+		Callback: func(e agent.Event) {
+			if e.Type != agent.EventSessionStart {
+				return
+			}
+			sawSessionStart = true
+			require.NoError(t, json.Unmarshal(e.Data, &start))
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agent.StatusSuccess, result.Status)
+	assert.Greater(t, result.Tokens.Total, 0)
+	assert.NotEmpty(t, result.Model)
+	assert.NotEmpty(t, result.Output)
+	require.True(t, sawSessionStart, "expected session.start event")
+	assert.Equal(t, "openai-compat", start.Provider)
+	assert.Equal(t, model, start.Model)
+}
+
+func TestIntegration_NavigationAndPatchToolSurface(t *testing.T) {
+	url := lmStudioURL(t)
+	model := lmStudioModel(t)
+
+	workDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, "src"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "src", "target.env"), []byte("STATUS=OLD\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "docs", "notes.md"), []byte("integration fixture\n"), 0o644))
+
+	p := oaiProvider.New(oaiProvider.Config{
+		BaseURL: url,
+		Model:   model,
+	})
+	taskStore := tool.NewTaskStore()
+	tools := []agent.Tool{
+		&tool.ReadTool{WorkDir: workDir},
+		&tool.GlobTool{WorkDir: workDir},
+		&tool.GrepTool{WorkDir: workDir},
+		&tool.LsTool{WorkDir: workDir},
+		&tool.PatchTool{WorkDir: workDir},
+		&tool.TaskTool{Store: taskStore},
+	}
+
+	result, err := agent.Run(context.Background(), agent.Request{
+		Prompt: `Use tools to complete this workspace task:
+1) Inspect the workspace with ls and/or glob.
+2) Use grep to find STATUS=OLD.
+3) Use patch to replace STATUS=OLD with STATUS=NEW in src/target.env.
+4) Use read to verify the new file content.
+5) Use the task tool to track progress for at least two steps.
+Return a short completion summary.`,
+		SystemPrompt:  "You are an integration-test assistant. Tool usage is mandatory. Do not guess file contents; use tools.",
+		Provider:      p,
+		Tools:         tools,
+		MaxIterations: 16,
+		WorkDir:       workDir,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agent.StatusSuccess, result.Status)
+	assert.Greater(t, result.Tokens.Total, 0)
+	assert.NotEmpty(t, result.Model)
+	require.NotEmpty(t, result.ToolCalls, "expected tool usage in integration path")
+
+	called := map[string]int{}
+	for _, tc := range result.ToolCalls {
+		called[tc.Tool]++
+	}
+	assert.Greater(t, called["patch"], 0, "expected patch tool call")
+	assert.True(t, called["glob"] > 0 || called["grep"] > 0 || called["ls"] > 0,
+		"expected at least one navigation tool call (glob/grep/ls)")
+
+	updated, readErr := os.ReadFile(filepath.Join(workDir, "src", "target.env"))
+	require.NoError(t, readErr)
+	assert.Contains(t, string(updated), "STATUS=NEW")
+	assert.NotContains(t, string(updated), "STATUS=OLD")
+}
+
+func TestIntegration_AnthropicProviderIdentity(t *testing.T) {
+	apiKey := anthropicAPIKey(t)
+	model := anthropicModel(t)
+
+	p := antProvider.New(antProvider.Config{
+		APIKey:  apiKey,
+		Model:   model,
+		BaseURL: os.Getenv("ANTHROPIC_BASE_URL"),
+	})
+
+	var start session.SessionStartData
+	var sawSessionStart bool
+
+	result, err := agent.Run(context.Background(), agent.Request{
+		Prompt:        "Reply with exactly: ANTHROPIC_MATRIX_OK",
+		SystemPrompt:  "Return only the requested token.",
+		Provider:      p,
+		MaxIterations: 3,
+		Callback: func(e agent.Event) {
+			if e.Type != agent.EventSessionStart {
+				return
+			}
+			sawSessionStart = true
+			require.NoError(t, json.Unmarshal(e.Data, &start))
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agent.StatusSuccess, result.Status)
+	assert.Greater(t, result.Tokens.Total, 0)
+	assert.NotEmpty(t, result.Model)
+	assert.NotEmpty(t, result.Output)
+	require.True(t, sawSessionStart, "expected session.start event")
+	assert.Equal(t, "anthropic", start.Provider)
+	assert.Equal(t, model, start.Model)
 }

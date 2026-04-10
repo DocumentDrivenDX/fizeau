@@ -14,6 +14,8 @@ NC='\033[0m' # No Color
 # Configuration
 REPO="DocumentDrivenDX/agent"
 INSTALL_DIR="${AGENT_INSTALL_DIR:-$HOME/.local/bin}"
+SHELL_NAME=""
+RC_FILE=""
 
 # Logging functions (all to stderr to avoid polluting command substitution)
 log() {
@@ -127,8 +129,8 @@ configure_path() {
     fi
     
     # Detect shell and add to appropriate rc file
-    local SHELL_NAME=$(basename "$SHELL")
-    local RC_FILE=""
+    SHELL_NAME=$(basename "$SHELL")
+    RC_FILE=""
     
     case "$SHELL_NAME" in
         bash)
@@ -156,7 +158,7 @@ configure_path() {
                     echo "fish_add_path ${INSTALL_DIR}" >> "$RC_FILE"
                     ;;
                 *)
-                    echo 'export PATH="${PATH}:${INSTALL_DIR}"' >> "$RC_FILE"
+                    printf 'export PATH="${PATH}:%s"\n' "${INSTALL_DIR}" >> "$RC_FILE"
                     ;;
             esac
             
@@ -173,7 +175,7 @@ configure_path() {
                 echo "  fish_add_path ${INSTALL_DIR}"
                 ;;
             *)
-                echo '  export PATH="${PATH}:${INSTALL_DIR}"'
+                echo "  export PATH=\"\${PATH}:${INSTALL_DIR}\""
                 ;;
         esac
     fi

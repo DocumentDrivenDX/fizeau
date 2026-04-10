@@ -9,13 +9,17 @@ import (
 
 // SessionStartData is the data payload for a session.start event.
 type SessionStartData struct {
-	Provider      string            `json:"provider"`
-	Model         string            `json:"model"`
-	WorkDir       string            `json:"work_dir"`
-	MaxIterations int               `json:"max_iterations"`
-	Prompt        string            `json:"prompt"`
-	SystemPrompt  string            `json:"system_prompt,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	Provider         string            `json:"provider"`
+	Model            string            `json:"model"`
+	SelectedProvider string            `json:"selected_provider,omitempty"`
+	SelectedRoute    string            `json:"selected_route,omitempty"`
+	ResolvedModelRef string            `json:"resolved_model_ref,omitempty"`
+	ResolvedModel    string            `json:"resolved_model,omitempty"`
+	WorkDir          string            `json:"work_dir"`
+	MaxIterations    int               `json:"max_iterations"`
+	Prompt           string            `json:"prompt"`
+	SystemPrompt     string            `json:"system_prompt,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
 }
 
 // LLMRequestData is the data payload for an llm.request event.
@@ -46,14 +50,18 @@ type ToolCallData struct {
 
 // SessionEndData is the data payload for a session.end event.
 type SessionEndData struct {
-	Status     agent.Status      `json:"status"`
-	Output     string            `json:"output"`
-	Tokens     agent.TokenUsage  `json:"tokens"`
-	CostUSD    *float64          `json:"cost_usd,omitempty"`
-	DurationMs int64             `json:"duration_ms"`
-	Model      string            `json:"model,omitempty"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
-	Error      string            `json:"error,omitempty"`
+	Status           agent.Status      `json:"status"`
+	Output           string            `json:"output"`
+	Tokens           agent.TokenUsage  `json:"tokens"`
+	CostUSD          *float64          `json:"cost_usd,omitempty"`
+	DurationMs       int64             `json:"duration_ms"`
+	Model            string            `json:"model,omitempty"`
+	SelectedProvider string            `json:"selected_provider,omitempty"`
+	SelectedRoute    string            `json:"selected_route,omitempty"`
+	ResolvedModelRef string            `json:"resolved_model_ref,omitempty"`
+	ResolvedModel    string            `json:"resolved_model,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
+	Error            string            `json:"error,omitempty"`
 }
 
 // NewEvent creates an Event with the given type and data, auto-assigning

@@ -23,7 +23,11 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 	sessionID := fmt.Sprintf("s-%d", start.UnixNano())
 	result := Result{
-		SessionID: sessionID,
+		SessionID:        sessionID,
+		SelectedProvider: req.SelectedProvider,
+		SelectedRoute:    req.SelectedRoute,
+		ResolvedModelRef: req.ResolvedModelRef,
+		ResolvedModel:    req.ResolvedModel,
 	}
 
 	if req.Provider == nil {
@@ -33,6 +37,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	if runtimeTelemetry == nil {
 		runtimeTelemetry = telemetry.NewNoop()
 	}
+	defer runtimeTelemetry.Shutdown(context.Background())
 	rootCtx, rootSpan := runtimeTelemetry.StartInvokeAgent(ctx, telemetry.InvokeAgentSpan{
 		HarnessName:    "agent",
 		SessionID:      sessionID,
@@ -82,13 +87,17 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		Type:      EventSessionStart,
 		Timestamp: time.Now().UTC(),
 		Data: mustMarshal(map[string]any{
-			"provider":       sessionProvider,
-			"model":          sessionModel,
-			"work_dir":       req.WorkDir,
-			"prompt":         req.Prompt,
-			"system_prompt":  req.SystemPrompt,
-			"max_iterations": req.MaxIterations,
-			"metadata":       req.Metadata,
+			"provider":           sessionProvider,
+			"model":              sessionModel,
+			"selected_provider":  req.SelectedProvider,
+			"selected_route":     req.SelectedRoute,
+			"resolved_model_ref": req.ResolvedModelRef,
+			"resolved_model":     req.ResolvedModel,
+			"work_dir":           req.WorkDir,
+			"prompt":             req.Prompt,
+			"system_prompt":      req.SystemPrompt,
+			"max_iterations":     req.MaxIterations,
+			"metadata":           req.Metadata,
 		}),
 	})
 
@@ -263,6 +272,15 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				resp.Attempt = &AttemptMetadata{}
 			}
 			resp.Attempt.AttemptIndex = attempt
+			if resp.Attempt.ProviderName == "" {
+				resp.Attempt.ProviderName = req.SelectedProvider
+			}
+			if resp.Attempt.Route == "" {
+				resp.Attempt.Route = req.SelectedRoute
+			}
+			if resp.Attempt.ResolvedModel == "" && req.ResolvedModel != "" {
+				resp.Attempt.ResolvedModel = req.ResolvedModel
+			}
 			if (resp.Attempt.Cost == nil || resp.Attempt.Cost.Source == CostSourceUnknown) &&
 				resp.Attempt.ProviderSystem != "" &&
 				resp.Attempt.ResolvedModel != "" {
@@ -533,13 +551,17 @@ func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result,
 		errStr = result.Error.Error()
 	}
 	data := map[string]any{
-		"status":      result.Status,
-		"output":      result.Output,
-		"tokens":      result.Tokens,
-		"duration_ms": result.Duration.Milliseconds(),
-		"model":       result.Model,
-		"metadata":    metadata,
-		"error":       errStr,
+		"status":             result.Status,
+		"output":             result.Output,
+		"tokens":             result.Tokens,
+		"duration_ms":        result.Duration.Milliseconds(),
+		"model":              result.Model,
+		"selected_provider":  result.SelectedProvider,
+		"selected_route":     result.SelectedRoute,
+		"resolved_model_ref": result.ResolvedModelRef,
+		"resolved_model":     result.ResolvedModel,
+		"metadata":           metadata,
+		"error":              errStr,
 	}
 	if result.CostUSD >= 0 {
 		data["cost_usd"] = result.CostUSD

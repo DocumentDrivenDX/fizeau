@@ -120,7 +120,7 @@ func run() int {
 		ModelRef:        *modelRef,
 		AllowDeprecated: *allowDeprecatedModel,
 	}
-	_, p, _, err := resolveProviderForRun(cfg, wd, *backendFlag, *providerFlag, overrides)
+	selection, p, _, err := resolveProviderForRun(cfg, wd, *backendFlag, *providerFlag, overrides)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
@@ -170,15 +170,19 @@ func run() int {
 
 	// Build request
 	req := agent.Request{
-		Prompt:        promptText,
-		SystemPrompt:  sysPrompt.Build(),
-		Provider:      p,
-		Tools:         tools,
-		MaxIterations: iterations,
-		WorkDir:       wd,
-		Metadata:      promptMetadata,
-		Callback:      logger.Callback(),
-		Telemetry:     cfg.BuildTelemetry(),
+		Prompt:           promptText,
+		SystemPrompt:     sysPrompt.Build(),
+		Provider:         p,
+		Tools:            tools,
+		MaxIterations:    iterations,
+		WorkDir:          wd,
+		Metadata:         promptMetadata,
+		SelectedProvider: selection.Provider,
+		SelectedRoute:    selection.Route,
+		ResolvedModelRef: selection.ResolvedModelRef,
+		ResolvedModel:    selection.ResolvedModel,
+		Callback:         logger.Callback(),
+		Telemetry:        cfg.BuildTelemetry(),
 	}
 
 	// Run with signal handling
@@ -224,7 +228,14 @@ func run() int {
 //  2. Else if cfg.DefaultBackend is set and providerName is empty, resolve
 //     the default backend pool.
 //  3. Else fall back to direct provider selection (providerName or cfg.DefaultName).
-func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName string, overrides agentConfig.ProviderOverrides) (string, agent.Provider, agentConfig.ProviderConfig, error) {
+type providerSelection struct {
+	Route            string
+	Provider         string
+	ResolvedModelRef string
+	ResolvedModel    string
+}
+
+func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, agent.Provider, agentConfig.ProviderConfig, error) {
 	// Determine whether to use a backend pool.
 	effectiveBackend := backendName
 	if effectiveBackend == "" && providerName == "" {
@@ -237,22 +248,57 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 			// Non-fatal: fall back to counter 0.
 			counter = 0
 		}
-		p, pc, _, err := cfg.ResolveBackend(effectiveBackend, counter, overrides)
+		p, pc, resolved, err := cfg.ResolveBackend(effectiveBackend, counter, overrides)
 		if err != nil {
-			return "", nil, agentConfig.ProviderConfig{}, err
+			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 		}
-		return effectiveBackend, p, pc, nil
+		selection := providerSelection{
+			Route:         effectiveBackend,
+			ResolvedModel: pc.Model,
+		}
+		if bc, ok := cfg.GetBackend(effectiveBackend); ok && len(bc.Providers) > 0 {
+			idx := selectBackendProviderIndex(bc.Strategy, counter, len(bc.Providers))
+			selection.Provider = bc.Providers[idx]
+		}
+		if resolved != nil {
+			selection.ResolvedModelRef = resolved.CanonicalID
+			if resolved.ConcreteModel != "" {
+				selection.ResolvedModel = resolved.ConcreteModel
+			}
+		}
+		return selection, p, pc, nil
 	}
 
 	// Direct provider selection.
 	if providerName == "" {
 		providerName = cfg.DefaultName()
 	}
-	p, pc, _, err := cfg.BuildProviderWithOverrides(providerName, overrides)
+	p, pc, resolved, err := cfg.BuildProviderWithOverrides(providerName, overrides)
 	if err != nil {
-		return "", nil, agentConfig.ProviderConfig{}, err
+		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}
-	return providerName, p, pc, nil
+	selection := providerSelection{
+		Route:         providerName,
+		Provider:      providerName,
+		ResolvedModel: pc.Model,
+	}
+	if resolved != nil {
+		selection.ResolvedModelRef = resolved.CanonicalID
+		if resolved.ConcreteModel != "" {
+			selection.ResolvedModel = resolved.ConcreteModel
+		}
+	}
+	return selection, p, pc, nil
+}
+
+func selectBackendProviderIndex(strategy string, counter, n int) int {
+	if n <= 0 {
+		return 0
+	}
+	if strategy == "round-robin" {
+		return counter % n
+	}
+	return 0
 }
 
 // backendStateFile returns the path to the per-backend round-robin counter file.
@@ -282,7 +328,12 @@ func readAndIncrementBackendCounter(workDir, backendName string) (int, error) {
 
 	// Write incremented counter.
 	next := counter + 1
-	_ = safefs.WriteFile(path, []byte(fmt.Sprintf("%d\n", next)), 0o600)
+	if err := safefs.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return counter, err
+	}
+	if err := safefs.WriteFile(path, []byte(fmt.Sprintf("%d\n", next)), 0o600); err != nil {
+		return counter, err
+	}
 
 	return counter, nil
 }
@@ -643,7 +694,12 @@ func cmdUsage(workDir string, args []string) int {
 	fs.SetOutput(os.Stderr)
 	since := fs.String("since", "", "Time window: today, 7d, 30d, YYYY-MM-DD, or YYYY-MM-DD..YYYY-MM-DD")
 	jsonOutput := fs.Bool("json", false, "Output JSON")
+	csvOutput := fs.Bool("csv", false, "Output CSV")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *jsonOutput && *csvOutput {
+		fmt.Fprintln(os.Stderr, "error: choose only one of --json or --csv")
 		return 2
 	}
 
@@ -671,6 +727,10 @@ func cmdUsage(workDir string, args []string) int {
 	if *jsonOutput {
 		data, _ := json.MarshalIndent(report, "", "  ")
 		fmt.Println(string(data))
+		return 0
+	}
+	if *csvOutput {
+		printUsageCSV(report)
 		return 0
 	}
 
@@ -729,6 +789,43 @@ func printUsageRow(row session.UsageRow) {
 		row.InputTokensPerSecond(),
 		row.OutputTokensPerSecond(),
 	)
+}
+
+func printUsageCSV(report *session.UsageReport) {
+	fmt.Println("provider,model,sessions,input_tokens,output_tokens,total_tokens,duration_ms,known_cost_usd,unknown_cost_sessions,input_tokens_per_second,output_tokens_per_second")
+	for _, row := range report.Rows {
+		printUsageCSVRow(row)
+	}
+	total := report.Totals
+	total.Provider = "TOTAL"
+	printUsageCSVRow(total)
+}
+
+func printUsageCSVRow(row session.UsageRow) {
+	cost := ""
+	if row.UnknownCostSessions == 0 && row.KnownCostUSD != nil {
+		cost = fmt.Sprintf("%.4f", *row.KnownCostUSD)
+	}
+	fmt.Printf("%s,%s,%d,%d,%d,%d,%d,%s,%d,%.1f,%.1f\n",
+		csvEscape(row.Provider),
+		csvEscape(row.Model),
+		row.Sessions,
+		row.InputTokens,
+		row.OutputTokens,
+		row.TotalTokens,
+		row.DurationMs,
+		cost,
+		row.UnknownCostSessions,
+		row.InputTokensPerSecond(),
+		row.OutputTokensPerSecond(),
+	)
+}
+
+func csvEscape(value string) string {
+	if strings.ContainsAny(value, "\",\n\r") {
+		return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+	}
+	return value
 }
 
 func checkProviderStatus(pc agentConfig.ProviderConfig) string {

@@ -95,6 +95,16 @@ Ollama, OpenAI, Azure, Groq, Together, OpenRouter) and an Anthropic provider
 - Token counts are accurately reported for all providers
 - Provider swap is a base-URL change — no code changes
 
+## Acceptance Criteria
+
+| ID | Criterion | Suggested Verification |
+|----|-----------|------------------------|
+| AC-FEAT-003-01 | OpenAI-compatible and Anthropic providers each perform exactly one upstream request attempt per `Chat()` call, return token usage and response model data, and surface attempt metadata needed by runtime retries and telemetry. | `go test ./provider/... ./...` |
+| AC-FEAT-003-02 | Streaming provider paths assemble partial text and tool-call fragments into the same logical response shape as synchronous calls, and interrupted streams preserve any partial response while still surfacing an error. | `go test ./provider/... ./...` |
+| AC-FEAT-003-03 | Unreachable local endpoints fail within the documented bounded timeout and include the attempted endpoint/base URL in the surfaced error so operators can distinguish routing from model behavior problems. | `go test ./provider/... ./...` |
+| AC-FEAT-003-04 | Missing cloud credentials fail at call time rather than constructor time, and default local OpenAI-compatible base URLs remain constructible without extra configuration. | `go test ./provider/... ./...` |
+| AC-FEAT-003-05 | Build-tagged integration coverage exercises the same prompt path against LM Studio/OpenAI-compatible local inference and Anthropic/cloud-backed providers when the corresponding test environment is available. | `go test -tags=integration ./...`; `go test -tags=e2e ./...` |
+
 ## Constraints and Assumptions
 
 - LM Studio and Ollama both speak OpenAI-compatible API well enough for a

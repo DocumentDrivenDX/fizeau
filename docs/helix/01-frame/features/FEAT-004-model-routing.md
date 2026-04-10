@@ -168,6 +168,17 @@ prompt behavior and must not be reused for model policy or backend routing.
 - Backend-pool routing, when implemented, distributes requests deterministically
   according to the documented strategy.
 
+## Acceptance Criteria
+
+| ID | Criterion | Suggested Verification |
+|----|-----------|------------------------|
+| AC-FEAT-004-01 | Direct named-provider resolution selects the configured provider before the run starts, and unknown provider names fail during config/CLI resolution rather than inside `agent.Run()`. | `go test ./config ./cmd/ddx-agent ./...` |
+| AC-FEAT-004-02 | Model references resolve through the embedded or external manifest to the correct consumer-surface model string, and missing references/surfaces fail deterministically before the run. | `go test ./modelcatalog ./config ./cmd/ddx-agent ./...` |
+| AC-FEAT-004-03 | Deprecated or stale model references are rejected by default, surface replacement metadata, and can be explicitly allowed only when the caller opts in. | `go test ./modelcatalog ./config ./cmd/ddx-agent ./...` |
+| AC-FEAT-004-04 | An explicit concrete `--model` or provider-level pin bypasses catalog policy for that run while leaving catalog-backed resolution unchanged for other runs. | `go test ./config ./cmd/ddx-agent ./...` |
+| AC-FEAT-004-05 | Backend pools choose providers deterministically for `round-robin` and `first-available`, reject empty/unknown provider lists before the run, and do not introduce request-level failover in phase 1 / phase 2A. | `go test ./config ./...` |
+| AC-FEAT-004-06 | The selected concrete provider, resolved model reference, and resolved concrete model are recorded in the run result and session artifacts so downstream analytics can attribute the actual backend choice. | `go test ./cmd/ddx-agent ./...` |
+
 ## Dependencies
 
 - **Other features**: FEAT-003 (providers)

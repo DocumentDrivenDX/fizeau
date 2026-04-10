@@ -230,6 +230,17 @@ func getLatestRelease(repo string) (*GitHubRelease, error) {
 - Binary replacement is atomic — no corrupted binaries after failed updates
 - Installer successfully configures PATH for bash, zsh, and fish shells
 
+## Acceptance Criteria
+
+| ID | Criterion | Suggested Verification |
+|----|-----------|------------------------|
+| AC-FEAT-007-01 | `ddx-agent version` and `ddx-agent update --check-only` perform semantic-version comparison against cached/latest release data, print scripting-friendly output, and return exit `0` when current and exit `1` when outdated. | `go test ./cmd/ddx-agent ./...` |
+| AC-FEAT-007-02 | `ddx-agent update` downloads the correct platform binary, verifies the download, atomically replaces the current binary, preserves executable permissions, and leaves no partial replacement on success. | `go test ./cmd/ddx-agent ./...` |
+| AC-FEAT-007-03 | Network, API, permission, temp-dir, and disk/write failures leave the existing binary intact, clean up partial downloads, and emit actionable operator-facing errors. | `go test ./cmd/ddx-agent ./...` |
+| AC-FEAT-007-04 | `install.sh` verifies prerequisites, selects the correct release artifact for Linux/macOS amd64/arm64, installs into the requested target directory, and verifies the resulting binary. | shell-based acceptance test in CI/local temp directories |
+| AC-FEAT-007-05 | `install.sh` updates bash, zsh, and fish PATH configuration idempotently and prints correct immediate-use guidance when the binary is not yet on the current shell `PATH`. | shell-based acceptance test in CI/local temp directories |
+| AC-FEAT-007-06 | Install/update acceptance tests run without live GitHub dependencies by using mocked HTTP responses, temp files, and disposable shell rc files. | `go test ./cmd/ddx-agent ./...`; shell-based acceptance test in CI |
+
 ## Constraints and Assumptions
 
 - GitHub releases are the source of truth for versioning

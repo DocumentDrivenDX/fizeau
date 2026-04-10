@@ -65,4 +65,23 @@ func TestBashTool_Execute(t *testing.T) {
 		// Should fail due to cancelled context
 		require.Error(t, err)
 	})
+
+	t.Run("stdin behaves as immediate EOF and does not hang", func(t *testing.T) {
+		result, err := tool.Execute(context.Background(), mustJSON(t, BashParams{
+			Command:   `if IFS= read -r line; then echo "stdin_line:$line"; else echo "stdin_eof"; fi`,
+			TimeoutMs: 200,
+		}))
+		require.NoError(t, err)
+		assert.Contains(t, result, "exit_code: 0")
+		assert.Contains(t, result, "stdin_eof")
+	})
+
+	t.Run("truncates oversized output and preserves non-zero exit code", func(t *testing.T) {
+		result, err := tool.Execute(context.Background(), mustJSON(t, BashParams{
+			Command: "yes a | head -c 1100000; exit 7",
+		}))
+		require.NoError(t, err) // non-zero exit should be captured, not returned as Go error
+		assert.Contains(t, result, "exit_code: 7")
+		assert.Contains(t, result, "[truncated]")
+	})
 }

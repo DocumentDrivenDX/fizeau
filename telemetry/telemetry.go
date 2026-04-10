@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -243,7 +244,9 @@ func (r *runtime) Shutdown(ctx context.Context) {
 	if r.shutdown == nil {
 		return
 	}
-	_ = r.shutdown(ctx)
+	if err := r.shutdown(ctx); err != nil {
+		slog.Warn("telemetry: shutdown failed", "err", err)
+	}
 }
 
 func (r *runtime) StartInvokeAgent(ctx context.Context, attrs InvokeAgentSpan) (context.Context, trace.Span) {

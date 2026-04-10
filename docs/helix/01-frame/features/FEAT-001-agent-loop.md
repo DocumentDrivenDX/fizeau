@@ -77,6 +77,17 @@ reached. This implements PRD P0 requirements 1, 8, 10, and 11.
 - Loop correctly terminates on all exit conditions (success, limit, cancel, error)
 - Token counts match provider-reported usage
 
+## Acceptance Criteria
+
+| ID | Criterion | Suggested Verification |
+|----|-----------|------------------------|
+| AC-FEAT-001-01 | A text-only or empty provider response terminates `Run()` with `status=success`, appends the assistant message to `Result.Messages`, and preserves provider-reported token totals in `Result.Tokens`. | `go test ./...` |
+| AC-FEAT-001-02 | Tool-calling turns execute tool calls sequentially in provider order, record each call in `Result.ToolCalls`, feed tool results into the next provider request, and terminate successfully when a later turn returns text only. | `go test ./...` |
+| AC-FEAT-001-03 | Iteration limits, context cancellation, transient-provider retry success, and retry exhaustion all terminate the loop with the documented status and without issuing extra provider calls beyond the runtime retry policy. | `go test ./...` |
+| AC-FEAT-001-04 | Session lifecycle events are emitted in `seq` order with `session.start`, `llm.request`, optional `llm.delta`, `llm.response`, optional `tool.call`, and `session.end`; correlation metadata, accumulated usage, and known-vs-unknown cost semantics are preserved in emitted event payloads. | `go test ./...` |
+| AC-FEAT-001-05 | Streaming providers support delta assembly, `NoStream` fallback, attempt metadata propagation, and timing capture for request start, first token, and completion without counting callback latency toward provider timing windows. | `go test ./...` |
+| AC-FEAT-001-06 | Concurrent `Run()` calls do not share mutable state, and compaction no-fit paths fail closed without issuing an over-budget provider call. | `go test ./...` |
+
 ## Constraints and Assumptions
 
 - The caller provides a fully configured provider — DDX Agent does not manage API
