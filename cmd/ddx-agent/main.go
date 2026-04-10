@@ -497,7 +497,7 @@ func cmdProviders(workDir string, jsonOut bool) int {
 	}
 
 	if jsonOut {
-		data, _ := json.MarshalIndent(cfg.Providers, "", "  ")
+		data, _ := json.MarshalIndent(redactedProviders(cfg.Providers), "", "  ")
 		fmt.Println(string(data))
 		return 0
 	}
@@ -525,6 +525,33 @@ func cmdProviders(workDir string, jsonOut bool) int {
 		fmt.Printf("%s%-11s %-15s %-40s %-30s %s\n", marker, name, pc.Type, url, modelStr, status)
 	}
 	return 0
+}
+
+type providerListEntry struct {
+	Type    string            `json:"type"`
+	BaseURL string            `json:"base_url"`
+	Model   string            `json:"model"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+func redactedProviders(providers map[string]agentConfig.ProviderConfig) map[string]providerListEntry {
+	redacted := make(map[string]providerListEntry, len(providers))
+	for name, pc := range providers {
+		entry := providerListEntry{
+			Type:    pc.Type,
+			BaseURL: pc.BaseURL,
+			Model:   pc.Model,
+		}
+		if len(pc.Headers) > 0 {
+			headers := make(map[string]string, len(pc.Headers))
+			for key := range pc.Headers {
+				headers[key] = "[redacted]"
+			}
+			entry.Headers = headers
+		}
+		redacted[name] = entry
+	}
+	return redacted
 }
 
 func cmdModels(workDir, providerName string, args []string) int {

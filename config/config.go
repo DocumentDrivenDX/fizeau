@@ -497,6 +497,7 @@ func expandEnvVars(s string) string {
 
 // Save serializes the config to YAML bytes.
 func (c *Config) Save() ([]byte, error) {
+	// #nosec G117 -- config persistence intentionally serializes configured credentials.
 	return yaml.Marshal(c)
 }
 

@@ -229,6 +229,45 @@ default: local
 	assert.Equal(t, "cli-model", envFake.lastModel(), "CLI --model should override env/config model")
 }
 
+func TestCLI_Providers_JSON_RedactsSecrets(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	writeTempConfig(t, workDir, `
+providers:
+  openrouter:
+    type: openai-compat
+    base_url: https://openrouter.ai/api/v1
+    api_key: secret-key
+    model: qwen/qwen3-coder-next
+    headers:
+      HTTP-Referer: https://example.com
+      X-Title: DDX Agent
+default: openrouter
+`)
+
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "--json", "providers")
+	require.Equal(t, 0, res.exitCode, "stderr=%s", res.stderr)
+
+	var parsed map[string]struct {
+		Type    string            `json:"type"`
+		BaseURL string            `json:"base_url"`
+		Model   string            `json:"model"`
+		Headers map[string]string `json:"headers"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &parsed), "stdout=%s", res.stdout)
+	require.Contains(t, parsed, "openrouter")
+	assert.Equal(t, "openai-compat", parsed["openrouter"].Type)
+	assert.Equal(t, "https://openrouter.ai/api/v1", parsed["openrouter"].BaseURL)
+	assert.Equal(t, "qwen/qwen3-coder-next", parsed["openrouter"].Model)
+	assert.Equal(t, "[redacted]", parsed["openrouter"].Headers["HTTP-Referer"])
+	assert.Equal(t, "[redacted]", parsed["openrouter"].Headers["X-Title"])
+	assert.NotContains(t, res.stdout, "secret-key")
+	assert.NotContains(t, res.stdout, "https://example.com")
+	assert.NotContains(t, res.stdout, "APIKey")
+}
+
 func TestCLI_Replay_NoArgs_UsageExitCode2(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
