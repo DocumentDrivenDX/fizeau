@@ -29,7 +29,6 @@ func consumeStream(
 	var contentBuf strings.Builder
 	var firstOutputAt time.Time
 	var lastOutputAt time.Time
-	var callbackDelay time.Duration
 
 	// Track tool call assembly — deltas arrive as fragments
 	type toolCallState struct {
@@ -41,11 +40,13 @@ func consumeStream(
 	var toolCallOrder []string
 
 	for delta := range ch {
-		arrivalAt := time.Now().Add(-callbackDelay)
+		arrivalAt := delta.ArrivedAt
+		if arrivalAt.IsZero() {
+			arrivalAt = time.Now()
+		}
 
 		// Emit delta event
 		if callback != nil {
-			callbackStart := time.Now()
 			emitCallback(callback, Event{
 				SessionID: sessionID,
 				Seq:       *seq,
@@ -54,7 +55,6 @@ func consumeStream(
 				Data:      mustMarshal(delta),
 			})
 			*seq++
-			callbackDelay += time.Since(callbackStart)
 		}
 
 		// Accumulate content

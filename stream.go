@@ -1,9 +1,14 @@
 package agent
 
 import "context"
+import "time"
 
 // StreamDelta is a single chunk from a streaming response.
 type StreamDelta struct {
+	// ArrivedAt records when the provider produced the delta.
+	// It is omitted from JSON and used only for local timing measurements.
+	ArrivedAt time.Time `json:"-"`
+
 	// Content is a text fragment (may be empty for tool call chunks).
 	Content string `json:"content,omitempty"`
 

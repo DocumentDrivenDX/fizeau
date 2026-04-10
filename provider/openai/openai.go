@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent"
 	oai "github.com/openai/openai-go"
@@ -236,6 +237,10 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 	ch := make(chan agent.StreamDelta, 1)
 	go func() {
 		defer close(ch)
+		send := func(delta agent.StreamDelta) {
+			delta.ArrivedAt = time.Now()
+			ch <- delta
+		}
 		// OpenAI only sends tool call ID in the first chunk for each index;
 		// subsequent argument chunks carry the index but have an empty ID.
 		// Track index→ID so we can carry the ID forward.
@@ -259,30 +264,30 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 					} else {
 						id = indexToID[int(tc.Index)]
 					}
-					ch <- agent.StreamDelta{
+					send(agent.StreamDelta{
 						Model:        chunk.Model,
 						ToolCallID:   id,
 						ToolCallName: tc.Function.Name,
 						ToolCallArgs: tc.Function.Arguments,
-					}
+					})
 				}
 
 				// Emit a separate delta for content / finish reason when present.
 				if choice.Delta.Content != "" || choice.FinishReason != "" {
-					ch <- agent.StreamDelta{
+					send(agent.StreamDelta{
 						Model:        chunk.Model,
 						Content:      choice.Delta.Content,
 						FinishReason: string(choice.FinishReason),
-					}
+					})
 				} else if len(choice.Delta.ToolCalls) == 0 {
 					// No content, no tool calls — still forward model/finish metadata.
-					ch <- agent.StreamDelta{
+					send(agent.StreamDelta{
 						Model:        chunk.Model,
 						FinishReason: string(choice.FinishReason),
-					}
+					})
 				}
 			} else {
-				ch <- agent.StreamDelta{Model: chunk.Model}
+				send(agent.StreamDelta{Model: chunk.Model})
 			}
 
 			if chunk.Usage.TotalTokens != 0 {
@@ -295,16 +300,16 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 				if chunk.Usage.PromptTokensDetails.CachedTokens > 0 {
 					usage.CacheRead = int(chunk.Usage.PromptTokensDetails.CachedTokens)
 				}
-				ch <- agent.StreamDelta{Usage: usage}
+				send(agent.StreamDelta{Usage: usage})
 			}
 		}
 
 		if err := stream.Err(); err != nil {
-			ch <- agent.StreamDelta{Err: err}
+			send(agent.StreamDelta{Err: err})
 			return
 		}
 
-		ch <- agent.StreamDelta{
+		send(agent.StreamDelta{
 			Model: responseModel,
 			Attempt: &agent.AttemptMetadata{
 				ProviderName:   p.providerName,
@@ -319,7 +324,7 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 				},
 			},
 			Done: true,
-		}
+		})
 	}()
 
 	return ch, nil

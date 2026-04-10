@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent"
 	ant "github.com/anthropics/anthropic-sdk-go"
@@ -244,6 +245,10 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 	ch := make(chan agent.StreamDelta, 1)
 	go func() {
 		defer close(ch)
+		send := func(delta agent.StreamDelta) {
+			delta.ArrivedAt = time.Now()
+			ch <- delta
+		}
 
 		// Track current tool use block being streamed
 		var currentToolID string
@@ -259,34 +264,34 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 				if event.Message.Model != "" {
 					responseModel = string(event.Message.Model)
 				}
-				ch <- agent.StreamDelta{
+				send(agent.StreamDelta{
 					Model: responseModel,
 					Usage: &agent.TokenUsage{
 						Input: int(event.Usage.InputTokens),
 					},
-				}
+				})
 
 			case "content_block_start":
 				if event.ContentBlock.Type == "tool_use" {
 					currentToolID = event.ContentBlock.ID
 					currentToolName = event.ContentBlock.Name
-					ch <- agent.StreamDelta{
+					send(agent.StreamDelta{
 						ToolCallID:   currentToolID,
 						ToolCallName: currentToolName,
-					}
+					})
 				}
 
 			case "content_block_delta":
 				// Text delta
 				if event.Delta.Text != "" {
-					ch <- agent.StreamDelta{Content: event.Delta.Text}
+					send(agent.StreamDelta{Content: event.Delta.Text})
 				}
 				// Tool input JSON delta
 				if event.Delta.PartialJSON != "" {
-					ch <- agent.StreamDelta{
+					send(agent.StreamDelta{
 						ToolCallID:   currentToolID,
 						ToolCallArgs: event.Delta.PartialJSON,
-					}
+					})
 				}
 
 			case "content_block_stop":
@@ -311,14 +316,14 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 				if usage.Input > 0 || usage.Output > 0 || usage.CacheRead > 0 || usage.CacheWrite > 0 {
 					delta.Usage = usage
 				}
-				ch <- delta
+				send(delta)
 
 			case "message_stop":
 				if err := stream.Err(); err != nil {
-					ch <- agent.StreamDelta{Err: err}
+					send(agent.StreamDelta{Err: err})
 					return
 				}
-				ch <- agent.StreamDelta{
+				send(agent.StreamDelta{
 					Model: responseModel,
 					Attempt: &agent.AttemptMetadata{
 						ProviderName:   p.providerName,
@@ -333,17 +338,17 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 						},
 					},
 					Done: true,
-				}
+				})
 				return
 			}
 		}
 
 		// Stream ended without message_stop — check for error.
 		if err := stream.Err(); err != nil {
-			ch <- agent.StreamDelta{Err: err}
+			send(agent.StreamDelta{Err: err})
 			return
 		}
-		ch <- agent.StreamDelta{
+		send(agent.StreamDelta{
 			Model: responseModel,
 			Attempt: &agent.AttemptMetadata{
 				ProviderName:   p.providerName,
@@ -358,7 +363,7 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 				},
 			},
 			Done: true,
-		}
+		})
 	}()
 
 	return ch, nil

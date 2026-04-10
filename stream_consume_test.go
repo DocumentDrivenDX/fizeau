@@ -18,6 +18,7 @@ type mockStreamingProvider struct {
 	delayFirst   time.Duration
 	delayBetween time.Duration
 	setupDelay   time.Duration
+	bufferSize   int
 }
 
 func (m *mockStreamingProvider) ChatStream(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (<-chan StreamDelta, error) {
@@ -28,7 +29,14 @@ func (m *mockStreamingProvider) ChatStream(ctx context.Context, messages []Messa
 		case <-time.After(m.setupDelay):
 		}
 	}
-	ch := make(chan StreamDelta, len(m.deltas))
+	capacity := m.bufferSize
+	if capacity <= 0 {
+		capacity = len(m.deltas)
+	}
+	if capacity <= 0 {
+		capacity = 1
+	}
+	ch := make(chan StreamDelta, capacity)
 	go func() {
 		defer close(ch)
 		for i, d := range m.deltas {
@@ -45,6 +53,7 @@ func (m *mockStreamingProvider) ChatStream(ctx context.Context, messages []Messa
 				case <-time.After(m.delayBetween):
 				}
 			}
+			d.ArrivedAt = time.Now()
 			select {
 			case <-ctx.Done():
 				return
@@ -205,6 +214,8 @@ func TestConsumeStream_CapturesTimingFromChatStreamSetup(t *testing.T) {
 
 func TestConsumeStream_IgnoresCallbackLatencyForTiming(t *testing.T) {
 	sp := &mockStreamingProvider{
+		bufferSize:   1,
+		delayBetween: 25 * time.Millisecond,
 		deltas: []StreamDelta{
 			{
 				Content: "hello ",
@@ -220,13 +231,12 @@ func TestConsumeStream_IgnoresCallbackLatencyForTiming(t *testing.T) {
 		},
 	}
 
-	var deltaCount int
+	var events []Event
 	cb := func(e Event) {
-		if e.Type != EventLLMDelta {
-			return
+		if e.Type == EventLLMDelta {
+			events = append(events, e)
 		}
-		deltaCount++
-		if deltaCount == 1 {
+		if len(events) == 1 {
 			time.Sleep(80 * time.Millisecond)
 		}
 	}
@@ -240,7 +250,9 @@ func TestConsumeStream_IgnoresCallbackLatencyForTiming(t *testing.T) {
 	require.NotNil(t, resp.Attempt.Timing.FirstToken)
 	require.NotNil(t, resp.Attempt.Timing.Generation)
 	assert.Less(t, *resp.Attempt.Timing.FirstToken, 40*time.Millisecond)
-	assert.Less(t, *resp.Attempt.Timing.Generation, 40*time.Millisecond)
+	assert.GreaterOrEqual(t, *resp.Attempt.Timing.Generation, 20*time.Millisecond)
+	assert.Len(t, events, 2)
+	assert.True(t, events[0].Timestamp.Before(events[1].Timestamp))
 }
 
 func TestConsumeStream_OmitsTimingWhenNoOutputBearingDeltaArrives(t *testing.T) {
