@@ -181,6 +181,36 @@ func TestGetLatestRelease(t *testing.T) {
 
 }
 
+func TestGetLatestRelease_CreatesMissingCacheDir(t *testing.T) {
+	mockRelease := `{
+		"tag_name": "v0.0.10",
+		"name": "Version 0.0.10",
+		"body": "## What's Changed\n\n- Fixed update cache handling",
+		"published_at": "2026-04-09T00:00:00Z"
+	}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/repos/test/repo/releases/latest", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(mockRelease))
+	}))
+	defer srv.Close()
+
+	originalAPIBase := githubAPIBase
+	githubAPIBase = srv.URL
+	t.Cleanup(func() {
+		githubAPIBase = originalAPIBase
+	})
+
+	cacheFile := filepath.Join(t.TempDir(), "cache", "latest-version.json")
+
+	release, err := GetLatestRelease("test/repo", cacheFile)
+	require.NoError(t, err)
+	assert.Equal(t, "v0.0.10", release.TagName)
+	assert.FileExists(t, cacheFile)
+}
+
 func TestGetLatestRelease_Cache(t *testing.T) {
 	homeDir := t.TempDir()
 	cacheFile := filepath.Join(homeDir, "cache.json")

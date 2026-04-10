@@ -165,6 +165,9 @@ func saveCachedVersion(path, version string) error {
 	if err != nil {
 		return err
 	}
+	if err := safefs.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	return safefs.WriteFile(path, data, 0o600)
 }
 
