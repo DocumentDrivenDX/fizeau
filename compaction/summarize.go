@@ -87,6 +87,7 @@ func Summarize(
 	toolCalls []agent.ToolCallLog,
 	previousSummary string,
 	cfg Config,
+	maxTokens int,
 ) (string, *FileOps, error) {
 	// Serialize the conversation
 	serialized := SerializeConversation(messages, cfg.MaxToolResultChars)
@@ -111,10 +112,16 @@ func Summarize(
 		promptBuilder.WriteString(cfg.SummarizationFocus)
 	}
 
-	// Calculate max tokens for the summary response
-	maxTokens := cfg.ReserveTokens * 4 / 5 // 0.8 * ReserveTokens
-	if maxTokens < 512 {
-		maxTokens = 512
+	// Calculate max tokens for the summary response.
+	summaryMaxTokens := cfg.ReserveTokens * 4 / 5 // 0.8 * ReserveTokens
+	if summaryMaxTokens < 512 {
+		summaryMaxTokens = 512
+	}
+	if maxTokens > 0 && maxTokens < summaryMaxTokens {
+		summaryMaxTokens = maxTokens
+	}
+	if summaryMaxTokens < 1 {
+		summaryMaxTokens = 1
 	}
 
 	// Use summarization model if configured
@@ -130,7 +137,7 @@ func Summarize(
 		{Role: agent.RoleUser, Content: promptBuilder.String()},
 	}, nil, agent.Options{
 		Model:     model,
-		MaxTokens: maxTokens,
+		MaxTokens: summaryMaxTokens,
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("compaction: summarization failed: %w", err)
@@ -312,12 +319,26 @@ func compactMessages(
 	)
 
 	for {
-		newMessages, result, err := compactAtCutIndex(ctx, provider, messages, toolCalls, previousSummary, previousFileOps, cfg, cutIndex, tokensBefore)
+		newMessages, result, err := compactAtCutIndex(ctx, provider, messages, toolCalls, previousSummary, previousFileOps, cfg, cutIndex, tokensBefore, prefixTokens, effectiveWindow)
 		if err != nil {
 			return messages, nil, err
 		}
 		if result == nil {
-			return messages, nil, nil
+			nextCut := nextValidBoundary(messages, cutIndex)
+			if nextCut <= cutIndex || (lastUserIndex >= 0 && nextCut > lastUserIndex) {
+				if effectiveWindow > 0 {
+					fallbackMessages, fallbackResult, err := compactAtCutIndex(ctx, provider, messages, toolCalls, previousSummary, previousFileOps, cfg, cutIndex, tokensBefore, prefixTokens, 0)
+					if err != nil {
+						return messages, nil, err
+					}
+					if fallbackResult != nil {
+						return fallbackMessages, fallbackResult, nil
+					}
+				}
+				return messages, nil, nil
+			}
+			cutIndex = nextCut
+			continue
 		}
 
 		bestMessages = newMessages
@@ -335,6 +356,15 @@ func compactMessages(
 	}
 
 	if bestResult == nil {
+		if effectiveWindow > 0 {
+			fallbackMessages, fallbackResult, err := compactAtCutIndex(ctx, provider, messages, toolCalls, previousSummary, previousFileOps, cfg, cutIndex, tokensBefore, prefixTokens, 0)
+			if err != nil {
+				return messages, nil, err
+			}
+			if fallbackResult != nil {
+				return fallbackMessages, fallbackResult, nil
+			}
+		}
 		return messages, nil, nil
 	}
 	return bestMessages, bestResult, nil
@@ -350,6 +380,8 @@ func compactAtCutIndex(
 	cfg Config,
 	cutIndex int,
 	tokensBefore int,
+	prefixTokens int,
+	effectiveWindow int,
 ) ([]agent.Message, *CompactionResult, error) {
 	// Filter out previous compaction summaries from messages-to-summarize
 	var toSummarize []agent.Message
@@ -359,8 +391,35 @@ func compactAtCutIndex(
 		}
 	}
 
-	// Run summarization
-	summary, ops, err := Summarize(ctx, provider, toSummarize, toolCalls, previousSummary, cfg)
+	// When the effective window is positive, budget the injected summary against
+	// the remaining post-prefix window. Keep the legacy unbounded path for
+	// callers that intentionally use the default negative reserve window in
+	// tests and other direct compaction entry points.
+	summaryBudgetTokens := 0
+	budgetingEnabled := effectiveWindow > 0
+	if budgetingEnabled {
+		keptTokens := EstimateConversationTokens(messages[cutIndex:])
+		availableTokens := effectiveWindow - prefixTokens - keptTokens
+		if availableTokens <= 0 {
+			return nil, nil, nil
+		}
+
+		budgetedOps := ExtractFileOps(toolCalls)
+		if previousFileOps != nil {
+			budgetedOps.Merge(previousFileOps)
+		}
+
+		summaryXML := budgetedOps.FormatXML()
+		contentBudgetTokens := availableTokens - EstimateTokens(string(agent.RoleUser))
+		staticTokens := EstimateTokens(SummaryInjectionPrefix + summaryXML + SummaryInjectionSuffix)
+		summaryBudgetTokens = contentBudgetTokens - staticTokens
+		if summaryBudgetTokens < 0 {
+			return nil, nil, nil
+		}
+	}
+
+	// Run summarization with a bounded response budget so the injected summary can fit.
+	summary, ops, err := Summarize(ctx, provider, toSummarize, toolCalls, previousSummary, cfg, summaryBudgetTokens)
 	if err != nil {
 		return messages, nil, err
 	}
@@ -372,7 +431,16 @@ func compactAtCutIndex(
 		ops.Merge(previousFileOps)
 	}
 
-	summary = summaryBody + ops.FormatXML()
+	if budgetingEnabled {
+		availableTokens := effectiveWindow - prefixTokens - EstimateConversationTokens(messages[cutIndex:])
+		trimmedSummary, ok := fitSummaryToBudget(summaryBody, ops.FormatXML(), availableTokens)
+		if !ok {
+			return nil, nil, nil
+		}
+		summary = trimmedSummary
+	} else {
+		summary = summaryBody + ops.FormatXML()
+	}
 
 	// Build new message list: kept messages + summary LAST (per SD-006 for prompt cache optimization)
 	var newMessages []agent.Message
@@ -392,6 +460,31 @@ func compactAtCutIndex(
 	}
 
 	return newMessages, result, nil
+}
+
+func fitSummaryToBudget(summaryBody, summaryXML string, availableTokens int) (string, bool) {
+	contentBudgetTokens := availableTokens - EstimateTokens(string(agent.RoleUser))
+	if contentBudgetTokens <= 0 {
+		return "", false
+	}
+
+	staticTokens := EstimateTokens(SummaryInjectionPrefix + summaryXML + SummaryInjectionSuffix)
+	bodyBudgetTokens := contentBudgetTokens - staticTokens
+	if bodyBudgetTokens < 0 {
+		return "", false
+	}
+
+	if EstimateTokens(summaryBody) > bodyBudgetTokens {
+		maxChars := bodyBudgetTokens * charsPerToken
+		if maxChars < 0 {
+			return "", false
+		}
+		if len(summaryBody) > maxChars {
+			summaryBody = summaryBody[:maxChars]
+		}
+	}
+
+	return summaryBody + summaryXML, true
 }
 
 func nextValidBoundary(messages []agent.Message, index int) int {

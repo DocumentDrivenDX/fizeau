@@ -29,7 +29,7 @@ func TestSummarize(t *testing.T) {
 		{Tool: "read", Input: json.RawMessage(`{"path":"main.go"}`)},
 	}
 
-	summary, ops, err := Summarize(context.Background(), provider, msgs, toolCalls, "", DefaultConfig())
+	summary, ops, err := Summarize(context.Background(), provider, msgs, toolCalls, "", DefaultConfig(), 0)
 	require.NoError(t, err)
 
 	assert.Contains(t, summary, "## Goal")
@@ -47,7 +47,7 @@ func TestSummarize_UpdateMode(t *testing.T) {
 		{Role: agent.RoleUser, Content: "Now run the tests"},
 	}
 
-	summary, _, err := Summarize(context.Background(), provider, msgs, nil, "previous summary here", DefaultConfig())
+	summary, _, err := Summarize(context.Background(), provider, msgs, nil, "previous summary here", DefaultConfig(), 0)
 	require.NoError(t, err)
 	assert.Contains(t, summary, "Applied fix")
 }
@@ -57,7 +57,7 @@ func TestSummarize_EmptyResponse(t *testing.T) {
 
 	summary, _, err := Summarize(context.Background(), provider, []agent.Message{
 		{Role: agent.RoleUser, Content: "test"},
-	}, nil, "", DefaultConfig())
+	}, nil, "", DefaultConfig(), 0)
 	require.NoError(t, err)
 	assert.Contains(t, summary, NoSummaryFallback)
 }

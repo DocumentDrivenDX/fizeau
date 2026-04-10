@@ -149,20 +149,19 @@ func TestCompactor_SystemPromptPrefixFitKeepsActivePromptAndBudget(t *testing.T)
 	cfg := DefaultConfig()
 	cfg.ContextWindow = 80
 	cfg.ReserveTokens = 0
-	cfg.KeepRecentTokens = 80
+	cfg.KeepRecentTokens = 20
 	cfg.EffectivePercent = 100
 
-	systemPrompt := strings.Repeat("P", 80)
+	systemPrompt := strings.Repeat("P", 120)
 	prefixTokens := EstimateMessageTokens(agent.Message{Role: agent.RoleSystem, Content: systemPrompt})
 	ctx := compactionctx.WithPrefixTokens(context.Background(), prefixTokens)
 
-	messages := []agent.Message{
-		{Role: agent.RoleUser, Content: strings.Repeat("A", 120)},
-		{Role: agent.RoleAssistant, Content: strings.Repeat("B", 120)},
-		{Role: agent.RoleUser, Content: strings.Repeat("C", 120)},
-		{Role: agent.RoleAssistant, Content: strings.Repeat("D", 120)},
-		{Role: agent.RoleUser, Content: "DO-THE-THING"},
+	var messages []agent.Message
+	for i := 0; i < 5; i++ {
+		messages = append(messages, agent.Message{Role: agent.RoleUser, Content: strings.Repeat("A", 120)})
+		messages = append(messages, agent.Message{Role: agent.RoleAssistant, Content: strings.Repeat("B", 120)})
 	}
+	messages = append(messages, agent.Message{Role: agent.RoleUser, Content: "DO-THE-THING"})
 
 	newMsgs, result, err := NewCompactor(cfg)(ctx, messages, provider, nil)
 	require.NoError(t, err)
@@ -178,4 +177,5 @@ func TestCompactor_SystemPromptPrefixFitKeepsActivePromptAndBudget(t *testing.T)
 	}
 	assert.True(t, foundActivePrompt, "compaction must keep the active user prompt verbatim")
 	assert.True(t, IsCompactionSummary(newMsgs[len(newMsgs)-1]))
+	assert.LessOrEqual(t, result.TokensAfter, 80)
 }

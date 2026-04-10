@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/DocumentDrivenDX/agent"
@@ -95,6 +96,10 @@ func TestCompactor_TriggersOnLargeConversation(t *testing.T) {
 		messages = append(messages, agent.Message{
 			Role:    agent.RoleAssistant,
 			Content: fmt.Sprintf("Read file%d.go — it contains function Do%d with substantial implementation details.", i, i),
+		})
+		messages = append(messages, agent.Message{
+			Role:    agent.RoleUser,
+			Content: "Continue with the next step.",
 		})
 
 		toolCalls = append(toolCalls, agent.ToolCallLog{
@@ -210,4 +215,102 @@ func TestEndToEnd_AgentLoopWithCompaction(t *testing.T) {
 	for _, e := range events {
 		t.Log(e)
 	}
+}
+
+type resumableSummaryProvider struct {
+	responses      []agent.Response
+	callCount      int
+	summaryPrompts []string
+}
+
+func (p *resumableSummaryProvider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {
+	if len(messages) >= 2 &&
+		messages[0].Role == agent.RoleSystem &&
+		strings.Contains(messages[0].Content, "context summarization assistant") {
+		p.summaryPrompts = append(p.summaryPrompts, messages[1].Content)
+		if previous := extractPromptBlock(messages[1].Content, "<previous-summary>", "</previous-summary>"); previous != "" {
+			return agent.Response{Content: previous}, nil
+		}
+		return agent.Response{
+			Content: "## Goal\nCarry forward the resumed session\n\n## Progress\n### Done\n- [x] Preserved earlier context",
+		}, nil
+	}
+
+	if p.callCount >= len(p.responses) {
+		return agent.Response{Content: "done"}, nil
+	}
+
+	resp := p.responses[p.callCount]
+	p.callCount++
+	return resp, nil
+}
+
+func extractPromptBlock(content, startTag, endTag string) string {
+	start := strings.Index(content, startTag)
+	if start < 0 {
+		return ""
+	}
+	start += len(startTag)
+	end := strings.Index(content[start:], endTag)
+	if end < 0 {
+		return ""
+	}
+	return strings.TrimSpace(content[start : start+end])
+}
+
+func TestRun_ResumedHistoryPreservesCompactionStateAcrossFreshCompactors(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ContextWindow = 500
+	cfg.ReserveTokens = 0
+	cfg.KeepRecentTokens = 100
+	cfg.EffectivePercent = 100
+
+	seedSummary := InjectSummary("## Goal\nSeeded prior work\n\n## Progress\n### Done\n- [x] Read first.go\n\n<read-files>\nfirst.go\n</read-files>")
+	padding := strings.Repeat("padding ", 250)
+
+	provider := &resumableSummaryProvider{
+		responses: []agent.Response{
+			{Content: "first run complete"},
+			{Content: "second run complete"},
+		},
+	}
+
+	first, err := agent.Run(context.Background(), agent.Request{
+		History: []agent.Message{
+			seedSummary,
+			{Role: agent.RoleUser, Content: padding},
+			{Role: agent.RoleAssistant, Content: padding},
+		},
+		Prompt:    strings.Repeat("continue ", 40),
+		Provider:  provider,
+		Compactor: NewCompactor(cfg),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agent.StatusSuccess, first.Status)
+	require.Len(t, provider.summaryPrompts, 1)
+	assert.Contains(t, provider.summaryPrompts[0], "Seeded prior work")
+	assert.Contains(t, provider.summaryPrompts[0], "first.go")
+
+	second, err := agent.Run(context.Background(), agent.Request{
+		History:   first.Messages,
+		Prompt:    strings.Repeat("resume ", 240),
+		Provider:  provider,
+		Compactor: NewCompactor(cfg),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agent.StatusSuccess, second.Status)
+	require.Len(t, provider.summaryPrompts, 2)
+	assert.Contains(t, provider.summaryPrompts[1], "Seeded prior work")
+	assert.Contains(t, provider.summaryPrompts[1], "first.go")
+
+	var carriedSummary string
+	for i := len(second.Messages) - 1; i >= 0; i-- {
+		if IsCompactionSummary(second.Messages[i]) {
+			carriedSummary = second.Messages[i].Content
+			break
+		}
+	}
+	require.NotEmpty(t, carriedSummary, "second run should still contain a compaction summary")
+	assert.Contains(t, carriedSummary, "Seeded prior work")
+	assert.Contains(t, carriedSummary, "first.go")
 }
