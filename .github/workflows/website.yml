@@ -8,6 +8,9 @@ on:
       - '.github/workflows/website.yml'
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   pages: write
   id-token: write
@@ -22,7 +25,7 @@ jobs:
     env:
       HUGO_VERSION: "0.160.0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -31,7 +34,7 @@ jobs:
           wget -q https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb
           sudo dpkg -i hugo_extended_${HUGO_VERSION}_linux-amd64.deb
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -42,7 +45,7 @@ jobs:
         run: hugo --gc --minify
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: website/public
 
