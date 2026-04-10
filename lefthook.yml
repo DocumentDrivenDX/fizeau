@@ -1,0 +1,19 @@
+pre-push:
+  parallel: false
+  commands:
+    build:
+      run: make build-ci
+    vet:
+      run: make vet
+    lint:
+      run: make lint
+    gosec:
+      run: make gosec
+    govulncheck:
+      run: make govulncheck
+    fmt:
+      run: make fmt-check
+    test:
+      run: make test-no-race
+    test-race:
+      run: make test-race

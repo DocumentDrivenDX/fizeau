@@ -1,4 +1,4 @@
-.PHONY: build test lint vet fmt check clean coverage coverage-ratchet coverage-bump coverage-history
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks check clean coverage coverage-ratchet coverage-bump coverage-history
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -8,8 +8,22 @@ LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) 
 build:
 	go build $(LDFLAGS) ./cmd/ddx-agent
 
+build-ci:
+	go build ./...
+
+install-quality-tools:
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+
 test:
 	go test -race ./...
+
+test-no-race:
+	go test -count=1 ./...
+
+test-race:
+	go test -race -count=1 ./...
 
 test-integration:
 	go test -race -tags=integration ./...
@@ -29,11 +43,21 @@ vet:
 fmt:
 	gofmt -l . | grep . && exit 1 || true
 
+fmt-check:
+	@if [ -n "$$(gofmt -l .)" ]; then \
+		echo "Files not formatted:"; \
+		gofmt -l .; \
+		exit 1; \
+	fi
+
 gosec:
 	gosec ./...
 
 govulncheck:
 	govulncheck ./...
+
+ci-checks: build-ci vet lint gosec govulncheck fmt-check test-no-race test-race
+	@echo "All CI checks passed."
 
 check: fmt vet lint test coverage-ratchet
 	@echo "All checks passed."
