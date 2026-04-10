@@ -42,9 +42,9 @@ func TestRun_SystemPromptCountsTowardCompactionBudget(t *testing.T) {
 	}
 
 	cfg := DefaultConfig()
-	cfg.ContextWindow = 130
+	cfg.ContextWindow = 1
 	cfg.ReserveTokens = 0
-	cfg.KeepRecentTokens = 70
+	cfg.KeepRecentTokens = 5
 	cfg.EffectivePercent = 100
 
 	systemPrompt := strings.Repeat("S", 120)
@@ -85,4 +85,47 @@ func TestRun_SystemPromptCountsTowardCompactionBudget(t *testing.T) {
 		}
 	}
 	assert.True(t, summarySeen, "compaction should have inserted a summary message")
+}
+
+func TestRun_SystemPromptDoesNotConsumeKeepBudgetForActivePrompt(t *testing.T) {
+	provider := &recordingProvider{
+		responses: []agent.Response{
+			{Content: "## Goal\nSummarized context"},
+			{Content: "final answer"},
+		},
+	}
+
+	cfg := DefaultConfig()
+	cfg.ContextWindow = 1
+	cfg.ReserveTokens = 0
+	cfg.KeepRecentTokens = 5
+	cfg.EffectivePercent = 100
+
+	systemPrompt := strings.Repeat("S", 80)
+	activePrompt := "DO-THE-THING"
+
+	result, err := agent.Run(context.Background(), agent.Request{
+		History: []agent.Message{
+			{Role: agent.RoleUser, Content: strings.Repeat("A", 120)},
+			{Role: agent.RoleAssistant, Content: strings.Repeat("B", 100)},
+			{Role: agent.RoleUser, Content: strings.Repeat("C", 100)},
+		},
+		Prompt:       activePrompt,
+		SystemPrompt: systemPrompt,
+		Provider:     provider,
+		Compactor:    NewCompactor(cfg),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, agent.StatusSuccess, result.Status)
+	assert.Equal(t, "final answer", result.Output)
+	require.Len(t, provider.calls, 2)
+
+	foundActivePrompt := false
+	for _, msg := range provider.calls[1] {
+		if msg.Role == agent.RoleUser && msg.Content == activePrompt {
+			foundActivePrompt = true
+			break
+		}
+	}
+	assert.True(t, foundActivePrompt, "compaction must keep the active user prompt verbatim")
 }
