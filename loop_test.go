@@ -9,6 +9,10 @@ import (
 	"github.com/DocumentDrivenDX/agent/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // mockProvider is a test provider that returns pre-configured responses.
@@ -613,6 +617,197 @@ func TestRun_ConfiguredRuntimeCostRequiresExactMatch(t *testing.T) {
 	assert.False(t, ok, "non-matching runtime pricing must not invent cost")
 }
 
+func TestRun_EmitsTraceSpansWithTurnAndAttemptIdentity(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+	firstCost := func() *float64 {
+		v := -1.0
+		return &v
+	}()
+
+	provider := &identityProvider{
+		mockProvider: mockProvider{
+			responses: []Response{
+				{
+					ToolCalls: []ToolCall{
+						{ID: "tc1", Name: "read", Arguments: json.RawMessage(`{"path":"main.go"}`)},
+					},
+					Usage: TokenUsage{Input: 20, Output: 10, Total: 30},
+					Model: "gpt-4o",
+					Attempt: &AttemptMetadata{
+						ProviderName:   "openai",
+						ProviderSystem: "openai",
+						RequestedModel: "gpt-4o",
+						ResponseModel:  "gpt-4o",
+						ResolvedModel:  "gpt-4o",
+						Cost: &CostAttribution{
+							Source: CostSourceUnknown,
+							Amount: firstCost,
+						},
+					},
+				},
+				{
+					Content: "done",
+					Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
+					Model:   "gpt-4o",
+					Attempt: &AttemptMetadata{
+						ProviderName:   "openai",
+						ProviderSystem: "openai",
+						RequestedModel: "gpt-4o",
+						ResponseModel:  "gpt-4o",
+						ResolvedModel:  "gpt-4o",
+						Cost: &CostAttribution{
+							Source: CostSourceUnknown,
+						},
+					},
+				},
+			},
+		},
+		provider: "openai",
+		model:    "gpt-4o",
+	}
+
+	readTool := &mockTool{name: "read", result: "package main\n"}
+	result, err := Run(context.Background(), Request{
+		Prompt:    "read main.go and finish",
+		Provider:  provider,
+		Tools:     []Tool{readTool},
+		Telemetry: tel,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+
+	ended := recorder.Ended()
+	require.Len(t, ended, 4)
+
+	root := spanByName(t, ended, "invoke_agent agent")
+	chatOne := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
+	chatTwo := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 2, telemetry.KeyAttemptIndex, 1)
+	toolSpan := spanByToolExec(t, ended, 1, 1, "read")
+
+	require.Equal(t, root.SpanContext().TraceID(), chatOne.SpanContext().TraceID())
+	require.Equal(t, root.SpanContext().TraceID(), chatTwo.SpanContext().TraceID())
+	require.Equal(t, root.SpanContext().TraceID(), toolSpan.SpanContext().TraceID())
+	require.Equal(t, root.SpanContext().SpanID(), chatOne.Parent().SpanID())
+	require.Equal(t, root.SpanContext().SpanID(), chatTwo.Parent().SpanID())
+	require.Equal(t, root.SpanContext().SpanID(), toolSpan.Parent().SpanID())
+
+	require.Equal(t, int64(1), attrInt(t, chatOne.Attributes(), telemetry.KeyTurnIndex))
+	require.Equal(t, int64(1), attrInt(t, chatOne.Attributes(), telemetry.KeyAttemptIndex))
+	require.Equal(t, int64(2), attrInt(t, chatTwo.Attributes(), telemetry.KeyTurnIndex))
+	require.Equal(t, int64(1), attrInt(t, chatTwo.Attributes(), telemetry.KeyAttemptIndex))
+	require.Equal(t, int64(1), attrInt(t, toolSpan.Attributes(), telemetry.KeyTurnIndex))
+	require.Equal(t, int64(1), attrInt(t, toolSpan.Attributes(), telemetry.KeyToolExecutionIndex))
+	require.Equal(t, "read", attrString(t, toolSpan.Attributes(), telemetry.KeyToolName))
+}
+
+func TestRun_EmitsRetryIndexedChatSpans(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+	provider := &retryProvider{
+		outcomes: []providerOutcome{
+			{err: errors.New("temporary provider failure 1")},
+			{err: errors.New("temporary provider failure 2")},
+			{
+				response: Response{
+					Content: "done",
+					Usage:   TokenUsage{Input: 12, Output: 3, Total: 15},
+					Model:   "gpt-4o",
+				},
+			},
+		},
+	}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:    "retry until success",
+		Provider:  provider,
+		Telemetry: tel,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+
+	ended := recorder.Ended()
+	require.Len(t, ended, 4)
+	chatSpans := spansWithOperation(t, ended, "chat")
+	require.Len(t, chatSpans, 3)
+
+	attempts := make(map[int]bool)
+	for _, span := range chatSpans {
+		assert.Equal(t, int64(1), attrInt(t, span.Attributes(), telemetry.KeyTurnIndex))
+		attempts[int(attrInt(t, span.Attributes(), telemetry.KeyAttemptIndex))] = true
+	}
+	assert.True(t, attempts[1])
+	assert.True(t, attempts[2])
+	assert.True(t, attempts[3])
+}
+
+func TestRun_ToolSpanRecordsErrors(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+	provider := &identityProvider{
+		mockProvider: mockProvider{
+			responses: []Response{
+				{
+					ToolCalls: []ToolCall{
+						{ID: "tc1", Name: "read", Arguments: json.RawMessage(`{"path":"main.go"}`)},
+					},
+					Usage: TokenUsage{Input: 20, Output: 10, Total: 30},
+					Model: "gpt-4o",
+					Attempt: &AttemptMetadata{
+						ProviderName:   "openai",
+						ProviderSystem: "openai",
+						RequestedModel: "gpt-4o",
+						ResponseModel:  "gpt-4o",
+						ResolvedModel:  "gpt-4o",
+						Cost: &CostAttribution{
+							Source: CostSourceUnknown,
+						},
+					},
+				},
+				{
+					Content: "done",
+					Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
+					Model:   "gpt-4o",
+					Attempt: &AttemptMetadata{
+						ProviderName:   "openai",
+						ProviderSystem: "openai",
+						RequestedModel: "gpt-4o",
+						ResponseModel:  "gpt-4o",
+						ResolvedModel:  "gpt-4o",
+						Cost: &CostAttribution{
+							Source: CostSourceUnknown,
+						},
+					},
+				},
+			},
+		},
+		provider: "openai",
+		model:    "gpt-4o",
+	}
+
+	readTool := &mockTool{name: "read", err: errors.New("boom")}
+	result, err := Run(context.Background(), Request{
+		Prompt:    "read main.go and finish",
+		Provider:  provider,
+		Tools:     []Tool{readTool},
+		Telemetry: tel,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+
+	ended := recorder.Ended()
+	toolSpan := spanByToolExec(t, ended, 1, 1, "read")
+	require.Equal(t, codes.Error, toolSpan.Status().Code)
+	assert.Equal(t, "boom", toolSpan.Status().Description)
+	assert.NotEmpty(t, attrString(t, toolSpan.Attributes(), telemetry.KeyErrorType))
+}
+
 func TestRun_SessionEndEventIncludesKnownCost(t *testing.T) {
 	sessionCost := 0.0234
 	provider := &mockProvider{
@@ -695,4 +890,107 @@ func TestRun_SessionEndEventOmitsUnknownCost(t *testing.T) {
 	require.NotNil(t, sessionEndData)
 	_, ok := sessionEndData["cost_usd"]
 	assert.False(t, ok, "session.end event must omit cost_usd when unknown")
+}
+
+func spanByName(t *testing.T, spans []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {
+	t.Helper()
+
+	for _, span := range spans {
+		if span.Name() == name {
+			return span
+		}
+	}
+
+	require.Failf(t, "span not found", "missing span %q", name)
+	var zero sdktrace.ReadOnlySpan
+	return zero
+}
+
+func spansWithOperation(t *testing.T, spans []sdktrace.ReadOnlySpan, operation string) []sdktrace.ReadOnlySpan {
+	t.Helper()
+
+	var filtered []sdktrace.ReadOnlySpan
+	for _, span := range spans {
+		if value, ok := spanAttrString(span.Attributes(), telemetry.KeyOperationName); ok && value == operation {
+			filtered = append(filtered, span)
+		}
+	}
+	return filtered
+}
+
+func spanByAttrInt(t *testing.T, spans []sdktrace.ReadOnlySpan, key1 string, value1 int64, key2 string, value2 int64) sdktrace.ReadOnlySpan {
+	t.Helper()
+
+	for _, span := range spans {
+		if v1, ok := spanAttrInt(span.Attributes(), key1); ok && v1 == value1 {
+			if v2, ok := spanAttrInt(span.Attributes(), key2); ok && v2 == value2 {
+				return span
+			}
+		}
+	}
+
+	require.Failf(t, "span not found", "missing span with %s=%d and %s=%d", key1, value1, key2, value2)
+	var zero sdktrace.ReadOnlySpan
+	return zero
+}
+
+func spanByToolExec(t *testing.T, spans []sdktrace.ReadOnlySpan, turnIndex, execIndex int64, toolName string) sdktrace.ReadOnlySpan {
+	t.Helper()
+
+	for _, span := range spans {
+		turn, okTurn := spanAttrInt(span.Attributes(), telemetry.KeyTurnIndex)
+		exec, okExec := spanAttrInt(span.Attributes(), telemetry.KeyToolExecutionIndex)
+		name, okName := spanAttrString(span.Attributes(), telemetry.KeyToolName)
+		if okTurn && okExec && okName && turn == turnIndex && exec == execIndex && name == toolName {
+			return span
+		}
+	}
+
+	require.Failf(t, "span not found", "missing tool span %q turn=%d exec=%d", toolName, turnIndex, execIndex)
+	var zero sdktrace.ReadOnlySpan
+	return zero
+}
+
+func attrString(t *testing.T, attrs []attribute.KeyValue, key string) string {
+	t.Helper()
+
+	for _, attr := range attrs {
+		if string(attr.Key) == key {
+			return attr.Value.AsString()
+		}
+	}
+
+	require.Failf(t, "attribute not found", "missing %q", key)
+	return ""
+}
+
+func attrInt(t *testing.T, attrs []attribute.KeyValue, key string) int64 {
+	t.Helper()
+
+	for _, attr := range attrs {
+		if string(attr.Key) == key {
+			return attr.Value.AsInt64()
+		}
+	}
+
+	require.Failf(t, "attribute not found", "missing %q", key)
+	return 0
+}
+
+func spanAttrString(attrs []attribute.KeyValue, key string) (string, bool) {
+	for _, attr := range attrs {
+		if string(attr.Key) == key {
+			return attr.Value.AsString(), true
+		}
+	}
+	return "", false
+}
+
+func spanAttrInt(attrs []attribute.KeyValue, key string) (int64, bool) {
+	for _, attr := range attrs {
+		if string(attr.Key) == key {
+			return attr.Value.AsInt64(), true
+		}
+	}
+	return 0, false
 }

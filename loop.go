@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/DocumentDrivenDX/agent/telemetry"
 )
 
@@ -27,6 +31,18 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	if runtimeTelemetry == nil {
 		runtimeTelemetry = telemetry.NewNoop()
 	}
+	rootCtx, rootSpan := runtimeTelemetry.StartInvokeAgent(ctx, telemetry.InvokeAgentSpan{
+		HarnessName:    "agent",
+		SessionID:      sessionID,
+		ConversationID: sessionID,
+	})
+	ctx = rootCtx
+	defer func() {
+		if result.Error != nil {
+			recordSpanError(rootSpan, result.Error)
+		}
+		rootSpan.End()
+	}()
 
 	// Build tool definitions for the provider
 	toolDefs := make([]ToolDef, len(req.Tools))
@@ -155,6 +171,16 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		var resp Response
 		var err error
 		for attempt := 1; attempt <= maxProviderAttempts; attempt++ {
+			chatCtx, chatSpan := runtimeTelemetry.StartChat(ctx, telemetry.ChatSpan{
+				HarnessName:    "agent",
+				SessionID:      sessionID,
+				ConversationID: sessionID,
+				TurnIndex:      iteration + 1,
+				AttemptIndex:   attempt,
+				ProviderName:   sessionProvider,
+				ProviderSystem: sessionProvider,
+				RequestedModel: sessionModel,
+			})
 			// Emit LLM request event with full message bodies and tool definitions.
 			emitCallback(req.Callback, Event{
 				SessionID: sessionID,
@@ -171,13 +197,15 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 			llmStart := time.Now()
 			if sp, ok := req.Provider.(StreamingProvider); ok && !req.NoStream {
-				resp, err = consumeStream(ctx, sp, messages, toolDefs, opts, req.Callback, sessionID, &seq)
+				resp, err = consumeStream(chatCtx, sp, messages, toolDefs, opts, req.Callback, sessionID, &seq)
 			} else {
-				resp, err = req.Provider.Chat(ctx, messages, toolDefs, opts)
+				resp, err = req.Provider.Chat(chatCtx, messages, toolDefs, opts)
 			}
 			llmDuration := time.Since(llmStart)
 
 			if err != nil {
+				recordSpanError(chatSpan, err)
+				chatSpan.End()
 				emitCallback(req.Callback, Event{
 					SessionID: sessionID,
 					Seq:       seq,
@@ -272,6 +300,8 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				Data:      mustMarshal(responseData),
 			})
 			seq++
+			annotateChatSpan(chatSpan, resp)
+			chatSpan.End()
 
 			break
 		}
@@ -293,26 +323,39 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		})
 
 		// Execute each tool call sequentially
-		for _, tc := range resp.ToolCalls {
+		for toolExecutionIndex, tc := range resp.ToolCalls {
+			toolCtx, toolSpan := runtimeTelemetry.StartExecuteTool(ctx, telemetry.ExecuteToolSpan{
+				HarnessName:        "agent",
+				SessionID:          sessionID,
+				ConversationID:     sessionID,
+				TurnIndex:          iteration + 1,
+				ToolExecutionIndex: toolExecutionIndex + 1,
+				ToolName:           tc.Name,
+				ToolType:           "function",
+				ToolCallID:         tc.ID,
+			})
 			tool, ok := toolMap[tc.Name]
 			if !ok {
 				// Unknown tool — return error to the model
+				unknownErr := fmt.Errorf("unknown tool %q", tc.Name)
+				recordSpanError(toolSpan, unknownErr)
+				toolSpan.End()
 				messages = append(messages, Message{
 					Role:       RoleTool,
-					Content:    fmt.Sprintf("error: unknown tool %q", tc.Name),
+					Content:    fmt.Sprintf("error: %s", unknownErr.Error()),
 					ToolCallID: tc.ID,
 				})
 				result.ToolCalls = append(result.ToolCalls, ToolCallLog{
 					Tool:  tc.Name,
 					Input: tc.Arguments,
-					Error: fmt.Sprintf("unknown tool %q", tc.Name),
+					Error: unknownErr.Error(),
 				})
 				continue
 			}
 
 			// Execute the tool
 			toolStart := time.Now()
-			output, toolErr := tool.Execute(ctx, tc.Arguments)
+			output, toolErr := tool.Execute(toolCtx, tc.Arguments)
 			toolDuration := time.Since(toolStart)
 
 			log := ToolCallLog{
@@ -325,6 +368,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			if toolErr != nil {
 				log.Error = toolErr.Error()
 				output = fmt.Sprintf("error: %s", toolErr.Error())
+				recordSpanError(toolSpan, toolErr)
 			}
 
 			result.ToolCalls = append(result.ToolCalls, log)
@@ -344,6 +388,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				}),
 			})
 			seq++
+			toolSpan.End()
 
 			// Append tool result to conversation
 			messages = append(messages, Message{
@@ -439,4 +484,37 @@ func truncateForLog(s string, maxLen int) string {
 		return s[:maxLen] + "...[truncated]"
 	}
 	return s
+}
+
+func annotateChatSpan(span trace.Span, resp Response) {
+	if span == nil {
+		return
+	}
+
+	attrs := make([]attribute.KeyValue, 0, 6)
+	if resp.Attempt != nil {
+		attrs = appendStringAttr(attrs, telemetry.KeyProviderName, resp.Attempt.ProviderName)
+		attrs = appendStringAttr(attrs, telemetry.KeyProviderSystem, resp.Attempt.ProviderSystem)
+		attrs = appendStringAttr(attrs, telemetry.KeyProviderRoute, resp.Attempt.Route)
+		attrs = appendStringAttr(attrs, telemetry.KeyRequestModel, resp.Attempt.RequestedModel)
+		attrs = appendStringAttr(attrs, telemetry.KeyResponseModel, resp.Attempt.ResponseModel)
+		attrs = appendStringAttr(attrs, telemetry.KeyProviderModelResolved, resp.Attempt.ResolvedModel)
+	}
+	span.SetAttributes(attrs...)
+}
+
+func recordSpanError(span trace.Span, err error) {
+	if span == nil || err == nil {
+		return
+	}
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+	span.SetAttributes(attribute.String(telemetry.KeyErrorType, fmt.Sprintf("%T", err)))
+}
+
+func appendStringAttr(dst []attribute.KeyValue, key, value string) []attribute.KeyValue {
+	if value == "" {
+		return dst
+	}
+	return append(dst, attribute.String(key, value))
 }

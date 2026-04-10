@@ -44,6 +44,7 @@ const (
 	KeyToolCallID     = "gen_ai.tool.call.id"
 	KeyServerAddress  = "server.address"
 	KeyServerPort     = "server.port"
+	KeyErrorType      = "error.type"
 )
 
 // Telemetry exposes the runtime-facing span scaffolding used by the agent loop.
