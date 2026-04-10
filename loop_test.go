@@ -761,6 +761,115 @@ func TestRun_ConfiguredRuntimeCostRequiresExactMatch(t *testing.T) {
 	assert.False(t, ok, "non-matching runtime pricing must not invent cost")
 }
 
+func TestRun_EmitsCostAttributesOnChatAndRootSpans(t *testing.T) {
+	t.Run("configured-cost", func(t *testing.T) {
+		recorder := tracetest.NewSpanRecorder()
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+		configuredCost := 0.0125
+		tel := telemetry.New(telemetry.Config{
+			TracerProvider: tp,
+			Pricing: telemetry.RuntimePricing{
+				"openai": {
+					"gpt-4o": {
+						Amount:     &configuredCost,
+						Currency:   "USD",
+						PricingRef: "openai/gpt-4o",
+					},
+				},
+			},
+		})
+
+		provider := &mockProvider{
+			responses: []Response{
+				{
+					Content: "done",
+					Usage:   TokenUsage{Input: 100, Output: 50, Total: 150},
+					Model:   "gpt-4o",
+					Attempt: &AttemptMetadata{
+						ProviderName:   "openai",
+						ProviderSystem: "openai",
+						RequestedModel: "gpt-4o",
+						ResponseModel:  "gpt-4o",
+						ResolvedModel:  "gpt-4o",
+						Cost: &CostAttribution{
+							Source: CostSourceUnknown,
+						},
+					},
+				},
+			},
+		}
+
+		result, err := Run(context.Background(), Request{
+			Prompt:    "test",
+			Provider:  provider,
+			Telemetry: tel,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, StatusSuccess, result.Status)
+		assert.InDelta(t, configuredCost, result.CostUSD, 1e-9)
+
+		ended := recorder.Ended()
+		require.Len(t, ended, 2)
+		root := spanByName(t, ended, "invoke_agent agent")
+		chat := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
+
+		assert.Equal(t, string(CostSourceConfigured), attrString(t, chat.Attributes(), telemetry.KeyCostSource))
+		assert.InDelta(t, configuredCost, attrFloat(t, chat.Attributes(), telemetry.KeyCostAmount), 1e-9)
+		assert.Equal(t, "USD", attrString(t, chat.Attributes(), telemetry.KeyCostCurrency))
+		assert.Equal(t, "openai/gpt-4o", attrString(t, chat.Attributes(), telemetry.KeyCostPricingRef))
+
+		assert.Equal(t, string(CostSourceConfigured), attrString(t, root.Attributes(), telemetry.KeyCostSource))
+		assert.InDelta(t, configuredCost, attrFloat(t, root.Attributes(), telemetry.KeyCostAmount), 1e-9)
+		assert.Equal(t, "USD", attrString(t, root.Attributes(), telemetry.KeyCostCurrency))
+		assert.Equal(t, "openai/gpt-4o", attrString(t, root.Attributes(), telemetry.KeyCostPricingRef))
+	})
+
+	t.Run("unknown-cost", func(t *testing.T) {
+		recorder := tracetest.NewSpanRecorder()
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+		tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+		provider := &mockProvider{
+			responses: []Response{
+				{
+					Content: "done",
+					Usage:   TokenUsage{Input: 100, Output: 50, Total: 150},
+					Model:   "gpt-4o",
+					Attempt: &AttemptMetadata{
+						ProviderName:   "openai",
+						ProviderSystem: "openai",
+						RequestedModel: "gpt-4o",
+						ResponseModel:  "gpt-4o",
+						ResolvedModel:  "gpt-4o",
+						Cost: &CostAttribution{
+							Source: CostSourceUnknown,
+						},
+					},
+				},
+			},
+		}
+
+		result, err := Run(context.Background(), Request{
+			Prompt:    "test",
+			Provider:  provider,
+			Telemetry: tel,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, StatusSuccess, result.Status)
+		assert.Equal(t, -1.0, result.CostUSD)
+
+		ended := recorder.Ended()
+		require.Len(t, ended, 2)
+		root := spanByName(t, ended, "invoke_agent agent")
+		chat := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
+
+		assert.Equal(t, string(CostSourceUnknown), attrString(t, chat.Attributes(), telemetry.KeyCostSource))
+		assert.False(t, hasAttr(chat.Attributes(), telemetry.KeyCostAmount))
+		assert.Equal(t, string(CostSourceUnknown), attrString(t, root.Attributes(), telemetry.KeyCostSource))
+		assert.False(t, hasAttr(root.Attributes(), telemetry.KeyCostAmount))
+	})
+}
+
 func TestRun_EmitsTraceSpansWithTurnAndAttemptIdentity(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))

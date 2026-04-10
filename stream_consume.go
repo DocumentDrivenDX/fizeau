@@ -94,7 +94,7 @@ func consumeStream(
 		}
 
 		if delta.Err != nil {
-			return Response{}, delta.Err
+			return resp, delta.Err
 		}
 
 		if streamDeltaHasOutput(delta) {

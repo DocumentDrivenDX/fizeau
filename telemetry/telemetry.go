@@ -30,6 +30,16 @@ const (
 	KeyProviderSystem        = "ddx.provider.system"
 	KeyProviderRoute         = "ddx.provider.route"
 	KeyProviderModelResolved = "ddx.provider.model_resolved"
+	KeyCostSource            = "ddx.cost.source"
+	KeyCostCurrency          = "ddx.cost.currency"
+	KeyCostAmount            = "ddx.cost.amount"
+	KeyCostInputAmount       = "ddx.cost.input_amount"
+	KeyCostOutputAmount      = "ddx.cost.output_amount"
+	KeyCostCacheReadAmount   = "ddx.cost.cache_read_amount"
+	KeyCostCacheWriteAmount  = "ddx.cost.cache_write_amount"
+	KeyCostReasoningAmount   = "ddx.cost.reasoning_amount"
+	KeyCostPricingRef        = "ddx.cost.pricing_ref"
+	KeyCostRaw               = "ddx.cost.raw"
 	KeyTimingFirstTokenMS    = "ddx.timing.first_token_ms"
 	KeyTimingQueueMS         = "ddx.timing.queue_ms"
 	KeyTimingPrefillMS       = "ddx.timing.prefill_ms"
@@ -53,10 +63,35 @@ const (
 	KeyUsageOutput     = "gen_ai.usage.output_tokens"
 	KeyUsageCacheRead  = "gen_ai.usage.cache_read.input_tokens"
 	KeyUsageCacheWrite = "gen_ai.usage.cache_creation.input_tokens"
+	KeyTokenType       = "gen_ai.token.type"
 	KeyServerAddress   = "server.address"
 	KeyServerPort      = "server.port"
 	KeyErrorType       = "error.type"
 )
+
+// Usage captures token counts for metric recording without depending on the
+// agent package.
+type Usage struct {
+	Input      int
+	Output     int
+	CacheRead  int
+	CacheWrite int
+	Total      int
+}
+
+// ChatMetrics carries the completion-specific values needed to emit metrics.
+type ChatMetrics struct {
+	ResponseModel string
+	ResolvedModel string
+	Usage         Usage
+	Duration      time.Duration
+	Err           error
+}
+
+// ChatMetricsRecorder records completed chat attempts into OTel metrics.
+type ChatMetricsRecorder interface {
+	RecordChatMetrics(ctx context.Context, attrs ChatSpan, metrics ChatMetrics)
+}
 
 // Telemetry exposes the runtime-facing span scaffolding used by the agent loop.
 // The returned context carries the started span and, for root spans, the run
@@ -152,10 +187,12 @@ type runState struct {
 type ctxKey struct{}
 
 type runtime struct {
-	tracer   trace.Tracer
-	meter    metric.Meter
-	pricing  RuntimePricing
-	shutdown func(context.Context) error
+	tracer        trace.Tracer
+	meter         metric.Meter
+	chatDuration  metric.Float64Histogram
+	chatTokenUsed metric.Int64Histogram
+	pricing       RuntimePricing
+	shutdown      func(context.Context) error
 }
 
 // New constructs a telemetry runtime. Nil providers fall back to no-op
@@ -168,15 +205,31 @@ func New(cfg Config) Telemetry {
 
 	mp := cfg.MeterProvider
 	var m metric.Meter
+	var chatDuration metric.Float64Histogram
+	var chatTokenUsed metric.Int64Histogram
 	if mp != nil {
 		m = mp.Meter(InstrumentationName)
+		chatDuration, _ = m.Float64Histogram(
+			"gen_ai.client.operation.duration",
+			metric.WithDescription("GenAI operation duration."),
+			metric.WithUnit("s"),
+			metric.WithExplicitBucketBoundaries(0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48, 40.96, 81.92),
+		)
+		chatTokenUsed, _ = m.Int64Histogram(
+			"gen_ai.client.token.usage",
+			metric.WithDescription("Number of input and output tokens used."),
+			metric.WithUnit("{token}"),
+			metric.WithExplicitBucketBoundaries(1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 67108864),
+		)
 	}
 
 	return &runtime{
-		tracer:   tp.Tracer(InstrumentationName),
-		meter:    m,
-		pricing:  cfg.Pricing,
-		shutdown: cfg.Shutdown,
+		tracer:        tp.Tracer(InstrumentationName),
+		meter:         m,
+		chatDuration:  chatDuration,
+		chatTokenUsed: chatTokenUsed,
+		pricing:       cfg.Pricing,
+		shutdown:      cfg.Shutdown,
 	}
 }
 
@@ -225,6 +278,27 @@ func (r *runtime) StartExecuteTool(ctx context.Context, attrs ExecuteToolSpan) (
 		trace.WithAttributes(toolAttributes(merged)...),
 	)
 	return ctx, span
+}
+
+func (r *runtime) RecordChatMetrics(ctx context.Context, attrs ChatSpan, metrics ChatMetrics) {
+	if r == nil {
+		return
+	}
+
+	metricAttrs := chatMetricAttributes(attrs, metrics)
+	if r.chatDuration != nil {
+		r.chatDuration.Record(ctx, metrics.Duration.Seconds(), metric.WithAttributes(metricAttrs...))
+	}
+	if r.chatTokenUsed == nil {
+		return
+	}
+
+	if metrics.Usage.Input > 0 {
+		r.chatTokenUsed.Record(ctx, int64(metrics.Usage.Input), metric.WithAttributes(tokenMetricAttributes(metricAttrs, "input")...))
+	}
+	if metrics.Usage.Output > 0 {
+		r.chatTokenUsed.Record(ctx, int64(metrics.Usage.Output), metric.WithAttributes(tokenMetricAttributes(metricAttrs, "output")...))
+	}
 }
 
 func (r *runtime) ResolveCost(providerSystem, resolvedModel string) (Cost, bool) {
@@ -341,6 +415,30 @@ func chatAttributes(attrs ChatSpan) []attribute.KeyValue {
 	out = appendString(out, KeyProviderModelResolved, attrs.ResolvedModel)
 	out = appendString(out, KeyServerAddress, attrs.ServerAddress)
 	out = appendInt(out, KeyServerPort, attrs.ServerPort)
+	return out
+}
+
+func chatMetricAttributes(attrs ChatSpan, metrics ChatMetrics) []attribute.KeyValue {
+	out := []attribute.KeyValue{
+		attribute.String(KeyOperationName, operationChat),
+	}
+	out = appendString(out, KeyProviderName, attrs.ProviderName)
+	out = appendString(out, KeyProviderSystem, attrs.ProviderSystem)
+	out = appendString(out, KeyProviderRoute, attrs.ProviderRoute)
+	out = appendString(out, KeyRequestModel, attrs.RequestedModel)
+	out = appendString(out, KeyResponseModel, firstNonEmpty(metrics.ResponseModel, attrs.ResponseModel))
+	out = appendString(out, KeyProviderModelResolved, firstNonEmpty(metrics.ResolvedModel, attrs.ResolvedModel))
+	out = appendString(out, KeyServerAddress, attrs.ServerAddress)
+	out = appendInt(out, KeyServerPort, attrs.ServerPort)
+	if metrics.Err != nil {
+		out = appendString(out, KeyErrorType, fmt.Sprintf("%T", metrics.Err))
+	}
+	return out
+}
+
+func tokenMetricAttributes(base []attribute.KeyValue, tokenType string) []attribute.KeyValue {
+	out := append([]attribute.KeyValue(nil), base...)
+	out = append(out, attribute.String(KeyTokenType, tokenType))
 	return out
 }
 

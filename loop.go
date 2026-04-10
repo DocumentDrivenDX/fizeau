@@ -39,7 +39,15 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		ConversationID: sessionID,
 	})
 	ctx = rootCtx
+	chatMetricsRecorder, _ := runtimeTelemetry.(telemetry.ChatMetricsRecorder)
+	sessionCostObserved := false
+	sessionCostKnown := true
+	sessionCostSource := ""
+	sessionCostCurrency := ""
+	sessionCostPricingRef := ""
+	sessionCostStable := true
 	defer func() {
+		applySessionCostAttributes(rootSpan, sessionCostObserved, sessionCostKnown, sessionCostSource, result.CostUSD, sessionCostCurrency, sessionCostPricingRef, sessionCostStable)
 		if result.Error != nil {
 			recordSpanError(rootSpan, result.Error)
 		}
@@ -86,7 +94,6 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 	seq := 1
 	opts := Options{}
-	sessionCostKnown := true
 	compactionCtx := ctx
 	if req.SystemPrompt != "" {
 		compactionCtx = compactionctx.WithPrefixTokens(compactionCtx, estimateCompactionPrefixTokens(req.SystemPrompt))
@@ -216,7 +223,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		var err error
 		for attempt := 1; attempt <= maxProviderAttempts; attempt++ {
 			chatStart := time.Now()
-			chatCtx, chatSpan := runtimeTelemetry.StartChat(ctx, telemetry.ChatSpan{
+			chatAttrs := telemetry.ChatSpan{
 				HarnessName:    "agent",
 				SessionID:      sessionID,
 				ConversationID: sessionID,
@@ -228,7 +235,8 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				RequestedModel: sessionModel,
 				ServerAddress:  chatServerAddress,
 				ServerPort:     chatServerPort,
-			})
+			}
+			chatCtx, chatSpan := runtimeTelemetry.StartChat(ctx, chatAttrs)
 			// Emit LLM request event with full message bodies and tool definitions.
 			emitCallback(req.Callback, Event{
 				SessionID: sessionID,
@@ -251,8 +259,74 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			}
 			llmDuration := time.Since(llmStart)
 
+			if resp.Attempt == nil {
+				resp.Attempt = &AttemptMetadata{}
+			}
+			resp.Attempt.AttemptIndex = attempt
+			if (resp.Attempt.Cost == nil || resp.Attempt.Cost.Source == CostSourceUnknown) &&
+				resp.Attempt.ProviderSystem != "" &&
+				resp.Attempt.ResolvedModel != "" {
+				if configuredCost, ok := runtimeTelemetry.ResolveCost(resp.Attempt.ProviderSystem, resp.Attempt.ResolvedModel); ok {
+					resp.Attempt.Cost = &CostAttribution{
+						Source:     CostSourceConfigured,
+						Currency:   configuredCost.Currency,
+						Amount:     configuredCost.Amount,
+						PricingRef: configuredCost.PricingRef,
+					}
+				}
+			}
+
+			// Preserve usage and cost for both successful and failed attempts.
+			result.Tokens.Add(resp.Usage)
+			if resp.Model != "" {
+				result.Model = resp.Model
+			}
+
+			iterCost, costKnown := attemptCostUSD(resp.Attempt)
+			if costKnown {
+				sessionCostObserved = true
+				if resp.Attempt != nil && resp.Attempt.Cost != nil {
+					if sessionCostSource == "" {
+						sessionCostSource = string(resp.Attempt.Cost.Source)
+						sessionCostCurrency = resp.Attempt.Cost.Currency
+						sessionCostPricingRef = resp.Attempt.Cost.PricingRef
+					} else if sessionCostSource != string(resp.Attempt.Cost.Source) || sessionCostCurrency != resp.Attempt.Cost.Currency || sessionCostPricingRef != resp.Attempt.Cost.PricingRef {
+						sessionCostStable = false
+					}
+				}
+				if sessionCostKnown {
+					result.CostUSD += iterCost
+				}
+			} else {
+				sessionCostObserved = true
+				sessionCostKnown = false
+				result.CostUSD = -1
+			}
+
+			if chatMetricsRecorder != nil {
+				chatMetricsRecorder.RecordChatMetrics(chatCtx, chatAttrs, telemetry.ChatMetrics{
+					ResponseModel: resp.Model,
+					ResolvedModel: func() string {
+						if resp.Attempt != nil {
+							return resp.Attempt.ResolvedModel
+						}
+						return ""
+					}(),
+					Usage: telemetry.Usage{
+						Input:      resp.Usage.Input,
+						Output:     resp.Usage.Output,
+						CacheRead:  resp.Usage.CacheRead,
+						CacheWrite: resp.Usage.CacheWrite,
+						Total:      resp.Usage.Total,
+					},
+					Duration: llmDuration,
+					Err:      err,
+				})
+			}
+
 			if err != nil {
 				recordSpanError(chatSpan, err)
+				annotateChatSpan(chatSpan, resp)
 				chatSpan.End()
 				emitCallback(req.Callback, Event{
 					SessionID: sessionID,
@@ -296,38 +370,6 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				snapshotMessages()
 				emitSessionEnd(req.Callback, sessionID, &seq, result, req.Metadata)
 				return result, result.Error
-			}
-
-			if resp.Attempt == nil {
-				resp.Attempt = &AttemptMetadata{}
-			}
-			resp.Attempt.AttemptIndex = attempt
-			if (resp.Attempt.Cost == nil || resp.Attempt.Cost.Source == CostSourceUnknown) &&
-				resp.Attempt.ProviderSystem != "" &&
-				resp.Attempt.ResolvedModel != "" {
-				if configuredCost, ok := runtimeTelemetry.ResolveCost(resp.Attempt.ProviderSystem, resp.Attempt.ResolvedModel); ok {
-					resp.Attempt.Cost = &CostAttribution{
-						Source:     CostSourceConfigured,
-						Currency:   configuredCost.Currency,
-						Amount:     configuredCost.Amount,
-						PricingRef: configuredCost.PricingRef,
-					}
-				}
-			}
-
-			// Accumulate tokens
-			result.Tokens.Add(resp.Usage)
-			result.Model = resp.Model
-
-			// Accumulate cost only when the attempt provides known provenance.
-			iterCost, costKnown := attemptCostUSD(resp.Attempt)
-			if costKnown {
-				if sessionCostKnown {
-					result.CostUSD += iterCost
-				}
-			} else {
-				sessionCostKnown = false
-				result.CostUSD = -1
 			}
 
 			// Emit LLM response event with full tool call bodies.
@@ -605,6 +647,71 @@ func annotateChatSpan(span trace.Span, resp Response) {
 		attrs = appendIntAttr(attrs, telemetry.KeyUsageOutput, resp.Usage.Output)
 		attrs = appendIntAttr(attrs, telemetry.KeyUsageCacheRead, resp.Usage.CacheRead)
 		attrs = appendIntAttr(attrs, telemetry.KeyUsageCacheWrite, resp.Usage.CacheWrite)
+	}
+	attrs = append(attrs, attemptCostAttributes(resp.Attempt)...)
+	span.SetAttributes(attrs...)
+}
+
+func attemptCostAttributes(attempt *AttemptMetadata) []attribute.KeyValue {
+	if attempt == nil || attempt.Cost == nil || attempt.Cost.Amount == nil {
+		return []attribute.KeyValue{attribute.String(telemetry.KeyCostSource, string(CostSourceUnknown))}
+	}
+
+	source := attempt.Cost.Source
+	if source == "" || source == CostSourceUnknown {
+		return []attribute.KeyValue{attribute.String(telemetry.KeyCostSource, string(CostSourceUnknown))}
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String(telemetry.KeyCostSource, string(source)),
+		attribute.Float64(telemetry.KeyCostAmount, *attempt.Cost.Amount),
+	}
+	if attempt.Cost.Currency != "" {
+		attrs = append(attrs, attribute.String(telemetry.KeyCostCurrency, attempt.Cost.Currency))
+	}
+	if attempt.Cost.InputAmount != nil {
+		attrs = append(attrs, attribute.Float64(telemetry.KeyCostInputAmount, *attempt.Cost.InputAmount))
+	}
+	if attempt.Cost.OutputAmount != nil {
+		attrs = append(attrs, attribute.Float64(telemetry.KeyCostOutputAmount, *attempt.Cost.OutputAmount))
+	}
+	if attempt.Cost.CacheReadAmount != nil {
+		attrs = append(attrs, attribute.Float64(telemetry.KeyCostCacheReadAmount, *attempt.Cost.CacheReadAmount))
+	}
+	if attempt.Cost.CacheWriteAmount != nil {
+		attrs = append(attrs, attribute.Float64(telemetry.KeyCostCacheWriteAmount, *attempt.Cost.CacheWriteAmount))
+	}
+	if attempt.Cost.ReasoningAmount != nil {
+		attrs = append(attrs, attribute.Float64(telemetry.KeyCostReasoningAmount, *attempt.Cost.ReasoningAmount))
+	}
+	if attempt.Cost.PricingRef != "" {
+		attrs = append(attrs, attribute.String(telemetry.KeyCostPricingRef, attempt.Cost.PricingRef))
+	}
+	if len(attempt.Cost.Raw) > 0 {
+		attrs = append(attrs, attribute.String(telemetry.KeyCostRaw, string(attempt.Cost.Raw)))
+	}
+	return attrs
+}
+
+func applySessionCostAttributes(span trace.Span, observed, known bool, source string, amount float64, currency, pricingRef string, stable bool) {
+	if span == nil || !observed {
+		return
+	}
+
+	if !known || !stable || source == "" {
+		span.SetAttributes(attribute.String(telemetry.KeyCostSource, string(CostSourceUnknown)))
+		return
+	}
+
+	attrs := []attribute.KeyValue{
+		attribute.String(telemetry.KeyCostSource, source),
+		attribute.Float64(telemetry.KeyCostAmount, amount),
+	}
+	if currency != "" {
+		attrs = append(attrs, attribute.String(telemetry.KeyCostCurrency, currency))
+	}
+	if pricingRef != "" {
+		attrs = append(attrs, attribute.String(telemetry.KeyCostPricingRef, pricingRef))
 	}
 	span.SetAttributes(attrs...)
 }

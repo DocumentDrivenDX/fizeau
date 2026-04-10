@@ -3,10 +3,15 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -149,6 +154,67 @@ func TestShutdownBestEffort(t *testing.T) {
 	require.True(t, called)
 }
 
+func TestRecordChatMetrics(t *testing.T) {
+	t.Parallel()
+
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	tel := New(Config{MeterProvider: mp})
+	recorder, ok := tel.(ChatMetricsRecorder)
+	require.True(t, ok)
+
+	recorder.RecordChatMetrics(context.Background(), ChatSpan{
+		ProviderName:   "openai-compat",
+		ProviderSystem: "openai",
+		ProviderRoute:  "default",
+		RequestedModel: "gpt-4o",
+		ResponseModel:  "gpt-4o",
+		ResolvedModel:  "gpt-4o",
+		ServerAddress:  "api.openai.com",
+		ServerPort:     443,
+	}, ChatMetrics{
+		ResponseModel: "gpt-4o",
+		ResolvedModel: "gpt-4o",
+		Usage: Usage{
+			Input:  11,
+			Output: 9,
+		},
+		Duration: 250 * time.Millisecond,
+		Err:      errors.New("boom"),
+	})
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	durationMetric := findMetric(t, rm, "gen_ai.client.operation.duration")
+	durationPoints := histogramFloatPoints(t, durationMetric)
+	require.Len(t, durationPoints, 1)
+	assert.Equal(t, uint64(1), durationPoints[0].Count)
+	assert.InDelta(t, 0.25, durationPoints[0].Sum, 1e-9)
+	assert.Equal(t, "openai-compat", metricAttrString(t, durationPoints[0].Attributes, KeyProviderName))
+	assert.Equal(t, "openai", metricAttrString(t, durationPoints[0].Attributes, KeyProviderSystem))
+	assert.Equal(t, "gpt-4o", metricAttrString(t, durationPoints[0].Attributes, KeyRequestModel))
+	assert.Equal(t, "gpt-4o", metricAttrString(t, durationPoints[0].Attributes, KeyResponseModel))
+	assert.Equal(t, "gpt-4o", metricAttrString(t, durationPoints[0].Attributes, KeyProviderModelResolved))
+	assert.True(t, strings.Contains(metricAttrString(t, durationPoints[0].Attributes, KeyErrorType), "errorString"))
+
+	tokenMetric := findMetric(t, rm, "gen_ai.client.token.usage")
+	tokenPoints := histogramIntPoints(t, tokenMetric)
+	require.Len(t, tokenPoints, 2)
+
+	inputPoint := pointByTokenType(t, tokenPoints, "input")
+	assert.Equal(t, uint64(1), inputPoint.Count)
+	assert.Equal(t, int64(11), inputPoint.Sum)
+	assert.Equal(t, "openai-compat", metricAttrString(t, inputPoint.Attributes, KeyProviderName))
+	assert.Equal(t, "input", metricAttrString(t, inputPoint.Attributes, KeyTokenType))
+	assert.True(t, strings.Contains(metricAttrString(t, inputPoint.Attributes, KeyErrorType), "errorString"))
+
+	outputPoint := pointByTokenType(t, tokenPoints, "output")
+	assert.Equal(t, uint64(1), outputPoint.Count)
+	assert.Equal(t, int64(9), outputPoint.Sum)
+	assert.Equal(t, "output", metricAttrString(t, outputPoint.Attributes, KeyTokenType))
+}
+
 func findSpan(t *testing.T, ended []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {
 	t.Helper()
 
@@ -187,4 +253,59 @@ func attrInt(t *testing.T, attrs []attribute.KeyValue, key string) int64 {
 
 	require.Failf(t, "attribute not found", "missing %q", key)
 	return 0
+}
+
+func findMetric(t *testing.T, rm metricdata.ResourceMetrics, name string) metricdata.Metrics {
+	t.Helper()
+
+	for _, scope := range rm.ScopeMetrics {
+		for _, metric := range scope.Metrics {
+			if metric.Name == name {
+				return metric
+			}
+		}
+	}
+
+	require.Failf(t, "metric not found", "missing %q", name)
+	return metricdata.Metrics{}
+}
+
+func histogramFloatPoints(t *testing.T, metric metricdata.Metrics) []metricdata.HistogramDataPoint[float64] {
+	t.Helper()
+
+	hist, ok := metric.Data.(metricdata.Histogram[float64])
+	require.Truef(t, ok, "unexpected metric type %T", metric.Data)
+	return hist.DataPoints
+}
+
+func histogramIntPoints(t *testing.T, metric metricdata.Metrics) []metricdata.HistogramDataPoint[int64] {
+	t.Helper()
+
+	hist, ok := metric.Data.(metricdata.Histogram[int64])
+	require.Truef(t, ok, "unexpected metric type %T", metric.Data)
+	return hist.DataPoints
+}
+
+func pointByTokenType(t *testing.T, points []metricdata.HistogramDataPoint[int64], tokenType string) metricdata.HistogramDataPoint[int64] {
+	t.Helper()
+
+	for _, point := range points {
+		if metricAttrString(t, point.Attributes, KeyTokenType) == tokenType {
+			return point
+		}
+	}
+
+	require.Failf(t, "metric point not found", "missing token type %q", tokenType)
+	return metricdata.HistogramDataPoint[int64]{}
+}
+
+func metricAttrString(t *testing.T, attrs attribute.Set, key string) string {
+	t.Helper()
+
+	value, ok := attrs.Value(attribute.Key(key))
+	if !ok {
+		require.Failf(t, "metric attribute not found", "missing %q", key)
+		return ""
+	}
+	return value.AsString()
 }
