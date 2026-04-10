@@ -73,7 +73,7 @@ func TestAggregateUsage(t *testing.T) {
 		Status:     agent.StatusSuccess,
 		Output:     "ok",
 		Tokens:     agent.TokenUsage{Input: 10, Output: 5, Total: 15},
-		CostUSD:    usageFloat64Ptr(0),
+		CostUSD:    usageFloat64Ptr(0.25),
 		DurationMs: 1000,
 		Model:      "qwen3.5-7b",
 	})
@@ -91,10 +91,10 @@ func TestAggregateUsage(t *testing.T) {
 		Model:      "qwen3.5-7b",
 	})
 
-	writeSessionLog(t, "old-session", time.Date(2026, 3, 25, 9, 0, 0, 0, time.UTC), time.Date(2026, 3, 25, 9, 0, 3, 0, time.UTC), SessionStartData{
+	writeSessionLog(t, "recent-known-only", time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC), time.Date(2026, 4, 8, 12, 0, 3, 0, time.UTC), SessionStartData{
 		Provider: "anthropic",
 		Model:    "claude-sonnet-4-20250514",
-		Prompt:   "old",
+		Prompt:   "recent known only",
 	}, SessionEndData{
 		Status:     agent.StatusSuccess,
 		Output:     "ok",
@@ -104,31 +104,64 @@ func TestAggregateUsage(t *testing.T) {
 		Model:      "claude-sonnet-4-20250514",
 	})
 
+	writeSessionLog(t, "old-session", time.Date(2026, 3, 25, 9, 0, 0, 0, time.UTC), time.Date(2026, 3, 25, 9, 0, 3, 0, time.UTC), SessionStartData{
+		Provider: "anthropic",
+		Model:    "claude-sonnet-4-20250514",
+		Prompt:   "old",
+	}, SessionEndData{
+		Status:     agent.StatusSuccess,
+		Output:     "ok",
+		Tokens:     agent.TokenUsage{Input: 100, Output: 50, Total: 150},
+		CostUSD:    usageFloat64Ptr(1.0),
+		DurationMs: 3000,
+		Model:      "claude-sonnet-4-20250514",
+	})
+
 	report, err := AggregateUsage(dir, UsageOptions{Since: "7d", Now: now})
 	require.NoError(t, err)
 	require.NotNil(t, report)
 	require.NotNil(t, report.Window)
 
-	assert.Len(t, report.Rows, 1)
-	row := report.Rows[0]
-	assert.Equal(t, "openai-compat", row.Provider)
-	assert.Equal(t, "qwen3.5-7b", row.Model)
-	assert.Equal(t, 2, row.Sessions)
-	assert.Equal(t, 30, row.InputTokens)
-	assert.Equal(t, 15, row.OutputTokens)
-	assert.Equal(t, 45, row.TotalTokens)
-	assert.Equal(t, int64(3000), row.DurationMs)
-	assert.InDelta(t, 0.0, row.KnownCostUSD, 0.0001)
-	assert.Equal(t, 1, row.UnknownCostSessions)
-	assert.InDelta(t, 10.0, row.InputTokensPerSecond(), 0.01)
-	assert.InDelta(t, 5.0, row.OutputTokensPerSecond(), 0.01)
+	assert.Len(t, report.Rows, 2)
 
-	assert.Equal(t, 2, report.Totals.Sessions)
-	assert.Equal(t, 30, report.Totals.InputTokens)
-	assert.Equal(t, 15, report.Totals.OutputTokens)
-	assert.Equal(t, 45, report.Totals.TotalTokens)
-	assert.Equal(t, int64(3000), report.Totals.DurationMs)
-	assert.InDelta(t, 0.0, report.Totals.KnownCostUSD, 0.0001)
+	var mixedRow, knownRow *UsageRow
+	for i := range report.Rows {
+		row := &report.Rows[i]
+		switch {
+		case row.Provider == "openai-compat" && row.Model == "qwen3.5-7b":
+			mixedRow = row
+		case row.Provider == "anthropic" && row.Model == "claude-sonnet-4-20250514":
+			knownRow = row
+		}
+	}
+
+	require.NotNil(t, mixedRow)
+	assert.Equal(t, 2, mixedRow.Sessions)
+	assert.Equal(t, 30, mixedRow.InputTokens)
+	assert.Equal(t, 15, mixedRow.OutputTokens)
+	assert.Equal(t, 45, mixedRow.TotalTokens)
+	assert.Equal(t, int64(3000), mixedRow.DurationMs)
+	assert.Nil(t, mixedRow.KnownCostUSD)
+	assert.Equal(t, 1, mixedRow.UnknownCostSessions)
+	assert.InDelta(t, 10.0, mixedRow.InputTokensPerSecond(), 0.01)
+	assert.InDelta(t, 5.0, mixedRow.OutputTokensPerSecond(), 0.01)
+
+	require.NotNil(t, knownRow)
+	assert.Equal(t, 1, knownRow.Sessions)
+	assert.Equal(t, 100, knownRow.InputTokens)
+	assert.Equal(t, 50, knownRow.OutputTokens)
+	assert.Equal(t, 150, knownRow.TotalTokens)
+	assert.Equal(t, int64(3000), knownRow.DurationMs)
+	require.NotNil(t, knownRow.KnownCostUSD)
+	assert.InDelta(t, 0.5, *knownRow.KnownCostUSD, 0.0001)
+	assert.Equal(t, 0, knownRow.UnknownCostSessions)
+
+	assert.Equal(t, 3, report.Totals.Sessions)
+	assert.Equal(t, 130, report.Totals.InputTokens)
+	assert.Equal(t, 65, report.Totals.OutputTokens)
+	assert.Equal(t, 195, report.Totals.TotalTokens)
+	assert.Equal(t, int64(6000), report.Totals.DurationMs)
+	assert.Nil(t, report.Totals.KnownCostUSD)
 	assert.Equal(t, 1, report.Totals.UnknownCostSessions)
 	assert.True(t, report.Window.Contains(time.Date(2026, 4, 8, 10, 0, 0, 0, time.UTC)))
 	assert.False(t, report.Window.Contains(time.Date(2026, 3, 25, 9, 0, 0, 0, time.UTC)))

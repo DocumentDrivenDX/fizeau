@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,10 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCLI_Usage(t *testing.T) {
-	workDir := t.TempDir()
-	logDir := filepath.Join(workDir, ".agent", "sessions")
-	require.NoError(t, os.MkdirAll(logDir, 0o755))
+func seedMixedUsageLogs(t *testing.T, logDir string) {
+	t.Helper()
 
 	writeUsageLog := func(t *testing.T, sessionID string, startAt, endAt time.Time, start session.SessionStartData, end session.SessionEndData) {
 		t.Helper()
@@ -41,7 +40,7 @@ func TestCLI_Usage(t *testing.T) {
 		Status:     agent.StatusSuccess,
 		Output:     "ok",
 		Tokens:     agent.TokenUsage{Input: 10, Output: 5, Total: 15},
-		CostUSD:    usageFloat64Ptr(0),
+		CostUSD:    usageFloat64Ptr(0.25),
 		DurationMs: 1000,
 		Model:      "qwen3.5-7b",
 	})
@@ -71,6 +70,13 @@ func TestCLI_Usage(t *testing.T) {
 		DurationMs: 3000,
 		Model:      "claude-sonnet-4-20250514",
 	})
+}
+
+func TestCLI_Usage(t *testing.T) {
+	workDir := t.TempDir()
+	logDir := filepath.Join(workDir, ".agent", "sessions")
+	require.NoError(t, os.MkdirAll(logDir, 0o755))
+	seedMixedUsageLogs(t, logDir)
 
 	out, err := runAgentCLI(t, "--work-dir", workDir, "usage", "--since=7d")
 	require.NoError(t, err, string(out))
@@ -81,6 +87,40 @@ func TestCLI_Usage(t *testing.T) {
 	assert.Contains(t, output, "openai-compat")
 	assert.Contains(t, output, "qwen3.5-7b")
 	assert.Contains(t, output, "Window:")
+	assert.Contains(t, output, "unknown")
+	assert.NotContains(t, output, "$0.2500")
+}
+
+func TestCLI_Usage_JSON_MixedCost(t *testing.T) {
+	workDir := t.TempDir()
+	logDir := filepath.Join(workDir, ".agent", "sessions")
+	require.NoError(t, os.MkdirAll(logDir, 0o755))
+	seedMixedUsageLogs(t, logDir)
+
+	out, err := runAgentCLI(t, "--work-dir", workDir, "usage", "--since=7d", "--json")
+	require.NoError(t, err, string(out))
+
+	var report struct {
+		Rows []struct {
+			Provider            string   `json:"provider"`
+			Model               string   `json:"model"`
+			KnownCostUSD        *float64 `json:"known_cost_usd"`
+			UnknownCostSessions int      `json:"unknown_cost_sessions"`
+		} `json:"rows"`
+		Totals struct {
+			KnownCostUSD        *float64 `json:"known_cost_usd"`
+			UnknownCostSessions int      `json:"unknown_cost_sessions"`
+		} `json:"totals"`
+	}
+	require.NoError(t, json.Unmarshal(out, &report))
+
+	require.Len(t, report.Rows, 1)
+	assert.Equal(t, "openai-compat", report.Rows[0].Provider)
+	assert.Equal(t, "qwen3.5-7b", report.Rows[0].Model)
+	assert.Nil(t, report.Rows[0].KnownCostUSD)
+	assert.Equal(t, 1, report.Rows[0].UnknownCostSessions)
+	assert.Nil(t, report.Totals.KnownCostUSD)
+	assert.Equal(t, 1, report.Totals.UnknownCostSessions)
 }
 
 func TestCLI_Usage_InvalidSince_ExitCode(t *testing.T) {

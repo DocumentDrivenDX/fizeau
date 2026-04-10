@@ -42,15 +42,15 @@ func (w UsageWindow) Contains(ts time.Time) bool {
 
 // UsageRow aggregates usage for one provider/model pair.
 type UsageRow struct {
-	Provider            string  `json:"provider"`
-	Model               string  `json:"model"`
-	Sessions            int     `json:"sessions"`
-	InputTokens         int     `json:"input_tokens"`
-	OutputTokens        int     `json:"output_tokens"`
-	TotalTokens         int     `json:"total_tokens"`
-	DurationMs          int64   `json:"duration_ms"`
-	KnownCostUSD        float64 `json:"known_cost_usd"`
-	UnknownCostSessions int     `json:"unknown_cost_sessions"`
+	Provider            string   `json:"provider"`
+	Model               string   `json:"model"`
+	Sessions            int      `json:"sessions"`
+	InputTokens         int      `json:"input_tokens"`
+	OutputTokens        int      `json:"output_tokens"`
+	TotalTokens         int      `json:"total_tokens"`
+	DurationMs          int64    `json:"duration_ms"`
+	KnownCostUSD        *float64 `json:"known_cost_usd"`
+	UnknownCostSessions int      `json:"unknown_cost_sessions"`
 }
 
 // InputTokensPerSecond returns the average input-token throughput.
@@ -142,22 +142,14 @@ func AggregateUsage(logDir string, opts UsageOptions) (*UsageReport, error) {
 		row.OutputTokens += session.Tokens.Output
 		row.TotalTokens += effectiveTotalTokens(session.Tokens)
 		row.DurationMs += session.DurationMs
-		if session.UnknownCost {
-			row.UnknownCostSessions++
-		} else {
-			row.KnownCostUSD += session.KnownCost
-		}
+		accumulateUsageCost(row, session)
 
 		report.Totals.Sessions++
 		report.Totals.InputTokens += session.Tokens.Input
 		report.Totals.OutputTokens += session.Tokens.Output
 		report.Totals.TotalTokens += effectiveTotalTokens(session.Tokens)
 		report.Totals.DurationMs += session.DurationMs
-		if session.UnknownCost {
-			report.Totals.UnknownCostSessions++
-		} else {
-			report.Totals.KnownCostUSD += session.KnownCost
-		}
+		accumulateUsageCost(&report.Totals, session)
 	}
 
 	report.Rows = make([]UsageRow, 0, len(rows))
@@ -173,6 +165,21 @@ func AggregateUsage(logDir string, opts UsageOptions) (*UsageReport, error) {
 	})
 
 	return report, nil
+}
+
+func accumulateUsageCost(row *UsageRow, session usageSession) {
+	if session.UnknownCost {
+		row.UnknownCostSessions++
+		row.KnownCostUSD = nil
+		return
+	}
+	if row.UnknownCostSessions > 0 {
+		return
+	}
+	if row.KnownCostUSD == nil {
+		row.KnownCostUSD = new(float64)
+	}
+	*row.KnownCostUSD += session.KnownCost
 }
 
 // ParseUsageWindow parses the --since value into a UTC time window.

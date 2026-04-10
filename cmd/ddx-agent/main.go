@@ -694,7 +694,7 @@ func printUsageReport(report *session.UsageReport, since string) {
 	}
 
 	fmt.Printf("%-16s %-24s %8s %10s %10s %10s %14s %10s %12s %12s\n",
-		"PROVIDER", "MODEL", "SESSIONS", "INPUT", "OUTPUT", "TOTAL", "KNOWN COST", "UNKNOWN", "IN tok/s", "OUT tok/s")
+		"PROVIDER", "MODEL", "SESSIONS", "INPUT", "OUTPUT", "TOTAL", "COST", "UNKNOWN", "IN tok/s", "OUT tok/s")
 	for _, row := range report.Rows {
 		printUsageRow(row)
 	}
@@ -711,6 +711,10 @@ func formatUsageWindowBound(ts time.Time) string {
 }
 
 func printUsageRow(row session.UsageRow) {
+	cost := "unknown"
+	if row.UnknownCostSessions == 0 && row.KnownCostUSD != nil {
+		cost = fmt.Sprintf("$%.4f", *row.KnownCostUSD)
+	}
 	fmt.Printf("%-16s %-24s %8d %10d %10d %10d %14s %10d %12.1f %12.1f\n",
 		row.Provider,
 		row.Model,
@@ -718,7 +722,7 @@ func printUsageRow(row session.UsageRow) {
 		row.InputTokens,
 		row.OutputTokens,
 		row.TotalTokens,
-		fmt.Sprintf("$%.4f", row.KnownCostUSD),
+		cost,
 		row.UnknownCostSessions,
 		row.InputTokensPerSecond(),
 		row.OutputTokensPerSecond(),
