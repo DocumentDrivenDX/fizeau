@@ -105,6 +105,9 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 			Source: agent.CostSourceUnknown,
 		},
 	}
+	if cost, ok := openRouterCostAttribution(p.providerSystem, completion.Usage.RawJSON()); ok {
+		resp.Attempt.Cost = cost
+	}
 	if completion.Usage.TotalTokens != 0 {
 		resp.Usage = agent.TokenUsage{
 			Input:  int(completion.Usage.PromptTokens),
@@ -246,10 +249,14 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 		// Track index→ID so we can carry the ID forward.
 		indexToID := make(map[int]string)
 		responseModel := model
+		var streamCost *agent.CostAttribution
 		for stream.Next() {
 			chunk := stream.Current()
 			if chunk.Model != "" {
 				responseModel = chunk.Model
+			}
+			if cost, ok := openRouterCostAttribution(p.providerSystem, chunk.Usage.RawJSON()); ok {
+				streamCost = cost
 			}
 
 			if len(chunk.Choices) > 0 {
@@ -319,9 +326,7 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 				RequestedModel: model,
 				ResponseModel:  responseModel,
 				ResolvedModel:  responseModel,
-				Cost: &agent.CostAttribution{
-					Source: agent.CostSourceUnknown,
-				},
+				Cost:           streamAttemptCost(streamCost),
 			},
 			Done: true,
 		})
@@ -377,4 +382,35 @@ func openAIIdentity(baseURL string) (providerSystem, serverAddress string, serve
 	}
 
 	return providerSystem, serverAddress, serverPort
+}
+
+func streamAttemptCost(cost *agent.CostAttribution) *agent.CostAttribution {
+	if cost != nil {
+		return cost
+	}
+	return &agent.CostAttribution{Source: agent.CostSourceUnknown}
+}
+
+func openRouterCostAttribution(providerSystem, rawUsage string) (*agent.CostAttribution, bool) {
+	if providerSystem != "openrouter" || strings.TrimSpace(rawUsage) == "" {
+		return nil, false
+	}
+
+	// OpenRouter extends the OpenAI-compatible usage object with a billed USD
+	// cost field at usage.cost. Preserve it when present instead of guessing from
+	// a local pricing table.
+	var usage struct {
+		Cost *float64 `json:"cost"`
+	}
+	if err := json.Unmarshal([]byte(rawUsage), &usage); err != nil || usage.Cost == nil || *usage.Cost < 0 {
+		return nil, false
+	}
+
+	return &agent.CostAttribution{
+		Source:     agent.CostSourceGatewayReported,
+		Currency:   "USD",
+		Amount:     usage.Cost,
+		PricingRef: "openrouter/usage.cost",
+		Raw:        json.RawMessage(rawUsage),
+	}, true
 }
