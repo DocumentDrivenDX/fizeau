@@ -1,5 +1,7 @@
 package agent
 
+import "github.com/DocumentDrivenDX/agent/modelcatalog"
+
 // ModelPricing holds per-million-token costs for a model.
 type ModelPricing struct {
 	InputPerMTok  float64 `json:"input_per_mtok"`
@@ -38,4 +40,20 @@ func (pt PricingTable) EstimateCost(model string, inputTokens, outputTokens int)
 	inputCost := float64(inputTokens) / 1_000_000 * pricing.InputPerMTok
 	outputCost := float64(outputTokens) / 1_000_000 * pricing.OutputPerMTok
 	return inputCost + outputCost
+}
+
+// LoadCatalogPricing builds a PricingTable from catalog pricing data.
+// Entries from the catalog supplement DefaultPricing; catalog values take precedence.
+func LoadCatalogPricing(cat *modelcatalog.Catalog) PricingTable {
+	result := make(PricingTable)
+	for modelID, p := range DefaultPricing {
+		result[modelID] = p
+	}
+	for modelID, cp := range cat.PricingFor() {
+		result[modelID] = ModelPricing{
+			InputPerMTok:  cp.InputPerMTok,
+			OutputPerMTok: cp.OutputPerMTok,
+		}
+	}
+	return result
 }

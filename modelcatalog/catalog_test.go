@@ -74,7 +74,7 @@ func TestDefault_LoadsEmbeddedManifest(t *testing.T) {
 	assert.Equal(t, "opus-4.6", resolved.ConcreteModel)
 	assert.Equal(t, "high", resolved.SurfacePolicy.EffortDefault)
 	assert.Equal(t, "embedded", resolved.ManifestSource)
-	assert.Equal(t, "2026-04-10.1", resolved.CatalogVersion)
+	assert.Equal(t, "2026-04-12.2", resolved.CatalogVersion)
 }
 
 func TestResolveAliasFromFixture(t *testing.T) {
@@ -354,7 +354,7 @@ targets:
 
 func TestLoad_UnsupportedSchemaVersion(t *testing.T) {
 	manifestPath := writeFixtureManifest(t, `
-version: 3
+version: 4
 generated_at: 2026-04-10T00:00:00Z
 targets:
   code-high:
@@ -368,7 +368,7 @@ targets:
 		RequireExternal: true,
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported schema version 3")
+	assert.Contains(t, err.Error(), "unsupported schema version 4")
 }
 
 func TestResolveEmptyReference(t *testing.T) {

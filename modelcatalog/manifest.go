@@ -14,7 +14,7 @@ const (
 	statusActive     = "active"
 	statusDeprecated = "deprecated"
 	statusStale      = "stale"
-	maxSchemaVersion = 2
+	maxSchemaVersion = 3
 )
 
 //go:embed catalog/models.yaml
@@ -46,6 +46,19 @@ type targetEntry struct {
 	DeprecatedAt  string                        `yaml:"deprecated_at,omitempty"`
 	Surfaces      map[string]string             `yaml:"surfaces"`
 	SurfacePolicy map[string]surfacePolicyEntry `yaml:"surface_policy,omitempty"`
+	// Pricing (USD per 1M tokens, 0 = unknown/free)
+	CostInputPerM      float64 `yaml:"cost_input_per_m,omitempty"`
+	CostOutputPerM     float64 `yaml:"cost_output_per_m,omitempty"`
+	CostCacheReadPerM  float64 `yaml:"cost_cache_read_per_m,omitempty"`
+	CostCacheWritePerM float64 `yaml:"cost_cache_write_per_m,omitempty"`
+	// Context and hardware
+	ContextWindow int `yaml:"context_window,omitempty"` // max tokens
+	// Benchmarks
+	SWEBenchVerified float64 `yaml:"swe_bench_verified,omitempty"` // percent
+	LiveCodeBench    float64 `yaml:"live_code_bench,omitempty"`    // percent
+	BenchmarkAsOf    string  `yaml:"benchmark_as_of,omitempty"`    // YYYY-MM-DD
+	// OpenRouter
+	OpenRouterRefID string `yaml:"openrouter_ref_id,omitempty"` // OR model ID when different from surface model
 }
 
 type surfacePolicyEntry struct {
@@ -178,6 +191,22 @@ func validateManifest(m manifest) error {
 			if strings.TrimSpace(policy.EffortDefault) == "" {
 				return fmt.Errorf("target %q surface_policy %q must define effort_default", targetID, surface)
 			}
+		}
+
+		if target.CostInputPerM < 0 {
+			return fmt.Errorf("target %q cost_input_per_m must be >= 0", targetID)
+		}
+		if target.CostOutputPerM < 0 {
+			return fmt.Errorf("target %q cost_output_per_m must be >= 0", targetID)
+		}
+		if target.CostCacheReadPerM < 0 {
+			return fmt.Errorf("target %q cost_cache_read_per_m must be >= 0", targetID)
+		}
+		if target.CostCacheWritePerM < 0 {
+			return fmt.Errorf("target %q cost_cache_write_per_m must be >= 0", targetID)
+		}
+		if target.ContextWindow < 0 {
+			return fmt.Errorf("target %q context_window must be > 0 if set", targetID)
 		}
 
 		for _, alias := range target.Aliases {

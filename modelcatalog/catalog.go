@@ -54,6 +54,19 @@ type ResolvedTarget struct {
 	CatalogVersion  string
 	ManifestSource  string
 	ManifestVersion int
+	// Pricing (USD per 1M tokens, 0 = unknown/free)
+	CostInputPerM      float64
+	CostOutputPerM     float64
+	CostCacheReadPerM  float64
+	CostCacheWritePerM float64
+	// Context
+	ContextWindow int
+	// Benchmarks
+	SWEBenchVerified float64
+	LiveCodeBench    float64
+	BenchmarkAsOf    string
+	// OpenRouter
+	OpenRouterRefID string
 }
 
 // Metadata returns the loaded manifest metadata for inspection surfaces.
@@ -158,6 +171,31 @@ func (c *Catalog) AllConcreteModels(surface Surface) map[string]string {
 	return out
 }
 
+// CatalogModelPricing holds per-million-token costs for a model as sourced from the catalog.
+type CatalogModelPricing struct {
+	InputPerMTok  float64
+	OutputPerMTok float64
+}
+
+// PricingFor returns pricing for all known concrete models across all surfaces.
+// Only targets with a positive CostInputPerM are included.
+func (c *Catalog) PricingFor() map[string]CatalogModelPricing {
+	result := make(map[string]CatalogModelPricing)
+	for _, target := range c.manifest.Targets {
+		if target.CostInputPerM <= 0 {
+			continue
+		}
+		pricing := CatalogModelPricing{
+			InputPerMTok:  target.CostInputPerM,
+			OutputPerMTok: target.CostOutputPerM,
+		}
+		for _, modelID := range target.Surfaces {
+			result[modelID] = pricing
+		}
+	}
+	return result
+}
+
 func (c *Catalog) resolveTarget(ref, profile, targetID string, opts ResolveOptions) (ResolvedTarget, error) {
 	if opts.Surface == "" {
 		return ResolvedTarget{}, &MissingSurfaceError{CanonicalID: targetID, Surface: opts.Surface}
@@ -192,16 +230,25 @@ func (c *Catalog) resolveTarget(ref, profile, targetID string, opts ResolveOptio
 	}
 
 	return ResolvedTarget{
-		Ref:             ref,
-		Profile:         profile,
-		Family:          target.Family,
-		CanonicalID:     targetID,
-		ConcreteModel:   concreteModel,
-		SurfacePolicy:   policy,
-		Deprecated:      deprecated,
-		Replacement:     target.Replacement,
-		CatalogVersion:  c.manifest.CatalogVersion,
-		ManifestSource:  c.manifestSrc,
-		ManifestVersion: c.manifest.Version,
+		Ref:                ref,
+		Profile:            profile,
+		Family:             target.Family,
+		CanonicalID:        targetID,
+		ConcreteModel:      concreteModel,
+		SurfacePolicy:      policy,
+		Deprecated:         deprecated,
+		Replacement:        target.Replacement,
+		CatalogVersion:     c.manifest.CatalogVersion,
+		ManifestSource:     c.manifestSrc,
+		ManifestVersion:    c.manifest.Version,
+		CostInputPerM:      target.CostInputPerM,
+		CostOutputPerM:     target.CostOutputPerM,
+		CostCacheReadPerM:  target.CostCacheReadPerM,
+		CostCacheWritePerM: target.CostCacheWritePerM,
+		ContextWindow:      target.ContextWindow,
+		SWEBenchVerified:   target.SWEBenchVerified,
+		LiveCodeBench:      target.LiveCodeBench,
+		BenchmarkAsOf:      target.BenchmarkAsOf,
+		OpenRouterRefID:    target.OpenRouterRefID,
 	}, nil
 }

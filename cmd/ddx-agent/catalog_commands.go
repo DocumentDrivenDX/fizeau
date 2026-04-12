@@ -26,7 +26,7 @@ const defaultCatalogBaseURL = "https://documentdrivendx.github.io/agent/catalog"
 
 func cmdCatalog(workDir string, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ddx-agent catalog <show|check|update> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: ddx-agent catalog <show|check|update|update-pricing> [flags]")
 		return 2
 	}
 	switch args[0] {
@@ -36,6 +36,8 @@ func cmdCatalog(workDir string, args []string) int {
 		return cmdCatalogCheck(workDir, args[1:])
 	case "update":
 		return cmdCatalogUpdate(workDir, args[1:])
+	case "update-pricing":
+		return cmdCatalogUpdatePricing(workDir, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "error: unknown catalog subcommand %q\n", args[0])
 		return 2
@@ -185,6 +187,33 @@ func cmdCatalogUpdate(workDir string, args []string) int {
 	}
 
 	fmt.Printf("installed catalog %s to %s\n", index.CatalogVersion, manifestPath)
+	return 0
+}
+
+func cmdCatalogUpdatePricing(_ string, args []string) int {
+	fs := flag.NewFlagSet("catalog update-pricing", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: resolve config dir: %v\n", err)
+		return 1
+	}
+	manifestPath := filepath.Join(configDir, "agent", "models.yaml")
+
+	updated, notFound, err := modelcatalog.UpdateManifestPricing(manifestPath, 15*time.Second)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+
+	fmt.Printf("Updated %d model(s) → %s\n", updated, manifestPath)
+	if len(notFound) > 0 {
+		fmt.Printf("Not found on OpenRouter: %s\n", strings.Join(notFound, ", "))
+	}
 	return 0
 }
 

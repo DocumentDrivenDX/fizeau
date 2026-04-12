@@ -394,7 +394,7 @@ func TestCLI_CatalogShow_EmbeddedFallback(t *testing.T) {
 	require.NoError(t, err, string(out))
 	output := string(out)
 	assert.Contains(t, output, "source: embedded")
-	assert.Contains(t, output, "catalog_version: 2026-04-10.1")
+	assert.Contains(t, output, "catalog_version: 2026-04-12.2")
 	assert.Contains(t, output, "code-high:")
 	assert.Contains(t, output, "agent.openai: gpt-5.4")
 	assert.Contains(t, output, "agent.anthropic: opus-4.6")
@@ -509,7 +509,7 @@ func TestCLI_CatalogUpdate_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 	manifest := `
-version: 3
+version: 4
 generated_at: 2026-04-11T00:00:00Z
 catalog_version: 2026-04-11.1
 targets:
@@ -519,13 +519,13 @@ targets:
       agent.openai: gpt-5.4
 `
 	server := newFakeCatalogServer(t, map[string]string{
-		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 3),
+		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 4),
 		"stable/models.yaml": manifest,
 	})
 
 	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "update", "--base-url", server.baseURL())
 	require.Error(t, err)
-	assert.Contains(t, string(out), "unsupported schema version 3")
+	assert.Contains(t, string(out), "unsupported schema version 4")
 
 	_, statErr := os.Stat(filepath.Join(home, ".config", "agent", "models.yaml"))
 	assert.Error(t, statErr)
