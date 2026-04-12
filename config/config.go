@@ -25,7 +25,12 @@ type ProviderConfig struct {
 	BaseURL string            `yaml:"base_url"` // e.g., "http://localhost:1234/v1"
 	APIKey  string            `yaml:"api_key"`
 	Model   string            `yaml:"model"`
-	Headers map[string]string `yaml:"headers"` // extra HTTP headers (OpenRouter, Azure)
+	// ModelPattern is a case-insensitive regex applied to auto-discovered model
+	// IDs when Model is empty. The first matching model returned by /v1/models
+	// is used. If the pattern matches nothing, the first available model is
+	// used as a fallback.
+	ModelPattern string            `yaml:"model_pattern,omitempty"`
+	Headers      map[string]string `yaml:"headers"` // extra HTTP headers (OpenRouter, Azure)
 	// ThinkingBudget limits reasoning tokens for models that support extended
 	// thinking (e.g. Qwen3, DeepSeek-R1). Zero means no budget is set.
 	ThinkingBudget int `yaml:"thinking_budget,omitempty"`
@@ -567,6 +572,7 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 			BaseURL:        pc.BaseURL,
 			APIKey:         pc.APIKey,
 			Model:          pc.Model,
+			ModelPattern:   pc.ModelPattern,
 			Headers:        pc.Headers,
 			ThinkingBudget: budget,
 		}), nil

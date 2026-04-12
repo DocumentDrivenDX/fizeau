@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent"
@@ -21,18 +22,26 @@ import (
 type Provider struct {
 	client         *oai.Client
 	model          string
+	modelPattern   string // regex filter for auto-discovery; "" means first model
+	baseURL        string // stored for lazy model discovery
+	apiKey         string // stored for lazy model discovery
 	providerName   string
 	providerSystem string
 	serverAddress  string
 	serverPort     int
 	thinkingBudget int
+
+	// lazy model discovery — runs at most once per Provider instance
+	discoverOnce sync.Once
+	discoverErr  error
 }
 
 // Config holds configuration for the OpenAI-compatible provider.
 type Config struct {
 	BaseURL        string            // e.g., "http://localhost:1234/v1" for LM Studio
 	APIKey         string            // optional for local providers
-	Model          string            // e.g., "qwen3.5-7b", "gpt-4o"
+	Model          string            // e.g., "qwen3.5-7b", "gpt-4o". Empty = auto-discover.
+	ModelPattern   string            // regex to filter auto-discovered models (case-insensitive)
 	Headers        map[string]string // extra HTTP headers (OpenRouter, Azure, etc.)
 	ThinkingBudget int               // max reasoning tokens for thinking models (0 = unset)
 }
@@ -57,6 +66,9 @@ func New(cfg Config) *Provider {
 	return &Provider{
 		client:         &client,
 		model:          cfg.Model,
+		modelPattern:   cfg.ModelPattern,
+		baseURL:        cfg.BaseURL,
+		apiKey:         cfg.APIKey,
 		providerName:   "openai-compat",
 		providerSystem: providerSystem,
 		serverAddress:  serverAddress,
@@ -65,8 +77,38 @@ func New(cfg Config) *Provider {
 	}
 }
 
+// resolveModel returns the model to use for a request. If the provider was
+// configured without a model it queries /v1/models once and caches the result.
+// Subsequent calls return the cached value without hitting the network.
+func (p *Provider) resolveModel(ctx context.Context) (string, error) {
+	if p.model != "" {
+		return p.model, nil
+	}
+	p.discoverOnce.Do(func() {
+		candidates, err := DiscoverModels(ctx, p.baseURL, p.apiKey)
+		if err != nil {
+			p.discoverErr = err
+			return
+		}
+		selected, err := SelectModel(candidates, p.modelPattern)
+		if err != nil {
+			p.discoverErr = err
+			return
+		}
+		if selected == "" {
+			p.discoverErr = fmt.Errorf("openai: no models returned by %s/models", p.baseURL)
+			return
+		}
+		p.model = selected
+	})
+	return p.model, p.discoverErr
+}
+
 func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {
-	model := p.model
+	model, err := p.resolveModel(ctx)
+	if err != nil {
+		return agent.Response{}, err
+	}
 	if opts.Model != "" {
 		model = opts.Model
 	}
@@ -216,7 +258,10 @@ func extractToolCalls(calls []oai.ChatCompletionMessageToolCall) []agent.ToolCal
 
 // ChatStream implements agent.StreamingProvider for token-level streaming.
 func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (<-chan agent.StreamDelta, error) {
-	model := p.model
+	model, err := p.resolveModel(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if opts.Model != "" {
 		model = opts.Model
 	}
