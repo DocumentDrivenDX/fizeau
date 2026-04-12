@@ -142,6 +142,22 @@ func (c *Catalog) Resolve(ref string, opts ResolveOptions) (ResolvedTarget, erro
 	return ResolvedTarget{}, &UnknownReferenceError{Ref: ref}
 }
 
+// AllConcreteModels returns a map from concrete model ID to catalog target ID
+// for every active target that has a mapping for the given surface. The map is
+// safe to use as a membership set for ranking discovered models.
+func (c *Catalog) AllConcreteModels(surface Surface) map[string]string {
+	out := make(map[string]string)
+	for targetID, entry := range c.manifest.Targets {
+		if normalizedStatus(entry.Status) != statusActive {
+			continue
+		}
+		if concreteID, ok := entry.Surfaces[string(surface)]; ok && concreteID != "" {
+			out[concreteID] = targetID
+		}
+	}
+	return out
+}
+
 func (c *Catalog) resolveTarget(ref, profile, targetID string, opts ResolveOptions) (ResolvedTarget, error) {
 	if opts.Surface == "" {
 		return ResolvedTarget{}, &MissingSurfaceError{CanonicalID: targetID, Surface: opts.Surface}

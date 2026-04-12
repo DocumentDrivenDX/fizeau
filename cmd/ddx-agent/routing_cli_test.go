@@ -548,7 +548,7 @@ providers:
 	assert.Equal(t, "bragi", parsed.Candidates[2].Provider)
 	assert.False(t, parsed.Candidates[2].Healthy)
 	assert.NotZero(t, parsed.Candidates[0].Score)
-	assert.Contains(t, parsed.Candidates[2].Reason, "status code")
+	assert.Contains(t, parsed.Candidates[2].Reason, "503")
 }
 
 func TestCLI_BackendRoutingAttributionFlowsIntoResultAndSession(t *testing.T) {

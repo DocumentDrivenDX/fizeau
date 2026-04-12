@@ -23,6 +23,7 @@ import (
 	"github.com/DocumentDrivenDX/agent/occompat"
 	"github.com/DocumentDrivenDX/agent/picompat"
 	"github.com/DocumentDrivenDX/agent/prompt"
+	oaiProvider "github.com/DocumentDrivenDX/agent/provider/openai"
 	"github.com/DocumentDrivenDX/agent/session"
 	"github.com/DocumentDrivenDX/agent/tool"
 )
@@ -822,20 +823,16 @@ func cmdModels(workDir, providerName string, args []string) int {
 		return 1
 	}
 
+	// Load catalog once for all annotations.
+	cat, _ := modelcatalog.Default()
+
 	showAll := len(args) > 0 && args[0] == "--all"
 
 	if showAll {
 		for _, name := range cfg.ProviderNames() {
 			pc := cfg.Providers[name]
 			fmt.Printf("[%s]\n", name)
-			models := listModels(pc)
-			if len(models) == 0 {
-				fmt.Println("  (unavailable)")
-			} else {
-				for _, m := range models {
-					fmt.Printf("  %s\n", m)
-				}
-			}
+			printProviderModels(pc, cat)
 			fmt.Println()
 		}
 		return 0
@@ -853,15 +850,71 @@ func cmdModels(workDir, providerName string, args []string) int {
 
 	if pc.Type == "anthropic" {
 		fmt.Println("Anthropic does not support model listing.")
-		fmt.Printf("Configured model: %s\n", pc.Model)
+		if pc.Model != "" {
+			fmt.Printf("Configured model: %s\n", pc.Model)
+		}
 		return 0
 	}
 
-	models := listModels(pc)
-	for _, m := range models {
-		fmt.Println(m)
-	}
+	printProviderModels(pc, cat)
 	return 0
+}
+
+// printProviderModels probes a provider's /v1/models endpoint and prints the
+// full ranked list. The auto-selected model is marked with "*". Catalog-
+// recognized models show their catalog target ID in brackets.
+func printProviderModels(pc agentConfig.ProviderConfig, cat *modelcatalog.Catalog) {
+	if pc.Type == "anthropic" {
+		fmt.Println("  (anthropic — no model listing endpoint)")
+		return
+	}
+
+	// Build known-models map for ranking.
+	var knownModels map[string]string
+	if cat != nil {
+		knownModels = cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
+	}
+
+	ids := probeProviderModels(pc, routingProbeTimeout(nil)).models
+	if len(ids) == 0 {
+		fmt.Println("  (unavailable)")
+		return
+	}
+
+	ranked, err := oaiProvider.RankModels(ids, knownModels, pc.ModelPattern)
+	if err != nil {
+		// Pattern compile error — fall back to plain list.
+		for _, id := range ids {
+			fmt.Printf("  %s\n", id)
+		}
+		return
+	}
+
+	// Determine the auto-selected model (first in ranked list when no static model).
+	autoSelected := ""
+	if pc.Model == "" && len(ranked) > 0 {
+		autoSelected = ranked[0].ID
+	}
+
+	for _, sm := range ranked {
+		marker := "  "
+		if sm.ID == pc.Model {
+			marker = "* "
+		} else if sm.ID == autoSelected {
+			marker = "> " // would be auto-selected
+		}
+		annotation := ""
+		if sm.CatalogRef != "" {
+			annotation = "  [catalog: " + sm.CatalogRef + "]"
+		} else if sm.PatternMatch {
+			annotation = "  [pattern]"
+		}
+		fmt.Printf("%s%s%s\n", marker, sm.ID, annotation)
+	}
+	if pc.Model == "" {
+		fmt.Println()
+		fmt.Println("  * = configured  > = would auto-select")
+	}
 }
 
 func cmdCheck(workDir, providerName string, args []string) int {
@@ -1156,9 +1209,6 @@ func checkProviderStatus(pc agentConfig.ProviderConfig) string {
 	return fmt.Sprintf("connected (%d models)", len(probe.models))
 }
 
-func listModels(pc agentConfig.ProviderConfig) []string {
-	return probeProviderModels(pc, routingProbeTimeout(nil)).models
-}
 
 func cmdImport(workDir string, args []string) int {
 	if len(args) == 0 {

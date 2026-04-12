@@ -7,9 +7,25 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
+
+// ScoredModel is a discovered model with a selection preference score.
+// Higher scores are preferred by the auto-selection logic.
+type ScoredModel struct {
+	// ID is the model identifier returned by the server's /v1/models endpoint.
+	ID string
+	// CatalogRef is the catalog target ID if this model is recognized in the
+	// model catalog for the provider's surface. Empty for unrecognized models.
+	CatalogRef string
+	// PatternMatch is true when this model matched the configured model_pattern.
+	PatternMatch bool
+	// Score summarises the selection preference: 3 = catalog-recognized,
+	// 2 = pattern-matched, 1 = uncategorized.
+	Score int
+}
 
 // modelsResponse is the shape of GET /v1/models from any OpenAI-compatible server.
 type modelsResponse struct {
@@ -20,13 +36,10 @@ type modelsResponse struct {
 
 // DiscoverModels queries the /v1/models endpoint of an OpenAI-compatible server
 // and returns the model IDs it reports. At most 5 seconds is spent on the
-// network request; callers that need a custom deadline should use a context with
-// a deadline already set.
+// network request; callers that need a custom deadline should pass a context
+// with a deadline already set.
 func DiscoverModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-	// Normalise base URL — strip trailing slash, then append /models.
 	base := strings.TrimRight(baseURL, "/")
-	// If base already ends with /v1 use it as-is; if the caller passed just a
-	// host:port, leave it alone — servers differ on exact path.
 	endpoint := base + "/models"
 
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -66,26 +79,55 @@ func DiscoverModels(ctx context.Context, baseURL, apiKey string) ([]string, erro
 	return ids, nil
 }
 
-// SelectModel picks a model ID from a list of candidates. If pattern is
-// non-empty it is compiled as a case-insensitive regex and the first matching
-// ID is returned. If no pattern matches (or pattern is empty), the first
-// candidate is returned. Returns "" if candidates is empty.
-func SelectModel(candidates []string, pattern string) (string, error) {
-	if len(candidates) == 0 {
-		return "", nil
-	}
-	if pattern == "" {
-		return candidates[0], nil
-	}
-	re, err := regexp.Compile("(?i)" + pattern)
-	if err != nil {
-		return "", fmt.Errorf("discovery: invalid model_pattern %q: %w", pattern, err)
-	}
-	for _, id := range candidates {
-		if re.MatchString(id) {
-			return id, nil
+// RankModels scores and sorts a list of discovered model IDs by selection
+// preference:
+//
+//   - Score 3 — catalog-recognized: the model ID appears in knownModels (a map
+//     from concrete model ID to catalog target ID, e.g. from
+//     Catalog.AllConcreteModels). These are explicitly tracked models; prefer
+//     them when auto-selecting.
+//   - Score 2 — pattern-matched: the model ID matches the case-insensitive
+//     pattern regex (pattern == "" means this tier is skipped).
+//   - Score 1 — uncategorized: known to the server but not in the catalog or
+//     pattern.
+//
+// Within each score tier, the original server-returned order is preserved.
+// Returns an error only if pattern is non-empty and fails to compile.
+func RankModels(candidates []string, knownModels map[string]string, pattern string) ([]ScoredModel, error) {
+	var patternRe *regexp.Regexp
+	if pattern != "" {
+		re, err := regexp.Compile("(?i)" + pattern)
+		if err != nil {
+			return nil, fmt.Errorf("discovery: invalid model_pattern %q: %w", pattern, err)
 		}
+		patternRe = re
 	}
-	// Pattern didn't match anything — fall back to first.
-	return candidates[0], nil
+
+	scored := make([]ScoredModel, 0, len(candidates))
+	for _, id := range candidates {
+		sm := ScoredModel{ID: id, Score: 1}
+		if ref, ok := knownModels[id]; ok {
+			sm.CatalogRef = ref
+			sm.Score = 3
+		} else if patternRe != nil && patternRe.MatchString(id) {
+			sm.PatternMatch = true
+			sm.Score = 2
+		}
+		scored = append(scored, sm)
+	}
+
+	// Stable sort: higher score first, original order preserved within tier.
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
+	})
+	return scored, nil
+}
+
+// SelectModel picks the preferred model ID from a ranked list. Returns ""
+// if the list is empty.
+func SelectModel(ranked []ScoredModel) string {
+	if len(ranked) == 0 {
+		return ""
+	}
+	return ranked[0].ID
 }

@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/DocumentDrivenDX/agent"
 	agentConfig "github.com/DocumentDrivenDX/agent/config"
+	oaiProvider "github.com/DocumentDrivenDX/agent/provider/openai"
 	"github.com/DocumentDrivenDX/agent/session"
 )
 
@@ -484,46 +485,16 @@ func probeProviderModels(pc agentConfig.ProviderConfig, timeout time.Duration) p
 		}
 		return providerModelProbe{}
 	}
-	url := strings.TrimSpace(pc.BaseURL)
-	if url == "" {
+	if strings.TrimSpace(pc.BaseURL) == "" {
 		return providerModelProbe{err: fmt.Errorf("no URL configured")}
 	}
-	modelsURL := strings.TrimSuffix(url, "/") + "/models"
-	if strings.HasSuffix(url, "/v1") {
-		modelsURL = url + "/models"
-	}
 
-	req, err := http.NewRequest(http.MethodGet, modelsURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	models, err := oaiProvider.DiscoverModels(ctx, pc.BaseURL, pc.APIKey)
 	if err != nil {
 		return providerModelProbe{err: err}
-	}
-	if pc.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+pc.APIKey)
-	}
-	for key, value := range pc.Headers {
-		req.Header.Set(key, value)
-	}
-
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return providerModelProbe{err: err}
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return providerModelProbe{err: fmt.Errorf("status code: %d", resp.StatusCode)}
-	}
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return providerModelProbe{err: fmt.Errorf("parse error")}
-	}
-	models := make([]string, 0, len(result.Data))
-	for _, model := range result.Data {
-		models = append(models, model.ID)
 	}
 	return providerModelProbe{models: models}
 }

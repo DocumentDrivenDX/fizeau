@@ -568,11 +568,18 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 		if budget == 0 && pc.ThinkingLevel != "" {
 			budget = agent.ResolveThinkingBudget(agent.ThinkingLevel(pc.ThinkingLevel))
 		}
+		// Populate the known-models map from the embedded catalog so the provider
+		// can rank discovered models by catalog recognition. Failure is non-fatal.
+		var knownModels map[string]string
+		if cat, err := modelcatalog.Default(); err == nil {
+			knownModels = cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
+		}
 		return oaiProvider.New(oaiProvider.Config{
 			BaseURL:        pc.BaseURL,
 			APIKey:         pc.APIKey,
 			Model:          pc.Model,
 			ModelPattern:   pc.ModelPattern,
+			KnownModels:    knownModels,
 			Headers:        pc.Headers,
 			ThinkingBudget: budget,
 		}), nil

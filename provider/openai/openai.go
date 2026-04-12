@@ -22,9 +22,10 @@ import (
 type Provider struct {
 	client         *oai.Client
 	model          string
-	modelPattern   string // regex filter for auto-discovery; "" means first model
-	baseURL        string // stored for lazy model discovery
-	apiKey         string // stored for lazy model discovery
+	modelPattern   string            // regex filter for auto-discovery; "" means first model
+	knownModels    map[string]string // catalog-recognized model IDs (modelID → catalogRef)
+	baseURL        string            // stored for lazy model discovery
+	apiKey         string            // stored for lazy model discovery
 	providerName   string
 	providerSystem string
 	serverAddress  string
@@ -32,16 +33,22 @@ type Provider struct {
 	thinkingBudget int
 
 	// lazy model discovery — runs at most once per Provider instance
-	discoverOnce sync.Once
-	discoverErr  error
+	discoverOnce     sync.Once
+	discoverErr      error
+	discoveredModels []ScoredModel // full ranked list; populated on first use when model == ""
 }
 
 // Config holds configuration for the OpenAI-compatible provider.
 type Config struct {
-	BaseURL        string            // e.g., "http://localhost:1234/v1" for LM Studio
-	APIKey         string            // optional for local providers
-	Model          string            // e.g., "qwen3.5-7b", "gpt-4o". Empty = auto-discover.
-	ModelPattern   string            // regex to filter auto-discovered models (case-insensitive)
+	BaseURL      string // e.g., "http://localhost:1234/v1" for LM Studio
+	APIKey       string // optional for local providers
+	Model        string // e.g., "qwen3.5-7b", "gpt-4o". Empty = auto-discover.
+	ModelPattern string // case-insensitive regex to prefer among auto-discovered models
+	// KnownModels maps concrete model IDs to catalog target IDs for the
+	// agent.openai surface. Models present in this map are ranked higher during
+	// auto-selection. Populated by the config layer from the model catalog;
+	// nil disables catalog-aware ranking.
+	KnownModels    map[string]string
 	Headers        map[string]string // extra HTTP headers (OpenRouter, Azure, etc.)
 	ThinkingBudget int               // max reasoning tokens for thinking models (0 = unset)
 }
@@ -67,6 +74,7 @@ func New(cfg Config) *Provider {
 		client:         &client,
 		model:          cfg.Model,
 		modelPattern:   cfg.ModelPattern,
+		knownModels:    cfg.KnownModels,
 		baseURL:        cfg.BaseURL,
 		apiKey:         cfg.APIKey,
 		providerName:   "openai-compat",
@@ -77,8 +85,29 @@ func New(cfg Config) *Provider {
 	}
 }
 
+// DiscoveredModels returns the full ranked list of models discovered from the
+// server's /v1/models endpoint. Returns nil if the provider has a statically
+// configured model or if discovery has not yet run (i.e. no request has been
+// made yet). Call EnsureDiscovered to force discovery without making a chat
+// request.
+func (p *Provider) DiscoveredModels() []ScoredModel {
+	return p.discoveredModels
+}
+
+// EnsureDiscovered probes the server's /v1/models endpoint and caches the
+// full ranked model list. It is a no-op when the provider has a statically
+// configured model or when discovery has already run.
+func (p *Provider) EnsureDiscovered(ctx context.Context) error {
+	if p.model != "" {
+		return nil
+	}
+	_, err := p.resolveModel(ctx)
+	return err
+}
+
 // resolveModel returns the model to use for a request. If the provider was
-// configured without a model it queries /v1/models once and caches the result.
+// configured without a model it queries /v1/models once, ranks results, and
+// caches both the full list and the selected model.
 // Subsequent calls return the cached value without hitting the network.
 func (p *Provider) resolveModel(ctx context.Context) (string, error) {
 	if p.model != "" {
@@ -90,11 +119,13 @@ func (p *Provider) resolveModel(ctx context.Context) (string, error) {
 			p.discoverErr = err
 			return
 		}
-		selected, err := SelectModel(candidates, p.modelPattern)
+		ranked, err := RankModels(candidates, p.knownModels, p.modelPattern)
 		if err != nil {
 			p.discoverErr = err
 			return
 		}
+		p.discoveredModels = ranked
+		selected := SelectModel(ranked)
 		if selected == "" {
 			p.discoverErr = fmt.Errorf("openai: no models returned by %s/models", p.baseURL)
 			return
