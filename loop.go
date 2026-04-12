@@ -377,6 +377,20 @@ func Run(ctx context.Context, req Request) (Result, error) {
 					return result, nil
 				}
 
+				// Reasoning loop detection: the model produced only reasoning
+				// tokens past the byte or stall threshold. Log a warning and stop
+				// looping — this is non-retryable and should not count as an error
+				// in benchmark mode.
+				if errors.Is(err, ErrReasoningOverflow) || errors.Is(err, ErrReasoningStall) {
+					slog.Warn("reasoning overflow: aborting stream", "reasoning_bytes", reasoningByteLimit, "err", err)
+					result.Status = StatusError
+					result.Error = fmt.Errorf("agent: %w", err)
+					result.Duration = time.Since(start)
+					snapshotMessages()
+					emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
+					return result, result.Error
+				}
+
 				// Overflow recovery: when the provider signals a context overflow
 				// and we haven't already attempted overflow-compaction this turn,
 				// run compaction and retry the provider call once. Only one attempt

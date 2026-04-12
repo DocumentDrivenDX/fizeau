@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -477,4 +478,123 @@ func TestConsumeStream_StreamErrorAfterToolCall(t *testing.T) {
 	start := time.Now()
 	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
 	require.ErrorIs(t, err, netErr)
+}
+
+func TestConsumeStream_ReasoningOverflow(t *testing.T) {
+	// Build a stream of pure reasoning_content deltas that exceeds the byte limit.
+	chunk := strings.Repeat("x", 4096)
+	var deltas []StreamDelta
+	// 9 chunks = 36k bytes > reasoningByteLimit (32k)
+	for i := 0; i < 9; i++ {
+		deltas = append(deltas, StreamDelta{ReasoningContent: chunk})
+	}
+	deltas = append(deltas, StreamDelta{Done: true})
+
+	sp := &mockStreamingProvider{deltas: deltas}
+
+	seq := 0
+	start := time.Now()
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	require.ErrorIs(t, err, ErrReasoningOverflow)
+}
+
+func TestConsumeStream_ReasoningOverflow_NotTriggeredAfterContent(t *testing.T) {
+	// If a content delta arrives first, reasoning overflow should not fire even
+	// if subsequent reasoning exceeds the limit.
+	chunk := strings.Repeat("x", 4096)
+	deltas := []StreamDelta{
+		{Content: "hello"},
+	}
+	for i := 0; i < 9; i++ {
+		deltas = append(deltas, StreamDelta{ReasoningContent: chunk})
+	}
+	deltas = append(deltas, StreamDelta{Done: true})
+
+	sp := &mockStreamingProvider{deltas: deltas}
+
+	seq := 0
+	start := time.Now()
+	resp, err := consumeStream(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq)
+	require.NoError(t, err)
+	assert.Equal(t, "hello", resp.Content)
+}
+
+func TestConsumeStream_ReasoningStall(t *testing.T) {
+	// Use a custom stall timeout smaller than the default to keep the test fast.
+	// We test the time.Since path by manipulating reasoningStallStart indirectly:
+	// the easiest approach is to set a very old stall start by making the first
+	// delta arrive with an ArrivedAt far in the past. Instead, we exercise the
+	// code path by temporarily overriding the constant via a helper that accepts
+	// a timeout parameter — but since the constants are package-level, we use
+	// the internal test package and a small timeout value via a wrapper function.
+	//
+	// Since reasoningStallTimeout is a package-level constant we cannot override
+	// it in a white-box test without modifying the API.  Instead we verify the
+	// stall path by using a mock that injects a pre-old ArrivedAt timestamp on
+	// the first reasoning delta so that time.Since(reasoningStallStart) exceeds
+	// the threshold immediately.
+	//
+	// We do this by setting ArrivedAt on the reasoning delta to a time far in
+	// the past. The stall start is initialized to time.Now() at the top of
+	// consumeStream — but the check uses time.Since(reasoningStallStart), which
+	// uses the real clock. So we need another approach: send enough reasoning
+	// chunks first to nearly-but-not-quite overflow, then verify stall fires
+	// after the timeout.
+	//
+	// For unit test speed, we use a sub-package internal test that can access
+	// the constant. Since this file is package agent (white-box), we can
+	// directly test the stall path by calling consumeStreamWithConfig (added
+	// below) or by using a trick: set a very short delay between deltas so
+	// real time elapses.  But reasoningStallTimeout = 120s is too long for a
+	// unit test.
+	//
+	// Resolution: extract consumeStream to accept the thresholds as parameters
+	// (or add a consumeStreamConfig variant) — but the bead says keep it simple
+	// and not create new config types. Instead, test the stall path via an
+	// integration-style approach with a very short timeout constant injected via
+	// the test binary override below.
+	//
+	// Simplest correct approach: expose the stall detection via a thin internal
+	// wrapper used only in tests, accepting a custom stall duration.
+	t.Run("stall path via short timeout", func(t *testing.T) {
+		shortStall := 50 * time.Millisecond
+
+		// A stream that emits reasoning deltas with a delay between each one
+		// that will exceed shortStall.
+		sp := &mockStreamingProvider{
+			delayBetween: 30 * time.Millisecond,
+			deltas: []StreamDelta{
+				{ReasoningContent: "thinking..."},
+				{ReasoningContent: "still thinking..."},
+				{ReasoningContent: "more thinking..."},
+				{Done: true},
+			},
+		}
+
+		seq := 0
+		start := time.Now()
+		_, err := consumeStreamWithStallTimeout(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, shortStall)
+		require.ErrorIs(t, err, ErrReasoningStall)
+	})
+}
+
+func TestConsumeStream_ReasoningStall_NotTriggeredAfterToolCall(t *testing.T) {
+	// If a tool call delta arrives, stall detection should be disabled.
+	shortStall := 50 * time.Millisecond
+
+	sp := &mockStreamingProvider{
+		delayBetween: 30 * time.Millisecond,
+		deltas: []StreamDelta{
+			{ToolCallID: "tc1", ToolCallName: "read", ToolCallArgs: `{"path":"a.go"}`},
+			{ReasoningContent: "thinking after tool call"},
+			{ReasoningContent: "still thinking"},
+			{Done: true},
+		},
+	}
+
+	seq := 0
+	start := time.Now()
+	resp, err := consumeStreamWithStallTimeout(context.Background(), sp, nil, nil, Options{}, nil, "test", start, &seq, shortStall)
+	require.NoError(t, err)
+	require.Len(t, resp.ToolCalls, 1)
 }
