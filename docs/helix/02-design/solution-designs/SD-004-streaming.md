@@ -30,8 +30,19 @@ unchanged.
 ```go
 // StreamDelta is a single chunk from a streaming response.
 type StreamDelta struct {
+    // ArrivedAt records when the provider produced the delta.
+    // It is omitted from JSON and used only for local timing measurements.
+    ArrivedAt time.Time `json:"-"`
+
     // Content is a text fragment (may be empty if this delta is a tool call chunk).
     Content string
+
+    // ReasoningContent holds thinking/reasoning tokens emitted by models that
+    // separate their internal reasoning from the final response (e.g. Qwen3,
+    // DeepSeek-R1). Captured from choices[0].delta.reasoning_content in the
+    // OpenAI-compatible streaming format. Distinct from Content — consumers
+    // that only care about the final answer should ignore this field.
+    ReasoningContent string
 
     // ToolCallID is set when a new tool call starts.
     ToolCallID string
@@ -50,8 +61,15 @@ type StreamDelta struct {
     // Model is set on the first or final delta.
     Model string
 
+    // Attempt carries provider identity and attribution metadata when known.
+    Attempt *AttemptMetadata
+
     // Done signals the end of the stream.
     Done bool
+
+    // Err is set when the stream terminated with an error.
+    // consumeStream returns this error and discards any partial content.
+    Err error
 }
 
 // StreamingProvider extends Provider with streaming support.
@@ -106,6 +124,24 @@ that want token-level streaming subscribe to this event type. Usage can arrive
 in fragmented updates on any delta, so consumers should merge the snapshots
 they receive. Callers that don't care about streaming just ignore it — they
 still get the full `llm.response` event at the end.
+
+### Reasoning Overflow and Stall Detection
+
+Thinking models (e.g. Qwen3, DeepSeek-R1) can enter runaway reasoning loops
+where they emit `reasoning_content` indefinitely without producing any actual
+`content` or tool call output. `consumeStream` guards against this with two
+checks that are active only while the model is in _pure-reasoning mode_ (no
+`content` or `tool_call` deltas have arrived yet). Once real output appears,
+both guards are disabled for that response.
+
+| Error | Trigger | Threshold |
+|-------|---------|-----------|
+| `ErrReasoningOverflow` | Cumulative `reasoning_content` bytes exceed the limit with no content output | 32 KiB |
+| `ErrReasoningStall` | Only `reasoning_content` deltas arrive for longer than the stall timeout | 120 s |
+
+When either condition fires, `consumeStream` aborts the stream and returns the
+corresponding sentinel error to the agent loop. The caller may retry with a
+different model or surface the error to the user.
 
 ### Provider Implementation
 
