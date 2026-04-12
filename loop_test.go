@@ -69,6 +69,7 @@ type recordingProvider struct {
 	responses []Response
 	callCount int
 	calls     [][]Message
+	toolCalls [][]ToolDef
 }
 
 func (r *recordingProvider) Chat(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (Response, error) {
@@ -77,6 +78,10 @@ func (r *recordingProvider) Chat(ctx context.Context, messages []Message, tools 
 	}
 	copied := append([]Message(nil), messages...)
 	r.calls = append(r.calls, copied)
+	if tools != nil {
+		toolCopy := append([]ToolDef(nil), tools...)
+		r.toolCalls = append(r.toolCalls, toolCopy)
+	}
 	if r.callCount >= len(r.responses) {
 		return Response{Content: "no more responses"}, nil
 	}
@@ -1763,4 +1768,30 @@ func spanAttrInt(attrs []attribute.KeyValue, key string) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+func TestRun_ToolsAreExposedToProvider(t *testing.T) {
+	prov := &recordingProvider{
+		responses: []Response{
+			{Content: "done"},
+		},
+	}
+
+	ctx := context.Background()
+	res, err := Run(ctx, Request{
+		Prompt:   "test",
+		Provider: prov,
+		Tools: []Tool{
+			&mockTool{name: "read", result: "file content"},
+			&mockTool{name: "bash", result: "ok"},
+		},
+		MaxIterations: 10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, StatusSuccess, res.Status)
+
+	require.Len(t, prov.toolCalls, 1, "provider Chat should have been called once with tools")
+	require.Len(t, prov.toolCalls[0], 2, "two tool definitions should reach the provider")
+	assert.Equal(t, "read", prov.toolCalls[0][0].Name)
+	assert.Equal(t, "bash", prov.toolCalls[0][1].Name)
 }

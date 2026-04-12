@@ -2,7 +2,9 @@ package openai_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -233,6 +235,104 @@ func TestChat_MissingAPIKeyFailsAtCallTime(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&requests), "constructor should not fail; request should fail at call time")
 	assert.Equal(t, "Bearer not-needed", authHeader)
 	assert.Contains(t, err.Error(), "401")
+}
+
+func TestChat_ToolDefinitionsAreSentToAPI(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-1",
+			"model":"gpt-4o",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}
+		}`))
+	}))
+	defer srv.Close()
+
+	p := openai.New(openai.Config{
+		BaseURL: srv.URL + "/v1",
+		APIKey:  "test",
+		Model:   "gpt-4o",
+	})
+
+	toolDefs := []agent.ToolDef{
+		{
+			Name:        "read",
+			Description: "Read file contents",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`),
+		},
+		{
+			Name:        "bash",
+			Description: "Run shell commands",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}`),
+		},
+	}
+
+	_, err := p.Chat(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "read the file"},
+	}, toolDefs, agent.Options{})
+	require.NoError(t, err)
+
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(capturedBody, &reqBody))
+
+	tools, ok := reqBody["tools"].([]interface{})
+	require.True(t, ok, "request must include 'tools' array")
+	assert.Len(t, tools, 2)
+
+	first := tools[0].(map[string]interface{})["function"].(map[string]interface{})
+	assert.Equal(t, "read", first["name"])
+	assert.Equal(t, "Read file contents", first["description"])
+
+	second := tools[1].(map[string]interface{})["function"].(map[string]interface{})
+	assert.Equal(t, "bash", second["name"])
+}
+
+func TestChatStream_ToolDefinitionsAreSentToAPI(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = body
+		streamSSE(w, []string{
+			`{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}}`,
+		})
+	}))
+	defer srv.Close()
+
+	p := openai.New(openai.Config{
+		BaseURL: srv.URL + "/v1",
+		APIKey:  "test",
+		Model:   "gpt-4o",
+	})
+
+	toolDefs := []agent.ToolDef{
+		{
+			Name:        "read",
+			Description: "Read file contents",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
+		},
+	}
+
+	ch, err := p.ChatStream(context.Background(), []agent.Message{
+		{Role: agent.RoleUser, Content: "read the file"},
+	}, toolDefs, agent.Options{})
+	require.NoError(t, err)
+	for range ch { /* drain */
+	}
+
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(capturedBody, &reqBody))
+
+	tools, ok := reqBody["tools"].([]interface{})
+	require.True(t, ok, "streaming request must include 'tools' array")
+	assert.Len(t, tools, 1)
+
+	fn := tools[0].(map[string]interface{})["function"].(map[string]interface{})
+	assert.Equal(t, "read", fn["name"])
+	assert.Equal(t, "Read file contents", fn["description"])
 }
 
 func TestNew_LocalOpenAICompatibleBaseURLsResolveProviderIdentity(t *testing.T) {

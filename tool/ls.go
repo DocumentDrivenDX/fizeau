@@ -24,7 +24,7 @@ type LsTool struct {
 
 func (t *LsTool) Name() string { return "ls" }
 func (t *LsTool) Description() string {
-	return "List the contents of a directory. Returns filenames with type indicators (/ for directories). Use this instead of 'ls' shell commands to inspect directory structure."
+	return "List directory contents. Use instead of ls."
 }
 func (t *LsTool) Schema() json.RawMessage {
 	return json.RawMessage(`{

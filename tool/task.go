@@ -116,7 +116,7 @@ type TaskTool struct {
 
 func (t *TaskTool) Name() string { return "task" }
 func (t *TaskTool) Description() string {
-	return "Track subtasks within a multi-step plan. Use 'create' to add tasks, 'update' to change status (pending/in_progress/completed), 'get' to retrieve a task, and 'list' to see all tasks. This helps maintain planning state across multiple turns."
+	return "Track subtasks in a multi-step plan: create, update, get, list."
 }
 func (t *TaskTool) Schema() json.RawMessage {
 	return json.RawMessage(`{

@@ -38,7 +38,7 @@ type GrepTool struct {
 
 func (t *GrepTool) Name() string { return "grep" }
 func (t *GrepTool) Description() string {
-	return "Search file contents for a regex pattern. Returns matching lines with file path and line number. Use this instead of 'grep' or 'rg' shell commands to search code. Supports restricting search to files matching a glob."
+	return "Search file contents for a regex pattern. Use instead of grep/rg shell commands."
 }
 func (t *GrepTool) Schema() json.RawMessage {
 	return json.RawMessage(`{

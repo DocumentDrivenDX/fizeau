@@ -94,9 +94,7 @@ func (b *Builder) Build() string {
 		for _, t := range b.tools {
 			toolLines = append(toolLines, fmt.Sprintf("- %s: %s", t.Name(), t.Description()))
 		}
-		toolSection := "# Tools\n\nYou have access to these tools. Use them to complete tasks — do NOT output code or file contents as text when you should be using a tool instead.\n\n" + strings.Join(toolLines, "\n")
-		toolSection += "\n\nIMPORTANT: When asked to create or modify files, you MUST use the write or edit tools. When asked to read files, use the read tool. Do not output file contents in your response as a substitute for tool use."
-		sections = append(sections, toolSection)
+		sections = append(sections, "# Tools\n"+strings.Join(toolLines, "\n"))
 	}
 
 	// 3. Guidelines

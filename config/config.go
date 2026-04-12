@@ -749,3 +749,26 @@ func SaveToFile(path string, cfg *Config) error {
 	}
 	return nil
 }
+
+// validateProviders checks that at least one usable provider configuration
+// exists. Called during Load, it catches the common mistake of running with
+// no config and no env-var overrides before a cryptic API error at runtime.
+func (c *Config) validateProviders() error {
+	if len(c.Providers) == 0 {
+		return fmt.Errorf("config: no providers configured — set AGENT_PROVIDER/AGENT_BASE_URL or write a config file")
+	}
+	for name, pc := range c.Providers {
+		if pc.Type != "openai-compat" && pc.Type != "openai" && pc.Type != "anthropic" {
+			return fmt.Errorf("config: provider %q has unknown type %q (use openai-compat or anthropic)", name, pc.Type)
+		}
+		if pc.Type == "openai-compat" || pc.Type == "openai" {
+			if pc.BaseURL == "" {
+				return fmt.Errorf("config: provider %q (%s): base_url is required", name, pc.Type)
+			}
+		}
+		if pc.Type == "anthropic" && pc.APIKey == "" {
+			return fmt.Errorf("config: provider %q (anthropic): api_key is required", name)
+		}
+	}
+	return nil
+}

@@ -38,7 +38,7 @@ type GlobTool struct {
 
 func (t *GlobTool) Name() string { return "glob" }
 func (t *GlobTool) Description() string {
-	return "Find files matching a glob pattern (e.g. '**/*.go', 'src/**/*.ts'). Returns matching paths sorted alphabetically. Use this instead of 'find' or 'ls' to locate files by name or extension."
+	return "Find files matching a glob pattern. Use instead of find/ls to locate files by name."
 }
 func (t *GlobTool) Schema() json.RawMessage {
 	return json.RawMessage(`{

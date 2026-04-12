@@ -119,6 +119,15 @@ func run() int {
 	// Check for zero-config discovery
 	checkZeroConfigDiscovery(cfg)
 
+	// Fail fast if no provider is configured before we spend tokens on a doomed run.
+	// Only applies to actual execution paths, not to help or metadata subcommands.
+	// `len(args) == 0` with no prompt flag is ambiguous — skip validation there to
+	// preserve the existing "no prompt" error precedence.
+	if len(cfg.Providers) == 0 && (*promptFlag != "" || runSubcommand) {
+		fmt.Fprintln(os.Stderr, "error: no providers configured — run 'ddx-agent import pi' or 'ddx-agent import opencode', set AGENT_PROVIDER/AGENT_BASE_URL, or create .agent/config.yaml")
+		return 2
+	}
+
 	// Check for drift
 	checkDrift(cfg, wd)
 

@@ -30,7 +30,7 @@ type PatchTool struct {
 func (t *PatchTool) Name() string { return "patch" }
 
 func (t *PatchTool) Description() string {
-	return "Make targeted edits to a file by providing the exact text to find (search) and the replacement text (content). Use 'operation' to control behavior: 'replace' (default — search must appear exactly once), 'replace_all' (replace every occurrence), 'prepend' (insert content at the top of the file, optionally anchored before a search line), or 'append' (insert content at the end of the file, optionally anchored after a search line). Always call the read tool first to get the exact text from the file before calling patch."
+	return "Make targeted edits to a file. Supports: replace (default), replace_all, prepend, and append operations."
 }
 
 func (t *PatchTool) Schema() json.RawMessage {

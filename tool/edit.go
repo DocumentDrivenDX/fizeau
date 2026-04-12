@@ -38,7 +38,7 @@ type EditTool struct {
 
 func (t *EditTool) Name() string { return "edit" }
 func (t *EditTool) Description() string {
-	return "Make targeted edits to a file using exact string replacement. Supports multiple disjoint edits in one call via the edits[] array. Each oldText must appear exactly once in the original file and must not overlap with other edits. Use this for precise changes to existing files — prefer edit over write when modifying files. Always read the file first to get the exact text to replace."
+	return "Make targeted edits to a file using exact string replacement."
 }
 func (t *EditTool) Schema() json.RawMessage {
 	return json.RawMessage(`{
