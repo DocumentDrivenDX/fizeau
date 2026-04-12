@@ -177,11 +177,14 @@ type CatalogModelPricing struct {
 	OutputPerMTok float64
 }
 
-// PricingFor returns pricing for all known concrete models across all surfaces.
-// Only targets with a positive CostInputPerM are included.
+// PricingFor returns pricing for all active concrete models across all surfaces.
+// Only active targets with a positive CostInputPerM are included.
 func (c *Catalog) PricingFor() map[string]CatalogModelPricing {
 	result := make(map[string]CatalogModelPricing)
 	for _, target := range c.manifest.Targets {
+		if normalizedStatus(target.Status) != statusActive {
+			continue
+		}
 		if target.CostInputPerM <= 0 {
 			continue
 		}

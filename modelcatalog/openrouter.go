@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -79,7 +80,7 @@ func FetchOpenRouterPricing(timeout time.Duration) (map[string]openrouterModelEn
 func UpdateManifestPricing(manifestPath string, timeout time.Duration) (int, []string, error) {
 	// Load or seed the manifest
 	var data []byte
-	existing, err := os.ReadFile(manifestPath)
+	existing, err := os.ReadFile(manifestPath) // #nosec G304 -- manifestPath is user-supplied config path, not attacker-controlled
 	if err == nil {
 		data = existing
 	} else if os.IsNotExist(err) {
@@ -112,8 +113,14 @@ func UpdateManifestPricing(manifestPath string, timeout time.Duration) (int, []s
 			orEntry, found = prices[target.OpenRouterRefID]
 		}
 		if !found {
-			for _, modelID := range target.Surfaces {
-				if e, ok := prices[modelID]; ok {
+			// Sort surface keys for deterministic matching order.
+			surfaceKeys := make([]string, 0, len(target.Surfaces))
+			for k := range target.Surfaces {
+				surfaceKeys = append(surfaceKeys, k)
+			}
+			sort.Strings(surfaceKeys)
+			for _, k := range surfaceKeys {
+				if e, ok := prices[target.Surfaces[k]]; ok {
 					orEntry = e
 					found = true
 					break
@@ -149,10 +156,10 @@ func UpdateManifestPricing(manifestPath string, timeout time.Duration) (int, []s
 	if err != nil {
 		return 0, nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o750); err != nil { // #nosec G301
 		return 0, nil, err
 	}
-	if err := os.WriteFile(manifestPath, out, 0o644); err != nil {
+	if err := os.WriteFile(manifestPath, out, 0o600); err != nil { // #nosec G306
 		return 0, nil, err
 	}
 	return updated, notFound, nil

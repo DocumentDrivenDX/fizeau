@@ -150,12 +150,16 @@ func TestCLI_Usage_CSV_MixedCost(t *testing.T) {
 		"provider",
 		"model",
 		"sessions",
+		"success_sessions",
+		"failed_sessions",
 		"input_tokens",
 		"output_tokens",
 		"total_tokens",
 		"duration_ms",
 		"known_cost_usd",
 		"unknown_cost_sessions",
+		"success_rate",
+		"cost_per_success",
 		"input_tokens_per_second",
 		"output_tokens_per_second",
 		"cache_read_tokens",
@@ -165,12 +169,12 @@ func TestCLI_Usage_CSV_MixedCost(t *testing.T) {
 	assert.Equal(t, "openai-compat", rows[1][0])
 	assert.Equal(t, "qwen3.5-7b", rows[1][1])
 	assert.Equal(t, "2", rows[1][2])
-	assert.Equal(t, "1", rows[1][8])
-	assert.Equal(t, "", rows[1][7], "known cost must remain blank when unknown-cost sessions exist")
+	assert.Equal(t, "1", rows[1][10]) // unknown_cost_sessions now at index 10
+	assert.Equal(t, "", rows[1][9], "known cost must remain blank when unknown-cost sessions exist")
 
 	assert.Equal(t, "TOTAL", rows[2][0])
-	assert.Equal(t, "1", rows[2][8])
-	assert.Equal(t, "", rows[2][7], "total known cost must remain blank when unknown-cost sessions exist")
+	assert.Equal(t, "1", rows[2][10])
+	assert.Equal(t, "", rows[2][9], "total known cost must remain blank when unknown-cost sessions exist")
 }
 
 func TestCLI_Usage_MutuallyExclusiveJSONAndCSV(t *testing.T) {

@@ -206,7 +206,7 @@ func validateManifest(m manifest) error {
 			return fmt.Errorf("target %q cost_cache_write_per_m must be >= 0", targetID)
 		}
 		if target.ContextWindow < 0 {
-			return fmt.Errorf("target %q context_window must be > 0 if set", targetID)
+			return fmt.Errorf("target %q context_window must be >= 0", targetID)
 		}
 
 		for _, alias := range target.Aliases {
