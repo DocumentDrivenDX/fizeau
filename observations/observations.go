@@ -114,6 +114,24 @@ func (s *Store) MeanSpeed(key Key) (float64, bool) {
 	return r.Mean()
 }
 
+// AllKeys returns all provider+model keys present in the store.
+func (s *Store) AllKeys() []Key {
+	out := make([]Key, 0, len(s.rings))
+	for flat := range s.rings {
+		ps, m, err := splitFlatKey(flat)
+		if err != nil {
+			continue
+		}
+		out = append(out, Key{ProviderSystem: ps, Model: m})
+	}
+	return out
+}
+
+// RingFor returns the Ring for the given key, or nil if not present.
+func (s *Store) RingFor(key Key) *Ring {
+	return s.rings[key.flatKey()]
+}
+
 // MarshalYAML serializes the store as a sequence of entries.
 func (s *Store) MarshalYAML() (interface{}, error) {
 	type storeYAML struct {
@@ -169,6 +187,8 @@ func splitFlatKey(flat string) (providerSystem, model string, err error) {
 }
 
 // LoadStore reads a Store from path. Returns an empty store on not-found.
+// If the DDX_OBSERVATIONS_FILE env var is set and path is DefaultStorePath(),
+// the env var value takes precedence (handled by DefaultStorePath).
 func LoadStore(path string) (*Store, error) {
 	data, err := safefs.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -214,7 +234,11 @@ func (s *Store) Save(path string) error {
 }
 
 // DefaultStorePath returns the path for the observations file, respecting XDG.
+// If the DDX_OBSERVATIONS_FILE environment variable is set, it takes precedence.
 func DefaultStorePath() string {
+	if env := os.Getenv("DDX_OBSERVATIONS_FILE"); env != "" {
+		return env
+	}
 	xdg := os.Getenv("XDG_CONFIG_HOME")
 	if xdg != "" {
 		return filepath.Join(xdg, "ddx-agent", "observations.yaml")

@@ -204,6 +204,52 @@ type CatalogModelPricing struct {
 	OutputPerMTok float64
 }
 
+// ModelEntry is a public view of a catalog target entry.
+type ModelEntry struct {
+	ID                 string
+	Family             string
+	Status             string
+	Replacement        string
+	Surfaces           map[string]string
+	CostInputPerM      float64
+	CostOutputPerM     float64
+	CostCacheReadPerM  float64
+	CostCacheWritePerM float64
+	ContextWindow      int
+	SWEBenchVerified   float64
+	LiveCodeBench      float64
+	BenchmarkAsOf      string
+	OpenRouterRefID    string
+}
+
+// AllTargets returns all targets in the catalog (active and deprecated).
+func (c *Catalog) AllTargets() []ModelEntry {
+	out := make([]ModelEntry, 0, len(c.manifest.Targets))
+	for id, t := range c.manifest.Targets {
+		surfaces := make(map[string]string, len(t.Surfaces))
+		for k, v := range t.Surfaces {
+			surfaces[k] = v
+		}
+		out = append(out, ModelEntry{
+			ID:                 id,
+			Family:             t.Family,
+			Status:             normalizedStatus(t.Status),
+			Replacement:        t.Replacement,
+			Surfaces:           surfaces,
+			CostInputPerM:      t.CostInputPerM,
+			CostOutputPerM:     t.CostOutputPerM,
+			CostCacheReadPerM:  t.CostCacheReadPerM,
+			CostCacheWritePerM: t.CostCacheWritePerM,
+			ContextWindow:      t.ContextWindow,
+			SWEBenchVerified:   t.SWEBenchVerified,
+			LiveCodeBench:      t.LiveCodeBench,
+			BenchmarkAsOf:      t.BenchmarkAsOf,
+			OpenRouterRefID:    t.OpenRouterRefID,
+		})
+	}
+	return out
+}
+
 // PricingFor returns pricing for all active concrete models across all surfaces.
 // Per-model entries from the top-level models: map (v4+) take precedence over
 // target-level pricing. Only models/targets with a positive input cost are
