@@ -221,7 +221,7 @@ func (s *Store) Save(path string) error {
 	tmpPath := f.Name()
 	defer os.Remove(tmpPath) // clean up on failure
 	if _, err := f.Write(data); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("observations: write temp file: %w", err)
 	}
 	if err := f.Close(); err != nil {
