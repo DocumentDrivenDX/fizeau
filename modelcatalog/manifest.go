@@ -14,7 +14,7 @@ const (
 	statusActive     = "active"
 	statusDeprecated = "deprecated"
 	statusStale      = "stale"
-	maxSchemaVersion = 3
+	maxSchemaVersion = 4
 )
 
 //go:embed catalog/models.yaml
@@ -26,10 +26,21 @@ type LoadOptions struct {
 	RequireExternal bool
 }
 
+// ModelEntry holds per-model metadata introduced in manifest v4.
+type ModelEntry struct {
+	ProviderSystem    string  `yaml:"provider_system,omitempty"`
+	CostInputPerMTok  float64 `yaml:"cost_input_per_mtok,omitempty"`
+	CostOutputPerMTok float64 `yaml:"cost_output_per_mtok,omitempty"`
+	SWEBenchVerified  float64 `yaml:"swe_bench_verified,omitempty"`
+	OpenRouterRefID   string  `yaml:"openrouter_ref_id,omitempty"`
+	SpeedTokensPerSec float64 `yaml:"speed_tokens_per_sec,omitempty"`
+}
+
 type manifest struct {
 	Version        int                     `yaml:"version"`
 	GeneratedAt    string                  `yaml:"generated_at"`
 	CatalogVersion string                  `yaml:"catalog_version,omitempty"`
+	Models         map[string]ModelEntry   `yaml:"models,omitempty"`
 	Profiles       map[string]profileEntry `yaml:"profiles"`
 	Targets        map[string]targetEntry  `yaml:"targets"`
 }
@@ -38,13 +49,63 @@ type profileEntry struct {
 	Target string `yaml:"target"`
 }
 
+// surfaceValue represents a surface entry that may be a plain model ID string
+// or a struct with a candidates list (v4+).
+type surfaceValue struct {
+	// model is set when the YAML value is a plain string.
+	model string
+	// candidates is set when the YAML value is a struct with a candidates list.
+	candidates []string
+}
+
+// UnmarshalYAML decodes either a scalar string or a mapping with candidates.
+func (s *surfaceValue) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		s.model = value.Value
+		return nil
+	case yaml.MappingNode:
+		var raw struct {
+			Candidates []string `yaml:"candidates"`
+		}
+		if err := value.Decode(&raw); err != nil {
+			return err
+		}
+		s.candidates = raw.Candidates
+		return nil
+	default:
+		return fmt.Errorf("surfaceValue: unexpected YAML node kind %v", value.Kind)
+	}
+}
+
+// primaryModel returns the first/primary concrete model ID for this surface.
+func (s surfaceValue) primaryModel() string {
+	if s.model != "" {
+		return s.model
+	}
+	if len(s.candidates) > 0 {
+		return s.candidates[0]
+	}
+	return ""
+}
+
+// allCandidates returns an ordered list of candidate model IDs.
+func (s surfaceValue) allCandidates() []string {
+	if s.model != "" {
+		return []string{s.model}
+	}
+	out := make([]string, len(s.candidates))
+	copy(out, s.candidates)
+	return out
+}
+
 type targetEntry struct {
 	Family        string                        `yaml:"family"`
 	Aliases       []string                      `yaml:"aliases"`
 	Status        string                        `yaml:"status"`
 	Replacement   string                        `yaml:"replacement,omitempty"`
 	DeprecatedAt  string                        `yaml:"deprecated_at,omitempty"`
-	Surfaces      map[string]string             `yaml:"surfaces"`
+	Surfaces      map[string]surfaceValue       `yaml:"surfaces"`
 	SurfacePolicy map[string]surfacePolicyEntry `yaml:"surface_policy,omitempty"`
 	// Pricing (USD per 1M tokens, 0 = unknown/free)
 	CostInputPerM      float64 `yaml:"cost_input_per_m,omitempty"`
@@ -173,11 +234,11 @@ func validateManifest(m manifest) error {
 		}
 		reserved[targetID] = fmt.Sprintf("target %q", targetID)
 
-		for surface, concrete := range target.Surfaces {
+		for surface, sv := range target.Surfaces {
 			if strings.TrimSpace(surface) == "" {
 				return fmt.Errorf("target %q has empty surface key", targetID)
 			}
-			if strings.TrimSpace(concrete) == "" {
+			if strings.TrimSpace(sv.primaryModel()) == "" {
 				return fmt.Errorf("target %q has empty model for surface %q", targetID, surface)
 			}
 		}

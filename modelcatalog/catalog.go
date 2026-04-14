@@ -158,17 +158,44 @@ func (c *Catalog) Resolve(ref string, opts ResolveOptions) (ResolvedTarget, erro
 // AllConcreteModels returns a map from concrete model ID to catalog target ID
 // for every active target that has a mapping for the given surface. The map is
 // safe to use as a membership set for ranking discovered models.
+// All candidate model IDs (not just the primary) are included.
 func (c *Catalog) AllConcreteModels(surface Surface) map[string]string {
 	out := make(map[string]string)
 	for targetID, entry := range c.manifest.Targets {
 		if normalizedStatus(entry.Status) != statusActive {
 			continue
 		}
-		if concreteID, ok := entry.Surfaces[string(surface)]; ok && concreteID != "" {
-			out[concreteID] = targetID
+		if sv, ok := entry.Surfaces[string(surface)]; ok {
+			for _, candidate := range sv.allCandidates() {
+				if candidate != "" {
+					out[candidate] = targetID
+				}
+			}
 		}
 	}
 	return out
+}
+
+// LookupModel returns the ModelEntry for the given model ID from the top-level
+// models: map (manifest v4+). The second return value is false if not found.
+func (c *Catalog) LookupModel(id string) (ModelEntry, bool) {
+	entry, ok := c.manifest.Models[id]
+	return entry, ok
+}
+
+// CandidatesFor returns the ordered list of candidate concrete model IDs for
+// the given surface and target key. For old-style single-string surfaces this
+// returns a one-element slice. Returns nil if the target or surface is absent.
+func (c *Catalog) CandidatesFor(surface Surface, targetKey string) []string {
+	target, ok := c.manifest.Targets[targetKey]
+	if !ok {
+		return nil
+	}
+	sv, ok := target.Surfaces[string(surface)]
+	if !ok {
+		return nil
+	}
+	return sv.allCandidates()
 }
 
 // CatalogModelPricing holds per-million-token costs for a model as sourced from the catalog.
@@ -178,9 +205,13 @@ type CatalogModelPricing struct {
 }
 
 // PricingFor returns pricing for all active concrete models across all surfaces.
-// Only active targets with a positive CostInputPerM are included.
+// Per-model entries from the top-level models: map (v4+) take precedence over
+// target-level pricing. Only models/targets with a positive input cost are
+// included.
 func (c *Catalog) PricingFor() map[string]CatalogModelPricing {
 	result := make(map[string]CatalogModelPricing)
+
+	// Seed from target-level pricing (all candidate models for each surface).
 	for _, target := range c.manifest.Targets {
 		if normalizedStatus(target.Status) != statusActive {
 			continue
@@ -192,10 +223,26 @@ func (c *Catalog) PricingFor() map[string]CatalogModelPricing {
 			InputPerMTok:  target.CostInputPerM,
 			OutputPerMTok: target.CostOutputPerM,
 		}
-		for _, modelID := range target.Surfaces {
-			result[modelID] = pricing
+		for _, sv := range target.Surfaces {
+			for _, modelID := range sv.allCandidates() {
+				if modelID != "" {
+					result[modelID] = pricing
+				}
+			}
 		}
 	}
+
+	// Per-model entries (v4+) override target-level pricing.
+	for modelID, entry := range c.manifest.Models {
+		if entry.CostInputPerMTok <= 0 {
+			continue
+		}
+		result[modelID] = CatalogModelPricing{
+			InputPerMTok:  entry.CostInputPerMTok,
+			OutputPerMTok: entry.CostOutputPerMTok,
+		}
+	}
+
 	return result
 }
 
@@ -218,8 +265,15 @@ func (c *Catalog) resolveTarget(ref, profile, targetID string, opts ResolveOptio
 		}
 	}
 
-	concreteModel, ok := target.Surfaces[string(opts.Surface)]
+	sv, ok := target.Surfaces[string(opts.Surface)]
 	if !ok {
+		return ResolvedTarget{}, &MissingSurfaceError{
+			CanonicalID: targetID,
+			Surface:     opts.Surface,
+		}
+	}
+	concreteModel := sv.primaryModel()
+	if concreteModel == "" {
 		return ResolvedTarget{}, &MissingSurfaceError{
 			CanonicalID: targetID,
 			Surface:     opts.Surface,
