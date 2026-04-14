@@ -120,7 +120,8 @@ func UpdateManifestPricing(manifestPath string, timeout time.Duration) (int, []s
 			}
 			sort.Strings(surfaceKeys)
 			for _, k := range surfaceKeys {
-				if e, ok := prices[target.Surfaces[k]]; ok {
+				primary := target.Surfaces[k].primaryModel()
+				if e, ok := prices[primary]; ok {
 					orEntry = e
 					found = true
 					break

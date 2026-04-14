@@ -354,7 +354,7 @@ targets:
 
 func TestLoad_UnsupportedSchemaVersion(t *testing.T) {
 	manifestPath := writeFixtureManifest(t, `
-version: 4
+version: 5
 generated_at: 2026-04-10T00:00:00Z
 targets:
   code-high:
@@ -368,7 +368,7 @@ targets:
 		RequireExternal: true,
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported schema version 4")
+	assert.Contains(t, err.Error(), "unsupported schema version 5")
 }
 
 func TestResolveEmptyReference(t *testing.T) {
@@ -393,4 +393,165 @@ func TestCurrentEmptyProfile(t *testing.T) {
 
 func TestNormalizedStatusCaseInsensitive(t *testing.T) {
 	assert.Equal(t, statusDeprecated, normalizedStatus(" Deprecated "))
+}
+
+// loadV4FixtureCatalog loads a v4 manifest with models: map and candidates: lists.
+func loadV4FixtureCatalog(t *testing.T) *Catalog {
+	t.Helper()
+	catalog, err := Load(LoadOptions{
+		ManifestPath: writeFixtureManifest(t, `
+version: 4
+generated_at: 2026-04-13T00:00:00Z
+catalog_version: 2026-04-13.1
+models:
+  alpha-model-1:
+    provider_system: anthropic
+    cost_input_per_mtok: 3.00
+    cost_output_per_mtok: 15.00
+    swe_bench_verified: 72.7
+  alpha-model-2:
+    provider_system: anthropic
+    cost_input_per_mtok: 0.80
+    cost_output_per_mtok: 4.00
+    swe_bench_verified: 65.0
+  beta-model-1:
+    provider_system: openai
+    cost_input_per_mtok: 0.10
+    cost_output_per_mtok: 0.30
+    swe_bench_verified: 59.0
+  beta-model-2:
+    provider_system: openai
+    cost_input_per_mtok: 0.07
+    cost_output_per_mtok: 0.20
+profiles:
+  code-alpha:
+    target: alpha-smart
+  code-beta:
+    target: beta-fast
+targets:
+  alpha-smart:
+    family: alpha
+    aliases: [alpha]
+    surfaces:
+      agent.anthropic:
+        candidates: [alpha-model-1, alpha-model-2]
+      agent.openai: beta-model-1
+  beta-fast:
+    family: beta
+    aliases: [beta]
+    surfaces:
+      agent.openai:
+        candidates: [beta-model-1, beta-model-2]
+`),
+		RequireExternal: true,
+	})
+	require.NoError(t, err)
+	return catalog
+}
+
+func TestLookupModel_KnownModel(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	entry, ok := catalog.LookupModel("alpha-model-1")
+	require.True(t, ok)
+	assert.Equal(t, "anthropic", entry.ProviderSystem)
+	assert.Equal(t, 3.00, entry.CostInputPerMTok)
+	assert.Equal(t, 15.00, entry.CostOutputPerMTok)
+	assert.Equal(t, 72.7, entry.SWEBenchVerified)
+}
+
+func TestLookupModel_UnknownModel(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	_, ok := catalog.LookupModel("does-not-exist")
+	assert.False(t, ok)
+}
+
+func TestCandidatesFor_CandidatesList(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	// Surface with candidates list
+	candidates := catalog.CandidatesFor(SurfaceAgentAnthropic, "alpha-smart")
+	assert.Equal(t, []string{"alpha-model-1", "alpha-model-2"}, candidates)
+}
+
+func TestCandidatesFor_SingleStringFormat(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	// Old single-string surface format returns one-element slice
+	candidates := catalog.CandidatesFor(SurfaceAgentOpenAI, "alpha-smart")
+	assert.Equal(t, []string{"beta-model-1"}, candidates)
+}
+
+func TestCandidatesFor_MissingTarget(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	candidates := catalog.CandidatesFor(SurfaceAgentAnthropic, "no-such-target")
+	assert.Nil(t, candidates)
+}
+
+func TestCandidatesFor_MissingSurface(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	candidates := catalog.CandidatesFor(SurfaceClaudeCode, "alpha-smart")
+	assert.Nil(t, candidates)
+}
+
+func TestPricingFor_IncludesModelsWithCost(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	pricing := catalog.PricingFor()
+
+	// alpha-model-1 appears in surfaces and models map
+	p, ok := pricing["alpha-model-1"]
+	require.True(t, ok, "expected alpha-model-1 in pricing")
+	assert.Equal(t, 3.00, p.InputPerMTok)
+	assert.Equal(t, 15.00, p.OutputPerMTok)
+
+	// beta-model-2 appears only in candidates list (not as primary surface model in any target)
+	// but is in models map — per-model entry takes precedence
+	_, hasB2 := pricing["beta-model-2"]
+	assert.True(t, hasB2, "expected beta-model-2 in pricing via models map")
+}
+
+func TestAllConcreteModels_IncludesCandidates(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	models := catalog.AllConcreteModels(SurfaceAgentAnthropic)
+
+	// Both candidates for alpha-smart should be present
+	assert.Equal(t, "alpha-smart", models["alpha-model-1"])
+	assert.Equal(t, "alpha-smart", models["alpha-model-2"])
+}
+
+func TestAllConcreteModels_SingleStringFormat(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	models := catalog.AllConcreteModels(SurfaceAgentOpenAI)
+
+	// Single-string surface entry
+	assert.Equal(t, "alpha-smart", models["beta-model-1"])
+	// Candidates list on beta-fast
+	assert.Equal(t, "beta-fast", models["beta-model-2"])
+}
+
+func TestV4Manifest_BackwardsCompatibleLoad(t *testing.T) {
+	// Verify that a v4 manifest with mixed old-style (string) and new-style
+	// (candidates) surface values still resolves correctly.
+	catalog := loadV4FixtureCatalog(t)
+
+	resolved, err := catalog.Current("code-alpha", ResolveOptions{
+		Surface: SurfaceAgentAnthropic,
+	})
+	require.NoError(t, err)
+	// Primary candidate is the first in the list
+	assert.Equal(t, "alpha-model-1", resolved.ConcreteModel)
+	assert.Equal(t, "alpha-smart", resolved.CanonicalID)
+
+	// Old-style string surface still resolves
+	resolved2, err := catalog.Resolve("alpha-smart", ResolveOptions{
+		Surface: SurfaceAgentOpenAI,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "beta-model-1", resolved2.ConcreteModel)
 }

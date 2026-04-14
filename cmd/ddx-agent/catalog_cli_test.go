@@ -509,7 +509,7 @@ func TestCLI_CatalogUpdate_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 	manifest := `
-version: 4
+version: 5
 generated_at: 2026-04-11T00:00:00Z
 catalog_version: 2026-04-11.1
 targets:
@@ -519,13 +519,13 @@ targets:
       agent.openai: gpt-5.4
 `
 	server := newFakeCatalogServer(t, map[string]string{
-		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 4),
+		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 5),
 		"stable/models.yaml": manifest,
 	})
 
 	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "update", "--base-url", server.baseURL())
 	require.Error(t, err)
-	assert.Contains(t, string(out), "unsupported schema version 4")
+	assert.Contains(t, string(out), "unsupported schema version 5")
 
 	_, statErr := os.Stat(filepath.Join(home, ".config", "agent", "models.yaml"))
 	assert.Error(t, statErr)
