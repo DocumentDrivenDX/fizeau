@@ -42,7 +42,11 @@ func seedMixedUsageLogs(t *testing.T, logDir string) {
 		require.NoError(t, logger.Close())
 	}
 
-	writeUsageLog(t, "recent-known", time.Date(2026, 4, 8, 10, 0, 0, 0, time.UTC), time.Date(2026, 4, 8, 10, 0, 1, 0, time.UTC), session.SessionStartData{
+	now := time.Now().UTC()
+	recentDay := now.AddDate(0, 0, -2).Truncate(24 * time.Hour)
+	oldDay := now.AddDate(0, 0, -30).Truncate(24 * time.Hour)
+
+	writeUsageLog(t, "recent-known", recentDay.Add(10*time.Hour), recentDay.Add(10*time.Hour+time.Second), session.SessionStartData{
 		Provider: "openai-compat",
 		Model:    "qwen3.5-7b",
 		Prompt:   "recent known",
@@ -55,7 +59,7 @@ func seedMixedUsageLogs(t *testing.T, logDir string) {
 		Model:      "qwen3.5-7b",
 	})
 
-	writeUsageLog(t, "recent-unknown", time.Date(2026, 4, 8, 11, 0, 0, 0, time.UTC), time.Date(2026, 4, 8, 11, 0, 2, 0, time.UTC), session.SessionStartData{
+	writeUsageLog(t, "recent-unknown", recentDay.Add(11*time.Hour), recentDay.Add(11*time.Hour+2*time.Second), session.SessionStartData{
 		Provider: "openai-compat",
 		Model:    "qwen3.5-7b",
 		Prompt:   "recent unknown",
@@ -68,7 +72,7 @@ func seedMixedUsageLogs(t *testing.T, logDir string) {
 		Model:      "qwen3.5-7b",
 	})
 
-	writeUsageLog(t, "old-session", time.Date(2026, 3, 25, 9, 0, 0, 0, time.UTC), time.Date(2026, 3, 25, 9, 0, 3, 0, time.UTC), session.SessionStartData{
+	writeUsageLog(t, "old-session", oldDay.Add(9*time.Hour), oldDay.Add(9*time.Hour+3*time.Second), session.SessionStartData{
 		Provider: "anthropic",
 		Model:    "claude-sonnet-4-20250514",
 		Prompt:   "old",
