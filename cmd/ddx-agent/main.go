@@ -1206,7 +1206,7 @@ func checkProviderStatus(pc agentConfig.ProviderConfig) string {
 	if probe.err != nil {
 		return probe.err.Error()
 	}
-	return fmt.Sprintf("connected (%d models)", len(probe.models))
+	return fmt.Sprintf("http-connected (%d models listed)", len(probe.models))
 }
 
 func cmdImport(workDir string, args []string) int {

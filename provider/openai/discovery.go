@@ -131,3 +131,50 @@ func SelectModel(ranked []ScoredModel) string {
 	}
 	return ranked[0].ID
 }
+
+// NormalizeModelID resolves a caller-supplied model name against the server's
+// canonical model catalog (the IDs returned by GET /v1/models). If the name
+// matches a catalog entry exactly (case-insensitive), that entry is returned.
+// If the name matches exactly one catalog entry by suffix (the part after the
+// last '/'), that entry's full ID is returned — this handles the common case
+// where a user supplies a bare name like "qwen3-coder-next" but the server
+// lists it as "qwen/qwen3-coder-next". Multiple suffix matches produce an
+// ambiguity error listing the candidates. Zero matches return the original
+// name unchanged.
+func NormalizeModelID(requested string, catalog []string) (string, error) {
+	reqLower := strings.ToLower(strings.TrimSpace(requested))
+	if reqLower == "" {
+		return requested, nil
+	}
+
+	// Exact match (case-insensitive).
+	for _, id := range catalog {
+		if strings.EqualFold(id, requested) {
+			return id, nil
+		}
+	}
+
+	// Suffix match: compare requested against the basename (after last '/')
+	// of each catalog entry.
+	var matches []string
+	for _, id := range catalog {
+		idLower := strings.ToLower(id)
+		slash := strings.LastIndex(idLower, "/")
+		if slash < 0 {
+			continue // no prefix to strip — already checked via exact match
+		}
+		basename := idLower[slash+1:]
+		if basename == reqLower {
+			matches = append(matches, id)
+		}
+	}
+
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		return requested, nil
+	default:
+		return "", fmt.Errorf("ambiguous model %q: matches %v", requested, matches)
+	}
+}

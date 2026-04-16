@@ -515,7 +515,17 @@ func evaluateProviderCandidate(pc agentConfig.ProviderConfig, requestedModel, co
 		if match == "" && len(probe.models) > 0 {
 			match = probe.models[0]
 		}
-		return true, match, fmt.Sprintf("healthy (%d models)", len(probe.models))
+		// Normalize bare model names to the server's canonical IDs.
+		// This handles e.g. "qwen3-coder-next" → "qwen/qwen3-coder-next"
+		// which is required for LM Studio JIT model loading.
+		if match != "" {
+			normalized, err := oaiProvider.NormalizeModelID(match, probe.models)
+			if err != nil {
+				return false, "", err.Error()
+			}
+			match = normalized
+		}
+		return true, match, fmt.Sprintf("inference-ready (%d models)", len(probe.models))
 	}
 }
 

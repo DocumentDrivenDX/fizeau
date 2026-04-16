@@ -403,6 +403,81 @@ func TestScoreSmartRouteCandidates_CapabilityBreaksTie(t *testing.T) {
 	assert.Greater(t, plan.Candidates[order[0]].CapabilityScore, plan.Candidates[order[1]].CapabilityScore)
 }
 
+// TestEvaluateProviderCandidate_NormalizesBareName verifies AC2: bare model
+// names are normalized to canonical catalog IDs by suffix-match against the
+// server's /v1/models response. This is the core fix for the LM Studio JIT
+// loading bug where bare "qwen3-coder-next" failed because the server lists
+// it as "qwen/qwen3-coder-next".
+func TestEvaluateProviderCandidate_NormalizesBareName(t *testing.T) {
+	pc := agentConfig.ProviderConfig{
+		Type:    "openai-compat",
+		BaseURL: "http://localhost:1234/v1",
+		APIKey:  "test",
+	}
+
+	// Mock probe: server lists "qwen/qwen3-coder-next" (with prefix).
+	probe := providerModelProbe{
+		models: []string{"qwen/qwen3-coder-next"},
+	}
+
+	// Caller requests bare name "qwen3-coder-next".
+	healthy, matchedModel, reason := evaluateProviderCandidate(pc, "qwen3-coder-next", "qwen3-coder-next", probe)
+	assert.True(t, healthy)
+	// The matched model should be the canonical prefixed ID, not the bare name.
+	assert.Equal(t, "qwen/qwen3-coder-next", matchedModel,
+		"bare model name should be normalized to canonical catalog ID")
+	assert.Contains(t, reason, "inference-ready")
+}
+
+// TestEvaluateProviderCandidate_AmbiguousNormalization verifies that when
+// multiple catalog entries share the same basename, an ambiguity error is
+// returned instead of silently picking one.
+func TestEvaluateProviderCandidate_AmbiguousNormalization(t *testing.T) {
+	pc := agentConfig.ProviderConfig{
+		Type:    "openai-compat",
+		BaseURL: "http://localhost:1234/v1",
+		APIKey:  "test",
+	}
+
+	probe := providerModelProbe{
+		models: []string{"org1/foo", "org2/foo"},
+	}
+
+	healthy, _, reason := evaluateProviderCandidate(pc, "foo", "foo", probe)
+	assert.False(t, healthy)
+	assert.Contains(t, reason, "ambiguous")
+}
+
+// TestEvaluateProviderCandidate_MockLMStudioNormalization is the regression
+// test required by AC5: a mock LM Studio server lists "qwen/foo" but rejects
+// bare "foo" on chat/completions. The discovery layer normalizes "foo" →
+// "qwen/foo" so the probe succeeds and routing uses the canonical ID.
+func TestEvaluateProviderCandidate_MockLMStudioNormalization(t *testing.T) {
+	pc := agentConfig.ProviderConfig{
+		Type:    "openai-compat",
+		BaseURL: "http://lmstudio:1234/v1",
+		APIKey:  "test",
+	}
+
+	// Simulate LM Studio: /v1/models lists "qwen/foo" (with org prefix).
+	probe := providerModelProbe{
+		models: []string{"qwen/foo"},
+	}
+
+	// User config says model: "foo" (bare name, no prefix).
+	healthy, matchedModel, reason := evaluateProviderCandidate(pc, "foo", "foo", probe)
+	assert.True(t, healthy, "candidate should be healthy after normalization")
+	assert.Equal(t, "qwen/foo", matchedModel,
+		"discovery should normalize 'foo' → 'qwen/foo' via suffix-match against /v1/models catalog")
+	assert.Contains(t, reason, "inference-ready",
+		"reason should indicate inference-ready, not just connected")
+
+	// Verify the reverse: if the user passes the canonical ID, it still works.
+	healthy2, matchedModel2, _ := evaluateProviderCandidate(pc, "qwen/foo", "", probe)
+	assert.True(t, healthy2)
+	assert.Equal(t, "qwen/foo", matchedModel2)
+}
+
 func TestRoutingWeights_CapabilityDefault(t *testing.T) {
 	cfg := &agentConfig.Config{}
 	rel, perf, load, cost, cap := routingWeights(cfg)

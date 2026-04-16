@@ -172,6 +172,58 @@ func TestProvider_ModelPatternFilter(t *testing.T) {
 	assert.True(t, discovered[0].PatternMatch)
 }
 
+func TestNormalizeModelID(t *testing.T) {
+	t.Run("exact match", func(t *testing.T) {
+		result, err := NormalizeModelID("qwen3-coder-next", []string{"qwen3-coder-next", "llama3.1-8b"})
+		require.NoError(t, err)
+		assert.Equal(t, "qwen3-coder-next", result)
+	})
+
+	t.Run("exact match case insensitive", func(t *testing.T) {
+		result, err := NormalizeModelID("Qwen3-Coder-Next", []string{"qwen3-coder-next", "llama3.1-8b"})
+		require.NoError(t, err)
+		assert.Equal(t, "qwen3-coder-next", result)
+	})
+
+	t.Run("suffix match normalizes bare name to prefixed", func(t *testing.T) {
+		result, err := NormalizeModelID("qwen3-coder-next", []string{"qwen/qwen3-coder-next", "llama3.1-8b"})
+		require.NoError(t, err)
+		assert.Equal(t, "qwen/qwen3-coder-next", result)
+	})
+
+	t.Run("suffix match case insensitive", func(t *testing.T) {
+		result, err := NormalizeModelID("QWEN3-CODER-NEXT", []string{"qwen/qwen3-coder-next"})
+		require.NoError(t, err)
+		assert.Equal(t, "qwen/qwen3-coder-next", result)
+	})
+
+	t.Run("ambiguous suffix match returns error", func(t *testing.T) {
+		_, err := NormalizeModelID("foo", []string{"org1/foo", "org2/foo"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ambiguous")
+		assert.Contains(t, err.Error(), "org1/foo")
+		assert.Contains(t, err.Error(), "org2/foo")
+	})
+
+	t.Run("no match returns original", func(t *testing.T) {
+		result, err := NormalizeModelID("nonexistent", []string{"qwen/qwen3-coder-next", "llama3.1-8b"})
+		require.NoError(t, err)
+		assert.Equal(t, "nonexistent", result)
+	})
+
+	t.Run("empty requested returns empty", func(t *testing.T) {
+		result, err := NormalizeModelID("", []string{"qwen/qwen3-coder-next"})
+		require.NoError(t, err)
+		assert.Equal(t, "", result)
+	})
+
+	t.Run("empty catalog returns original", func(t *testing.T) {
+		result, err := NormalizeModelID("foo", nil)
+		require.NoError(t, err)
+		assert.Equal(t, "foo", result)
+	})
+}
+
 func TestProvider_KnownModelsCatalogRank(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
