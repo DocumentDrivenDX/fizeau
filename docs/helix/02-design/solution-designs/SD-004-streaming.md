@@ -41,7 +41,9 @@ type StreamDelta struct {
     // separate their internal reasoning from the final response (e.g. Qwen3,
     // DeepSeek-R1). Captured from choices[0].delta.reasoning_content in the
     // OpenAI-compatible streaming format. Distinct from Content — consumers
-    // that only care about the final answer should ignore this field.
+    // that only care about the final answer should ignore this field, but
+    // consumeStream uses it for the pure-reasoning loop guards described below
+    // ("Reasoning Overflow Detection" and "Reasoning Stall Detection").
     ReasoningContent string
 
     // ToolCallID is set when a new tool call starts.
