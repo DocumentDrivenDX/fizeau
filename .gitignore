@@ -23,7 +23,18 @@ website/resources/
 .ddx/agent-logs/
 .ddx/config.yaml
 .ddx/run-state.json
+.ddx/executions/
+.ddx/.execute-bead-wt-agent-*/
 .helix/
+
+# Node / npm
+node_modules/
+
+# Claude Code runtime
+.claude/worktrees/
+
+# Codex marker
+.codex
 
 # Coverage
 coverage.out
