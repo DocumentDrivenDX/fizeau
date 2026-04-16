@@ -172,7 +172,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				Data:      mustMarshal(endErrData),
 			})
 			seq++
-			if errors.Is(compErr, ErrCompactionNoFit) {
+			if errors.Is(compErr, ErrCompactionNoFit) || errors.Is(compErr, ErrCompactionStuck) {
 				return false, nil, compErr
 			}
 			return false, nil, nil

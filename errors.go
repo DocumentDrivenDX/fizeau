@@ -20,3 +20,9 @@ var ErrReasoningStall = errors.New("agent: reasoning stall: model produced only 
 // ErrToolCallLoop reports that the agent produced identical tool calls for
 // toolCallLoopLimit consecutive turns, indicating a non-converging loop.
 var ErrToolCallLoop = errors.New("agent: identical tool calls repeated, aborting loop")
+
+// ErrCompactionStuck reports that compaction was requested but failed to
+// produce a compacted history for multiple consecutive attempts. This prevents
+// a runaway loop where compaction.end(no_compaction=true) events fire
+// indefinitely without making progress.
+var ErrCompactionStuck = errors.New("agent: compaction stuck: consecutive attempts failed to produce a compacted history")

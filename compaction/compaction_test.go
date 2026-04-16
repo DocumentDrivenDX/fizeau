@@ -370,3 +370,139 @@ func TestCompact_UserMessageTailReInclusion(t *testing.T) {
 
 	t.Logf("Total messages after compaction: %d, re-included user messages: %d", len(newMsgs), reIncludedUserCount)
 }
+
+// stuckProvider always returns a summary that is too small to change the
+// compaction decision, simulating the stuck state where ShouldCompact keeps
+// returning true but compactMessages can't produce a valid result.
+type stuckProvider struct {
+	callCount int
+}
+
+func (p *stuckProvider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {
+	p.callCount++
+	// Return an empty summary so compactAtCutIndex can't fit it properly.
+	return agent.Response{
+		Content: "",
+		Usage:   agent.TokenUsage{Input: 10, Output: 1, Total: 11},
+	}, nil
+}
+
+func TestCompactor_ReturnsErrCompactionStuckAfterThreshold(t *testing.T) {
+	// Configure a compactor where ShouldCompact is always true but
+	// compactMessages cannot find a valid cut point, producing consecutive
+	// nil-result returns.
+	cfg := DefaultConfig()
+	cfg.ContextWindow = 100
+	cfg.ReserveTokens = 0
+	cfg.KeepRecentTokens = 0
+	cfg.EffectivePercent = 100
+	cfg.StuckThreshold = 3
+
+	compactor := NewCompactor(cfg)
+
+	// Build a minimal conversation that exceeds the context window but has
+	// no valid cut point because it contains only a single assistant message
+	// (no user messages after the first to cut at).
+	messages := []agent.Message{
+		{Role: agent.RoleUser, Content: strings.Repeat("A", 200)},
+		{Role: agent.RoleAssistant, Content: strings.Repeat("B", 200)},
+	}
+
+	var lastErr error
+	for i := 0; i < cfg.StuckThreshold+2; i++ {
+		_, _, lastErr = compactor(context.Background(), messages, &stuckProvider{}, nil)
+		if lastErr != nil {
+			break
+		}
+	}
+
+	require.Error(t, lastErr, "compactor should have returned an error after %d consecutive failed attempts", cfg.StuckThreshold)
+	assert.ErrorIs(t, lastErr, agent.ErrCompactionStuck)
+}
+
+func TestCompactor_StuckCounterResetsOnSuccess(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ContextWindow = 200
+	cfg.ReserveTokens = 0
+	cfg.KeepRecentTokens = 40
+	cfg.EffectivePercent = 100
+	cfg.StuckThreshold = 3
+
+	provider := &multiTurnProvider{toolRounds: 0}
+	compactor := NewCompactor(cfg)
+
+	// Minimal messages that exceed the threshold but can't compact (no valid cut).
+	smallMessages := []agent.Message{
+		{Role: agent.RoleUser, Content: strings.Repeat("A", 200)},
+		{Role: agent.RoleAssistant, Content: strings.Repeat("B", 200)},
+	}
+
+	// Accumulate some failed attempts (but below threshold).
+	for i := 0; i < cfg.StuckThreshold-1; i++ {
+		_, _, err := compactor(context.Background(), smallMessages, provider, nil)
+		require.NoError(t, err, "should not error before threshold")
+	}
+
+	// Now feed a conversation that compacts successfully to reset the counter.
+	var bigMessages []agent.Message
+	bigMessages = append(bigMessages, agent.Message{Role: agent.RoleUser, Content: "start"})
+	for i := 0; i < 10; i++ {
+		bigMessages = append(bigMessages, agent.Message{
+			Role:    agent.RoleAssistant,
+			Content: fmt.Sprintf("assistant reply %d: %s", i, strings.Repeat("X", 200)),
+		})
+		bigMessages = append(bigMessages, agent.Message{
+			Role:    agent.RoleUser,
+			Content: fmt.Sprintf("user message %d", i),
+		})
+	}
+
+	newMsgs, result, err := compactor(context.Background(), bigMessages, provider, nil)
+	require.NoError(t, err)
+	require.NotNil(t, result, "compaction should succeed and reset the counter")
+	require.Less(t, len(newMsgs), len(bigMessages))
+
+	// After reset, the small-message noop should be tolerated again.
+	for i := 0; i < cfg.StuckThreshold-1; i++ {
+		_, _, err := compactor(context.Background(), smallMessages, provider, nil)
+		require.NoError(t, err, "should not error after counter reset")
+	}
+}
+
+func TestCompactor_StuckCounterResetsWhenBelowThreshold(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ContextWindow = 200
+	cfg.ReserveTokens = 0
+	cfg.KeepRecentTokens = 40
+	cfg.EffectivePercent = 100
+	cfg.StuckThreshold = 3
+
+	compactor := NewCompactor(cfg)
+
+	// Messages that exceed threshold — will trigger compaction attempts.
+	bigMessages := []agent.Message{
+		{Role: agent.RoleUser, Content: strings.Repeat("A", 200)},
+		{Role: agent.RoleAssistant, Content: strings.Repeat("B", 200)},
+	}
+
+	// Messages that are below threshold — will NOT trigger compaction.
+	smallMessages := []agent.Message{
+		{Role: agent.RoleUser, Content: "hi"},
+	}
+
+	// Accumulate failures just below the threshold.
+	for i := 0; i < cfg.StuckThreshold-1; i++ {
+		_, _, err := compactor(context.Background(), bigMessages, &stuckProvider{}, nil)
+		require.NoError(t, err)
+	}
+
+	// A call where ShouldCompact returns false resets the counter.
+	_, _, err := compactor(context.Background(), smallMessages, &stuckProvider{}, nil)
+	require.NoError(t, err)
+
+	// Now we should tolerate another threshold-1 failures.
+	for i := 0; i < cfg.StuckThreshold-1; i++ {
+		_, _, err := compactor(context.Background(), bigMessages, &stuckProvider{}, nil)
+		require.NoError(t, err)
+	}
+}

@@ -25,6 +25,12 @@ const DefaultEffectivePercent = 95
 // recent real user messages alongside the compaction summary.
 const DefaultUserMessageTailTokens = 20000
 
+// DefaultStuckThreshold is the number of consecutive compaction attempts that
+// return without producing a compacted history before the compactor reports
+// ErrCompactionStuck. Only attempts where ShouldCompact returns true count;
+// normal no-ops (below threshold, already summarised) do not.
+const DefaultStuckThreshold = 5
+
 // Config configures automatic conversation compaction.
 type Config struct {
 	// Enabled controls whether automatic compaction runs. Default: true.
@@ -59,6 +65,12 @@ type Config struct {
 	// actual request context rather than only the summary.
 	// Default: 20000. Zero means disabled.
 	UserMessageTailTokens int
+
+	// StuckThreshold is the number of consecutive compaction attempts (where
+	// ShouldCompact returns true) that fail to produce a compacted history
+	// before the compactor returns agent.ErrCompactionStuck. Zero uses
+	// DefaultStuckThreshold.
+	StuckThreshold int
 }
 
 // DefaultConfig returns a Config with sensible defaults.

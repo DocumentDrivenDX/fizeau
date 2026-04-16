@@ -193,6 +193,46 @@ func TestRun_FailsClosedWhenToolOutputMakesCompactionNoFit(t *testing.T) {
 	assert.Equal(t, 2, compactionCalls, "compaction should run once before the iteration and once after tool output")
 }
 
+func TestRun_CompactionStuckPropagatesAsFatalError(t *testing.T) {
+	// Simulate the stuck state: compactor always signals "should compact" but
+	// returns a nil result. After StuckThreshold consecutive failures the
+	// compactor returns ErrCompactionStuck, which the loop must treat as fatal.
+	//
+	// The provider returns read-only tool calls so the loop keeps iterating,
+	// triggering compaction on each iteration — mirroring the production
+	// stuck state observed in the 33 MB session log.
+	provider := &externalMockProvider{
+		responses: []agent.Response{
+			{ToolCalls: []agent.ToolCall{{ID: "t1", Name: "oversized-output", Arguments: json.RawMessage(`{}`)}}, Usage: agent.TokenUsage{Total: 10}},
+			{ToolCalls: []agent.ToolCall{{ID: "t2", Name: "oversized-output", Arguments: json.RawMessage(`{}`)}}, Usage: agent.TokenUsage{Total: 10}},
+			{ToolCalls: []agent.ToolCall{{ID: "t3", Name: "oversized-output", Arguments: json.RawMessage(`{}`)}}, Usage: agent.TokenUsage{Total: 10}},
+			{ToolCalls: []agent.ToolCall{{ID: "t4", Name: "oversized-output", Arguments: json.RawMessage(`{}`)}}, Usage: agent.TokenUsage{Total: 10}},
+			{Content: "should not reach", Usage: agent.TokenUsage{Total: 10}},
+		},
+	}
+
+	compactionCalls := 0
+	stuckThreshold := 3
+	compactor := func(ctx context.Context, messages []agent.Message, prov agent.Provider, toolCalls []agent.ToolCallLog) ([]agent.Message, *agent.CompactionResult, error) {
+		compactionCalls++
+		if compactionCalls >= stuckThreshold {
+			return messages, nil, agent.ErrCompactionStuck
+		}
+		// Noop — ShouldCompact said yes but compaction couldn't produce a result.
+		return messages, nil, nil
+	}
+
+	result, err := agent.Run(context.Background(), agent.Request{
+		Prompt:        "trigger stuck compaction",
+		Provider:      provider,
+		Tools:         []agent.Tool{oversizedOutputTool{output: "ok"}},
+		Compactor:     compactor,
+		MaxIterations: stuckThreshold + 5,
+	})
+	require.ErrorIs(t, err, agent.ErrCompactionStuck)
+	assert.Equal(t, agent.StatusError, result.Status)
+}
+
 func spansWithOperation(spans []sdktrace.ReadOnlySpan, operation string) []sdktrace.ReadOnlySpan {
 	var filtered []sdktrace.ReadOnlySpan
 	for _, span := range spans {
