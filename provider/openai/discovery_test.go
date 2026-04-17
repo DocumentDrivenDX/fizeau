@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -250,4 +251,186 @@ func TestProvider_KnownModelsCatalogRank(t *testing.T) {
 	assert.Equal(t, "gpt-4o", discovered[0].ID)
 	assert.Equal(t, "code-high", discovered[0].CatalogRef)
 	assert.Equal(t, 3, discovered[0].Score)
+}
+
+// lmStudioServer returns an httptest server that serves /api/v0/models/{model}
+// with the given loaded and max context lengths.
+func lmStudioServer(loaded, max int) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/v0/models/") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":                    strings.TrimPrefix(r.URL.Path, "/api/v0/models/"),
+			"loaded_context_length": loaded,
+			"max_context_length":    max,
+		})
+	}))
+}
+
+// omlxServer returns an httptest server that serves /v1/models/status with
+// a single model entry.
+func omlxServer(modelID string, maxContext, maxTokens int) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models/status" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"models": []map[string]interface{}{
+				{
+					"id":                 modelID,
+					"max_context_window": maxContext,
+					"max_tokens":         maxTokens,
+				},
+			},
+		})
+	}))
+}
+
+func TestLookupModelLimits_ExplicitFlavorLMStudio(t *testing.T) {
+	srv := lmStudioServer(100_000, 131_072)
+	defer srv.Close()
+
+	limits := LookupModelLimits(context.Background(), srv.URL+"/v1", "", "lmstudio", nil, "qwen3.5-27b")
+	// Prefer loaded_context_length over max_context_length.
+	assert.Equal(t, 100_000, limits.ContextLength)
+	assert.Equal(t, 0, limits.MaxCompletionTokens)
+}
+
+func TestLookupModelLimits_LMStudioFallsBackToMaxWhenLoadedZero(t *testing.T) {
+	srv := lmStudioServer(0, 131_072)
+	defer srv.Close()
+
+	limits := LookupModelLimits(context.Background(), srv.URL+"/v1", "", "lmstudio", nil, "qwen3.5-27b")
+	assert.Equal(t, 131_072, limits.ContextLength)
+}
+
+func TestLookupModelLimits_ExplicitFlavorOmlx(t *testing.T) {
+	srv := omlxServer("Qwen3.5-27B-4bit", 262_144, 32_768)
+	defer srv.Close()
+
+	limits := LookupModelLimits(context.Background(), srv.URL+"/v1", "", "omlx", nil, "Qwen3.5-27B-4bit")
+	assert.Equal(t, 262_144, limits.ContextLength)
+	assert.Equal(t, 32_768, limits.MaxCompletionTokens)
+}
+
+func TestLookupModelLimits_OmlxModelMatchIsCaseInsensitive(t *testing.T) {
+	srv := omlxServer("Qwen3.5-27B-4bit", 262_144, 32_768)
+	defer srv.Close()
+
+	// Requested model differs only in case.
+	limits := LookupModelLimits(context.Background(), srv.URL+"/v1", "", "omlx", nil, "qwen3.5-27b-4bit")
+	assert.Equal(t, 262_144, limits.ContextLength)
+}
+
+func TestLookupModelLimits_OmlxUnknownModelReturnsZero(t *testing.T) {
+	srv := omlxServer("foo-model", 262_144, 32_768)
+	defer srv.Close()
+
+	limits := LookupModelLimits(context.Background(), srv.URL+"/v1", "", "omlx", nil, "bar-model")
+	assert.Zero(t, limits.ContextLength)
+	assert.Zero(t, limits.MaxCompletionTokens)
+}
+
+func TestLookupModelLimits_UnreachableReturnsZeroWithoutError(t *testing.T) {
+	// Port 1 is reserved and will refuse connections immediately.
+	limits := LookupModelLimits(context.Background(), "http://127.0.0.1:1/v1", "", "lmstudio", nil, "qwen3.5-27b")
+	assert.Zero(t, limits.ContextLength)
+	assert.Zero(t, limits.MaxCompletionTokens)
+}
+
+func TestLookupModelLimits_UnknownFlavorReturnsZero(t *testing.T) {
+	limits := LookupModelLimits(context.Background(), "http://127.0.0.1:1/v1", "", "ollama", nil, "llama3")
+	assert.Zero(t, limits.ContextLength)
+}
+
+func TestLookupModelLimits_ProbeDetectsOmlx(t *testing.T) {
+	// omlx server — probe should detect it by /v1/models/status responding.
+	srv := omlxServer("Qwen3.5-27B-4bit", 262_144, 32_768)
+	defer srv.Close()
+
+	// No flavor hint and URL looks "local" (httptest.Server URL is 127.0.0.1).
+	limits := LookupModelLimits(context.Background(), srv.URL+"/v1", "", "", nil, "Qwen3.5-27B-4bit")
+	assert.Equal(t, 262_144, limits.ContextLength)
+	assert.Equal(t, 32_768, limits.MaxCompletionTokens)
+}
+
+func TestLookupModelLimits_ProbeDetectsLMStudio(t *testing.T) {
+	// LM Studio server — probe should fall through to lmstudio detection because
+	// /v1/models/status returns 404 but /api/v0/models does not.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/api/v0/models/qwen3.5-27b"):
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":                    "qwen3.5-27b",
+				"loaded_context_length": 100_000,
+				"max_context_length":    131_072,
+			})
+		case r.URL.Path == "/api/v0/models":
+			// LM Studio probe endpoint — must return a `data` array for the
+			// probe to identify the server as LM Studio.
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": []map[string]interface{}{{"id": "qwen3.5-27b"}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	limits := LookupModelLimits(context.Background(), srv.URL+"/v1", "", "", nil, "qwen3.5-27b")
+	assert.Equal(t, 100_000, limits.ContextLength)
+}
+
+func TestProbeProviderFlavor_DetectsOmlx(t *testing.T) {
+	srv := omlxServer("any-model", 0, 0)
+	defer srv.Close()
+
+	flavor := probeProviderFlavor(context.Background(), srv.URL+"/v1")
+	assert.Equal(t, "omlx", flavor)
+}
+
+func TestProbeProviderFlavor_DetectsLMStudio(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v0/models" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"data": []map[string]interface{}{{"id": "qwen3.5-27b"}},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	flavor := probeProviderFlavor(context.Background(), srv.URL+"/v1")
+	assert.Equal(t, "lmstudio", flavor)
+}
+
+func TestProbeProviderFlavor_ReturnsEmptyWhenNoServerResponds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	flavor := probeProviderFlavor(context.Background(), srv.URL+"/v1")
+	assert.Equal(t, "", flavor)
+}
+
+func TestResolveProviderFlavor_ExplicitFlavorBypassesProbe(t *testing.T) {
+	// Server returns 404 for everything — if the probe ran it would return "".
+	// Explicit flavor must bypass the probe and return the flavor verbatim.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	assert.Equal(t, "omlx", resolveProviderFlavor(context.Background(), srv.URL+"/v1", "omlx"))
+	assert.Equal(t, "lmstudio", resolveProviderFlavor(context.Background(), srv.URL+"/v1", "LMStudio"))
 }
