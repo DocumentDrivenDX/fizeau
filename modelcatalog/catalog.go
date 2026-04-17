@@ -208,6 +208,25 @@ func (c *Catalog) LookupModel(id string) (ModelEntry, bool) {
 	return entry, ok
 }
 
+// ContextWindowForModel returns the context window in tokens for the given
+// concrete model ID, or 0 if the model is not in the catalog or has no
+// context_window declared. Used as a fallback when the provider's live API
+// does not expose its context window (e.g. LM Studio's /v1/models omits it).
+// Matching is case-insensitive to accept both "qwen3.5-27b" and "Qwen3.5-27B".
+func (c *Catalog) ContextWindowForModel(id string) int {
+	if entry, ok := c.manifest.Models[id]; ok {
+		return entry.ContextWindow
+	}
+	// Case-insensitive fallback — catalog YAML uses lowercase but live servers
+	// sometimes present mixed case (e.g. "Qwen3.5-27B-4bit").
+	for mid, entry := range c.manifest.Models {
+		if strings.EqualFold(mid, id) {
+			return entry.ContextWindow
+		}
+	}
+	return 0
+}
+
 // CandidatesFor returns the ordered list of candidate concrete model IDs for
 // the given surface and target key. For old-style single-string surfaces this
 // returns a one-element slice. Returns nil if the target or surface is absent.

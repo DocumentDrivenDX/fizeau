@@ -419,6 +419,7 @@ models:
     cost_input_per_mtok: 0.10
     cost_output_per_mtok: 0.30
     swe_bench_verified: 59.0
+    context_window: 262144
   beta-model-2:
     provider_system: openai
     cost_input_per_mtok: 0.07
@@ -465,6 +466,44 @@ func TestLookupModel_UnknownModel(t *testing.T) {
 
 	_, ok := catalog.LookupModel("does-not-exist")
 	assert.False(t, ok)
+}
+
+func TestContextWindowForModel_KnownModel(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	// beta-model-1 has context_window: 262144 in the fixture.
+	assert.Equal(t, 262144, catalog.ContextWindowForModel("beta-model-1"))
+}
+
+func TestContextWindowForModel_ModelWithoutContextWindow(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	// alpha-model-1 exists but has no context_window declared.
+	assert.Equal(t, 0, catalog.ContextWindowForModel("alpha-model-1"))
+}
+
+func TestContextWindowForModel_UnknownModel(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	assert.Equal(t, 0, catalog.ContextWindowForModel("does-not-exist"))
+}
+
+func TestContextWindowForModel_CaseInsensitive(t *testing.T) {
+	catalog := loadV4FixtureCatalog(t)
+
+	// Live servers sometimes present model IDs in mixed case
+	// (e.g. "Qwen3.5-27B-4bit") while the catalog uses lowercase.
+	assert.Equal(t, 262144, catalog.ContextWindowForModel("Beta-Model-1"))
+}
+
+func TestContextWindowForModel_EmbeddedCatalogHasQwenWindow(t *testing.T) {
+	// Regression test for the CLI fallback: the embedded v4 catalog ships with
+	// context_window: 262144 on qwen3.5-27b. If this ever stops resolving,
+	// LM Studio sessions that omit context_length from /v1/models will fall
+	// through to the package default (131072) and compact too aggressively.
+	catalog, err := Default()
+	require.NoError(t, err)
+	assert.Equal(t, 262144, catalog.ContextWindowForModel("qwen3.5-27b"))
 }
 
 func TestCandidatesFor_CandidatesList(t *testing.T) {

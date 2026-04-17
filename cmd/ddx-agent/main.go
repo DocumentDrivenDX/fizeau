@@ -199,17 +199,25 @@ func run() int {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	// Resolve model limits: explicit config takes precedence; fall back to
-	// live API discovery for LM Studio and OpenRouter providers.
+	// Resolve model limits. Precedence:
+	//   1. Explicit config (pc.ContextWindow / pc.MaxTokens)
+	//   2. Live provider API (LookupModelLimits)
+	//   3. Model catalog context_window (for servers like LM Studio that omit
+	//      context_length from /v1/models entirely)
 	resolvedContextWindow := pc.ContextWindow
 	resolvedMaxTokens := pc.MaxTokens
 	if resolvedContextWindow == 0 || resolvedMaxTokens == 0 {
-		limits := oaiProvider.LookupModelLimits(ctx, pc.BaseURL, pc.APIKey, pc.Headers, selection.ResolvedModel)
+		limits := oaiProvider.LookupModelLimits(ctx, pc.BaseURL, pc.APIKey, pc.Flavor, pc.Headers, selection.ResolvedModel)
 		if resolvedContextWindow == 0 {
 			resolvedContextWindow = limits.ContextLength
 		}
 		if resolvedMaxTokens == 0 {
 			resolvedMaxTokens = limits.MaxCompletionTokens
+		}
+	}
+	if resolvedContextWindow == 0 && selection.ResolvedModel != "" {
+		if catalog, err := cfg.LoadModelCatalog(); err == nil && catalog != nil {
+			resolvedContextWindow = catalog.ContextWindowForModel(selection.ResolvedModel)
 		}
 	}
 

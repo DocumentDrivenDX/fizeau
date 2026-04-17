@@ -34,6 +34,7 @@ type ModelEntry struct {
 	SWEBenchVerified  float64 `yaml:"swe_bench_verified,omitempty"`
 	OpenRouterRefID   string  `yaml:"openrouter_ref_id,omitempty"`
 	SpeedTokensPerSec float64 `yaml:"speed_tokens_per_sec,omitempty"`
+	ContextWindow     int     `yaml:"context_window,omitempty"`
 }
 
 type manifest struct {
