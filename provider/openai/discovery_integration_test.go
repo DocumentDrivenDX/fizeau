@@ -82,7 +82,7 @@ func TestIntegration_LookupModelLimits_LMStudio(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	limits := lookupModelLimitsWithFlavor(ctx, baseURL, "", nil, model, "lmstudio")
+	limits := LookupModelLimits(ctx, baseURL, "", "lmstudio", nil, model)
 	require.Greater(t, limits.ContextLength, 0)
 
 	root := strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1")
@@ -104,7 +104,7 @@ func TestIntegration_LookupModelLimits_Omlx(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	limits := lookupModelLimitsWithFlavor(ctx, baseURL, "", nil, model, "omlx")
+	limits := LookupModelLimits(ctx, baseURL, "", "omlx", nil, model)
 	require.Greater(t, limits.ContextLength, 0)
 	require.Greater(t, limits.MaxCompletionTokens, 0)
 

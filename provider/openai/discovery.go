@@ -146,15 +146,16 @@ type ModelLimits struct {
 // limits for the given model. Returns zero values on any error — callers should
 // apply their own defaults when the returned values are zero.
 //
+// flavor overrides automatic detection when non-empty; supported values are
+// "lmstudio", "omlx", "openrouter", "ollama". When flavor is empty the
+// function probes the server to detect its type, falling back to port-based
+// heuristics as a last resort.
+//
 // Supported providers:
 //   - LM Studio: queries /api/v0/models/{model} for loaded_context_length
 //   - oMLX: queries /v1/models/status and finds the matching entry
 //   - OpenRouter: queries /api/v1/models and finds the matching entry
-func LookupModelLimits(ctx context.Context, baseURL, apiKey string, headers map[string]string, model string) ModelLimits {
-	return lookupModelLimitsWithFlavor(ctx, baseURL, apiKey, headers, model, "")
-}
-
-func lookupModelLimitsWithFlavor(ctx context.Context, baseURL, apiKey string, headers map[string]string, model, flavor string) ModelLimits {
+func LookupModelLimits(ctx context.Context, baseURL, apiKey, flavor string, headers map[string]string, model string) ModelLimits {
 	switch resolveProviderFlavor(ctx, baseURL, flavor) {
 	case "lmstudio":
 		return lmstudioLimits(ctx, baseURL, model)
@@ -286,12 +287,19 @@ func resolveProviderFlavor(ctx context.Context, baseURL, flavor string) string {
 		return strings.ToLower(strings.TrimSpace(flavor))
 	}
 
-	if probed := probeProviderFlavor(ctx, baseURL); probed != "" {
-		return probed
+	// openAIIdentity gives a reliable answer for well-known URLs (openrouter.ai,
+	// ollama on 11434, etc.) without a network round-trip. Only probe when it
+	// returns an ambiguous result ("local" or "openai").
+	detected, _, _ := openAIIdentity(baseURL)
+	switch detected {
+	case "local", "openai":
+		if probed := probeProviderFlavor(ctx, baseURL); probed != "" {
+			return probed
+		}
+		return detected
+	default:
+		return detected
 	}
-
-	system, _, _ := openAIIdentity(baseURL)
-	return system
 }
 
 func probeProviderFlavor(ctx context.Context, baseURL string) string {
