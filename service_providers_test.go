@@ -15,16 +15,17 @@ import (
 
 // fakeServiceConfig implements ServiceConfig for tests.
 type fakeServiceConfig struct {
-	providers     map[string]ServiceProviderEntry
-	names         []string
-	defaultName   string
-	routes        map[string][]string // routeName -> candidate provider names
+	providers      map[string]ServiceProviderEntry
+	names          []string
+	defaultName    string
+	routes         map[string][]string // routeName -> candidate provider names
+	routeConfigs   map[string]ServiceModelRouteConfig
 	healthCooldown time.Duration
-	workDir       string
+	workDir        string
 }
 
-func (f *fakeServiceConfig) ProviderNames() []string         { return f.names }
-func (f *fakeServiceConfig) DefaultProviderName() string     { return f.defaultName }
+func (f *fakeServiceConfig) ProviderNames() []string { return f.names }
+func (f *fakeServiceConfig) DefaultProviderName() string { return f.defaultName }
 func (f *fakeServiceConfig) Provider(name string) (ServiceProviderEntry, bool) {
 	e, ok := f.providers[name]
 	return e, ok
@@ -38,6 +39,20 @@ func (f *fakeServiceConfig) ModelRouteNames() []string {
 }
 func (f *fakeServiceConfig) ModelRouteCandidates(routeName string) []string {
 	return f.routes[routeName]
+}
+func (f *fakeServiceConfig) ModelRouteConfig(routeName string) ServiceModelRouteConfig {
+	if f.routeConfigs != nil {
+		if rc, ok := f.routeConfigs[routeName]; ok {
+			return rc
+		}
+	}
+	// Fallback: build a minimal config from the routes map.
+	candidates := f.routes[routeName]
+	entries := make([]ServiceRouteCandidateEntry, len(candidates))
+	for i, p := range candidates {
+		entries[i] = ServiceRouteCandidateEntry{Provider: p, Priority: 100}
+	}
+	return ServiceModelRouteConfig{Candidates: entries}
 }
 func (f *fakeServiceConfig) HealthCooldown() time.Duration { return f.healthCooldown }
 func (f *fakeServiceConfig) WorkDir() string               { return f.workDir }

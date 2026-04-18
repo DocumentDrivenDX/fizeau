@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
@@ -36,10 +37,26 @@ type ServiceConfig interface {
 	ModelRouteNames() []string
 	// ModelRouteCandidates returns the provider names referenced by a route.
 	ModelRouteCandidates(routeName string) []string
+	// ModelRouteConfig returns the full route config for a named route.
+	// Returns zero value when the route is not found.
+	ModelRouteConfig(routeName string) ServiceModelRouteConfig
 	// HealthCooldown returns the configured cooldown duration (0 = use default 30s).
 	HealthCooldown() time.Duration
 	// WorkDir is the base directory for file-backed health state.
 	WorkDir() string
+}
+
+// ServiceModelRouteConfig carries the routing strategy and candidates for one route.
+type ServiceModelRouteConfig struct {
+	Strategy   string                       // "priority-round-robin" | "ordered-failover" | "smart" | ""
+	Candidates []ServiceRouteCandidateEntry // ordered candidate list
+}
+
+// ServiceRouteCandidateEntry is one candidate inside a model route.
+type ServiceRouteCandidateEntry struct {
+	Provider string
+	Model    string // may be empty (provider default)
+	Priority int
 }
 
 // ServiceProviderEntry carries the minimal provider data the service needs.
@@ -173,7 +190,29 @@ type RouteDecision struct {
 
 // RouteStatusReport is returned by RouteStatus.
 type RouteStatusReport struct {
-	GeneratedAt time.Time
+	Routes          []RouteStatusEntry
+	GeneratedAt     time.Time
+	GlobalCooldowns []CooldownState
+}
+
+// RouteStatusEntry describes one configured model route.
+type RouteStatusEntry struct {
+	Model          string // route key
+	Strategy       string // "priority-round-robin" | "first-available" | etc.
+	Candidates     []RouteCandidateStatus
+	LastDecision   *RouteDecision // most recent ResolveRoute result for this key (cached)
+	LastDecisionAt time.Time
+}
+
+// RouteCandidateStatus describes a single candidate within a route.
+type RouteCandidateStatus struct {
+	Provider          string
+	Model             string
+	Priority          int
+	Healthy           bool
+	Cooldown          *CooldownState
+	RecentLatencyMS   float64 // observation-derived; 0 when unavailable
+	RecentSuccessRate float64 // 0-1; 0 when unavailable
 }
 
 // ServiceEvent is a contract-level event (mirrors harnesses.Event).
@@ -239,6 +278,18 @@ type service struct {
 	opts     ServiceOptions
 	registry *harnesses.Registry
 	hub      *sessionHub
+
+	// lastDecisionMu guards lastDecisionCache.
+	lastDecisionMu sync.RWMutex
+	// lastDecisionCache maps route key → (decision, time). Populated by
+	// ResolveRoute; read by RouteStatus.
+	lastDecisionCache map[string]lastDecisionEntry
+}
+
+// lastDecisionEntry caches the most recent RouteDecision for a route key.
+type lastDecisionEntry struct {
+	decision *RouteDecision
+	at       time.Time
 }
 
 // New constructs a DdxAgent.
@@ -381,10 +432,7 @@ func (s *service) ListHarnesses(_ context.Context) ([]HarnessInfo, error) {
 
 // ResolveRoute is implemented in service_routing.go.
 
-// RouteStatus is a stub; to be implemented in a future bead.
-func (s *service) RouteStatus(_ context.Context) (*RouteStatusReport, error) {
-	return &RouteStatusReport{GeneratedAt: time.Now()}, nil
-}
+// RouteStatus is implemented in service_routestatus.go.
 
 // Execute is implemented in service_execute.go.
 

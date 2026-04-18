@@ -29,12 +29,15 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	if err != nil {
 		return nil, err
 	}
-	return &RouteDecision{
+	result := &RouteDecision{
 		Harness:  dec.Harness,
 		Provider: dec.Provider,
 		Model:    dec.Model,
 		Reason:   dec.Reason,
-	}, nil
+	}
+	// Cache the decision so RouteStatus can surface LastDecision.
+	s.cacheRouteDecision(req.Model, result)
+	return result, nil
 }
 
 // reqProfileFromModelRef returns ref when ref is a known profile alias,
