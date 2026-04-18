@@ -489,6 +489,8 @@ func openAIIdentity(baseURL string) (providerSystem, serverAddress string, serve
 			providerSystem = "ollama"
 		case 1234:
 			providerSystem = "lmstudio"
+		case 1235:
+			providerSystem = "omlx"
 		default:
 			providerSystem = "local"
 		}
@@ -508,6 +510,8 @@ func openAIIdentity(baseURL string) (providerSystem, serverAddress string, serve
 				providerSystem = "ollama"
 			case 1234:
 				providerSystem = "lmstudio"
+			case 1235:
+				providerSystem = "omlx"
 			default:
 				providerSystem = "local"
 			}

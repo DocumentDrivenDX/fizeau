@@ -45,6 +45,10 @@ type ProviderConfig struct {
 	// automatic compaction: the compactor triggers when message history approaches
 	// this limit. Zero means use the compaction package default (8192).
 	ContextWindow int `yaml:"context_window,omitempty"`
+	// Flavor identifies the server software when it cannot be reliably detected
+	// from the base URL alone. Supported values: "lmstudio", "omlx", "openrouter",
+	// "ollama". When set, limit discovery uses this directly instead of probing.
+	Flavor string `yaml:"flavor,omitempty"`
 }
 
 // ImportMetadata records the last import source for drift detection.
