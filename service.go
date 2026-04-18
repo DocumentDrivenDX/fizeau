@@ -105,15 +105,32 @@ type ProviderInfo struct {
 	CooldownState *CooldownState // nil if not in cooldown
 }
 
-// ModelInfo describes a model (stub; populated by ListModels bead).
+// CostInfo holds per-token cost metadata for a model.
+type CostInfo struct {
+	InputPerMTok  float64 // USD per 1M input tokens; 0 = unknown/free
+	OutputPerMTok float64 // USD per 1M output tokens; 0 = unknown/free
+}
+
+// PerfSignal holds observed performance data for a model.
+type PerfSignal struct {
+	SpeedTokensPerSec float64 // 0 = unknown
+	SWEBenchVerified  float64 // 0 = unknown
+}
+
+// ModelInfo describes a model with full metadata per CONTRACT-003.
 type ModelInfo struct {
-	ID           string
-	Provider     string
-	Harness      string
+	ID            string
+	Provider      string
+	Harness       string
 	ContextLength int
-	Capabilities []string
-	Available    bool
-	IsDefault    bool
+	Capabilities  []string
+	Cost          CostInfo
+	PerfSignal    PerfSignal
+	Available     bool
+	IsConfigured  bool   // matches an explicit model_routes entry
+	IsDefault     bool   // matches the configured default model
+	CatalogRef    string // canonical catalog reference if recognized
+	RankPosition  int    // ordinal in latest discovery rank; -1 if unranked
 }
 
 // ModelFilter filters ListModels results.
@@ -154,16 +171,59 @@ type RouteStatusReport struct {
 // ServiceEvent is a contract-level event (mirrors harnesses.Event).
 type ServiceEvent = harnesses.Event
 
-// ServiceExecuteRequest is the public ExecuteRequest type (stub for non-Execute methods).
+// ServiceExecuteRequest is the public ExecuteRequest type per CONTRACT-003.
+// See docs/helix/02-design/contracts/CONTRACT-003-ddx-agent-service.md
+// (§"Public types") for the canonical shape; this struct is its in-process
+// twin under the agent module.
 type ServiceExecuteRequest struct {
-	Prompt      string
+	Prompt       string
 	SystemPrompt string
-	Model       string
-	Provider    string
-	Harness     string
-	WorkDir     string
-	Effort      string
-	Permissions string
+	Model        string
+	Provider     string
+	Harness      string
+	ModelRef     string
+	WorkDir      string
+	Effort       string
+	Permissions  string
+
+	// PreResolved bypasses ResolveRoute when the caller already has a
+	// decision. When non-nil, agent uses these values verbatim and does
+	// not re-route. Provider/Model/Harness fields above are ignored.
+	PreResolved *RouteDecision
+
+	// Three independent timeout knobs:
+	//   Timeout         — wall-clock cap on the entire request.
+	//   IdleTimeout     — streaming-quiet cap; per-stream gap.
+	//   ProviderTimeout — per-HTTP-request cap to the provider.
+	Timeout         time.Duration
+	IdleTimeout     time.Duration
+	ProviderTimeout time.Duration
+
+	// Optional stall policy. When non-nil agent enforces and ends with
+	// Status="stalled" if any limit hits. Default policy applies when nil.
+	StallPolicy *StallPolicy
+
+	// SessionLogDir overrides the default session-log directory for this
+	// request (e.g. an execute-bead per-bundle evidence directory).
+	SessionLogDir string
+
+	// Metadata is bidirectional: echoed back in every Event AND stamped
+	// onto every line of the session log so external consumers correlate.
+	Metadata map[string]string
+
+	// NativeProvider, when set, overrides provider construction for the
+	// native ("agent") path. Required while agent-1a486c2e (ResolveRoute)
+	// is unimplemented; supply a constructed Provider directly. Tests
+	// also use this together with PreResolved.
+	NativeProvider Provider
+}
+
+// StallPolicy bounds how long the agent will spin without making progress
+// before terminating with Status="stalled". A nil policy resolves to the
+// default in service_execute.go.
+type StallPolicy struct {
+	MaxReadOnlyToolIterations int // 0 = disabled
+	MaxNoopCompactions        int // 0 = disabled
 }
 
 // service is the concrete DdxAgent implementation.
@@ -307,10 +367,7 @@ func (s *service) ListHarnesses(_ context.Context) ([]HarnessInfo, error) {
 
 // ListProviders and HealthCheck are implemented in service_providers.go.
 
-// ListModels stub — to be implemented in a future bead.
-func (s *service) ListModels(_ context.Context, _ ModelFilter) ([]ModelInfo, error) {
-	return nil, nil
-}
+// ListModels is implemented in service_models.go.
 
 // ResolveRoute is a stub; to be implemented in a future bead.
 func (s *service) ResolveRoute(_ context.Context, _ RouteRequest) (*RouteDecision, error) {
