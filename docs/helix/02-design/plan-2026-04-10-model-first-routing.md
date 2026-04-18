@@ -19,10 +19,9 @@ ddx-agent run --model qwen3.5-27b "Some nice prompt"
 and the resolver should choose the best available configured provider that can
 serve that model. The design should preserve the runtime boundary
 (`agent.Run()` still receives one concrete provider), but replace backend-first
-configuration and CLI behavior with model-first routing. It must also preserve
-the DDx boundary: DDx routes across harnesses, while embedded `ddx-agent`
-continues the inner provider-selection step once DDx selects the embedded
-harness.
+configuration and CLI behavior with model-first routing. The embedded
+`ddx-agent` handles the inner provider-selection step; callers interact with
+the harness via CONTRACT-003 and need only pass model intent.
 
 ## Requirements
 
@@ -51,7 +50,7 @@ harness.
     artifacts and telemetry.
 11. Existing `backends`, `default_backend`, and `--backend` inputs remain as
     deprecated compatibility surfaces during migration and emit warnings.
-12. DDx must be able to depend on this routing contract for the embedded
+12. Callers must be able to depend on this routing contract for the embedded
     harness while exposing a parallel intent-first routing experience across
     codex, claude, opencode, pi, cursor, and other harnesses.
 
@@ -63,7 +62,7 @@ harness.
 3. Availability checks must not impose a hard dependency on active probe calls
    before every request.
 4. The migration path must not break current named-provider users.
-5. The boundary with DDx must stay explicit and explainable.
+5. The boundary with callers must stay explicit and explainable via CONTRACT-003.
 
 ### Constraints
 
@@ -73,7 +72,7 @@ harness.
    canonical targets.
 4. The CLI must stay thin; routing intelligence belongs in config/resolution
    code, not ad hoc flag parsing.
-5. DDx receives only model intent and embedded-routing attribution facts; it
+5. Callers receive only model intent and embedded-routing attribution facts; they
    must not need provider candidate lists to use the embedded harness.
 
 ## Architecture Decisions
@@ -102,16 +101,16 @@ harness.
 - **Rationale**: The separation is already defensible; only the user-facing
   routing surface is wrong.
 
-### Decision 2A: Preserve the DDx embedding boundary
+### Decision 2A: Preserve the caller embedding boundary
 
-- **Question**: What does DDx need to know about inner routing?
+- **Question**: What does a caller need to know about inner routing?
 - **Alternatives**:
-  - Expose provider candidate lists and let DDx participate.
-  - Keep DDx at the harness layer and surface only requested intent plus
+  - Expose provider candidate lists and let callers participate.
+  - Keep callers at the harness layer and surface only requested intent plus
     outcome attribution.
-- **Chosen**: Keep DDx at the harness layer.
-- **Rationale**: DDx already mirrors similar routing across non-agent harnesses
-  and should not re-implement embedded-provider logic.
+- **Chosen**: Keep callers at the harness layer (CONTRACT-003).
+- **Rationale**: Inner provider-selection logic belongs to the embedded harness;
+  callers should not re-implement it.
 
 ### Decision 3: Use passive availability and failover, not probe-on-every-run
 
@@ -166,12 +165,12 @@ ddx-agent -p "Some nice prompt"
 ddx-agent -p "Some nice prompt" --backend code-fast-local
 ```
 
-DDx integration:
+Caller integration (see CONTRACT-003):
 
-- DDx may call the embedded harness with a model ref or exact pin.
-- DDx does not name `model_routes`, provider candidates, or health state.
-- Embedded `ddx-agent` returns routing attribution facts that DDx can log and
-  display alongside its cross-harness routing evidence.
+- Callers may invoke the embedded harness with a model ref or exact pin.
+- Callers do not name `model_routes`, provider candidates, or health state.
+- Embedded `ddx-agent` returns routing attribution facts that callers can log and
+  display alongside their cross-harness routing evidence.
 
 Routing precedence:
 
@@ -246,7 +245,7 @@ The routing layer records:
 - attempted providers in order
 - failover count
 
-DDx should only consume the attribution layer above, not the underlying route
+Callers should only consume the attribution layer above, not the underlying route
 candidate table.
 
 ## Data Model
@@ -274,7 +273,7 @@ Routing keeps lightweight per-route state for:
 - cooldown expiration per provider candidate
 
 This replaces the current per-backend counter files with route-oriented state.
-DDx does not read or own this state.
+Callers do not read or own this state.
 
 ## Error Handling
 
@@ -303,9 +302,9 @@ DDx does not read or own this state.
 - **Integration**: CLI `run --model ...` selects among multiple local providers
   and falls back to OpenRouter only when local candidates fail or are marked
   unhealthy.
-- **E2E**: DDx can request a logical model name on the embedded harness and
-  receive a run attributed to the concrete provider actually used, while DDx
-  continues to mirror comparable intent-first routing across non-agent
+- **E2E**: A caller can request a logical model name on the embedded harness and
+  receive a run attributed to the concrete provider actually used, while the
+  caller continues to mirror comparable intent-first routing across non-agent
   harnesses.
 
 ## Implementation Plan

@@ -9,33 +9,33 @@ ddx:
 DDX Agent is a Go library that implements a coding agent runtime — a tool-calling
 LLM loop with file read/write, shell execution, navigation helpers, task
 tracking, and structured I/O — designed
-to be embedded in DDx and other build orchestrators. It prioritizes local
+to be embedded in build orchestrators and related tooling. It prioritizes local
 model inference via LM Studio and Ollama, with transparent escalation to cloud
-providers when local models are insufficient. DDX Agent replaces the
-subprocess-based agent dispatch in DDx with an in-process alternative that
-eliminates process overhead, enables direct state sharing, and provides native
-cost control. Following the ghostty model — great library, proven by a usable
-app — DDX Agent ships as a Go package plus a thin standalone CLI that showcases the
-library and serves as the DDx harness backend. DDX Agent also owns a reusable
-shared model catalog and updateable manifest so DDx and related tooling can
+providers when local models are insufficient. DDX Agent provides an in-process
+alternative to subprocess-based agent dispatch, eliminating process overhead,
+enabling direct state sharing, and providing native cost control. Following the
+ghostty model — great library, proven by a usable app — DDX Agent ships as a Go
+package plus a thin standalone CLI that showcases the library and serves as an
+embeddable harness backend (see CONTRACT-003). DDX Agent also owns a reusable
+shared model catalog and updateable manifest so callers and related tooling can
 resolve aliases, tiers/profiles, canonical policy targets, and deprecations without
 copying model policy into each consumer. Every LLM interaction and tool call is
-logged and replayable, with per-model cost tracking built in. Success means DDx
-can run a HELIX build pass where 70%+ of routine tasks use local models at
-near-zero cost, the operator can replay any session to understand exactly what
-happened, and downstream tools consume agent's model catalog rather than
-duplicating release-policy tables.
+logged and replayable, with per-model cost tracking built in. Success means
+orchestrators can run a HELIX build pass where 70%+ of routine tasks use local
+models at near-zero cost, the operator can replay any session to understand
+exactly what happened, and downstream tools consume agent's model catalog rather
+than duplicating release-policy tables.
 
 ## Problem and Goals
 
 ### Problem
 
-DDx dispatches work to AI agents by shelling out to standalone CLIs (claude,
-codex, pi, opencode). Each invocation spawns a process, re-reads the codebase,
-re-establishes context, and returns unstructured text that DDx must parse.
-This is slow (~2-5s overhead per invocation), expensive (full cloud pricing on
-every call including context re-establishment), and lossy (no shared state
-between invocations). Local models are theoretically supported but require
+Orchestrators dispatching work to AI agents typically shell out to standalone
+CLIs (claude, codex, pi, opencode). Each invocation spawns a process, re-reads
+the codebase, re-establishes context, and returns unstructured text that must be
+parsed. This is slow (~2-5s overhead per invocation), expensive (full cloud
+pricing on every call including context re-establishment), and lossy (no shared
+state between invocations). Local models are theoretically supported but require
 running a separate agent CLI that may not support LM Studio or may not handle
 tool calling reliably.
 
@@ -47,27 +47,27 @@ task the same: spawn a process, send to cloud, parse the result.
 ### Goals
 
 1. **Embed the agent loop in Go** — provide a `agent.Run(ctx, prompt, opts)`
-   API that DDx calls in-process, eliminating subprocess overhead
+   API that callers invoke in-process, eliminating subprocess overhead
 2. **Local-model-first** — native LM Studio and Ollama support with tool
    calling, making local models the default for routine tasks
-3. **Structured I/O** — accept DDx prompt envelopes, return structured results
+3. **Structured I/O** — accept prompts and structured envelopes, return structured results
    with status, output, token usage, and timing
 4. **Full observability** — every LLM turn and tool call logged, replayable,
-   cost-tracked. Pattern off DDx's session logging (JSONL + per-session detail)
+   cost-tracked via JSONL session logging (per-session detail)
 5. **Prove it with an app** — standalone `ddx-agent` CLI that showcases the library
-   and serves as a DDx harness, following the ghostty pattern
+   and serves as an embeddable harness, following the ghostty pattern
 6. **Own reusable model policy** — provide a agent-owned shared model catalog,
    publishable updateable manifest, and explicit refresh workflow so aliases,
    tiers/profiles, canonical policy targets, and deprecations are maintained
-   once and consumed by DDx and other clients
+   once and consumed by any caller
 
 ### Success Metrics
 
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|
-| Subprocess elimination | DDX Agent handles ≥1 DDx harness in-process | DDx integration test |
+| Subprocess elimination | DDX Agent handles ≥1 harness in-process | Integration test |
 | Local model completion rate | ≥70% of routine tasks succeed on local 7B+ | HELIX build pass logs |
-| Cost per bead (blended) | <$0.05 average | DDx agent usage report |
+| Cost per bead (blended) | <$0.05 average | `ddx-agent usage` report |
 | Agent loop overhead | <10ms beyond model inference time | Benchmark suite |
 
 ### Non-Goals
@@ -75,10 +75,10 @@ task the same: spawn a process, send to cloud, parse the result.
 - **TUI or interactive mode** — DDX Agent is headless-only. Interactive use goes
   through pi, claude, or other standalone agents.
 - **MCP server** — DDX Agent provides tools directly, not via MCP protocol.
-- **Prompt engineering** — DDX Agent executes prompts; the caller (HELIX/DDx) owns
+- **Prompt engineering** — DDX Agent executes prompts; the caller owns
   prompt design and persona injection.
 - **Harness orchestration policy** — DDX Agent owns reusable model catalog data and
-  policy, but DDx chooses harnesses/providers for a task and HELIX owns only
+  policy, but callers choose harnesses/providers for a task and HELIX owns only
   stage intent.
 - **Model hosting** — DDX Agent connects to LM Studio/Ollama/cloud APIs. It does
   not run inference itself.
@@ -86,9 +86,9 @@ task the same: spawn a process, send to cloud, parse the result.
 
 ## Users and Scope
 
-### Primary Persona: DDx/HELIX Orchestrator
+### Primary Persona: Orchestrator / Caller
 
-**Role**: The DDx agent service and HELIX execution loop (software, not a human)
+**Role**: An orchestration system or embedding application (software, not a human)
 **Goals**: Dispatch agent work with minimal overhead, control cost, get structured results
 **Pain Points**: Subprocess spawning is slow, cloud-only is expensive, output parsing is fragile
 
@@ -98,9 +98,9 @@ task the same: spawn a process, send to cloud, parse the result.
 **Goals**: Run LLM-powered code tasks (fix lint, update deps, generate tests) in Go programs
 **Pain Points**: Existing agent CLIs require process management, don't expose a library API
 
-### Tertiary Persona: DDx CLI User
+### Tertiary Persona: CLI User
 
-**Role**: Developer using `ddx agent run` from the command line
+**Role**: Developer using `ddx-agent` or a wrapper CLI from the command line
 **Goals**: Faster, cheaper agent invocations with local model support
 **Pain Points**: Current harness is slower than necessary, no local model path
 
@@ -117,7 +117,7 @@ task the same: spawn a process, send to cloud, parse the result.
    OpenAI, Azure, Groq, Together, OpenRouter. Single implementation, configure
    by base URL.
 4. **Anthropic provider** — Claude API support for cloud use
-5. **Structured I/O** — accept prompt as string or DDx envelope, return
+5. **Structured I/O** — accept prompt as string or structured envelope, return
    structured result (status, output, tool calls made, tokens, duration, error)
 6. **Go library API** — `agent.Run(ctx, request) (Result, error)` as the
    primary interface. Library takes a Config struct; no global state.
@@ -127,16 +127,16 @@ task the same: spawn a process, send to cloud, parse the result.
 9. **Working directory** — file operations scoped to a configurable root.
    Paths outside working dir are allowed (sandbox assumption) but logged.
 10. **Session logging** — every LLM request/response and tool call recorded to
-    JSONL log (patterned on DDx `SessionEntry`). Full prompt and response bodies
-    stored. Logs must support replay — reading a session log reproduces the
-    complete conversation including tool calls and results.
+    JSONL log. Full prompt and response bodies stored. Logs must support replay —
+    reading a session log reproduces the complete conversation including tool
+    calls and results.
 11. **Cost tracking** — preserve provider- or gateway-reported cost when
     available. If no reported cost exists, use only runtime-specific configured
     pricing for the exact provider system and resolved model; otherwise record
     cost as unknown. `agent.Result` includes `CostUSD` (`-1` when unknown).
 12. **Standalone CLI** — `ddx-agent` binary wrapping the library. Proves the library
-    works, serves as the DDx harness backend. Reads its own config file
-    (patterned on `.ddx/config.yaml`). Accepts prompt via `-p` flag or stdin.
+    works, serves as an embeddable harness backend (see CONTRACT-003). Reads its
+    own config file. Accepts prompt via `-p` flag or stdin.
 
 ### Should Have (P1)
 
@@ -147,9 +147,9 @@ task the same: spawn a process, send to cloud, parse the result.
 3. **Streaming callbacks** — caller can receive tool call events and partial
    responses in real time — **Implemented**
 4. **Timeout management** — per-invocation and per-tool-call timeouts
-5. **DDx harness adapter** — implement the DDx harness interface so DDX Agent
-   appears as a native `ddx agent` harness alongside claude/codex/pi
-6. **Usage reporting** — `ddx-agent usage` command (pattern off `ddx agent usage`):
+5. **Harness adapter** — implement the harness interface (CONTRACT-003) so DDX Agent
+   appears as a native harness alongside claude/codex/pi
+6. **Usage reporting** — `ddx-agent usage` command:
    per-provider/model token and cost summaries with time-window filtering
 7. **Session replay** — `ddx-agent replay <session-id>` reads a session log and
    prints the conversation in human-readable form (every turn, tool call,
@@ -161,7 +161,7 @@ task the same: spawn a process, send to cloud, parse the result.
    the standard.
 9. **Conversation compaction** — auto-summarize long conversation histories
    to fit within model context windows — **Implemented**
-10. **Shared model catalog** — a agent-owned catalog and publishable
+10. **Shared model catalog** — an agent-owned catalog and publishable
     updateable manifest for model aliases, tiers/profiles (`code-high`,
     `code-medium`, `code-economy`, with compatibility aliases such as
     `smart`, `fast`, `cheap`), canonical policy targets, and deprecation
@@ -174,7 +174,7 @@ task the same: spawn a process, send to cloud, parse the result.
    embedded runtime choose among equivalent configured providers with recorded
    attribution and bounded failover.
 3. **Multi-model consensus** — run same prompt on N models, return majority
-   answer (mirrors DDx quorum)
+   answer (multi-harness quorum is a caller concern)
 4. **Model selection optimization** — choose model based on task
    characteristics (context length, complexity heuristics)
 
@@ -208,7 +208,7 @@ task the same: spawn a process, send to cloud, parse the result.
 - Each provider MUST implement a common interface: `Chat(ctx, messages, tools,
   opts) (Response, error)`
 - Provider selection MUST be configurable per-request
-- Provider configuration MUST remain separate from agent's canonical model
+- Provider configuration MUST remain separate from the agent's canonical model
   catalog. Providers own transport/auth details; the catalog owns model policy.
 - Providers MUST report token usage when the upstream API provides it
 - Providers MUST support tool/function calling in the format the model expects
@@ -228,14 +228,14 @@ task the same: spawn a process, send to cloud, parse the result.
 - DDX Agent MUST support publishing catalog manifests outside normal binary
   releases and an explicit local refresh/install flow that does not introduce
   network access into ordinary request execution
-- DDx and other consumers MUST be able to resolve model references through the
-  agent-owned catalog without duplicating model policy in their own repos
-- HELIX stage intent MUST remain above this layer; HELIX selects intent, DDx
-  resolves harness/provider/model details using agent-owned catalog data
+- Callers MUST be able to resolve model references through the agent-owned
+  catalog without duplicating model policy in their own repos
+- HELIX stage intent MUST remain above this layer; HELIX selects intent, callers
+  resolve harness/provider/model details using agent-owned catalog data
 
 ### Structured I/O
 
-- Input: plain string prompt, or DDx prompt envelope (JSON with kind, id,
+- Input: plain string prompt, or structured envelope (JSON with kind, id,
   prompt, inputs, response_schema fields)
 - Output: `Result` struct with: status (success/failure/timeout/cancelled),
   output (final text), tool_calls (log of all tool calls), tokens
@@ -256,7 +256,7 @@ tests, review findings, or execution beads.
 | Tool: bash | Run tests | "Run `go test ./...` and report results" | Result includes test output, exit code |
 | LM Studio provider | Connect to local model | Prompt with LM Studio running Qwen 3.5 | Successful completion with token count |
 | Iteration limit | Prevent runaway | Max 3 iterations, task needs 10 | Result with status=failure after 3 rounds |
-| Structured I/O | DDx envelope | JSON envelope with prompt and response_schema | Result matches schema |
+| Structured I/O | Structured envelope | JSON envelope with prompt and response_schema | Result matches schema |
 | Token tracking | Count tokens | Any successful completion | Result.tokens has non-zero input and output counts |
 | Session logging | Run any task | Any successful completion | JSONL log entry with full prompt, response, tool calls, tokens, timing |
 | Session replay | Read logged session | `ddx-agent replay <id>` on a completed session | Human-readable dump of every turn, tool call, and result |
@@ -264,7 +264,7 @@ tests, review findings, or execution beads.
 | Cost tracking | Run task without pricing data | Unconfigured runtime or provider with no reported billing | Result.CostUSD == -1 (unknown, not guessed) |
 | Standalone CLI | End-to-end | `ddx-agent -p "Read main.go"` with config file | Successful completion, session logged |
 | Shared model catalog | Resolve model reference | `ddx-agent -p "hi" --model-ref code-smart` | Concrete model resolved from the agent catalog for the selected surface |
-| DDx harness path | Structured harness invocation | Prompt envelope or DDx harness execution path | Machine-readable JSON output includes tokens, session ID, and cost semantics |
+| Harness path | Structured harness invocation | Prompt envelope or harness execution path (CONTRACT-003) | Machine-readable JSON output includes tokens, session ID, and cost semantics |
 | Self-update check | Scripted version check | `ddx-agent update --check-only` | Exit code reflects update availability and output shows current/latest versions |
 
 ## Technical Context
@@ -275,11 +275,10 @@ tests, review findings, or execution beads.
     Ollama, OpenAI, Azure)
   - `github.com/anthropics/anthropic-sdk-go` — Anthropic Claude API client
   - Standard library for HTTP, JSON, process execution
-- **Build**: `go build`, Makefile consistent with DDx CLI patterns
+- **Build**: `go build`, Makefile
 - **Platform Targets**: Linux (primary — CI and build servers), macOS
   (development). Windows is not a priority.
-- **Integration Point**: DDx CLI (`cli/internal/agent/`) — DDX Agent implements
-  the `Harness` interface or provides an adapter
+- **Integration Point**: Callers embed the Go module and interact via CONTRACT-003
 
 ## Constraints, Assumptions, Dependencies
 
@@ -297,14 +296,12 @@ tests, review findings, or execution beads.
 - LM Studio or Ollama is running locally when local models are requested
 - Local models with tool-calling support (Qwen 2.5+, Llama 3.1+) are
   available and loaded
-- The DDx agent service (FEAT-006) harness interface is stable enough to
-  target
+- The harness interface (CONTRACT-003) is stable enough to target
 
 ### Dependencies
 
 - LM Studio daemon (`lms daemon up`) or Ollama service for local models
 - Cloud API keys (Anthropic, OpenAI) for cloud provider support
-- DDx CLI codebase for harness integration
 - Go toolchain 1.23+
 
 ## Risks
@@ -314,19 +311,18 @@ tests, review findings, or execution beads.
 | Local model tool calling unreliable | Medium | High | Test against specific model versions (Qwen 3.5, Llama 3.2); implement retry with cloud fallback |
 | LM Studio API breaks compatibility | Low | Medium | Pin to known-good LM Studio version; test in CI against local instance |
 | openai-go SDK doesn't handle LM Studio edge cases | Medium | Medium | Thin adapter layer that can work around SDK limitations |
-| DDx harness interface changes during development | Low | Low | DDX Agent defines its own API first; DDx adapter is a thin shim |
+| Harness interface changes during development | Low | Low | DDX Agent defines its own API first; the adapter is a thin shim |
 | Local model context window too small for large tasks | Medium | Medium | Model routing considers context length; auto-escalate large prompts to cloud |
 
 ## Resolved Decisions
 
 - **Model loading**: Assume models are pre-loaded. DDX Agent does not manage
   `lms load` / `ollama pull`. Model selection optimization is P2.
-- **Routing**: DDx owns cross-harness selection. Within the embedded harness,
+- **Routing**: Callers own cross-harness selection. Within the embedded harness,
   DDX Agent owns model-first provider routing keyed by requested model or model
   ref; legacy backend pools are compatibility-only during migration.
-- **Config**: Library takes a `Config` struct that DDx (or any embedder)
-  provides. The standalone CLI has its own config reader (patterned on DDx's
-  `.ddx/config.yaml`). Library has no config file opinions.
+- **Config**: Library takes a `Config` struct that any embedder provides. The
+  standalone CLI has its own config reader. Library has no config file opinions.
 - **File paths**: Allow paths outside working directory. Expectation is the
   agent runs in a sandbox. Log all file operations regardless.
 - **Architecture**: Ghostty model — great library, proven by usable app.
@@ -345,6 +341,6 @@ canonical analytics surface per ADR-001.
 - DDX Agent library compiles with `go build` and has no CGo dependencies
 - `agent.Run()` can complete a file-read-and-edit task using LM Studio locally
 - `agent.Run()` can complete the same task using Claude API
-- DDx can use DDX Agent as an in-process harness via adapter
+- A caller can use DDX Agent as an in-process harness via CONTRACT-003
 - A HELIX build pass can execute a bead using DDX Agent with a local model
 - Token usage and timing are accurately reported for both local and cloud

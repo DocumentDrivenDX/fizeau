@@ -9,13 +9,13 @@ ddx:
 
 ## System Context
 
-DDX Agent is an embeddable Go agent runtime. It sits between a caller (DDx/HELIX,
-CI system, or standalone CLI) and one or more LLM backends (LM Studio, Ollama,
+DDX Agent is an embeddable Go agent runtime. It sits between a caller (an
+orchestrator, CI system, or standalone CLI) and one or more LLM backends (LM Studio, Ollama,
 Anthropic, OpenAI).
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  DDx / HELIX │     │  CI Pipeline │     │  agent CLI   │
+│  Orchestrator│     │  CI Pipeline │     │  agent CLI   │
 │  (in-process)│     │  (in-process)│     │  (binary)    │
 └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
        │                    │                    │
@@ -171,4 +171,4 @@ See SD-001 for full decision log. Summary:
 | Model policy | Shared catalog + external manifest | Separate volatile policy/data from runtime code and preserve one owner |
 | Tool interface | JSON Schema based | Model-agnostic |
 | CLI framework | `flag` stdlib | Minimal, no dependency |
-| Config format | YAML | DDx convention |
+| Config format | YAML | Project convention |

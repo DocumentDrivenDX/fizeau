@@ -27,7 +27,7 @@ subcommands.
 | Output modes (FEAT-006 FR-5..6) | stdout text, --json, stderr progress | `cmd/ddx-agent` | P0 |
 | Config file (FEAT-006 FR-7..10) | YAML config + env + flags | `cmd/ddx-agent` | P0 |
 | Session commands (FEAT-006 FR-11..14) | log, replay, usage subcommands | `cmd/ddx-agent` | P1 |
-| DDx harness (FEAT-006 FR-15..16) | stdin prompt, JSON output | `cmd/ddx-agent` | P0 |
+| Harness mode (FEAT-006 FR-15..16) | stdin prompt, JSON output | `cmd/ddx-agent` | P0 |
 
 ### NFR Impact
 
@@ -119,7 +119,7 @@ session_log_dir: .agent/sessions
 | Layer | Choice | Why |
 |-------|--------|-----|
 | CLI framework | `flag` stdlib | Minimal, no dependency, sufficient for this scope |
-| Config format | YAML | Human-readable, DDx convention (`.ddx/config.yaml`) |
+| Config format | YAML | Human-readable, consistent with project conventions |
 | YAML parser | `gopkg.in/yaml.v3` | De facto standard Go YAML library |
 
 ## Traceability
@@ -131,7 +131,7 @@ session_log_dir: .agent/sessions
 | FEAT-006 FR-5..6 | main.go output | Functional: text vs `--json` output |
 | FEAT-006 FR-7..10 | config loader | Unit: config merging from file/env/flags |
 | FEAT-006 FR-11..14 | session subcommands | Functional: run against test session logs |
-| FEAT-006 FR-15..16 | main.go DDx mode | Integration: DDx harness invocation |
+| FEAT-006 FR-15..16 | main.go harness mode | Integration: harness invocation via CONTRACT-003 |
 
 ## Concern Alignment
 
@@ -144,7 +144,7 @@ session_log_dir: .agent/sessions
 | Risk | Prob | Impact | Mitigation |
 |------|------|--------|------------|
 | `flag` stdlib too limited for subcommands | L | L | Subcommand dispatch is trivial; upgrade to Cobra later if needed |
-| Config file format drift from DDx | L | L | Follow same YAML conventions |
+| Config file format drift | L | L | Follow same YAML conventions |
 
 ## Review Checklist
 

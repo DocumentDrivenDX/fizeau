@@ -53,7 +53,7 @@ prompt behavior and must not be reused for model policy or routing.
 ## Problem Statement
 
 - **Current situation**: DDX Agent can select one named provider directly, while
-  DDx and HELIX still carry duplicated or mismatched routing assumptions above
+  callers and orchestrators still carry duplicated or mismatched routing assumptions above
   it.
 - **Pain points**: Prompt presets already occupy the `preset` naming surface,
   provider configs currently mix transport and model concerns, and the shipped
@@ -61,7 +61,7 @@ prompt behavior and must not be reused for model policy or routing.
   is the model they want.
 - **Desired outcome**: DDX Agent becomes the reusable source of truth for model
   aliases, tiers/profiles, canonical policy targets, deprecations, and embedded
-  provider-selection policy, while DDx keeps cross-harness orchestration and
+  provider-selection policy, while callers keep cross-harness orchestration and
   HELIX keeps stage intent only.
 
 ## Requirements
@@ -101,17 +101,17 @@ prompt behavior and must not be reused for model policy or routing.
     releases where practical.
 11. DDX Agent publishes versioned catalog manifests outside normal binary
     releases and exposes a stable machine-readable channel pointer so operators
-    and DDx can refresh policy faster than the binary release cadence.
+    and callers can refresh policy faster than the binary release cadence.
 12. Catalog refresh is explicit. Ordinary request execution must not fetch
     remote manifest data.
-13. DDX Agent CLI and DDx can resolve a model reference through the catalog to a
+13. The DDX Agent CLI and any caller can resolve a model reference through the catalog to a
     concrete model string appropriate for the chosen consumer surface.
 14. Explicit concrete model pins remain supported and intentionally bypass the
     catalog when a caller wants exact control.
 15. Ownership split is explicit:
     - agent owns model catalog data/policy and provider selection inside the
       embedded runtime
-    - DDx owns cross-harness orchestration and guardrails
+    - callers own cross-harness orchestration and guardrails
     - HELIX owns stage intent only
 
 #### Phase 2A (P2): Model Routes
@@ -145,8 +145,8 @@ prompt behavior and must not be reused for model policy or routing.
     failures.
 22. Prompt-shape, tool-schema, or other deterministic request errors must not
     trigger cross-provider failover.
-23. DDx continues to pass only model intent (`model_ref` or exact pin) into the
-    embedded harness. DDx must not duplicate inner provider-selection logic.
+23. Callers continue to pass only model intent (`model_ref` or exact pin) into the
+    embedded harness. Callers must not duplicate inner provider-selection logic.
 
 ### Non-Functional Requirements
 
@@ -154,8 +154,8 @@ prompt behavior and must not be reused for model policy or routing.
   directly with no YAML, catalog, or routing machinery.
 - **Clarity**: prompt presets, provider config, model policy, and provider
   routing each use distinct terminology.
-- **Boundary safety**: DDx may depend on agent-owned routing for the embedded
-  harness, but it only names harness intent and never reproduces provider
+- **Boundary safety**: Callers may depend on agent-owned routing for the embedded
+  harness, but they only name harness intent and never reproduce provider
   candidate logic.
 - **Updateability**: rapidly changing model policy/data can be refreshed via an
   external manifest without requiring every consumer to wait for a new Go
@@ -185,7 +185,7 @@ prompt behavior and must not be reused for model policy or routing.
 
 - Named-provider config works with LM Studio, Ollama, OpenRouter, and
   Anthropic.
-- DDx can consume agent-owned catalog data without maintaining duplicate alias
+- Callers can consume agent-owned catalog data without maintaining duplicate alias
   and profile tables.
 - Prompt preset docs and model-policy docs stay terminology-safe and do not
   overload `preset`.
@@ -202,7 +202,7 @@ prompt behavior and must not be reused for model policy or routing.
 | AC-FEAT-004-04 | An explicit concrete `--model` or provider-level pin bypasses catalog policy for that run while leaving catalog-backed resolution unchanged for other runs. | `go test ./config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-05 | Model routes keyed by requested model or canonical target choose provider candidates deterministically for `priority-round-robin` and `ordered-failover`, reject empty/unknown routes before the run, and preserve direct-provider override behavior. | `go test ./config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-06 | Passive failover advances only on provider-side availability failures, records the attempt chain, and returns an aggregated routing error when every candidate fails. | `go test ./config ./cmd/ddx-agent ./...` |
-| AC-FEAT-004-07 | The selected concrete provider, requested model input, resolved model reference, route key, and resolved concrete model are recorded in the run result and session artifacts so DDx and downstream analytics can attribute the actual embedded-provider choice without reproducing the route logic. | `go test ./cmd/ddx-agent ./session ./...` |
+| AC-FEAT-004-07 | The selected concrete provider, requested model input, resolved model reference, route key, and resolved concrete model are recorded in the run result and session artifacts so callers and downstream analytics can attribute the actual embedded-provider choice without reproducing the route logic. | `go test ./cmd/ddx-agent ./session ./...` |
 | AC-FEAT-004-08 | Deprecated `backends`, `default_backend`, and `--backend` inputs still resolve during the migration window, emit a deprecation warning, and map to the same provider choice as the equivalent model-route configuration. | `go test ./config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-09 | Catalog publication produces an immutable versioned manifest bundle plus a stable channel pointer, and ordinary request execution never fetches remote manifest data implicitly. | `go test ./modelcatalog ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-10 | The starter shared catalog publishes `code-high`, `code-medium`, and `code-economy` policy tiers with compatibility aliases `smart`, `fast`, and `cheap`, and projects the current concrete model/effort pairs onto supported surfaces. | `go test ./modelcatalog ./config ./cmd/ddx-agent ./...` |
@@ -216,7 +216,7 @@ prompt behavior and must not be reused for model policy or routing.
 
 - Smart routing (task classification, context-length-based selection)
 - Cost-based routing (pick cheapest model automatically)
-- Concurrent multi-model execution (that's DDx quorum)
+- Concurrent multi-model execution (multi-harness quorum is a caller concern)
 - Automatic model-quality escalation from local to cloud
 - Model hosting or lifecycle management
 - HELIX stage-to-model resolution logic

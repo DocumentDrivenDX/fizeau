@@ -41,11 +41,11 @@ DDX Agent keeps three layers above the runtime boundary:
 After resolution, agent still builds exactly one concrete `Provider` and passes
 it to `agent.Run()`.
 
-DDx boundary:
+Caller boundary (see CONTRACT-003):
 
-- DDx chooses the harness and passes model intent to the embedded harness.
+- Callers choose the harness and pass model intent to the embedded harness.
 - Embedded `ddx-agent` chooses the concrete provider candidate.
-- DDx records attribution facts from the embedded run, but does not own or
+- Callers receive attribution facts from the embedded run, but do not own or
   inspect provider candidate tables.
 
 ### Config Format
@@ -170,7 +170,7 @@ and it owns aliases, tiers/profiles, canonical policy targets, deprecations,
 and per-surface projections.
 
 **D2A: Publish catalog bundles independently of binary releases.** The embedded
-snapshot remains the safe default, but operators and DDx can install a newer
+snapshot remains the safe default, but operators and callers can install a newer
 shared manifest from a versioned published bundle via an explicit update flow.
 
 **D3: Preserve prompt preset terminology for prompts only.** The top-level
