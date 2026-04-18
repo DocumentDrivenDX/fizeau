@@ -238,6 +238,7 @@ type StallPolicy struct {
 type service struct {
 	opts     ServiceOptions
 	registry *harnesses.Registry
+	hub      *sessionHub
 }
 
 // New constructs a DdxAgent.
@@ -245,6 +246,7 @@ func New(opts ServiceOptions) (DdxAgent, error) {
 	return &service{
 		opts:     opts,
 		registry: harnesses.NewRegistry(),
+		hub:      newSessionHub(),
 	}, nil
 }
 
@@ -389,9 +391,4 @@ func (s *service) RouteStatus(_ context.Context) (*RouteStatusReport, error) {
 
 // Execute is implemented in service_execute.go.
 
-// TailSessionLog is a stub; to be implemented in a future bead.
-func (s *service) TailSessionLog(_ context.Context, _ string) (<-chan ServiceEvent, error) {
-	ch := make(chan ServiceEvent)
-	close(ch)
-	return ch, nil
-}
+// TailSessionLog is implemented in service_taillog.go.

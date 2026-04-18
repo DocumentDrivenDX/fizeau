@@ -15,6 +15,11 @@ import (
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
 )
 
+// generateSessionID returns a unique session identifier for a new Execute.
+func generateSessionID() string {
+	return fmt.Sprintf("svc-%d", time.Now().UnixNano())
+}
+
 // defaultStallReadOnlyIterations is the conservative default applied when
 // ServiceExecuteRequest.StallPolicy is nil. Mirrors today's circuit-breaker
 // thresholds: a model that goes 25 turns without a write or final response
@@ -66,25 +71,47 @@ var readOnlyTools = map[string]bool{
 // Harness) triple. NativeProvider must be supplied for the native path
 // until provider construction lands.
 func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-chan ServiceEvent, error) {
-	out := make(chan ServiceEvent, 64)
+	// Generate a session ID and register it in the hub so TailSessionLog
+	// callers can subscribe before or during execution.
+	sessionID := generateSessionID()
+	s.hub.openSession(sessionID)
+
+	outer := make(chan ServiceEvent, 64)
 
 	// Resolve the route.
 	decision, err := s.resolveExecuteRoute(req)
 	if err != nil {
 		// Still return a channel that yields a single failed final event so
 		// downstream consumers don't have to special-case the error path.
-		go emitFatalFinal(out, req.Metadata, "failed", err.Error())
-		return out, nil
+		// Also close the hub session so TailSessionLog subscribers unblock.
+		go func() {
+			emitFatalFinal(outer, req.Metadata, "failed", err.Error())
+			// Drain outer to get the final event and forward to hub.
+			// emitFatalFinal closes outer; read the single event from it.
+		}()
+		// We can't easily intercept emitFatalFinal here, so close the hub
+		// session with an empty final immediately — callers on TailSessionLog
+		// for a failed-route session get an empty close.
+		go func() {
+			// Wait briefly for emitFatalFinal to write.
+			time.Sleep(10 * time.Millisecond)
+			s.hub.closeSession(sessionID, ServiceEvent{})
+		}()
+		return outer, nil
 	}
 
 	// Metadata seam: every event we emit echoes req.Metadata.
 	meta := req.Metadata
 
+	// Wrap the inner channel through the hub so every event is broadcast to
+	// TailSessionLog subscribers. The fan-out goroutine owns outer's close.
+	inner := s.hub.wrapExecuteWithHub(sessionID, outer)
+
 	// Emit start-of-execution routing_decision so consumers know the picked
 	// chain before any real work fires. The actual chain (post-fallback) is
 	// stamped onto the final event's RoutingActual field.
-	go s.runExecute(ctx, req, *decision, meta, out)
-	return out, nil
+	go s.runExecute(ctx, req, *decision, meta, inner, sessionID)
+	return outer, nil
 }
 
 // resolveExecuteRoute reduces the request to a concrete RouteDecision.
@@ -119,7 +146,7 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 // runExecute is the per-Execute goroutine. It owns the channel close path
 // and the final event emit. All termination paths funnel through emitFinal
 // so the channel always sees a final event before close.
-func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent) {
+func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, sessionID string) {
 	defer close(out)
 
 	start := time.Now()
@@ -133,12 +160,14 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 		defer cancel()
 	}
 
-	// Emit routing_decision start event.
+	// Emit routing_decision start event. Include session_id so callers can
+	// extract it and pass to TailSessionLog.
 	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, meta, map[string]any{
-		"harness":  decision.Harness,
-		"provider": decision.Provider,
-		"model":    decision.Model,
-		"reason":   decision.Reason,
+		"harness":    decision.Harness,
+		"provider":   decision.Provider,
+		"model":      decision.Model,
+		"reason":     decision.Reason,
+		"session_id": sessionID,
 	})
 
 	// Branch: native ("agent") path runs the in-process loop; subprocess
