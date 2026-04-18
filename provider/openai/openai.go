@@ -67,6 +67,9 @@ func New(cfg Config) *Provider {
 	for k, v := range cfg.Headers {
 		opts = append(opts, option.WithHeader(k, v))
 	}
+	if s := resolveDebugSink(); s != nil {
+		opts = append(opts, option.WithMiddleware(debugMiddleware(s)))
+	}
 
 	client := oai.NewClient(opts...)
 	providerSystem, serverAddress, serverPort := openAIIdentity(cfg.BaseURL)
