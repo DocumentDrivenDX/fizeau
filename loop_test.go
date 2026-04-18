@@ -1998,6 +1998,49 @@ func TestRun_OverflowCompactionNoFitReturnsError(t *testing.T) {
 	assert.Equal(t, 2, compactionCalls)
 }
 
+// TestRun_NoOpCompactionEmitsNoEvents verifies that when the compactor
+// returns the no-op signal (msgs, nil, nil), neither EventCompactionStart
+// nor EventCompactionEnd is emitted. Per CONTRACT-003-ddx-agent-service:
+// "type=compaction events fire ONLY when actual work was performed.
+// No-op compactions emit nothing."
+//
+// Regression guard for [agent-fbc6b277]: before this suppression landed,
+// every iteration of execute-loop emitted a noisy pair of start+end events
+// even when nothing was compacted, polluting session logs at scale.
+func TestRun_NoOpCompactionEmitsNoEvents(t *testing.T) {
+	provider := &mockProvider{
+		responses: []Response{
+			{Content: "done", Usage: TokenUsage{Total: 5}},
+		},
+	}
+
+	compactionCalls := 0
+	compactor := func(ctx context.Context, msgs []Message, prov Provider, toolCalls []ToolCallLog) ([]Message, *CompactionResult, error) {
+		compactionCalls++
+		// Pure no-op: tell the loop nothing happened.
+		return msgs, nil, nil
+	}
+
+	var compactionEvents []Event
+	callback := func(e Event) {
+		if e.Type == EventCompactionStart || e.Type == EventCompactionEnd {
+			compactionEvents = append(compactionEvents, e)
+		}
+	}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:    "no-op compaction must emit no events",
+		Provider:  provider,
+		Compactor: compactor,
+		Callback:  callback,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.GreaterOrEqual(t, compactionCalls, 1, "compactor should have been invoked at least once (pre-iteration check)")
+	assert.Empty(t, compactionEvents, "no-op compactions must emit zero events at default verbosity (per CONTRACT-003-ddx-agent-service)")
+}
+
 func TestRun_OverflowCompactionSuccessRetryStillOverflowsReturnsError(t *testing.T) {
 	// Provider always returns overflow even after compaction.
 	provider := &overflowProvider{
