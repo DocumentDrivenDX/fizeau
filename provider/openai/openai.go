@@ -76,6 +76,10 @@ func New(cfg Config) *Provider {
 	for k, v := range cfg.Headers {
 		opts = append(opts, option.WithHeader(k, v))
 	}
+	// SSE comment-frame filter must sit before the debug sink so the sink
+	// observes the same byte stream the decoder will see. Middlewares are
+	// applied in registration order, outermost first.
+	opts = append(opts, option.WithMiddleware(sseFilterMiddleware()))
 	if s := resolveDebugSink(); s != nil {
 		opts = append(opts, option.WithMiddleware(debugMiddleware(s)))
 	}

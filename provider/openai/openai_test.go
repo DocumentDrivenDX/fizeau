@@ -36,6 +36,28 @@ func streamSSE(w http.ResponseWriter, events []string) {
 	}
 }
 
+// writeRawSSE lets a test emit arbitrary SSE framing including `:` comment
+// frames (keep-alive probes) and inter-frame sleeps. `frames` are written in
+// order; each string is written verbatim (the caller provides terminators),
+// followed by a flush. A positive `sleep` inserts a wall-clock delay between
+// frames so tests can reproduce the "long silence then data" shape that
+// reasoning-model warmup produces.
+func writeRawSSE(w http.ResponseWriter, frames []string, sleep time.Duration) {
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	flusher, _ := w.(http.Flusher)
+	for _, f := range frames {
+		_, _ = io.WriteString(w, f)
+		if flusher != nil {
+			flusher.Flush()
+		}
+		if sleep > 0 {
+			time.Sleep(sleep)
+		}
+	}
+}
+
 // TestChatStream_ToolCallIndexIDMapping verifies that the OpenAI provider
 // carries the tool call ID forward using the chunk index when OpenAI omits
 // the ID on all but the first argument chunk.
@@ -87,6 +109,71 @@ func TestChatStream_ToolCallIndexIDMapping(t *testing.T) {
 	require.Contains(t, argsByID, "call_abc", "tool call ID must be present on all arg deltas")
 	assert.Equal(t, `{"path":"main.go"}`, argsByID["call_abc"], "arguments must be assembled from all chunks")
 	assert.Equal(t, "read", idNames["call_abc"])
+}
+
+// TestChatStream_SurvivesSSECommentFramesAndLongSilence reproduces the
+// omlx/reasoning-model streaming defect tracked by bead agent-f237e07b.
+//
+// The real failure mode is:
+//  1. Server sends a `: keep-alive\n\n` SSE comment frame while the reasoning
+//     model warms up (several seconds before the first content frame arrives).
+//  2. openai-go's ssestream decoder treats that comment's trailing blank line
+//     as an event dispatch with empty Data. Stream.Next then tries to
+//     json.Unmarshal empty bytes and surfaces "unexpected end of JSON input",
+//     which propagates up as a user-visible error — even though the wire
+//     stream is well-formed per the SSE spec (which requires empty-data
+//     events to be silently ignored).
+//
+// This test reproduces the exact frame shape captured against a vidar-omlx
+// server: a keep-alive comment first, then the role delta, then (after a
+// silence) the first content delta. It asserts that the stream completes
+// without error and delivers the content.
+func TestChatStream_SurvivesSSECommentFramesAndLongSilence(t *testing.T) {
+	// Frames mirror the wire capture from /tmp/vidar-omlx-wire2.jsonl:
+	// ": keep-alive" comment, then a role delta, then content.
+	frames := []string{
+		": keep-alive\n\n",
+		`data: {"id":"chatcmpl-1","model":"qwen3","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}` + "\n\n",
+		": keep-alive\n\n",
+		`data: {"id":"chatcmpl-1","model":"qwen3","choices":[{"index":0,"delta":{"content":"warmup-done"},"finish_reason":null}]}` + "\n\n",
+		`data: {"id":"chatcmpl-1","model":"qwen3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}}` + "\n\n",
+		"data: [DONE]\n\n",
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A short inter-frame sleep is enough to exercise the per-chunk
+		// arrival shape; we do not need a full 9s warmup to trigger the
+		// decoder bug because the empty-event dispatch happens on the
+		// first keep-alive frame regardless of timing.
+		writeRawSSE(w, frames, 10*time.Millisecond)
+	}))
+	defer srv.Close()
+
+	p := openai.New(openai.Config{
+		BaseURL: srv.URL + "/v1",
+		APIKey:  "test",
+		Model:   "qwen3",
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	ch, err := p.ChatStream(ctx, []agent.Message{
+		{Role: agent.RoleUser, Content: "hello"},
+	}, nil, agent.Options{})
+	require.NoError(t, err)
+
+	var content string
+	var streamErr error
+	for delta := range ch {
+		if delta.Err != nil {
+			streamErr = delta.Err
+		}
+		content += delta.Content
+	}
+
+	require.NoError(t, streamErr, "keep-alive SSE comment frames must not corrupt stream parsing")
+	assert.Contains(t, content, "warmup-done", "content delta that follows a keep-alive frame must still be delivered")
 }
 
 func TestChat_AttemptMetadataIncludesServerIdentityAndCacheUsage(t *testing.T) {

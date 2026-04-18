@@ -52,6 +52,16 @@ var (
 	sink     *debugSink // nil when AGENT_DEBUG_WIRE is unset
 )
 
+// envBoolTrue reports whether the named env var is set to a truthy value
+// (1, true — case-insensitive). Empty, "0", or "false" → false.
+func envBoolTrue(name string) bool {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" || v == "0" || strings.EqualFold(v, "false") {
+		return false
+	}
+	return true
+}
+
 // resolveDebugSink returns the shared sink, or nil if wire dump is disabled.
 func resolveDebugSink() *debugSink {
 	sinkOnce.Do(func() {
@@ -91,10 +101,17 @@ type wireEvent struct {
 	Err        string      `json:"error,omitempty"`
 }
 
-// maxBodyBytes limits what we capture in a single event. SSE streams can
-// produce large cumulative payloads; the per-chunk event path logs chunk
-// boundaries separately and a trailing summary event with the cumulative size.
+// maxBodyBytes limits how much body content a single event captures. Applies
+// to request bodies and to non-streaming response bodies (which are read
+// whole before being emitted).
 const maxBodyBytes = 64 * 1024
+
+// envDebugWireStreamFull opts into capturing the entire SSE stream body via
+// teeBody. Default behavior caps cumulative captured bytes at maxBodyBytes to
+// avoid flooding stderr during long reasoning-model generations; this knob
+// disables the cap so the full stream is available for post-mortem analysis
+// of client-side truncation defects (see bead agent-f237e07b).
+const envDebugWireStreamFull = "AGENT_DEBUG_WIRE_STREAM_FULL"
 
 func (s *debugSink) emit(ev wireEvent) {
 	s.mu.Lock()
@@ -146,23 +163,43 @@ func captureBody(body io.ReadCloser) ([]byte, bool, io.ReadCloser, error) {
 // teeBody wraps a streaming response body so each read is mirrored to the
 // sink as a chunk event. A final "response" event is emitted on close with the
 // cumulative byte count.
+//
+// When streamFull is false (default), cumulative captured bytes are capped at
+// maxBodyBytes to avoid flooding stderr on long reasoning-model generations.
+// Setting AGENT_DEBUG_WIRE_STREAM_FULL=1 disables the cap so the entire
+// stream is captured — necessary when diagnosing client-side truncation
+// defects (bead agent-f237e07b wire capture stopped at 186 bytes because the
+// cap + the teeBody emitting only up to the first cap-sized prefix made
+// post-cap frames invisible; this is the fix for step 5 of that bead).
 type teeBody struct {
-	inner     io.ReadCloser
-	sink      *debugSink
-	url       string
-	status    int
-	startTime time.Time
-	total     int
-	closed    bool
+	inner      io.ReadCloser
+	sink       *debugSink
+	url        string
+	status     int
+	startTime  time.Time
+	total      int
+	closed     bool
+	streamFull bool
 }
 
 func (t *teeBody) Read(p []byte) (int, error) {
 	n, err := t.inner.Read(p)
 	if n > 0 {
 		t.total += n
-		// Emit only the first maxBodyBytes of cumulative content as chunks;
-		// beyond that we emit only the running byte count.
-		if t.total-n < maxBodyBytes {
+		// Capture regime:
+		//   streamFull=true  → emit every byte read, no cap.
+		//   streamFull=false → emit until cumulative total reaches
+		//                      maxBodyBytes, then drop body from events.
+		switch {
+		case t.streamFull:
+			t.sink.emit(wireEvent{
+				Dir:       "response",
+				URL:       t.url,
+				Status:    t.status,
+				Body:      string(p[:n]),
+				BodyBytes: n,
+			})
+		case t.total-n < maxBodyBytes:
 			chunk := p[:n]
 			if t.total > maxBodyBytes {
 				chunk = p[:maxBodyBytes-(t.total-n)]
@@ -254,11 +291,12 @@ func debugMiddleware(s *debugSink) option.Middleware {
 		// else gets a single response event with the full body captured.
 		if strings.Contains(ct, "text/event-stream") {
 			resp.Body = &teeBody{
-				inner:     resp.Body,
-				sink:      s,
-				url:       req.URL.String(),
-				status:    resp.StatusCode,
-				startTime: start,
+				inner:      resp.Body,
+				sink:       s,
+				url:        req.URL.String(),
+				status:     resp.StatusCode,
+				startTime:  start,
+				streamFull: envBoolTrue(envDebugWireStreamFull),
 			}
 			s.emit(wireEvent{
 				Dir:        "response",
