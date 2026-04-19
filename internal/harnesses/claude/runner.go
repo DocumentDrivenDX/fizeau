@@ -260,10 +260,14 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	parseDone := make(chan struct{})
 	var parseAgg *streamAggregate
 	var parseErr error
+	// Wrap out so we can also mirror events to disk as JSONL. mirrorDone
+	// signals that the mirror goroutine has fully drained — must be awaited
+	// before run() lets defer close(out) fire, otherwise we get a close vs.
+	// chansend race when the mirror is mid-send to dst.
+	mirrored, mirrorDone := mirroredEvents(out, progressLog, ctx)
 	go func() {
 		defer close(parseDone)
-		// Wrap out so we can also mirror events to disk as JSONL.
-		mirrored := mirroredEvents(out, progressLog, ctx)
+		defer close(mirrored) // releases the mirror goroutine's range loop
 		parseAgg, parseErr = parseClaudeStream(runCtx, parserReader, mirrored, req.Metadata, seq)
 	}()
 
@@ -313,6 +317,7 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	<-stdoutDone
 	<-stderrDone
 	<-parseDone
+	<-mirrorDone
 	runErr = cmd.Wait()
 	<-cancelDone
 	stderr = stderrBuf.String()
@@ -407,20 +412,22 @@ func (w *stringBuilderWriter) Write(p []byte) (int, error) {
 	return w.sb.Write(p)
 }
 
-// mirroredEvents returns a channel that forwards events to dst and, when
-// log is non-nil, also writes each event as a JSONL line for TailSessionLog
-// consumers. The mirror goroutine exits when src is closed or ctx is done.
-func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Context) chan<- harnesses.Event {
-	if log == nil {
-		// No mirror needed — return dst directly.
-		return dst
-	}
+// mirroredEvents returns (in, done): callers send events on `in` and close
+// it when finished; the goroutine forwards each event to dst and, when log
+// is non-nil, also writes a JSONL line for TailSessionLog consumers. `done`
+// closes once the goroutine has fully drained, so the caller can safely
+// close dst without racing with an in-flight send.
+func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Context) (chan harnesses.Event, <-chan struct{}) {
 	mid := make(chan harnesses.Event, cap(dst))
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for ev := range mid {
-			if data, err := json.Marshal(ev); err == nil {
-				_, _ = log.Write(data)
-				_, _ = log.Write([]byte("\n"))
+			if log != nil {
+				if data, err := json.Marshal(ev); err == nil {
+					_, _ = log.Write(data)
+					_, _ = log.Write([]byte("\n"))
+				}
 			}
 			select {
 			case dst <- ev:
@@ -429,7 +436,7 @@ func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Contex
 			}
 		}
 	}()
-	return mid
+	return mid, done
 }
 
 // trimErrorBlob caps stderr for inclusion in the final event so a runaway
