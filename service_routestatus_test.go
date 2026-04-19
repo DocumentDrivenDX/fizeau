@@ -97,7 +97,7 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	// Build a minimal ServiceConfig that satisfies the routing engine.
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "openai-compat", BaseURL: "http://127.0.0.1:9999/v1"},
+			"bragi": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",
@@ -161,7 +161,7 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	// We give it a provider so the engine can build a candidate.
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "openai-compat", BaseURL: "http://127.0.0.1:9999/v1"},
+			"bragi": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",

@@ -193,7 +193,7 @@ func TestTranslate_TwoSourceMerge(t *testing.T) {
 
 	// Should have vidar from models.json
 	assert.Contains(t, result.Providers, "vidar")
-	assert.Equal(t, "openai-compat", result.Providers["vidar"].Type)
+	assert.Equal(t, "lmstudio", result.Providers["vidar"].Type)
 	assert.Equal(t, "http://vidar:1234/v1", result.Providers["vidar"].BaseURL)
 	assert.Equal(t, "qwen3.5-7b", result.Providers["vidar"].Model)
 
@@ -204,7 +204,7 @@ func TestTranslate_TwoSourceMerge(t *testing.T) {
 
 	// Should have openrouter from auth.json
 	assert.Contains(t, result.Providers, "openrouter")
-	assert.Equal(t, "openai-compat", result.Providers["openrouter"].Type)
+	assert.Equal(t, "openrouter", result.Providers["openrouter"].Type)
 	assert.Equal(t, "https://openrouter.ai/api/v1", result.Providers["openrouter"].BaseURL)
 
 	// Default should be anthropic
@@ -369,7 +369,7 @@ func TestTranslate_NewCloudProviders(t *testing.T) {
 	assert.Empty(t, result.Warnings)
 
 	qwen := result.Providers["qwen"]
-	assert.Equal(t, "openai-compat", qwen.Type)
+	assert.Equal(t, "qwen", qwen.Type)
 	assert.Equal(t, "https://dashscope.aliyuncs.com/compatible-mode/v1", qwen.BaseURL)
 	// Both qwen and dashscope map to agent name "qwen"; Go map iteration is random
 	// so either key may win — just verify one of them was used.
@@ -379,12 +379,12 @@ func TestTranslate_NewCloudProviders(t *testing.T) {
 	// dashscope is an alias for qwen — both map to the same agent name "qwen"
 	// the second entry overwrites; we just verify it resolves without error
 	minimax := result.Providers["minimax"]
-	assert.Equal(t, "openai-compat", minimax.Type)
+	assert.Equal(t, "minimax", minimax.Type)
 	assert.Equal(t, "https://api.minimaxi.chat/v1", minimax.BaseURL)
 	assert.Equal(t, "sk-mm-abc", minimax.APIKey)
 
 	zai := result.Providers["z.ai"]
-	assert.Equal(t, "openai-compat", zai.Type)
+	assert.Equal(t, "zai", zai.Type)
 	assert.Equal(t, "https://api.z.ai/v1", zai.BaseURL)
 	assert.Equal(t, "sk-zai-abc", zai.APIKey)
 }

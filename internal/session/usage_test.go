@@ -66,7 +66,7 @@ func TestAggregateUsage(t *testing.T) {
 	}
 
 	writeSessionLog(t, "recent-known", time.Date(2026, 4, 8, 10, 0, 0, 0, time.UTC), time.Date(2026, 4, 8, 10, 0, 1, 0, time.UTC), SessionStartData{
-		Provider: "openai-compat",
+		Provider: "lmstudio",
 		Model:    "qwen3.5-7b",
 		Prompt:   "recent known",
 	}, SessionEndData{
@@ -79,7 +79,7 @@ func TestAggregateUsage(t *testing.T) {
 	})
 
 	writeSessionLog(t, "recent-unknown", time.Date(2026, 4, 8, 11, 0, 0, 0, time.UTC), time.Date(2026, 4, 8, 11, 0, 2, 0, time.UTC), SessionStartData{
-		Provider: "openai-compat",
+		Provider: "lmstudio",
 		Model:    "qwen3.5-7b",
 		Prompt:   "recent unknown",
 	}, SessionEndData{
@@ -128,7 +128,7 @@ func TestAggregateUsage(t *testing.T) {
 	for i := range report.Rows {
 		row := &report.Rows[i]
 		switch {
-		case row.Provider == "openai-compat" && row.Model == "qwen3.5-7b":
+		case row.Provider == "lmstudio" && row.Model == "qwen3.5-7b":
 			mixedRow = row
 		case row.Provider == "anthropic" && row.Model == "claude-sonnet-4-20250514":
 			knownRow = row

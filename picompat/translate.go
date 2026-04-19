@@ -15,7 +15,7 @@ import (
 // ProviderMapping maps pi provider names to agent configurations.
 type ProviderMapping struct {
 	AgentName string // name in agent config
-	Type      string // agent type: "anthropic" or "openai-compat"
+	Type      string // agent type, e.g. "anthropic", "openai", "openrouter"
 	BaseURL   string // default URL if not specified in pi
 }
 
@@ -25,16 +25,16 @@ type ProviderMapping struct {
 var knownMappings = map[string]ProviderMapping{
 	// Established cloud providers
 	"anthropic":    {AgentName: "anthropic", Type: "anthropic"},
-	"openai-codex": {AgentName: "openai", Type: "openai-compat", BaseURL: "https://api.openai.com/v1"},
-	"openrouter":   {AgentName: "openrouter", Type: "openai-compat", BaseURL: "https://openrouter.ai/api/v1"},
+	"openai-codex": {AgentName: "openai", Type: "openai", BaseURL: "https://api.openai.com/v1"},
+	"openrouter":   {AgentName: "openrouter", Type: "openrouter", BaseURL: "https://openrouter.ai/api/v1"},
 	// Qwen / Alibaba Cloud DashScope
-	"qwen":      {AgentName: "qwen", Type: "openai-compat", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
-	"dashscope": {AgentName: "qwen", Type: "openai-compat", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+	"qwen":      {AgentName: "qwen", Type: "qwen", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+	"dashscope": {AgentName: "qwen", Type: "qwen", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"},
 	// MiniMax
-	"minimax": {AgentName: "minimax", Type: "openai-compat", BaseURL: "https://api.minimaxi.chat/v1"},
+	"minimax": {AgentName: "minimax", Type: "minimax", BaseURL: "https://api.minimaxi.chat/v1"},
 	// Z.ai
-	"z.ai": {AgentName: "z.ai", Type: "openai-compat", BaseURL: "https://api.z.ai/v1"},
-	"zai":  {AgentName: "z.ai", Type: "openai-compat", BaseURL: "https://api.z.ai/v1"},
+	"z.ai": {AgentName: "z.ai", Type: "zai", BaseURL: "https://api.z.ai/v1"},
+	"zai":  {AgentName: "z.ai", Type: "zai", BaseURL: "https://api.z.ai/v1"},
 }
 
 // reasoningModelRe matches model IDs that benefit from an explicit portable
@@ -157,19 +157,9 @@ func translateProvider(def ProviderDefinition, cred AuthEntry) translatedProvide
 		name = def.Provider
 	}
 
-	pc := agentConfig.ProviderConfig{}
-
-	// Determine type from api field or default
-	switch def.API {
-	case "anthropic":
-		pc.Type = "anthropic"
-	case "openai-completions", "openai-chat", "": // default to openai-compat for unknown/empty
-		pc.Type = "openai-compat"
-	default:
-		pc.Type = "openai-compat"
+	pc := agentConfig.ProviderConfig{
+		Type: concreteProviderType(name, def.API, def.BaseURL),
 	}
-
-	// Set base URL
 	if def.BaseURL != "" {
 		pc.BaseURL = def.BaseURL
 	}
@@ -194,6 +184,44 @@ func translateProvider(def ProviderDefinition, cred AuthEntry) translatedProvide
 	}
 
 	return translatedProvider{Name: name, Config: pc}
+}
+
+func concreteProviderType(name, api, baseURL string) string {
+	if mapping, ok := knownMappings[strings.ToLower(strings.TrimSpace(name))]; ok {
+		return mapping.Type
+	}
+	switch strings.ToLower(strings.TrimSpace(api)) {
+	case "anthropic":
+		return "anthropic"
+	}
+	if inferred := concreteProviderTypeFromBaseURL(baseURL); inferred != "" {
+		return inferred
+	}
+	return "openai"
+}
+
+func concreteProviderTypeFromBaseURL(baseURL string) string {
+	low := strings.ToLower(strings.TrimSpace(baseURL))
+	switch {
+	case strings.Contains(low, "openrouter.ai"):
+		return "openrouter"
+	case strings.Contains(low, "openai.com"):
+		return "openai"
+	case strings.Contains(low, "minimaxi.chat"):
+		return "minimax"
+	case strings.Contains(low, "dashscope.aliyuncs.com"):
+		return "qwen"
+	case strings.Contains(low, "z.ai"):
+		return "zai"
+	case strings.Contains(low, ":11434"):
+		return "ollama"
+	case strings.Contains(low, ":1234"):
+		return "lmstudio"
+	case strings.Contains(low, ":1235"):
+		return "omlx"
+	default:
+		return ""
+	}
 }
 
 // isReasoningModel reports whether modelID belongs to a model family that

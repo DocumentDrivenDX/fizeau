@@ -17,7 +17,7 @@ func TestRouteProvider_BuildCandidate(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"local": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 				Model:   "default-model",
 			},
@@ -49,7 +49,7 @@ func TestRouteProvider_BuildCandidate_EmptyModel(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"local": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 				Model:   "default-model",
 			},
@@ -81,7 +81,7 @@ func TestRouteProvider_BuildCandidate_UnknownProvider(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"local": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 			},
 		},
@@ -170,7 +170,7 @@ func TestRouteProvider_RecordAttempt(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"local": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 			},
 		},
@@ -197,7 +197,7 @@ func TestRouteProvider_RecordAttempt_Failure(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"local": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 			},
 		},

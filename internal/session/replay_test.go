@@ -23,7 +23,7 @@ func TestReplay(t *testing.T) {
 	// Write a test session log
 	logger := NewLogger(dir, sessionID)
 	logger.Emit(agent.EventSessionStart, SessionStartData{
-		Provider:      "openai-compat",
+		Provider:      "lmstudio",
 		Model:         "qwen3.5-7b",
 		WorkDir:       "/tmp/test",
 		MaxIterations: 20,

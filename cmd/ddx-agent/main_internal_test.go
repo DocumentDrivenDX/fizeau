@@ -22,7 +22,7 @@ func TestResolveProviderForRun_DefaultProvider(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"local": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 				Model:   "configured-model",
 			},
@@ -233,7 +233,7 @@ func TestResolveProviderForRun_ModelRouteByExplicitModel(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"bragi": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://bragi:1234/v1",
 				Model:   "provider-default",
 			},
@@ -266,12 +266,12 @@ func TestResolveProviderForRun_DefaultModelRouteOverridesDefaultProvider(t *test
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"vidar": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://vidar:1234/v1",
 				Model:   "provider-default",
 			},
 			"openrouter": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "https://openrouter.ai/api/v1",
 				Model:   "provider-fallback",
 			},
@@ -306,7 +306,7 @@ func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"cloud": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "https://openrouter.ai/api/v1",
 			},
 		},
@@ -340,11 +340,11 @@ func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"vidar": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://vidar:1234/v1",
 			},
 			"bragi": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://bragi:1234/v1",
 			},
 		},

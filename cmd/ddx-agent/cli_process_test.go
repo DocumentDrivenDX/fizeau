@@ -166,7 +166,7 @@ func TestCLI_IterationLimit_ExitsZero(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+loop.URL+`/v1
     api_key: test
     model: stub-model
@@ -188,7 +188,7 @@ func TestCLI_Run_StrictStdoutStderrAndExitCode(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
     model: gpt-4o
@@ -211,7 +211,7 @@ func TestCLI_JSONOutput_IsMachineReadable(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
     model: gpt-4o
@@ -261,7 +261,7 @@ func TestCLI_ConfigPrecedence_GlobalProjectEnvAndFlagModel(t *testing.T) {
 	writeGlobalConfig(t, home, `
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+globalFake.baseURL()+`
     api_key: test
     model: global-model
@@ -271,7 +271,7 @@ default: local
 	writeTempConfig(t, workDir, `
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+projectFake.baseURL()+`
     api_key: test
     model: project-model
@@ -302,7 +302,7 @@ func TestCLI_Providers_JSON_RedactsSecrets(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   openrouter:
-    type: openai-compat
+    type: lmstudio
     base_url: https://openrouter.ai/api/v1
     api_key: secret-key
     model: qwen/qwen3-coder-next
@@ -323,7 +323,7 @@ default: openrouter
 	}
 	require.NoError(t, json.Unmarshal([]byte(res.stdout), &parsed), "stdout=%s", res.stdout)
 	require.Contains(t, parsed, "openrouter")
-	assert.Equal(t, "openai-compat", parsed["openrouter"].Type)
+	assert.Equal(t, "lmstudio", parsed["openrouter"].Type)
 	assert.Equal(t, "https://openrouter.ai/api/v1", parsed["openrouter"].BaseURL)
 	assert.Equal(t, "qwen/qwen3-coder-next", parsed["openrouter"].Model)
 	assert.Equal(t, "[redacted]", parsed["openrouter"].Headers["HTTP-Referer"])
@@ -378,7 +378,7 @@ func TestCLI_CancelSignal_WritesSessionEndEvent(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+slow.URL+`/v1
     api_key: test
     model: gpt-4o

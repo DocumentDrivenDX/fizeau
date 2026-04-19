@@ -169,7 +169,7 @@ func TestRecordChatMetrics(t *testing.T) {
 	require.True(t, ok)
 
 	recorder.RecordChatMetrics(context.Background(), ChatSpan{
-		ProviderName:   "openai-compat",
+		ProviderName:   "lmstudio",
 		ProviderSystem: "openai",
 		ProviderRoute:  "default",
 		RequestedModel: "gpt-4o",
@@ -196,7 +196,7 @@ func TestRecordChatMetrics(t *testing.T) {
 	require.Len(t, durationPoints, 1)
 	assert.Equal(t, uint64(1), durationPoints[0].Count)
 	assert.InDelta(t, 0.25, durationPoints[0].Sum, 1e-9)
-	assert.Equal(t, "openai-compat", metricAttrString(t, durationPoints[0].Attributes, KeyProviderName))
+	assert.Equal(t, "lmstudio", metricAttrString(t, durationPoints[0].Attributes, KeyProviderName))
 	assert.Equal(t, "openai", metricAttrString(t, durationPoints[0].Attributes, KeyProviderSystem))
 	assert.Equal(t, "gpt-4o", metricAttrString(t, durationPoints[0].Attributes, KeyRequestModel))
 	assert.Equal(t, "gpt-4o", metricAttrString(t, durationPoints[0].Attributes, KeyResponseModel))
@@ -210,7 +210,7 @@ func TestRecordChatMetrics(t *testing.T) {
 	inputPoint := pointByTokenType(t, tokenPoints, "input")
 	assert.Equal(t, uint64(1), inputPoint.Count)
 	assert.Equal(t, int64(11), inputPoint.Sum)
-	assert.Equal(t, "openai-compat", metricAttrString(t, inputPoint.Attributes, KeyProviderName))
+	assert.Equal(t, "lmstudio", metricAttrString(t, inputPoint.Attributes, KeyProviderName))
 	assert.Equal(t, "input", metricAttrString(t, inputPoint.Attributes, KeyTokenType))
 	assert.True(t, strings.Contains(metricAttrString(t, inputPoint.Attributes, KeyErrorType), "errorString"))
 

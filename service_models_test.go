@@ -43,8 +43,8 @@ func TestListModels_emptyFilterReturnsAll(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi":  {Type: "openai-compat", BaseURL: ts1.URL + "/v1"},
-			"remote": {Type: "openai-compat", BaseURL: ts2.URL + "/v1"},
+			"bragi":  {Type: "lmstudio", BaseURL: ts1.URL + "/v1"},
+			"remote": {Type: "lmstudio", BaseURL: ts2.URL + "/v1"},
 		},
 		names:       []string{"bragi", "remote"},
 		defaultName: "bragi",
@@ -68,8 +68,8 @@ func TestListModels_filtersProvider(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi":  {Type: "openai-compat", BaseURL: ts1.URL + "/v1"},
-			"remote": {Type: "openai-compat", BaseURL: ts2.URL + "/v1"},
+			"bragi":  {Type: "lmstudio", BaseURL: ts1.URL + "/v1"},
+			"remote": {Type: "lmstudio", BaseURL: ts2.URL + "/v1"},
 		},
 		names:       []string{"bragi", "remote"},
 		defaultName: "bragi",
@@ -96,7 +96,7 @@ func TestListModels_isDefaultMatchesConfig(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "openai-compat", BaseURL: ts.URL + "/v1", Model: "default-model"},
+			"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1", Model: "default-model"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",
@@ -128,7 +128,7 @@ func TestListModels_isConfiguredMatchesRoute(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "openai-compat", BaseURL: ts.URL + "/v1"},
+			"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",
@@ -177,7 +177,7 @@ func TestListModels_catalogRefSetForKnown(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "openai-compat", BaseURL: ts.URL + "/v1"},
+			"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",
@@ -206,7 +206,7 @@ func TestListModels_harnessFilter(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "openai-compat", BaseURL: ts.URL + "/v1"},
+			"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",
@@ -238,7 +238,7 @@ func TestListModels_rankPosition(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "openai-compat", BaseURL: ts.URL + "/v1"},
+			"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",

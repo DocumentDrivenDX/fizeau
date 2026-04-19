@@ -171,7 +171,7 @@ func TestCLI_SessionLogs_UseWorkDirWhenRelative(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
     model: gpt-4o
@@ -220,12 +220,12 @@ session_log_dir: sessions
 	}
 	require.NoError(t, json.Unmarshal(out, &report))
 	require.NotEmpty(t, report.Rows)
-	assert.Equal(t, "openai-compat", report.Rows[0].Provider)
+	assert.Equal(t, "lmstudio", report.Rows[0].Provider)
 	assert.Equal(t, "gpt-4o", report.Rows[0].Model)
 
 	out, err = run("--work-dir", workDir, "replay", sessionID)
 	require.NoError(t, err, string(out))
-	assert.Contains(t, string(out), "Provider: openai-compat | Model: gpt-4o")
+	assert.Contains(t, string(out), "Provider: lmstudio | Model: gpt-4o")
 	assert.Contains(t, string(out), "Work dir: "+workDir)
 	assert.Contains(t, string(out), "hello")
 }
@@ -252,7 +252,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -288,7 +288,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -324,7 +324,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -357,7 +357,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -407,10 +407,9 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
-    flavor: lmstudio
 default: local
 `)
 
@@ -462,10 +461,9 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
-    flavor: lmstudio
 default: local
 `)
 
@@ -503,10 +501,9 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
-    flavor: lmstudio
 default: local
 `)
 
@@ -540,7 +537,7 @@ model_catalog:
   manifest: `+manifestPath+`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
 default: local
@@ -703,7 +700,7 @@ func TestCLI_Providers_Check_ModelsUseConfiguredProviderWithoutRunningModelResol
 	writeTempConfig(t, workDir, `
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: `+fake.baseURL()+`
     api_key: test
     model: configured-model

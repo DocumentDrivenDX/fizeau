@@ -684,7 +684,7 @@ func TestRun_SessionStartEventIncludesMetadata(t *testing.T) {
 				{Content: "done", Usage: TokenUsage{Total: 10}},
 			},
 		},
-		provider: "openai-compat",
+		provider: "lmstudio",
 		model:    "gpt-4o",
 	}
 
@@ -702,7 +702,7 @@ func TestRun_SessionStartEventIncludesMetadata(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, startPayload)
-	assert.Equal(t, "openai-compat", startPayload["provider"])
+	assert.Equal(t, "lmstudio", startPayload["provider"])
 	assert.Equal(t, "gpt-4o", startPayload["model"])
 	assert.Equal(t, "/tmp/project", startPayload["work_dir"])
 }

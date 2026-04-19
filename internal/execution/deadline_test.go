@@ -170,7 +170,7 @@ func TestTimeoutProviderForwardsMetadata(t *testing.T) {
 	})
 	require.True(t, ok)
 	provName, modelName := ssm.SessionStartMetadata()
-	assert.Equal(t, "openai-compat", provName)
+	assert.Equal(t, "local", provName)
 	assert.Equal(t, "stub-model", modelName)
 
 	csm, ok := wrapped.(interface {

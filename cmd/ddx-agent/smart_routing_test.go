@@ -129,7 +129,7 @@ func TestRoutingProbeTimeout_Default(t *testing.T) {
 func TestSynthesizeIntentRoute(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
-			"local": {Type: "openai-compat"},
+			"local": {Type: "lmstudio"},
 			"cloud": {Type: "anthropic"},
 		},
 	}
@@ -152,7 +152,7 @@ func TestSynthesizeIntentRoute(t *testing.T) {
 func TestSynthesizeIntentRoute_WithModelRef(t *testing.T) {
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
-			"local": {Type: "openai-compat"},
+			"local": {Type: "lmstudio"},
 		},
 	}
 
@@ -410,7 +410,7 @@ func TestScoreSmartRouteCandidates_CapabilityBreaksTie(t *testing.T) {
 // it as "qwen/qwen3-coder-next".
 func TestEvaluateProviderCandidate_NormalizesBareName(t *testing.T) {
 	pc := agentConfig.ProviderConfig{
-		Type:    "openai-compat",
+		Type:    "lmstudio",
 		BaseURL: "http://localhost:1234/v1",
 		APIKey:  "test",
 	}
@@ -434,7 +434,7 @@ func TestEvaluateProviderCandidate_NormalizesBareName(t *testing.T) {
 // returned instead of silently picking one.
 func TestEvaluateProviderCandidate_AmbiguousNormalization(t *testing.T) {
 	pc := agentConfig.ProviderConfig{
-		Type:    "openai-compat",
+		Type:    "lmstudio",
 		BaseURL: "http://localhost:1234/v1",
 		APIKey:  "test",
 	}
@@ -454,7 +454,7 @@ func TestEvaluateProviderCandidate_AmbiguousNormalization(t *testing.T) {
 // "qwen/foo" so the probe succeeds and routing uses the canonical ID.
 func TestEvaluateProviderCandidate_MockLMStudioNormalization(t *testing.T) {
 	pc := agentConfig.ProviderConfig{
-		Type:    "openai-compat",
+		Type:    "lmstudio",
 		BaseURL: "http://lmstudio:1234/v1",
 		APIKey:  "test",
 	}

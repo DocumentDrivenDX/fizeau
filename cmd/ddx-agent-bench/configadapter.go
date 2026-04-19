@@ -24,11 +24,19 @@ func (a *configAdapter) Provider(name string) (agent.ServiceProviderEntry, bool)
 	if !ok {
 		return agent.ServiceProviderEntry{}, false
 	}
+	endpoints := make([]agent.ServiceProviderEndpoint, 0, len(pc.Endpoints))
+	for _, endpoint := range pc.Endpoints {
+		endpoints = append(endpoints, agent.ServiceProviderEndpoint{
+			Name:    endpoint.Name,
+			BaseURL: endpoint.BaseURL,
+		})
+	}
 	return agent.ServiceProviderEntry{
-		Type:    pc.Type,
-		BaseURL: pc.BaseURL,
-		APIKey:  pc.APIKey,
-		Model:   pc.Model,
+		Type:      pc.Type,
+		BaseURL:   pc.BaseURL,
+		Endpoints: endpoints,
+		APIKey:    pc.APIKey,
+		Model:     pc.Model,
 	}, true
 }
 

@@ -208,7 +208,7 @@ func TestChat_AttemptMetadataIncludesServerIdentityAndCacheUsage(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotNil(t, resp.Attempt)
-	assert.Equal(t, "openai-compat", resp.Attempt.ProviderName)
+	assert.Equal(t, "local", resp.Attempt.ProviderName)
 	assert.Equal(t, "local", resp.Attempt.ProviderSystem)
 	assert.Equal(t, parsed.Hostname(), resp.Attempt.ServerAddress)
 	assert.NotZero(t, resp.Attempt.ServerPort)
@@ -644,7 +644,7 @@ func TestNew_LocalOpenAICompatibleBaseURLsResolveProviderIdentity(t *testing.T) 
 			port:    1234,
 		},
 		{
-			name:    "ollama openai-compatible endpoint",
+			name:    "ollama lmstudioible endpoint",
 			baseURL: "http://127.0.0.1:11434/v1",
 			system:  "ollama",
 			host:    "127.0.0.1",

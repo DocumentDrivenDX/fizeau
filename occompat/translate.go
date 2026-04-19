@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strings"
 
 	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
@@ -20,7 +21,7 @@ type TranslationResult struct {
 func Translate(opencodeDir, authKey string) *TranslationResult {
 	result := &TranslationResult{
 		Provider: agentConfig.ProviderConfig{
-			Type: "openai-compat", // default
+			Type: "lmstudio",
 		},
 	}
 
@@ -43,11 +44,12 @@ func Translate(opencodeDir, authKey string) *TranslationResult {
 		result.Provider.APIKey = authKey
 	}
 
+	result.Provider.Type = concreteProviderType(cfg.Options.NPM, result.Provider.BaseURL)
+
 	// Map npm → type
 	if cfg.Options.NPM != "" {
-		// @ai-sdk/openai-compatible maps to openai-compat
-		if cfg.Options.NPM == "@ai-sdk/openai-compatible" {
-			result.Provider.Type = "openai-compat"
+		if cfg.Options.NPM != "@ai-sdk/openai-compatible" {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("unsupported npm provider %q; inferred type %q", cfg.Options.NPM, result.Provider.Type))
 		}
 	}
 
@@ -57,6 +59,32 @@ func Translate(opencodeDir, authKey string) *TranslationResult {
 	}
 
 	return result
+}
+
+func concreteProviderType(npm, baseURL string) string {
+	lowURL := strings.ToLower(strings.TrimSpace(baseURL))
+	switch {
+	case strings.Contains(lowURL, "openrouter.ai"):
+		return "openrouter"
+	case strings.Contains(lowURL, "openai.com"):
+		return "openai"
+	case strings.Contains(lowURL, "minimaxi.chat"):
+		return "minimax"
+	case strings.Contains(lowURL, "dashscope.aliyuncs.com"):
+		return "qwen"
+	case strings.Contains(lowURL, "z.ai"):
+		return "zai"
+	case strings.Contains(lowURL, ":11434"):
+		return "ollama"
+	case strings.Contains(lowURL, ":1235"):
+		return "omlx"
+	case strings.Contains(lowURL, ":1234"):
+		return "lmstudio"
+	}
+	if strings.TrimSpace(npm) == "@ai-sdk/openai-compatible" {
+		return "lmstudio"
+	}
+	return "openai"
 }
 
 // ComputeSourceHash computes a truncated SHA-256 hash of the source files.

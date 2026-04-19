@@ -47,7 +47,7 @@ func seedMixedUsageLogs(t *testing.T, logDir string) {
 	oldDay := now.AddDate(0, 0, -30).Truncate(24 * time.Hour)
 
 	writeUsageLog(t, "recent-known", recentDay.Add(10*time.Hour), recentDay.Add(10*time.Hour+time.Second), session.SessionStartData{
-		Provider: "openai-compat",
+		Provider: "lmstudio",
 		Model:    "qwen3.5-7b",
 		Prompt:   "recent known",
 	}, session.SessionEndData{
@@ -60,7 +60,7 @@ func seedMixedUsageLogs(t *testing.T, logDir string) {
 	})
 
 	writeUsageLog(t, "recent-unknown", recentDay.Add(11*time.Hour), recentDay.Add(11*time.Hour+2*time.Second), session.SessionStartData{
-		Provider: "openai-compat",
+		Provider: "lmstudio",
 		Model:    "qwen3.5-7b",
 		Prompt:   "recent unknown",
 	}, session.SessionEndData{
@@ -98,7 +98,7 @@ func TestCLI_Usage(t *testing.T) {
 	output := string(out)
 	assert.Contains(t, output, "PROVIDER")
 	assert.Contains(t, output, "TOTAL")
-	assert.Contains(t, output, "openai-compat")
+	assert.Contains(t, output, "lmstudio")
 	assert.Contains(t, output, "qwen3.5-7b")
 	assert.Contains(t, output, "Window:")
 	assert.Contains(t, output, "unknown")
@@ -129,7 +129,7 @@ func TestCLI_Usage_JSON_MixedCost(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out, &report))
 
 	require.Len(t, report.Rows, 1)
-	assert.Equal(t, "openai-compat", report.Rows[0].Provider)
+	assert.Equal(t, "lmstudio", report.Rows[0].Provider)
 	assert.Equal(t, "qwen3.5-7b", report.Rows[0].Model)
 	assert.Nil(t, report.Rows[0].KnownCostUSD)
 	assert.Equal(t, 1, report.Rows[0].UnknownCostSessions)
@@ -170,7 +170,7 @@ func TestCLI_Usage_CSV_MixedCost(t *testing.T) {
 		"cache_write_tokens",
 	}, rows[0])
 
-	assert.Equal(t, "openai-compat", rows[1][0])
+	assert.Equal(t, "lmstudio", rows[1][0])
 	assert.Equal(t, "qwen3.5-7b", rows[1][1])
 	assert.Equal(t, "2", rows[1][2])
 	assert.Equal(t, "1", rows[1][10]) // unknown_cost_sessions now at index 10

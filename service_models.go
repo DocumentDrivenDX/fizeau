@@ -165,7 +165,7 @@ func listModelsForProvider(
 // and ranked is the scored list.
 func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat *modelcatalog.Catalog) ([]string, []scoredModel) {
 	switch normalizeServiceProviderType(entry.Type) {
-	case "openai-compat":
+	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai":
 		if entry.BaseURL == "" {
 			return nil, nil
 		}

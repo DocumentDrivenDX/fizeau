@@ -14,7 +14,11 @@ import (
 	"github.com/DocumentDrivenDX/agent"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
+	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
+	"github.com/DocumentDrivenDX/agent/internal/provider/ollama"
+	"github.com/DocumentDrivenDX/agent/internal/provider/omlx"
 	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
+	"github.com/DocumentDrivenDX/agent/internal/provider/openrouter"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
 	"github.com/DocumentDrivenDX/agent/telemetry"
@@ -23,10 +27,11 @@ import (
 
 // ProviderConfig describes a single named provider.
 type ProviderConfig struct {
-	Type    string `yaml:"type"`     // "openai-compat" or "anthropic"
-	BaseURL string `yaml:"base_url"` // e.g., "http://localhost:1234/v1"
-	APIKey  string `yaml:"api_key"`
-	Model   string `yaml:"model"`
+	Type      string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "omlx", "ollama", or "anthropic"
+	BaseURL   string             `yaml:"base_url,omitempty"` // shorthand for one endpoint
+	Endpoints []ProviderEndpoint `yaml:"endpoints,omitempty"`
+	APIKey    string             `yaml:"api_key,omitempty"`
+	Model     string             `yaml:"model,omitempty"`
 	// ModelPattern is a case-insensitive regex applied to auto-discovered model
 	// IDs when Model is empty. The first matching model returned by /v1/models
 	// is used. If the pattern matches nothing, the first available model is
@@ -42,10 +47,13 @@ type ProviderConfig struct {
 	// automatic compaction: the compactor triggers when message history approaches
 	// this limit. Zero means use the compaction package default (8192).
 	ContextWindow int `yaml:"context_window,omitempty"`
-	// Flavor identifies the server software when it cannot be reliably detected
-	// from the base URL alone. Supported values: "lmstudio", "omlx", "openrouter",
-	// "ollama". When set, limit discovery uses this directly instead of probing.
-	Flavor string `yaml:"flavor,omitempty"`
+}
+
+// ProviderEndpoint describes one serving endpoint for providers that can run
+// across multiple host:port locations.
+type ProviderEndpoint struct {
+	Name    string `yaml:"name,omitempty"`
+	BaseURL string `yaml:"base_url"`
 }
 
 // ImportMetadata records the last import source for drift detection.
@@ -288,7 +296,10 @@ func (c *Config) migrateLegacy() {
 
 	provType := c.LegacyProvider
 	if provType == "" {
-		provType = "openai-compat"
+		provType = inferProviderTypeFromBaseURL(c.LegacyBaseURL)
+		if provType == "" {
+			provType = "lmstudio"
+		}
 	}
 	baseURL := c.LegacyBaseURL
 	if baseURL == "" {
@@ -321,27 +332,31 @@ func (c *Config) applyEnvOverrides() {
 	// Get or create default provider
 	defName := c.defaultNameForEnvOverride()
 	p := c.Providers[defName]
+	changed := false
 
 	if v := os.Getenv("AGENT_PROVIDER"); v != "" {
 		p.Type = v
+		changed = true
 	}
 	if v := os.Getenv("AGENT_BASE_URL"); v != "" {
 		p.BaseURL = v
+		changed = true
 	}
 	if v := os.Getenv("AGENT_API_KEY"); v != "" {
 		p.APIKey = v
+		changed = true
 	}
 	if v := os.Getenv("AGENT_MODEL"); v != "" {
 		p.Model = v
+		changed = true
 	}
 
-	// Only write back if something was set
-	if p.Type != "" || p.BaseURL != "" || p.APIKey != "" || p.Model != "" {
+	if changed {
 		if p.Type == "" {
-			p.Type = "openai-compat"
-		}
-		if p.BaseURL == "" && p.Type == "openai-compat" {
-			p.BaseURL = "http://localhost:1234/v1"
+			p.Type = inferProviderTypeFromBaseURL(p.BaseURL)
+			if p.Type == "" {
+				p.Type = "lmstudio"
+			}
 		}
 		c.Providers[defName] = p
 		if c.Default == "" {
@@ -727,15 +742,23 @@ func (c *Config) ResolveBackend(name string, counter int, overrides ProviderOver
 }
 
 func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
+	pc = normalizeProviderConfig(pc)
+	knownModels := openAIKnownModels()
 	switch pc.Type {
-	case "openai-compat", "openai":
-		// Populate the known-models map from the embedded catalog so the provider
-		// can rank discovered models by catalog recognition. Failure is non-fatal.
-		var knownModels map[string]string
-		if cat, err := modelcatalog.Default(); err == nil {
-			knownModels = cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
-		}
+	case "openai":
 		return oaiProvider.New(oaiProvider.Config{
+			BaseURL:        pc.BaseURL,
+			APIKey:         pc.APIKey,
+			Model:          pc.Model,
+			ProviderName:   "openai",
+			ProviderSystem: "openai",
+			ModelPattern:   pc.ModelPattern,
+			KnownModels:    knownModels,
+			Headers:        pc.Headers,
+			Reasoning:      pc.Reasoning,
+		}), nil
+	case "openrouter":
+		return openrouter.New(openrouter.Config{
 			BaseURL:      pc.BaseURL,
 			APIKey:       pc.APIKey,
 			Model:        pc.Model,
@@ -743,16 +766,65 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 			KnownModels:  knownModels,
 			Headers:      pc.Headers,
 			Reasoning:    pc.Reasoning,
-			Flavor:       pc.Flavor,
+		}), nil
+	case "lmstudio":
+		return lmstudio.New(lmstudio.Config{
+			BaseURL:      pc.BaseURL,
+			APIKey:       pc.APIKey,
+			Model:        pc.Model,
+			ModelPattern: pc.ModelPattern,
+			KnownModels:  knownModels,
+			Headers:      pc.Headers,
+			Reasoning:    pc.Reasoning,
+		}), nil
+	case "omlx":
+		return omlx.New(omlx.Config{
+			BaseURL:      pc.BaseURL,
+			APIKey:       pc.APIKey,
+			Model:        pc.Model,
+			ModelPattern: pc.ModelPattern,
+			KnownModels:  knownModels,
+			Headers:      pc.Headers,
+			Reasoning:    pc.Reasoning,
+		}), nil
+	case "ollama":
+		return ollama.New(ollama.Config{
+			BaseURL:      pc.BaseURL,
+			APIKey:       pc.APIKey,
+			Model:        pc.Model,
+			ModelPattern: pc.ModelPattern,
+			KnownModels:  knownModels,
+			Headers:      pc.Headers,
+			Reasoning:    pc.Reasoning,
+		}), nil
+	case "minimax", "qwen", "zai":
+		return oaiProvider.New(oaiProvider.Config{
+			BaseURL:        pc.BaseURL,
+			APIKey:         pc.APIKey,
+			Model:          pc.Model,
+			ProviderName:   pc.Type,
+			ProviderSystem: pc.Type,
+			ModelPattern:   pc.ModelPattern,
+			KnownModels:    knownModels,
+			Headers:        pc.Headers,
+			Reasoning:      pc.Reasoning,
 		}), nil
 	case "anthropic":
 		return anthropic.New(anthropic.Config{
-			APIKey: pc.APIKey,
-			Model:  pc.Model,
+			BaseURL: pc.BaseURL,
+			APIKey:  pc.APIKey,
+			Model:   pc.Model,
 		}), nil
 	default:
-		return nil, fmt.Errorf("config: unknown provider type %q (use openai-compat or anthropic)", pc.Type)
+		return nil, fmt.Errorf("config: unknown provider type %q", pc.Type)
 	}
+}
+
+func openAIKnownModels() map[string]string {
+	if cat, err := modelcatalog.Default(); err == nil {
+		return cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
+	}
+	return nil
 }
 
 func rejectLegacyProviderReasoningKeys(data []byte) error {
@@ -763,6 +835,9 @@ func rejectLegacyProviderReasoningKeys(data []byte) error {
 		return err
 	}
 	for name, provider := range raw.Providers {
+		if _, ok := provider["flavor"]; ok {
+			return fmt.Errorf("provider %q: flavor is no longer supported; use a concrete provider type", name)
+		}
 		for _, key := range []string{"thinking" + "_level", "thinking" + "_budget"} {
 			if _, ok := provider[key]; ok {
 				return fmt.Errorf("provider %q: use reasoning instead of %s", name, key)
@@ -775,6 +850,15 @@ func rejectLegacyProviderReasoningKeys(data []byte) error {
 func (c *Config) finalize() error {
 	c.warnings = nil
 	c.legacyModelRoutes = make(map[string]ModelRouteConfig)
+
+	for name, pc := range c.Providers {
+		normalized := normalizeProviderConfig(pc)
+		c.Providers[name] = normalized
+	}
+
+	if err := c.validateProviders(); err != nil {
+		return err
+	}
 
 	if c.ModelRoutes == nil {
 		c.ModelRoutes = make(map[string]ModelRouteConfig)
@@ -792,6 +876,84 @@ func (c *Config) finalize() error {
 	}
 
 	return nil
+}
+
+func normalizeProviderConfig(pc ProviderConfig) ProviderConfig {
+	pc.Type = strings.ToLower(strings.TrimSpace(pc.Type))
+	pc.BaseURL = strings.TrimSpace(pc.BaseURL)
+	for i := range pc.Endpoints {
+		pc.Endpoints[i].Name = strings.TrimSpace(pc.Endpoints[i].Name)
+		pc.Endpoints[i].BaseURL = strings.TrimSpace(pc.Endpoints[i].BaseURL)
+	}
+	if pc.BaseURL == "" && len(pc.Endpoints) > 0 {
+		pc.BaseURL = pc.Endpoints[0].BaseURL
+	}
+	if pc.Type == "" {
+		pc.Type = inferProviderTypeFromBaseURL(pc.BaseURL)
+	}
+	switch pc.Type {
+	case "openrouter":
+		if pc.BaseURL == "" {
+			pc.BaseURL = openrouter.DefaultBaseURL
+		}
+	case "openai":
+		if pc.BaseURL == "" {
+			pc.BaseURL = "https://api.openai.com/v1"
+		}
+	case "lmstudio":
+		if pc.BaseURL == "" {
+			pc.BaseURL = lmstudio.DefaultBaseURL
+		}
+	case "omlx":
+		if pc.BaseURL == "" {
+			pc.BaseURL = omlx.DefaultBaseURL
+		}
+	case "ollama":
+		if pc.BaseURL == "" {
+			pc.BaseURL = ollama.DefaultBaseURL
+		}
+	}
+	if pc.BaseURL != "" && len(pc.Endpoints) == 0 && providerUsesEndpoint(pc.Type) {
+		pc.Endpoints = []ProviderEndpoint{{Name: "default", BaseURL: pc.BaseURL}}
+	}
+	return pc
+}
+
+func inferProviderTypeFromBaseURL(baseURL string) string {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return ""
+	}
+	low := strings.ToLower(baseURL)
+	switch {
+	case strings.Contains(low, "openrouter.ai"):
+		return "openrouter"
+	case strings.Contains(low, "openai.com"):
+		return "openai"
+	case strings.Contains(low, "minimaxi.chat"):
+		return "minimax"
+	case strings.Contains(low, "dashscope.aliyuncs.com"):
+		return "qwen"
+	case strings.Contains(low, "z.ai"):
+		return "zai"
+	case strings.Contains(low, ":11434"):
+		return "ollama"
+	case strings.Contains(low, ":1234"):
+		return "lmstudio"
+	case strings.Contains(low, ":1235"):
+		return "omlx"
+	default:
+		return ""
+	}
+}
+
+func providerUsesEndpoint(providerType string) bool {
+	switch providerType {
+	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Config) translateLegacyBackends() error {
@@ -911,7 +1073,7 @@ func defaultModelCatalogManifestPath() string {
 
 func surfaceForProviderType(providerType string) (modelcatalog.Surface, error) {
 	switch providerType {
-	case "openai-compat", "openai":
+	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai":
 		return modelcatalog.SurfaceAgentOpenAI, nil
 	case "anthropic":
 		return modelcatalog.SurfaceAgentAnthropic, nil
@@ -957,24 +1119,31 @@ func SaveToFile(path string, cfg *Config) error {
 	return nil
 }
 
-// validateProviders checks that at least one usable provider configuration
-// exists. Called during Load, it catches the common mistake of running with
-// no config and no env-var overrides before a cryptic API error at runtime.
+// validateProviders checks configured provider entries. A config with no
+// providers is still loadable because several CLI surfaces do not need a
+// runtime provider.
 func (c *Config) validateProviders() error {
 	if len(c.Providers) == 0 {
-		return fmt.Errorf("config: no providers configured — set AGENT_PROVIDER/AGENT_BASE_URL or write a config file")
+		return nil
 	}
 	for name, pc := range c.Providers {
-		if pc.Type != "openai-compat" && pc.Type != "openai" && pc.Type != "anthropic" {
-			return fmt.Errorf("config: provider %q has unknown type %q (use openai-compat or anthropic)", name, pc.Type)
+		if pc.Type == "openai-compat" {
+			return fmt.Errorf("config: provider %q: type openai-compat is no longer supported; use openai, openrouter, lmstudio, omlx, or ollama", name)
 		}
-		if pc.Type == "openai-compat" || pc.Type == "openai" {
-			if pc.BaseURL == "" {
-				return fmt.Errorf("config: provider %q (%s): base_url is required", name, pc.Type)
+		switch pc.Type {
+		case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai", "anthropic":
+		default:
+			return fmt.Errorf("config: provider %q has unknown type %q (use openai, openrouter, lmstudio, omlx, ollama, or anthropic)", name, pc.Type)
+		}
+		if providerUsesEndpoint(pc.Type) {
+			for i, endpoint := range pc.Endpoints {
+				if endpoint.BaseURL == "" {
+					return fmt.Errorf("config: provider %q endpoint %d: base_url is required", name, i+1)
+				}
 			}
 		}
-		if pc.Type == "anthropic" && pc.APIKey == "" {
-			return fmt.Errorf("config: provider %q (anthropic): api_key is required", name)
+		if (pc.Type == "openai" || pc.Type == "openrouter" || pc.Type == "anthropic") && pc.APIKey == "" {
+			return fmt.Errorf("config: provider %q (%s): api_key is required", name, pc.Type)
 		}
 	}
 	return nil

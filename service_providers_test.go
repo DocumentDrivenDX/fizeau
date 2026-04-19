@@ -85,7 +85,7 @@ func TestListProviders_Connected(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"local": {Type: "openai-compat", BaseURL: ts.URL + "/v1", Model: "model-a"},
+			"local": {Type: "lmstudio", BaseURL: ts.URL + "/v1", Model: "model-a"},
 		},
 		names:       []string{"local"},
 		defaultName: "local",
@@ -115,15 +115,15 @@ func TestListProviders_Connected(t *testing.T) {
 	if info.DefaultModel != "model-a" {
 		t.Errorf("DefaultModel: got %q, want %q", info.DefaultModel, "model-a")
 	}
-	if info.Type != "openai-compat" {
-		t.Errorf("Type: got %q, want %q", info.Type, "openai-compat")
+	if info.Type != "lmstudio" {
+		t.Errorf("Type: got %q, want %q", info.Type, "lmstudio")
 	}
 }
 
 func TestListProviders_Unreachable(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"remote": {Type: "openai-compat", BaseURL: "http://127.0.0.1:19999/v1"},
+			"remote": {Type: "lmstudio", BaseURL: "http://127.0.0.1:19999/v1"},
 		},
 		names:       []string{"remote"},
 		defaultName: "remote",
@@ -201,7 +201,7 @@ func TestListProviders_CooldownState(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"myprovider": {Type: "openai-compat", BaseURL: "http://127.0.0.1:19999/v1"},
+			"myprovider": {Type: "lmstudio", BaseURL: "http://127.0.0.1:19999/v1"},
 		},
 		names:          []string{"myprovider"},
 		defaultName:    "myprovider",
@@ -243,7 +243,7 @@ func TestHealthCheck_Provider_Connected(t *testing.T) {
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"local": {Type: "openai-compat", BaseURL: ts.URL + "/v1"},
+			"local": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
 		},
 	}
 	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
@@ -256,7 +256,7 @@ func TestHealthCheck_Provider_Connected(t *testing.T) {
 func TestHealthCheck_Provider_Unreachable(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"dead": {Type: "openai-compat", BaseURL: "http://127.0.0.1:19999/v1"},
+			"dead": {Type: "lmstudio", BaseURL: "http://127.0.0.1:19999/v1"},
 		},
 	}
 	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
@@ -303,9 +303,9 @@ func TestHealthCheck_InvalidType(t *testing.T) {
 
 func TestNormalizeServiceProviderType(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"openai-compat", "openai-compat"},
-		{"openai", "openai-compat"},
-		{"", "openai-compat"},
+		{"lmstudio", "lmstudio"},
+		{"openai", "openai"},
+		{"", "openai"},
 		{"anthropic", "anthropic"},
 		{"custom", "custom"},
 	}

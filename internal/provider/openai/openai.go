@@ -48,7 +48,11 @@ type Config struct {
 	BaseURL      string // e.g., "http://localhost:1234/v1" for LM Studio
 	APIKey       string // optional for local providers
 	Model        string // e.g., "qwen3.5-7b", "gpt-4o". Empty = auto-discover.
-	ModelPattern string // case-insensitive regex to prefer among auto-discovered models
+	ProviderName string // logical provider identity; default "openai"
+	// ProviderSystem is the telemetry/cost system identity. When empty, it is
+	// inferred from BaseURL for compatibility with pre-split callers.
+	ProviderSystem string
+	ModelPattern   string // case-insensitive regex to prefer among auto-discovered models
 	// KnownModels maps concrete model IDs to catalog target IDs for the
 	// agent.openai surface. Models present in this map are ranked higher during
 	// auto-selection. Populated by the config layer from the model catalog;
@@ -65,6 +69,13 @@ type Config struct {
 // New creates a new OpenAI-compatible provider.
 func New(cfg Config) *Provider {
 	providerSystem, serverAddress, serverPort := openAIIdentity(cfg.BaseURL)
+	if cfg.ProviderSystem != "" {
+		providerSystem = cfg.ProviderSystem
+	}
+	providerName := cfg.ProviderName
+	if providerName == "" {
+		providerName = providerSystem
+	}
 	return &Provider{
 		client: openaicompat.NewClient(openaicompat.Config{
 			BaseURL: cfg.BaseURL,
@@ -76,7 +87,7 @@ func New(cfg Config) *Provider {
 		knownModels:      cfg.KnownModels,
 		baseURL:          cfg.BaseURL,
 		apiKey:           cfg.APIKey,
-		providerName:     "openai-compat",
+		providerName:     providerName,
 		providerSystem:   providerSystem,
 		configFlavor:     cfg.Flavor,
 		serverAddress:    serverAddress,

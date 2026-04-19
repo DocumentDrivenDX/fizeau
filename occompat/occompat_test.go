@@ -109,7 +109,7 @@ func TestTranslate(t *testing.T) {
 
 	result := Translate(tmpDir, "")
 
-	assert.Equal(t, "openai-compat", result.Provider.Type)
+	assert.Equal(t, "openai", result.Provider.Type)
 	assert.Equal(t, "https://api.example.com/v1", result.Provider.BaseURL)
 	assert.Equal(t, "secret-key", result.Provider.APIKey)
 	assert.Equal(t, "value", result.Provider.Headers["X-Custom"])
@@ -145,7 +145,7 @@ func TestTranslate_NPMMapping(t *testing.T) {
 
 	result := Translate(tmpDir, "")
 
-	assert.Equal(t, "openai-compat", result.Provider.Type)
+	assert.Equal(t, "lmstudio", result.Provider.Type)
 }
 
 func TestTranslate_Headers(t *testing.T) {

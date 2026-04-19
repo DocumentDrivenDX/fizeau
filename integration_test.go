@@ -218,7 +218,7 @@ func TestIntegration_OpenAICompatibleProviderIdentity(t *testing.T) {
 	assert.NotEmpty(t, result.Model)
 	assert.NotEmpty(t, result.Output)
 	require.True(t, sawSessionStart, "expected session.start event")
-	assert.Equal(t, "openai-compat", start.Provider)
+	assert.Equal(t, "lmstudio", start.Provider)
 	assert.Equal(t, model, start.Model)
 }
 

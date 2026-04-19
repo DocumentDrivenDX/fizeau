@@ -218,7 +218,7 @@ func run() int {
 	resolvedContextWindow := pc.ContextWindow
 	resolvedMaxTokens := pc.MaxTokens
 	if resolvedContextWindow == 0 || resolvedMaxTokens == 0 {
-		limits := oaiProvider.LookupModelLimits(ctx, pc.BaseURL, pc.APIKey, pc.Flavor, pc.Headers, selection.ResolvedModel)
+		limits := oaiProvider.LookupModelLimits(ctx, pc.BaseURL, pc.APIKey, pc.Type, pc.Headers, selection.ResolvedModel)
 		if resolvedContextWindow == 0 {
 			resolvedContextWindow = limits.ContextLength
 		}

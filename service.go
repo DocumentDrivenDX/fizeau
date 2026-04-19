@@ -63,10 +63,17 @@ type ServiceRouteCandidateEntry struct {
 
 // ServiceProviderEntry carries the minimal provider data the service needs.
 type ServiceProviderEntry struct {
-	Type    string // "openai-compat" | "anthropic"
+	Type      string // "openai" | "openrouter" | "lmstudio" | "omlx" | "ollama" | "anthropic"
+	BaseURL   string
+	Endpoints []ServiceProviderEndpoint
+	APIKey    string
+	Model     string // configured default model (may be empty)
+}
+
+// ServiceProviderEndpoint is one configured provider serving endpoint.
+type ServiceProviderEndpoint struct {
+	Name    string
 	BaseURL string
-	APIKey  string
-	Model   string // configured default model (may be empty)
 }
 
 // ServiceOptions configures a DdxAgent instance.
@@ -123,8 +130,9 @@ type CooldownState struct {
 // ProviderInfo describes a provider with live status per CONTRACT-003.
 type ProviderInfo struct {
 	Name          string
-	Type          string // "openai-compat" | "anthropic" | "virtual"
+	Type          string // "openai" | "openrouter" | "lmstudio" | "omlx" | "ollama" | "anthropic" | "virtual"
 	BaseURL       string
+	Endpoints     []ServiceProviderEndpoint
 	Status        string // "connected" | "unreachable" | "error: <msg>"
 	ModelCount    int
 	Capabilities  []string       // e.g. {"tool_use","streaming","json_mode"}

@@ -77,6 +77,7 @@ func (s *service) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
 				Name:         name,
 				Type:         normalizeServiceProviderType(entry.Type),
 				BaseURL:      entry.BaseURL,
+				Endpoints:    append([]ServiceProviderEndpoint(nil), entry.Endpoints...),
 				IsDefault:    name == defaultName,
 				DefaultModel: entry.Model,
 			}
@@ -152,7 +153,7 @@ func probeServiceProvider(ctx context.Context, entry ServiceProviderEntry) (stat
 		// Treat key presence as the connectivity signal.
 		return "connected", 0, []string{"tool_use", "vision", "streaming"}
 
-	case "openai-compat", "openai", "":
+	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai", "":
 		if entry.BaseURL == "" {
 			return "error: base_url not configured", 0, nil
 		}
@@ -262,14 +263,11 @@ func serviceLoadRouteFailures(workDir, routeName string) map[string]time.Time {
 }
 
 func normalizeServiceProviderType(t string) string {
-	switch t {
-	case "openai-compat", "openai", "":
-		return "openai-compat"
-	case "anthropic":
-		return "anthropic"
-	default:
-		return t
+	t = strings.ToLower(strings.TrimSpace(t))
+	if t == "" {
+		return "openai"
 	}
+	return t
 }
 
 func serviceIsUnreachable(msg string) bool {

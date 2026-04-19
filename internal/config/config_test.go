@@ -38,7 +38,7 @@ telemetry:
         pricing_ref: openai/gpt-4o
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: http://localhost:1234/v1
     model: qwen3.5-7b
   cloud:
@@ -68,7 +68,7 @@ max_iterations: 30
 
 	local, ok := cfg.GetProvider("local")
 	require.True(t, ok)
-	assert.Equal(t, "openai-compat", local.Type)
+	assert.Equal(t, "lmstudio", local.Type)
 	assert.Equal(t, "qwen3.5-7b", local.Model)
 
 	cloud, ok := cfg.GetProvider("cloud")
@@ -84,7 +84,7 @@ func TestLoad_LegacyMigration(t *testing.T) {
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
-provider: openai-compat
+provider: lmstudio
 base_url: http://vidar:1234/v1
 model: qwen3.5-7b
 max_iterations: 15
@@ -98,7 +98,7 @@ max_iterations: 15
 
 	p, ok := cfg.GetProvider("default")
 	require.True(t, ok)
-	assert.Equal(t, "openai-compat", p.Type)
+	assert.Equal(t, "lmstudio", p.Type)
 	assert.Equal(t, "http://vidar:1234/v1", p.BaseURL)
 	assert.Equal(t, "qwen3.5-7b", p.Model)
 }
@@ -211,9 +211,9 @@ func TestLoad_EnvOverrides(t *testing.T) {
 func TestProviderNames_DefaultFirst(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
-			"zebra": {Type: "openai-compat"},
+			"zebra": {Type: "lmstudio"},
 			"alpha": {Type: "anthropic"},
-			"local": {Type: "openai-compat"},
+			"local": {Type: "lmstudio"},
 		},
 		Default: "local",
 	}
@@ -226,7 +226,7 @@ func TestProviderNames_DefaultFirst(t *testing.T) {
 func TestProviderNames_MissingDefaultOmitsUnknownDefaultAndSortsExisting(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
-			"zebra": {Type: "openai-compat"},
+			"zebra": {Type: "lmstudio"},
 			"alpha": {Type: "anthropic"},
 		},
 		Default: "missing",
@@ -240,7 +240,7 @@ func TestBuildProvider_MissingConfiguredDefaultFails(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"alpha": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 				Model:   "test-model",
 			},
@@ -257,7 +257,7 @@ func TestBuildProvider(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"test": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 				Model:   "test-model",
 			},
@@ -272,11 +272,30 @@ func TestBuildProvider(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestBuildProvider_ConcreteProviderTypes(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"openai":     {Type: "openai", APIKey: "sk-test", Model: "gpt-4o"},
+			"openrouter": {Type: "openrouter", APIKey: "sk-test", Model: "openai/gpt-4o-mini"},
+			"lmstudio":   {Type: "lmstudio", BaseURL: "http://localhost:1234/v1", Model: "qwen3"},
+			"omlx":       {Type: "omlx", BaseURL: "http://localhost:1235/v1", Model: "qwen3"},
+			"ollama":     {Type: "ollama", BaseURL: "http://localhost:11434/v1", Model: "llama3.2"},
+			"anthropic":  {Type: "anthropic", APIKey: "sk-ant-test", Model: "claude-sonnet-4-20250514"},
+		},
+	}
+
+	for name := range cfg.Providers {
+		p, err := cfg.BuildProvider(name)
+		require.NoError(t, err, name)
+		assert.NotNil(t, p, name)
+	}
+}
+
 func TestBuildProvider_WithHeaders(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"openrouter": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "https://openrouter.ai/api/v1",
 				APIKey:  "test",
 				Model:   "test",
@@ -299,7 +318,7 @@ func TestResolveProviderConfig_ModelRefOpenAI(t *testing.T) {
 		ModelCatalog: ModelCatalogConfig{},
 		Providers: map[string]ProviderConfig{
 			"local": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 				Model:   "old-model",
 			},
@@ -377,7 +396,7 @@ targets:
 		ModelCatalog: ModelCatalogConfig{Manifest: manifestPath},
 		Providers: map[string]ProviderConfig{
 			"openrouter": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "https://openrouter.ai/api/v1",
 				APIKey:  "test",
 			},
@@ -469,7 +488,7 @@ func TestLoad_LegacySaveRoundTripDoesNotReemitLegacyFields(t *testing.T) {
 	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
 
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
-provider: openai-compat
+provider: lmstudio
 base_url: http://vidar:1234/v1
 api_key: secret
 model: qwen3.5-7b
@@ -493,8 +512,8 @@ func TestLoad_EnvOverridesCreateDeterministicDefaultProvider(t *testing.T) {
 
 	cfg := Defaults()
 	cfg.Providers = map[string]ProviderConfig{
-		"alpha": {Type: "openai-compat", BaseURL: "http://alpha"},
-		"zebra": {Type: "openai-compat", BaseURL: "http://zebra"},
+		"alpha": {Type: "lmstudio", BaseURL: "http://alpha"},
+		"zebra": {Type: "lmstudio", BaseURL: "http://zebra"},
 	}
 	cfg.applyEnvOverrides()
 
@@ -516,7 +535,7 @@ func TestSave(t *testing.T) {
 	cfg := &Config{
 		Providers: map[string]ProviderConfig{
 			"test": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 				Model:   "test-model",
 			},
@@ -541,7 +560,7 @@ func TestSaveToFile(t *testing.T) {
 	cfg := &Config{
 		Providers: map[string]ProviderConfig{
 			"local": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://localhost:1234/v1",
 			},
 		},
@@ -569,12 +588,12 @@ func TestResolveBackend_FirstAvailable(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"vidar": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://vidar:1234/v1",
 				Model:   "qwen3",
 			},
 			"bragi": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://bragi:1234/v1",
 				Model:   "qwen3",
 			},
@@ -602,12 +621,12 @@ func TestResolveBackend_RoundRobin(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"vidar": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://vidar:1234/v1",
 				Model:   "qwen3",
 			},
 			"bragi": {
-				Type:    "openai-compat",
+				Type:    "lmstudio",
 				BaseURL: "http://bragi:1234/v1",
 				Model:   "qwen3",
 			},
@@ -640,9 +659,9 @@ func TestResolveBackend_RoundRobin(t *testing.T) {
 func TestResolveBackend_RoundRobin_ThreeProviders(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
-			"a": {Type: "openai-compat", BaseURL: "http://a/v1", Model: "m"},
-			"b": {Type: "openai-compat", BaseURL: "http://b/v1", Model: "m"},
-			"c": {Type: "openai-compat", BaseURL: "http://c/v1", Model: "m"},
+			"a": {Type: "lmstudio", BaseURL: "http://a/v1", Model: "m"},
+			"b": {Type: "lmstudio", BaseURL: "http://b/v1", Model: "m"},
+			"c": {Type: "lmstudio", BaseURL: "http://c/v1", Model: "m"},
 		},
 		Backends: map[string]BackendPoolConfig{
 			"tri": {
@@ -792,11 +811,11 @@ func TestLoad_BackendPools(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   vidar:
-    type: openai-compat
+    type: lmstudio
     base_url: http://vidar:1234/v1
     model: qwen3
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: http://bragi:1234/v1
     model: qwen3
 backends:
@@ -855,10 +874,10 @@ func TestLoad_ModelRoutesAndRoutingDefaults(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: http://bragi:1234/v1
   grendel:
-    type: openai-compat
+    type: lmstudio
     base_url: http://grendel:1234/v1
 routing:
   default_model: qwen3.5-27b
@@ -902,7 +921,7 @@ func TestLoad_ModelRoutesRejectUnknownProvider(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: http://bragi:1234/v1
 model_routes:
   qwen3.5-27b:
@@ -925,7 +944,7 @@ func TestLoad_ModelRoutesRejectEmptyCandidates(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: http://bragi:1234/v1
 model_routes:
   qwen3.5-27b:
@@ -947,7 +966,7 @@ func TestLoad_RoutingDefaultModelAllowsAutoDiscoveredIntentRoute(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: http://bragi:1234/v1
 routing:
   default_model: missing-route
@@ -972,7 +991,7 @@ func TestLoad_BackendPoolsRejectUnknownProviderDuringTranslation(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: http://bragi:1234/v1
 backends:
   local-pool:
@@ -1005,7 +1024,7 @@ func TestBuildProvider_Reasoning_PropagatesConfig(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"reasoning": {
-				Type:      "openai-compat",
+				Type:      "lmstudio",
 				BaseURL:   "http://localhost:1234/v1",
 				Model:     "qwen3.5-27b",
 				Reasoning: reasoning.ReasoningMedium,
@@ -1032,7 +1051,7 @@ func TestLoad_Reasoning_ParsedFromYAML(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   vidar:
-    type: openai-compat
+    type: lmstudio
     base_url: http://vidar:1234/v1
     model: qwen3.5-27b
     reasoning: medium
@@ -1060,7 +1079,7 @@ func TestLoad_LegacyProviderReasoningKeysRejected(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   vidar:
-    type: openai-compat
+    type: lmstudio
     base_url: http://vidar:1234/v1
     model: qwen3.5-27b
     `+"thinking"+`_level: medium
@@ -1072,7 +1091,7 @@ default: vidar
 	assert.Contains(t, err.Error(), "use reasoning")
 }
 
-func TestLoad_ReasoningThresholds(t *testing.T) {
+func TestLoad_OpenAICompatTypeRejected(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".agent")
@@ -1082,6 +1101,97 @@ func TestLoad_ReasoningThresholds(t *testing.T) {
 providers:
   local:
     type: openai-compat
+    base_url: http://localhost:1234/v1
+default: local
+`), 0o644))
+
+	_, err := Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "type openai-compat is no longer supported")
+}
+
+func TestLoad_EndpointPoolAcceptedAndBaseURLNormalized(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  studio:
+    type: lmstudio
+    endpoints:
+      - name: vidar
+        base_url: http://vidar:1234/v1
+      - name: eitri
+        base_url: http://eitri:1234/v1
+default: studio
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	pc, ok := cfg.GetProvider("studio")
+	require.True(t, ok)
+	assert.Equal(t, "http://vidar:1234/v1", pc.BaseURL)
+	require.Len(t, pc.Endpoints, 2)
+	assert.Equal(t, "vidar", pc.Endpoints[0].Name)
+}
+
+func TestLoad_InferProviderTypeFromBaseURL(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  router:
+    base_url: https://openrouter.ai/api/v1
+    api_key: sk-router
+  studio:
+    base_url: http://localhost:1234/v1
+default: studio
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	router, ok := cfg.GetProvider("router")
+	require.True(t, ok)
+	assert.Equal(t, "openrouter", router.Type)
+	studio, ok := cfg.GetProvider("studio")
+	require.True(t, ok)
+	assert.Equal(t, "lmstudio", studio.Type)
+}
+
+func TestLoad_MissingTypeUnknownBaseURLRejected(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  unknown:
+    base_url: http://example.invalid/v1
+    api_key: sk-test
+default: unknown
+`), 0o644))
+
+	_, err := Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `provider "unknown" has unknown type`)
+}
+
+func TestLoad_ReasoningThresholds(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: lmstudio
     base_url: http://localhost:1234/v1
 reasoning_byte_limit: 524288
 reasoning_stall_timeout: "5m"
@@ -1107,7 +1217,7 @@ func TestLoad_ReasoningThresholds_ZeroUnlimited(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: http://localhost:1234/v1
 reasoning_byte_limit: 0
 reasoning_stall_timeout: "0s"
@@ -1151,7 +1261,7 @@ func TestCompactionPercent_Parsed(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: http://localhost:1234/v1
 default: local
 compaction_percent: 80
@@ -1171,7 +1281,7 @@ func TestCompactionPercent_AbsentUsesZero(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: http://localhost:1234/v1
 default: local
 `), 0o644))
@@ -1190,7 +1300,7 @@ func TestCompactionPercent_OutOfRangeRejected(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: http://localhost:1234/v1
 default: local
 compaction_percent: 101
@@ -1201,7 +1311,7 @@ compaction_percent: 101
 	assert.Contains(t, err.Error(), "compaction_percent")
 }
 
-func TestLoad_Flavor_ParsedFromYAML(t *testing.T) {
+func TestLoad_FlavorRejected(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".agent")
@@ -1210,19 +1320,16 @@ func TestLoad_Flavor_ParsedFromYAML(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   vidar-omlx:
-    type: openai-compat
+    type: lmstudio
     base_url: http://vidar:1235/v1
     model: Qwen3.5-27B-4bit
     flavor: omlx
 default: vidar-omlx
 `), 0o644))
 
-	cfg, err := Load(dir)
-	require.NoError(t, err)
-
-	pc, ok := cfg.GetProvider("vidar-omlx")
-	require.True(t, ok)
-	assert.Equal(t, "omlx", pc.Flavor)
+	_, err := Load(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "flavor is no longer supported")
 }
 
 func TestLoad_ContextWindow_ParsedFromYAML(t *testing.T) {
@@ -1234,7 +1341,7 @@ func TestLoad_ContextWindow_ParsedFromYAML(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: http://localhost:1234/v1
     model: qwen3.5-27b
     context_window: 262144
@@ -1258,7 +1365,7 @@ func TestLoad_MaxTokens_ParsedFromYAML(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   local:
-    type: openai-compat
+    type: lmstudio
     base_url: http://localhost:1234/v1
     model: qwen3.5-27b
     max_tokens: 8192
@@ -1282,10 +1389,9 @@ func TestLoad_NewFields_AllTogether(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   vidar-omlx:
-    type: openai-compat
+    type: omlx
     base_url: http://vidar:1235/v1
     model: Qwen3.5-27B-4bit
-    flavor: omlx
     context_window: 262144
     max_tokens: 32768
     reasoning: medium
@@ -1297,7 +1403,7 @@ default: vidar-omlx
 
 	pc, ok := cfg.GetProvider("vidar-omlx")
 	require.True(t, ok)
-	assert.Equal(t, "omlx", pc.Flavor)
+	assert.Equal(t, "omlx", pc.Type)
 	assert.Equal(t, 262144, pc.ContextWindow)
 	assert.Equal(t, 32768, pc.MaxTokens)
 	assert.Equal(t, reasoning.ReasoningMedium, pc.Reasoning)
@@ -1317,7 +1423,7 @@ func TestLoad_NewFields_AbsentUseZeroDefaults(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 providers:
   plain:
-    type: openai-compat
+    type: lmstudio
     base_url: http://localhost:1234/v1
     model: qwen3.5-27b
 default: plain
@@ -1328,7 +1434,6 @@ default: plain
 
 	pc, ok := cfg.GetProvider("plain")
 	require.True(t, ok)
-	assert.Empty(t, pc.Flavor)
 	assert.Zero(t, pc.ContextWindow)
 	assert.Zero(t, pc.MaxTokens)
 }

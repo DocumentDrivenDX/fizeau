@@ -52,7 +52,7 @@ func TestRun_CONTRACT001SpanConformance(t *testing.T) {
 	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
 
 	provider := &conformanceProvider{
-		provider:      "openai-compat",
+		provider:      "lmstudio",
 		system:        "openai",
 		model:         "gpt-4o",
 		serverAddress: "api.openai.com",
@@ -65,7 +65,7 @@ func TestRun_CONTRACT001SpanConformance(t *testing.T) {
 				Usage: TokenUsage{Input: 11, Output: 9, CacheRead: 2, CacheWrite: 1, Total: 20},
 				Model: "gpt-4o",
 				Attempt: &AttemptMetadata{
-					ProviderName:   "openai-compat",
+					ProviderName:   "lmstudio",
 					ProviderSystem: "openai",
 					Route:          "default",
 					RequestedModel: "gpt-4o",
@@ -83,7 +83,7 @@ func TestRun_CONTRACT001SpanConformance(t *testing.T) {
 				Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
 				Model:   "gpt-4o",
 				Attempt: &AttemptMetadata{
-					ProviderName:   "openai-compat",
+					ProviderName:   "lmstudio",
 					ProviderSystem: "openai",
 					RequestedModel: "gpt-4o",
 					ResponseModel:  "gpt-4o",
@@ -142,7 +142,7 @@ func TestRun_CONTRACT001SpanConformance(t *testing.T) {
 	assert.Equal(t, "chat", attrString(t, chatTwo.Attributes(), telemetry.KeyOperationName))
 	assert.Equal(t, "execute_tool", attrString(t, toolSpan.Attributes(), telemetry.KeyOperationName))
 
-	assert.Equal(t, "openai-compat", attrString(t, chatOne.Attributes(), telemetry.KeyProviderName))
+	assert.Equal(t, "lmstudio", attrString(t, chatOne.Attributes(), telemetry.KeyProviderName))
 	assert.Equal(t, "openai", attrString(t, chatOne.Attributes(), telemetry.KeyProviderSystem))
 	assert.Equal(t, "default", attrString(t, chatOne.Attributes(), telemetry.KeyProviderRoute))
 	assert.Equal(t, "gpt-4o", attrString(t, chatOne.Attributes(), telemetry.KeyRequestModel))
@@ -182,7 +182,7 @@ func TestRun_CONTRACT001CostPrecedence(t *testing.T) {
 	})
 
 	provider := &conformanceProvider{
-		provider:      "openai-compat",
+		provider:      "lmstudio",
 		system:        "openai",
 		model:         "gpt-4o",
 		serverAddress: "api.openai.com",
@@ -193,7 +193,7 @@ func TestRun_CONTRACT001CostPrecedence(t *testing.T) {
 				Usage:   TokenUsage{Input: 12, Output: 3, Total: 15},
 				Model:   "gpt-4o",
 				Attempt: &AttemptMetadata{
-					ProviderName:   "openai-compat",
+					ProviderName:   "lmstudio",
 					ProviderSystem: "openai",
 					RequestedModel: "gpt-4o",
 					ResponseModel:  "gpt-4o",
@@ -247,7 +247,7 @@ func TestRun_CONTRACT001MixedKnownCostProvenance(t *testing.T) {
 
 	readTool := &mockTool{name: "read", result: "package main\n"}
 	provider := &conformanceProvider{
-		provider:      "openai-compat",
+		provider:      "lmstudio",
 		system:        "openai",
 		model:         "gpt-4o",
 		serverAddress: "api.openai.com",
@@ -260,7 +260,7 @@ func TestRun_CONTRACT001MixedKnownCostProvenance(t *testing.T) {
 				Usage: TokenUsage{Input: 20, Output: 10, Total: 30},
 				Model: "gpt-4o",
 				Attempt: &AttemptMetadata{
-					ProviderName:   "openai-compat",
+					ProviderName:   "lmstudio",
 					ProviderSystem: "openai",
 					Route:          "default",
 					RequestedModel: "gpt-4o",
@@ -281,7 +281,7 @@ func TestRun_CONTRACT001MixedKnownCostProvenance(t *testing.T) {
 				Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
 				Model:   "gpt-4o",
 				Attempt: &AttemptMetadata{
-					ProviderName:   "openai-compat",
+					ProviderName:   "lmstudio",
 					ProviderSystem: "openai",
 					RequestedModel: "gpt-4o",
 					ResponseModel:  "gpt-4o",
@@ -333,7 +333,7 @@ func TestRun_CONTRACT001ThroughputFormulas(t *testing.T) {
 						Output: 9,
 					},
 					Attempt: &AttemptMetadata{
-						ProviderName:   "openai-compat",
+						ProviderName:   "lmstudio",
 						ProviderSystem: "openai",
 						RequestedModel: "gpt-4o",
 						ResponseModel:  "gpt-4o",
@@ -415,7 +415,7 @@ func TestRun_CONTRACT001ThroughputFormulas(t *testing.T) {
 func BenchmarkRun_CONTRACT001TelemetryOverhead(b *testing.B) {
 	benchmarkRun := func(tel telemetry.Telemetry) {
 		provider := &conformanceProvider{
-			provider:      "openai-compat",
+			provider:      "lmstudio",
 			system:        "openai",
 			model:         "gpt-4o",
 			serverAddress: "api.openai.com",
@@ -428,7 +428,7 @@ func BenchmarkRun_CONTRACT001TelemetryOverhead(b *testing.B) {
 					Usage: TokenUsage{Input: 11, Output: 9, Total: 20},
 					Model: "gpt-4o",
 					Attempt: &AttemptMetadata{
-						ProviderName:   "openai-compat",
+						ProviderName:   "lmstudio",
 						ProviderSystem: "openai",
 						Route:          "default",
 						RequestedModel: "gpt-4o",
@@ -446,7 +446,7 @@ func BenchmarkRun_CONTRACT001TelemetryOverhead(b *testing.B) {
 					Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
 					Model:   "gpt-4o",
 					Attempt: &AttemptMetadata{
-						ProviderName:   "openai-compat",
+						ProviderName:   "lmstudio",
 						ProviderSystem: "openai",
 						RequestedModel: "gpt-4o",
 						ResponseModel:  "gpt-4o",

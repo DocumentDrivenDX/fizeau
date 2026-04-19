@@ -208,11 +208,11 @@ func TestCLI_Run_ModelRouteByModelName(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: `+bragi.baseURL()+`
     api_key: test
   grendel:
-    type: openai-compat
+    type: lmstudio
     base_url: `+grendel.baseURL()+`
     api_key: test
 routing:
@@ -296,11 +296,11 @@ func TestCLI_ModelRouteFailoverOnAvailabilityError(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: `+dead.baseURL()+`
     api_key: test
   openrouter:
-    type: openai-compat
+    type: lmstudio
     base_url: `+healthy.baseURL()+`
     api_key: test
 model_routes:
@@ -359,11 +359,11 @@ func TestCLI_ModelRouteDoesNotFailoverOnDeterministic400(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: `+badRequest.baseURL()+`
     api_key: test
   openrouter:
-    type: openai-compat
+    type: lmstudio
     base_url: `+healthy.baseURL()+`
     api_key: test
 model_routes:
@@ -431,19 +431,19 @@ func TestCLI_ModelIntentAutoRoutingSkipsUnhealthyDefaultAndChoosesBestHealthyPro
 	writeTempConfig(t, workDir, `
 providers:
   openrouter:
-    type: openai-compat
+    type: lmstudio
     base_url: `+dead.baseURL()+`
     api_key: test
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: `+bragi.baseURL()+`
     api_key: test
   vidar:
-    type: openai-compat
+    type: lmstudio
     base_url: `+vidar.baseURL()+`
     api_key: test
   grendel:
-    type: openai-compat
+    type: lmstudio
     base_url: `+openrouter.baseURL()+`
     api_key: test
 default: openrouter
@@ -510,15 +510,15 @@ func TestCLI_RouteStatusShowsHealthAndScoringForModelIntent(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: `+dead.baseURL()+`
     api_key: test
   vidar:
-    type: openai-compat
+    type: lmstudio
     base_url: `+healthy.baseURL()+`
     api_key: test
   openrouter:
-    type: openai-compat
+    type: lmstudio
     base_url: `+expensive.baseURL()+`
     api_key: test
 `)
@@ -562,11 +562,11 @@ func TestCLI_BackendRoutingAttributionFlowsIntoResultAndSession(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   vidar:
-    type: openai-compat
+    type: lmstudio
     base_url: `+vidar.baseURL()+`
     api_key: test
   bragi:
-    type: openai-compat
+    type: lmstudio
     base_url: `+bragi.baseURL()+`
     api_key: test
 backends:
@@ -654,12 +654,12 @@ func TestCLI_BackendPoolFailureDoesNotFailoverToAnotherProvider(t *testing.T) {
 	writeTempConfig(t, workDir, `
 providers:
   dead:
-    type: openai-compat
+    type: lmstudio
     base_url: `+dead.baseURL()+`
     api_key: test
     model: local-dead
   healthy:
-    type: openai-compat
+    type: lmstudio
     base_url: `+healthy.baseURL()+`
     api_key: test
     model: local-healthy
