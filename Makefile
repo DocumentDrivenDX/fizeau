@@ -24,19 +24,19 @@ install-quality-tools:
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 
 test:
-	go test -race ./...
+	CGO_ENABLED=1 go test -race ./...
 
 test-no-race:
 	go test -count=1 ./...
 
 test-race:
-	go test -race -count=1 ./...
+	CGO_ENABLED=1 go test -race -count=1 ./...
 
 test-integration:
-	go test -race -tags=integration ./...
+	CGO_ENABLED=1 go test -race -tags=integration ./...
 
 test-e2e:
-	go test -race -tags=e2e ./...
+	CGO_ENABLED=1 go test -race -tags=e2e ./...
 
 test-fuzz:
 	go test -fuzz=. -fuzztime=30s ./...
@@ -48,12 +48,13 @@ vet:
 	go vet ./...
 
 fmt:
-	gofmt -l . | grep . && exit 1 || true
+	gofmt -l . | grep -v '^\.claude/' | grep -v '^\.ddx/' | grep . && exit 1 || true
 
 fmt-check:
-	@if [ -n "$$(gofmt -l .)" ]; then \
+	@unformatted="$$(gofmt -l . | grep -v '^\.claude/' | grep -v '^\.ddx/')"; \
+	if [ -n "$$unformatted" ]; then \
 		echo "Files not formatted:"; \
-		gofmt -l .; \
+		echo "$$unformatted"; \
 		exit 1; \
 	fi
 
