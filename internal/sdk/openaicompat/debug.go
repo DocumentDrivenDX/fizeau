@@ -1,4 +1,4 @@
-package openai
+package openaicompat
 
 import (
 	"bytes"
@@ -37,10 +37,10 @@ const (
 // the token before any wire event is written.
 var bearerTokenPattern = regexp.MustCompile(`(?i)(Bearer\s+)[^\s]+`)
 
-// debugSink serializes wire-dump events to a single writer with a mutex. A
+// DebugSink serializes wire-dump events to a single writer with a mutex. A
 // single sink is shared across all providers in a process so output ordering
 // is stable even under concurrent requests.
-type debugSink struct {
+type DebugSink struct {
 	mu     sync.Mutex
 	w      io.Writer
 	closer io.Closer
@@ -49,7 +49,7 @@ type debugSink struct {
 
 var (
 	sinkOnce sync.Once
-	sink     *debugSink // nil when AGENT_DEBUG_WIRE is unset
+	sink     *DebugSink // nil when AGENT_DEBUG_WIRE is unset
 )
 
 // envBoolTrue reports whether the named env var is set to a truthy value
@@ -62,8 +62,8 @@ func envBoolTrue(name string) bool {
 	return true
 }
 
-// resolveDebugSink returns the shared sink, or nil if wire dump is disabled.
-func resolveDebugSink() *debugSink {
+// ResolveDebugSink returns the shared sink, or nil if wire dump is disabled.
+func ResolveDebugSink() *DebugSink {
 	sinkOnce.Do(func() {
 		v := strings.TrimSpace(os.Getenv(envDebugWire))
 		if v == "" || v == "0" || strings.EqualFold(v, "false") {
@@ -74,13 +74,13 @@ func resolveDebugSink() *debugSink {
 			f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "agent: AGENT_DEBUG_WIRE_FILE open failed: %v — falling back to stderr\n", err)
-				sink = &debugSink{w: os.Stderr}
+				sink = &DebugSink{w: os.Stderr}
 				return
 			}
-			sink = &debugSink{w: f, closer: f}
+			sink = &DebugSink{w: f, closer: f}
 			return
 		}
-		sink = &debugSink{w: os.Stderr}
+		sink = &DebugSink{w: os.Stderr}
 	})
 	return sink
 }
@@ -113,7 +113,7 @@ const maxBodyBytes = 64 * 1024
 // of client-side truncation defects (see bead agent-f237e07b).
 const envDebugWireStreamFull = "AGENT_DEBUG_WIRE_STREAM_FULL"
 
-func (s *debugSink) emit(ev wireEvent) {
+func (s *DebugSink) emit(ev wireEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seq++
@@ -173,7 +173,7 @@ func captureBody(body io.ReadCloser) ([]byte, bool, io.ReadCloser, error) {
 // post-cap frames invisible; this is the fix for step 5 of that bead).
 type teeBody struct {
 	inner      io.ReadCloser
-	sink       *debugSink
+	sink       *DebugSink
 	url        string
 	status     int
 	startTime  time.Time
@@ -245,9 +245,9 @@ func (t *teeBody) Close() error {
 	return err
 }
 
-// debugMiddleware returns an option.Middleware that logs every request and
+// DebugMiddleware returns an option.Middleware that logs every request and
 // response to the shared sink. Called by New() only when the sink is non-nil.
-func debugMiddleware(s *debugSink) option.Middleware {
+func DebugMiddleware(s *DebugSink) option.Middleware {
 	return func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
 		start := time.Now()
 

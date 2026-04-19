@@ -14,14 +14,13 @@ import (
 
 	"github.com/DocumentDrivenDX/agent"
 	reasoningpolicy "github.com/DocumentDrivenDX/agent/internal/reasoning"
-	oai "github.com/openai/openai-go"
+	"github.com/DocumentDrivenDX/agent/internal/sdk/openaicompat"
 	"github.com/openai/openai-go/option"
-	"github.com/openai/openai-go/packages/param"
 )
 
 // Provider implements agent.Provider for OpenAI-compatible APIs.
 type Provider struct {
-	client           *oai.Client
+	client           *openaicompat.Client
 	model            string
 	modelPattern     string            // regex filter for auto-discovery; "" means first model
 	knownModels      map[string]string // catalog-recognized model IDs (modelID → catalogRef)
@@ -65,30 +64,13 @@ type Config struct {
 
 // New creates a new OpenAI-compatible provider.
 func New(cfg Config) *Provider {
-	opts := []option.RequestOption{
-		option.WithBaseURL(cfg.BaseURL),
-		option.WithMaxRetries(0),
-	}
-	if cfg.APIKey != "" {
-		opts = append(opts, option.WithAPIKey(cfg.APIKey))
-	} else {
-		opts = append(opts, option.WithAPIKey("not-needed"))
-	}
-	for k, v := range cfg.Headers {
-		opts = append(opts, option.WithHeader(k, v))
-	}
-	// SSE comment-frame filter must sit before the debug sink so the sink
-	// observes the same byte stream the decoder will see. Middlewares are
-	// applied in registration order, outermost first.
-	opts = append(opts, option.WithMiddleware(sseFilterMiddleware()))
-	if s := resolveDebugSink(); s != nil {
-		opts = append(opts, option.WithMiddleware(debugMiddleware(s)))
-	}
-
-	client := oai.NewClient(opts...)
 	providerSystem, serverAddress, serverPort := openAIIdentity(cfg.BaseURL)
 	return &Provider{
-		client:           &client,
+		client: openaicompat.NewClient(openaicompat.Config{
+			BaseURL: cfg.BaseURL,
+			APIKey:  cfg.APIKey,
+			Headers: cfg.Headers,
+		}),
 		model:            cfg.Model,
 		modelPattern:     cfg.ModelPattern,
 		knownModels:      cfg.KnownModels,
@@ -190,72 +172,29 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 		model = opts.Model
 	}
 
-	params := oai.ChatCompletionNewParams{
-		Model:    model,
-		Messages: convertMessages(messages),
-	}
-
-	if len(tools) > 0 {
-		params.Tools = convertTools(tools)
-	}
-	if opts.MaxTokens > 0 {
-		params.MaxTokens = oai.Int(int64(opts.MaxTokens))
-	}
-	if opts.Temperature != nil {
-		params.Temperature = oai.Float(*opts.Temperature)
-	}
-	if opts.Seed != 0 {
-		params.Seed = oai.Int(opts.Seed)
-	}
-	if len(opts.Stop) > 0 {
-		params.Stop = oai.ChatCompletionNewParamsStopUnion{OfStringArray: opts.Stop}
-	}
-	reqOpts, err := p.reasoningRequestOptions(opts)
+	reqOpts, err := p.compatRequestOptions(opts)
 	if err != nil {
 		return agent.Response{}, err
 	}
 
-	var resp agent.Response
-	completion, err := p.client.Chat.Completions.New(ctx, params, reqOpts...)
+	result, err := p.client.Chat(ctx, model, messages, tools, reqOpts)
 	if err != nil {
-		return resp, fmt.Errorf("openai: %w", err)
+		return agent.Response{}, fmt.Errorf("openai: %w", err)
 	}
 
-	resp.Model = completion.Model
-	resp.Attempt = &agent.AttemptMetadata{
-		ProviderName:   p.providerName,
-		ProviderSystem: p.providerSystem,
-		ServerAddress:  p.serverAddress,
-		ServerPort:     p.serverPort,
-		RequestedModel: model,
-		ResponseModel:  completion.Model,
-		ResolvedModel:  completion.Model,
-		Cost: &agent.CostAttribution{
-			Source: agent.CostSourceUnknown,
-		},
+	resp := agent.Response{
+		Model:        result.Model,
+		Content:      result.Content,
+		FinishReason: result.FinishReason,
+		ToolCalls:    result.ToolCalls,
+		Usage:        result.Usage,
 	}
-	if cost, ok := openRouterCostAttribution(p.providerSystem, completion.Usage.RawJSON()); ok {
+	resp.Attempt = p.attemptMetadata(model, result.Model, &agent.CostAttribution{
+		Source: agent.CostSourceUnknown,
+	})
+	if cost := p.costAttribution(result.RawUsage); cost != nil {
 		resp.Attempt.Cost = cost
 	}
-	if completion.Usage.TotalTokens != 0 {
-		resp.Usage = agent.TokenUsage{
-			Input:  int(completion.Usage.PromptTokens),
-			Output: int(completion.Usage.CompletionTokens),
-			Total:  int(completion.Usage.TotalTokens),
-		}
-		// Extract cached tokens if present
-		if completion.Usage.PromptTokensDetails.CachedTokens > 0 {
-			resp.Usage.CacheRead = int(completion.Usage.PromptTokensDetails.CachedTokens)
-		}
-	}
-
-	if len(completion.Choices) > 0 {
-		choice := completion.Choices[0]
-		resp.Content = choice.Message.Content
-		resp.FinishReason = string(choice.FinishReason)
-		resp.ToolCalls = extractToolCalls(choice.Message.ToolCalls)
-	}
-
 	return resp, nil
 }
 
@@ -271,75 +210,6 @@ func (p *Provider) ChatStartMetadata() (string, string, int) {
 	return p.providerSystem, p.serverAddress, p.serverPort
 }
 
-func convertMessages(msgs []agent.Message) []oai.ChatCompletionMessageParamUnion {
-	var result []oai.ChatCompletionMessageParamUnion
-	for _, m := range msgs {
-		switch m.Role {
-		case agent.RoleSystem:
-			result = append(result, oai.SystemMessage(m.Content))
-		case agent.RoleUser:
-			result = append(result, oai.UserMessage(m.Content))
-		case agent.RoleAssistant:
-			if len(m.ToolCalls) > 0 {
-				var toolCalls []oai.ChatCompletionMessageToolCallParam
-				for _, tc := range m.ToolCalls {
-					toolCalls = append(toolCalls, oai.ChatCompletionMessageToolCallParam{
-						ID: tc.ID,
-						Function: oai.ChatCompletionMessageToolCallFunctionParam{
-							Name:      tc.Name,
-							Arguments: string(tc.Arguments),
-						},
-					})
-				}
-				assistant := oai.ChatCompletionAssistantMessageParam{
-					Content: oai.ChatCompletionAssistantMessageParamContentUnion{
-						OfString: param.NewOpt(m.Content),
-					},
-					ToolCalls: toolCalls,
-				}
-				result = append(result, oai.ChatCompletionMessageParamUnion{OfAssistant: &assistant})
-			} else {
-				result = append(result, oai.AssistantMessage(m.Content))
-			}
-		case agent.RoleTool:
-			result = append(result, oai.ToolMessage(m.Content, m.ToolCallID))
-		}
-	}
-	return result
-}
-
-func convertTools(tools []agent.ToolDef) []oai.ChatCompletionToolParam {
-	var result []oai.ChatCompletionToolParam
-	for _, t := range tools {
-		var params map[string]interface{}
-		_ = json.Unmarshal(t.Parameters, &params)
-
-		result = append(result, oai.ChatCompletionToolParam{
-			Function: oai.FunctionDefinitionParam{
-				Name:        t.Name,
-				Description: oai.String(t.Description),
-				Parameters:  oai.FunctionParameters(params),
-			},
-		})
-	}
-	return result
-}
-
-func extractToolCalls(calls []oai.ChatCompletionMessageToolCall) []agent.ToolCall {
-	if len(calls) == 0 {
-		return nil
-	}
-	var result []agent.ToolCall
-	for _, c := range calls {
-		result = append(result, agent.ToolCall{
-			ID:        c.ID,
-			Name:      c.Function.Name,
-			Arguments: json.RawMessage(c.Function.Arguments),
-		})
-	}
-	return result
-}
-
 // ChatStream implements agent.StreamingProvider for token-level streaming.
 func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (<-chan agent.StreamDelta, error) {
 	model, err := p.resolveModel(ctx)
@@ -350,146 +220,52 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 		model = opts.Model
 	}
 
-	params := oai.ChatCompletionNewParams{
-		Model:    model,
-		Messages: convertMessages(messages),
-		StreamOptions: oai.ChatCompletionStreamOptionsParam{
-			IncludeUsage: oai.Bool(true),
-		},
-	}
-	if len(tools) > 0 {
-		params.Tools = convertTools(tools)
-	}
-	if opts.MaxTokens > 0 {
-		params.MaxTokens = oai.Int(int64(opts.MaxTokens))
-	}
-	if opts.Temperature != nil {
-		params.Temperature = oai.Float(*opts.Temperature)
-	}
-	if opts.Seed != 0 {
-		params.Seed = oai.Int(opts.Seed)
-	}
-	streamReqOpts, err := p.reasoningRequestOptions(opts)
+	reqOpts, err := p.compatRequestOptions(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	stream := p.client.Chat.Completions.NewStreaming(ctx, params, streamReqOpts...)
+	return p.client.ChatStream(ctx, model, messages, tools, reqOpts, openaicompat.StreamHooks{
+		Cost: p.costAttribution,
+		Attempt: func(responseModel string, cost *agent.CostAttribution) *agent.AttemptMetadata {
+			return p.attemptMetadata(model, responseModel, streamAttemptCost(cost))
+		},
+	})
+}
 
-	ch := make(chan agent.StreamDelta, 1)
-	go func() {
-		defer close(ch)
-		send := func(delta agent.StreamDelta) {
-			delta.ArrivedAt = time.Now()
-			ch <- delta
-		}
-		// OpenAI only sends tool call ID in the first chunk for each index;
-		// subsequent argument chunks carry the index but have an empty ID.
-		// Track index→ID so we can carry the ID forward.
-		indexToID := make(map[int]string)
-		responseModel := model
-		var streamCost *agent.CostAttribution
-		for stream.Next() {
-			chunk := stream.Current()
-			if chunk.Model != "" {
-				responseModel = chunk.Model
-			}
-			if cost, ok := openRouterCostAttribution(p.providerSystem, chunk.Usage.RawJSON()); ok {
-				streamCost = cost
-			}
+func (p *Provider) compatRequestOptions(opts agent.Options) (openaicompat.RequestOptions, error) {
+	extra, err := p.reasoningRequestOptions(opts)
+	if err != nil {
+		return openaicompat.RequestOptions{}, err
+	}
+	return openaicompat.RequestOptions{
+		MaxTokens:    opts.MaxTokens,
+		Temperature:  opts.Temperature,
+		Seed:         opts.Seed,
+		Stop:         opts.Stop,
+		ExtraOptions: extra,
+	}, nil
+}
 
-			// Extract reasoning_content from the raw chunk JSON. Models like Qwen3
-			// and DeepSeek-R1 emit thinking tokens in choices[0].delta.reasoning_content,
-			// which the typed SDK struct does not expose.
-			var reasoningContent string
-			if rawJSON := chunk.RawJSON(); rawJSON != "" {
-				var raw struct {
-					Choices []struct {
-						Delta struct {
-							ReasoningContent string `json:"reasoning_content"`
-						} `json:"delta"`
-					} `json:"choices"`
-				}
-				if err := json.Unmarshal([]byte(rawJSON), &raw); err == nil && len(raw.Choices) > 0 {
-					reasoningContent = raw.Choices[0].Delta.ReasoningContent
-				}
-			}
+func (p *Provider) attemptMetadata(requestedModel, responseModel string, cost *agent.CostAttribution) *agent.AttemptMetadata {
+	if cost == nil {
+		cost = &agent.CostAttribution{Source: agent.CostSourceUnknown}
+	}
+	return &agent.AttemptMetadata{
+		ProviderName:   p.providerName,
+		ProviderSystem: p.providerSystem,
+		ServerAddress:  p.serverAddress,
+		ServerPort:     p.serverPort,
+		RequestedModel: requestedModel,
+		ResponseModel:  responseModel,
+		ResolvedModel:  responseModel,
+		Cost:           cost,
+	}
+}
 
-			if len(chunk.Choices) > 0 {
-				choice := chunk.Choices[0]
-
-				// Emit one delta per tool call entry so multiple parallel tool
-				// calls in the same chunk are not collapsed to the last one.
-				for _, tc := range choice.Delta.ToolCalls {
-					id := tc.ID
-					if id != "" {
-						indexToID[int(tc.Index)] = id
-					} else {
-						id = indexToID[int(tc.Index)]
-					}
-					send(agent.StreamDelta{
-						Model:        chunk.Model,
-						ToolCallID:   id,
-						ToolCallName: tc.Function.Name,
-						ToolCallArgs: tc.Function.Arguments,
-					})
-				}
-
-				// Emit a separate delta for content / finish reason / reasoning when present.
-				if choice.Delta.Content != "" || choice.FinishReason != "" || reasoningContent != "" {
-					send(agent.StreamDelta{
-						Model:            chunk.Model,
-						Content:          choice.Delta.Content,
-						ReasoningContent: reasoningContent,
-						FinishReason:     string(choice.FinishReason),
-					})
-				} else if len(choice.Delta.ToolCalls) == 0 {
-					// No content, no tool calls — still forward model/finish metadata.
-					send(agent.StreamDelta{
-						Model:        chunk.Model,
-						FinishReason: string(choice.FinishReason),
-					})
-				}
-			} else {
-				send(agent.StreamDelta{Model: chunk.Model})
-			}
-
-			if chunk.Usage.TotalTokens != 0 {
-				usage := &agent.TokenUsage{
-					Input:  int(chunk.Usage.PromptTokens),
-					Output: int(chunk.Usage.CompletionTokens),
-					Total:  int(chunk.Usage.TotalTokens),
-				}
-				// Extract cached tokens if present
-				if chunk.Usage.PromptTokensDetails.CachedTokens > 0 {
-					usage.CacheRead = int(chunk.Usage.PromptTokensDetails.CachedTokens)
-				}
-				send(agent.StreamDelta{Usage: usage})
-			}
-		}
-
-		if err := stream.Err(); err != nil {
-			send(agent.StreamDelta{Err: err})
-			return
-		}
-
-		send(agent.StreamDelta{
-			Model: responseModel,
-			Attempt: &agent.AttemptMetadata{
-				ProviderName:   p.providerName,
-				ProviderSystem: p.providerSystem,
-				ServerAddress:  p.serverAddress,
-				ServerPort:     p.serverPort,
-				RequestedModel: model,
-				ResponseModel:  responseModel,
-				ResolvedModel:  responseModel,
-				Cost:           streamAttemptCost(streamCost),
-			},
-			Done: true,
-		})
-	}()
-
-	return ch, nil
+func (p *Provider) costAttribution(rawUsage string) *agent.CostAttribution {
+	cost, _ := openRouterCostAttribution(p.providerSystem, rawUsage)
+	return cost
 }
 
 // reasoningRequestOptions builds per-request options. For thinking models

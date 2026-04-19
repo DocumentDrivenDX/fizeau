@@ -1,4 +1,4 @@
-package openai
+package openaicompat
 
 import (
 	"bytes"
@@ -14,9 +14,9 @@ import (
 )
 
 // newTestSink returns a sink that writes to a bytes.Buffer for assertion.
-func newTestSink() (*debugSink, *bytes.Buffer) {
+func newTestSink() (*DebugSink, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
-	return &debugSink{w: buf}, buf
+	return &DebugSink{w: buf}, buf
 }
 
 func decodeEvents(t *testing.T, buf *bytes.Buffer) []wireEvent {
@@ -63,7 +63,7 @@ func TestDebugMiddleware_EmitsRequestAndResponse(t *testing.T) {
 		}, nil
 	}
 
-	mw := debugMiddleware(sink)
+	mw := DebugMiddleware(sink)
 	req, _ := http.NewRequest(http.MethodPost, "https://example.test/v1/chat/completions", strings.NewReader(`{"messages":[]}`))
 	req.Header.Set("Authorization", "Bearer sk-secret")
 
@@ -101,7 +101,7 @@ func TestDebugMiddleware_StreamingEmitsChunks(t *testing.T) {
 		}, nil
 	}
 
-	mw := debugMiddleware(sink)
+	mw := DebugMiddleware(sink)
 	req, _ := http.NewRequest(http.MethodPost, "https://example.test/v1/chat/completions", nil)
 	resp, err := mw(req, next)
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestDebugMiddleware_NetworkErrorEmitsErrorEvent(t *testing.T) {
 		return nil, io.ErrUnexpectedEOF
 	}
 
-	mw := debugMiddleware(sink)
+	mw := DebugMiddleware(sink)
 	req, _ := http.NewRequest(http.MethodPost, "https://example.test/v1/chat/completions", nil)
 	_, err := mw(req, next)
 	require.Error(t, err)
@@ -157,13 +157,10 @@ func TestResolveDebugSink_DisabledByDefault(t *testing.T) {
 	// We can't reset sync.Once inside the package from outside; instead,
 	// assert the contract by checking that a provider constructed with an
 	// explicit middleware slot takes the normal shape.
-	p := New(Config{BaseURL: "http://example.test/v1"})
-	assert.NotNil(t, p)
-	// No direct way to inspect options the SDK absorbed — test relies on the
-	// lack of panic and the integration path (other tests) continuing to pass.
+	assert.False(t, envBoolTrue(envDebugWire))
 }
 
-// Sanity: resolveDebugSink returns a non-nil sink when AGENT_DEBUG_WIRE is set
+// Sanity: ResolveDebugSink returns a non-nil sink when AGENT_DEBUG_WIRE is set
 // the first time the package observes the env. Because sinkOnce is global we
 // can't reset it; this test runs in isolation only when the env is set at
 // process start. Documented here so future readers understand the coverage gap.

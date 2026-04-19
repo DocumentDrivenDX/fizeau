@@ -1,4 +1,4 @@
-package openai
+package openaicompat
 
 import (
 	"bufio"
@@ -140,10 +140,10 @@ func (f *sseCommentFilter) Close() error {
 	return f.inner.Close()
 }
 
-// sseFilterMiddleware returns an option.Middleware that wraps streaming
+// SSEFilterMiddleware returns an option.Middleware that wraps streaming
 // responses with sseCommentFilter so the downstream ssestream decoder never
 // sees comment-only event dispatches.
-func sseFilterMiddleware() option.Middleware {
+func SSEFilterMiddleware() option.Middleware {
 	return func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
 		resp, err := next(req)
 		if err != nil || resp == nil || resp.Body == nil {
