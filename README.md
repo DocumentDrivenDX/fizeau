@@ -133,15 +133,29 @@ func main() {
 
 ```yaml
 # .agent/config.yaml
-provider: openai-compat
-base_url: http://localhost:1234/v1
-model: qwen3.5-7b
+providers:
+  local:
+    type: lmstudio
+    base_url: http://localhost:1234/v1
+    model: qwen3.5-7b
+default: local
 preset: default                  # system prompt style (see below)
 max_iterations: 20
 session_log_dir: .agent/sessions
+tools:
+  bash:
+    output_filter:
+      mode: off                  # off | rtk | auto
+      rtk_binary: rtk
+      max_bytes: 51200
 ```
 
 Environment overrides: `AGENT_PROVIDER`, `AGENT_BASE_URL`, `AGENT_API_KEY`, `AGENT_MODEL`
+
+`tools.bash.output_filter.mode: rtk` proxies allowlisted noisy commands such as
+`git status` and `go test` through an installed `rtk` binary. If `rtk` is not
+available, bash runs the original command and includes a fallback marker.
+Built-in `read`, `find`, `grep`, and `ls` are not filtered.
 
 ## System Prompt Presets
 

@@ -1356,6 +1356,36 @@ default: local
 	assert.Equal(t, 262144, pc.ContextWindow)
 }
 
+func TestLoad_BashOutputFilterParsedFromYAML(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  local:
+    type: lmstudio
+    base_url: http://localhost:1234/v1
+tools:
+  bash:
+    output_filter:
+      mode: rtk
+      rtk_binary: /tmp/fake-rtk
+      max_bytes: 51200
+      raw_output_dir: .agent/raw
+default: local
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	filter := cfg.Tools.Bash.OutputFilter
+	assert.Equal(t, "rtk", filter.Mode)
+	assert.Equal(t, "/tmp/fake-rtk", filter.RTKBinary)
+	assert.Equal(t, 51200, filter.MaxBytes)
+	assert.Equal(t, ".agent/raw", filter.RawOutputDir)
+}
+
 func TestLoad_MaxTokens_ParsedFromYAML(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()

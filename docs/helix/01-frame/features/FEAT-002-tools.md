@@ -48,15 +48,21 @@ capabilities already shipped.
 8. `bash` accepts a command and optional timeout, runs in the working directory,
    and captures stdout, stderr, and exit code
 9. `bash` kills on timeout or context cancellation
+10. `bash` supports an opt-in output filter. `mode: rtk` proxies allowlisted
+    shell commands such as `git status` and `go test` through an installed
+    `rtk` binary, falls back to raw execution with a marker when unavailable,
+    and never changes exit-code, stderr, timeout, or cancellation semantics.
+    The filter applies only to `bash`; built-in `read`, `find`, `grep`, `ls`,
+    and related tools are not intercepted.
 
 #### Navigation, patching, and task-tracking tools
 
-10. `find` finds files by pattern for codebase navigation
-11. `grep` searches file contents in a read-only way
-12. `ls` lists directory contents without requiring a shell command
-13. `patch` applies structured search-and-replace edits
-14. `task` creates and updates task-tracking records for multi-step work
-15. Navigation and patch tools reduce the need for shell `ls`, `find`, and
+11. `find` finds files by pattern for codebase navigation
+12. `grep` searches file contents in a read-only way
+13. `ls` lists directory contents without requiring a shell command
+14. `patch` applies structured search-and-replace edits
+15. `task` creates and updates task-tracking records for multi-step work
+16. Navigation and patch tools reduce the need for shell `ls`, `find`, and
     `grep` anti-patterns in benchmark workloads
 
 ### Non-Functional Requirements
@@ -93,6 +99,7 @@ capabilities already shipped.
 | AC-FEAT-002-04 | Navigation tools (`find`, `grep`, `ls`) and the `patch` tool implement the documented search, truncation, line-ending, Unicode, and search/replace behaviors without requiring shell fallbacks for the common benchmark navigation cases. | `go test ./tool ./eval/navigation ./...` |
 | AC-FEAT-002-05 | The `task` tool supports create/update/get/list operations with structured validation errors and remains concurrency-safe for multi-step agent workflows. | `go test ./tool ./...` |
 | AC-FEAT-002-06 | At least one model-backed acceptance path exercises the shipped tool surface end-to-end so the benchmark-oriented semantics are validated against real provider/tool interaction rather than unit tests alone. | `go test -tags=integration ./...` |
+| AC-FEAT-002-07 | Opt-in bash output filtering supports RTK proxy execution for allowlisted commands, falls back safely when RTK is unavailable, preserves nonzero exit/stderr/timeout semantics, and does not intercept built-in read/find/grep/ls tools. | `go test ./internal/tool ./...` |
 
 ## Constraints and Assumptions
 

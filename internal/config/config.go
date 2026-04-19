@@ -73,6 +73,21 @@ type ModelCatalogConfig struct {
 	Manifest string `yaml:"manifest,omitempty"`
 }
 
+type ToolsConfig struct {
+	Bash BashToolConfig `yaml:"bash,omitempty"`
+}
+
+type BashToolConfig struct {
+	OutputFilter BashOutputFilterConfig `yaml:"output_filter,omitempty"`
+}
+
+type BashOutputFilterConfig struct {
+	Mode         string `yaml:"mode,omitempty"`
+	RTKBinary    string `yaml:"rtk_binary,omitempty"`
+	MaxBytes     int    `yaml:"max_bytes,omitempty"`
+	RawOutputDir string `yaml:"raw_output_dir,omitempty"`
+}
+
 // RoutingConfig configures model-first route selection defaults.
 type RoutingConfig struct {
 	// DefaultModel is the default requested model-route key to use when the
@@ -176,6 +191,8 @@ type Config struct {
 
 	// ModelCatalog configures the optional external manifest path.
 	ModelCatalog ModelCatalogConfig `yaml:"model_catalog,omitempty"`
+
+	Tools ToolsConfig `yaml:"tools,omitempty"`
 
 	// Telemetry configures OTel export enablement and runtime-specific
 	// pricing keyed by provider system and resolved model.

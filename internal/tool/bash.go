@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent"
@@ -23,7 +25,15 @@ type BashParams struct {
 
 // BashTool executes shell commands.
 type BashTool struct {
-	WorkDir string
+	WorkDir      string
+	OutputFilter BashOutputFilterConfig
+}
+
+type BashOutputFilterConfig struct {
+	Mode         string
+	RTKBinary    string
+	MaxBytes     int
+	RawOutputDir string
 }
 
 func (t *BashTool) Name() string { return "bash" }
@@ -55,8 +65,11 @@ func (t *BashTool) Execute(ctx context.Context, params json.RawMessage) (string,
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	plan := t.planOutputFilter(p.Command)
+	command := plan.Command
+
 	// #nosec G204 -- the shell command is an explicit user-provided tool input.
-	cmd := exec.CommandContext(ctx, "sh", "-c", p.Command)
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = t.WorkDir
 	cmd.Stdin = nil             // /dev/null
 	cmd.WaitDelay = time.Second // don't hang waiting for pipe goroutines after kill
@@ -69,8 +82,10 @@ func (t *BashTool) Execute(ctx context.Context, params json.RawMessage) (string,
 	err := cmd.Run()
 	elapsed := time.Since(start)
 
-	out := TruncateTail(string(stdout.Bytes()), truncMaxLines, truncMaxBytes)
-	errOut := TruncateTail(string(stderr.Bytes()), truncMaxLines, truncMaxBytes)
+	stdoutText := applyFilterMaxBytes(string(stdout.Bytes()), t.OutputFilter.MaxBytes)
+	stderrText := applyFilterMaxBytes(string(stderr.Bytes()), t.OutputFilter.MaxBytes)
+	out := TruncateTail(stdoutText, truncMaxLines, truncMaxBytes)
+	errOut := TruncateTail(stderrText, truncMaxLines, truncMaxBytes)
 
 	exitCode := -1
 	if cmd.ProcessState != nil {
@@ -82,7 +97,11 @@ func (t *BashTool) Execute(ctx context.Context, params json.RawMessage) (string,
 		outSection = "(no output)"
 	}
 
-	result := fmt.Sprintf("Exit code: %d\nWall time: %.2fs\nOutput:\n%s", exitCode, elapsed.Seconds(), outSection)
+	result := fmt.Sprintf("Exit code: %d\nWall time: %.2fs\n", exitCode, elapsed.Seconds())
+	if plan.Marker != "" {
+		result += plan.Marker + "\n"
+	}
+	result += fmt.Sprintf("Output:\n%s", outSection)
 	if len(errOut) > 0 {
 		result += fmt.Sprintf("\nStderr:\n%s", errOut)
 	}
@@ -109,3 +128,71 @@ func (t *BashTool) Execute(ctx context.Context, params json.RawMessage) (string,
 func (t *BashTool) Parallel() bool { return false }
 
 var _ agent.Tool = (*BashTool)(nil)
+
+type bashFilterPlan struct {
+	Command string
+	Marker  string
+}
+
+func (t *BashTool) planOutputFilter(command string) bashFilterPlan {
+	mode := strings.ToLower(strings.TrimSpace(t.OutputFilter.Mode))
+	if mode == "" || mode == "off" {
+		return bashFilterPlan{Command: command}
+	}
+	if mode != "rtk" && mode != "auto" {
+		return bashFilterPlan{Command: command, Marker: fmt.Sprintf("[output filter unavailable: unsupported mode %q; used raw output]", t.OutputFilter.Mode)}
+	}
+	if !rtkCommandAllowed(command) {
+		return bashFilterPlan{Command: command}
+	}
+
+	binary := strings.TrimSpace(t.OutputFilter.RTKBinary)
+	if binary == "" {
+		binary = "rtk"
+	}
+	path, err := resolveExecutable(binary)
+	if err != nil {
+		return bashFilterPlan{Command: command, Marker: fmt.Sprintf("[output filter unavailable: %s not found; used raw output]", binary)}
+	}
+	return bashFilterPlan{
+		Command: shellQuote(path) + " " + command,
+		Marker:  "[output filter: rtk " + rtkCommandSummary(command) + "]",
+	}
+}
+
+func rtkCommandAllowed(command string) bool {
+	trimmed := strings.TrimSpace(command)
+	return strings.HasPrefix(trimmed, "git status") || strings.HasPrefix(trimmed, "go test")
+}
+
+func rtkCommandSummary(command string) string {
+	fields := strings.Fields(command)
+	if len(fields) >= 2 {
+		return fields[0] + " " + fields[1]
+	}
+	return strings.TrimSpace(command)
+}
+
+func resolveExecutable(binary string) (string, error) {
+	if strings.ContainsRune(binary, os.PathSeparator) {
+		if st, err := os.Stat(binary); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
+			return binary, nil
+		}
+		return "", os.ErrNotExist
+	}
+	return exec.LookPath(binary)
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func applyFilterMaxBytes(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	return s[:maxBytes] + fmt.Sprintf("\n[output filter truncated: %d bytes omitted]", len(s)-maxBytes)
+}

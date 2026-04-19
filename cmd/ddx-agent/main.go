@@ -182,7 +182,7 @@ func run() int {
 	}
 
 	// Build tools
-	tools := buildToolsForPreset(wd, preset)
+	tools := buildToolsForPreset(wd, preset, bashOutputFilterConfig(cfg.Tools.Bash.OutputFilter))
 
 	// Build system prompt
 	sysPrompt := prompt.NewFromPreset(preset).
@@ -644,12 +644,16 @@ func resolvePreset(flagValue string, cfg *agentConfig.Config) (string, error) {
 	return prompt.ResolvePresetName(preset)
 }
 
-func buildToolsForPreset(workDir, preset string) []agent.Tool {
+func buildToolsForPreset(workDir, preset string, bashFilter ...tool.BashOutputFilterConfig) []agent.Tool {
+	filter := tool.BashOutputFilterConfig{}
+	if len(bashFilter) > 0 {
+		filter = bashFilter[0]
+	}
 	tools := []agent.Tool{
 		&tool.ReadTool{WorkDir: workDir},
 		&tool.WriteTool{WorkDir: workDir},
 		&tool.EditTool{WorkDir: workDir},
-		&tool.BashTool{WorkDir: workDir},
+		&tool.BashTool{WorkDir: workDir, OutputFilter: filter},
 		&tool.FindTool{WorkDir: workDir},
 		&tool.GrepTool{WorkDir: workDir},
 		&tool.LsTool{WorkDir: workDir},
@@ -660,6 +664,15 @@ func buildToolsForPreset(workDir, preset string) []agent.Tool {
 		tools = append(tools, &tool.TaskTool{Store: taskStore})
 	}
 	return tools
+}
+
+func bashOutputFilterConfig(cfg agentConfig.BashOutputFilterConfig) tool.BashOutputFilterConfig {
+	return tool.BashOutputFilterConfig{
+		Mode:         cfg.Mode,
+		RTKBinary:    cfg.RTKBinary,
+		MaxBytes:     cfg.MaxBytes,
+		RawOutputDir: cfg.RawOutputDir,
+	}
 }
 
 func buildProviderFromResolvedConfig(name string, pc agentConfig.ProviderConfig) (agent.Provider, error) {

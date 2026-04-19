@@ -2,6 +2,8 @@ package tool
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -84,4 +86,104 @@ func TestBashTool_Execute(t *testing.T) {
 		assert.Contains(t, result, "Exit code: 7")
 		assert.Contains(t, result, "lines omitted]")
 	})
+}
+
+func TestBashTool_RTKOutputFilter(t *testing.T) {
+	dir := t.TempDir()
+	rtk := filepath.Join(dir, "rtk")
+	require.NoError(t, os.WriteFile(rtk, []byte("#!/bin/sh\necho rtk:$*\n"), 0o755))
+
+	tool := &BashTool{
+		WorkDir: dir,
+		OutputFilter: BashOutputFilterConfig{
+			Mode:      "rtk",
+			RTKBinary: rtk,
+		},
+	}
+
+	result, err := tool.Execute(context.Background(), mustJSON(t, BashParams{
+		Command: "git status --short",
+	}))
+	require.NoError(t, err)
+	assert.Contains(t, result, "[output filter: rtk git status]")
+	assert.Contains(t, result, "rtk:git status --short")
+}
+
+func TestBashTool_RTKOutputFilter_GoTest(t *testing.T) {
+	dir := t.TempDir()
+	rtk := filepath.Join(dir, "rtk")
+	require.NoError(t, os.WriteFile(rtk, []byte("#!/bin/sh\necho rtk:$*\n"), 0o755))
+
+	tool := &BashTool{
+		WorkDir: dir,
+		OutputFilter: BashOutputFilterConfig{
+			Mode:      "rtk",
+			RTKBinary: rtk,
+		},
+	}
+
+	result, err := tool.Execute(context.Background(), mustJSON(t, BashParams{
+		Command: "go test ./...",
+	}))
+	require.NoError(t, err)
+	assert.Contains(t, result, "[output filter: rtk go test]")
+	assert.Contains(t, result, "rtk:go test ./...")
+}
+
+func TestBashTool_RTKOutputFilter_MissingFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	tool := &BashTool{
+		WorkDir: dir,
+		OutputFilter: BashOutputFilterConfig{
+			Mode:      "rtk",
+			RTKBinary: filepath.Join(dir, "missing-rtk"),
+		},
+	}
+
+	result, err := tool.Execute(context.Background(), mustJSON(t, BashParams{
+		Command: "git status --short",
+	}))
+	require.NoError(t, err)
+	assert.Contains(t, result, "output filter unavailable")
+	assert.Contains(t, result, "used raw output")
+}
+
+func TestBashTool_RTKOutputFilter_NonzeroPreserved(t *testing.T) {
+	dir := t.TempDir()
+	rtk := filepath.Join(dir, "rtk")
+	require.NoError(t, os.WriteFile(rtk, []byte("#!/bin/sh\necho rtk failed >&2\nexit 13\n"), 0o755))
+
+	tool := &BashTool{
+		WorkDir: dir,
+		OutputFilter: BashOutputFilterConfig{
+			Mode:      "rtk",
+			RTKBinary: rtk,
+		},
+	}
+
+	result, err := tool.Execute(context.Background(), mustJSON(t, BashParams{
+		Command: "git status --short",
+	}))
+	require.NoError(t, err)
+	assert.Contains(t, result, "Exit code: 13")
+	assert.Contains(t, result, "Stderr:")
+	assert.Contains(t, result, "rtk failed")
+}
+
+func TestBashTool_OutputFilterMaxBytes(t *testing.T) {
+	dir := t.TempDir()
+	tool := &BashTool{
+		WorkDir: dir,
+		OutputFilter: BashOutputFilterConfig{
+			MaxBytes: 5,
+		},
+	}
+
+	result, err := tool.Execute(context.Background(), mustJSON(t, BashParams{
+		Command: "printf 123456789",
+	}))
+	require.NoError(t, err)
+	assert.Contains(t, result, "12345")
+	assert.Contains(t, result, "output filter truncated")
+	assert.NotContains(t, result, "6789")
 }
