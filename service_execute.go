@@ -367,6 +367,35 @@ func nativeToolsForRequest(req ServiceExecuteRequest) []agentcore.Tool {
 	return tool.BuiltinToolsForPreset(req.WorkDir, req.ToolPreset, tool.BashOutputFilterConfig{})
 }
 
+func nativePermissionMode(permissions string) (string, error) {
+	switch permissions {
+	case "", "safe":
+		return "safe", nil
+	case "unrestricted":
+		return "unrestricted", nil
+	case "supervised":
+		return "", fmt.Errorf("native agent permission mode %q is unsupported because no approval loop is available", permissions)
+	default:
+		return "", fmt.Errorf("native agent permission mode %q is unsupported", permissions)
+	}
+}
+
+func filterNativeToolsForPermission(tools []agentcore.Tool, permission string) []agentcore.Tool {
+	if permission == "unrestricted" {
+		return tools
+	}
+	filtered := make([]agentcore.Tool, 0, len(tools))
+	for _, tool := range tools {
+		if tool == nil {
+			continue
+		}
+		if readOnlyTools[tool.Name()] {
+			filtered = append(filtered, tool)
+		}
+	}
+	return filtered
+}
+
 func toolNames(tools []agentcore.Tool) []string {
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -400,6 +429,20 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		emitFinal(out, seq, meta, harnesses.FinalData{
 			Status:     "failed",
 			Error:      s.nativeProviderNotConfiguredError(req, decision),
+			DurationMS: time.Since(start).Milliseconds(),
+			RoutingActual: &harnesses.RoutingActual{
+				Harness:  actualHarness,
+				Provider: actualProvider,
+				Model:    actualModel,
+			},
+		})
+		return
+	}
+	permission, permissionErr := nativePermissionMode(req.Permissions)
+	if permissionErr != nil {
+		emitFinal(out, seq, meta, harnesses.FinalData{
+			Status:     "failed",
+			Error:      permissionErr.Error(),
 			DurationMS: time.Since(start).Milliseconds(),
 			RoutingActual: &harnesses.RoutingActual{
 				Harness:  actualHarness,
@@ -514,7 +557,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		}
 	}
 
-	tools := nativeToolsForRequest(req)
+	tools := filterNativeToolsForPermission(nativeToolsForRequest(req), permission)
 
 	// Tool wiring hook (testseam).
 	if hook := s.toolWiringHook(); hook != nil {

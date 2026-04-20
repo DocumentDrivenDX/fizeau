@@ -228,6 +228,16 @@ type StallPolicy struct {
     MaxNoopCompactions        int // 0 = disabled
 }
 
+Native `agent` permission modes are enforced by tool exposure at the service
+boundary:
+
+- `safe` (and empty/default) exposes only read-only built-ins: `read`, `find`,
+  `grep`, and `ls`.
+- `unrestricted` exposes the full native built-in tool set for the request's
+  `ToolPreset`.
+- `supervised` is rejected for the native `agent` harness until an approval loop
+  exists. Subprocess harnesses may still implement their own supervised modes.
+
 type RouteRequest struct {
     Profile            string
     Model              string
@@ -670,7 +680,7 @@ Current builtin matrix:
 | claude | required | unsupported | optional | optional | optional | optional | required | optional | optional | optional | optional | unsupported |
 | gemini | required | unsupported | optional | optional | unsupported | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
 | opencode | required | unsupported | optional | optional | optional | optional | required | optional | optional | unsupported | unsupported | unsupported |
-| agent | required | optional | optional | optional | optional | unsupported | required | optional | optional | optional | not_applicable | unsupported |
+| agent | required | optional | optional | optional | optional | optional | required | optional | optional | optional | not_applicable | unsupported |
 | pi | required | unsupported | optional | optional | optional | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
 | virtual | required | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | required | optional | optional | not_applicable | not_applicable | required |
 | script | required | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | required | optional | optional | not_applicable | not_applicable | required |

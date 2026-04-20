@@ -95,6 +95,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 	"agent": {
 		Name:               "agent",
 		Binary:             "ddx-agent", // embedded — runs in-process via the agent library, not as a subprocess
+		PermissionArgs:     map[string][]string{"safe": {}, "unrestricted": {}},
 		PromptMode:         "arg",
 		DefaultModel:       "", // uses agent config or provider default
 		ReasoningLevels:    []string{"low", "medium", "high"},

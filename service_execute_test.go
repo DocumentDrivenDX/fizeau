@@ -292,7 +292,7 @@ func TestExecute_NativeSamplingForwarded(t *testing.T) {
 	}
 }
 
-func TestExecute_NativeToolsForwarded(t *testing.T) {
+func TestExecute_NativeUnrestrictedToolsForwarded(t *testing.T) {
 	var providerTools []string
 	var hookHarness string
 	var hookTools []string
@@ -314,11 +314,12 @@ func TestExecute_NativeToolsForwarded(t *testing.T) {
 	}
 
 	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
-		Prompt:   "hi",
-		Harness:  "agent",
-		Provider: "fake",
-		Model:    "fake-model",
-		WorkDir:  t.TempDir(),
+		Prompt:      "hi",
+		Harness:     "agent",
+		Provider:    "fake",
+		Model:       "fake-model",
+		WorkDir:     t.TempDir(),
+		Permissions: "unrestricted",
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -341,6 +342,85 @@ func TestExecute_NativeToolsForwarded(t *testing.T) {
 	}
 	if !reflect.DeepEqual(providerTools, hookTools) {
 		t.Fatalf("provider tools and hook tools differ:\nprovider=%v\nhook=%v", providerTools, hookTools)
+	}
+}
+
+func TestExecute_NativeSafePermissionExposesReadOnlyTools(t *testing.T) {
+	var providerTools []string
+	fp := &agent.FakeProvider{
+		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+			providerTools = append([]string(nil), req.Tools...)
+			return agent.FakeResponse{Text: "done"}, nil
+		},
+	}
+	opts := agent.ServiceOptions{}
+	opts.FakeProvider = fp
+	svc, err := agent.New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+		Prompt:      "hi",
+		Harness:     "agent",
+		Provider:    "fake",
+		Model:       "fake-model",
+		WorkDir:     t.TempDir(),
+		Permissions: "safe",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	events := drainEvents(t, ch, 5*time.Second)
+	if final := findFinal(events); final == nil || finalStatus(t, final) != "success" {
+		t.Fatalf("expected success final, got %#v", final)
+	}
+	for _, name := range []string{"read", "find", "grep", "ls"} {
+		if !containsString(providerTools, name) {
+			t.Fatalf("safe tools missing %q: %v", name, providerTools)
+		}
+	}
+	for _, name := range []string{"write", "edit", "bash", "patch", "task"} {
+		if containsString(providerTools, name) {
+			t.Fatalf("safe tools unexpectedly include %q: %v", name, providerTools)
+		}
+	}
+}
+
+func TestExecute_NativeSupervisedPermissionRejected(t *testing.T) {
+	opts := agent.ServiceOptions{}
+	opts.FakeProvider = &agent.FakeProvider{
+		Static: []agent.FakeResponse{{Text: "should not run"}},
+	}
+	svc, err := agent.New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+		Prompt:      "hi",
+		Provider:    "fake",
+		Permissions: "supervised",
+		PreResolved: &agent.RouteDecision{
+			Harness:  "agent",
+			Provider: "fake",
+			Model:    "fake-model",
+			Reason:   "test bypasses route gating",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	events := drainEvents(t, ch, 5*time.Second)
+	final := findFinal(events)
+	if final == nil {
+		t.Fatal("expected final")
+	}
+	if got := finalStatus(t, final); got != "failed" {
+		t.Fatalf("FinalStatus: got %q, want failed", got)
+	}
+	if !strings.Contains(finalError(t, final), "supervised") {
+		t.Fatalf("FinalError: got %q, want supervised unsupported", finalError(t, final))
 	}
 }
 

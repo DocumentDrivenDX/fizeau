@@ -114,6 +114,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.DefaultModel != "" {
 			t.Errorf("agent DefaultModel: want empty, got %q", h.DefaultModel)
 		}
+		assertContains(t, h.SupportedPermissions, "safe", "agent permissions")
+		assertContains(t, h.SupportedPermissions, "unrestricted", "agent permissions")
 	})
 
 	t.Run("openrouter_native", func(t *testing.T) {
@@ -234,7 +236,7 @@ func TestListHarnesses_shape(t *testing.T) {
 				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
 				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
 				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
-				PermissionModes: capStatus(agent.HarnessCapabilityUnsupported),
+				PermissionModes: capStatus(agent.HarnessCapabilityOptional),
 				ProgressEvents:  capStatus(agent.HarnessCapabilityRequired),
 				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
 				FinalText:       capStatus(agent.HarnessCapabilityOptional),

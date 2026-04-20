@@ -125,6 +125,8 @@ capabilities already shipped.
 ## Out of Scope
 
 - File watching or filesystem events
-- Tool permission management (all tools are available; the caller controls
-  scope via working directory)
+- Interactive or per-call tool approval UX. The service-level native `agent`
+  harness still enforces coarse permission modes by filtering the exposed tool
+  set (`safe` read-only, `unrestricted` full built-ins, `supervised` rejected
+  until an approval loop exists).
 - MCP tool integration
