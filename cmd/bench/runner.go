@@ -187,7 +187,7 @@ func cmdRun(args []string) int {
 	if outDir == "" {
 		outDir = filepath.Join(wd, "bench", "results")
 	}
-	if err := os.MkdirAll(outDir, 0755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		fmt.Fprintf(os.Stderr, "ddx-agent-bench run: create results dir: %v\n", err)
 		return 1
 	}

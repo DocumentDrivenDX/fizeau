@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -42,7 +43,7 @@ func loadCorpus(dir string) ([]CorpusTask, error) {
 			continue
 		}
 		path := filepath.Join(dir, name)
-		data, err := os.ReadFile(path)
+		data, err := safefs.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", path, err)
 		}

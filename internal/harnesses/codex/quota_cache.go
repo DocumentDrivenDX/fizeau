@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // CodexQuotaSnapshot captures Codex subscription quota windows in a durable
@@ -50,7 +51,7 @@ func WriteCodexQuota(path string, snapshot CodexQuotaSnapshot) error {
 	if snapshot.Source == "" {
 		snapshot.Source = "pty"
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("create codex quota cache dir: %w", err)
 	}
 	data, err := json.MarshalIndent(snapshot, "", "  ")
@@ -74,7 +75,7 @@ func WriteCodexQuota(path string, snapshot CodexQuotaSnapshot) error {
 
 // ReadCodexQuotaFrom reads one Codex quota snapshot.
 func ReadCodexQuotaFrom(path string) (*CodexQuotaSnapshot, bool) {
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}

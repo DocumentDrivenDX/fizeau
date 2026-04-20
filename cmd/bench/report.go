@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/DocumentDrivenDX/agent/internal/comparison"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 // cmdReport implements the 'report' subcommand.
@@ -40,7 +41,7 @@ func cmdReport(args []string) int {
 
 	// Load the most recent result by default.
 	path := entries[0]
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ddx-agent-bench report: read %s: %v\n", path, err)
 		return 1
