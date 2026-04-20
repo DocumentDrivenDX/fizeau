@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"fmt"
+	"strings"
+
 	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
 	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
@@ -10,26 +13,111 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/provider/openrouter"
 )
 
-func (s *service) resolveConfiguredNativeProvider(req ServiceExecuteRequest) agentcore.Provider {
+type nativeProviderResolution struct {
+	Provider agentcore.Provider
+	Name     string
+	Entry    ServiceProviderEntry
+}
+
+func (s *service) resolveConfiguredNativeProvider(req ServiceExecuteRequest) nativeProviderResolution {
 	sc := s.opts.ServiceConfig
 	if sc == nil {
-		return nil
+		return nativeProviderResolution{}
 	}
-	name := req.Provider
-	if name == "" {
-		name = sc.DefaultProviderName()
-	}
-	if name == "" {
-		return nil
-	}
-	entry, ok := sc.Provider(name)
+	name, entry, ok := selectConfiguredNativeProvider(sc, req)
 	if !ok {
-		return nil
+		return nativeProviderResolution{}
 	}
 	if req.Model != "" {
 		entry.Model = req.Model
 	}
-	return buildNativeProvider(name, entry)
+	provider := buildNativeProvider(name, entry)
+	if provider == nil {
+		return nativeProviderResolution{Name: name, Entry: entry}
+	}
+	return nativeProviderResolution{Provider: provider, Name: name, Entry: entry}
+}
+
+func selectConfiguredNativeProvider(sc ServiceConfig, req ServiceExecuteRequest) (string, ServiceProviderEntry, bool) {
+	if req.Provider != "" {
+		if entry, ok := sc.Provider(req.Provider); ok {
+			return req.Provider, entry, true
+		}
+	}
+
+	wantedType := requestedNativeProviderType(req)
+	if wantedType != "" {
+		if name := sc.DefaultProviderName(); name != "" {
+			if entry, ok := sc.Provider(name); ok && normalizeServiceProviderType(entry.Type) == wantedType {
+				return name, entry, true
+			}
+		}
+		for _, name := range sc.ProviderNames() {
+			entry, ok := sc.Provider(name)
+			if ok && normalizeServiceProviderType(entry.Type) == wantedType {
+				return name, entry, true
+			}
+		}
+	}
+
+	if req.Provider == "" && wantedType == "" {
+		name := sc.DefaultProviderName()
+		if name == "" {
+			return "", ServiceProviderEntry{}, false
+		}
+		entry, ok := sc.Provider(name)
+		return name, entry, ok
+	}
+
+	return "", ServiceProviderEntry{}, false
+}
+
+func requestedNativeProviderType(req ServiceExecuteRequest) string {
+	if req.Provider != "" {
+		return normalizeServiceProviderType(req.Provider)
+	}
+	switch req.Harness {
+	case "", "agent":
+		return ""
+	default:
+		return normalizeServiceProviderType(req.Harness)
+	}
+}
+
+func (s *service) nativeProviderNotConfiguredError(req ServiceExecuteRequest, decision RouteDecision) string {
+	wantedType := requestedNativeProviderType(req)
+	if wantedType == "" {
+		errMsg := "orphan model: " + decision.Model
+		if decision.Model == "" {
+			errMsg = "no provider configured for native harness"
+		}
+		return errMsg
+	}
+	available := s.availableProviderTypes()
+	harness := decision.Harness
+	if harness == "" {
+		harness = "agent"
+	}
+	return fmt.Sprintf("harness %q: no configured provider matches type %q (available: %s)", harness, wantedType, available)
+}
+
+func (s *service) availableProviderTypes() string {
+	sc := s.opts.ServiceConfig
+	if sc == nil {
+		return "[]"
+	}
+	var parts []string
+	for _, name := range sc.ProviderNames() {
+		entry, ok := sc.Provider(name)
+		if !ok {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", name, normalizeServiceProviderType(entry.Type)))
+	}
+	if len(parts) == 0 {
+		return "[]"
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
 }
 
 func buildNativeProvider(name string, entry ServiceProviderEntry) agentcore.Provider {

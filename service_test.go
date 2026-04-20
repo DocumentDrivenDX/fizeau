@@ -38,7 +38,7 @@ func TestListHarnesses_shape(t *testing.T) {
 	// All 10 builtins must appear.
 	expected := []string{
 		"codex", "claude", "gemini", "opencode", "agent",
-		"pi", "virtual", "script", "openrouter", "lmstudio",
+		"pi", "virtual", "script", "openrouter", "lmstudio", "omlx",
 	}
 	for _, name := range expected {
 		if _, ok := byName[name]; !ok {
@@ -130,6 +130,22 @@ func TestListHarnesses_shape(t *testing.T) {
 		h := byName["lmstudio"]
 		if h.CostClass != "local" {
 			t.Errorf("lmstudio CostClass: want local, got %q", h.CostClass)
+		}
+		if !h.IsLocal {
+			t.Errorf("lmstudio IsLocal: want true")
+		}
+	})
+
+	t.Run("omlx_local", func(t *testing.T) {
+		h := byName["omlx"]
+		if h.Type != "native" {
+			t.Errorf("omlx Type: want native, got %q", h.Type)
+		}
+		if h.CostClass != "local" {
+			t.Errorf("omlx CostClass: want local, got %q", h.CostClass)
+		}
+		if !h.IsLocal {
+			t.Errorf("omlx IsLocal: want true")
 		}
 	})
 

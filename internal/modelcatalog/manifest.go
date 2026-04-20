@@ -142,11 +142,19 @@ type targetEntry struct {
 }
 
 type surfacePolicyEntry struct {
-	ReasoningDefault reasoning.Reasoning `yaml:"reasoning_default,omitempty"`
+	ReasoningDefault       reasoning.Reasoning `yaml:"reasoning_default,omitempty"`
+	PlacementOrder         []string            `yaml:"placement_order,omitempty"`
+	MaxInputCostPerMTokUSD *float64            `yaml:"max_input_cost_per_mtok_usd,omitempty"`
+	FailurePolicy          string              `yaml:"failure_policy,omitempty"`
 }
 
 func (s surfacePolicyEntry) toResolved() SurfacePolicy {
-	return SurfacePolicy{ReasoningDefault: s.ReasoningDefault}
+	return SurfacePolicy{
+		ReasoningDefault:       s.ReasoningDefault,
+		PlacementOrder:         append([]string(nil), s.PlacementOrder...),
+		MaxInputCostPerMTokUSD: s.MaxInputCostPerMTokUSD,
+		FailurePolicy:          s.FailurePolicy,
+	}
 }
 
 // Default loads the embedded default catalog snapshot.

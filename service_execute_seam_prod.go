@@ -2,8 +2,6 @@
 
 package agent
 
-import agentcore "github.com/DocumentDrivenDX/agent/internal/core"
-
 // Production builds have no test seams. Each helper returns nil so
 // service.Execute compiles identically to the testseam variant but the
 // hooks never fire. Production cannot reference FakeProvider or any of
@@ -13,7 +11,7 @@ func (s *service) promptAssertionHook() promptAssertionHookFn         { return n
 func (s *service) compactionAssertionHook() compactionAssertionHookFn { return nil }
 func (s *service) toolWiringHook() toolWiringHookFn                   { return nil }
 
-func (s *service) resolveNativeProvider(req ServiceExecuteRequest) agentcore.Provider {
+func (s *service) resolveNativeProvider(req ServiceExecuteRequest) nativeProviderResolution {
 	return s.resolveConfiguredNativeProvider(req)
 }
 

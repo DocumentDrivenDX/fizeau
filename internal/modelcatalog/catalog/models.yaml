@@ -185,6 +185,9 @@ targets:
         reasoning_default: high
       agent.openai:
         reasoning_default: high
+        placement_order: [subscription, local]
+        max_input_cost_per_mtok_usd: 20
+        failure_policy: ordered-failover
       codex:
         reasoning_default: high
 
@@ -203,6 +206,9 @@ targets:
         reasoning_default: medium
       agent.openai:
         reasoning_default: off
+        placement_order: [subscription, local]
+        max_input_cost_per_mtok_usd: 5
+        failure_policy: ordered-failover
       codex:
         reasoning_default: off
 
@@ -221,6 +227,9 @@ targets:
         reasoning_default: medium
       agent.openai:
         reasoning_default: off
+        placement_order: [local, cheap-subscription]
+        max_input_cost_per_mtok_usd: 1
+        failure_policy: ordered-failover
 
   claude-sonnet-4:
     family: claude-sonnet

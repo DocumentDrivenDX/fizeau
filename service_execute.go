@@ -125,8 +125,8 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	// If Harness is omitted but the engine has enough hints (Profile/ModelRef/
 	// Model/Provider) to disambiguate, route through ResolveRoute.
 	if req.Harness == "" {
-		if req.ModelRef == "" && req.Model == "" && req.Provider == "" {
-			return nil, fmt.Errorf("routing under-specified: pass PreResolved or set at least one of Harness/ModelRef/Model/Provider")
+		if req.Profile == "" && req.ModelRef == "" && req.Model == "" && req.Provider == "" {
+			return nil, fmt.Errorf("routing under-specified: pass PreResolved or set at least one of Harness/Profile/ModelRef/Model/Provider")
 		}
 		return s.resolveExecuteRouteWithEngine(req)
 	}
@@ -185,6 +185,10 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	case "codex":
 		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &codexharness.Runner{})
 	default:
+		if cfg, ok := s.registry.Get(decision.Harness); ok && cfg.IsHTTPProvider {
+			s.runNative(runCtx, req, decision, meta, out, &seq, start)
+			return
+		}
 		// Unknown / unimplemented subprocess harnesses (gemini/opencode/pi)
 		// fail with an explicit final event; the runners exist in
 		// internal/harnesses/<name> and a follow-up bead will wire them
@@ -206,23 +210,29 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 // is wrapped with WrapProviderWithDeadlinesTimeouts so per-HTTP timeouts
 // fire independently of the request wall-clock cap.
 func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time) {
-	provider := s.resolveNativeProvider(req)
+	resolvedProvider := s.resolveNativeProvider(req)
+	provider := resolvedProvider.Provider
+	actualHarness := decision.Harness
+	if actualHarness == "" {
+		actualHarness = "agent"
+	}
+	actualProvider := resolvedProvider.Name
+	if actualProvider == "" {
+		actualProvider = decision.Provider
+	}
+	actualModel := decision.Model
+	if actualModel == "" {
+		actualModel = resolvedProvider.Entry.Model
+	}
 	if provider == nil {
-		// Orphan-model surface: native path without a provider AND without
-		// a model the catalog/router can resolve is the orphan case per
-		// CONTRACT-003 §"Orphan-model validation".
-		errMsg := "orphan model: " + decision.Model
-		if decision.Model == "" {
-			errMsg = "no provider configured for native harness"
-		}
 		emitFinal(out, seq, meta, harnesses.FinalData{
 			Status:     "failed",
-			Error:      errMsg,
+			Error:      s.nativeProviderNotConfiguredError(req, decision),
 			DurationMS: time.Since(start).Milliseconds(),
 			RoutingActual: &harnesses.RoutingActual{
-				Harness:  "agent",
-				Provider: decision.Provider,
-				Model:    decision.Model,
+				Harness:  actualHarness,
+				Provider: actualProvider,
+				Model:    actualModel,
 			},
 		})
 		return
@@ -354,8 +364,8 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		Callback:         cb,
 		Metadata:         meta,
 		MaxIterations:    maxIter,
-		ResolvedModel:    decision.Model,
-		SelectedProvider: decision.Provider,
+		ResolvedModel:    actualModel,
+		SelectedProvider: actualProvider,
 		Temperature:      &temperature,
 		Seed:             req.Seed,
 		Reasoning:        effectiveReasoning(req.Reasoning),
@@ -367,9 +377,9 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	final := harnesses.FinalData{
 		DurationMS: time.Since(start).Milliseconds(),
 		RoutingActual: &harnesses.RoutingActual{
-			Harness:  "agent",
-			Provider: decision.Provider,
-			Model:    decision.Model,
+			Harness:  actualHarness,
+			Provider: actualProvider,
+			Model:    actualModel,
 		},
 	}
 	if result.Tokens.Total > 0 || result.Tokens.Input > 0 || result.Tokens.Output > 0 {

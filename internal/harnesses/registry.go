@@ -1,7 +1,7 @@
 package harnesses
 
 // PreferenceOrder defines the default harness preference when multiple are available.
-var PreferenceOrder = []string{"codex", "claude", "gemini", "opencode", "agent", "pi", "openrouter", "lmstudio"}
+var PreferenceOrder = []string{"codex", "claude", "gemini", "opencode", "agent", "pi", "openrouter", "lmstudio", "omlx"}
 
 // builtinHarnesses defines known harnesses and how to invoke them.
 var builtinHarnesses = map[string]HarnessConfig{
@@ -149,6 +149,15 @@ var builtinHarnesses = map[string]HarnessConfig{
 		Surface:        "embedded-openai",
 		CostClass:      "local",
 		IsHTTPProvider: true,
+		IsLocal:        true,
+	},
+	"omlx": {
+		Name:           "omlx",
+		Binary:         "",
+		Surface:        "embedded-openai",
+		CostClass:      "local",
+		IsHTTPProvider: true,
+		IsLocal:        true,
 	},
 }
 

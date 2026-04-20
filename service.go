@@ -181,25 +181,15 @@ type HealthTarget struct {
 	Name string
 }
 
-// ProviderPreference specifies a caller's routing policy for local vs subscription.
-type ProviderPreference string
-
-const (
-	ProviderPreferenceLocalFirst        ProviderPreference = "local-first"
-	ProviderPreferenceSubscriptionFirst ProviderPreference = "subscription-first"
-	ProviderPreferenceLocalOnly         ProviderPreference = "local-only"
-	ProviderPreferenceSubscriptionOnly  ProviderPreference = "subscription-only"
-)
-
 // RouteRequest specifies a routing query.
 type RouteRequest struct {
-	Model              string
-	Provider           string
-	Harness            string
-	ModelRef           string
-	Reasoning          Reasoning
-	Permissions        string
-	ProviderPreference ProviderPreference
+	Profile     string // optional named policy bundle: cheap|standard|smart|custom
+	Model       string
+	Provider    string
+	Harness     string
+	ModelRef    string
+	Reasoning   Reasoning
+	Permissions string
 }
 
 // RouteDecision is the result of ResolveRoute.
@@ -245,18 +235,18 @@ type ServiceEvent = harnesses.Event
 // (§"Public types") for the canonical shape; this struct is its in-process
 // twin under the agent module.
 type ServiceExecuteRequest struct {
-	Prompt             string
-	SystemPrompt       string
-	Model              string
-	Provider           string
-	Harness            string
-	ModelRef           string
-	WorkDir            string
-	Temperature        float32
-	Seed               int64
-	Reasoning          Reasoning
-	Permissions        string
-	ProviderPreference ProviderPreference
+	Prompt       string
+	SystemPrompt string
+	Model        string
+	Provider     string
+	Harness      string
+	ModelRef     string
+	Profile      string
+	WorkDir      string
+	Temperature  float32
+	Seed         int64
+	Reasoning    Reasoning
+	Permissions  string
 
 	// PreResolved bypasses ResolveRoute when the caller already has a
 	// decision. When non-nil, agent uses these values verbatim and does

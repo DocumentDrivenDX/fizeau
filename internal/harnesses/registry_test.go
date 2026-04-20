@@ -42,7 +42,7 @@ func TestRegistryDefaultBaseArgs(t *testing.T) {
 func TestRegistryNamesPreferenceOrder(t *testing.T) {
 	r := NewRegistry()
 	names := r.Names()
-	require.Len(t, names, 10)
+	require.Len(t, names, 11)
 	assert.Equal(t, "codex", names[0])
 	assert.Equal(t, "claude", names[1])
 	assert.Equal(t, "gemini", names[2])
@@ -76,6 +76,7 @@ func TestRegistryDiscoverHTTPProviders(t *testing.T) {
 	}
 	assert.True(t, byName["openrouter"].Available, "http provider openrouter should be available")
 	assert.True(t, byName["lmstudio"].Available, "http provider lmstudio should be available")
+	assert.True(t, byName["omlx"].Available, "http provider omlx should be available")
 }
 
 func TestRegistryFirstAvailable(t *testing.T) {
@@ -140,4 +141,10 @@ func TestBuiltinHarnessesMetadata(t *testing.T) {
 
 	lmstudio, _ := r.Get("lmstudio")
 	assert.True(t, lmstudio.IsHTTPProvider)
+	assert.True(t, lmstudio.IsLocal)
+
+	omlx, _ := r.Get("omlx")
+	assert.True(t, omlx.IsHTTPProvider)
+	assert.True(t, omlx.IsLocal)
+	assert.Equal(t, "local", omlx.CostClass)
 }

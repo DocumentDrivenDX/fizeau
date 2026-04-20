@@ -18,27 +18,20 @@ import (
 // agent-side provider failover ordering.
 func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error) {
 	in := s.buildRoutingInputs()
-	pref := req.ProviderPreference
-	if pref == "" {
-		pref = ProviderPreferenceLocalFirst
-	}
-	switch pref {
-	case ProviderPreferenceLocalFirst, ProviderPreferenceSubscriptionFirst,
-		ProviderPreferenceLocalOnly, ProviderPreferenceSubscriptionOnly:
-		// Valid.
-	default:
-		return nil, fmt.Errorf("invalid ProviderPreference: %q", pref)
+	profile := req.Profile
+	if profile == "" {
+		profile = reqProfileFromModelRef(req.ModelRef)
 	}
 
 	rReq := routing.Request{
-		Profile:            reqProfileFromModelRef(req.ModelRef),
+		Profile:            profile,
 		ModelRef:           reqModelRefStripProfile(req.ModelRef),
 		Model:              req.Model,
 		Provider:           req.Provider,
 		Harness:            req.Harness,
 		Reasoning:          effectiveReasoningString(req.Reasoning),
 		Permissions:        req.Permissions,
-		ProviderPreference: string(pref),
+		ProviderPreference: providerPreferenceForProfile(profile),
 	}
 	dec, err := routing.Resolve(rReq, in)
 	if err != nil {
@@ -178,17 +171,28 @@ func (s *service) buildRoutingInputs() routing.Inputs {
 // is already specific enough that the legacy resolveExecuteRoute path applies.
 func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*RouteDecision, error) {
 	rr := RouteRequest{
-		Model:              req.Model,
-		Provider:           req.Provider,
-		Harness:            req.Harness,
-		ModelRef:           req.ModelRef,
-		Reasoning:          req.Reasoning,
-		Permissions:        req.Permissions,
-		ProviderPreference: req.ProviderPreference,
+		Profile:     req.Profile,
+		Model:       req.Model,
+		Provider:    req.Provider,
+		Harness:     req.Harness,
+		ModelRef:    req.ModelRef,
+		Reasoning:   req.Reasoning,
+		Permissions: req.Permissions,
 	}
 	dec, err := s.ResolveRoute(context.Background(), rr)
 	if err != nil {
 		return nil, fmt.Errorf("ResolveRoute: %w", err)
 	}
 	return dec, nil
+}
+
+func providerPreferenceForProfile(profile string) string {
+	switch profile {
+	case "offline", "air-gapped":
+		return routing.ProviderPreferenceLocalOnly
+	case "smart", "code-high":
+		return routing.ProviderPreferenceSubscriptionFirst
+	default:
+		return routing.ProviderPreferenceLocalFirst
+	}
 }

@@ -181,23 +181,27 @@ prompt behavior and must not be reused for model policy or routing.
 30. Callers continue to pass only model intent (`model_ref` or exact pin) into the
     embedded harness. Callers must not duplicate inner provider-selection logic.
 
-#### Phase 2C (P1): Provider Preference and Quota-Aware Scoring
+#### Phase 2C (P1): Profile-Owned Placement and Quota-Aware Scoring
 
-31. Callers can express a preference for local vs. subscription candidates through `ProviderPreference`.
-    `ProviderPreference` appears on `ExecuteRequest`, `RouteRequest`, and
-    `internal/routing.Request`. `ResolveRoute` validates the value; empty
-    normalizes to `local-first`.
-32. Supported `ProviderPreference` values:
-    - `local-first` (default) — prefer local candidates in the same tier; fall back to subscription if local is unavailable or cooling down.
-    - `subscription-first` — prefer subscription candidates with available quota; fall back to local if subscription is exhausted or stale.
-    - `local-only` — hard-filter; reject all subscription candidates.
-    - `subscription-only` — hard-filter; reject all local candidates.
+31. Callers express placement intent through named profiles (`cheap`,
+    `standard`, `smart`, or user-defined profiles) or bypass routing by pinning
+    `Provider` + `Model`. The public service surface does not expose a
+    per-call local/subscription preference enum.
+32. Profile and `surface_policy` catalog data carry placement order, cost
+    ceilings, failure policy, and reasoning defaults. Examples:
+    - `cheap` can prefer local providers, allow cheap subscription fallback,
+      cap input cost, and use ordered failover.
+    - `smart` can prefer subscription providers with available quota and fall
+      back to local providers when quota is unavailable.
+    - `offline` or `air-gapped` can encode local-only placement.
 33. The routing engine uses live quota signals to influence subscription candidate scoring:
     - `QuotaOK` — false when a subscription provider is exhausted.
     - `QuotaPercentUsed` — known usage percentage; applies a penalty when high (>= 80%).
     - `QuotaStale` — applies a penalty when the latest quota probe is older than the configured freshness window.
     - `QuotaTrend` — biases score based on burn rate (`healthy`, `burning`, `exhausting`).
-34. Quota and preference signals only affect ranking and filtering within the eligible candidate set that satisfies the requested model/tier intent; they do not trigger automatic tier escalation.
+34. Quota and profile placement signals only affect ranking and filtering
+    within the eligible candidate set that satisfies the requested model/tier
+    intent; they do not trigger automatic tier escalation.
 
 ### Non-Functional Requirements
 
@@ -258,7 +262,7 @@ prompt behavior and must not be reused for model policy or routing.
 | AC-FEAT-004-09 | Catalog publication produces an immutable versioned manifest bundle plus a stable channel pointer, and ordinary request execution never fetches remote manifest data implicitly. | `go test ./internal/modelcatalog ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-10 | The starter shared catalog publishes `code-high`, `code-medium`, and `code-economy` policy tiers with compatibility aliases `smart`, `fast`, and `cheap`, and projects the current concrete model/reasoning pairs onto supported surfaces. Below-smart tiers default to `reasoning=off`; smart/code-high defaults to `reasoning=high`; explicit caller values win when supported. | `go test ./internal/modelcatalog ./internal/config ./cmd/ddx-agent ./...` |
 | AC-FEAT-004-11 | Manifest schema v4 uses top-level concrete `models` entries and target-level ordered `candidates`; pricing, OpenRouter refresh, context windows, and benchmarks are model-scoped while target entries remain tier policy. v3 manifests load through a compatibility upgrade path. | `go test ./internal/modelcatalog ./...` |
-| AC-FEAT-004-12 | ProviderPreference (local-first, subscription-first, local-only, subscription-only) hard-filters or biases candidates correctly; live quota signals (OK, percent used, stale, trend) influence subscription scoring. | `go test ./internal/routing ./...` |
+| AC-FEAT-004-12 | Profiles are the public placement knob; catalog `surface_policy` carries placement order, cost ceilings, failure policy, and reasoning defaults; live quota signals (OK, percent used, stale, trend) influence subscription scoring. | `go test ./internal/routing ./internal/modelcatalog ./...` |
 
 ## Dependencies
 

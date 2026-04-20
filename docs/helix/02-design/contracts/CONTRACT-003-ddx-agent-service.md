@@ -136,15 +136,11 @@ const (
 
 func ReasoningTokens(n int) Reasoning
 
-// ProviderPreference specifies a caller's routing policy for local vs subscription.
-type ProviderPreference string
-
-const (
-    ProviderPreferenceLocalFirst        ProviderPreference = "local-first"
-    ProviderPreferenceSubscriptionFirst ProviderPreference = "subscription-first"
-    ProviderPreferenceLocalOnly         ProviderPreference = "local-only"
-    ProviderPreferenceSubscriptionOnly  ProviderPreference = "subscription-only"
-)
+// Routing placement is profile-owned. Callers either choose a named Profile
+// (cheap, standard, smart, or a user-defined profile) or pin Provider+Model
+// directly. Profiles are catalog/config data bundles that can carry placement
+// order, cost ceilings, failure policy, and reasoning defaults; callers do not
+// pass a per-request local/subscription preference enum.
 
 type ExecuteRequest struct {
     Prompt       string  // required
@@ -152,14 +148,13 @@ type ExecuteRequest struct {
     Model        string  // optional; resolved via ResolveRoute if empty
     Provider     string  // optional preference (soft); empty = router decides
     Harness      string  // optional preference (hard); empty = router decides
+    Profile      string  // optional named routing policy bundle: cheap/standard/smart/custom
     ModelRef     string  // optional alias from the catalog: cheap/standard/smart/<custom>
     Temperature  float32 // model sampling temperature; 0 = deterministic
     Seed         int64   // sampling seed; 0 = unset/provider chooses
     Reasoning    Reasoning // optional; auto|off|low|medium|high|minimal|xhigh|max|<tokens>
     Permissions  string  // "safe" | "supervised" | "unrestricted"; default "safe"
     WorkDir      string  // required when the chosen harness uses tools
-    ProviderPreference ProviderPreference // optional; local-first|subscription-first|local-only|subscription-only
-
     // PreResolved bypasses ResolveRoute when the caller already has a decision
     // (e.g., from a prior ResolveRoute call). When non-nil, agent uses these
     // values verbatim and does not re-route. Provider/Model/Harness fields
@@ -202,13 +197,13 @@ type StallPolicy struct {
 }
 
 type RouteRequest struct {
+    Profile            string
     Model              string
     Provider           string
     Harness            string
     ModelRef           string
     Reasoning          Reasoning
     Permissions        string
-    ProviderPreference ProviderPreference
 }
 
 type RouteDecision struct {

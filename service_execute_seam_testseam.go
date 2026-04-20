@@ -31,9 +31,13 @@ func (s *service) toolWiringHook() toolWiringHookFn {
 	return s.opts.ToolWiringHook
 }
 
-func (s *service) resolveNativeProvider(req ServiceExecuteRequest) agentcore.Provider {
+func (s *service) resolveNativeProvider(req ServiceExecuteRequest) nativeProviderResolution {
 	if s.opts.FakeProvider != nil {
-		return &fakeProviderAdapter{fp: s.opts.FakeProvider}
+		return nativeProviderResolution{
+			Provider: &fakeProviderAdapter{fp: s.opts.FakeProvider},
+			Name:     req.Provider,
+			Entry:    ServiceProviderEntry{Model: req.Model},
+		}
 	}
 	return s.resolveConfiguredNativeProvider(req)
 }

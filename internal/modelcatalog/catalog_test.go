@@ -187,6 +187,9 @@ targets:
     surface_policy:
       agent.openai:
         reasoning_default: medium
+        placement_order: [local, cheap-subscription]
+        max_input_cost_per_mtok_usd: 1.5
+        failure_policy: ordered-failover
 `), 0o644))
 
 	catalog, err := Load(LoadOptions{ManifestPath: manifestPath})
@@ -199,6 +202,11 @@ targets:
 	assert.Equal(t, "gpt-4.1", resolved.CanonicalID)
 	assert.Equal(t, "gpt-4.1", resolved.ConcreteModel)
 	assert.Equal(t, reasoning.ReasoningMedium, resolved.SurfacePolicy.ReasoningDefault)
+	assert.Equal(t, []string{"local", "cheap-subscription"}, resolved.SurfacePolicy.PlacementOrder)
+	if assert.NotNil(t, resolved.SurfacePolicy.MaxInputCostPerMTokUSD) {
+		assert.Equal(t, 1.5, *resolved.SurfacePolicy.MaxInputCostPerMTokUSD)
+	}
+	assert.Equal(t, "ordered-failover", resolved.SurfacePolicy.FailurePolicy)
 	assert.Equal(t, "2026-04-10.1", resolved.CatalogVersion)
 	assert.Equal(t, manifestPath, resolved.ManifestSource)
 	assert.Equal(t, 2, resolved.ManifestVersion)

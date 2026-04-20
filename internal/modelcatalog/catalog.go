@@ -34,7 +34,10 @@ type Catalog struct {
 
 // SurfacePolicy captures optional routing metadata for a resolved surface.
 type SurfacePolicy struct {
-	ReasoningDefault reasoning.Reasoning
+	ReasoningDefault       reasoning.Reasoning
+	PlacementOrder         []string
+	MaxInputCostPerMTokUSD *float64
+	FailurePolicy          string
 }
 
 // Metadata describes the loaded manifest.

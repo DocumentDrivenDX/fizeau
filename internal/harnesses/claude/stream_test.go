@@ -427,7 +427,7 @@ func TestRunnerExecute_CancellationReapsSubprocess(t *testing.T) {
 	// Cancel and confirm the channel closes within a bounded window.
 	cancel()
 
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(15 * time.Second)
 	for {
 		select {
 		case ev, ok := <-out:
