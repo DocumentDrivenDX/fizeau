@@ -5,6 +5,23 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.7.0] — 2026-04-20
+
+### Fixed
+- **Route HTTP provider-backed native harnesses by concrete provider type.**
+  Service execution now resolves native harness/provider dispatch through the
+  concrete provider identity instead of the configured provider name, so
+  renamed `lmstudio`, `omlx`, `openrouter`, `ollama`, and `openai` providers
+  route correctly after the v0.6.0 provider split. (`agent-117a0868`)
+
+### Changed
+- **Profile-owned placement policy replaced public provider preference
+  routing.** Service callers use profiles such as `cheap`, `standard`,
+  `smart`, or user-defined profiles as the public routing knob. Catalog
+  `surface_policy` can carry placement order, cost ceilings, failure policy,
+  and reasoning defaults; subscription quota health and burn trend still
+  influence same-tier scoring internally. (`agent-117a0868`)
+
 ## [v0.6.0] — 2026-04-20
 
 ### Breaking
@@ -22,11 +39,9 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
   `omlx`, `ollama`, and `anthropic` are provider identities; shared
   OpenAI-compatible protocol plumbing lives below them in
   `internal/sdk/openaicompat`.
-- **Profile-owned placement policy.** Service callers use profiles such as
-  `cheap`, `standard`, `smart`, or user-defined profiles as the public routing
-  knob. Catalog `surface_policy` can carry placement order, cost ceilings,
-  failure policy, and reasoning defaults; subscription quota health and burn
-  trend still influence same-tier scoring internally.
+- **Provider preference routing.** Service and routing requests can express
+  local-first, subscription-first, local-only, and subscription-only policy,
+  with subscription quota health and burn trend influencing same-tier scoring.
 
 ### Changed
 - Provider routing and tool contract docs were refreshed to reflect the
