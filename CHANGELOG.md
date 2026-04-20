@@ -5,6 +5,31 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.6.0] — 2026-04-20
+
+### Breaking
+- **Removed runtime provider `flavor` behavior from the OpenAI-compatible
+  provider.** Concrete provider packages now own provider identity,
+  capabilities, discovery, limit lookup, and cost attribution. Direct
+  `openai.Provider` construction defaults to OpenAI identity unless callers
+  explicitly pass provider metadata.
+- **Removed deprecated prompt preset aliases.** Harness-flavored names such as
+  `agent`, `worker`, `cursor`, `claude`, and `codex` now fail clearly instead
+  of warning and resolving to canonical presets.
+
+### Added
+- **Concrete provider identity split.** `openai`, `openrouter`, `lmstudio`,
+  `omlx`, `ollama`, and `anthropic` are provider identities; shared
+  OpenAI-compatible protocol plumbing lives below them in
+  `internal/sdk/openaicompat`.
+- **Provider preference routing.** Service and routing requests can express
+  local-first, subscription-first, local-only, and subscription-only policy,
+  with subscription quota health and burn trend influencing same-tier scoring.
+
+### Changed
+- Provider routing and tool contract docs were refreshed to reflect the
+  concrete-provider model and bounded tool-output behavior.
+
 ## [v0.5.0] — 2026-04-19
 
 ### Breaking
