@@ -63,7 +63,7 @@ func harnessCapabilityMatrix(name string, cfg harnesses.HarnessConfig) HarnessCa
 		PermissionModes: permissionCapability(cfg),
 		ProgressEvents:  progressEventsCapability(name, cfg),
 		UsageCapture:    usageCaptureCapability(name, cfg),
-		FinalText:       finalTextCapability(),
+		FinalText:       finalTextCapability(name, cfg),
 		ToolEvents:      toolEventsCapability(name, cfg),
 		QuotaStatus:     quotaStatusCapability(cfg),
 		RecordReplay:    recordReplayCapability(cfg),
@@ -153,8 +153,19 @@ func usageCaptureCapability(name string, cfg harnesses.HarnessConfig) HarnessCap
 	return capUnsupported("usage capture is unavailable until Service.Execute dispatch is wired")
 }
 
-func finalTextCapability() HarnessCapability {
-	return capUnsupported("final events do not yet expose normalized final response text")
+func finalTextCapability(name string, cfg harnesses.HarnessConfig) HarnessCapability {
+	if cfg.TestOnly {
+		return capNotApplicable("test-only harness does not expose normalized live response text")
+	}
+	switch name {
+	case "agent", "codex", "claude", "gemini", "opencode", "pi":
+		return capOptional("final events include normalized final_text when response text is available")
+	default:
+		if cfg.IsHTTPProvider {
+			return capOptional("native-provider final events include normalized final_text when response text is available")
+		}
+		return capUnsupported("final events do not expose normalized final response text")
+	}
 }
 
 func toolEventsCapability(name string, cfg harnesses.HarnessConfig) HarnessCapability {

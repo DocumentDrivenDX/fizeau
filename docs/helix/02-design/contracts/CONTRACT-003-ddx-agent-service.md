@@ -47,8 +47,8 @@ import (
 type DdxAgent interface {
     // Execute runs an agent task in-process; emits Events on the channel until
     // the task terminates (channel closes). The final event (type=final) carries
-    // status, usage, cost, session log path, optional message history, and
-    // routing_actual (the resolved fallback chain that fired).
+    // status, normalized final_text, usage, cost, session log path, optional
+    // message history, and routing_actual (the resolved fallback chain that fired).
     Execute(ctx context.Context, req ExecuteRequest) (<-chan Event, error)
 
     // TailSessionLog streams events from a previously-started or in-progress
@@ -368,17 +368,17 @@ Current builtin matrix:
 
 | Harness | ExecutePrompt | ModelDiscovery | ModelPinning | WorkdirContext | ReasoningLevels | PermissionModes | ProgressEvents | UsageCapture | FinalText | ToolEvents | QuotaStatus | RecordReplay |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| codex | required | unsupported | optional | optional | optional | optional | required | optional | unsupported | unsupported | optional | unsupported |
-| claude | required | unsupported | optional | optional | optional | optional | required | optional | unsupported | optional | optional | unsupported |
-| gemini | unsupported | unsupported | optional | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
-| opencode | unsupported | unsupported | optional | optional | optional | optional | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
-| agent | required | optional | optional | optional | optional | unsupported | required | optional | unsupported | optional | not_applicable | unsupported |
-| pi | unsupported | unsupported | optional | unsupported | optional | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
-| virtual | unsupported | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | unsupported | unsupported | unsupported | not_applicable | not_applicable | required |
-| script | unsupported | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | unsupported | unsupported | unsupported | not_applicable | not_applicable | required |
-| openrouter | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | unsupported | unsupported | unsupported | unsupported |
-| lmstudio | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | unsupported | unsupported | not_applicable | unsupported |
-| omlx | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | unsupported | unsupported | not_applicable | unsupported |
+| codex | required | unsupported | optional | optional | optional | optional | required | optional | optional | unsupported | optional | unsupported |
+| claude | required | unsupported | optional | optional | optional | optional | required | optional | optional | optional | optional | unsupported |
+| gemini | unsupported | unsupported | optional | unsupported | unsupported | unsupported | unsupported | unsupported | optional | unsupported | unsupported | unsupported |
+| opencode | unsupported | unsupported | optional | optional | optional | optional | unsupported | unsupported | optional | unsupported | unsupported | unsupported |
+| agent | required | optional | optional | optional | optional | unsupported | required | optional | optional | optional | not_applicable | unsupported |
+| pi | unsupported | unsupported | optional | unsupported | optional | unsupported | unsupported | unsupported | optional | unsupported | unsupported | unsupported |
+| virtual | unsupported | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | unsupported | unsupported | not_applicable | not_applicable | not_applicable | required |
+| script | unsupported | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | unsupported | unsupported | not_applicable | not_applicable | not_applicable | required |
+| openrouter | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
+| lmstudio | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | not_applicable | unsupported |
+| omlx | required | optional | unsupported | unsupported | unsupported | unsupported | required | optional | optional | unsupported | not_applicable | unsupported |
 
 Notes:
 
@@ -386,9 +386,11 @@ Notes:
   today. Registered subprocess runners that are not wired through
   `Service.Execute` remain `unsupported` in that row even when lower-level
   runner code exists.
-- `FinalText=unsupported` until final events expose normalized final response
-  text as a stable public field. Consumers should continue to read text deltas
-  or session logs during the migration window.
+- `FinalText=optional` means final events populate `final_text` when the
+  harness or native provider produced user-facing response text. During the
+  migration window, `text_delta` remains available for consumers that still
+  stream output incrementally, but final verdict parsers should prefer
+  `final_text` and avoid parsing raw harness stream frames.
 - `RecordReplay=required` only for test-only harnesses (`virtual`, `script`).
   Production harnesses do not currently expose deterministic record/replay
   through this service contract.
@@ -432,6 +434,7 @@ Closed union of event types. Every harness backend emits these identically.
   "status": "success" | "failed" | "stalled" | "timed_out" | "cancelled",
   "exit_code": 0,
   "error": "",
+  "final_text": "user-facing final response text, stripped of harness stream envelopes",
   "duration_ms": 12345,
   "usage": {"input_tokens": 7996, "output_tokens": 267, "total_tokens": 8263},
   "cost_usd": 0.0042,

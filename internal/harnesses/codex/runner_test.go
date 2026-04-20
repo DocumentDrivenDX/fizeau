@@ -103,6 +103,9 @@ EOF
 	if finalEv.Status != "success" {
 		t.Errorf("expected status=success, got %q (error: %s)", finalEv.Status, finalEv.Error)
 	}
+	if finalEv.FinalText != "hello from codex" {
+		t.Errorf("expected FinalText=%q, got %q", "hello from codex", finalEv.FinalText)
+	}
 	if finalEv.Usage == nil {
 		t.Error("expected usage in final event")
 	} else {
@@ -147,4 +150,36 @@ func TestParseCodexStream_EventTypes(t *testing.T) {
 	if events[0].Type != harnesses.EventTypeTextDelta {
 		t.Errorf("expected text_delta, got %q", events[0].Type)
 	}
+}
+
+func TestParseCodexStream_ItemCompletedFinalText(t *testing.T) {
+	input := `{"type":"item.completed","item":{"type":"message","content":[{"type":"output_text","text":"APPROVE\nLooks good."}]}}
+{"type":"turn.completed","usage":{"input_tokens":4,"output_tokens":3}}
+`
+	out := make(chan harnesses.Event, 16)
+	var seq int64
+	agg, err := parseCodexStream(context.Background(), strings.NewReader(input), out, nil, &seq)
+	close(out)
+	if err != nil {
+		t.Fatalf("parseCodexStream: %v", err)
+	}
+	if agg.FinalText != "APPROVE\nLooks good." {
+		t.Fatalf("FinalText: got %q", agg.FinalText)
+	}
+	if strings.Contains(agg.FinalText, "item.completed") || strings.Contains(agg.FinalText, `"content"`) {
+		t.Fatalf("FinalText leaked raw codex frame: %q", agg.FinalText)
+	}
+	if got := reviewerVerdictFromFinalText(agg.FinalText); got != "APPROVE" {
+		t.Fatalf("verdict from FinalText: got %q, want APPROVE", got)
+	}
+}
+
+func reviewerVerdictFromFinalText(text string) string {
+	if strings.Contains(text, "APPROVE") {
+		return "APPROVE"
+	}
+	if strings.Contains(text, "BLOCK") {
+		return "BLOCK"
+	}
+	return "BLOCK"
 }

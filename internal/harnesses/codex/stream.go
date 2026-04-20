@@ -23,8 +23,9 @@ import (
 type codexEvent struct {
 	Type string `json:"type"`
 	Item struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type    string          `json:"type"`
+		Text    string          `json:"text"`
+		Content json.RawMessage `json:"content"`
 	} `json:"item"`
 	Usage struct {
 		InputTokens  int `json:"input_tokens"`
@@ -42,9 +43,10 @@ type streamAggregate struct {
 // parseCodexStream reads newline-delimited codex exec --json events from r
 // and emits harness Events on out. Mapping per CONTRACT-003:
 //
-//   - codex output/agent_message -> EventTypeTextDelta
-//   - codex turn.completed       -> (no event; aggregate populated with usage)
-//   - all other types            -> skipped
+//   - codex output/agent_message     -> EventTypeTextDelta
+//   - codex item.completed text item -> EventTypeTextDelta
+//   - codex turn.completed           -> (no event; aggregate populated with usage)
+//   - all other types                -> skipped
 func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Event, metadata map[string]string, seq *int64) (*streamAggregate, error) {
 	agg := &streamAggregate{}
 	scanner := bufio.NewScanner(r)
@@ -96,6 +98,14 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 				}
 				agg.FinalText = ev.Item.Text
 			}
+		case "item.completed":
+			text := codexCompletedItemText(ev.Item.Text, ev.Item.Content)
+			if text != "" {
+				if err := emit(harnesses.EventTypeTextDelta, harnesses.TextDeltaData{Text: text}); err != nil {
+					return agg, err
+				}
+				agg.FinalText = text
+			}
 		case "turn.completed":
 			if ev.Usage.InputTokens > 0 {
 				agg.InputTokens = ev.Usage.InputTokens
@@ -109,4 +119,33 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 		return agg, err
 	}
 	return agg, nil
+}
+
+func codexCompletedItemText(text string, content json.RawMessage) string {
+	if text != "" {
+		return text
+	}
+	if len(content) == 0 {
+		return ""
+	}
+	var contentString string
+	if err := json.Unmarshal(content, &contentString); err == nil {
+		return contentString
+	}
+	var blocks []struct {
+		Text    string `json:"text"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(content, &blocks); err != nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, block := range blocks {
+		if block.Text != "" {
+			b.WriteString(block.Text)
+		} else if block.Content != "" {
+			b.WriteString(block.Content)
+		}
+	}
+	return b.String()
 }

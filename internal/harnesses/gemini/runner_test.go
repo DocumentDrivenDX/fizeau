@@ -103,6 +103,9 @@ EOF
 	if finalEv.Status != "success" {
 		t.Errorf("expected status=success, got %q (error: %s)", finalEv.Status, finalEv.Error)
 	}
+	if !strings.Contains(finalEv.FinalText, "Hello from gemini") {
+		t.Errorf("expected FinalText to contain gemini output, got %q", finalEv.FinalText)
+	}
 	// Usage from JSON stats line.
 	if finalEv.Usage == nil {
 		t.Error("expected usage in final event from JSON stats block")

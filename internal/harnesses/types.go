@@ -88,6 +88,7 @@ type FinalData struct {
 	Status         string            `json:"status"` // success|iteration_limit|failed|stalled|timed_out|cancelled
 	ExitCode       int               `json:"exit_code"`
 	Error          string            `json:"error,omitempty"`
+	FinalText      string            `json:"final_text,omitempty"`
 	DurationMS     int64             `json:"duration_ms"`
 	Usage          *FinalUsage       `json:"usage,omitempty"`
 	CostUSD        float64           `json:"cost_usd,omitempty"`

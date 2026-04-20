@@ -103,6 +103,9 @@ EOF
 	if finalEv.Status != "success" {
 		t.Errorf("expected status=success, got %q (error: %s)", finalEv.Status, finalEv.Error)
 	}
+	if finalEv.FinalText != "hello from pi" {
+		t.Errorf("expected FinalText=%q, got %q", "hello from pi", finalEv.FinalText)
+	}
 	if finalEv.Usage == nil {
 		t.Error("expected usage in final event")
 	} else {

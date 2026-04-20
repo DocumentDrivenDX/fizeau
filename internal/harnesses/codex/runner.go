@@ -131,6 +131,7 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 		final.Error = trimErrorBlob(stderr)
 	}
 	if agg != nil {
+		final.FinalText = agg.FinalText
 		if agg.InputTokens > 0 || agg.OutputTokens > 0 {
 			final.Usage = &harnesses.FinalUsage{
 				InputTokens:  agg.InputTokens,

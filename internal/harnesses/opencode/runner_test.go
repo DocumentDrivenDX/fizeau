@@ -102,6 +102,9 @@ EOF
 	if finalEv.Status != "success" {
 		t.Errorf("expected status=success, got %q (error: %s)", finalEv.Status, finalEv.Error)
 	}
+	if finalEv.FinalText != "opencode response text" {
+		t.Errorf("expected FinalText=%q, got %q", "opencode response text", finalEv.FinalText)
+	}
 }
 
 func TestParseOpencodeStream_WithUsage(t *testing.T) {

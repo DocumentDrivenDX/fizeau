@@ -376,6 +376,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	// Map agent.Result → harness FinalData.
 	final := harnesses.FinalData{
 		DurationMS: time.Since(start).Milliseconds(),
+		FinalText:  result.Output,
 		RoutingActual: &harnesses.RoutingActual{
 			Harness:  actualHarness,
 			Provider: actualProvider,

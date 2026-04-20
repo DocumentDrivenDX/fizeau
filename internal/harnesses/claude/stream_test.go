@@ -362,6 +362,7 @@ func TestRunnerExecute_HappyPath(t *testing.T) {
 	require.NoError(t, json.Unmarshal(last.Data, &final))
 	assert.Equal(t, "success", final.Status)
 	assert.Equal(t, 0, final.ExitCode)
+	assert.Equal(t, "hello", final.FinalText)
 	require.NotNil(t, final.Usage)
 	assert.Equal(t, 5, final.Usage.InputTokens)
 	assert.Equal(t, 2, final.Usage.OutputTokens)

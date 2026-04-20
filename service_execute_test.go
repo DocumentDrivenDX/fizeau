@@ -79,6 +79,20 @@ func finalError(t *testing.T, ev *agent.ServiceEvent) string {
 	return payload.Error
 }
 
+func finalText(t *testing.T, ev *agent.ServiceEvent) string {
+	t.Helper()
+	if ev == nil {
+		return ""
+	}
+	var payload struct {
+		FinalText string `json:"final_text"`
+	}
+	if err := json.Unmarshal(ev.Data, &payload); err != nil {
+		t.Fatalf("unmarshal final: %v", err)
+	}
+	return payload.FinalText
+}
+
 // TestExecute_NativePathWithFakeProvider verifies that a native-path
 // Execute drives loop.go through the FakeProvider seam, emits a routing
 // decision, forwards events with metadata, and terminates with success.
@@ -117,6 +131,9 @@ func TestExecute_NativePathWithFakeProvider(t *testing.T) {
 	}
 	if got := finalStatus(t, final); got != "success" {
 		t.Errorf("status: want success, got %q (err=%q)", got, finalError(t, final))
+	}
+	if got := finalText(t, final); got != "hello world" {
+		t.Errorf("final_text: want %q, got %q", "hello world", got)
 	}
 	// First event is the routing_decision.
 	if events[0].Type != "routing_decision" {
