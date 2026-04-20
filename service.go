@@ -245,15 +245,15 @@ type ServiceEvent = harnesses.Event
 // (§"Public types") for the canonical shape; this struct is its in-process
 // twin under the agent module.
 type ServiceExecuteRequest struct {
-	Prompt       string
-	SystemPrompt string
-	Model        string
-	Provider     string
-	Harness      string
-	ModelRef     string
-	WorkDir      string
-	Temperature  float32
-	Seed         int64
+	Prompt             string
+	SystemPrompt       string
+	Model              string
+	Provider           string
+	Harness            string
+	ModelRef           string
+	WorkDir            string
+	Temperature        float32
+	Seed               int64
 	Reasoning          Reasoning
 	Permissions        string
 	ProviderPreference ProviderPreference
