@@ -75,14 +75,17 @@
   example, cancellation must specify subprocess termination, final event status,
   and session-log flushing requirements.
 - **Harness golden masters**: Real harness integration tests should support a
-  record/replay workflow. Record mode runs the real authenticated harness,
-  fails fast when the binary, credentials, subscription, configured model, tmux
-  dependency, or quota surface is unavailable, and writes sanitized
-  golden-master cassettes containing command arguments, binary version, event
-  sequence, final metadata, usage, quota probe output, and relevant session-log
-  records. Replay mode must run deterministically from those cassettes and is
-  contract evidence for parser/event/session behavior, but replay alone is not
-  evidence that the external harness still works today.
+  PTY-backed record/replay workflow. Record mode runs the real authenticated
+  harness through the selected PTY transport, fails fast when the binary,
+  credentials, subscription, configured model, transport dependency, or quota
+  surface is unavailable, and writes sanitized golden-master cassettes
+  containing command arguments, binary version, transport/session metadata, pane
+  transcript, event sequence, final metadata, usage, quota probe output, and
+  relevant session-log records. Replay mode must also run through the selected
+  PTY transport, using a cassette player that recreates the recorded pane
+  transcript and structured event stream deterministically. Replay is contract
+  evidence for parser/event/session/PTY transport behavior, but replay alone is
+  not evidence that the external harness still works today.
 - **Harness live-run policy**: Skipped live harness integration tests do not
   count as passing evidence. CI must distinguish absent credentials from
   failing behavior. If live tests cannot run on every PR, run them in a
@@ -90,17 +93,23 @@
   the evidence freshness. A capability with stale, repeatedly skipped, or
   version-mismatched live evidence must be downgraded to `experimental` or
   `unsupported` until a fresh record-mode run passes.
-- **Inspectable harness execution**: Live subprocess harnesses should run
-  through a persistent PTY execution transport when the harness has meaningful
-  terminal state, interactive status, or quota commands. On Unix, tmux is the
-  preferred implementation because it preserves an attachable session, lets
-  operators inspect in-flight work, and allows post-failure pane capture.
-  The transport must record the session name, pane transcript, command
-  arguments, exit status, and cleanup outcome. Direct non-PTY execution remains
-  valid for deterministic replay, CI environments without tmux, Windows, and
-  harnesses whose supported capabilities do not require terminal inspection.
-  Tests for PTY-backed capabilities must prove attachability, pane capture,
-  cancellation, subprocess cleanup, and session-log consistency.
+- **Inspectable harness execution**: Real subprocess harness integration runs
+  require one consistent attachable PTY execution transport. Do not let tmux
+  become a narrow quota-only or debugging-only dependency while normal harness
+  execution uses a separate transport. The transport decision record must choose
+  one architecture for live harness execution, quota/status probing, record
+  mode, replay mode, cancellation, and inspection: either standardize on tmux
+  for all of those harness paths, or own direct PTY/session supervision and
+  remove tmux from the harness architecture. The decision must evaluate tmux,
+  direct PTY management, `ntm`, and any other credible terminal supervisor
+  against attachability, pane/screen capture, input injection, timing capture,
+  exit-status capture, cleanup, cancellation, replay fidelity, portability,
+  operational inspectability, and implementation cost. Tests for the selected
+  transport must prove attachability, pane capture, cancellation, subprocess
+  cleanup, and session-log consistency. If the cassette recorder or player
+  becomes a generic PTY record/replay tool rather than DDX Agent-specific
+  harness evidence plumbing, it should be split into its own project with an
+  explicit API and versioned cassette format.
 - **Quota tests**: Claude Code and OpenAI Codex quota monitoring requires
   parser, cache, public API, and real quota-probe integration coverage. Tests
   should prove probe/cache/API behavior without requiring measurable quota burn;
