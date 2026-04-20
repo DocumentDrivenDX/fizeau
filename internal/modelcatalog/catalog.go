@@ -47,6 +47,20 @@ type Metadata struct {
 	CatalogVersion  string
 }
 
+// Profile describes one named catalog profile.
+type Profile struct {
+	Name   string
+	Target string
+}
+
+// Alias describes one catalog alias.
+type Alias struct {
+	Name        string
+	Target      string
+	Deprecated  bool
+	Replacement string
+}
+
 // ResolvedTarget is the resolved output for a model reference.
 type ResolvedTarget struct {
 	Ref             string
@@ -88,6 +102,42 @@ func (c *Catalog) Metadata() Metadata {
 		ManifestVersion: c.manifest.Version,
 		CatalogVersion:  c.manifest.CatalogVersion,
 	}
+}
+
+// Profiles returns all named profiles in deterministic order.
+func (c *Catalog) Profiles() []Profile {
+	names := make([]string, 0, len(c.profileToID))
+	for name := range c.profileToID {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]Profile, 0, len(names))
+	for _, name := range names {
+		out = append(out, Profile{Name: name, Target: c.profileToID[name]})
+	}
+	return out
+}
+
+// Aliases returns all target aliases in deterministic order.
+func (c *Catalog) Aliases() []Alias {
+	names := make([]string, 0, len(c.aliasToID))
+	for name := range c.aliasToID {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]Alias, 0, len(names))
+	for _, name := range names {
+		targetID := c.aliasToID[name]
+		target := c.manifest.Targets[targetID]
+		status := normalizedStatus(target.Status)
+		out = append(out, Alias{
+			Name:        name,
+			Target:      targetID,
+			Deprecated:  status != statusActive,
+			Replacement: target.Replacement,
+		})
+	}
+	return out
 }
 
 // UnknownReferenceError indicates that a reference is not known to the catalog.

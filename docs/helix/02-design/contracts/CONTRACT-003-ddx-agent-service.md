@@ -70,6 +70,20 @@ type DdxAgent interface {
     // (cost, perf signals, capabilities, context length, ranking).
     ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
 
+    // ListProfiles returns catalog profile names and alias projections with
+    // provenance metadata. Consumers use this instead of reading
+    // ~/.config/agent/models.yaml.
+    ListProfiles(ctx context.Context) ([]ProfileInfo, error)
+
+    // ResolveProfile projects one profile or alias into service-supported
+    // surfaces. Surface names are public service names, not internal catalog
+    // keys such as "agent.openai".
+    ResolveProfile(ctx context.Context, name string) (*ResolvedProfile, error)
+
+    // ProfileAliases returns known alias -> canonical profile/target mappings,
+    // including deprecated aliases mapped to their replacement when available.
+    ProfileAliases(ctx context.Context) (map[string]string, error)
+
     // HealthCheck triggers a fresh probe and updates internal state.
     // Target.Type is "harness" or "provider".
     HealthCheck(ctx context.Context, target HealthTarget) error
@@ -96,8 +110,9 @@ type DdxAgent interface {
 func New(opts Options) (DdxAgent, error)
 ```
 
-**Nine methods total.** `Execute` is the primary verb; `TailSessionLog`,
-`ListHarnesses`, `ListProviders`, `ListModels`, `HealthCheck`, `ResolveRoute`,
+**Twelve methods total.** `Execute` is the primary verb; `TailSessionLog`,
+`ListHarnesses`, `ListProviders`, `ListModels`, `ListProfiles`,
+`ResolveProfile`, `ProfileAliases`, `HealthCheck`, `ResolveRoute`,
 `RecordRouteAttempt`, and `RouteStatus` are the supporting surface.
 
 ## Public types
@@ -322,6 +337,40 @@ type ModelFilter struct {
     Provider string  // empty = all providers
 }
 
+type ProfileInfo struct {
+    Name            string  // profile or alias visible to callers
+    Target          string  // canonical catalog target/profile
+    AliasOf         string  // non-empty when Name is an alias
+    Deprecated      bool
+    Replacement     string
+    CatalogVersion  string
+    ManifestSource  string
+    ManifestVersion int
+}
+
+type ResolvedProfile struct {
+    Name            string
+    Target          string
+    Deprecated      bool
+    Replacement     string
+    CatalogVersion  string
+    ManifestSource  string
+    ManifestVersion int
+    Surfaces        []ProfileSurface
+}
+
+type ProfileSurface struct {
+    Name                    string  // public service surface, e.g. "native-openai"
+    Harness                 string
+    ProviderSystem          string  // provider family, not a configured provider name
+    Model                   string
+    Candidates              []string
+    PlacementOrder          []string
+    CostCeilingInputPerMTok *float64
+    ReasoningDefault        Reasoning
+    FailurePolicy           string
+}
+
 type HealthTarget struct {
     Type string  // "harness" | "provider"
     Name string
@@ -437,6 +486,30 @@ type DrainExecuteResult struct {
 
 func DrainExecute(ctx context.Context, events <-chan Event) (*DrainExecuteResult, error)
 ```
+
+## Catalog Profile Projection
+
+Catalog profiles are service data, not consumer configuration. Consumers that
+need to present, validate, or route by profile call:
+
+- `ListProfiles` for selectable profile names, alias relationships, and catalog
+  provenance.
+- `ResolveProfile` for the public service projection of one profile or alias:
+  placement order, supported surfaces, candidate model IDs, cost ceiling,
+  reasoning default, and failure policy.
+- `ProfileAliases` for lightweight alias migration and validation maps.
+
+Public `ProfileSurface.Name` values are stable service names:
+`native-openai`, `native-anthropic`, `codex`, and `claude`. Consumers must not
+depend on internal catalog surface strings such as `agent.openai`,
+`agent.anthropic`, or `claude-code`; those remain model-catalog implementation
+details.
+
+Migration rule: any consumer currently reading `~/.config/agent/models.yaml`,
+model-catalog manifests, or hard-coded surface strings to discover `cheap`,
+`standard`, `smart`, aliases, or placement policy must switch to the service
+methods above. Direct YAML reads are allowed only inside the agent service and
+model-catalog implementation.
 
 ## Harness Capability Matrix
 
