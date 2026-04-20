@@ -181,14 +181,25 @@ type HealthTarget struct {
 	Name string
 }
 
+// ProviderPreference specifies a caller's routing policy for local vs subscription.
+type ProviderPreference string
+
+const (
+	ProviderPreferenceLocalFirst        ProviderPreference = "local-first"
+	ProviderPreferenceSubscriptionFirst ProviderPreference = "subscription-first"
+	ProviderPreferenceLocalOnly         ProviderPreference = "local-only"
+	ProviderPreferenceSubscriptionOnly  ProviderPreference = "subscription-only"
+)
+
 // RouteRequest specifies a routing query.
 type RouteRequest struct {
-	Model       string
-	Provider    string
-	Harness     string
-	ModelRef    string
-	Reasoning   Reasoning
-	Permissions string
+	Model              string
+	Provider           string
+	Harness            string
+	ModelRef           string
+	Reasoning          Reasoning
+	Permissions        string
+	ProviderPreference ProviderPreference
 }
 
 // RouteDecision is the result of ResolveRoute.
@@ -243,8 +254,9 @@ type ServiceExecuteRequest struct {
 	WorkDir      string
 	Temperature  float32
 	Seed         int64
-	Reasoning    Reasoning
-	Permissions  string
+	Reasoning          Reasoning
+	Permissions        string
+	ProviderPreference ProviderPreference
 
 	// PreResolved bypasses ResolveRoute when the caller already has a
 	// decision. When non-nil, agent uses these values verbatim and does

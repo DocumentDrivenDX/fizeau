@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
 
@@ -16,14 +18,27 @@ import (
 // agent-side provider failover ordering.
 func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error) {
 	in := s.buildRoutingInputs()
+	pref := req.ProviderPreference
+	if pref == "" {
+		pref = ProviderPreferenceLocalFirst
+	}
+	switch pref {
+	case ProviderPreferenceLocalFirst, ProviderPreferenceSubscriptionFirst,
+		ProviderPreferenceLocalOnly, ProviderPreferenceSubscriptionOnly:
+		// Valid.
+	default:
+		return nil, fmt.Errorf("invalid ProviderPreference: %q", pref)
+	}
+
 	rReq := routing.Request{
-		Profile:     reqProfileFromModelRef(req.ModelRef),
-		ModelRef:    reqModelRefStripProfile(req.ModelRef),
-		Model:       req.Model,
-		Provider:    req.Provider,
-		Harness:     req.Harness,
-		Reasoning:   effectiveReasoningString(req.Reasoning),
-		Permissions: req.Permissions,
+		Profile:            reqProfileFromModelRef(req.ModelRef),
+		ModelRef:           reqModelRefStripProfile(req.ModelRef),
+		Model:              req.Model,
+		Provider:           req.Provider,
+		Harness:            req.Harness,
+		Reasoning:          effectiveReasoningString(req.Reasoning),
+		Permissions:        req.Permissions,
+		ProviderPreference: string(pref),
 	}
 	dec, err := routing.Resolve(rReq, in)
 	if err != nil {
@@ -93,7 +108,35 @@ func (s *service) buildRoutingInputs() routing.Inputs {
 			SupportsTools:      true, // all builtin harnesses support tools today
 			Available:          st.Available,
 			QuotaOK:            true,
+			QuotaTrend:         routing.QuotaTrendUnknown,
 		}
+
+		if name == "claude" {
+			dec := claudeharness.ReadClaudeQuotaRoutingDecision(time.Now(), 0)
+			entry.QuotaOK = dec.PreferClaude
+			entry.QuotaStale = !dec.Fresh && dec.SnapshotPresent
+			if dec.Snapshot != nil {
+				maxUsed := 0.0
+				if dec.Snapshot.FiveHourLimit > 0 {
+					maxUsed = float64(dec.Snapshot.FiveHourLimit-dec.Snapshot.FiveHourRemaining) / float64(dec.Snapshot.FiveHourLimit) * 100
+				}
+				if dec.Snapshot.WeeklyLimit > 0 {
+					weeklyUsed := float64(dec.Snapshot.WeeklyLimit-dec.Snapshot.WeeklyRemaining) / float64(dec.Snapshot.WeeklyLimit) * 100
+					if weeklyUsed > maxUsed {
+						maxUsed = weeklyUsed
+					}
+				}
+				entry.QuotaPercentUsed = int(maxUsed)
+				if maxUsed >= 90 {
+					entry.QuotaTrend = routing.QuotaTrendExhausting
+				} else if maxUsed >= 70 {
+					entry.QuotaTrend = routing.QuotaTrendBurning
+				} else if dec.Fresh {
+					entry.QuotaTrend = routing.QuotaTrendHealthy
+				}
+			}
+		}
+
 		// Native "agent" harness: enumerate configured providers.
 		if name == "agent" && s.opts.ServiceConfig != nil {
 			for _, pname := range s.opts.ServiceConfig.ProviderNames() {
@@ -122,12 +165,13 @@ func (s *service) buildRoutingInputs() routing.Inputs {
 // is already specific enough that the legacy resolveExecuteRoute path applies.
 func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*RouteDecision, error) {
 	rr := RouteRequest{
-		Model:       req.Model,
-		Provider:    req.Provider,
-		Harness:     req.Harness,
-		ModelRef:    req.ModelRef,
-		Reasoning:   req.Reasoning,
-		Permissions: req.Permissions,
+		Model:              req.Model,
+		Provider:           req.Provider,
+		Harness:            req.Harness,
+		ModelRef:           req.ModelRef,
+		Reasoning:          req.Reasoning,
+		Permissions:        req.Permissions,
+		ProviderPreference: req.ProviderPreference,
 	}
 	dec, err := s.ResolveRoute(context.Background(), rr)
 	if err != nil {

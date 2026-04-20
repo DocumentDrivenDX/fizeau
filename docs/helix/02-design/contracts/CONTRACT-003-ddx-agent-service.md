@@ -136,6 +136,16 @@ const (
 
 func ReasoningTokens(n int) Reasoning
 
+// ProviderPreference specifies a caller's routing policy for local vs subscription.
+type ProviderPreference string
+
+const (
+    ProviderPreferenceLocalFirst        ProviderPreference = "local-first"
+    ProviderPreferenceSubscriptionFirst ProviderPreference = "subscription-first"
+    ProviderPreferenceLocalOnly         ProviderPreference = "local-only"
+    ProviderPreferenceSubscriptionOnly  ProviderPreference = "subscription-only"
+)
+
 type ExecuteRequest struct {
     Prompt       string  // required
     SystemPrompt string  // optional; agent supplies a sane default if empty
@@ -148,6 +158,7 @@ type ExecuteRequest struct {
     Reasoning    Reasoning // optional; auto|off|low|medium|high|minimal|xhigh|max|<tokens>
     Permissions  string  // "safe" | "supervised" | "unrestricted"; default "safe"
     WorkDir      string  // required when the chosen harness uses tools
+    ProviderPreference ProviderPreference // optional; local-first|subscription-first|local-only|subscription-only
 
     // PreResolved bypasses ResolveRoute when the caller already has a decision
     // (e.g., from a prior ResolveRoute call). When non-nil, agent uses these
@@ -191,12 +202,13 @@ type StallPolicy struct {
 }
 
 type RouteRequest struct {
-    Model       string
-    Provider    string
-    Harness     string
-    ModelRef    string
-    Reasoning   Reasoning
-    Permissions string
+    Model              string
+    Provider           string
+    Harness            string
+    ModelRef           string
+    Reasoning          Reasoning
+    Permissions        string
+    ProviderPreference ProviderPreference
 }
 
 type RouteDecision struct {

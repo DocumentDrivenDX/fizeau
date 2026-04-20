@@ -59,9 +59,39 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 		base -= float64(cr) * 10
 	}
 
-	// Quota near-limit penalty (>= 80% used).
-	if cand.QuotaPercentUsed >= 80 {
-		base -= float64(cand.QuotaPercentUsed-80) * 2
+	// Provider preference bias.
+	switch cand.ProviderPreference {
+	case "local-first", "":
+		if cand.CostClass == "local" {
+			base += 30
+		}
+	case "subscription-first":
+		if cand.IsSubscription && cand.QuotaOK {
+			base += 30
+		}
+	}
+
+	// Quota signals.
+	if cand.IsSubscription {
+		// Stale quota penalty.
+		if cand.QuotaStale {
+			base -= 15
+		}
+
+		// Trend-based adjustments.
+		switch cand.QuotaTrend {
+		case "exhausting":
+			base -= 40
+		case "burning":
+			base -= 20
+		case "healthy":
+			base += 10
+		}
+
+		// Quota near-limit penalty (>= 80% used).
+		if cand.QuotaPercentUsed >= 80 {
+			base -= float64(cand.QuotaPercentUsed-80) * 2
+		}
 	}
 
 	// Historical success-rate adjustment (only when sufficient samples).

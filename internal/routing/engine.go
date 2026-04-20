@@ -13,13 +13,14 @@ import (
 // Provider is present from day one (fixes ddx-8610020e — no soft-preference
 // dropping).
 type Request struct {
-	Profile     string // "cheap" | "standard" | "smart"
-	ModelRef    string // catalog alias (e.g. "qwen/qwen3.6")
-	Model       string // exact concrete model pin
-	Provider    string // soft preference (hard when Harness also set)
-	Harness     string // hard preference; constrains routing to one harness
-	Reasoning   string // public reasoning scalar
-	Permissions string // "safe" | "supervised" | "unrestricted"
+	Profile            string // "cheap" | "standard" | "smart"
+	ModelRef           string // catalog alias (e.g. "qwen/qwen3.6")
+	Model              string // exact concrete model pin
+	Provider           string // soft preference (hard when Harness also set)
+	Harness            string // hard preference; constrains routing to one harness
+	Reasoning          string // public reasoning scalar
+	Permissions        string // "safe" | "supervised" | "unrestricted"
+	ProviderPreference string // "local-first" | "subscription-first" | "local-only" | "subscription-only"
 
 	// EstimatedPromptTokens, when > 0, drives context-window gating.
 	EstimatedPromptTokens int
@@ -27,6 +28,13 @@ type Request struct {
 	// RequiresTools, when true, requires the candidate to support tool calling.
 	RequiresTools bool
 }
+
+const (
+	ProviderPreferenceLocalFirst        = "local-first"
+	ProviderPreferenceSubscriptionFirst = "subscription-first"
+	ProviderPreferenceLocalOnly         = "local-only"
+	ProviderPreferenceSubscriptionOnly  = "subscription-only"
+)
 
 // MinContextWindow returns the minimum context window the request requires,
 // derived from EstimatedPromptTokens with a safety margin.
@@ -37,6 +45,13 @@ func (r Request) MinContextWindow() int {
 	// 1.25x safety margin for response tokens + tool overhead.
 	return r.EstimatedPromptTokens + r.EstimatedPromptTokens/4
 }
+
+const (
+	QuotaTrendUnknown    = "unknown"
+	QuotaTrendHealthy    = "healthy"
+	QuotaTrendBurning    = "burning"
+	QuotaTrendExhausting = "exhausting"
+)
 
 // HarnessEntry is the harness-side input the caller (service) supplies.
 // It is the routing engine's view of a registered harness; the engine does
@@ -62,6 +77,8 @@ type HarnessEntry struct {
 	// QuotaOK / QuotaPercentUsed reflect live quota state (when applicable).
 	QuotaOK          bool
 	QuotaPercentUsed int
+	QuotaStale       bool
+	QuotaTrend       string // unknown|healthy|burning|exhausting
 
 	// Providers is the list of providers this harness can dispatch to.
 	// For subprocess harnesses (claude/codex) this is typically a single
@@ -123,10 +140,13 @@ type candidateInternal struct {
 	IsSubscription        bool
 	QuotaOK               bool
 	QuotaPercentUsed      int
+	QuotaStale            bool
+	QuotaTrend            string
 	HistoricalSuccessRate float64
 	ObservedTokensPerSec  float64
 	InCooldown            bool
 	ProviderAffinityMatch bool
+	ProviderPreference    string
 }
 
 // Resolve runs the engine end-to-end and returns a Decision.
@@ -260,6 +280,9 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		entryCaps.ContextWindow = ctxWin
 		entryCaps.SupportsTools = caps.SupportsTools || p.SupportsTools
 
+		key := p.Name + ":" + model
+		obs := in.ObservedSpeedTPS[key]
+
 		eligible := true
 		if reason == "" {
 			if g := CheckGating(entryCaps, req); g != "" {
@@ -269,14 +292,28 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		} else {
 			eligible = false
 		}
+
+		// Hard preference filtering.
+		if eligible {
+			switch req.ProviderPreference {
+			case ProviderPreferenceLocalOnly:
+				if !h.IsLocal {
+					eligible = false
+					reason = "preference is local-only"
+				}
+			case ProviderPreferenceSubscriptionOnly:
+				if !h.IsSubscription {
+					eligible = false
+					reason = "preference is subscription-only"
+				}
+			}
+		}
+
 		if eligible && req.Provider != "" && p.Name != "" && req.Provider != p.Name && req.Harness != "" {
 			// Hard provider pin under explicit harness: reject other providers.
 			eligible = false
 			reason = fmt.Sprintf("provider override requires %s", req.Provider)
 		}
-
-		key := p.Name + ":" + model
-		obs := in.ObservedSpeedTPS[key]
 
 		inCooldown := false
 		if p.Name != "" && p.InCooldown {
@@ -297,10 +334,13 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			IsSubscription:        h.IsSubscription,
 			QuotaOK:               h.QuotaOK,
 			QuotaPercentUsed:      h.QuotaPercentUsed,
+			QuotaStale:            h.QuotaStale,
+			QuotaTrend:            h.QuotaTrend,
 			HistoricalSuccessRate: histRate,
 			ObservedTokensPerSec:  obs,
 			InCooldown:            inCooldown,
 			ProviderAffinityMatch: req.Provider != "" && p.Name != "" && req.Provider == p.Name,
+			ProviderPreference:    req.ProviderPreference,
 		}
 		out = append(out, rankedCandidate{
 			out: Candidate{
