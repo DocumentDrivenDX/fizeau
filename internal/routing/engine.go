@@ -75,10 +75,19 @@ type HarnessEntry struct {
 	Available bool
 
 	// QuotaOK / QuotaPercentUsed reflect live quota state (when applicable).
+	// SubscriptionOK gates subscription harnesses at the eligibility level:
+	// when false, the candidate is ineligible regardless of score.
 	QuotaOK          bool
 	QuotaPercentUsed int
 	QuotaStale       bool
 	QuotaTrend       string // unknown|healthy|burning|exhausting
+	SubscriptionOK   bool   // false = hard gate; true = score-based demotion
+
+	// InCooldown marks the entire harness as being in a failure cooldown.
+	// When true the harness is demoted in score (via candidateInternal.InCooldown)
+	// but not hard-rejected, so it can still win when all other harnesses are
+	// also unavailable.
+	InCooldown bool
 
 	// Providers is the list of providers this harness can dispatch to.
 	// For subprocess harnesses (claude/codex) this is typically a single
@@ -142,6 +151,7 @@ type candidateInternal struct {
 	QuotaPercentUsed      int
 	QuotaStale            bool
 	QuotaTrend            string
+	SubscriptionOK        bool
 	HistoricalSuccessRate float64
 	ObservedTokensPerSec  float64
 	InCooldown            bool
@@ -309,6 +319,14 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			}
 		}
 
+		// SubscriptionOK hard gate: a subscription harness with SubscriptionOK=false
+		// (no durable cache, quota cache missing, or routing decision says no)
+		// is ineligible regardless of score.
+		if eligible && h.IsSubscription && !h.SubscriptionOK {
+			eligible = false
+			reason = "subscription quota exhausted"
+		}
+
 		if eligible && req.Provider != "" && p.Name != "" && req.Provider != p.Name && req.Harness != "" {
 			// Hard provider pin under explicit harness: reject other providers.
 			eligible = false
@@ -336,9 +354,10 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			QuotaPercentUsed:      h.QuotaPercentUsed,
 			QuotaStale:            h.QuotaStale,
 			QuotaTrend:            h.QuotaTrend,
+			SubscriptionOK:        h.SubscriptionOK,
 			HistoricalSuccessRate: histRate,
 			ObservedTokensPerSec:  obs,
-			InCooldown:            inCooldown,
+			InCooldown:            inCooldown || h.InCooldown,
 			ProviderAffinityMatch: req.Provider != "" && p.Name != "" && req.Provider == p.Name,
 			ProviderPreference:    req.ProviderPreference,
 		}

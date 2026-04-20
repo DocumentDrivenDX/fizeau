@@ -19,6 +19,7 @@ func newTestRoutingEngine() Inputs {
 				ExactPinSupport:    true,
 				Available:          true,
 				QuotaOK:            true,
+				SubscriptionOK:     true,
 				SupportedReasoning: []string{"low", "medium", "high"},
 				SupportedPerms:     []string{"safe", "supervised", "unrestricted"},
 				SupportsTools:      true,
@@ -48,6 +49,7 @@ func newTestRoutingEngine() Inputs {
 				ExactPinSupport:    true,
 				Available:          true,
 				QuotaOK:            true,
+				SubscriptionOK:     true,
 				SupportedReasoning: []string{"low", "medium", "high"},
 				SupportedPerms:     []string{"safe", "supervised", "unrestricted"},
 				SupportsTools:      true,
@@ -61,6 +63,7 @@ func newTestRoutingEngine() Inputs {
 				ExactPinSupport:    true,
 				Available:          true,
 				QuotaOK:            true,
+				SubscriptionOK:     true,
 				SupportedReasoning: []string{"low", "medium", "high"},
 				SupportedPerms:     []string{"safe", "supervised", "unrestricted"},
 				SupportsTools:      true,
@@ -225,6 +228,7 @@ func TestSmellCapabilityGating(t *testing.T) {
 			CostClass:       "medium",
 			Available:       true,
 			QuotaOK:         true,
+			SubscriptionOK:  true,
 			ExactPinSupport: true,
 			DefaultModel:    "x",
 		})
@@ -374,6 +378,7 @@ func TestSmellTestOnlyHarnessExcluded(t *testing.T) {
 		TestOnly:        true,
 		Available:       true,
 		QuotaOK:         true,
+		SubscriptionOK:  true,
 		ExactPinSupport: true,
 		DefaultModel:    "recorded",
 	})
@@ -432,8 +437,8 @@ func TestStableTieBreakerAlphabetical(t *testing.T) {
 	// Two equal-score candidates → alphabetical winner.
 	in := Inputs{
 		Harnesses: []HarnessEntry{
-			{Name: "zharness", Surface: "x", CostClass: "medium", Available: true, QuotaOK: true, DefaultModel: "z", ExactPinSupport: true, SupportsTools: true},
-			{Name: "aharness", Surface: "x", CostClass: "medium", Available: true, QuotaOK: true, DefaultModel: "a", ExactPinSupport: true, SupportsTools: true},
+			{Name: "zharness", Surface: "x", CostClass: "medium", Available: true, QuotaOK: true, SubscriptionOK: true, DefaultModel: "z", ExactPinSupport: true, SupportsTools: true},
+			{Name: "aharness", Surface: "x", CostClass: "medium", Available: true, QuotaOK: true, SubscriptionOK: true, DefaultModel: "a", ExactPinSupport: true, SupportsTools: true},
 		},
 	}
 	req := Request{Profile: "standard"}

@@ -109,12 +109,17 @@ func (s *service) buildRoutingInputs() routing.Inputs {
 			Available:          st.Available,
 			QuotaOK:            true,
 			QuotaTrend:         routing.QuotaTrendUnknown,
+			// SubscriptionOK defaults to true. Non-Claude subscription harnesses
+			// (codex) have no durable quota cache today; they are marked false
+			// below after the claude block so they are ineligible by default.
+			SubscriptionOK: true,
 		}
 
 		if name == "claude" {
 			dec := claudeharness.ReadClaudeQuotaRoutingDecision(time.Now(), 0)
 			entry.QuotaOK = dec.PreferClaude
 			entry.QuotaStale = !dec.Fresh && dec.SnapshotPresent
+			entry.SubscriptionOK = dec.PreferClaude
 			if dec.Snapshot != nil {
 				maxUsed := 0.0
 				if dec.Snapshot.FiveHourLimit > 0 {
@@ -135,6 +140,14 @@ func (s *service) buildRoutingInputs() routing.Inputs {
 					entry.QuotaTrend = routing.QuotaTrendHealthy
 				}
 			}
+		}
+
+		// Non-Claude subscription harnesses (codex, gemini, etc.) have no durable
+		// quota cache today. They are marked SubscriptionOK=false so exhausted
+		// quota hard-blocks them, while QuotaOK=true allows score-based demotion
+		// when the harness is otherwise viable.
+		if cfg.IsSubscription && name != "claude" {
+			entry.SubscriptionOK = false
 		}
 
 		// Native "agent" harness: enumerate configured providers.
