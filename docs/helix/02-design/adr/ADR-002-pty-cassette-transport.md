@@ -62,8 +62,11 @@ the core service/cassette path and consume DDX Agent outputs like any other
 client. The DDX Agent baseline is direct PTY only.
 
 The cassette recorder and player remain part of `internal/pty` for the baseline
-implementation. If reuse appears later, extract the mature PTY library as a
-whole rather than splitting cassette playback from session and terminal
+implementation, subject to the build-vs-buy gate in
+[ADR-004](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md).
+The project will adopt PTY, terminal-emulator, and recording concepts where
+existing libraries fit. If reuse appears later, extract the mature PTY library
+as a whole rather than splitting cassette playback from session and terminal
 modeling prematurely.
 
 **Key Points**: Direct PTY only | tmux helpers are legacy diagnostics |
@@ -87,8 +90,10 @@ library must be testable with synthetic programs and ordinary Unix TUIs before
 Claude or Codex are involved. Claude and Codex quota/model probes are acceptance
 tests for the harness adapters, not proof that the PTY library is complete by
 themselves. The terminal rendering decision is detailed in
-[ADR-003](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md)
-and supported by the `top` spike in
+[ADR-003](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md).
+The build-vs-buy boundary and extraction triggers are detailed in
+[ADR-004](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md).
+The terminal rendering decision is supported by the `top` spike in
 [SPIKE-001](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md).
 
 ## Data Flow
@@ -230,7 +235,7 @@ never normalizes or rewrites the evidence.
 | Keep tmux only for quota/status while direct exec handles normal runs | Minimal short-term change | Violates the single-transport concern; quota behavior and live execution would diverge; cassette replay could not prove the path that quota probes use | Rejected: partial helper is explicitly the failure mode this ADR resolves |
 | Adopt ntm or another terminal manager as the core | Faster access to mature tmux orchestration patterns and robot APIs | Adds another lifecycle owner without CONTRACT-003 semantics; inherits tmux coupling; does not define DDX Agent cassette/service-event evidence | Rejected |
 | Use asciinema/script-style recorder as the core | Existing terminal recording/playback concepts and viewer ecosystem | Records terminal output but does not drive input, manage auth/quota preflight, own process cleanup, or emit service events | Rejected: useful format reference, insufficient as harness transport |
-| Split a generic PTY cassette project now | Clean abstraction if multiple projects need it | Premature API freeze; no second consumer yet; slows harness support beads | Rejected for now; revisit after one stable format and a second consumer |
+| Split a generic PTY cassette project now | Clean abstraction if multiple projects need it | Premature API freeze; no second consumer yet; slows harness support beads | Rejected for now by ADR-004; revisit at the documented extraction triggers |
 
 ## Consequences
 
@@ -279,6 +284,7 @@ never normalizes or rewrites the evidence.
 - [Concerns](/Users/erik/Projects/agent/docs/helix/01-frame/concerns.md)
 - [Architecture](/Users/erik/Projects/agent/docs/helix/02-design/architecture.md)
 - [ADR-003 PTY Terminal Rendering and Screen Model](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md)
+- [ADR-004 Terminal Harness Build-vs-Buy Boundary](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md)
 - [SPIKE-001 Direct PTY Rendering With Unix Top](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
 - [gastown local tmux wrapper](/Users/erik/Projects/gastown/internal/tmux/tmux.go)
 - [dun local harness spike](/Users/erik/Projects/dun/main/docs/helix/01-frame/spikes/SPIKE-001-nested-agent-harness.md)

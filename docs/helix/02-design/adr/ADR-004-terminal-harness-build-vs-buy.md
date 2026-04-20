@@ -1,0 +1,151 @@
+---
+ddx:
+  id: ADR-004
+  depends_on:
+    - ADR-002
+    - ADR-003
+    - CONTRACT-003
+---
+# ADR-004: Terminal Harness Build-vs-Buy Boundary
+
+| Date | Status | Deciders | Related | Confidence |
+|------|--------|----------|---------|------------|
+| 2026-04-20 | Accepted | DDX Agent maintainers | `ADR-002`, `ADR-003`, `CONTRACT-003` | Medium |
+
+## Context
+
+ADR-002 selected direct PTY transport for harness execution, quota probes,
+model-list probes, and cassette record/replay. ADR-003 requires a real
+terminal emulator for screen frames. Together, those decisions are close to the
+boundary of a terminal product: PTY lifecycle, ANSI/VT rendering, input
+impersonation, timed recording, playback, inspection, and golden-master
+assertions.
+
+That is build-vs-buy territory. DDX Agent must not accidentally become a
+general terminal emulator, terminal multiplexer, or IDE terminal. The only
+reason to own new library code is the narrow DDX requirement that primary
+harnesses produce authenticated, replayable, scrubbed evidence with raw PTY
+bytes, rendered frames, timed input, opaque service events, final metadata,
+quota data, and deterministic replay.
+
+## Current Buy-Side Evidence
+
+| Candidate | Buyable Capability | Missing for DDX Agent |
+|-----------|--------------------|------------------------|
+| `creack/pty` | Go PTY primitive for starting commands, attaching stdin/stdout/stderr to a pseudoterminal, sizing, resize forwarding, and Unix-style lifecycle control. | Higher-level process policy, screen model, cassettes, service events, authenticated harness preflight, scrub/normalization policy. |
+| `Netflix/go-expect` | Expect-style input/output automation over a pseudoterminal. | Does not spawn or manage process lifecycle; does not define rendered frame evidence, cassette artifacts, or DDX service events. |
+| `asciinema` / asciicast v3 | Mature terminal recording and playback concepts, newline-delimited JSON, timed output/input/resize/exit events, local playback, speed controls, and raw output preservation. | Not a harness runner, not a Go library boundary, no DDX service-event stream, no quota/model/reasoning preflight, no accepted-vs-diagnostic cassette policy. |
+| Charmbracelet `vhs` | Declarative terminal scripting, typed input, waits, generated GIF/video/PNG frames, tape recording, and dependency checks for documentation and demos. | Outputs visual media and tape scripts, not DDX evidence cassettes; depends on external rendering stack; not a live authenticated harness recorder with service-event replay. |
+| `xterm.js` / serialize addon | Widely used terminal emulator and buffer serialization for browser/UI use. | JavaScript/browser dependency, experimental serialization addon, not a Go PTY harness layer, no DDX cassette/service-event contract. |
+| JetBrains `JediTerm` / IntelliJ terminal | Mature Java terminal emulator used by IDE terminals with local PTY support and xterm/VT100 behavior. | Java UI stack and IDE product scope; no Go cassette/service-event library; illustrates the scale DDX Agent must not rebuild. |
+
+The buyable pieces are real and should be used. The gap is not "terminal
+emulation exists"; the gap is a small, testable Go orchestration/cassette layer
+that combines PTY lifecycle, an adopted terminal renderer, and DDX-specific
+evidence streams.
+
+## Decision
+
+DDX Agent will not implement a terminal emulator from scratch, a terminal UI,
+an IDE terminal, or a tmux-like multiplexer.
+
+The PTY library work is limited to orchestration and evidence:
+
+- adopt a PTY primitive instead of writing platform PTY code when a maintained
+  dependency fits;
+- adopt or wrap a maintained VT/ANSI terminal emulator instead of hand-rolling
+  ANSI parsing;
+- reuse asciinema/asciicast timing and event ideas where they fit, but keep a
+  DDX cassette schema when DDX service events, quota data, scrub reports, and
+  deterministic replay require fields that asciicast does not own;
+- build only narrow glue for session supervision, typed input helpers, rendered
+  frame derivation, cassette record/playback, scrub/normalization, and
+  CONTRACT-003 service-event evidence.
+
+Before `agent-949a5ba4` starts implementation, the project must complete a
+build-vs-buy evaluation bead that compares concrete dependencies for PTY
+lifecycle, terminal rendering, recording/playback, replay timing, licensing,
+maintenance health, and API fit. The evaluation must explicitly decide whether
+the first implementation remains under `internal/pty` or is split out
+immediately.
+
+The default is to keep the first implementation under `internal/pty` with
+separable package boundaries. Split it into a standalone project only when one
+of these triggers occurs:
+
+- a second repo needs the same cassette/PTY API;
+- the generic PTY/cassette code exceeds the harness-specific code in size or
+  release cadence;
+- the package needs its own compatibility matrix, fixtures, or versioned public
+  API independent of DDX Agent;
+- adoption of a third-party recorder/emulator requires adapter work better
+  maintained outside DDX Agent;
+- build or release constraints make terminal dependencies a burden for ordinary
+  agent library consumers.
+
+## Non-Goals
+
+- Do not build a replacement for `top`, `htop`, tmux, terminal panes, or an IDE
+  terminal.
+- Do not build a general terminal UI or screen inspector beyond read-only
+  evidence viewing needed for cassette review.
+- Do not build a general terminal recording format unless the evaluation proves
+  asciicast-style formats cannot carry the required DDX evidence as extensions
+  or sidecar streams.
+- Do not expose a public PTY API before the internal harness use cases prove the
+  boundary.
+
+## Consequences
+
+| Type | Impact |
+|------|--------|
+| Positive | The implementation effort narrows to DDX-specific evidence instead of terminal-emulator ownership. |
+| Positive | Candidate dependency evaluation becomes a blocking prerequisite, reducing accidental NIH work. |
+| Positive | Extraction is designed in, but delayed until the API is proven by real harnesses. |
+| Negative | The PTY/cassette work cannot start as a coding bead until the buy-vs-build review completes. |
+| Negative | The project may still need to own a small cassette schema if existing recorders cannot carry service events and quota evidence cleanly. |
+
+## Risks
+
+| Risk | Prob | Impact | Mitigation |
+|------|------|--------|------------|
+| The team reimplements terminal behavior because no dependency is perfect | M | H | ADR-003 requires a wrapped emulator; ADR-004 blocks implementation on explicit dependency evaluation |
+| A generic PTY project emerges inside `agent` by accumulation | M | H | Track extraction triggers and review package size/API pressure before each PTY milestone |
+| Existing recorders appear close enough but cannot support service-event evidence | M | M | Evaluate sidecar streams and asciicast compatibility before inventing a new format |
+| Build dependencies become too heavy for normal library users | M | M | Keep terminal code under `internal/pty`, isolate imports, and split when dependency burden becomes visible |
+
+## Validation
+
+| Success Metric | Review Trigger |
+|----------------|----------------|
+| `agent-949a5ba4` cites a completed build-vs-buy matrix before choosing dependencies | Implementation imports a terminal/PTY dependency without documented comparison |
+| PTY code wraps adopted PTY/emulator dependencies behind package interfaces | Raw ANSI parsing or platform PTY code appears without a rejection rationale |
+| Cassette design reuses existing recording concepts where possible and explains every DDX-specific extension | New recording schema duplicates asciicast without service-event justification |
+| Project split is reconsidered after one working Claude/Codex cassette and before any public API promise | `internal/pty` grows into a reusable library with no extraction decision |
+
+## References
+
+- [ADR-002 PTY Cassette Transport](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-002-pty-cassette-transport.md)
+- [ADR-003 PTY Terminal Rendering and Screen Model](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md)
+- [SPIKE-001 Direct PTY Rendering With Unix Top](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
+- [creack/pty](https://github.com/creack/pty)
+- [Netflix/go-expect](https://github.com/Netflix/go-expect)
+- [asciicast v3 specification](https://docs.asciinema.org/manual/asciicast/v3/)
+- [asciinema CLI usage docs](https://docs.asciinema.org/manual/cli/usage/)
+- [Charmbracelet VHS](https://github.com/charmbracelet/vhs)
+- [xterm.js serialize addon](https://github.com/xtermjs/xterm.js/tree/master/addons/addon-serialize)
+- [JetBrains JediTerm](https://github.com/JetBrains/jediterm)
+- [JetBrains Terminal architecture note](https://blog.jetbrains.com/idea/2025/04/jetbrains-terminal-a-new-architecture/)
+
+## Review Checklist
+
+- [x] Context names a specific problem
+- [x] Decision statement is actionable
+- [x] At least two alternatives were evaluated
+- [x] Each alternative has concrete limits for DDX Agent
+- [x] Selected boundary explains why it wins
+- [x] Consequences include positive and negative impacts
+- [x] Negative consequences have mitigations
+- [x] Risks are specific with probability and impact assessments
+- [x] Validation section defines review triggers
+- [x] Concern impact is complete
