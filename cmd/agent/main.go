@@ -273,7 +273,7 @@ func run() int {
 
 	var result agentcore.Result
 	if os.Getenv("DDX_AGENT_USE_SERVICE_CONTRACT") == "1" {
-		result, err = executeViaServiceContract(ctx, req, agentConfig.NewServiceConfig(cfg, wd))
+		result, err = executeViaServiceContract(ctx, req, agentConfig.NewServiceConfig(cfg, wd), preset)
 	} else {
 		result, err = agentcore.Run(ctx, req)
 	}
@@ -308,34 +308,14 @@ func run() int {
 	}
 }
 
-func executeViaServiceContract(ctx context.Context, req agentcore.Request, serviceConfig agent.ServiceConfig) (agentcore.Result, error) {
+func executeViaServiceContract(ctx context.Context, req agentcore.Request, serviceConfig agent.ServiceConfig, toolPreset string) (agentcore.Result, error) {
 	svc, err := agent.New(agent.ServiceOptions{ServiceConfig: serviceConfig})
 	if err != nil {
 		return agentcore.Result{}, err
 	}
 
-	temperature := float32(0)
-	if req.Temperature != nil {
-		temperature = float32(*req.Temperature)
-	}
-	ch, err := svc.Execute(ctx, agent.ServiceExecuteRequest{
-		Prompt:       req.Prompt,
-		SystemPrompt: req.SystemPrompt,
-		Model:        req.ResolvedModel,
-		Provider:     req.SelectedProvider,
-		Harness:      "agent",
-		WorkDir:      req.WorkDir,
-		Temperature:  temperature,
-		Seed:         req.Seed,
-		Reasoning:    req.Reasoning,
-		Metadata:     req.Metadata,
-		PreResolved: &agent.RouteDecision{
-			Harness:  "agent",
-			Provider: req.SelectedProvider,
-			Model:    req.ResolvedModel,
-			Reason:   "cli pre-resolved provider",
-		},
-	})
+	serviceReq := serviceExecuteRequestFromCoreRequest(req, toolPreset)
+	ch, err := svc.Execute(ctx, serviceReq)
 	if err != nil {
 		return agentcore.Result{}, err
 	}
@@ -394,6 +374,33 @@ func executeViaServiceContract(ctx context.Context, req agentcore.Request, servi
 	}
 	result.Output = output.String()
 	return result, nil
+}
+
+func serviceExecuteRequestFromCoreRequest(req agentcore.Request, toolPreset string) agent.ServiceExecuteRequest {
+	temperature := float32(0)
+	if req.Temperature != nil {
+		temperature = float32(*req.Temperature)
+	}
+	return agent.ServiceExecuteRequest{
+		Prompt:       req.Prompt,
+		SystemPrompt: req.SystemPrompt,
+		Model:        req.ResolvedModel,
+		Provider:     req.SelectedProvider,
+		Harness:      "agent",
+		WorkDir:      req.WorkDir,
+		Temperature:  temperature,
+		Seed:         req.Seed,
+		Reasoning:    req.Reasoning,
+		Metadata:     req.Metadata,
+		Tools:        req.Tools,
+		ToolPreset:   toolPreset,
+		PreResolved: &agent.RouteDecision{
+			Harness:  "agent",
+			Provider: req.SelectedProvider,
+			Model:    req.ResolvedModel,
+			Reason:   "cli pre-resolved provider",
+		},
+	}
 }
 
 func serviceStatusToLegacyStatus(status string) agentcore.Status {
@@ -756,21 +763,7 @@ func buildToolsForPreset(workDir, preset string, bashFilter ...tool.BashOutputFi
 	if len(bashFilter) > 0 {
 		filter = bashFilter[0]
 	}
-	tools := []agentcore.Tool{
-		&tool.ReadTool{WorkDir: workDir},
-		&tool.WriteTool{WorkDir: workDir},
-		&tool.EditTool{WorkDir: workDir},
-		&tool.BashTool{WorkDir: workDir, OutputFilter: filter},
-		&tool.FindTool{WorkDir: workDir},
-		&tool.GrepTool{WorkDir: workDir},
-		&tool.LsTool{WorkDir: workDir},
-		&tool.PatchTool{WorkDir: workDir},
-	}
-	if preset != "benchmark" {
-		taskStore := tool.NewTaskStore()
-		tools = append(tools, &tool.TaskTool{Store: taskStore})
-	}
-	return tools
+	return tool.BuiltinToolsForPreset(workDir, preset, filter)
 }
 
 func bashOutputFilterConfig(cfg agentConfig.BashOutputFilterConfig) tool.BashOutputFilterConfig {

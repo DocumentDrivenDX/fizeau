@@ -155,6 +155,17 @@ const (
 
 func ReasoningTokens(n int) Reasoning
 
+// Tool is the native agent tool interface. ExecuteRequest.Tools is only used
+// by the in-process `agent` harness; subprocess harnesses own their tool
+// policy internally.
+type Tool interface {
+    Name() string
+    Description() string
+    Schema() json.RawMessage
+    Execute(ctx context.Context, params json.RawMessage) (string, error)
+    Parallel() bool
+}
+
 // Routing placement is profile-owned. Callers either choose a named Profile
 // (cheap, standard, smart, or a user-defined profile) or pin Provider+Model
 // directly. Profiles are catalog/config data bundles that can carry placement
@@ -174,6 +185,8 @@ type ExecuteRequest struct {
     Reasoning    Reasoning // optional; auto|off|low|medium|high|minimal|xhigh|max|<tokens>
     Permissions  string  // "safe" | "supervised" | "unrestricted"; default "safe"
     WorkDir      string  // required when the chosen harness uses tools
+    Tools        []Tool  // optional native-agent override; nil = built-in tools
+    ToolPreset   string  // optional native built-in selector; "benchmark" excludes task
     // PreResolved bypasses ResolveRoute when the caller already has a decision
     // (e.g., from a prior ResolveRoute call). When non-nil, agent uses these
     // values verbatim and does not re-route. Provider/Model/Harness fields

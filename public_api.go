@@ -1,6 +1,11 @@
 package agent
 
-import "github.com/DocumentDrivenDX/agent/internal/reasoning"
+import (
+	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
+	"github.com/DocumentDrivenDX/agent/internal/reasoning"
+)
+
+type Tool = agentcore.Tool
 
 type Reasoning = reasoning.Reasoning
 

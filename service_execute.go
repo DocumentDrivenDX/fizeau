@@ -18,6 +18,7 @@ import (
 	piharness "github.com/DocumentDrivenDX/agent/internal/harnesses/pi"
 	virtualprovider "github.com/DocumentDrivenDX/agent/internal/provider/virtual"
 	"github.com/DocumentDrivenDX/agent/internal/sessionlog"
+	"github.com/DocumentDrivenDX/agent/internal/tool"
 )
 
 // generateSessionID returns a unique session identifier for a new Execute.
@@ -359,6 +360,24 @@ func metadataInt(meta map[string]string, key string) int {
 	return n
 }
 
+func nativeToolsForRequest(req ServiceExecuteRequest) []agentcore.Tool {
+	if req.Tools != nil {
+		return req.Tools
+	}
+	return tool.BuiltinToolsForPreset(req.WorkDir, req.ToolPreset, tool.BashOutputFilterConfig{})
+}
+
+func toolNames(tools []agentcore.Tool) []string {
+	names := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if tool == nil {
+			continue
+		}
+		names = append(names, tool.Name())
+	}
+	return names
+}
+
 // runNative drives the in-process agent loop (loop.go's Run). The provider
 // is wrapped with WrapProviderWithDeadlinesTimeouts so per-HTTP timeouts
 // fire independently of the request wall-clock cap.
@@ -495,9 +514,11 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		}
 	}
 
+	tools := nativeToolsForRequest(req)
+
 	// Tool wiring hook (testseam).
 	if hook := s.toolWiringHook(); hook != nil {
-		hook(decision.Harness, nil)
+		hook(decision.Harness, toolNames(tools))
 	}
 	// Prompt assertion hook (testseam).
 	if hook := s.promptAssertionHook(); hook != nil {
@@ -513,6 +534,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		Prompt:           req.Prompt,
 		SystemPrompt:     req.SystemPrompt,
 		Provider:         provider,
+		Tools:            tools,
 		WorkDir:          req.WorkDir,
 		Callback:         cb,
 		Metadata:         meta,

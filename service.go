@@ -365,6 +365,12 @@ type ServiceExecuteRequest struct {
 	Seed         int64
 	Reasoning    Reasoning
 	Permissions  string
+	// Tools overrides the built-in native agent tool set when Harness is
+	// "agent". Nil uses the native built-ins for ToolPreset and WorkDir.
+	Tools []Tool
+	// ToolPreset selects native built-in tool availability when Tools is nil.
+	// Empty means the default preset; "benchmark" excludes the task tool.
+	ToolPreset string
 
 	// PreResolved bypasses ResolveRoute when the caller already has a
 	// decision. When non-nil, agent uses these values verbatim and does

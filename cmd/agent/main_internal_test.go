@@ -7,6 +7,7 @@ import (
 
 	"github.com/DocumentDrivenDX/agent"
 	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
+	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,6 +100,38 @@ func TestBuildToolsForPreset_DefaultIncludesTaskTool(t *testing.T) {
 	}
 
 	assert.Contains(t, names, "task")
+}
+
+func TestServiceContractRequestPreservesCoreTools(t *testing.T) {
+	workDir := t.TempDir()
+	tools := buildToolsForPreset(workDir, "benchmark")
+	req := agentcore.Request{
+		Prompt:           "hi",
+		SystemPrompt:     "system",
+		Tools:            tools,
+		WorkDir:          workDir,
+		SelectedProvider: "local",
+		ResolvedModel:    "test-model",
+		Reasoning:        agent.ReasoningLow,
+	}
+
+	serviceReq := serviceExecuteRequestFromCoreRequest(req, "benchmark")
+
+	require.Len(t, serviceReq.Tools, len(tools))
+	assert.Equal(t, "benchmark", serviceReq.ToolPreset)
+	assert.Equal(t, toolNames(tools), toolNames(serviceReq.Tools))
+	assert.Equal(t, workDir, serviceReq.WorkDir)
+	assert.Equal(t, "agent", serviceReq.Harness)
+	require.NotNil(t, serviceReq.PreResolved)
+	assert.Equal(t, "agent", serviceReq.PreResolved.Harness)
+}
+
+func toolNames(tools []agent.Tool) []string {
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Name()
+	}
+	return names
 }
 
 func TestResolveProviderForRun_ModelRef(t *testing.T) {

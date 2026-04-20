@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +92,41 @@ func finalText(t *testing.T, ev *agent.ServiceEvent) string {
 		t.Fatalf("unmarshal final: %v", err)
 	}
 	return payload.FinalText
+}
+
+func eventPayload[T any](t *testing.T, ev agent.ServiceEvent) T {
+	t.Helper()
+	var payload T
+	if err := json.Unmarshal(ev.Data, &payload); err != nil {
+		t.Fatalf("unmarshal %s payload: %v", ev.Type, err)
+	}
+	return payload
+}
+
+func eventTypes(events []agent.ServiceEvent) []string {
+	types := make([]string, len(events))
+	for i, ev := range events {
+		types[i] = string(ev.Type)
+	}
+	return types
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func indexEventType(events []agent.ServiceEvent, want string) int {
+	for i, ev := range events {
+		if string(ev.Type) == want {
+			return i
+		}
+	}
+	return -1
 }
 
 // TestExecute_NativePathWithFakeProvider verifies that a native-path
@@ -253,6 +289,141 @@ func TestExecute_NativeSamplingForwarded(t *testing.T) {
 	}
 	if gotSeed != 98765 {
 		t.Fatalf("Seed forwarded to native provider = %d, want 98765", gotSeed)
+	}
+}
+
+func TestExecute_NativeToolsForwarded(t *testing.T) {
+	var providerTools []string
+	var hookHarness string
+	var hookTools []string
+	fp := &agent.FakeProvider{
+		Dynamic: func(req agent.FakeRequest) (agent.FakeResponse, error) {
+			providerTools = append([]string(nil), req.Tools...)
+			return agent.FakeResponse{Text: "done"}, nil
+		},
+	}
+	opts := agent.ServiceOptions{}
+	opts.ToolWiringHook = func(harness string, toolNames []string) {
+		hookHarness = harness
+		hookTools = append([]string(nil), toolNames...)
+	}
+	opts.FakeProvider = fp
+	svc, err := agent.New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+		Prompt:   "hi",
+		Harness:  "agent",
+		Provider: "fake",
+		Model:    "fake-model",
+		WorkDir:  t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	events := drainEvents(t, ch, 5*time.Second)
+	if final := findFinal(events); final == nil || finalStatus(t, final) != "success" {
+		t.Fatalf("expected success final, got %#v", final)
+	}
+
+	for _, name := range []string{"read", "write", "edit", "bash", "find", "grep", "ls", "patch", "task"} {
+		if !containsString(providerTools, name) {
+			t.Fatalf("provider tools missing %q: %v", name, providerTools)
+		}
+		if !containsString(hookTools, name) {
+			t.Fatalf("hook tools missing %q: %v", name, hookTools)
+		}
+	}
+	if hookHarness != "agent" {
+		t.Fatalf("ToolWiringHook harness = %q, want agent", hookHarness)
+	}
+	if !reflect.DeepEqual(providerTools, hookTools) {
+		t.Fatalf("provider tools and hook tools differ:\nprovider=%v\nhook=%v", providerTools, hookTools)
+	}
+}
+
+func TestExecute_NativeReadToolEmitsToolEvents(t *testing.T) {
+	workDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workDir, "hello.txt"), []byte("hello from service tools\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	fp := &agent.FakeProvider{
+		Static: []agent.FakeResponse{
+			{
+				ToolCalls: []agent.ToolCall{{
+					ID:        "read-1",
+					Name:      "read",
+					Arguments: json.RawMessage(`{"path":"hello.txt"}`),
+				}},
+			},
+			{Text: "done"},
+		},
+	}
+	opts := agent.ServiceOptions{}
+	opts.FakeProvider = fp
+	svc, err := agent.New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := svc.Execute(context.Background(), agent.ServiceExecuteRequest{
+		Prompt:   "read the fixture",
+		Harness:  "agent",
+		Provider: "fake",
+		Model:    "fake-model",
+		WorkDir:  workDir,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	events := drainEvents(t, ch, 5*time.Second)
+	final := findFinal(events)
+	if final == nil || finalStatus(t, final) != "success" {
+		t.Fatalf("expected success final, got %#v (types=%v)", final, eventTypes(events))
+	}
+
+	var toolCall *agent.ServiceEvent
+	var toolResult *agent.ServiceEvent
+	for i := range events {
+		switch events[i].Type {
+		case "tool_call":
+			ev := events[i]
+			toolCall = &ev
+		case "tool_result":
+			ev := events[i]
+			toolResult = &ev
+		}
+	}
+	if toolCall == nil || toolResult == nil {
+		t.Fatalf("expected tool_call and tool_result events, got %v", eventTypes(events))
+	}
+	if callIndex, resultIndex := indexEventType(events, "tool_call"), indexEventType(events, "tool_result"); callIndex < 0 || resultIndex < 0 || callIndex > resultIndex {
+		t.Fatalf("tool event order invalid: %v", eventTypes(events))
+	}
+
+	call := eventPayload[struct {
+		ID    string          `json:"id"`
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	}](t, *toolCall)
+	if call.ID == "" || call.Name != "read" || !strings.Contains(string(call.Input), "hello.txt") {
+		t.Fatalf("tool_call payload = %+v input=%s", call, string(call.Input))
+	}
+	result := eventPayload[struct {
+		ID     string `json:"id"`
+		Output string `json:"output"`
+		Error  string `json:"error"`
+	}](t, *toolResult)
+	if result.ID != call.ID {
+		t.Fatalf("tool_result id = %q, want %q", result.ID, call.ID)
+	}
+	if result.Error != "" {
+		t.Fatalf("tool_result error = %q", result.Error)
+	}
+	if !strings.Contains(result.Output, "hello from service tools") {
+		t.Fatalf("tool_result output = %q", result.Output)
 	}
 }
 
