@@ -26,8 +26,11 @@ func TestHarnessGoldenReplay_ServiceExecute(t *testing.T) {
 	binDir := t.TempDir()
 	writeGoldenHarnessScript(t, binDir, "claude", `#!/bin/sh
 cat <<'EOF'
-{"type":"assistant","message":{"content":[{"type":"text","text":"claude cassette final"}],"usage":{"input_tokens":11,"output_tokens":4}}}
-{"type":"result","subtype":"success","is_error":false,"duration_ms":10,"result":"claude cassette final","usage":{"input_tokens":11,"output_tokens":4},"total_cost_usd":0.0001,"session_id":"cassette-claude"}
+{"type":"system","subtype":"init","session_id":"cassette-claude","model":"claude-sonnet-4-6","tools":["Bash","Read"]}
+{"type":"assistant","message":{"id":"m-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"claude starting"},{"type":"tool_use","id":"tu-1","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":11,"output_tokens":4}}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu-1","content":"README.md\nservice.go"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"claude cassette final"}],"usage":{"input_tokens":13,"output_tokens":6}}}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":10,"result":"claude cassette final","usage":{"input_tokens":13,"output_tokens":6},"total_cost_usd":0.0001,"session_id":"cassette-claude"}
 EOF
 `)
 	writeGoldenHarnessScript(t, binDir, "codex", `#!/bin/sh
@@ -76,7 +79,7 @@ EOF
 		usage    bool
 		toolName string
 	}{
-		{"claude", "claude cassette final", true, ""},
+		{"claude", "claude cassette final", true, "Bash"},
 		{"codex", "codex cassette final", true, "command_execution"},
 		{"pi", "pi cassette final", true, ""},
 		{"opencode", "opencode cassette final", false, ""},
@@ -126,6 +129,11 @@ EOF
 			if tc.usage && result.Usage == nil {
 				t.Fatal("expected usage from replay cassette")
 			}
+			for _, ev := range result.Events {
+				if ev.Metadata["mode"] != "replay" || ev.Metadata["cassette"] != tc.harness || ev.Metadata["test_suite"] != "harness-golden" {
+					t.Fatalf("event metadata not echoed for %s event: %#v", ev.Type, ev.Metadata)
+				}
+			}
 			if tc.toolName != "" {
 				if len(result.ToolCalls) != 1 || len(result.ToolResults) != 1 {
 					t.Fatalf("expected one tool_call and one tool_result, got calls=%v results=%v", result.ToolCalls, result.ToolResults)
@@ -136,11 +144,69 @@ EOF
 				if result.ToolResults[0].ID != result.ToolCalls[0].ID {
 					t.Fatalf("tool result ID %q does not match call ID %q", result.ToolResults[0].ID, result.ToolCalls[0].ID)
 				}
-				if !strings.Contains(result.ToolResults[0].Output, "codex-tool") {
-					t.Fatalf("tool result output: got %q", result.ToolResults[0].Output)
+				wantOutput := "README.md"
+				if tc.harness == "codex" {
+					wantOutput = "codex-tool"
+				}
+				if !strings.Contains(result.ToolResults[0].Output, wantOutput) {
+					t.Fatalf("tool result output: got %q, want to contain %q", result.ToolResults[0].Output, wantOutput)
 				}
 			}
 		})
+	}
+}
+
+func TestHarnessGoldenReplay_ServiceExecuteFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("replay cassette scripts are POSIX shell fixtures")
+	}
+
+	binDir := t.TempDir()
+	writeGoldenHarnessScript(t, binDir, "codex", `#!/bin/sh
+echo "synthetic codex failure" >&2
+exit 7
+`)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	svc, err := New(ServiceOptions{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	events, err := svc.Execute(ctx, ServiceExecuteRequest{
+		Prompt:      "golden failure prompt",
+		Harness:     "codex",
+		Model:       "cassette-model",
+		WorkDir:     t.TempDir(),
+		Permissions: "safe",
+		Metadata: map[string]string{
+			"mode":       "replay",
+			"cassette":   "codex-failure",
+			"test_suite": "harness-golden",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	result, err := DrainExecute(ctx, events)
+	if err != nil {
+		t.Fatalf("DrainExecute: %v", err)
+	}
+	if result.FinalStatus != "failed" {
+		t.Fatalf("FinalStatus: got %q, want failed", result.FinalStatus)
+	}
+	if !strings.Contains(result.TerminalError, "exit status 7") {
+		t.Fatalf("TerminalError: got %q", result.TerminalError)
+	}
+	if result.RoutingActual == nil || result.RoutingActual.Harness != "codex" {
+		t.Fatalf("RoutingActual: got %#v, want codex", result.RoutingActual)
+	}
+	for _, ev := range result.Events {
+		if ev.Metadata["cassette"] != "codex-failure" {
+			t.Fatalf("event metadata not echoed for %s event: %#v", ev.Type, ev.Metadata)
+		}
 	}
 }
 
