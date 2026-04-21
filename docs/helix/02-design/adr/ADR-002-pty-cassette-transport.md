@@ -61,6 +61,14 @@ If a future operator project wants tmux attach/switch UX, it must live outside
 the core service/cassette path and consume DDX Agent outputs like any other
 client. The DDX Agent baseline is direct PTY only.
 
+SPIKE-002 clarified the only acceptable success criteria for this area:
+DDX Agent must control Claude/Codex well enough to extract usage/quota,
+available models, reasoning levels, and related status facts; and it must
+replay cassettes well enough that client-side parsers and terminal assertions
+run without live Claude/Codex binaries, credentials, or network. tmux's human
+attachability is useful operator UX, but it is optional diagnostic surface area,
+not the accepted replay or capability-evidence path.
+
 The cassette recorder and player remain part of `internal/pty` for the baseline
 implementation, subject to the build-vs-buy gate in
 [ADR-004](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md).
@@ -96,6 +104,8 @@ The build-vs-buy boundary and extraction triggers are detailed in
 [ADR-004](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md).
 The terminal rendering decision is supported by the `top` spike in
 [SPIKE-001](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md).
+The recorder/driver build-vs-buy pressure test is captured in
+[SPIKE-002](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-002-terminal-driver-recorder-alternatives.md).
 
 ## Data Flow
 

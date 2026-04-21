@@ -34,7 +34,10 @@ quota data, and deterministic replay.
 |-----------|--------------------|------------------------|
 | `creack/pty` | Go PTY primitive for starting commands, attaching stdin/stdout/stderr to a pseudoterminal, sizing, resize forwarding, and Unix-style lifecycle control. | Higher-level process policy, screen model, cassettes, service events, authenticated harness preflight, scrub/normalization policy. |
 | `Netflix/go-expect` | Expect-style input/output automation over a pseudoterminal. | Does not spawn or manage process lifecycle; does not define rendered frame evidence, cassette artifacts, or DDX service events. |
+| `script` | Ubiquitous terminal session recording with timing support on util-linux systems. | Recorder only; wrapper text/noise; no reliable harness control, DDX service events, scrub reports, model/quota parsing, or cross-platform library boundary. |
 | `asciinema` / asciicast v3 | Mature terminal recording and playback concepts, newline-delimited JSON, timed output/input/resize/exit events, local playback, speed controls, and raw output preservation. | Not a harness runner, not a Go library boundary, no DDX service-event stream, no quota/model/reasoning preflight, no accepted-vs-diagnostic cassette policy. |
+| `tmux` | Mature terminal multiplexer with sessions, attachability, pane capture, key injection, pipe-pane streaming, and a useful human inspection story. | Global server/socket/session state, split-brain/stale-session cleanup, pane-index instability, command hangs, paste/send quirks, and no DDX cassette/service-event contract. |
+| `ntm` / Gas Town | Current tmux-based multi-agent control planes with real operational patterns: socket isolation, session registries, cleanup, timeouts, circuit breakers, paste-buffer paths, capture helpers, and quota/status probing. | They validate the complexity of tmux ownership; adopting their shape would make tmux semantics part of DDX Agent's core capability story. |
 | Charmbracelet `vhs` | Declarative terminal scripting, typed input, waits, generated GIF/video/PNG frames, tape recording, and dependency checks for documentation and demos. | Outputs visual media and tape scripts, not DDX evidence cassettes; depends on external rendering stack; not a live authenticated harness recorder with service-event replay. |
 | `xterm.js` / serialize addon | Widely used terminal emulator and buffer serialization for browser/UI use. | JavaScript/browser dependency, experimental serialization addon, not a Go PTY harness layer, no DDX cassette/service-event contract. |
 | JetBrains `JediTerm` / IntelliJ terminal | Mature Java terminal emulator used by IDE terminals with local PTY support and xterm/VT100 behavior. | Java UI stack and IDE product scope; no Go cassette/service-event library; illustrates the scale DDX Agent must not rebuild. |
@@ -55,6 +58,7 @@ This ADR closes the build-vs-buy gate for the first implementation pass:
 | Input automation | Build small DDX helpers over the PTY session, borrowing expect-style ideas where useful. | `go-expect` is a useful pattern but not the lifecycle, cassette, or service-event owner. |
 | Recording format | Build the DDX cassette schema, reusing asciicast event/timing ideas. | Existing recorders do not carry DDX service events, quota evidence, scrub reports, assertion binding, or accepted-vs-diagnostic policy. |
 | Replay and assertions | Build a test-only cassette assertion layer under `internal/ptytest` or equivalent. | DDX needs collapsed virtual-clock replay, service-event assertions, parallel-safe fixture isolation, and harness capability evidence. |
+| tmux operator UX | Keep out of the accepted core path; allow only a future optional diagnostic/operator adapter if it is socket-isolated, inspectable, timeout-protected, and proven not to promote capabilities by itself. | SPIKE-002 showed tmux's human attachability is useful, but also reproduced stale socket cleanup and pane-targeting costs. NTM and Gas Town confirm those costs become substantial. |
 | Project boundary | Keep the first pass internal under `internal/pty` and `internal/ptytest`. | There is no second consumer yet. Extraction triggers are documented below and should be revisited after one working Claude/Codex cassette path. |
 | Non-TUI modes | Do not let `claude --print`, `codex exec`, or similar non-TUI paths promote TUI capability support. | They may later share cassette ideas for stream evidence, but primary harness model/quota/status parity is governed by the direct PTY/TUI evidence path. |
 
@@ -64,6 +68,15 @@ DDX-owned replay/assertion glue. SPIKE-001 is the accepted end-to-end proof for
 the initial `creack/pty` plus `vt10x` stack against Unix `top`; changing either
 core dependency before implementation must reproduce the same top scenario and
 record that evidence before `agent-949a5ba4` starts.
+
+SPIKE-002 pressure-tested the real primary-harness goal against `script`,
+asciinema, tmux, NTM, Gas Town, Claude, and Codex. It proved that Claude and
+Codex expose the required usage/quota/model-list surfaces through their TUIs
+and that tmux can drive them, but it also confirmed that tmux's session/socket
+state is an operational concern rather than a free abstraction. Therefore tmux
+may be revisited for optional human-inspection diagnostics, but direct PTY
+replay remains the only accepted evidence path for primary harness capability
+support.
 
 ## Decision
 
@@ -156,11 +169,16 @@ of these triggers occurs:
 - [ADR-002 PTY Cassette Transport](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-002-pty-cassette-transport.md)
 - [ADR-003 PTY Terminal Rendering and Screen Model](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md)
 - [SPIKE-001 Direct PTY Rendering With Unix Top](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
+- [SPIKE-002 Terminal Driver and Recorder Alternatives](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-002-terminal-driver-recorder-alternatives.md)
 - [creack/pty](https://github.com/creack/pty)
 - [Netflix/go-expect](https://github.com/Netflix/go-expect)
 - [asciicast v3 specification](https://docs.asciinema.org/manual/asciicast/v3/)
 - [asciinema CLI usage docs](https://docs.asciinema.org/manual/cli/usage/)
+- [tmux](https://github.com/tmux/tmux)
+- [NTM](https://pkg.go.dev/github.com/Dicklesworthstone/ntm)
+- [Gas Town](https://github.com/gastownhall/gastown)
 - [Charmbracelet VHS](https://github.com/charmbracelet/vhs)
+- [Charmbracelet/x terminal packages](https://github.com/charmbracelet/x)
 - [xterm.js serialize addon](https://github.com/xtermjs/xterm.js/tree/master/addons/addon-serialize)
 - [JetBrains JediTerm](https://github.com/JetBrains/jediterm)
 - [JetBrains Terminal architecture note](https://blog.jetbrains.com/idea/2025/04/jetbrains-terminal-a-new-architecture/)
