@@ -44,6 +44,27 @@ emulation exists"; the gap is a small, testable Go orchestration/cassette layer
 that combines PTY lifecycle, an adopted terminal renderer, and DDX-specific
 evidence streams.
 
+## Gate Outcome
+
+This ADR closes the build-vs-buy gate for the first implementation pass:
+
+| Area | Decision | Rationale |
+|------|----------|-----------|
+| PTY lifecycle | Buy/adopt `creack/pty` or an equivalent maintained Go PTY primitive. | SPIKE-001 proved direct process control, reads, writes, resize, and exit against `top` without tmux. Writing platform PTY code is out of scope. |
+| Terminal rendering | Buy/adopt a maintained VT/ANSI emulator behind `internal/pty/terminal`; reaffirm SPIKE-001's `vt10x` proof as the starting stack unless the implementation bead records an equal or better top-spike pass for a substitute. | Raw ANSI is not assertable. The spike rendered useful `top` frames through an emulator. The backend remains replaceable and version-pinned in cassettes. |
+| Input automation | Build small DDX helpers over the PTY session, borrowing expect-style ideas where useful. | `go-expect` is a useful pattern but not the lifecycle, cassette, or service-event owner. |
+| Recording format | Build the DDX cassette schema, reusing asciicast event/timing ideas. | Existing recorders do not carry DDX service events, quota evidence, scrub reports, assertion binding, or accepted-vs-diagnostic policy. |
+| Replay and assertions | Build a test-only cassette assertion layer under `internal/ptytest` or equivalent. | DDX needs collapsed virtual-clock replay, service-event assertions, parallel-safe fixture isolation, and harness capability evidence. |
+| Project boundary | Keep the first pass internal under `internal/pty` and `internal/ptytest`. | There is no second consumer yet. Extraction triggers are documented below and should be revisited after one working Claude/Codex cassette path. |
+| Non-TUI modes | Do not let `claude --print`, `codex exec`, or similar non-TUI paths promote TUI capability support. | They may later share cassette ideas for stream evidence, but primary harness model/quota/status parity is governed by the direct PTY/TUI evidence path. |
+
+The selected first-pass stack is therefore: direct Go PTY process control,
+wrapped VT/ANSI emulator rendering, DDX-owned event-driven cassettes, and
+DDX-owned replay/assertion glue. SPIKE-001 is the accepted end-to-end proof for
+the initial `creack/pty` plus `vt10x` stack against Unix `top`; changing either
+core dependency before implementation must reproduce the same top scenario and
+record that evidence before `agent-949a5ba4` starts.
+
 ## Decision
 
 DDX Agent will not implement a terminal emulator from scratch, a terminal UI,
