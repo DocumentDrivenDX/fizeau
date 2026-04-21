@@ -188,8 +188,10 @@ type Session struct {
 	waitStat ExitStatus
 	readDone chan struct{}
 
-	output chan OutputChunk
-	events chan Event
+	output       chan OutputChunk
+	events       chan Event
+	eventsMu     sync.Mutex
+	eventsClosed bool
 
 	impl sessionImpl
 }
@@ -340,11 +342,26 @@ func (s *Session) emit(ev Event) Event {
 		s.offset += int64(len(ev.Bytes))
 	}
 	s.mu.Unlock()
+	s.eventsMu.Lock()
+	defer s.eventsMu.Unlock()
+	if s.eventsClosed {
+		return ev
+	}
 	select {
 	case s.events <- ev:
 	default:
 	}
 	return ev
+}
+
+func (s *Session) closeEvents() {
+	s.eventsMu.Lock()
+	defer s.eventsMu.Unlock()
+	if s.eventsClosed {
+		return
+	}
+	s.eventsClosed = true
+	close(s.events)
 }
 
 func (s *Session) emitOutput(b []byte, readErr error, eof bool) {

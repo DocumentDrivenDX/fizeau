@@ -187,14 +187,8 @@ func FindBinaryPath() (string, error) {
 		return exe, nil
 	}
 
-	// Fall back to which command
-	cmd := exec.Command("which", productinfo.BinaryName)
-	output, err := cmd.Output()
-	if err != nil {
-		return exe, nil
-	}
-	path := strings.TrimSpace(string(output))
-	if path == "" {
+	path, err := exec.LookPath(productinfo.BinaryName)
+	if err != nil || path == "" {
 		return exe, nil // Return current executable as fallback
 	}
 	return path, nil

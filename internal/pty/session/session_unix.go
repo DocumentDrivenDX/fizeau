@@ -37,6 +37,8 @@ func Start(ctx context.Context, command string, args []string, workdir string, e
 			timeoutCancel()
 		}
 	}
+	// #nosec G204 -- command and args are explicit PTY session API inputs;
+	// exec.Command does not invoke a shell.
 	cmd := exec.Command(command, args...)
 	cmd.Dir = workdir
 	if len(env) > 0 {
@@ -78,7 +80,7 @@ func Start(ctx context.Context, command string, args []string, workdir string, e
 	go func() {
 		<-s.waitDone
 		<-s.readDone
-		close(s.events)
+		s.closeEvents()
 	}()
 	return s, nil
 }
