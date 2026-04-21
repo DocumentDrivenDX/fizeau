@@ -137,9 +137,11 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 		final.FinalText = agg.FinalText
 		if agg.InputTokens > 0 || agg.OutputTokens > 0 {
 			final.Usage = &harnesses.FinalUsage{
-				InputTokens:  agg.InputTokens,
-				OutputTokens: agg.OutputTokens,
-				TotalTokens:  agg.InputTokens + agg.OutputTokens,
+				InputTokens:  harnesses.IntPtr(agg.InputTokens),
+				OutputTokens: harnesses.IntPtr(agg.OutputTokens),
+				TotalTokens:  harnesses.IntPtr(agg.InputTokens + agg.OutputTokens),
+				Source:       harnesses.UsageSourceNativeStream,
+				Fresh:        harnesses.BoolPtr(true),
 			}
 		}
 		if agg.CostUSD > 0 {

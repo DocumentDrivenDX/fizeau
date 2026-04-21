@@ -91,17 +91,75 @@ type FinalData struct {
 	FinalText      string            `json:"final_text,omitempty"`
 	DurationMS     int64             `json:"duration_ms"`
 	Usage          *FinalUsage       `json:"usage,omitempty"`
+	Warnings       []FinalWarning    `json:"warnings,omitempty"`
 	CostUSD        float64           `json:"cost_usd,omitempty"`
 	SessionLogPath string            `json:"session_log_path,omitempty"`
 	RoutingActual  *RoutingActual    `json:"routing_actual,omitempty"`
 	Extra          map[string]string `json:"-"`
 }
 
-// FinalUsage carries token totals on a final event.
+// FinalUsage carries token totals on a final event. Count fields are pointers
+// so unavailable token dimensions are omitted instead of serialized as zero.
+// A present pointer to 0 means the harness explicitly reported zero usage.
 type FinalUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens      *int                  `json:"input_tokens,omitempty"`
+	OutputTokens     *int                  `json:"output_tokens,omitempty"`
+	CacheReadTokens  *int                  `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens *int                  `json:"cache_write_tokens,omitempty"`
+	CacheTokens      *int                  `json:"cache_tokens,omitempty"`
+	ReasoningTokens  *int                  `json:"reasoning_tokens,omitempty"`
+	TotalTokens      *int                  `json:"total_tokens,omitempty"`
+	Source           string                `json:"source,omitempty"`
+	Fresh            *bool                 `json:"fresh,omitempty"`
+	CapturedAt       string                `json:"captured_at,omitempty"`
+	Sources          []UsageSourceEvidence `json:"sources,omitempty"`
+}
+
+// FinalWarning is normalized metadata about non-fatal final-event issues.
+type FinalWarning struct {
+	Code    string                `json:"code"`
+	Message string                `json:"message,omitempty"`
+	Sources []UsageSourceEvidence `json:"sources,omitempty"`
+}
+
+// UsageSourceEvidence records one usage source considered by the resolver.
+type UsageSourceEvidence struct {
+	Source     string            `json:"source"`
+	Fresh      *bool             `json:"fresh,omitempty"`
+	CapturedAt string            `json:"captured_at,omitempty"`
+	Usage      *UsageTokenCounts `json:"usage,omitempty"`
+	Warning    string            `json:"warning,omitempty"`
+}
+
+// UsageTokenCounts is the normalized token-count vocabulary shared by
+// subprocess harnesses and CONTRACT-003 final metadata.
+type UsageTokenCounts struct {
+	InputTokens      *int `json:"input_tokens,omitempty"`
+	OutputTokens     *int `json:"output_tokens,omitempty"`
+	CacheReadTokens  *int `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens *int `json:"cache_write_tokens,omitempty"`
+	CacheTokens      *int `json:"cache_tokens,omitempty"`
+	ReasoningTokens  *int `json:"reasoning_tokens,omitempty"`
+	TotalTokens      *int `json:"total_tokens,omitempty"`
+}
+
+// Any reports whether at least one token dimension is known.
+func (c UsageTokenCounts) Any() bool {
+	return c.InputTokens != nil ||
+		c.OutputTokens != nil ||
+		c.CacheReadTokens != nil ||
+		c.CacheWriteTokens != nil ||
+		c.CacheTokens != nil ||
+		c.ReasoningTokens != nil ||
+		c.TotalTokens != nil
+}
+
+func IntPtr(v int) *int {
+	return &v
+}
+
+func BoolPtr(v bool) *bool {
+	return &v
 }
 
 // RoutingActual captures the resolved fallback chain on a final event.

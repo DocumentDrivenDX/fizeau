@@ -357,9 +357,9 @@ func executeViaServiceContract(ctx context.Context, req agentcore.Request, servi
 				result.Error = errors.New(decoded.Final.Error)
 			}
 			if decoded.Final.Usage != nil {
-				result.Tokens.Input = decoded.Final.Usage.InputTokens
-				result.Tokens.Output = decoded.Final.Usage.OutputTokens
-				result.Tokens.Total = decoded.Final.Usage.TotalTokens
+				result.Tokens.Input = serviceUsageInt(decoded.Final.Usage.InputTokens)
+				result.Tokens.Output = serviceUsageInt(decoded.Final.Usage.OutputTokens)
+				result.Tokens.Total = serviceUsageInt(decoded.Final.Usage.TotalTokens)
 			}
 			result.CostUSD = decoded.Final.CostUSD
 			if decoded.Final.RoutingActual != nil {
@@ -415,6 +415,13 @@ func serviceStatusToLegacyStatus(status string) agentcore.Status {
 	default:
 		return agentcore.StatusError
 	}
+}
+
+func serviceUsageInt(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func normalizeRunSubcommand(args []string) (bool, []string) {

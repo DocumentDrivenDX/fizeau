@@ -273,9 +273,10 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 	final.FinalText = resp.Content
 	if resp.Usage.Input > 0 || resp.Usage.Output > 0 || resp.Usage.Total > 0 {
 		final.Usage = &harnesses.FinalUsage{
-			InputTokens:  resp.Usage.Input,
-			OutputTokens: resp.Usage.Output,
-			TotalTokens:  resp.Usage.Total,
+			InputTokens:  harnesses.IntPtr(resp.Usage.Input),
+			OutputTokens: harnesses.IntPtr(resp.Usage.Output),
+			TotalTokens:  harnesses.IntPtr(resp.Usage.Total),
+			Source:       harnesses.UsageSourceFallback,
 		}
 	}
 	if resp.Content != "" {
@@ -603,9 +604,21 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	}
 	if result.Tokens.Total > 0 || result.Tokens.Input > 0 || result.Tokens.Output > 0 {
 		final.Usage = &harnesses.FinalUsage{
-			InputTokens:  result.Tokens.Input,
-			OutputTokens: result.Tokens.Output,
-			TotalTokens:  result.Tokens.Total,
+			InputTokens:      harnesses.IntPtr(result.Tokens.Input),
+			OutputTokens:     harnesses.IntPtr(result.Tokens.Output),
+			CacheReadTokens:  nil,
+			CacheWriteTokens: nil,
+			TotalTokens:      harnesses.IntPtr(result.Tokens.Total),
+			Source:           harnesses.UsageSourceFallback,
+		}
+		if result.Tokens.CacheRead > 0 {
+			final.Usage.CacheReadTokens = harnesses.IntPtr(result.Tokens.CacheRead)
+		}
+		if result.Tokens.CacheWrite > 0 {
+			final.Usage.CacheWriteTokens = harnesses.IntPtr(result.Tokens.CacheWrite)
+		}
+		if result.Tokens.CacheRead > 0 || result.Tokens.CacheWrite > 0 {
+			final.Usage.CacheTokens = harnesses.IntPtr(result.Tokens.CacheRead + result.Tokens.CacheWrite)
 		}
 	}
 	if result.CostUSD > 0 {

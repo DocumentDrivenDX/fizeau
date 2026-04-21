@@ -137,9 +137,9 @@ func buildRunFunc(wd string, timeout time.Duration, maxCostUSD float64, baseSeed
 					result.ExitCode = fd.ExitCode
 					result.Error = fd.Error
 					if fd.Usage != nil {
-						result.InputTokens = fd.Usage.InputTokens
-						result.OutputTokens = fd.Usage.OutputTokens
-						result.Tokens = fd.Usage.TotalTokens
+						result.InputTokens = usageInt(fd.Usage.InputTokens)
+						result.OutputTokens = usageInt(fd.Usage.OutputTokens)
+						result.Tokens = usageInt(fd.Usage.TotalTokens)
 					}
 					result.CostUSD = fd.CostUSD
 				}
@@ -299,4 +299,11 @@ func buildSuite(tasks []CorpusTask, candidates []Candidate) *comparison.Benchmar
 		Arms:    arms,
 		Prompts: prompts,
 	}
+}
+
+func usageInt(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }

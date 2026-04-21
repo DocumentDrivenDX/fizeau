@@ -54,6 +54,20 @@ AGENT_HARNESS_CASSETTE_DIR=./testdata/harness-cassettes/live \
 go test -tags=integration -run TestHarnessGoldenRecordModeLive .
 ```
 
+Run authenticated usage-specific record mode:
+
+```sh
+AGENT_HARNESS_RECORD=1 \
+AGENT_HARNESS_CASSETTE_DIR=./testdata/harness-cassettes/live \
+go test -tags=integration -run usage .
+```
+
+Usage record mode serializes per harness account with cassette record locks,
+requires the Claude/Codex binaries to be present, and refuses to write accepted
+artifacts unless the run succeeds and final metadata contains fresh
+`native_stream` token usage. Auth, quota, transport, or account-lock failures
+therefore fail before artifact acceptance.
+
 Each cassette directory contains:
 
 - `manifest.json` — version, harness, scrubbed command policy, timeout, and

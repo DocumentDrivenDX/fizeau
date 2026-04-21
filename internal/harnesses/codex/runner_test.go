@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -109,11 +110,11 @@ EOF
 	if finalEv.Usage == nil {
 		t.Error("expected usage in final event")
 	} else {
-		if finalEv.Usage.InputTokens != 10 {
-			t.Errorf("expected InputTokens=10, got %d", finalEv.Usage.InputTokens)
+		if finalEv.Usage.InputTokens == nil || *finalEv.Usage.InputTokens != 10 {
+			t.Errorf("expected InputTokens=10, got %#v", finalEv.Usage.InputTokens)
 		}
-		if finalEv.Usage.OutputTokens != 5 {
-			t.Errorf("expected OutputTokens=5, got %d", finalEv.Usage.OutputTokens)
+		if finalEv.Usage.OutputTokens == nil || *finalEv.Usage.OutputTokens != 5 {
+			t.Errorf("expected OutputTokens=5, got %#v", finalEv.Usage.OutputTokens)
 		}
 	}
 }
@@ -133,11 +134,15 @@ func TestParseCodexStream_EventTypes(t *testing.T) {
 	if agg.FinalText != "the answer" {
 		t.Errorf("expected FinalText=%q, got %q", "the answer", agg.FinalText)
 	}
-	if agg.InputTokens != 20 {
-		t.Errorf("expected InputTokens=20, got %d", agg.InputTokens)
+	usage, warnings := harnesses.ResolveFinalUsage(agg.UsageSources)
+	if len(warnings) != 0 {
+		t.Fatalf("usage warnings: %#v", warnings)
 	}
-	if agg.OutputTokens != 7 {
-		t.Errorf("expected OutputTokens=7, got %d", agg.OutputTokens)
+	if usage == nil || usage.InputTokens == nil || *usage.InputTokens != 20 {
+		t.Errorf("expected InputTokens=20, got %#v", usage)
+	}
+	if usage.OutputTokens == nil || *usage.OutputTokens != 7 {
+		t.Errorf("expected OutputTokens=7, got %#v", usage)
 	}
 
 	var events []harnesses.Event
@@ -189,8 +194,9 @@ func TestParseCodexStream_CommandExecutionToolEvents(t *testing.T) {
 	if agg.FinalText != "codex final" {
 		t.Fatalf("FinalText: got %q", agg.FinalText)
 	}
-	if agg.InputTokens != 12 || agg.OutputTokens != 5 {
-		t.Fatalf("usage: got input=%d output=%d", agg.InputTokens, agg.OutputTokens)
+	usage, warnings := harnesses.ResolveFinalUsage(agg.UsageSources)
+	if len(warnings) != 0 || usage == nil || usage.InputTokens == nil || usage.OutputTokens == nil || *usage.InputTokens != 12 || *usage.OutputTokens != 5 {
+		t.Fatalf("usage: got usage=%#v warnings=%#v", usage, warnings)
 	}
 
 	var events []harnesses.Event
@@ -260,6 +266,86 @@ func TestParseCodexStream_CommandExecutionFailure(t *testing.T) {
 	if result.Output != "boom" {
 		t.Fatalf("tool_result output: got %q", result.Output)
 	}
+}
+
+func TestParseCodexStream_UsageCassettes(t *testing.T) {
+	cases := []struct {
+		name             string
+		wantUsage        bool
+		wantInput        int
+		wantOutput       int
+		wantCache        int
+		wantReasoning    int
+		wantMalformed    bool
+		addDisagreement  bool
+		wantDisagreement bool
+	}{
+		{name: "present", wantUsage: true, wantInput: 12, wantOutput: 4, wantCache: 5, wantReasoning: 2},
+		{name: "absent"},
+		{name: "malformed", wantMalformed: true},
+		{name: "disagree", wantUsage: true, wantInput: 30, wantOutput: 6, addDisagreement: true, wantDisagreement: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", "usage_cassettes", tc.name+".jsonl"))
+			if err != nil {
+				t.Fatalf("read cassette: %v", err)
+			}
+			out := make(chan harnesses.Event, 16)
+			var seq int64
+			agg, err := parseCodexStream(context.Background(), strings.NewReader(string(data)), out, nil, &seq)
+			close(out)
+			if err != nil {
+				t.Fatalf("parseCodexStream: %v", err)
+			}
+			candidates := append([]harnesses.UsageCandidate(nil), agg.UsageSources...)
+			if tc.addDisagreement {
+				candidates = append(candidates, harnesses.UsageCandidate{
+					Source: harnesses.UsageSourceStatusOutput,
+					Fresh:  harnesses.BoolPtr(false),
+					Counts: harnesses.UsageTokenCounts{
+						InputTokens:  harnesses.IntPtr(29),
+						OutputTokens: harnesses.IntPtr(6),
+						TotalTokens:  harnesses.IntPtr(35),
+					},
+				})
+			}
+			usage, warnings := harnesses.ResolveFinalUsage(candidates)
+			if !tc.wantUsage {
+				if usage != nil {
+					t.Fatalf("usage: got %#v, want nil", usage)
+				}
+			} else {
+				if usage == nil || usage.InputTokens == nil || *usage.InputTokens != tc.wantInput {
+					t.Fatalf("input usage: got %#v", usage)
+				}
+				if usage.OutputTokens == nil || *usage.OutputTokens != tc.wantOutput {
+					t.Fatalf("output usage: got %#v", usage)
+				}
+				if tc.wantCache > 0 && (usage.CacheTokens == nil || *usage.CacheTokens != tc.wantCache) {
+					t.Fatalf("cache usage: got %#v", usage)
+				}
+				if tc.wantReasoning > 0 && (usage.ReasoningTokens == nil || *usage.ReasoningTokens != tc.wantReasoning) {
+					t.Fatalf("reasoning usage: got %#v", usage)
+				}
+			}
+			if hasFinalWarning(warnings, harnesses.UsageWarningMalformed) != tc.wantMalformed {
+				t.Fatalf("malformed warnings: got %#v", warnings)
+			}
+			if hasFinalWarning(warnings, harnesses.UsageWarningDisagreement) != tc.wantDisagreement {
+				t.Fatalf("disagreement warnings: got %#v", warnings)
+			}
+		})
+	}
+}
+
+func hasFinalWarning(warnings []harnesses.FinalWarning, code string) bool {
+	for _, warning := range warnings {
+		if warning.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func reviewerVerdictFromFinalText(text string) string {

@@ -38,7 +38,10 @@ func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 		"final_text":  "APPROVE\nLooks good.",
 		"duration_ms": 123,
 		"usage": map[string]any{
-			"input_tokens": 10, "output_tokens": 5, "total_tokens": 15,
+			"input_tokens": 10, "output_tokens": 5, "total_tokens": 15, "source": "native_stream", "fresh": true,
+		},
+		"warnings": []map[string]any{
+			{"code": "usage_source_disagreement", "message": "selected by precedence"},
 		},
 		"cost_usd":         0.001,
 		"session_log_path": "/tmp/session.jsonl",
@@ -58,8 +61,14 @@ func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 	if result.FinalText != "APPROVE\nLooks good." {
 		t.Fatalf("FinalText: got %q", result.FinalText)
 	}
-	if result.Usage == nil || result.Usage.TotalTokens != 15 {
+	if result.Usage == nil || result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 15 {
 		t.Fatalf("Usage: got %#v", result.Usage)
+	}
+	if result.Usage.Source != "native_stream" || result.Usage.Fresh == nil || !*result.Usage.Fresh {
+		t.Fatalf("Usage metadata: got %#v", result.Usage)
+	}
+	if len(result.Warnings) != 1 || result.Warnings[0].Code != "usage_source_disagreement" {
+		t.Fatalf("Warnings: got %#v", result.Warnings)
 	}
 	if len(result.ToolCalls) != 1 || result.ToolCalls[0].Name != "read" {
 		t.Fatalf("ToolCalls: got %#v", result.ToolCalls)

@@ -6,7 +6,20 @@
   "usage": {
     "input_tokens": 6,
     "output_tokens": 11,
-    "total_tokens": 17
+    "total_tokens": 17,
+    "source": "native_stream",
+    "fresh": true,
+    "sources": [
+      {
+        "source": "native_stream",
+        "fresh": true,
+        "usage": {
+          "input_tokens": 6,
+          "output_tokens": 11,
+          "total_tokens": 17
+        }
+      }
+    ]
   },
   "cost_usd": 0.0562495,
   "routing_actual": {

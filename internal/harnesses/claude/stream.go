@@ -21,16 +21,11 @@ type claudeStreamEvent struct {
 	Result  string          `json:"result"`
 
 	// result-event fields
-	Usage struct {
-		InputTokens         int `json:"input_tokens"`
-		OutputTokens        int `json:"output_tokens"`
-		CacheCreationTokens int `json:"cache_creation_input_tokens"`
-		CacheReadTokens     int `json:"cache_read_input_tokens"`
-	} `json:"usage"`
-	TotalCostUSD    float64 `json:"total_cost_usd"`
-	DurationMsField int64   `json:"duration_ms"`
-	SessionID       string  `json:"session_id"`
-	IsError         bool    `json:"is_error"`
+	Usage           json.RawMessage `json:"usage"`
+	TotalCostUSD    float64         `json:"total_cost_usd"`
+	DurationMsField int64           `json:"duration_ms"`
+	SessionID       string          `json:"session_id"`
+	IsError         bool            `json:"is_error"`
 
 	// system/init fields
 	Model string `json:"model"`
@@ -43,7 +38,7 @@ type claudeAssistantMessage struct {
 	ID      string               `json:"id"`
 	Model   string               `json:"model"`
 	Content []claudeMessageBlock `json:"content"`
-	Usage   claudeAssistantUsage `json:"usage"`
+	Usage   json.RawMessage      `json:"usage"`
 	Stop    string               `json:"stop_reason,omitempty"`
 }
 
@@ -58,11 +53,6 @@ type claudeMessageBlock struct {
 	IsError   bool            `json:"is_error,omitempty"`
 }
 
-type claudeAssistantUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-}
-
 // claudeUserMessage is the shape of the "message" field in a
 // {"type":"user",...} stream-json event, which carries tool_result content.
 type claudeUserMessage struct {
@@ -75,8 +65,8 @@ type streamAggregate struct {
 	FinalText    string
 	SessionID    string
 	Model        string
-	InputTokens  int
-	OutputTokens int
+	UsageSources []harnesses.UsageCandidate
+	Warnings     []harnesses.FinalWarning
 	CostUSD      float64
 	ToolCalls    int
 	TurnCount    int
@@ -168,12 +158,7 @@ func parseClaudeStream(ctx context.Context, r io.Reader, out chan<- harnesses.Ev
 			if msg.Model != "" && agg.Model == "" {
 				agg.Model = msg.Model
 			}
-			if msg.Usage.InputTokens > 0 {
-				agg.InputTokens = msg.Usage.InputTokens
-			}
-			if msg.Usage.OutputTokens > 0 {
-				agg.OutputTokens = msg.Usage.OutputTokens
-			}
+			agg.recordUsage(msg.Usage)
 			agg.TurnCount++
 
 			for _, block := range msg.Content {
@@ -232,12 +217,7 @@ func parseClaudeStream(ctx context.Context, r io.Reader, out chan<- harnesses.Ev
 			if ev.Result != "" {
 				agg.FinalText = ev.Result
 			}
-			if ev.Usage.InputTokens > 0 {
-				agg.InputTokens = ev.Usage.InputTokens
-			}
-			if ev.Usage.OutputTokens > 0 {
-				agg.OutputTokens = ev.Usage.OutputTokens
-			}
+			agg.recordUsage(ev.Usage)
 			if ev.TotalCostUSD > 0 {
 				agg.CostUSD = ev.TotalCostUSD
 			}
@@ -253,6 +233,28 @@ func parseClaudeStream(ctx context.Context, r io.Reader, out chan<- harnesses.Ev
 		return agg, err
 	}
 	return agg, nil
+}
+
+func (a *streamAggregate) recordUsage(raw json.RawMessage) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return
+	}
+	counts, err := harnesses.ParseUsageJSON(raw)
+	if err != nil {
+		a.UsageSources = append(a.UsageSources, harnesses.UsageCandidate{
+			Source:  harnesses.UsageSourceNativeStream,
+			Fresh:   harnesses.BoolPtr(true),
+			Warning: err.Error(),
+		})
+		return
+	}
+	if counts.Any() {
+		a.UsageSources = append(a.UsageSources, harnesses.UsageCandidate{
+			Source: harnesses.UsageSourceNativeStream,
+			Fresh:  harnesses.BoolPtr(true),
+			Counts: counts,
+		})
+	}
 }
 
 // decodeToolResultContent normalises the variable shapes claude uses for

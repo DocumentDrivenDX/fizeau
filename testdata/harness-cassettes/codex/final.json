@@ -6,7 +6,20 @@
   "usage": {
     "input_tokens": 12,
     "output_tokens": 5,
-    "total_tokens": 17
+    "total_tokens": 17,
+    "source": "native_stream",
+    "fresh": true,
+    "sources": [
+      {
+        "source": "native_stream",
+        "fresh": true,
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 5,
+          "total_tokens": 17
+        }
+      }
+    ]
   },
   "routing_actual": {
     "harness": "codex",

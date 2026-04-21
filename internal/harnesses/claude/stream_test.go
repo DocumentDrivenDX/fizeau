@@ -164,8 +164,13 @@ func TestParseClaudeStream_BehavioralParity(t *testing.T) {
 			// Aggregate state.
 			assert.Equal(t, tc.wantToolCalls, agg.ToolCalls, "tool call count")
 			assert.Equal(t, tc.wantTurnCount, agg.TurnCount, "turn count")
-			assert.Equal(t, tc.wantInputTokens, agg.InputTokens, "input tokens")
-			assert.Equal(t, tc.wantOutputTokens, agg.OutputTokens, "output tokens")
+			usage, warnings := harnesses.ResolveFinalUsage(agg.UsageSources)
+			require.Empty(t, warnings, "usage warnings")
+			require.NotNil(t, usage, "usage")
+			require.NotNil(t, usage.InputTokens, "input tokens")
+			require.NotNil(t, usage.OutputTokens, "output tokens")
+			assert.Equal(t, tc.wantInputTokens, *usage.InputTokens, "input tokens")
+			assert.Equal(t, tc.wantOutputTokens, *usage.OutputTokens, "output tokens")
 			assert.InDelta(t, tc.wantCostUSD, agg.CostUSD, 1e-9, "cost usd")
 			assert.Equal(t, tc.wantFinalText, agg.FinalText, "final text")
 			assert.Equal(t, tc.wantSessionID, agg.SessionID, "session id")
@@ -213,7 +218,7 @@ func TestParseClaudeStream_Empty(t *testing.T) {
 	assert.Empty(t, events)
 	require.NotNil(t, agg)
 	assert.Equal(t, 0, agg.TurnCount)
-	assert.Equal(t, 0, agg.InputTokens)
+	assert.Empty(t, agg.UsageSources)
 	assert.Empty(t, agg.FinalText)
 }
 
@@ -241,6 +246,70 @@ func TestParseClaudeStream_ToolResultBlocks(t *testing.T) {
 	require.NotNil(t, found, "expected a tool_result event")
 	assert.Contains(t, found.Output, "line1")
 	assert.Contains(t, found.Output, "line2")
+}
+
+func TestParseClaudeStream_UsageCassettes(t *testing.T) {
+	cases := []struct {
+		name              string
+		wantUsage         bool
+		wantInput         int
+		wantOutput        int
+		wantCache         int
+		wantMalformed     bool
+		addDisagreement   bool
+		wantDisagreement  bool
+		wantSelectedInput int
+	}{
+		{name: "present", wantUsage: true, wantInput: 10, wantOutput: 2, wantCache: 7, wantSelectedInput: 10},
+		{name: "absent"},
+		{name: "malformed", wantMalformed: true},
+		{name: "disagree", wantUsage: true, wantInput: 21, wantOutput: 9, addDisagreement: true, wantDisagreement: true, wantSelectedInput: 21},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", "usage_cassettes", tc.name+".jsonl"))
+			require.NoError(t, err)
+			_, agg := runParser(t, string(data))
+			candidates := append([]harnesses.UsageCandidate(nil), agg.UsageSources...)
+			if tc.addDisagreement {
+				candidates = append(candidates, harnesses.UsageCandidate{
+					Source: harnesses.UsageSourceTranscript,
+					Fresh:  harnesses.BoolPtr(false),
+					Counts: harnesses.UsageTokenCounts{
+						InputTokens:  harnesses.IntPtr(20),
+						OutputTokens: harnesses.IntPtr(9),
+						TotalTokens:  harnesses.IntPtr(29),
+					},
+				})
+			}
+			usage, warnings := harnesses.ResolveFinalUsage(candidates)
+			if !tc.wantUsage {
+				assert.Nil(t, usage)
+			} else {
+				require.NotNil(t, usage)
+				assert.Equal(t, harnesses.UsageSourceNativeStream, usage.Source)
+				require.NotNil(t, usage.InputTokens)
+				require.NotNil(t, usage.OutputTokens)
+				assert.Equal(t, tc.wantInput, *usage.InputTokens)
+				assert.Equal(t, tc.wantOutput, *usage.OutputTokens)
+				if tc.wantCache > 0 {
+					require.NotNil(t, usage.CacheTokens)
+					assert.Equal(t, tc.wantCache, *usage.CacheTokens)
+				}
+			}
+			assert.Equal(t, tc.wantMalformed, hasUsageWarning(warnings, harnesses.UsageWarningMalformed), "malformed warning")
+			assert.Equal(t, tc.wantDisagreement, hasUsageWarning(warnings, harnesses.UsageWarningDisagreement), "disagreement warning")
+		})
+	}
+}
+
+func hasUsageWarning(warnings []harnesses.FinalWarning, code string) bool {
+	for _, warning := range warnings {
+		if warning.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 // TestClaudeStreamArgsUnsupported ensures the stderr-detection helper that
@@ -364,8 +433,10 @@ func TestRunnerExecute_HappyPath(t *testing.T) {
 	assert.Equal(t, 0, final.ExitCode)
 	assert.Equal(t, "hello", final.FinalText)
 	require.NotNil(t, final.Usage)
-	assert.Equal(t, 5, final.Usage.InputTokens)
-	assert.Equal(t, 2, final.Usage.OutputTokens)
+	require.NotNil(t, final.Usage.InputTokens)
+	require.NotNil(t, final.Usage.OutputTokens)
+	assert.Equal(t, 5, *final.Usage.InputTokens)
+	assert.Equal(t, 2, *final.Usage.OutputTokens)
 	assert.InDelta(t, 0.0001, final.CostUSD, 1e-9)
 
 	// Earlier events should include a text_delta.

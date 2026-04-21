@@ -534,10 +534,33 @@ type ServiceFinalData struct {
     ExitCode int
     DurationMS int64
     Usage *ServiceFinalUsage
+    Warnings []ServiceFinalWarning
     CostUSD float64
     RoutingActual *ServiceRoutingActual
 }
-type ServiceFinalUsage struct { InputTokens, OutputTokens, TotalTokens int }
+type ServiceFinalUsage struct {
+    InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens *int
+    CacheTokens, ReasoningTokens, TotalTokens *int
+    Source string
+    Fresh *bool
+    CapturedAt string
+    Sources []ServiceUsageSourceEvidence
+}
+type ServiceFinalWarning struct {
+    Code, Message string
+    Sources []ServiceUsageSourceEvidence
+}
+type ServiceUsageSourceEvidence struct {
+    Source string
+    Fresh *bool
+    CapturedAt string
+    Usage *ServiceUsageTokenCounts
+    Warning string
+}
+type ServiceUsageTokenCounts struct {
+    InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens *int
+    CacheTokens, ReasoningTokens, TotalTokens *int
+}
 type ServiceRoutingActual struct {
     Harness, Provider, Model string
     FallbackChainFired []string
@@ -785,7 +808,28 @@ Closed union of event types. Every harness backend emits these identically.
   "error": "",
   "final_text": "user-facing final response text, stripped of harness stream envelopes",
   "duration_ms": 12345,
-  "usage": {"input_tokens": 7996, "output_tokens": 267, "total_tokens": 8263},
+  "usage": {
+    "input_tokens": 7996,
+    "output_tokens": 267,
+    "cache_read_tokens": 1200,
+    "reasoning_tokens": 41,
+    "total_tokens": 8263,
+    "source": "native_stream",
+    "fresh": true,
+    "sources": [
+      {"source": "native_stream", "fresh": true, "usage": {"input_tokens": 7996, "output_tokens": 267, "total_tokens": 8263}}
+    ]
+  },
+  "warnings": [
+    {
+      "code": "usage_source_disagreement",
+      "message": "token usage sources disagree; selected source by documented precedence",
+      "sources": [
+        {"source": "native_stream", "usage": {"input_tokens": 7996, "output_tokens": 267, "total_tokens": 8263}},
+        {"source": "transcript", "usage": {"input_tokens": 7990, "output_tokens": 267, "total_tokens": 8257}}
+      ]
+    }
+  ],
   "cost_usd": 0.0042,
   "session_log_path": "/path/to/session.jsonl",
   "messages": [...],   // optional history continuation
@@ -797,6 +841,33 @@ Closed union of event types. Every harness backend emits these identically.
   }
 }
 ```
+
+### Final Usage Source Policy
+
+Final-event `usage` is optional. A missing `usage` object means per-run token
+usage was unavailable, not zero. When a harness explicitly reports zero tokens,
+the relevant fields are present with value `0`. Token dimensions that the
+harness did not expose are omitted rather than serialized as fabricated zeros.
+
+The normalized token vocabulary is `input_tokens`, `output_tokens`,
+`cache_read_tokens`, `cache_write_tokens`, `cache_tokens`,
+`reasoning_tokens`, and `total_tokens`. Harness-specific terms are normalized
+into this vocabulary when exposed by Claude, Codex, or native provider streams.
+
+When more than one source is available, precedence is:
+
+1. `native_stream`
+2. `transcript`
+3. `status_output`
+4. `fallback`
+
+The selected source is copied to `usage.source`; every valid source considered
+is listed in `usage.sources` with its `fresh`/`captured_at` metadata when
+available. If multiple sources report different overlapping token fields, the
+service still selects by precedence but records a final warning with
+`code=usage_source_disagreement` and the source values. Malformed or changed
+usage shapes are recorded as `code=usage_malformed` warnings and do not cause
+missing fields to be filled with zero.
 
 ## Typed Event Decoding
 

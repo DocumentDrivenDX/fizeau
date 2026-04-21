@@ -33,17 +33,13 @@ type codexEvent struct {
 		ExitCode         *int            `json:"exit_code"`
 		Status           string          `json:"status"`
 	} `json:"item"`
-	Usage struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
-	} `json:"usage"`
+	Usage json.RawMessage `json:"usage"`
 }
 
 // streamAggregate captures running totals from the codex stream.
 type streamAggregate struct {
 	FinalText    string
-	InputTokens  int
-	OutputTokens int
+	UsageSources []harnesses.UsageCandidate
 }
 
 // parseCodexStream reads newline-delimited codex exec --json events from r
@@ -139,18 +135,35 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 				}
 			}
 		case "turn.completed":
-			if ev.Usage.InputTokens > 0 {
-				agg.InputTokens = ev.Usage.InputTokens
-			}
-			if ev.Usage.OutputTokens > 0 {
-				agg.OutputTokens = ev.Usage.OutputTokens
-			}
+			agg.recordUsage(ev.Usage)
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return agg, err
 	}
 	return agg, nil
+}
+
+func (a *streamAggregate) recordUsage(raw json.RawMessage) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return
+	}
+	counts, err := harnesses.ParseUsageJSON(raw)
+	if err != nil {
+		a.UsageSources = append(a.UsageSources, harnesses.UsageCandidate{
+			Source:  harnesses.UsageSourceNativeStream,
+			Fresh:   harnesses.BoolPtr(true),
+			Warning: err.Error(),
+		})
+		return
+	}
+	if counts.Any() {
+		a.UsageSources = append(a.UsageSources, harnesses.UsageCandidate{
+			Source: harnesses.UsageSourceNativeStream,
+			Fresh:  harnesses.BoolPtr(true),
+			Counts: counts,
+		})
+	}
 }
 
 func codexToolID(id string) string {

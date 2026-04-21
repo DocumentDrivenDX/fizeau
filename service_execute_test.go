@@ -210,7 +210,7 @@ func TestDrainExecute_NativeServiceExecuteWithFakeProvider(t *testing.T) {
 	if result.FinalText != "APPROVE\nTyped drain works." {
 		t.Fatalf("FinalText: got %q", result.FinalText)
 	}
-	if result.Usage == nil || result.Usage.TotalTokens != 12 {
+	if result.Usage == nil || result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 12 {
 		t.Fatalf("Usage: got %#v", result.Usage)
 	}
 	if result.RoutingActual == nil || result.RoutingActual.Harness != "agent" {

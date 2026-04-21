@@ -17,6 +17,7 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	"github.com/DocumentDrivenDX/agent/internal/pty/cassette"
 )
 
 const harnessCassetteRoot = "testdata/harness-cassettes"
@@ -334,6 +335,92 @@ func TestHarnessGoldenRecordModeLive(t *testing.T) {
 					"mode":       "record",
 					"cassette":   harness,
 					"test_suite": "harness-golden",
+				},
+			}, rawEvents, result)
+		})
+	}
+}
+
+func Test_usageRecordMode(t *testing.T) {
+	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
+		t.Skip("set AGENT_HARNESS_RECORD=1 to run authenticated usage cassette record mode")
+	}
+	preflightLiveHarnessRecordMode(t)
+
+	cassetteDir := os.Getenv("AGENT_HARNESS_CASSETTE_DIR")
+	if cassetteDir == "" {
+		cassetteDir = t.TempDir()
+	}
+	usageCassetteDir := filepath.Join(cassetteDir, "usage")
+	if err := os.MkdirAll(usageCassetteDir, 0o750); err != nil {
+		t.Fatalf("create usage cassette dir: %v", err)
+	}
+
+	svc, err := New(ServiceOptions{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	account := os.Getenv("AGENT_HARNESS_ACCOUNT")
+	for _, harness := range harnessGoldenRecordHarnesses() {
+		t.Run(harness, func(t *testing.T) {
+			lock, err := cassette.AcquireRecordLock(usageCassetteDir, harness+":"+account)
+			if err != nil {
+				t.Fatalf("usage record mode requires exclusive %s account lock: %v", harness, err)
+			}
+			defer func() {
+				if err := lock.Release(); err != nil {
+					t.Fatalf("release %s usage record lock: %v", harness, err)
+				}
+			}()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			defer cancel()
+			workDir := prepareHarnessRecordWorkDir(t, harness)
+			req := ServiceExecuteRequest{
+				Prompt:      harnessGoldenRecordPrompt,
+				Harness:     harness,
+				WorkDir:     workDir,
+				Permissions: "safe",
+				Reasoning:   ReasoningLow,
+				Timeout:     90 * time.Second,
+				Metadata: map[string]string{
+					"mode":       "record",
+					"cassette":   harness,
+					"bead_id":    "agent-f5a2a6c2",
+					"test_suite": "harness-usage",
+				},
+			}
+			events, err := svc.Execute(ctx, req)
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			rawEvents, result, err := drainRawExecute(ctx, events)
+			if err != nil {
+				t.Fatalf("DrainExecute: %v", err)
+			}
+			if result.FinalStatus != "success" {
+				t.Fatalf("usage record mode %s failed before artifact acceptance: status=%q error=%q", harness, result.FinalStatus, result.TerminalError)
+			}
+			if result.Usage == nil {
+				t.Fatalf("usage record mode %s produced no usage; refusing to write accepted artifact", harness)
+			}
+			if result.Usage.Source != "native_stream" {
+				t.Fatalf("usage record mode %s source: got %q, want native_stream", harness, result.Usage.Source)
+			}
+			if result.Usage.Fresh == nil || !*result.Usage.Fresh {
+				t.Fatalf("usage record mode %s freshness metadata missing: %#v", harness, result.Usage)
+			}
+			writeVersionedHarnessCassette(t, usageCassetteDir, harness, ServiceExecuteRequest{
+				Prompt:      harnessGoldenRecordPrompt,
+				Harness:     harness,
+				WorkDir:     "<tempdir>",
+				Permissions: "safe",
+				Reasoning:   ReasoningLow,
+				Timeout:     90 * time.Second,
+				Metadata: map[string]string{
+					"mode":       "record",
+					"cassette":   harness,
+					"test_suite": "harness-usage",
 				},
 			}, rawEvents, result)
 		})

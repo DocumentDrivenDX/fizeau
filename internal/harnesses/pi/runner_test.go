@@ -109,11 +109,11 @@ EOF
 	if finalEv.Usage == nil {
 		t.Error("expected usage in final event")
 	} else {
-		if finalEv.Usage.InputTokens != 8 {
-			t.Errorf("expected InputTokens=8, got %d", finalEv.Usage.InputTokens)
+		if finalEv.Usage.InputTokens == nil || *finalEv.Usage.InputTokens != 8 {
+			t.Errorf("expected InputTokens=8, got %#v", finalEv.Usage.InputTokens)
 		}
-		if finalEv.Usage.OutputTokens != 3 {
-			t.Errorf("expected OutputTokens=3, got %d", finalEv.Usage.OutputTokens)
+		if finalEv.Usage.OutputTokens == nil || *finalEv.Usage.OutputTokens != 3 {
+			t.Errorf("expected OutputTokens=3, got %#v", finalEv.Usage.OutputTokens)
 		}
 	}
 }

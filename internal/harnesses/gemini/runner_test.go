@@ -110,11 +110,11 @@ EOF
 	if finalEv.Usage == nil {
 		t.Error("expected usage in final event from JSON stats block")
 	} else {
-		if finalEv.Usage.InputTokens != 12 {
-			t.Errorf("expected InputTokens=12, got %d", finalEv.Usage.InputTokens)
+		if finalEv.Usage.InputTokens == nil || *finalEv.Usage.InputTokens != 12 {
+			t.Errorf("expected InputTokens=12, got %#v", finalEv.Usage.InputTokens)
 		}
-		if finalEv.Usage.OutputTokens != 13 { // total(25) - input(12)
-			t.Errorf("expected OutputTokens=13, got %d", finalEv.Usage.OutputTokens)
+		if finalEv.Usage.OutputTokens == nil || *finalEv.Usage.OutputTokens != 13 { // total(25) - input(12)
+			t.Errorf("expected OutputTokens=13, got %#v", finalEv.Usage.OutputTokens)
 		}
 	}
 }

@@ -62,15 +62,48 @@ type ServiceFinalData struct {
 	FinalText      string                `json:"final_text,omitempty"`
 	DurationMS     int64                 `json:"duration_ms"`
 	Usage          *ServiceFinalUsage    `json:"usage,omitempty"`
+	Warnings       []ServiceFinalWarning `json:"warnings,omitempty"`
 	CostUSD        float64               `json:"cost_usd,omitempty"`
 	SessionLogPath string                `json:"session_log_path,omitempty"`
 	RoutingActual  *ServiceRoutingActual `json:"routing_actual,omitempty"`
 }
 
 type ServiceFinalUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens      *int                         `json:"input_tokens,omitempty"`
+	OutputTokens     *int                         `json:"output_tokens,omitempty"`
+	CacheReadTokens  *int                         `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens *int                         `json:"cache_write_tokens,omitempty"`
+	CacheTokens      *int                         `json:"cache_tokens,omitempty"`
+	ReasoningTokens  *int                         `json:"reasoning_tokens,omitempty"`
+	TotalTokens      *int                         `json:"total_tokens,omitempty"`
+	Source           string                       `json:"source,omitempty"`
+	Fresh            *bool                        `json:"fresh,omitempty"`
+	CapturedAt       string                       `json:"captured_at,omitempty"`
+	Sources          []ServiceUsageSourceEvidence `json:"sources,omitempty"`
+}
+
+type ServiceFinalWarning struct {
+	Code    string                       `json:"code"`
+	Message string                       `json:"message,omitempty"`
+	Sources []ServiceUsageSourceEvidence `json:"sources,omitempty"`
+}
+
+type ServiceUsageSourceEvidence struct {
+	Source     string                   `json:"source"`
+	Fresh      *bool                    `json:"fresh,omitempty"`
+	CapturedAt string                   `json:"captured_at,omitempty"`
+	Usage      *ServiceUsageTokenCounts `json:"usage,omitempty"`
+	Warning    string                   `json:"warning,omitempty"`
+}
+
+type ServiceUsageTokenCounts struct {
+	InputTokens      *int `json:"input_tokens,omitempty"`
+	OutputTokens     *int `json:"output_tokens,omitempty"`
+	CacheReadTokens  *int `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens *int `json:"cache_write_tokens,omitempty"`
+	CacheTokens      *int `json:"cache_tokens,omitempty"`
+	ReasoningTokens  *int `json:"reasoning_tokens,omitempty"`
+	TotalTokens      *int `json:"total_tokens,omitempty"`
 }
 
 type ServiceRoutingActual struct {
@@ -177,6 +210,7 @@ type DrainExecuteResult struct {
 	FinalStatus    string
 	FinalText      string
 	Usage          *ServiceFinalUsage
+	Warnings       []ServiceFinalWarning
 	CostUSD        float64
 	SessionLogPath string
 	RoutingActual  *ServiceRoutingActual
@@ -225,6 +259,7 @@ func (r *DrainExecuteResult) append(ev ServiceDecodedEvent) {
 		r.FinalStatus = ev.Final.Status
 		r.FinalText = ev.Final.FinalText
 		r.Usage = ev.Final.Usage
+		r.Warnings = ev.Final.Warnings
 		r.CostUSD = ev.Final.CostUSD
 		r.SessionLogPath = ev.Final.SessionLogPath
 		r.RoutingActual = ev.Final.RoutingActual

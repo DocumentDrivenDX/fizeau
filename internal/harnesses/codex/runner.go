@@ -132,13 +132,7 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 	}
 	if agg != nil {
 		final.FinalText = agg.FinalText
-		if agg.InputTokens > 0 || agg.OutputTokens > 0 {
-			final.Usage = &harnesses.FinalUsage{
-				InputTokens:  agg.InputTokens,
-				OutputTokens: agg.OutputTokens,
-				TotalTokens:  agg.InputTokens + agg.OutputTokens,
-			}
-		}
+		final.Usage, final.Warnings = harnesses.ResolveFinalUsage(agg.UsageSources)
 	}
 
 	finalRaw, err := json.Marshal(final)
