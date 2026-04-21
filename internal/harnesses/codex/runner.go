@@ -46,7 +46,6 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		Type:                 "subprocess",
 		IsLocal:              false,
 		IsSubscription:       true,
-		AutoRoutingEligible:  true,
 		ExactPinSupport:      true,
 		DefaultModel:         "gpt-5.4",
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},

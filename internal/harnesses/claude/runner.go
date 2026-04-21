@@ -63,7 +63,6 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		Type:                 "subprocess",
 		IsLocal:              false,
 		IsSubscription:       true,
-		AutoRoutingEligible:  true,
 		ExactPinSupport:      true,
 		DefaultModel:         "claude-sonnet-4-6",
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},

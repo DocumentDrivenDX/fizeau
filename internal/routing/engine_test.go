@@ -461,7 +461,7 @@ func TestAutoRoutingEligibilityGate(t *testing.T) {
 	for _, c := range dec.Candidates {
 		switch c.Harness {
 		case "agent", "codex", "claude":
-			// Full-coverage harnesses may appear in automatic routing.
+			// Harnesses marked auto-routing eligible may appear.
 		case "gemini", "opencode", "pi":
 			t.Fatalf("non-full-coverage harness %q leaked into automatic routing candidates", c.Harness)
 		default:

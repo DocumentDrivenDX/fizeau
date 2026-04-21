@@ -63,6 +63,19 @@ Current evidence:
 | ListModels and SetModel | `service_models_test.go` covers native provider model listing and harness-filtered model selection; `service_route_attempts_test.go` and `service_routestatus_test.go` cover resolved provider/model decisions through `ResolveRoute`. |
 | QuotaStatus | n/a for the native harness; quota belongs to the selected provider backend. |
 
+## Automatic Routing Eligibility
+
+Only harnesses whose current baseline evidence is complete may set
+`AutoRoutingEligible=true`.
+
+Current status:
+
+| Harness | Auto-routing status | Reason |
+|---|---|---|
+| agent | eligible | Native service evidence covers the baseline rows above. |
+| codex | explicit-only | Codex has substantial runner, usage, discovery, and quota tests, but routing does not yet consume the durable Codex quota state as evidence for automatic subscription routing. Track re-enable work in `agent-03e2d82c`. |
+| claude | explicit-only | Claude has substantial stream, usage, discovery, and quota tests, but the current subprocess runner does not yet apply all advertised request controls on execution. Track re-enable work in `agent-3e4cf14f`. |
+
 ## Capability Contracts
 
 ### Run

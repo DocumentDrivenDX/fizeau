@@ -62,8 +62,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.IsSubscription != true {
 			t.Errorf("codex IsSubscription: want true")
 		}
-		if !h.AutoRoutingEligible {
-			t.Errorf("codex AutoRoutingEligible: want true")
+		if h.AutoRoutingEligible {
+			t.Errorf("codex AutoRoutingEligible: want false until full baseline certification")
 		}
 		if h.IsLocal {
 			t.Errorf("codex IsLocal: want false")
@@ -90,8 +90,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.IsSubscription != true {
 			t.Errorf("claude IsSubscription: want true")
 		}
-		if !h.AutoRoutingEligible {
-			t.Errorf("claude AutoRoutingEligible: want true")
+		if h.AutoRoutingEligible {
+			t.Errorf("claude AutoRoutingEligible: want false until full baseline certification")
 		}
 		if h.Type != "subprocess" {
 			t.Errorf("claude Type: want subprocess, got %q", h.Type)

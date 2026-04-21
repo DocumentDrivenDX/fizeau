@@ -125,7 +125,7 @@ func TestBuiltinHarnessesMetadata(t *testing.T) {
 	codex, _ := r.Get("codex")
 	assert.True(t, codex.IsSubscription)
 	assert.False(t, codex.IsLocal)
-	assert.True(t, codex.AutoRoutingEligible)
+	assert.False(t, codex.AutoRoutingEligible)
 	assert.True(t, codex.ExactPinSupport)
 
 	agent, _ := r.Get("agent")
@@ -134,7 +134,7 @@ func TestBuiltinHarnessesMetadata(t *testing.T) {
 	assert.True(t, agent.AutoRoutingEligible)
 
 	claude, _ := r.Get("claude")
-	assert.True(t, claude.AutoRoutingEligible)
+	assert.False(t, claude.AutoRoutingEligible)
 
 	gemini, _ := r.Get("gemini")
 	assert.False(t, gemini.AutoRoutingEligible)
