@@ -7,6 +7,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  BINARY_NAME: ddx-agent
 
 permissions:
   contents: write
@@ -45,13 +46,13 @@ jobs:
           BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           GIT_COMMIT=$(git rev-parse --short HEAD)
           go build -ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
-            -o ddx-agent-${GOOS}-${GOARCH} ./cmd/agent
+            -o "${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/agent
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: ddx-agent-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: ddx-agent-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
 
   publish:
     needs: release
@@ -70,15 +71,15 @@ jobs:
         run: |
           # Flatten artifacts — each is in a subdirectory
           mkdir -p release/
-          for dir in dist/ddx-agent-*/; do
-            cp "$dir"ddx-agent-* release/ 2>/dev/null || true
+          for dir in dist/${BINARY_NAME}-*/; do
+            cp "$dir"${BINARY_NAME}-* release/ 2>/dev/null || true
           done
 
           # Make binaries executable
-          chmod +x release/ddx-agent-*
+          chmod +x release/${BINARY_NAME}-*
 
           ls -la release/
 
-          gh release create ${GITHUB_REF_NAME} release/ddx-agent-* \
+          gh release create ${GITHUB_REF_NAME} release/${BINARY_NAME}-* \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes

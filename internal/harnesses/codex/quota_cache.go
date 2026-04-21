@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
@@ -29,13 +30,13 @@ func CodexQuotaCachePath() (string, error) {
 		return path, nil
 	}
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "ddx-agent", "codex-quota.json"), nil
+		return filepath.Join(xdg, productinfo.ConfigDir, "codex-quota.json"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "ddx-agent", "codex-quota.json"), nil
+	return filepath.Join(home, ".local", "state", productinfo.ConfigDir, "codex-quota.json"), nil
 }
 
 // WriteCodexQuota atomically persists a CodexQuotaSnapshot to path.

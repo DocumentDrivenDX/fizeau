@@ -1,5 +1,7 @@
 package harnesses
 
+import "github.com/DocumentDrivenDX/agent/internal/productinfo"
+
 // PreferenceOrder defines the default harness preference when multiple are available.
 var PreferenceOrder = []string{"codex", "claude", "gemini", "opencode", "agent", "pi", "openrouter", "lmstudio", "omlx"}
 
@@ -94,7 +96,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 	},
 	"agent": {
 		Name:               "agent",
-		Binary:             "ddx-agent", // embedded — runs in-process via the agent library, not as a subprocess
+		Binary:             productinfo.BinaryName, // embedded — runs in-process via the agent library, not as a subprocess
 		PermissionArgs:     map[string][]string{"safe": {}, "unrestricted": {}},
 		PromptMode:         "arg",
 		DefaultModel:       "", // uses agent config or provider default

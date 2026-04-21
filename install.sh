@@ -13,25 +13,26 @@ NC='\033[0m' # No Color
 
 # Configuration
 REPO="DocumentDrivenDX/agent"
+BINARY_NAME="${BINARY_NAME:-ddx-agent}"
 INSTALL_DIR="${AGENT_INSTALL_DIR:-$HOME/.local/bin}"
 SHELL_NAME=""
 RC_FILE=""
 
 # Logging functions (all to stderr to avoid polluting command substitution)
 log() {
-    echo -e "${BLUE}[ddx-agent]${NC} $1" >&2
+    echo -e "${BLUE}[${BINARY_NAME}]${NC} $1" >&2
 }
 
 success() {
-    echo -e "${GREEN}[ddx-agent]${NC} $1" >&2
+    echo -e "${GREEN}[${BINARY_NAME}]${NC} $1" >&2
 }
 
 warn() {
-    echo -e "${YELLOW}[ddx-agent]${NC} $1" >&2
+    echo -e "${YELLOW}[${BINARY_NAME}]${NC} $1" >&2
 }
 
 error() {
-    echo -e "${RED}[ddx-agent]${NC} $1" >&2
+    echo -e "${RED}[${BINARY_NAME}]${NC} $1" >&2
     exit 1
 }
 
@@ -63,7 +64,7 @@ detect_platform() {
         *) error "Unsupported OS: $OS" ;;
     esac
 
-    BINARY="ddx-agent-${OS}-${ARCH}"
+    BINARY="${BINARY_NAME}-${OS}-${ARCH}"
 }
 
 # Get latest release tag
@@ -100,22 +101,22 @@ install_binary() {
     
     URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}"
     
-    log "Installing ddx-agent ${TAG} (${OS}/${ARCH})..."
+    log "Installing ${BINARY_NAME} ${TAG} (${OS}/${ARCH})..."
     
     # Create installation directory
     mkdir -p "$INSTALL_DIR"
     
     # Download binary
     if command -v curl &>/dev/null; then
-        curl -fsSL "$URL" -o "${INSTALL_DIR}/ddx-agent"
+        curl -fsSL "$URL" -o "${INSTALL_DIR}/${BINARY_NAME}"
     elif command -v wget &>/dev/null; then
-        wget -q "$URL" -O "${INSTALL_DIR}/ddx-agent"
+        wget -q "$URL" -O "${INSTALL_DIR}/${BINARY_NAME}"
     fi
     
     # Make executable
-    chmod +x "${INSTALL_DIR}/ddx-agent"
+    chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
-    success "Installed ddx-agent to ${INSTALL_DIR}/ddx-agent"
+    success "Installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"
 }
 
 # Configure PATH in shell rc files
@@ -162,7 +163,7 @@ configure_path() {
                     ;;
             esac
             
-            success "Added ddx-agent to PATH in $RC_FILE"
+            success "Added ${BINARY_NAME} to PATH in $RC_FILE"
         else
             success "DDX Agent is already configured in $RC_FILE"
         fi
@@ -186,13 +187,13 @@ verify_installation() {
     log "Verifying installation..."
 
     # Check if binary exists and is executable
-    if [ ! -f "${INSTALL_DIR}/ddx-agent" ] || [ ! -x "${INSTALL_DIR}/ddx-agent" ]; then
-        error "Installation failed: ddx-agent binary not found or not executable at ${INSTALL_DIR}/ddx-agent"
+    if [ ! -f "${INSTALL_DIR}/${BINARY_NAME}" ] || [ ! -x "${INSTALL_DIR}/${BINARY_NAME}" ]; then
+        error "Installation failed: ${BINARY_NAME} binary not found or not executable at ${INSTALL_DIR}/${BINARY_NAME}"
     fi
 
     # Test binary execution
-    if ! "${INSTALL_DIR}/ddx-agent" --version &>/dev/null; then
-        warn "DDX Agent binary installed but 'ddx-agent --version' command failed."
+    if ! "${INSTALL_DIR}/${BINARY_NAME}" --version &>/dev/null; then
+        warn "DDX Agent binary installed but '${BINARY_NAME} --version' command failed."
         warn "This may be normal if PATH is not yet configured."
     else
         success "Installation verification passed"
@@ -205,26 +206,26 @@ show_getting_started() {
     echo -e "${GREEN}🎉 DDX Agent installed successfully!${NC}"
     echo ""
     echo -e "${BLUE}📚 Next Steps:${NC}"
-    echo "   ddx-agent version     Check your installation"
-    echo "   ddx-agent update      Check for and install updates"
-    echo "   ddx-agent providers   List configured LLM providers"
-    echo "   ddx-agent import pi   Import configuration from Pi"
+    echo "   ${BINARY_NAME} version     Check your installation"
+    echo "   ${BINARY_NAME} update      Check for and install updates"
+    echo "   ${BINARY_NAME} providers   List configured LLM providers"
+    echo "   ${BINARY_NAME} import pi   Import configuration from Pi"
     echo ""
     echo -e "${BLUE}📖 Documentation:${NC}"
     echo "   https://github.com/${REPO}"
     echo ""
     echo -e "${BLUE}🔧 Binary Location:${NC}"
-    echo "   ${INSTALL_DIR}/ddx-agent"
+    echo "   ${INSTALL_DIR}/${BINARY_NAME}"
     echo ""
     echo -e "${BLUE}⚡ Quick Start:${NC}"
-    echo "   ddx-agent --help              Show all commands and options"
-    echo "   ddx-agent -p \"Your task\"      Run a quick task with default provider"
+    echo "   ${BINARY_NAME} --help              Show all commands and options"
+    echo "   ${BINARY_NAME} -p \"Your task\"      Run a quick task with default provider"
     echo ""
     
-    if command -v ddx-agent &>/dev/null; then
-        success "DDX Agent is ready to use! Run 'ddx-agent --version' to verify."
+    if command -v "${BINARY_NAME}" &>/dev/null; then
+        success "DDX Agent is ready to use! Run '${BINARY_NAME} --version' to verify."
     else
-        warn "Please restart your shell or run the following to use ddx-agent immediately:"
+        warn "Please restart your shell or run the following to use ${BINARY_NAME} immediately:"
         echo ""
         case "$SHELL_NAME" in
             fish)

@@ -2,6 +2,8 @@ package prompt
 
 import (
 	"fmt"
+
+	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 )
 
 // Preset is a named system prompt configuration.
@@ -73,7 +75,7 @@ If an approach fails, diagnose why before switching tactics. Do not retry the id
 
 	"default": {
 		Name:        "default",
-		Description: "Balanced, tool-aware prompt — the DDX Agent default",
+		Description: "Balanced, tool-aware prompt — the " + productinfo.Name + " default",
 		Base: `You are an expert coding agent. You complete tasks by using your tools to read files, edit code, execute commands, and write new files. You operate non-interactively — never ask clarification questions; make reasonable assumptions and proceed.
 
 TOOL USAGE — CRITICAL:
@@ -112,8 +114,8 @@ DISCIPLINE:
 
 	"benchmark": {
 		Name:        "benchmark",
-		Description: "DDX Agent benchmark mode — non-interactive, optimized for evaluation",
-		Base: `You are a coding agent running inside DDX Agent in benchmark mode. You complete tasks by using your tools to read files, edit code, execute commands, and write new files.
+		Description: productinfo.Name + " benchmark mode — non-interactive, optimized for evaluation",
+		Base: fmt.Sprintf(`You are a coding agent running inside %s in benchmark mode. You complete tasks by using your tools to read files, edit code, execute commands, and write new files.
 
 CRITICAL: You MUST use tools to make changes. When you need to create a file, call the write tool. When you need to modify a file, call the edit tool. When you need to read a file, call the read tool. When you need to run a command, call the bash tool. NEVER output code or file contents as plain text in your response — always use the appropriate tool.
 
@@ -123,7 +125,7 @@ BENCHMARK MODE RULES:
 3. EDIT TOOL FORMAT: The edit tool requires exact old_string matches. Use the read tool first to get the exact text, then provide precise old_string and new_string values.
 4. COMPLETE THE TASK: Always attempt to finish the task even if uncertain. Do not stop at analysis — implement, verify, and report results.
 
-Work systematically: read relevant files first using the read tool, make changes using edit or write tools, verify with bash (builds/tests), and report concisely.`,
+Work systematically: read relevant files first using the read tool, make changes using edit or write tools, verify with bash (builds/tests), and report concisely.`, productinfo.Name),
 		Guidelines: []string{
 			"NEVER ask clarification questions — make reasonable assumptions and proceed",
 			"Use read tool to examine files, NOT bash ls/cat/find",

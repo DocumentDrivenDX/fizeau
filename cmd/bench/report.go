@@ -32,7 +32,7 @@ func cmdReport(args []string) int {
 	// Collect all bench-*.json files.
 	entries, err := filepath.Glob(filepath.Join(dir, "bench-*.json"))
 	if err != nil || len(entries) == 0 {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench report: no result files found in %s\n", dir)
+		fmt.Fprintf(os.Stderr, "%s report: no result files found in %s\n", benchCommandName(), dir)
 		return 1
 	}
 
@@ -43,13 +43,13 @@ func cmdReport(args []string) int {
 	path := entries[0]
 	data, err := safefs.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench report: read %s: %v\n", path, err)
+		fmt.Fprintf(os.Stderr, "%s report: read %s: %v\n", benchCommandName(), path, err)
 		return 1
 	}
 
 	var result comparison.BenchmarkResult
 	if err := json.Unmarshal(data, &result); err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench report: parse %s: %v\n", path, err)
+		fmt.Fprintf(os.Stderr, "%s report: parse %s: %v\n", benchCommandName(), path, err)
 		return 1
 	}
 

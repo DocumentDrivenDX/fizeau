@@ -21,6 +21,7 @@ import (
 	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
 	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 	"github.com/DocumentDrivenDX/agent/internal/prompt"
 	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
@@ -46,7 +47,7 @@ func run() int {
 	cliArgs := os.Args[1:]
 	runSubcommand, cliArgs := normalizeRunSubcommand(cliArgs)
 
-	fs := flag.NewFlagSet("ddx-agent", flag.ContinueOnError)
+	fs := flag.NewFlagSet(productinfo.BinaryName, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
 	// Define flags
@@ -69,7 +70,7 @@ func run() int {
 	}
 
 	if *version {
-		fmt.Printf("ddx-agent %s (commit %s, built %s)\n", Version, GitCommit, BuildTime)
+		fmt.Printf("%s %s (commit %s, built %s)\n", productinfo.BinaryName, Version, GitCommit, BuildTime)
 		return 0
 	}
 
@@ -115,10 +116,10 @@ func run() int {
 		return 2
 	}
 	for _, warning := range cfg.Warnings() {
-		fmt.Fprintf(os.Stderr, "ddx-agent: warning: %s\n", warning)
+		fmt.Fprintf(os.Stderr, "%s: warning: %s\n", productinfo.BinaryName, warning)
 	}
 	if *backendFlag != "" {
-		fmt.Fprintln(os.Stderr, "ddx-agent: warning: --backend is deprecated; use --model or --model-ref instead")
+		fmt.Fprintf(os.Stderr, "%s: warning: --backend is deprecated; use --model or --model-ref instead\n", productinfo.BinaryName)
 	}
 
 	// Check for zero-config discovery
@@ -129,7 +130,7 @@ func run() int {
 	// `len(args) == 0` with no prompt flag is ambiguous — skip validation there to
 	// preserve the existing "no prompt" error precedence.
 	if len(cfg.Providers) == 0 && (*promptFlag != "" || runSubcommand) {
-		fmt.Fprintln(os.Stderr, "error: no providers configured — run 'ddx-agent import pi' or 'ddx-agent import opencode', set AGENT_PROVIDER/AGENT_BASE_URL, or create .agent/config.yaml")
+		fmt.Fprintf(os.Stderr, "error: no providers configured — run '%s import pi' or '%s import opencode', set AGENT_PROVIDER/AGENT_BASE_URL, or create .agent/config.yaml\n", productinfo.BinaryName, productinfo.BinaryName)
 		return 2
 	}
 
@@ -1460,8 +1461,8 @@ func cmdImport(workDir string, args []string) int {
 	// Determine output path
 	var configPath string
 	if project {
-		fmt.Fprintln(os.Stderr, "ddx-agent: warning: writing API keys to project config (.agent/config.yaml)")
-		fmt.Fprintln(os.Stderr, "ddx-agent: ensure .agent/config.yaml is in .gitignore before committing")
+		fmt.Fprintf(os.Stderr, "%s: warning: writing API keys to project config (.agent/config.yaml)\n", productinfo.BinaryName)
+		fmt.Fprintf(os.Stderr, "%s: ensure .agent/config.yaml is in .gitignore before committing\n", productinfo.BinaryName)
 		fmt.Fprint(os.Stderr, "Proceed? [y/N] ")
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil {
@@ -1572,7 +1573,7 @@ func importPi(configPath string, diffOnly, merge bool) int {
 
 	// Show warnings
 	for _, w := range result.Warnings {
-		fmt.Fprintf(os.Stderr, "ddx-agent: warning: %s\n", w)
+		fmt.Fprintf(os.Stderr, "%s: warning: %s\n", productinfo.BinaryName, w)
 	}
 
 	fmt.Printf("imported to %s\n", configPath)
@@ -1659,7 +1660,7 @@ func importOpenCode(configPath string, diffOnly, merge bool) int {
 
 	// Show warnings
 	for _, w := range result.Warnings {
-		fmt.Fprintf(os.Stderr, "ddx-agent: warning: %s\n", w)
+		fmt.Fprintf(os.Stderr, "%s: warning: %s\n", productinfo.BinaryName, w)
 	}
 
 	fmt.Printf("imported to %s\n", configPath)
@@ -1667,7 +1668,7 @@ func importOpenCode(configPath string, diffOnly, merge bool) int {
 }
 
 func showDiff(source string, result *picompat.TranslationResult) int {
-	fmt.Printf("ddx-agent: %s config -- what would be imported:\n\n", source)
+	fmt.Printf("%s: %s config -- what would be imported:\n\n", productinfo.BinaryName, source)
 	for name, pc := range result.Providers {
 		redactedKey := redactKey(pc.APIKey)
 		fmt.Printf("[%s]\n", name)
@@ -1696,7 +1697,7 @@ func showDiff(source string, result *picompat.TranslationResult) int {
 }
 
 func showOpenCodeDiff(result *occompat.TranslationResult) int {
-	fmt.Println("ddx-agent: opencode config -- what would be imported:")
+	fmt.Printf("%s: opencode config -- what would be imported:\n", productinfo.BinaryName)
 	pc := result.Provider
 	redactedKey := redactKey(pc.APIKey)
 	fmt.Println("[opencode]")
@@ -1757,14 +1758,14 @@ func checkZeroConfigDiscovery(cfg *agentConfig.Config) {
 	// Check for pi config
 	if picompat.CheckExists() {
 		piDir := picompat.DefaultPiDir()
-		fmt.Fprintf(os.Stderr, "ddx-agent: no providers configured. Found pi config at %s — run 'ddx-agent import pi' to import.\n", piDir)
+		fmt.Fprintf(os.Stderr, "%s: no providers configured. Found pi config at %s — run '%s import pi' to import.\n", productinfo.BinaryName, piDir, productinfo.BinaryName)
 		return
 	}
 
 	// Check for opencode config
 	if occompat.CheckExists() {
 		opencodeDir := occompat.DefaultOpenCodeDir()
-		fmt.Fprintf(os.Stderr, "ddx-agent: no providers configured. Found opencode config at %s — run 'ddx-agent import opencode' to import.\n", opencodeDir)
+		fmt.Fprintf(os.Stderr, "%s: no providers configured. Found opencode config at %s — run '%s import opencode' to import.\n", productinfo.BinaryName, opencodeDir, productinfo.BinaryName)
 		return
 	}
 }
@@ -1796,8 +1797,8 @@ func checkDrift(cfg *agentConfig.Config, workDir string) {
 	}
 
 	if currentHash != cfg.ImportedFrom.SourceHash {
-		fmt.Fprintf(os.Stderr, "ddx-agent: %s config changed since import — run 'ddx-agent import %s --diff' to review\n",
-			cfg.ImportedFrom.Source, cfg.ImportedFrom.Source)
+		fmt.Fprintf(os.Stderr, "%s: %s config changed since import — run '%s import %s --diff' to review\n",
+			productinfo.BinaryName, cfg.ImportedFrom.Source, productinfo.BinaryName, cfg.ImportedFrom.Source)
 	}
 }
 
@@ -1834,7 +1835,7 @@ func cmdVersion(args []string) int {
 		}
 	}
 
-	fmt.Printf("ddx-agent %s (commit %s, built %s)\n", Version, GitCommit, BuildTime)
+	fmt.Printf("%s %s (commit %s, built %s)\n", productinfo.BinaryName, Version, GitCommit, BuildTime)
 
 	// Skip update check for dev builds or if requested
 	if Version == "dev" || checkOnly {

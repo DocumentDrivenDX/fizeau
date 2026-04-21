@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 )
 
 // ClaudeQuotaSnapshot captures Claude's current-quota headroom as absolute
@@ -40,8 +41,8 @@ const claudeQuotaCacheEnv = "DDX_AGENT_CLAUDE_QUOTA_CACHE"
 const claudeQuotaCacheEnvLegacy = "DDX_CLAUDE_QUOTA_CACHE"
 
 // ClaudeQuotaCachePath returns the durable location for the Claude quota
-// cache. It resolves to $XDG_STATE_HOME/ddx-agent/claude-quota.json, or
-// ~/.local/state/ddx-agent/claude-quota.json when XDG_STATE_HOME is unset.
+// cache. It resolves to $XDG_STATE_HOME/<config-dir>/claude-quota.json, or
+// ~/.local/state/<config-dir>/claude-quota.json when XDG_STATE_HOME is unset.
 // The DDX_AGENT_CLAUDE_QUOTA_CACHE env var takes precedence (primarily for
 // tests).
 func ClaudeQuotaCachePath() (string, error) {
@@ -49,13 +50,13 @@ func ClaudeQuotaCachePath() (string, error) {
 		return path, nil
 	}
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "ddx-agent", "claude-quota.json"), nil
+		return filepath.Join(xdg, productinfo.ConfigDir, "claude-quota.json"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "ddx-agent", "claude-quota.json"), nil
+	return filepath.Join(home, ".local", "state", productinfo.ConfigDir, "claude-quota.json"), nil
 }
 
 // claudeQuotaCachePathLegacy returns the OLD DDx cache path used before the

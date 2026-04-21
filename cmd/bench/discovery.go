@@ -98,7 +98,7 @@ func cmdDiscover(args []string) int {
 	wd := resolveWorkDir(*workDir)
 	candidates, err := discoverCandidates(wd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench discover: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s discover: %v\n", benchCommandName(), err)
 		return 1
 	}
 

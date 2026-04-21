@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/catalogdist"
+	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 )
 
 func main() {
@@ -21,7 +22,7 @@ func run() int {
 	outDir := fs.String("out", "", "Output directory")
 	channel := fs.String("channel", "stable", "Channel name")
 	publishedAt := fs.String("published-at", "", "RFC3339 published timestamp (defaults to now)")
-	minAgentVersion := fs.String("min-agent-version", "", "Minimum compatible ddx-agent version")
+	minAgentVersion := fs.String("min-agent-version", "", fmt.Sprintf("Minimum compatible %s version", productinfo.BinaryName))
 	notes := fs.String("notes", "", "Optional release notes")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {

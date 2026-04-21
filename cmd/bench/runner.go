@@ -188,25 +188,25 @@ func cmdRun(args []string) int {
 		outDir = filepath.Join(wd, "bench", "results")
 	}
 	if err := os.MkdirAll(outDir, 0o750); err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench run: create results dir: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s run: create results dir: %v\n", benchCommandName(), err)
 		return 1
 	}
 
 	// Load corpus tasks.
 	tasks, err := loadCorpus(corpus)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench run: load corpus: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s run: load corpus: %v\n", benchCommandName(), err)
 		return 1
 	}
 	if len(tasks) == 0 {
-		fmt.Fprintln(os.Stderr, "ddx-agent-bench run: no tasks found in corpus")
+		fmt.Fprintf(os.Stderr, "%s run: no tasks found in corpus\n", benchCommandName())
 		return 1
 	}
 
 	// Discover candidates.
 	candidates, err := discoverCandidates(wd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench run: discover: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s run: discover: %v\n", benchCommandName(), err)
 		return 1
 	}
 
@@ -222,7 +222,7 @@ func cmdRun(args []string) int {
 	}
 
 	if len(candidates) == 0 {
-		fmt.Fprintln(os.Stderr, "ddx-agent-bench run: no candidates available")
+		fmt.Fprintf(os.Stderr, "%s run: no candidates available\n", benchCommandName())
 		return 1
 	}
 
@@ -230,26 +230,26 @@ func cmdRun(args []string) int {
 	baseSeed := time.Now().UnixNano()
 	runFn, err := buildRunFunc(wd, timeout, *maxCostUSD, baseSeed)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench run: build runner: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s run: build runner: %v\n", benchCommandName(), err)
 		return 1
 	}
 	if *maxCostUSD > 0 {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench: cost cap: $%.4f  base-seed: %d  note: %s\n",
-			*maxCostUSD, baseSeed, DeterministicSamplingNotice)
+		fmt.Fprintf(os.Stderr, "%s: cost cap: $%.4f  base-seed: %d  note: %s\n",
+			benchCommandName(), *maxCostUSD, baseSeed, DeterministicSamplingNotice)
 	}
 
 	// Build a BenchmarkSuite from corpus tasks + candidates.
 	suite := buildSuite(tasks, candidates)
 	result, err := comparison.RunBenchmark(runFn, suite)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench run: benchmark: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s run: benchmark: %v\n", benchCommandName(), err)
 		return 1
 	}
 
 	// Save results.
 	outPath := filepath.Join(outDir, fmt.Sprintf("bench-%d.json", time.Now().Unix()))
 	if err := comparison.SaveBenchmarkResult(outPath, result); err != nil {
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench run: save: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s run: save: %v\n", benchCommandName(), err)
 		return 1
 	}
 
@@ -294,7 +294,7 @@ func buildSuite(tasks []CorpusTask, candidates []Candidate) *comparison.Benchmar
 	}
 
 	return &comparison.BenchmarkSuite{
-		Name:    "ddx-agent-bench",
+		Name:    benchCommandName(),
 		Version: "1",
 		Arms:    arms,
 		Prompts: prompts,

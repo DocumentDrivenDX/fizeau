@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
 	"gopkg.in/yaml.v3"
 )
@@ -241,11 +242,11 @@ func DefaultStorePath() string {
 	}
 	xdg := os.Getenv("XDG_CONFIG_HOME")
 	if xdg != "" {
-		return filepath.Join(xdg, "ddx-agent", "observations.yaml")
+		return filepath.Join(xdg, productinfo.ConfigDir, "observations.yaml")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".config", "ddx-agent", "observations.yaml")
+		return filepath.Join(".config", productinfo.ConfigDir, "observations.yaml")
 	}
-	return filepath.Join(home, ".config", "ddx-agent", "observations.yaml")
+	return filepath.Join(home, ".config", productinfo.ConfigDir, "observations.yaml")
 }

@@ -3,10 +3,11 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BINARY_NAME := ddx-agent
 LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
 
 build:
-	go build $(LDFLAGS) -o ddx-agent ./cmd/agent
+	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/agent
 
 catalog-dist:
 	go run ./cmd/catalogdist \
@@ -95,5 +96,5 @@ coverage-trend: coverage-ratchet
 	@go run scripts/coverage-ratchet.go --trend
 
 clean:
-	rm -f ddx-agent
+	rm -f $(BINARY_NAME)
 	go clean ./...

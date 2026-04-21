@@ -1,4 +1,4 @@
-// Command ddx-agent-bench discovers (harness, provider, model) candidates from
+// Command bench discovers (harness, provider, model) candidates from
 // agent config and runs a corpus of small tasks to produce per-task metrics.
 package main
 
@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 )
 
 func main() {
@@ -29,22 +31,26 @@ func run(args []string) int {
 		printUsage()
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "ddx-agent-bench: unknown command %q\n", args[0])
+		fmt.Fprintf(os.Stderr, "%s: unknown command %q\n", benchCommandName(), args[0])
 		printUsage()
 		return 2
 	}
 }
 
+func benchCommandName() string {
+	return productinfo.BinaryName + "-bench"
+}
+
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `Usage: ddx-agent-bench <command> [flags]
+	fmt.Fprintf(os.Stderr, `Usage: %s <command> [flags]
 
 Commands:
   discover   List discovered (harness, provider, model) candidates
   run        Run corpus against discovered candidates
   report     Render a results file as table, json, or markdown
 
-Run 'ddx-agent-bench <command> -h' for command-specific flags.
-`)
+Run '%s <command> -h' for command-specific flags.
+`, benchCommandName(), benchCommandName())
 }
 
 // resolveWorkDir returns the working directory: --work-dir flag or cwd.

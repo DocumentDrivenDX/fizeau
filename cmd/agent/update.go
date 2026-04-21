@@ -1,4 +1,4 @@
-// Package main provides the ddx-agent CLI.
+// Package main provides the agent CLI.
 package main
 
 import (
@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DocumentDrivenDX/agent/internal/productinfo"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
@@ -171,7 +172,7 @@ func saveCachedVersion(path, version string) error {
 	return safefs.WriteFile(path, data, 0o600)
 }
 
-// FindBinaryPath finds the path to the ddx-agent binary.
+// FindBinaryPath finds the path to the agent binary.
 func FindBinaryPath() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -187,7 +188,7 @@ func FindBinaryPath() (string, error) {
 	}
 
 	// Fall back to which command
-	cmd := exec.Command("which", "ddx-agent")
+	cmd := exec.Command("which", productinfo.BinaryName)
 	output, err := cmd.Output()
 	if err != nil {
 		return exe, nil
@@ -213,14 +214,14 @@ func DownloadBinary(tag string, w io.Writer) (string, error) {
 		return "", fmt.Errorf("unsupported architecture: %s", arch)
 	}
 
-	binaryName := fmt.Sprintf("ddx-agent-%s-%s", osName, arch)
+	binaryName := fmt.Sprintf("%s-%s-%s", productinfo.BinaryName, osName, arch)
 	// Use default GitHub URL for downloads (not the test override)
 	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", defaultGitHubRepo, tag, binaryName)
 
 	fmt.Fprintf(w, "Downloading %s from %s...\n", tag, url)
 
 	// Create temp file
-	tmpFile, err := os.CreateTemp("", "ddx-agent-update-*")
+	tmpFile, err := os.CreateTemp("", productinfo.BinaryName+"-update-*")
 	if err != nil {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
