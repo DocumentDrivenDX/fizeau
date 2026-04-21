@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	opencodeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/opencode"
 	piharness "github.com/DocumentDrivenDX/agent/internal/harnesses/pi"
 	virtualprovider "github.com/DocumentDrivenDX/agent/internal/provider/virtual"
+	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 	"github.com/DocumentDrivenDX/agent/internal/sessionlog"
 	"github.com/DocumentDrivenDX/agent/internal/tool"
 )
@@ -140,18 +142,79 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	if !s.registry.Has(canonical) {
 		return nil, fmt.Errorf("unknown harness %q", req.Harness)
 	}
-	// Orphan-model validation: when Model is set but the harness has no
-	// way to validate it (no provider discovery, no catalog hookup yet),
-	// we accept the explicit pin — orphan detection is provider-dependent
-	// and the routing layer (a future bead) is the right place for the
-	// full check. For native path with no provider, this is enforced when
-	// the provider is constructed.
+	cfg, _ := s.registry.Get(canonical)
+	if err := validateExplicitHarnessModel(canonical, cfg, req.Model); err != nil {
+		return nil, err
+	}
+	if err := validateExplicitHarnessReasoning(canonical, cfg, req.Reasoning); err != nil {
+		return nil, err
+	}
 	return &RouteDecision{
 		Harness:  canonical,
 		Provider: req.Provider,
 		Model:    req.Model,
 		Reason:   "explicit",
 	}, nil
+}
+
+func validateExplicitHarnessModel(name string, cfg harnesses.HarnessConfig, model string) error {
+	if model == "" || cfg.TestOnly || cfg.IsHTTPProvider || name == "agent" {
+		return nil
+	}
+	if modelSupportedForHarness(name, cfg, model) {
+		return nil
+	}
+	return fmt.Errorf("unsupported model %q for harness %q; supported models: %s", model, name, strings.Join(cfg.Models, ", "))
+}
+
+func modelSupportedForHarness(name string, cfg harnesses.HarnessConfig, model string) bool {
+	for _, known := range cfg.Models {
+		if model == known {
+			return true
+		}
+	}
+	switch name {
+	case "codex":
+		return strings.HasPrefix(model, "gpt-")
+	case "claude":
+		return strings.HasPrefix(model, "claude-")
+	default:
+		return len(cfg.Models) == 0
+	}
+}
+
+func validateExplicitHarnessReasoning(name string, cfg harnesses.HarnessConfig, value Reasoning) error {
+	if cfg.TestOnly {
+		return nil
+	}
+	if len(cfg.ReasoningLevels) == 0 && cfg.MaxReasoningTokens <= 0 {
+		return nil
+	}
+	policy, err := reasoning.ParseString(string(value))
+	if err != nil {
+		return fmt.Errorf("unsupported reasoning %q for harness %q: %w", value, name, err)
+	}
+	switch policy.Kind {
+	case reasoning.KindUnset, reasoning.KindAuto, reasoning.KindOff:
+		return nil
+	case reasoning.KindTokens:
+		if cfg.MaxReasoningTokens <= 0 {
+			return fmt.Errorf("unsupported reasoning %q for harness %q; token budgets are not supported", value, name)
+		}
+		if policy.Tokens > cfg.MaxReasoningTokens {
+			return fmt.Errorf("unsupported reasoning %q for harness %q; max token budget is %d", value, name, cfg.MaxReasoningTokens)
+		}
+		return nil
+	case reasoning.KindNamed:
+		for _, supported := range cfg.ReasoningLevels {
+			if string(policy.Value) == supported {
+				return nil
+			}
+		}
+		return fmt.Errorf("unsupported reasoning %q for harness %q; supported reasoning: %s", value, name, strings.Join(cfg.ReasoningLevels, ", "))
+	default:
+		return fmt.Errorf("unsupported reasoning %q for harness %q", value, name)
+	}
 }
 
 // runExecute is the per-Execute goroutine. It owns the channel close path

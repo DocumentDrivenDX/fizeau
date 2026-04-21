@@ -18,7 +18,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 		},
 		PromptMode:      "arg",
 		DefaultModel:    "gpt-5.4",
-		Models:          nil, // models change frequently; rely on provider-side validation
+		Models:          []string{"gpt-5.4"}, // refreshed by Codex PTY model-discovery cassettes
 		ReasoningLevels: []string{"low", "medium", "high", "xhigh", "max"},
 		ModelFlag:       "-m",
 		WorkDirFlag:     "-C",
@@ -48,7 +48,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 		},
 		PromptMode:      "arg",
 		DefaultModel:    "claude-sonnet-4-6",
-		Models:          nil, // models change frequently; rely on provider-side validation
+		Models:          []string{"sonnet", "opus", "claude-sonnet-4-6"}, // from claude --help plus PTY model-discovery cassettes
 		ReasoningLevels: []string{"low", "medium", "high", "xhigh", "max"},
 		ModelFlag:       "--model",
 		WorkDirFlag:     "",

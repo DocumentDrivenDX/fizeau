@@ -35,6 +35,17 @@ func QuotaStateFromUsedPercent(usedPercent int) string {
 	return "unknown"
 }
 
+// ModelDiscoverySnapshot captures model and reasoning capability evidence for
+// harnesses whose source of truth is a CLI/TUI surface instead of /v1/models.
+type ModelDiscoverySnapshot struct {
+	CapturedAt      time.Time `json:"captured_at"`
+	Models          []string  `json:"models,omitempty"`
+	ReasoningLevels []string  `json:"reasoning_levels,omitempty"`
+	Source          string    `json:"source"`
+	FreshnessWindow string    `json:"freshness_window,omitempty"`
+	Detail          string    `json:"detail,omitempty"`
+}
+
 // EventType identifies the kind of event a harness emits during execution.
 //
 // The set is the closed union defined by CONTRACT-003 ("Event JSON shapes"):

@@ -90,6 +90,9 @@ func modelDiscoveryCapability(name string, cfg harnesses.HarnessConfig) HarnessC
 	if cfg.TestOnly {
 		return capNotApplicable("test-only harness has no live model catalog")
 	}
+	if name == "codex" || name == "claude" {
+		return capOptional("models are discovered from direct PTY TUI evidence or documented CLI help")
+	}
 	if name == "agent" || cfg.IsHTTPProvider {
 		return capOptional("models are discovered through the native provider catalog when configured")
 	}
@@ -122,6 +125,9 @@ func workdirContextCapability(name string, cfg harnesses.HarnessConfig) HarnessC
 func reasoningCapability(cfg harnesses.HarnessConfig) HarnessCapability {
 	if cfg.TestOnly {
 		return capNotApplicable("test-only harness does not perform model reasoning")
+	}
+	if cfg.Name == "codex" || cfg.Name == "claude" {
+		return capOptional("reasoning levels are validated against harness CLI evidence before execution")
 	}
 	if len(cfg.ReasoningLevels) > 0 || cfg.MaxReasoningTokens > 0 {
 		return capOptional("registry declares supported reasoning levels or token budget")
@@ -196,6 +202,9 @@ func quotaStatusCapability(cfg harnesses.HarnessConfig) HarnessCapability {
 func recordReplayCapability(cfg harnesses.HarnessConfig) HarnessCapability {
 	if cfg.TestOnly {
 		return capRequired("test-only harness provides deterministic replay or directive execution")
+	}
+	if cfg.Name == "codex" || cfg.Name == "claude" {
+		return capOptional("direct PTY discovery and quota probes produce replayable sanitized cassettes")
 	}
 	return capUnsupported("production harness does not provide deterministic record/replay")
 }

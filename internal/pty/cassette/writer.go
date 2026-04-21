@@ -196,6 +196,10 @@ func (r *Recorder) WriteQuota(quota QuotaRecord) error {
 	return writeJSON(filepath.Join(r.dir, QuotaFile), quota)
 }
 
+func (r *Recorder) WriteDiscovery(discovery DiscoveryRecord) error {
+	return writeJSON(filepath.Join(r.dir, DiscoveryFile), discovery)
+}
+
 func (r *Recorder) WriteScrubReport(report ScrubReport) error {
 	return writeJSON(filepath.Join(r.dir, ScrubReportFile), report)
 }

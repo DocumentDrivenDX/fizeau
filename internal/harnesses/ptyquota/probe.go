@@ -86,6 +86,7 @@ type Config struct {
 
 	CassetteDir string
 	Quota       func(string) (cassette.QuotaRecord, error)
+	Discovery   func(string) (cassette.DiscoveryRecord, error)
 }
 
 type Result struct {
@@ -232,6 +233,17 @@ func (r *runState) drive(ctx context.Context, cfg Config) (Result, error) {
 		}
 		if r.rec != nil {
 			if err := r.rec.WriteQuota(quota); err != nil {
+				return Result{}, err
+			}
+		}
+	}
+	if cfg.Discovery != nil {
+		discovery, err := cfg.Discovery(text)
+		if err != nil {
+			return Result{}, err
+		}
+		if r.rec != nil {
+			if err := r.rec.WriteDiscovery(discovery); err != nil {
 				return Result{}, err
 			}
 		}

@@ -222,13 +222,18 @@ func TestListModels_harnessFilter(t *testing.T) {
 		t.Fatalf("want 1 model for harness=agent, got %d", len(infos))
 	}
 
-	// Claude harness should return nothing (subprocess harnesses not yet plumbed).
+	// Claude harness should return the documented CLI/TUI model surface.
 	infos2, err := svc.ListModels(context.Background(), ModelFilter{Harness: "claude"})
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)
 	}
-	if len(infos2) != 0 {
-		t.Errorf("want 0 models for harness=claude, got %d", len(infos2))
+	if len(infos2) == 0 {
+		t.Fatal("want harness-native models for harness=claude")
+	}
+	for _, info := range infos2 {
+		if info.Provider != "claude" || info.Harness != "claude" || !info.Available {
+			t.Errorf("unexpected claude model info: %#v", info)
+		}
 	}
 }
 

@@ -32,6 +32,23 @@ func Test_quotaRecordClaudePTY(t *testing.T) {
 	require.NotNil(t, reader.Quota())
 }
 
+func Test_modelDiscoveryRecordClaudePTY(t *testing.T) {
+	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
+		t.Skip("set AGENT_HARNESS_RECORD=1 to refresh authenticated claude model cassette")
+	}
+	dir := filepath.Join(recordBaseDir(t), "claude", "models")
+	snapshot, err := ReadClaudeModelDiscoveryViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
+	if err != nil {
+		assertNoAcceptedCassette(t, dir)
+		t.Fatalf("record claude model discovery via PTY: %v", err)
+	}
+	require.NotEmpty(t, snapshot.Models)
+	require.NotEmpty(t, snapshot.ReasoningLevels)
+	reader, err := cassette.Open(dir)
+	require.NoError(t, err)
+	require.NotNil(t, reader.Discovery())
+}
+
 func recordBaseDir(t *testing.T) string {
 	t.Helper()
 	if dir := os.Getenv("AGENT_HARNESS_CASSETTE_DIR"); dir != "" {

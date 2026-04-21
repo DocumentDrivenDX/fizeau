@@ -29,6 +29,23 @@ func Test_quotaRecordCodexPTY(t *testing.T) {
 	require.NotNil(t, reader.Quota())
 }
 
+func Test_modelDiscoveryRecordCodexPTY(t *testing.T) {
+	if os.Getenv("AGENT_HARNESS_RECORD") != "1" {
+		t.Skip("set AGENT_HARNESS_RECORD=1 to refresh authenticated codex model cassette")
+	}
+	dir := filepath.Join(recordBaseDir(t), "codex", "models")
+	snapshot, err := ReadCodexModelDiscoveryViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
+	if err != nil {
+		assertNoAcceptedCassette(t, dir)
+		t.Fatalf("record codex model discovery via PTY: %v", err)
+	}
+	require.NotEmpty(t, snapshot.Models)
+	require.NotEmpty(t, snapshot.ReasoningLevels)
+	reader, err := cassette.Open(dir)
+	require.NoError(t, err)
+	require.NotNil(t, reader.Discovery())
+}
+
 func recordBaseDir(t *testing.T) string {
 	t.Helper()
 	if dir := os.Getenv("AGENT_HARNESS_CASSETTE_DIR"); dir != "" {

@@ -176,7 +176,7 @@ func TestListHarnesses_shape(t *testing.T) {
 		expected := map[string]agent.HarnessCapabilityMatrix{
 			"codex": {
 				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityUnsupported),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
 				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
 				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
 				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
@@ -186,11 +186,11 @@ func TestListHarnesses_shape(t *testing.T) {
 				FinalText:       capStatus(agent.HarnessCapabilityOptional),
 				ToolEvents:      capStatus(agent.HarnessCapabilityOptional),
 				QuotaStatus:     capStatus(agent.HarnessCapabilityOptional),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(agent.HarnessCapabilityOptional),
 			},
 			"claude": {
 				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityUnsupported),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
 				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
 				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
 				ReasoningLevels: capStatus(agent.HarnessCapabilityOptional),
@@ -200,7 +200,7 @@ func TestListHarnesses_shape(t *testing.T) {
 				FinalText:       capStatus(agent.HarnessCapabilityOptional),
 				ToolEvents:      capStatus(agent.HarnessCapabilityOptional),
 				QuotaStatus:     capStatus(agent.HarnessCapabilityOptional),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				RecordReplay:    capStatus(agent.HarnessCapabilityOptional),
 			},
 			"gemini": {
 				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),

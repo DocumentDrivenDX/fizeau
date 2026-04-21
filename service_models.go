@@ -4,9 +4,8 @@ package agent
 // It lives in the root package to avoid import cycles; provider and catalog
 // data is injected via ServiceConfig (defined in service.go).
 //
-// For subprocess harnesses (claude, codex, etc.) this implementation returns
-// empty — their model lists are not discoverable through /v1/models.
-// TODO(future): plumb vendor-specific model lists from internal/harnesses/<name>/.
+// Provider-backed models are discovered through /v1/models. Codex and Claude
+// expose a separate harness-native surface backed by PTY/CLI evidence.
 
 import (
 	"context"
@@ -17,12 +16,17 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 )
 
 // ListModels returns models matching the filter, with full metadata.
 // Empty filter returns all models from every reachable provider.
 func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error) {
+	if filter.Harness != "" && filter.Harness != "agent" {
+		return s.listModelsForSubprocessHarness(filter), nil
+	}
+
 	sc := s.opts.ServiceConfig
 	if sc == nil {
 		return nil, fmt.Errorf("service: no ServiceConfig provided; pass ServiceOptions.ServiceConfig")
@@ -82,6 +86,52 @@ func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelIn
 		out = append(out, r.models...)
 	}
 	return out, nil
+}
+
+func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo {
+	name := harnesses.ResolveHarnessAlias(filter.Harness)
+	cfg, ok := s.registry.Get(name)
+	if !ok || cfg.IsHTTPProvider || cfg.IsLocal || len(cfg.Models) == 0 {
+		return nil
+	}
+	if filter.Provider != "" && filter.Provider != name {
+		return nil
+	}
+	cat, _ := modelcatalog.Default()
+	catalogRefs := catalogRefsForHarness(cat, name)
+	out := make([]ModelInfo, 0, len(cfg.Models))
+	for i, id := range cfg.Models {
+		info := ModelInfo{
+			ID:           id,
+			Provider:     name,
+			Harness:      name,
+			Capabilities: []string{"streaming", "tool_use"},
+			Available:    true,
+			IsDefault:    cfg.DefaultModel != "" && id == cfg.DefaultModel,
+			CatalogRef:   catalogRefs[id],
+			RankPosition: i,
+		}
+		if cat != nil {
+			info.ContextLength = resolveContextLength(context.Background(), ServiceProviderEntry{}, id, cat)
+			info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+func catalogRefsForHarness(cat *modelcatalog.Catalog, harness string) map[string]string {
+	if cat == nil {
+		return nil
+	}
+	switch harness {
+	case "codex":
+		return cat.AllConcreteModels(modelcatalog.SurfaceCodex)
+	case "claude":
+		return cat.AllConcreteModels(modelcatalog.SurfaceClaudeCode)
+	default:
+		return nil
+	}
 }
 
 // listModelsForProvider discovers and annotates models for a single provider.

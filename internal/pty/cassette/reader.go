@@ -39,16 +39,17 @@ func WithRequiredEmulator(emulator Emulator) OpenOption {
 }
 
 type Reader struct {
-	dir      string
-	manifest Manifest
-	raw      []byte
-	inputs   []InputRecord
-	outputs  []OutputRecord
-	frames   []FrameRecord
-	services []ServiceEventRecord
-	final    FinalRecord
-	quota    *QuotaRecord
-	report   ScrubReport
+	dir       string
+	manifest  Manifest
+	raw       []byte
+	inputs    []InputRecord
+	outputs   []OutputRecord
+	frames    []FrameRecord
+	services  []ServiceEventRecord
+	final     FinalRecord
+	quota     *QuotaRecord
+	discovery *DiscoveryRecord
+	report    ScrubReport
 }
 
 func Open(dir string, opts ...OpenOption) (*Reader, error) {
@@ -99,6 +100,9 @@ func Open(dir string, opts ...OpenOption) (*Reader, error) {
 	if err := readJSON(filepath.Join(dir, QuotaFile), &r.quota); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
+	if err := readJSON(filepath.Join(dir, DiscoveryFile), &r.discovery); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
 	if err := r.validateEvents(); err != nil {
 		return nil, err
 	}
@@ -113,9 +117,10 @@ func (r *Reader) Frames() []FrameRecord        { return append([]FrameRecord(nil
 func (r *Reader) ServiceEvents() []ServiceEventRecord {
 	return append([]ServiceEventRecord(nil), r.services...)
 }
-func (r *Reader) Final() FinalRecord       { return r.final }
-func (r *Reader) Quota() *QuotaRecord      { return r.quota }
-func (r *Reader) ScrubReport() ScrubReport { return r.report }
+func (r *Reader) Final() FinalRecord          { return r.final }
+func (r *Reader) Quota() *QuotaRecord         { return r.quota }
+func (r *Reader) Discovery() *DiscoveryRecord { return r.discovery }
+func (r *Reader) ScrubReport() ScrubReport    { return r.report }
 
 func (r *Reader) OutputBytes(rec OutputRecord) ([]byte, error) {
 	if rec.Offset < 0 || rec.Length < 0 || rec.Offset+rec.Length > int64(len(r.raw)) {
