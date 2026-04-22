@@ -274,32 +274,20 @@ func providerUsesLiveDiscovery(providerType string) bool {
 	}
 }
 
-// probeEndpointDiscoveredIDs returns the live /v1/models catalog for one
-// endpoint via the service catalog cache. Reachability failures, timeouts,
-// unsupported discovery, and empty catalogs are treated as non-live so routing
-// skips the endpoint before any chat request is attempted.
-//
-// Probes use a 2-second deadline so a slow or partially-degraded endpoint
-// can't block route resolution. The cache's stale-while-revalidate flow
-// means this is usually sub-millisecond (fresh or stale hit).
+// probeEndpointDiscoveredIDs returns the foreground /v1/models catalog for one
+// endpoint. Dispatch routing must not use stale cache hits: a recently dead
+// endpoint has to be skipped before any chat request is attempted.
 func (s *service) probeEndpointDiscoveredIDs(ctx context.Context, pcfg ServiceProviderEntry, baseURL string) ([]string, bool) {
-	if s.catalog == nil || baseURL == "" {
+	if baseURL == "" {
 		return nil, false
 	}
-	key := newCatalogCacheKey(baseURL, pcfg.APIKey, nil)
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	probe := func(ctx context.Context) ([]string, error) {
-		return probeOpenAIModels(ctx, baseURL, pcfg.APIKey)
-	}
-	result, err := s.catalog.Get(probeCtx, key, probe)
-	if err != nil {
+	ids, err := probeOpenAIModels(probeCtx, baseURL, pcfg.APIKey)
+	if err != nil || len(ids) == 0 {
 		return nil, false
 	}
-	if !result.DiscoverySupported || len(result.IDs) == 0 {
-		return nil, false
-	}
-	return result.IDs, true
+	return ids, true
 }
 
 // resolveExecuteRouteWithEngine is the post-engine variant of resolveExecuteRoute.

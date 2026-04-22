@@ -227,6 +227,62 @@ func TestExecuteEndpointFirstRoutingSkipsDeadAndNormalizesModel(t *testing.T) {
 	}
 }
 
+func TestExecuteEndpointFirstRoutingIgnoresStaleCacheForDeadEndpoint(t *testing.T) {
+	var deadChatCalls atomic.Int64
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			http.Error(w, "bad gateway", http.StatusBadGateway)
+			return
+		}
+		if r.URL.Path == "/v1/chat/completions" {
+			deadChatCalls.Add(1)
+		}
+		http.Error(w, "dead endpoint should be skipped", http.StatusInternalServerError)
+	}))
+	defer dead.Close()
+
+	live := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "pong")
+	defer live.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"dead": {Type: "lmstudio", BaseURL: dead.URL + "/v1"},
+			"live": {Type: "omlx", BaseURL: live.URL + "/v1"},
+		},
+		names:       []string{"dead", "live"},
+		defaultName: "dead",
+	}
+	rawSvc, err := New(ServiceOptions{ServiceConfig: sc})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	svc := rawSvc.(*service)
+
+	cacheKey := newCatalogCacheKey(dead.URL+"/v1", "", nil)
+	_, err = svc.catalog.Get(context.Background(), cacheKey, func(context.Context) ([]string, error) {
+		return []string{"Qwen3.6-35B-A3B-4bit"}, nil
+	})
+	if err != nil {
+		t.Fatalf("seed catalog cache: %v", err)
+	}
+
+	final := executeAndFinal(t, svc, ServiceExecuteRequest{
+		Prompt:          "ping",
+		Model:           "qwen3.6",
+		Timeout:         5 * time.Second,
+		ProviderTimeout: 2 * time.Second,
+	})
+	if final.Status != "success" {
+		t.Fatalf("Status = %q, want success (error=%q)", final.Status, final.Error)
+	}
+	if final.RoutingActual == nil || final.RoutingActual.Provider != "live" {
+		t.Fatalf("RoutingActual = %#v, want provider live", final.RoutingActual)
+	}
+	if got := deadChatCalls.Load(); got != 0 {
+		t.Fatalf("dead endpoint chat calls = %d, want 0", got)
+	}
+}
+
 func TestExecuteEndpointFirstRoutingUsesMetricsBeforeConfigOrder(t *testing.T) {
 	slow := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "slow")
 	defer slow.Close()
