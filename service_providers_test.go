@@ -715,7 +715,12 @@ func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 	resetPrimaryQuotaRefreshForTest(t)
 
 	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
+	released := false
+	t.Cleanup(func() {
+		if !released {
+			close(release)
+		}
+	})
 
 	origClaude := healthCheckClaudeQuotaRefresher
 	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
@@ -741,6 +746,12 @@ func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
 		t.Fatalf("New blocked too long: %v", elapsed)
 	}
+	close(release)
+	released = true
+	waitForQuotaRefreshFiles(t,
+		filepath.Join(dir, "claude-quota.json"),
+		filepath.Join(dir, "codex-quota.json"),
+	)
 }
 
 func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
@@ -904,6 +915,29 @@ func waitForQuotaRefreshStarts(t *testing.T, claudeStarted, codexStarted <-chan 
 		case <-ch:
 		case <-time.After(time.Second):
 			t.Fatalf("timed out waiting for %s quota refresh to start", name)
+		}
+	}
+}
+
+func waitForQuotaRefreshFiles(t *testing.T, paths ...string) {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		allPresent := true
+		for _, path := range paths {
+			if _, err := os.Stat(path); err != nil {
+				allPresent = false
+				break
+			}
+		}
+		if allPresent {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for quota refresh files: %v", paths)
+		default:
+			time.Sleep(time.Millisecond)
 		}
 	}
 }

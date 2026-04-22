@@ -2,14 +2,17 @@ package agent
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	sessionlog "github.com/DocumentDrivenDX/agent/internal/session"
 )
 
 func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
@@ -67,6 +70,108 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 	}
 }
 
+func TestListHarnesses_CodexUsageWindowsFromDDXSessionLogs(t *testing.T) {
+	dir := t.TempDir()
+	logDir := filepath.Join(dir, ".agent", "sessions")
+	t.Setenv("CODEX_HOME", filepath.Join(dir, "private-codex"))
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	disableCodexSessionQuotaReaderForTest(t)
+	if err := os.MkdirAll(filepath.Join(dir, "private-codex", "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "private-codex", "sessions", "private.jsonl"), []byte(`{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":999999}}}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now().UTC().Add(-time.Hour)
+	writeServiceUsageSession(t, logDir, "codex-known", start, sessionlog.SessionStartData{
+		Provider: "codex",
+		Model:    "gpt-5.4",
+		Prompt:   "private prompt must not be read by status aggregation",
+	}, sessionlog.SessionEndData{
+		Status:     agentcore.StatusSuccess,
+		Tokens:     agentcore.TokenUsage{Input: 10, Output: 4, Total: 14, CacheRead: 3, CacheWrite: 2},
+		CostUSD:    usageCostPtr(0.12),
+		DurationMs: 1000,
+		Model:      "gpt-5.4",
+	})
+	writeServiceUsageSession(t, logDir, "codex-unknown", start.Add(time.Minute), sessionlog.SessionStartData{
+		Provider: "codex",
+		Model:    "gpt-5.4",
+		Prompt:   "another prompt",
+	}, sessionlog.SessionEndData{
+		Status:     agentcore.StatusSuccess,
+		Tokens:     agentcore.TokenUsage{Input: 5, Output: 2, Total: 7},
+		CostUSD:    usageCostPtr(-1),
+		DurationMs: 1000,
+		Model:      "gpt-5.4",
+	})
+	writeServiceUsageSession(t, logDir, "provider-not-codex", start.Add(2*time.Minute), sessionlog.SessionStartData{
+		Provider: "openrouter",
+		Model:    "gpt-5.4",
+		Prompt:   "not codex",
+	}, sessionlog.SessionEndData{
+		Status:     agentcore.StatusSuccess,
+		Tokens:     agentcore.TokenUsage{Input: 100, Output: 100, Total: 200},
+		CostUSD:    usageCostPtr(1),
+		DurationMs: 1000,
+		Model:      "gpt-5.4",
+	})
+
+	svc := &service{
+		opts:     ServiceOptions{ServiceConfig: &fakeServiceConfig{workDir: dir}},
+		registry: harnesses.NewRegistry(),
+	}
+	harnesses, err := svc.ListHarnesses(context.Background())
+	if err != nil {
+		t.Fatalf("ListHarnesses: %v", err)
+	}
+	codexInfo := findHarnessInfo(harnesses, "codex")
+	if codexInfo == nil {
+		t.Fatal("missing codex harness")
+	}
+	if len(codexInfo.UsageWindows) != 1 {
+		t.Fatalf("UsageWindows: got %#v", codexInfo.UsageWindows)
+	}
+	window := codexInfo.UsageWindows[0]
+	if window.Name != "30d" || window.Source != logDir || !window.Fresh {
+		t.Fatalf("usage window metadata: %#v", window)
+	}
+	if window.InputTokens != 15 || window.OutputTokens != 6 || window.TotalTokens != 21 {
+		t.Fatalf("usage totals should come only from DDx codex logs, not private Codex sessions or other providers: %#v", window)
+	}
+	if window.CacheReadTokens != 3 || window.CacheWriteTokens != 2 {
+		t.Fatalf("cache tokens: %#v", window)
+	}
+	if window.KnownCostUSD != nil || window.CostUSD != 0 || window.UnknownCostSessions != 1 {
+		t.Fatalf("known/unknown cost state: %#v", window)
+	}
+}
+
+func TestBuildRoutingInputs_IgnoresCodexUsageWindows(t *testing.T) {
+	dir := t.TempDir()
+	logDir := filepath.Join(dir, ".agent", "sessions")
+	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	writeServiceUsageSession(t, logDir, "codex-usage", time.Now().UTC().Add(-time.Hour), sessionlog.SessionStartData{
+		Provider: "codex",
+		Model:    "gpt-5.4",
+	}, sessionlog.SessionEndData{
+		Status: agentcore.StatusSuccess,
+		Tokens: agentcore.TokenUsage{Input: 100, Output: 20, Total: 120},
+		Model:  "gpt-5.4",
+	})
+	svc := &service{
+		opts:     ServiceOptions{ServiceConfig: &fakeServiceConfig{workDir: dir}},
+		registry: harnesses.NewRegistry(),
+	}
+	codex := routingHarnessEntry(t, svc.buildRoutingInputs().Harnesses, "codex")
+	if codex.SubscriptionOK {
+		t.Fatal("usage logs must not make Codex routing-eligible without quota evidence")
+	}
+}
+
 func TestReferenceConsumerDoctorReportUsesServiceStatus(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -109,6 +214,24 @@ func TestReferenceConsumerDoctorReportUsesServiceStatus(t *testing.T) {
 	if !strings.Contains(report, "openrouter:") || !strings.Contains(report, "smart:ordered-failover") {
 		t.Fatalf("doctor report missing service data: %q", report)
 	}
+}
+
+func writeServiceUsageSession(t *testing.T, logDir, sessionID string, startAt time.Time, start sessionlog.SessionStartData, end sessionlog.SessionEndData) {
+	t.Helper()
+	logger := sessionlog.NewLogger(logDir, sessionID)
+	startEvent := sessionlog.NewEvent(sessionID, 0, agentcore.EventSessionStart, start)
+	startEvent.Timestamp = startAt
+	logger.Write(startEvent)
+	endEvent := sessionlog.NewEvent(sessionID, 1, agentcore.EventSessionEnd, end)
+	endEvent.Timestamp = startAt.Add(time.Second)
+	logger.Write(endEvent)
+	if err := logger.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func usageCostPtr(v float64) *float64 {
+	return &v
 }
 
 func findHarnessInfo(list []HarnessInfo, name string) *HarnessInfo {

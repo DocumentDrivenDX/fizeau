@@ -11,6 +11,7 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	sessionusage "github.com/DocumentDrivenDX/agent/internal/session"
 )
 
 // DdxAgent is the entire public Go surface of the ddx-agent module.
@@ -150,14 +151,19 @@ type AccountStatus struct {
 // UsageWindow describes normalized usage attribution over a time window.
 // Empty token/cost totals mean the service has no historical usage source yet.
 type UsageWindow struct {
-	Name         string
-	Source       string
-	CapturedAt   time.Time
-	Fresh        bool
-	InputTokens  int
-	OutputTokens int
-	TotalTokens  int
-	CostUSD      float64
+	Name                string
+	Source              string
+	CapturedAt          time.Time
+	Fresh               bool
+	InputTokens         int
+	OutputTokens        int
+	TotalTokens         int
+	CacheReadTokens     int
+	CacheWriteTokens    int
+	ReasoningTokens     int
+	CostUSD             float64
+	KnownCostUSD        *float64
+	UnknownCostSessions int
 }
 
 // EndpointStatus describes one configured provider endpoint probe.
@@ -613,6 +619,72 @@ func codexAccountStatus() *AccountStatus {
 	return accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, decision.Fresh)
 }
 
+func (s *service) codexUsageWindows() []UsageWindow {
+	logDir := s.serviceSessionLogDir()
+	if logDir == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	report, err := sessionusage.AggregateUsage(logDir, sessionusage.UsageOptions{Since: "30d", Now: now})
+	if err != nil || report == nil {
+		return nil
+	}
+	var total sessionusage.UsageRow
+	for _, row := range report.Rows {
+		if row.Provider != "codex" {
+			continue
+		}
+		total.Sessions += row.Sessions
+		total.SuccessSessions += row.SuccessSessions
+		total.FailedSessions += row.FailedSessions
+		total.InputTokens += row.InputTokens
+		total.OutputTokens += row.OutputTokens
+		total.TotalTokens += row.TotalTokens
+		total.CacheReadTokens += row.CacheReadTokens
+		total.CacheWriteTokens += row.CacheWriteTokens
+		total.UnknownCostSessions += row.UnknownCostSessions
+		if row.KnownCostUSD == nil || total.UnknownCostSessions > 0 {
+			total.KnownCostUSD = nil
+		} else {
+			if total.KnownCostUSD == nil {
+				total.KnownCostUSD = new(float64)
+			}
+			*total.KnownCostUSD += *row.KnownCostUSD
+		}
+	}
+	if total.Sessions == 0 {
+		return nil
+	}
+	window := UsageWindow{
+		Name:                "30d",
+		Source:              logDir,
+		CapturedAt:          now,
+		Fresh:               true,
+		InputTokens:         total.InputTokens,
+		OutputTokens:        total.OutputTokens,
+		TotalTokens:         total.TotalTokens,
+		CacheReadTokens:     total.CacheReadTokens,
+		CacheWriteTokens:    total.CacheWriteTokens,
+		KnownCostUSD:        total.KnownCostUSD,
+		UnknownCostSessions: total.UnknownCostSessions,
+	}
+	if total.KnownCostUSD != nil {
+		window.CostUSD = *total.KnownCostUSD
+	}
+	return []UsageWindow{window}
+}
+
+func (s *service) serviceSessionLogDir() string {
+	if s == nil || s.opts.ServiceConfig == nil {
+		return ""
+	}
+	workDir := s.opts.ServiceConfig.WorkDir()
+	if workDir == "" {
+		return ""
+	}
+	return filepath.Join(workDir, ".agent", "sessions")
+}
+
 func unavailableQuotaState(source, detail string) *QuotaState {
 	return &QuotaState{
 		Source: source,
@@ -677,6 +749,7 @@ func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
 		case "codex":
 			info.Quota = codexQuotaState()
 			info.Account = codexAccountStatus()
+			info.UsageWindows = s.codexUsageWindows()
 		}
 
 		out = append(out, info)
