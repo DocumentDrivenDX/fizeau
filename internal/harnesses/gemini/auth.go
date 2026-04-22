@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	"github.com/DocumentDrivenDX/agent/internal/safefs"
 )
 
 const GeminiAuthFreshnessWindow = 7 * 24 * time.Hour
@@ -104,7 +105,7 @@ func readSelectedAuthType(path string) (string, time.Time, bool) {
 	if err != nil || st.IsDir() {
 		return "", time.Time{}, false
 	}
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return "", st.ModTime().UTC(), false
 	}
@@ -133,7 +134,7 @@ func readOAuthEvidence(dir, authType string, settingsTime, now time.Time) AuthSn
 			Detail:     "Gemini OAuth credentials are missing",
 		}
 	}
-	data, err := os.ReadFile(oauthPath)
+	data, err := safefs.ReadFile(oauthPath)
 	if err != nil {
 		return AuthSnapshot{
 			AuthType:   authType,
@@ -175,7 +176,7 @@ func readOAuthEvidence(dir, authType string, settingsTime, now time.Time) AuthSn
 }
 
 func readGoogleAccount(dir string) *harnesses.AccountInfo {
-	data, err := os.ReadFile(filepath.Join(dir, "google_accounts.json"))
+	data, err := safefs.ReadFile(filepath.Join(dir, "google_accounts.json"))
 	if err != nil {
 		return &harnesses.AccountInfo{PlanType: "Gemini OAuth"}
 	}
