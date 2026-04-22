@@ -441,6 +441,12 @@ type service struct {
 
 	routeAttemptMu sync.RWMutex
 	routeAttempts  map[routeAttemptKey]routeAttemptRecord
+
+	// catalog is the service-scope model-catalog cache. Populated lazily
+	// on first use by routing + chat paths; shared across requests so the
+	// same endpoint isn't probed per-dispatch during a drain. See
+	// service_catalog_cache.go.
+	catalog *catalogCache
 }
 
 // lastDecisionEntry caches the most recent RouteDecision for a route key.
@@ -501,6 +507,7 @@ func New(opts ServiceOptions) (DdxAgent, error) {
 		opts:     opts,
 		registry: harnesses.NewRegistry(),
 		hub:      newSessionHub(),
+		catalog:  newCatalogCache(catalogCacheOptions{}),
 	}
 	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()
