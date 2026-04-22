@@ -17,6 +17,7 @@ type AccountInfo struct {
 type QuotaWindow struct {
 	Name          string  `json:"name"`               // e.g. "5h", "7d", "spark"
 	LimitID       string  `json:"limit_id,omitempty"` // provider limit_id
+	LimitName     string  `json:"limit_name,omitempty"`
 	WindowMinutes int     `json:"window_minutes"`
 	UsedPercent   float64 `json:"used_percent"`
 	ResetsAt      string  `json:"resets_at,omitempty"`      // human-readable

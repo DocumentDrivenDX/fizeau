@@ -43,6 +43,7 @@ type codexEvent struct {
 		Type string `json:"type"`
 		Info struct {
 			LastTokenUsage json.RawMessage `json:"last_token_usage"`
+			RateLimits     json.RawMessage `json:"rate_limits"`
 		} `json:"info"`
 		RateLimits json.RawMessage `json:"rate_limits"`
 	} `json:"payload"`
@@ -159,7 +160,7 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 			agg.recordUsage(ev.Usage)
 		case "event_msg":
 			if ev.Payload.Type == "token_count" {
-				agg.recordTokenCountUsage(ev.Timestamp, ev.Payload.Info.LastTokenUsage, ev.Payload.RateLimits)
+				agg.recordTokenCountUsage(ev.Timestamp, ev.Payload.Info.LastTokenUsage, codexTokenCountRateLimitsRaw(ev.Payload.RateLimits, ev.Payload.Info.RateLimits))
 			}
 		case "ddx.usage_source":
 			agg.recordUsageSource(ev.Source, ev.Fresh, ev.CapturedAt, ev.Usage)
@@ -185,6 +186,16 @@ func (a *streamAggregate) recordTokenCountUsage(capturedAt string, usage json.Ra
 		CapturedAt: capturedAt,
 		RateLimits: copied,
 	})
+}
+
+func codexTokenCountRateLimitsRaw(candidates ...json.RawMessage) json.RawMessage {
+	for _, raw := range candidates {
+		if len(raw) == 0 || string(raw) == "null" {
+			continue
+		}
+		return raw
+	}
+	return nil
 }
 
 func (a *streamAggregate) recordUsageSource(source string, fresh *bool, capturedAt string, raw json.RawMessage) {
