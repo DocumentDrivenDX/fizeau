@@ -99,10 +99,8 @@ EOF
 			events, err := svc.Execute(ctx, ServiceExecuteRequest{
 				Prompt:      "golden replay prompt",
 				Harness:     tc.harness,
-				Model:       "cassette-model",
 				WorkDir:     t.TempDir(),
 				Permissions: "safe",
-				Reasoning:   ReasoningLow,
 				Metadata: map[string]string{
 					"mode":       "replay",
 					"cassette":   tc.harness,
@@ -184,7 +182,6 @@ exit 7
 	events, err := svc.Execute(ctx, ServiceExecuteRequest{
 		Prompt:      "golden failure prompt",
 		Harness:     "codex",
-		Model:       "cassette-model",
 		WorkDir:     t.TempDir(),
 		Permissions: "safe",
 		Metadata: map[string]string{
@@ -677,12 +674,14 @@ func writeGoldenQuotaCaches(t *testing.T, claudePath, codexPath string) {
 		WeeklyRemaining:   90,
 		WeeklyLimit:       100,
 		Source:            "cassette",
+		Account:           &harnesses.AccountInfo{PlanType: "Claude Max"},
 	}); err != nil {
 		t.Fatalf("WriteClaudeQuota: %v", err)
 	}
 	if err := codexharness.WriteCodexQuota(codexPath, codexharness.CodexQuotaSnapshot{
 		CapturedAt: now,
 		Source:     "cassette",
+		Account:    &harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
 		Windows: []harnesses.QuotaWindow{
 			{Name: "5h", LimitID: "codex", WindowMinutes: 300, UsedPercent: 10, State: "ok"},
 		},
