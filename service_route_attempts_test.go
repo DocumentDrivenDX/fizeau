@@ -194,7 +194,7 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("WriteCodexQuota stale: %v", err)
 	}
-	codex := routingHarnessEntry(t, svc.buildRoutingInputs().Harnesses, "codex")
+	codex := routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "codex")
 	if codex.SubscriptionOK || !codex.QuotaStale {
 		t.Fatalf("stale codex quota: SubscriptionOK=%v QuotaStale=%v", codex.SubscriptionOK, codex.QuotaStale)
 	}
@@ -206,7 +206,7 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("WriteCodexQuota blocked: %v", err)
 	}
-	codex = routingHarnessEntry(t, svc.buildRoutingInputs().Harnesses, "codex")
+	codex = routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "codex")
 	if codex.SubscriptionOK || codex.QuotaTrend != "exhausting" {
 		t.Fatalf("blocked codex quota: SubscriptionOK=%v QuotaTrend=%q", codex.SubscriptionOK, codex.QuotaTrend)
 	}
@@ -215,7 +215,7 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 func TestBuildRoutingInputs_SecondaryHarnessesRemainExplicitOnly(t *testing.T) {
 	registry := harnesses.NewRegistry()
 	svc := &service{opts: ServiceOptions{}, registry: registry}
-	inputs := svc.buildRoutingInputs()
+	inputs := svc.buildRoutingInputs(context.Background())
 
 	opencode := routingHarnessEntry(t, inputs.Harnesses, "opencode")
 	if opencode.AutoRoutingEligible || opencode.DefaultModel != "opencode/gpt-5.4" {
