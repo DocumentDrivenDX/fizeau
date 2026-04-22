@@ -114,6 +114,26 @@ type ServiceOptions struct {
 	// QuotaRefreshContext optionally cancels the periodic server refresh worker.
 	// When nil, the worker uses context.Background().
 	QuotaRefreshContext context.Context
+
+	// LocalCostUSDPer1kTokens is the operator-supplied electricity/operations
+	// estimate for local endpoint providers under the embedded agent harness.
+	// Zero means local endpoint cost is unknown.
+	LocalCostUSDPer1kTokens float64
+	// SubscriptionCostCurve optionally overrides the default subscription
+	// effective-cost curve used by routing.
+	SubscriptionCostCurve *SubscriptionCostCurve
+}
+
+// SubscriptionCostCurve tunes effective subscription cost by quota utilization.
+// Thresholds are percentages used, and multipliers are applied to the
+// equivalent pay-per-token catalog rate.
+type SubscriptionCostCurve struct {
+	FreeUntilPercent   int
+	LowUntilPercent    int
+	MediumUntilPercent int
+	LowMultiplier      float64
+	MediumMultiplier   float64
+	HighMultiplier     float64
 }
 
 // QuotaState is a live quota snapshot for a harness. Nil means not applicable.
@@ -350,6 +370,11 @@ type RouteCandidate struct {
 	Model string
 	// Score is the routing score assigned before final ordering.
 	Score float64
+	// CostUSDPer1kTokens is the estimated blended USD cost per 1,000 tokens.
+	CostUSDPer1kTokens float64
+	// CostSource indicates whether cost came from catalog, subscription,
+	// user-config, or is unknown.
+	CostSource string
 	// Eligible reports whether the candidate passed all routing gates.
 	Eligible bool
 	// Reason is the scoring reason for eligible candidates or the rejection

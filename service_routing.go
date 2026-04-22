@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
@@ -13,6 +14,8 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
+
+var loadRoutingCatalog = modelcatalog.Default
 
 // ResolveRoute resolves an under-specified RouteRequest to a concrete
 // (Harness, Provider, Model) decision per CONTRACT-003.
@@ -79,13 +82,15 @@ func routeCandidatesFromInternal(candidates []routing.Candidate) []RouteCandidat
 
 func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 	return RouteCandidate{
-		Harness:  candidate.Harness,
-		Provider: candidate.Provider,
-		Endpoint: candidate.Endpoint,
-		Model:    candidate.Model,
-		Score:    candidate.Score,
-		Eligible: candidate.Eligible,
-		Reason:   candidate.Reason,
+		Harness:            candidate.Harness,
+		Provider:           candidate.Provider,
+		Endpoint:           candidate.Endpoint,
+		Model:              candidate.Model,
+		Score:              candidate.Score,
+		CostUSDPer1kTokens: candidate.CostUSDPer1kTokens,
+		CostSource:         candidate.CostSource,
+		Eligible:           candidate.Eligible,
+		Reason:             candidate.Reason,
 	}
 }
 
@@ -192,6 +197,7 @@ func reqModelRefStripProfile(ref string) string {
 // ctx is used for cache probes with a short deadline; the cache's
 // stale-while-revalidate flow makes most calls non-blocking.
 func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
+	cat := serviceRoutingCatalog()
 	statuses := s.registry.Discover()
 	statusByName := make(map[string]harnesses.HarnessStatus, len(statuses))
 	for _, st := range statuses {
@@ -299,9 +305,10 @@ func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
 				if !ok {
 					continue
 				}
-				entry.Providers = append(entry.Providers, s.liveProviderEntries(ctx, pname, pcfg)...)
+				entry.Providers = append(entry.Providers, s.liveProviderEntries(ctx, pname, pcfg, cat)...)
 			}
 		}
+		s.applySubscriptionRoutingCost(&entry, cat)
 		entries = append(entries, entry)
 	}
 	successRate, latencyMS := s.routeMetricSignals(time.Now(), s.routeAttemptTTL())
@@ -309,13 +316,20 @@ func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
 		Harnesses:           entries,
 		ProviderSuccessRate: successRate,
 		ObservedLatencyMS:   latencyMS,
-		CatalogResolver:     serviceRoutingCatalogResolver(),
+		CatalogResolver:     serviceRoutingCatalogResolver(cat),
 	}
 }
 
-func serviceRoutingCatalogResolver() func(ref, surface string) (string, bool) {
-	cat, err := modelcatalog.Default()
+func serviceRoutingCatalog() *modelcatalog.Catalog {
+	cat, err := loadRoutingCatalog()
 	if err != nil || cat == nil {
+		return nil
+	}
+	return cat
+}
+
+func serviceRoutingCatalogResolver(cat *modelcatalog.Catalog) func(ref, surface string) (string, bool) {
+	if cat == nil {
 		return nil
 	}
 	return func(ref, surface string) (string, bool) {
@@ -351,7 +365,7 @@ func serviceRoutingCatalogSurface(surface string) (modelcatalog.Surface, bool) {
 	}
 }
 
-func (s *service) liveProviderEntries(ctx context.Context, providerName string, pcfg ServiceProviderEntry) []routing.ProviderEntry {
+func (s *service) liveProviderEntries(ctx context.Context, providerName string, pcfg ServiceProviderEntry, cat *modelcatalog.Catalog) []routing.ProviderEntry {
 	if providerUsesLiveDiscovery(pcfg.Type) && s.catalog != nil {
 		endpoints := modelDiscoveryEndpoints(pcfg)
 		out := make([]routing.ProviderEntry, 0, len(endpoints))
@@ -364,7 +378,7 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 			if len(endpoints) > 1 {
 				routeName = endpointProviderRef(providerName, endpoint.Name)
 			}
-			out = append(out, routing.ProviderEntry{
+			entry := routing.ProviderEntry{
 				Name:               routeName,
 				BaseURL:            endpoint.BaseURL,
 				EndpointName:       endpoint.Name,
@@ -373,16 +387,20 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 				DiscoveredIDs:      ids,
 				DiscoveryAttempted: true,
 				SupportsTools:      true,
-			})
+			}
+			s.applyEndpointRoutingCost(&entry, pcfg, cat)
+			out = append(out, entry)
 		}
 		return out
 	}
-	return []routing.ProviderEntry{{
+	entry := routing.ProviderEntry{
 		Name:          providerName,
 		BaseURL:       pcfg.BaseURL,
 		DefaultModel:  pcfg.Model,
 		SupportsTools: true,
-	}}
+	}
+	s.applyEndpointRoutingCost(&entry, pcfg, cat)
+	return []routing.ProviderEntry{entry}
 }
 
 func providerUsesLiveDiscovery(providerType string) bool {
@@ -391,6 +409,170 @@ func providerUsesLiveDiscovery(providerType string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (s *service) applyEndpointRoutingCost(entry *routing.ProviderEntry, pcfg ServiceProviderEntry, cat *modelcatalog.Catalog) {
+	if entry == nil {
+		return
+	}
+	if providerTypeIsLocalEndpoint(pcfg.Type) {
+		if s.opts.LocalCostUSDPer1kTokens > 0 {
+			entry.CostUSDPer1kTokens = s.opts.LocalCostUSDPer1kTokens
+			entry.CostSource = routing.CostSourceUserConfig
+		} else {
+			entry.CostUSDPer1kTokens = 0
+			entry.CostSource = routing.CostSourceUnknown
+		}
+		return
+	}
+	if cost, ok := catalogCostUSDPer1kTokens(cat, entry.DefaultModel); ok {
+		entry.CostUSDPer1kTokens = cost
+		entry.CostSource = routing.CostSourceCatalog
+		return
+	}
+	entry.CostUSDPer1kTokens = 0
+	entry.CostSource = routing.CostSourceUnknown
+}
+
+func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat *modelcatalog.Catalog) {
+	if entry == nil || !entry.IsSubscription {
+		return
+	}
+	baseCost, ok := catalogCostUSDPer1kTokens(cat, entry.DefaultModel)
+	if !ok {
+		baseCost, ok = catalogCostUSDPer1kTokens(cat, subscriptionFallbackProfile(entry.Name))
+		if !ok {
+			baseCost = 0
+		}
+	}
+	cost := subscriptionEffectiveCostUSDPer1kTokens(baseCost, entry.QuotaPercentUsed, s.subscriptionCostCurve())
+	entry.Providers = []routing.ProviderEntry{{
+		CostUSDPer1kTokens: cost,
+		CostSource:         routing.CostSourceSubscription,
+	}}
+}
+
+func providerTypeIsLocalEndpoint(providerType string) bool {
+	switch normalizeServiceProviderType(providerType) {
+	case "lmstudio", "omlx", "ollama":
+		return true
+	default:
+		return false
+	}
+}
+
+func subscriptionFallbackProfile(harnessName string) string {
+	switch harnessName {
+	case "claude", "codex", "gemini":
+		return "standard"
+	default:
+		return ""
+	}
+}
+
+func catalogCostUSDPer1kTokens(cat *modelcatalog.Catalog, modelID string) (float64, bool) {
+	if cat == nil || strings.TrimSpace(modelID) == "" {
+		return 0, false
+	}
+	entry, ok := cat.LookupModel(modelID)
+	if !ok {
+		resolved := resolveCatalogCostModel(cat, modelID)
+		if resolved == "" {
+			return 0, false
+		}
+		entry, ok = cat.LookupModel(resolved)
+		if !ok {
+			return 0, false
+		}
+	}
+	input := entry.CostInputPerM
+	if input == 0 {
+		input = entry.CostInputPerMTok
+	}
+	output := entry.CostOutputPerM
+	if output == 0 {
+		output = entry.CostOutputPerMTok
+	}
+	switch {
+	case input > 0 && output > 0:
+		return ((input + output) / 2) / 1000, true
+	case input > 0:
+		return input / 1000, true
+	case output > 0:
+		return output / 1000, true
+	default:
+		return 0, false
+	}
+}
+
+func resolveCatalogCostModel(cat *modelcatalog.Catalog, ref string) string {
+	for _, surface := range []modelcatalog.Surface{
+		modelcatalog.SurfaceAgentOpenAI,
+		modelcatalog.SurfaceAgentAnthropic,
+		modelcatalog.SurfaceCodex,
+		modelcatalog.SurfaceClaudeCode,
+		modelcatalog.SurfaceGemini,
+	} {
+		resolved, err := cat.Resolve(ref, modelcatalog.ResolveOptions{
+			Surface:         surface,
+			AllowDeprecated: true,
+		})
+		if err == nil && resolved.ConcreteModel != "" {
+			return resolved.ConcreteModel
+		}
+	}
+	return ""
+}
+
+func (s *service) subscriptionCostCurve() SubscriptionCostCurve {
+	if s.opts.SubscriptionCostCurve == nil {
+		return defaultSubscriptionCostCurve()
+	}
+	curve := *s.opts.SubscriptionCostCurve
+	def := defaultSubscriptionCostCurve()
+	if curve.FreeUntilPercent == 0 {
+		curve.FreeUntilPercent = def.FreeUntilPercent
+	}
+	if curve.LowUntilPercent == 0 {
+		curve.LowUntilPercent = def.LowUntilPercent
+	}
+	if curve.MediumUntilPercent == 0 {
+		curve.MediumUntilPercent = def.MediumUntilPercent
+	}
+	if curve.LowMultiplier == 0 {
+		curve.LowMultiplier = def.LowMultiplier
+	}
+	if curve.MediumMultiplier == 0 {
+		curve.MediumMultiplier = def.MediumMultiplier
+	}
+	if curve.HighMultiplier == 0 {
+		curve.HighMultiplier = def.HighMultiplier
+	}
+	return curve
+}
+
+func defaultSubscriptionCostCurve() SubscriptionCostCurve {
+	return SubscriptionCostCurve{
+		FreeUntilPercent:   70,
+		LowUntilPercent:    80,
+		MediumUntilPercent: 90,
+		LowMultiplier:      0.1,
+		MediumMultiplier:   0.3,
+		HighMultiplier:     1.2,
+	}
+}
+
+func subscriptionEffectiveCostUSDPer1kTokens(baseCost float64, quotaPercentUsed int, curve SubscriptionCostCurve) float64 {
+	switch {
+	case quotaPercentUsed <= curve.FreeUntilPercent:
+		return 0
+	case quotaPercentUsed <= curve.LowUntilPercent:
+		return baseCost * curve.LowMultiplier
+	case quotaPercentUsed <= curve.MediumUntilPercent:
+		return baseCost * curve.MediumMultiplier
+	default:
+		return baseCost * curve.HighMultiplier
 	}
 }
 

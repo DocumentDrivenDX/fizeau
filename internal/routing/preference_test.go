@@ -410,3 +410,132 @@ func TestNonClaudeSubscriptionQuotaStale(t *testing.T) {
 		t.Errorf("codex stale quota score: got %.1f, want 130.0", codexScore)
 	}
 }
+
+func TestCostTiebreakLowerCostWins(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "agent",
+			Surface:             "embedded-openai",
+			CostClass:           "local",
+			AutoRoutingEligible: true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			ExactPinSupport:     true,
+			SupportsTools:       true,
+			Providers: []ProviderEntry{
+				{Name: "expensive", DefaultModel: "m", CostUSDPer1kTokens: 0.02, CostSource: CostSourceCatalog},
+				{Name: "cheap", DefaultModel: "m", CostUSDPer1kTokens: 0.01, CostSource: CostSourceCatalog},
+			},
+		}},
+	}
+
+	dec, err := Resolve(Request{Harness: "agent"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "cheap" {
+		t.Fatalf("cost tiebreak provider=%q, want cheap", dec.Provider)
+	}
+}
+
+func TestCostTiebreakFallsThroughToLocalityWhenCostsMatch(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "cloud",
+				Surface:             "x",
+				CostClass:           "medium",
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				DefaultModel:        "m",
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				Providers:           []ProviderEntry{{Name: "cloudp", DefaultModel: "m", CostUSDPer1kTokens: 0.01, CostSource: CostSourceCatalog}},
+			},
+			{
+				Name:                "local",
+				Surface:             "x",
+				CostClass:           "local",
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				DefaultModel:        "m",
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				Providers:           []ProviderEntry{{Name: "localp", DefaultModel: "m", CostUSDPer1kTokens: 0.01, CostSource: CostSourceCatalog}},
+			},
+		},
+		ObservedLatencyMS: map[string]float64{
+			ProviderModelKey("localp", "", "m"): 100,
+		},
+	}
+
+	dec, err := Resolve(Request{Profile: "smart", ProviderPreference: ProviderPreferenceLocalFirst}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Harness != "local" {
+		t.Fatalf("identical cost should fall through to locality: harness=%q", dec.Harness)
+	}
+}
+
+func TestUnknownCostIsNeutralInTiebreak(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "agent",
+			Surface:             "embedded-openai",
+			CostClass:           "local",
+			AutoRoutingEligible: true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			ExactPinSupport:     true,
+			SupportsTools:       true,
+			Providers: []ProviderEntry{
+				{Name: "expensive", DefaultModel: "m", CostUSDPer1kTokens: 0.09, CostSource: CostSourceCatalog},
+				{Name: "unknown", DefaultModel: "m", CostSource: CostSourceUnknown},
+				{Name: "cheap", DefaultModel: "m", CostUSDPer1kTokens: 0.01, CostSource: CostSourceCatalog},
+			},
+		}},
+	}
+
+	dec, err := Resolve(Request{Harness: "agent"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got := []string{dec.Candidates[0].Provider, dec.Candidates[1].Provider, dec.Candidates[2].Provider}; got[0] != "cheap" || got[1] != "unknown" || got[2] != "expensive" {
+		t.Fatalf("unknown-cost neutral order=%v, want [cheap unknown expensive]", got)
+	}
+}
+
+func TestAllUnknownCostSkipsCostTiebreak(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "agent",
+			Surface:             "embedded-openai",
+			CostClass:           "local",
+			AutoRoutingEligible: true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			ExactPinSupport:     true,
+			SupportsTools:       true,
+			Providers: []ProviderEntry{
+				{Name: "z-provider", DefaultModel: "m", CostSource: CostSourceUnknown},
+				{Name: "a-provider", DefaultModel: "m", CostSource: CostSourceUnknown},
+			},
+		}},
+	}
+
+	dec, err := Resolve(Request{Harness: "agent"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "a-provider" {
+		t.Fatalf("all-unknown cost should fall through to name: provider=%q", dec.Provider)
+	}
+}

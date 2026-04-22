@@ -110,9 +110,27 @@ type ProviderEntry struct {
 	ContextWindows     map[string]int
 	SupportsTools      bool
 
+	// CostUSDPer1kTokens is the estimated blended USD cost per 1,000 tokens.
+	// A zero value with CostSourceUnknown means the provider cost is unknown.
+	CostUSDPer1kTokens float64
+	// CostSource describes where CostUSDPer1kTokens came from: catalog,
+	// subscription, user-config, or unknown.
+	CostSource string
+
 	// InCooldown reflects whether this provider is in a failure-cooldown window.
 	InCooldown bool
 }
+
+const (
+	// CostSourceCatalog means cost came from the model catalog.
+	CostSourceCatalog = "catalog"
+	// CostSourceSubscription means cost came from subscription quota pricing.
+	CostSourceSubscription = "subscription"
+	// CostSourceUnknown means no reliable cost estimate is available.
+	CostSourceUnknown = "unknown"
+	// CostSourceUserConfig means cost came from explicit user configuration.
+	CostSourceUserConfig = "user-config"
+)
 
 // Decision is the routing engine's output: the picked candidate plus the
 // full ranked list (including rejected ones with rejection reasons).
@@ -127,13 +145,15 @@ type Decision struct {
 
 // Candidate is one ranked routing option.
 type Candidate struct {
-	Harness  string
-	Provider string
-	Endpoint string
-	Model    string
-	Score    float64
-	Eligible bool
-	Reason   string
+	Harness            string
+	Provider           string
+	Endpoint           string
+	Model              string
+	Score              float64
+	CostUSDPer1kTokens float64
+	CostSource         string
+	Eligible           bool
+	Reason             string
 }
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -166,6 +186,8 @@ type candidateInternal struct {
 	EndpointName          string
 	Model                 string
 	CostClass             string
+	CostUSDPer1kTokens    float64
+	CostSource            string
 	IsSubscription        bool
 	QuotaOK               bool
 	QuotaPercentUsed      int
@@ -238,8 +260,10 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 			ranked[i].out.Reason = fmt.Sprintf("profile=%s; score=%.1f", req.Profile, ranked[i].out.Score)
 		}
 	}
+	neutralCost, hasKnownCost := neutralKnownCost(ranked)
 
-	// Sort: eligible first, then descending score, then locality, then alphabetical.
+	// Sort: eligible first, then descending score, then cost, then locality,
+	// then alphabetical.
 	sort.SliceStable(ranked, func(i, j int) bool {
 		ei, ej := ranked[i].out.Eligible, ranked[j].out.Eligible
 		if ei != ej {
@@ -250,6 +274,13 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		}
 		if ranked[i].out.Score != ranked[j].out.Score {
 			return ranked[i].out.Score > ranked[j].out.Score
+		}
+		if hasKnownCost {
+			ci := candidateCostTieValue(ranked[i], neutralCost)
+			cj := candidateCostTieValue(ranked[j], neutralCost)
+			if ci != cj {
+				return ci < cj
+			}
 		}
 		// Locality tiebreak: prefer local cost-class.
 		li := costClassRank[ranked[i].internal.CostClass] == 0
@@ -418,10 +449,11 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 	if !h.Available {
 		return []rankedCandidate{{
 			out: Candidate{
-				Harness: h.Name,
-				Reason:  "harness not available",
+				Harness:    h.Name,
+				CostSource: CostSourceUnknown,
+				Reason:     "harness not available",
 			},
-			internal: candidateInternal{Harness: h.Name, CostClass: h.CostClass},
+			internal: candidateInternal{Harness: h.Name, CostClass: h.CostClass, CostSource: CostSourceUnknown},
 		}}
 	}
 
@@ -526,6 +558,8 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			EndpointName:          p.EndpointName,
 			Model:                 model,
 			CostClass:             h.CostClass,
+			CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
+			CostSource:            normalizeCostSource(p.CostSource),
 			IsSubscription:        h.IsSubscription,
 			QuotaOK:               h.QuotaOK,
 			QuotaPercentUsed:      h.QuotaPercentUsed,
@@ -542,17 +576,54 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		}
 		out = append(out, rankedCandidate{
 			out: Candidate{
-				Harness:  h.Name,
-				Provider: p.Name,
-				Endpoint: p.EndpointName,
-				Model:    model,
-				Eligible: eligible,
-				Reason:   reason,
+				Harness:            h.Name,
+				Provider:           p.Name,
+				Endpoint:           p.EndpointName,
+				Model:              model,
+				CostUSDPer1kTokens: p.CostUSDPer1kTokens,
+				CostSource:         normalizeCostSource(p.CostSource),
+				Eligible:           eligible,
+				Reason:             reason,
 			},
 			internal: ci,
 		})
 	}
 	return out
+}
+
+func normalizeCostSource(source string) string {
+	switch source {
+	case CostSourceCatalog, CostSourceSubscription, CostSourceUserConfig:
+		return source
+	default:
+		return CostSourceUnknown
+	}
+}
+
+func neutralKnownCost(candidates []rankedCandidate) (float64, bool) {
+	var total float64
+	var count int
+	for _, candidate := range candidates {
+		if !candidate.out.Eligible {
+			continue
+		}
+		if normalizeCostSource(candidate.out.CostSource) == CostSourceUnknown {
+			continue
+		}
+		total += candidate.out.CostUSDPer1kTokens
+		count++
+	}
+	if count == 0 {
+		return 0, false
+	}
+	return total / float64(count), true
+}
+
+func candidateCostTieValue(candidate rankedCandidate, neutralCost float64) float64 {
+	if normalizeCostSource(candidate.out.CostSource) == CostSourceUnknown {
+		return neutralCost
+	}
+	return candidate.out.CostUSDPer1kTokens
 }
 
 // resolveModel picks the concrete model string for a (harness, provider) pair
