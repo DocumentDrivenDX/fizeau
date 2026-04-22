@@ -142,6 +142,7 @@ func serviceProfileSurfaces() []serviceProfileSurface {
 		{name: "native-openai", harness: "agent", providerSystem: "openai-compatible", catalogSurface: modelcatalog.SurfaceAgentOpenAI},
 		{name: "codex", harness: "codex", providerSystem: "openai", catalogSurface: modelcatalog.SurfaceCodex},
 		{name: "claude", harness: "claude", providerSystem: "anthropic", catalogSurface: modelcatalog.SurfaceClaudeCode},
+		{name: "gemini", harness: "gemini", providerSystem: "google", catalogSurface: modelcatalog.SurfaceGemini},
 	}
 }
 

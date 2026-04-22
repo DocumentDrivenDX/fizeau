@@ -8,6 +8,8 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	geminiharness "github.com/DocumentDrivenDX/agent/internal/harnesses/gemini"
+	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
 
@@ -160,6 +162,9 @@ func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
 			// harness quota caches below.
 			SubscriptionOK: true,
 		}
+		if name == "agent" && s.opts.ServiceConfig == nil {
+			entry.AutoRoutingEligible = false
+		}
 
 		if name == "claude" {
 			dec := claudeharness.ReadClaudeQuotaRoutingDecision(time.Now(), 0)
@@ -211,6 +216,16 @@ func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
 			}
 		}
 
+		if name == "gemini" {
+			auth := geminiharness.ReadAuthEvidence(time.Now())
+			entry.QuotaOK = auth.Authenticated && auth.Fresh
+			entry.QuotaStale = auth.Authenticated && !auth.Fresh
+			entry.SubscriptionOK = auth.Authenticated && auth.Fresh
+			if auth.Authenticated && auth.Fresh {
+				entry.QuotaTrend = routing.QuotaTrendUnknown
+			}
+		}
+
 		// Native "agent" harness: enumerate live configured provider endpoints.
 		if name == "agent" && s.opts.ServiceConfig != nil {
 			for _, pname := range s.opts.ServiceConfig.ProviderNames() {
@@ -228,6 +243,45 @@ func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
 		Harnesses:           entries,
 		ProviderSuccessRate: successRate,
 		ObservedLatencyMS:   latencyMS,
+		CatalogResolver:     serviceRoutingCatalogResolver(),
+	}
+}
+
+func serviceRoutingCatalogResolver() func(ref, surface string) (string, bool) {
+	cat, err := modelcatalog.Default()
+	if err != nil || cat == nil {
+		return nil
+	}
+	return func(ref, surface string) (string, bool) {
+		catalogSurface, ok := serviceRoutingCatalogSurface(surface)
+		if !ok {
+			return "", false
+		}
+		resolved, err := cat.Resolve(ref, modelcatalog.ResolveOptions{
+			Surface:         catalogSurface,
+			AllowDeprecated: true,
+		})
+		if err != nil || resolved.ConcreteModel == "" {
+			return "", false
+		}
+		return resolved.ConcreteModel, true
+	}
+}
+
+func serviceRoutingCatalogSurface(surface string) (modelcatalog.Surface, bool) {
+	switch surface {
+	case "embedded-openai":
+		return modelcatalog.SurfaceAgentOpenAI, true
+	case "embedded-anthropic":
+		return modelcatalog.SurfaceAgentAnthropic, true
+	case "codex":
+		return modelcatalog.SurfaceCodex, true
+	case "claude":
+		return modelcatalog.SurfaceClaudeCode, true
+	case "gemini":
+		return modelcatalog.SurfaceGemini, true
+	default:
+		return "", false
 	}
 }
 

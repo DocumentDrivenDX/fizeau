@@ -777,6 +777,13 @@ func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
 
 func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("GOOGLE_API_KEY", "")
+	t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "")
+	t.Setenv("GOOGLE_GENAI_USE_GCA", "")
+	t.Setenv("GEMINI_CLI_USE_COMPUTE_ADC", "")
+	t.Setenv("CLOUD_SHELL", "")
 	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
 	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
 	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))

@@ -769,13 +769,14 @@ func TestDefault_V4TargetsUseModelCandidates(t *testing.T) {
 	assert.Empty(t, target.Surfaces)
 	assert.Zero(t, target.CostInputPerM)
 	assert.Empty(t, target.OpenRouterRefID)
-	assert.Equal(t, []string{"claude-haiku-5.5", "qwen3.5-27b", "qwen3.5-7b"}, target.Candidates)
+	assert.Equal(t, []string{"claude-haiku-5.5", "qwen3.5-27b", "qwen3.5-7b", "gemini-2.5-flash-lite"}, target.Candidates)
 
 	models := catalog.AllModelsInTier("code-economy")
-	require.Len(t, models, 3)
+	require.Len(t, models, 4)
 	assert.Equal(t, "claude-haiku-5.5", models[0].ID)
 	assert.Equal(t, "qwen3.5-27b", models[1].ID)
 	assert.Equal(t, "qwen3.5-7b", models[2].ID)
+	assert.Equal(t, "gemini-2.5-flash-lite", models[3].ID)
 }
 
 func TestUpdateManifestPricing_UpdatesModelEntries(t *testing.T) {

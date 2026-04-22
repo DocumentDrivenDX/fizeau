@@ -321,11 +321,11 @@ func TestParseGeminiUsage_Stats(t *testing.T) {
 }
 
 func TestParseGeminiStreamOutput(t *testing.T) {
-	output := `skill conflict warning from stdout
-{"type":"init","timestamp":"2026-04-21T18:21:50.360Z","session_id":"test","model":"gemini-2.5-flash"}
-{"type":"message","role":"user","content":"Reply exactly: OK"}
-{"type":"message","role":"assistant","content":"OK","delta":true}
-{"type":"result","status":"success","stats":{"total_tokens":8491,"input_tokens":8468,"output_tokens":1,"cached":7,"models":{"gemini-2.5-flash":{"total_tokens":8491,"input_tokens":8468,"output_tokens":1,"cached":7}}}}`
+	data, err := os.ReadFile(filepath.Join("testdata", "usage_cassettes", "live-ok-20260421.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(data)
 	agg, ok := parseGeminiStreamOutput(output)
 	if !ok {
 		t.Fatal("expected stream-json output")
@@ -335,6 +335,18 @@ func TestParseGeminiStreamOutput(t *testing.T) {
 	}
 	if agg.InputTokens != 8468 || agg.OutputTokens != 1 || agg.TotalTokens != 8491 || agg.CacheTokens != 7 {
 		t.Fatalf("usage: got input=%d output=%d total=%d cache=%d", agg.InputTokens, agg.OutputTokens, agg.TotalTokens, agg.CacheTokens)
+	}
+}
+
+func TestParseGeminiStreamOutput_ACPMetaQuota(t *testing.T) {
+	output := `{"type":"message","role":"assistant","content":"OK","delta":true}
+{"type":"result","status":"success","_meta":{"quota":{"token_count":{"input_tokens":8,"output_tokens":5},"model_usage":[{"model":"gemini-2.5-flash","token_count":{"input_tokens":8,"output_tokens":5}}]}}}`
+	agg, ok := parseGeminiStreamOutput(output)
+	if !ok {
+		t.Fatal("expected stream-json output")
+	}
+	if agg.InputTokens != 8 || agg.OutputTokens != 5 || agg.TotalTokens != 13 {
+		t.Fatalf("usage: got input=%d output=%d total=%d", agg.InputTokens, agg.OutputTokens, agg.TotalTokens)
 	}
 }
 
@@ -362,5 +374,17 @@ func TestModelDiscoveryFromText(t *testing.T) {
 	}
 	if snapshot.FreshnessWindow != GeminiModelDiscoveryFreshnessWindow.String() {
 		t.Fatalf("freshness window: got %q", snapshot.FreshnessWindow)
+	}
+}
+
+func TestModelDiscoveryFromRecordedCLISurface(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "model_surface", "gemini-cli-0.38.2-models.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := ModelDiscoveryFromText(string(data), "gemini-cli-bundle:0.38.2")
+	want := []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"}
+	if !reflect.DeepEqual(snapshot.Models, want) {
+		t.Fatalf("models: got %v, want %v", snapshot.Models, want)
 	}
 }

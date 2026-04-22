@@ -36,6 +36,20 @@ models:
       agent.openai: gpt-5.4
       codex: gpt-5.4
 
+  gemini-2.5-pro:
+    family: gemini
+    display_name: Gemini 2.5 Pro
+    tier: code-high
+    status: active
+    provider_system: google
+    cost_input_per_m: 1.25
+    cost_output_per_m: 10.00
+    cost_cache_read_per_m: 0.125
+    context_window: 1000000
+    benchmark_as_of: "2026-04-21"
+    surfaces:
+      gemini: gemini-2.5-pro
+
   sonnet-4.6:
     family: claude-sonnet
     display_name: Claude Sonnet 4.6
@@ -68,6 +82,20 @@ models:
     surfaces:
       agent.openai: gpt-5.4-mini
       codex: gpt-5.4-mini
+
+  gemini-2.5-flash:
+    family: gemini
+    display_name: Gemini 2.5 Flash
+    tier: code-medium
+    status: active
+    provider_system: google
+    cost_input_per_m: 0.30
+    cost_output_per_m: 2.50
+    cost_cache_read_per_m: 0.03
+    context_window: 1000000
+    benchmark_as_of: "2026-04-21"
+    surfaces:
+      gemini: gemini-2.5-flash
 
   claude-haiku-5.5:
     family: claude-haiku
@@ -125,6 +153,20 @@ models:
     surfaces:
       agent.openai: qwen3.5-7b
 
+  gemini-2.5-flash-lite:
+    family: gemini
+    display_name: Gemini 2.5 Flash-Lite
+    tier: code-economy
+    status: active
+    provider_system: google
+    cost_input_per_m: 0.10
+    cost_output_per_m: 0.40
+    cost_cache_read_per_m: 0.01
+    context_window: 1000000
+    benchmark_as_of: "2026-04-21"
+    surfaces:
+      gemini: gemini-2.5-flash-lite
+
   claude-sonnet-4-20250514:
     family: claude-sonnet
     display_name: Claude Sonnet 4 Legacy
@@ -177,7 +219,7 @@ targets:
     status: active
     context_window_min: 1000000
     swe_bench_min: 80.0
-    candidates: [opus-4.6, gpt-5.4]
+    candidates: [opus-4.6, gpt-5.4, gemini-2.5-pro]
     surface_policy:
       agent.anthropic:
         reasoning_default: high
@@ -190,6 +232,11 @@ targets:
         failure_policy: ordered-failover
       codex:
         reasoning_default: high
+      gemini:
+        reasoning_default: off
+        placement_order: [subscription]
+        max_input_cost_per_mtok_usd: 2
+        failure_policy: auth-gated
 
   code-medium:
     family: coding-tier
@@ -198,7 +245,7 @@ targets:
     status: active
     context_window_min: 1000000
     swe_bench_min: 77.0
-    candidates: [sonnet-4.6, gpt-5.4-mini]
+    candidates: [sonnet-4.6, gpt-5.4-mini, gemini-2.5-flash]
     surface_policy:
       agent.anthropic:
         reasoning_default: medium
@@ -211,6 +258,11 @@ targets:
         failure_policy: ordered-failover
       codex:
         reasoning_default: off
+      gemini:
+        reasoning_default: off
+        placement_order: [subscription]
+        max_input_cost_per_mtok_usd: 1
+        failure_policy: auth-gated
 
   code-economy:
     family: coding-tier
@@ -219,7 +271,7 @@ targets:
     status: active
     context_window_min: 131072
     swe_bench_min: 45.0
-    candidates: [claude-haiku-5.5, qwen3.5-27b, qwen3.5-7b]
+    candidates: [claude-haiku-5.5, qwen3.5-27b, qwen3.5-7b, gemini-2.5-flash-lite]
     surface_policy:
       agent.anthropic:
         reasoning_default: medium
@@ -230,6 +282,11 @@ targets:
         placement_order: [local, cheap-subscription]
         max_input_cost_per_mtok_usd: 1
         failure_policy: ordered-failover
+      gemini:
+        reasoning_default: off
+        placement_order: [subscription]
+        max_input_cost_per_mtok_usd: 0.25
+        failure_policy: auth-gated
 
   claude-sonnet-4:
     family: claude-sonnet

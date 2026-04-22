@@ -137,7 +137,11 @@ func TestBuiltinHarnessesMetadata(t *testing.T) {
 	assert.True(t, claude.AutoRoutingEligible)
 
 	gemini, _ := r.Get("gemini")
-	assert.False(t, gemini.AutoRoutingEligible)
+	assert.True(t, gemini.AutoRoutingEligible)
+	assert.True(t, gemini.IsSubscription)
+	assert.Equal(t, "medium", gemini.CostClass)
+	assert.Contains(t, gemini.Models, "gemini-2.5-pro")
+	assert.Contains(t, gemini.Models, "gemini-2.5-flash-lite")
 
 	opencode, _ := r.Get("opencode")
 	assert.False(t, opencode.AutoRoutingEligible)

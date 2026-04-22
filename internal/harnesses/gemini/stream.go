@@ -41,6 +41,23 @@ type geminiStatsEnvelope struct {
 			} `json:"tokens"`
 		} `json:"models"`
 	} `json:"stats"`
+	Meta struct {
+		Quota struct {
+			TokenCount struct {
+				InputTokens  int `json:"input_tokens"`
+				OutputTokens int `json:"output_tokens"`
+				TotalTokens  int `json:"total_tokens"`
+			} `json:"token_count"`
+			ModelUsage []struct {
+				Model      string `json:"model"`
+				TokenCount struct {
+					InputTokens  int `json:"input_tokens"`
+					OutputTokens int `json:"output_tokens"`
+					TotalTokens  int `json:"total_tokens"`
+				} `json:"token_count"`
+			} `json:"model_usage"`
+		} `json:"quota"`
+	} `json:"_meta"`
 }
 
 type geminiStreamEnvelope struct {
@@ -138,6 +155,26 @@ func applyGeminiStats(agg *streamAggregate, env geminiStatsEnvelope) {
 			agg.TotalTokens += total
 		}
 		if agg.TotalTokens == 0 && (agg.InputTokens > 0 || agg.OutputTokens > 0) {
+			agg.TotalTokens = agg.InputTokens + agg.OutputTokens
+		}
+	}
+	if env.Meta.Quota.TokenCount.InputTokens > 0 || env.Meta.Quota.TokenCount.OutputTokens > 0 || env.Meta.Quota.TokenCount.TotalTokens > 0 {
+		agg.InputTokens = env.Meta.Quota.TokenCount.InputTokens
+		agg.OutputTokens = env.Meta.Quota.TokenCount.OutputTokens
+		agg.TotalTokens = env.Meta.Quota.TokenCount.TotalTokens
+		if agg.TotalTokens == 0 {
+			agg.TotalTokens = agg.InputTokens + agg.OutputTokens
+		}
+	} else if len(env.Meta.Quota.ModelUsage) > 0 {
+		agg.InputTokens = 0
+		agg.OutputTokens = 0
+		agg.TotalTokens = 0
+		for _, model := range env.Meta.Quota.ModelUsage {
+			agg.InputTokens += model.TokenCount.InputTokens
+			agg.OutputTokens += model.TokenCount.OutputTokens
+			agg.TotalTokens += model.TokenCount.TotalTokens
+		}
+		if agg.TotalTokens == 0 {
 			agg.TotalTokens = agg.InputTokens + agg.OutputTokens
 		}
 	}

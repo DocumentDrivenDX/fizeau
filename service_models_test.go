@@ -387,8 +387,16 @@ func TestListModels_harnessFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListModels harness=gemini: %v", err)
 	}
-	if len(infos3) != 0 {
-		t.Fatalf("gemini should not expose a harness-native model list until promoted, got %v", modelInfoDebug(infos3))
+	if len(infos3) == 0 {
+		t.Fatal("want harness-native models for promoted harness=gemini")
+	}
+	if got, want := infos3[0].ID, "gemini-2.5-pro"; got != want {
+		t.Fatalf("first gemini model: got %q, want %q (all: %v)", got, want, modelInfoDebug(infos3))
+	}
+	for _, info := range infos3 {
+		if info.Provider != "gemini" || info.Harness != "gemini" || !info.Available || info.CatalogRef == "" {
+			t.Errorf("unexpected gemini model info: %#v", info)
+		}
 	}
 }
 

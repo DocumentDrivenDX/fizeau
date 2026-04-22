@@ -163,10 +163,16 @@ func TestListHarnesses_shape(t *testing.T) {
 		}
 	})
 
-	t.Run("gemini_permissions_explicit_only", func(t *testing.T) {
+	t.Run("gemini_promoted_with_auth_gated_routing", func(t *testing.T) {
 		h := byName["gemini"]
-		if h.AutoRoutingEligible {
-			t.Errorf("gemini AutoRoutingEligible: want false")
+		if !h.AutoRoutingEligible {
+			t.Errorf("gemini AutoRoutingEligible: want true")
+		}
+		if h.CostClass != "medium" {
+			t.Errorf("gemini CostClass: want medium, got %q", h.CostClass)
+		}
+		if h.DefaultModel != "gemini-2.5-flash" {
+			t.Errorf("gemini DefaultModel: want gemini-2.5-flash, got %q", h.DefaultModel)
 		}
 		assertContains(t, h.SupportedPermissions, "safe", "gemini permissions")
 		assertContains(t, h.SupportedPermissions, "supervised", "gemini permissions")
@@ -236,7 +242,7 @@ func TestListHarnesses_shape(t *testing.T) {
 			},
 			"gemini": {
 				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),
-				ModelDiscovery:  capStatus(agent.HarnessCapabilityUnsupported),
+				ModelDiscovery:  capStatus(agent.HarnessCapabilityOptional),
 				ModelPinning:    capStatus(agent.HarnessCapabilityOptional),
 				WorkdirContext:  capStatus(agent.HarnessCapabilityOptional),
 				ReasoningLevels: capStatus(agent.HarnessCapabilityUnsupported),
@@ -245,8 +251,8 @@ func TestListHarnesses_shape(t *testing.T) {
 				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
 				FinalText:       capStatus(agent.HarnessCapabilityOptional),
 				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
-				RecordReplay:    capStatus(agent.HarnessCapabilityUnsupported),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityOptional),
+				RecordReplay:    capStatus(agent.HarnessCapabilityOptional),
 			},
 			"opencode": {
 				ExecutePrompt:   capStatus(agent.HarnessCapabilityRequired),

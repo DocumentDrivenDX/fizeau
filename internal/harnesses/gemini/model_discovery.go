@@ -27,7 +27,7 @@ func ModelDiscoveryFromText(text, source string) harnesses.ModelDiscoverySnapsho
 		ReasoningLevels: nil,
 		Source:          source,
 		FreshnessWindow: GeminiModelDiscoveryFreshnessWindow.String(),
-		Detail:          "gemini CLI harness does not expose DDx permission or reasoning controls; model IDs are extracted only from supplied CLI output",
+		Detail:          "Gemini CLI model IDs are extracted from supplied CLI/API or bundled model-surface output; the harness exposes no stable per-request reasoning control",
 	}
 }
 
@@ -41,7 +41,7 @@ func uniqueGeminiStrings(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
-		if value == "" || seen[value] {
+		if value == "" || value == "gemini-cli" || seen[value] {
 			continue
 		}
 		seen[value] = true

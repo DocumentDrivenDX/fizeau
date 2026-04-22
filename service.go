@@ -11,6 +11,7 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	geminiharness "github.com/DocumentDrivenDX/agent/internal/harnesses/gemini"
 	sessionusage "github.com/DocumentDrivenDX/agent/internal/session"
 )
 
@@ -639,6 +640,61 @@ func codexAccountStatus() *AccountStatus {
 	return accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, decision.Fresh)
 }
 
+func geminiQuotaState() *QuotaState {
+	snap := geminiharness.ReadAuthEvidence(time.Now())
+	qs := &QuotaState{
+		CapturedAt: snap.CapturedAt,
+		Fresh:      snap.Fresh,
+		Source:     snap.Source,
+		Status:     "unknown",
+	}
+	switch {
+	case !snap.Authenticated:
+		qs.Status = "unauthenticated"
+		qs.LastError = &StatusError{
+			Type:      "unauthenticated",
+			Detail:    snap.Detail,
+			Source:    snap.Source,
+			Timestamp: time.Now().UTC(),
+		}
+	case !snap.Fresh:
+		qs.Status = "stale"
+		qs.LastError = &StatusError{
+			Type:      "error",
+			Detail:    "Gemini auth evidence is stale; rerun a Gemini auth/status probe before routing automatically",
+			Source:    snap.Source,
+			Timestamp: snap.CapturedAt,
+		}
+	default:
+		qs.LastError = &StatusError{
+			Type:      "unavailable",
+			Detail:    "Gemini CLI exposes auth/account evidence but no stable non-interactive quota counter; per-run rate-limit failures remain execution errors",
+			Source:    snap.Source,
+			Timestamp: snap.CapturedAt,
+		}
+	}
+	return qs
+}
+
+func geminiAccountStatus() *AccountStatus {
+	snap := geminiharness.ReadAuthEvidence(time.Now())
+	if !snap.Authenticated {
+		return &AccountStatus{
+			Unauthenticated: true,
+			Source:          snap.Source,
+			CapturedAt:      snap.CapturedAt,
+			Fresh:           snap.Fresh,
+			Detail:          snap.Detail,
+		}
+	}
+	status := accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, snap.Fresh)
+	if status == nil {
+		status = &AccountStatus{Authenticated: true, Source: snap.Source, CapturedAt: snap.CapturedAt, Fresh: snap.Fresh}
+	}
+	status.Detail = snap.Detail
+	return status
+}
+
 func (s *service) codexUsageWindows() []UsageWindow {
 	logDir := s.serviceSessionLogDir()
 	if logDir == "" {
@@ -770,6 +826,9 @@ func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
 			info.Quota = codexQuotaState()
 			info.Account = codexAccountStatus()
 			info.UsageWindows = s.codexUsageWindows()
+		case "gemini":
+			info.Quota = geminiQuotaState()
+			info.Account = geminiAccountStatus()
 		}
 
 		out = append(out, info)

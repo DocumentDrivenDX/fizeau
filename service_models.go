@@ -130,6 +130,8 @@ func catalogRefsForHarness(cat *modelcatalog.Catalog, harness string) map[string
 		return cat.AllConcreteModels(modelcatalog.SurfaceCodex)
 	case "claude":
 		return cat.AllConcreteModels(modelcatalog.SurfaceClaudeCode)
+	case "gemini":
+		return cat.AllConcreteModels(modelcatalog.SurfaceGemini)
 	default:
 		return nil
 	}

@@ -84,6 +84,20 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if nativeOpenAI.CostCeilingInputPerMTok == nil || *nativeOpenAI.CostCeilingInputPerMTok != 20 {
 		t.Fatalf("CostCeilingInputPerMTok: got %#v, want 20", nativeOpenAI.CostCeilingInputPerMTok)
 	}
+
+	gemini := findProfileSurface(resolved.Surfaces, "gemini")
+	if gemini == nil {
+		t.Fatalf("gemini surface missing from %#v", resolved.Surfaces)
+	}
+	if gemini.Harness != "gemini" || gemini.Model != "gemini-2.5-pro" {
+		t.Fatalf("gemini smart surface: %#v", gemini)
+	}
+	if gemini.ReasoningDefault != agent.ReasoningOff {
+		t.Fatalf("gemini ReasoningDefault: got %q, want off", gemini.ReasoningDefault)
+	}
+	if len(gemini.Candidates) == 0 || gemini.Candidates[0] != "gemini-2.5-pro" {
+		t.Fatalf("gemini candidates: %#v", gemini.Candidates)
+	}
 }
 
 func TestServiceProfiles_ResolveDeprecatedAliasAndUnknown(t *testing.T) {

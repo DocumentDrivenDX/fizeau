@@ -47,7 +47,7 @@ EOF
 		reason  agent.Reasoning
 		text    string
 	}{
-		{harness: "gemini", model: "fake-model", text: "gemini service response"},
+		{harness: "gemini", model: "gemini-2.5-flash", text: "gemini service response"},
 		{harness: "opencode", model: "opencode/gpt-5.4", reason: agent.ReasoningLow, text: "opencode service response"},
 		{harness: "pi", model: "gemini-2.5-flash", reason: agent.ReasoningLow, text: "pi service response"},
 	} {

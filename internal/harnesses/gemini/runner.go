@@ -48,12 +48,13 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		Name:                 "gemini",
 		Type:                 "subprocess",
 		IsLocal:              false,
-		IsSubscription:       false,
+		IsSubscription:       true,
+		AutoRoutingEligible:  true,
 		ExactPinSupport:      true,
 		DefaultModel:         "gemini-2.5-flash",
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},
 		SupportedReasoning:   nil,
-		CostClass:            "experimental",
+		CostClass:            "medium",
 	}
 	path := r.Binary
 	if path == "" {

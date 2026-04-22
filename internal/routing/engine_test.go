@@ -548,7 +548,7 @@ func TestSecondaryHarnessesRequireOperationalEvidenceForAutoRouting(t *testing.T
 		}
 	}
 	if _, ok := seen["gemini"]; ok {
-		t.Fatalf("gemini should remain outside auto-routing candidates without full coverage")
+		t.Fatalf("gemini should remain outside auto-routing candidates when AutoRoutingEligible is false")
 	}
 }
 
@@ -617,7 +617,7 @@ func TestProfileRejectsUnsupportedSurfaceWithoutModel(t *testing.T) {
 	}
 }
 
-func TestSmartDoesNotSelectExperimentalGeminiOverModeledAgent(t *testing.T) {
+func TestSmartDoesNotSelectUnmodeledGeminiOverModeledAgent(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
@@ -663,6 +663,184 @@ func TestSmartDoesNotSelectExperimentalGeminiOverModeledAgent(t *testing.T) {
 		if c.Harness == "gemini" && c.Eligible {
 			t.Fatalf("gemini should not be eligible without a smart profile model: %#v", c)
 		}
+	}
+}
+
+func TestGeminiProfileRoutingResolvesConcreteModels(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "gemini",
+				Surface:             "gemini",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				SupportedPerms:      []string{"safe", "supervised", "unrestricted"},
+			},
+		},
+		CatalogResolver: func(ref, surface string) (string, bool) {
+			if surface != "gemini" {
+				return "", false
+			}
+			switch ref {
+			case "smart":
+				return "gemini-2.5-pro", true
+			case "standard":
+				return "gemini-2.5-flash", true
+			case "cheap":
+				return "gemini-2.5-flash-lite", true
+			default:
+				return "", false
+			}
+		},
+	}
+
+	for profile, wantModel := range map[string]string{
+		"smart":    "gemini-2.5-pro",
+		"standard": "gemini-2.5-flash",
+		"cheap":    "gemini-2.5-flash-lite",
+	} {
+		dec, err := Resolve(Request{Profile: profile}, in)
+		if err != nil {
+			t.Fatalf("Resolve profile=%s: %v", profile, err)
+		}
+		if dec.Harness != "gemini" || dec.Model != wantModel {
+			t.Fatalf("profile=%s: got harness=%q model=%q, want gemini/%s", profile, dec.Harness, dec.Model, wantModel)
+		}
+	}
+}
+
+func TestReasoningRequestsDoNotSelectGemini(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "gemini",
+				Surface:             "gemini",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				DefaultModel:        "gemini-2.5-pro",
+			},
+			{
+				Name:                "codex",
+				Surface:             "codex",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				SupportedReasoning:  []string{"low", "medium", "high"},
+				DefaultModel:        "gpt-5.4",
+			},
+		},
+		CatalogResolver: func(ref, surface string) (string, bool) {
+			if ref != "smart" {
+				return "", false
+			}
+			if surface == "gemini" {
+				return "gemini-2.5-pro", true
+			}
+			if surface == "codex" {
+				return "gpt-5.4", true
+			}
+			return "", false
+		},
+	}
+
+	dec, err := Resolve(Request{Profile: "smart", Reasoning: "high"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Harness == "gemini" {
+		t.Fatalf("reasoning request should not select gemini: %#v", dec)
+	}
+	foundGemini := false
+	for _, c := range dec.Candidates {
+		if c.Harness == "gemini" {
+			foundGemini = true
+			if c.Eligible || !strings.Contains(c.Reason, `reasoning "high" not supported`) {
+				t.Fatalf("gemini reasoning candidate: %#v", c)
+			}
+		}
+	}
+	if !foundGemini {
+		t.Fatal("expected gemini candidate to prove reasoning gate")
+	}
+}
+
+func TestSmartSelectsGeminiOnlyWhenEligibleBestCandidate(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				DefaultModel:        "qwen3.5-27b",
+			},
+			{
+				Name:                "gemini",
+				Surface:             "gemini",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				DefaultModel:        "gemini-2.5-pro",
+			},
+		},
+		CatalogResolver: func(ref, surface string) (string, bool) {
+			if ref != "smart" {
+				return "", false
+			}
+			if surface == "gemini" {
+				return "gemini-2.5-pro", true
+			}
+			if surface == "embedded-openai" {
+				return "qwen3.5-27b", true
+			}
+			return "", false
+		},
+	}
+
+	dec, err := Resolve(Request{Profile: "smart"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Harness != "gemini" || dec.Model != "gemini-2.5-pro" {
+		t.Fatalf("smart should select eligible gemini over lower-scored local route, got harness=%q model=%q", dec.Harness, dec.Model)
+	}
+
+	in.Harnesses[1].SubscriptionOK = false
+	in.Harnesses[1].QuotaOK = false
+	dec, err = Resolve(Request{Profile: "smart"}, in)
+	if err != nil {
+		t.Fatalf("Resolve after auth gate: %v", err)
+	}
+	if dec.Harness == "gemini" {
+		t.Fatalf("gemini should not win when auth/quota evidence is missing: %#v", dec)
 	}
 }
 

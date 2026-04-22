@@ -85,7 +85,7 @@ Each cassette directory contains:
 - `quota.json` — quota/status evidence when applicable.
 - `scrub-report.json` — redaction and safety report.
 
-Required live harness binaries for this bead:
+Required live harness binaries for primary PTY record mode:
 
 - `claude`
 - `codex`
@@ -129,19 +129,21 @@ The required evidence set is:
 
 Codex and Claude are the primary subscription drivers. If their quota probes are
 missing, stale, or blocked, the fix is to repair the probe/cache path and surface
-the blocker, not to silently promote a secondary harness. Secondary harnesses
-remain explicit-only until every row above is satisfied and routing tests prove
-they win only when they are the best eligible candidate.
+the blocker, not to silently promote a secondary harness. A secondary harness
+remains explicit-only until every row above is satisfied and routing tests prove
+it wins only when it is the best eligible candidate.
 
 ## Secondary Harness Promotion Status
 
-`opencode`, `gemini`, and `pi` are supported for explicit execution only until
-they meet the automatic routing standard above:
+`opencode` and `pi` are supported for explicit execution only until they meet
+the automatic routing standard above. `gemini` is promoted to auth-gated
+automatic profile routing because its supported surfaces now have deterministic
+non-PTY evidence:
 
 | Harness | Auto-routing status | Evidence |
 |---|---|---|
 | `opencode` | explicit-only | `internal/harnesses/opencode/runner_test.go` covers prompt delivery, `--dir`, `-m`, `--variant`, permission no-op semantics, final text, token totals, stderr/exit mapping, and request timeout cleanup. `internal/harnesses/opencode/model_discovery_test.go` covers `opencode models`, `opencode models --verbose`, reasoning variants, model limits, and per-model cost metadata. Promotion remains blocked on structured account/quota policy and recorded successful usage evidence; cost/model evidence alone cannot displace fresh subsidized Codex/Claude capacity. |
-| `gemini` | explicit-only | `internal/harnesses/gemini/runner_test.go` covers headless `-p` execution, `--output-format stream-json`, approval-mode mapping, workdir behavior, stdin fallback, explicit reasoning rejection, stream-json final text, token/cache usage, and non-JSON stdout noise. A live smoke on April 21, 2026 verified `gemini -p 'Reply exactly: OK' --output-format stream-json -m gemini-2.5-flash` returns usable stream-json and token stats. Promotion remains blocked on authoritative model-list discovery, quota/account/auth status behavior, concrete cost/pricing evidence, and profile/catalog routing evidence. |
+| `gemini` | promoted, auth-gated | `internal/harnesses/gemini/runner_test.go` covers headless `-p` execution, `--output-format stream-json`, approval-mode mapping, workdir behavior, stdin fallback, explicit reasoning rejection, stream-json final text, token/cache usage, and non-JSON stdout noise. `internal/harnesses/gemini/testdata/usage_cassettes/live-ok-20260421.jsonl` records the April 21, 2026 live smoke output for `gemini -p 'Reply exactly: OK' --output-format stream-json -m gemini-2.5-flash`. `internal/harnesses/gemini/testdata/model_surface/gemini-cli-0.38.2-models.txt` records the Gemini CLI 0.38.2 bundled model surface for `gemini-2.5-pro`, `gemini-2.5-flash`, and `gemini-2.5-flash-lite`; the model catalog maps `smart`, `standard`, and `cheap` to those concrete IDs on the `gemini` surface. Gemini CLI does not expose a stable per-request reasoning/thinking flag, so `SupportedReasoning` remains empty and routing tests prove reasoning requests reject Gemini. Auth/account evidence comes from non-secret environment and `.gemini/settings.json`/OAuth metadata parsing with a 7-day freshness window; missing or stale evidence makes Gemini ineligible for automatic routing. Gemini CLI does not expose a stable non-interactive numeric quota counter, so quota status is surfaced as unknown with diagnostic detail, and per-run 429/rate-limit failures remain execution errors. Pricing comes from the Google AI Gemini API pricing table captured in `internal/modelcatalog/catalog/models.yaml` as of April 21, 2026. |
 | `pi` | explicit-only, low priority | `internal/harnesses/pi/runner_test.go` covers prompt delivery, subprocess workdir, `--model`, `--thinking`, permission unsupported semantics, final text, token totals, stderr/exit mapping, and request timeout cleanup. `internal/harnesses/pi/model_discovery_test.go` covers `pi --help`, `pi --list-models`, and compatibility-table fallback metadata. Pi is not a primary-routing target because it currently has no path to subsidized models; keep it opt-in unless a future policy explicitly accepts its cost/quota model. |
 
 Before Claude/Codex authenticated cassettes can promote capability rows, the
@@ -218,7 +220,7 @@ complete means every row marked `record/playback required` passes in both:
 | `claude.models` | `claude` | Available model list and effort/reasoning levels. | Start `claude`, run `/model`, capture model rows, selected/default model, and effort selector state. | Non-empty model rows, selected/default marker, effort levels or version-pinned effort metadata, stale mapping detection. | record/playback required. |
 | `codex.status` | `codex` | Subscription/account/quota/status. | Start `codex --no-alt-screen` through direct PTY, run `/status`, wait for the rendered status panel, capture frames and service events, exit cleanly. | Parsed account class, current model/reasoning, quota windows including model-specific limits, freshness timestamp, and normalized blockers. | record/playback required. |
 | `codex.models` | `codex` | Available model list and reasoning-level path. | Start `codex --no-alt-screen`, type `/model`, complete/confirm the slash command when required, capture the model picker, and step into reasoning selection when needed without changing persisted state. | Non-empty model rows, selected/current marker, reasoning-effort choices or chooser transition, unsupported-value behavior. | record/playback required. |
-| n/a | `gemini` | No required TUI-only aspect is accepted yet. Headless mode, model setting, output format, approval mode, and session listing appear to be CLI surfaces, but the harness still lacks verified evidence for these surfaces. | n/a unless future discovery finds an interactive-only capability. | n/a | Explicit-only until the non-PTY blockers in the secondary promotion table pass. |
+| n/a | `gemini` | No required TUI-only aspect is accepted. Headless mode, model setting, output format, approval mode, model-surface extraction, auth evidence parsing, and stream-json usage are CLI/file surfaces. | n/a unless future discovery finds an interactive-only capability. | n/a | Non-PTY replay tests own the supported Gemini-specific capability evidence. |
 | n/a | `opencode` | No required TUI-only aspect identified. `opencode models`, `opencode stats`, `opencode providers`, `opencode run`, and JSON output are CLI surfaces. | n/a unless future discovery finds an interactive-only capability. | n/a | Explicit-only until non-PTY evidence also includes concrete cost/account/quota routing policy. |
 | n/a | `pi` | No required TUI-only aspect identified. `--list-models`, `--thinking`, `--models`, `--mode json`, and `--print` are CLI surfaces. `pi config` is configuration UI, not a core harness capability. | n/a unless future discovery finds an interactive-only capability. | n/a | Explicit-only and low priority until a subsidized-model path exists. |
 

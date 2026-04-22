@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -213,7 +214,7 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	}
 }
 
-func TestBuildRoutingInputs_SecondaryHarnessesRemainExplicitOnly(t *testing.T) {
+func TestBuildRoutingInputs_SecondaryHarnessesAndGeminiPromotion(t *testing.T) {
 	registry := harnesses.NewRegistry()
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 	inputs := svc.buildRoutingInputs(context.Background())
@@ -235,8 +236,37 @@ func TestBuildRoutingInputs_SecondaryHarnessesRemainExplicitOnly(t *testing.T) {
 	}
 
 	gemini := routingHarnessEntry(t, inputs.Harnesses, "gemini")
-	if gemini.AutoRoutingEligible {
-		t.Fatalf("gemini should remain explicit-only until full coverage is complete")
+	if !gemini.AutoRoutingEligible || gemini.DefaultModel != "gemini-2.5-flash" {
+		t.Fatalf("gemini routing metadata: AutoRoutingEligible=%v DefaultModel=%q", gemini.AutoRoutingEligible, gemini.DefaultModel)
+	}
+	if len(gemini.SupportedReasoning) != 0 {
+		t.Fatalf("gemini should not advertise reasoning controls: %v", gemini.SupportedReasoning)
+	}
+}
+
+func TestResolveRoute_GeminiProfilesUseCatalogModels(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "redacted")
+	registry := harnesses.NewRegistry()
+	registry.LookPath = func(file string) (string, error) {
+		if file == "gemini" {
+			return "/usr/bin/gemini", nil
+		}
+		return "", os.ErrNotExist
+	}
+	svc := &service{opts: ServiceOptions{}, registry: registry}
+
+	for profile, want := range map[string]string{
+		"smart":    "gemini-2.5-pro",
+		"standard": "gemini-2.5-flash",
+		"cheap":    "gemini-2.5-flash-lite",
+	} {
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Harness: "gemini", Profile: profile})
+		if err != nil {
+			t.Fatalf("ResolveRoute profile=%s: %v", profile, err)
+		}
+		if dec.Harness != "gemini" || dec.Model != want {
+			t.Fatalf("profile=%s: got harness=%q model=%q, want gemini/%s", profile, dec.Harness, dec.Model, want)
+		}
 	}
 }
 

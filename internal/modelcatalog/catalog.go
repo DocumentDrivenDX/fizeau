@@ -16,6 +16,7 @@ const (
 	SurfaceAgentAnthropic Surface = "agent.anthropic"
 	SurfaceCodex          Surface = "codex"
 	SurfaceClaudeCode     Surface = "claude-code"
+	SurfaceGemini         Surface = "gemini"
 )
 
 // ResolveOptions configures how model references are resolved.

@@ -93,6 +93,9 @@ func modelDiscoveryCapability(name string, cfg harnesses.HarnessConfig) HarnessC
 	if name == "codex" || name == "claude" {
 		return capOptional("models are discovered from direct PTY TUI evidence or documented CLI help")
 	}
+	if name == "gemini" {
+		return capOptional("models are discovered from Gemini CLI bundled model configuration and replay fixtures")
+	}
 	if name == "opencode" || name == "pi" {
 		return capOptional("models are discovered from a stable harness CLI command or documented CLI help")
 	}
@@ -131,6 +134,9 @@ func reasoningCapability(cfg harnesses.HarnessConfig) HarnessCapability {
 	}
 	if cfg.Name == "codex" || cfg.Name == "claude" {
 		return capOptional("reasoning levels are validated against harness CLI evidence before execution")
+	}
+	if cfg.Name == "gemini" {
+		return capUnsupported("Gemini CLI exposes model thinking internally, but the harness has no stable per-request reasoning control")
 	}
 	if len(cfg.ReasoningLevels) > 0 || cfg.MaxReasoningTokens > 0 {
 		return capOptional("registry declares supported reasoning levels or token budget")
@@ -196,6 +202,9 @@ func quotaStatusCapability(cfg harnesses.HarnessConfig) HarnessCapability {
 	if cfg.TestOnly || cfg.IsLocal {
 		return capNotApplicable("local or test-only harness has no subscription quota")
 	}
+	if cfg.Name == "gemini" {
+		return capOptional("Gemini CLI auth/account evidence is surfaced; no stable non-interactive quota counter is exposed")
+	}
 	if cfg.IsSubscription && cfg.TUIQuotaCommand != "" {
 		return capOptional("subscription quota can be probed or read from a cache")
 	}
@@ -208,6 +217,9 @@ func recordReplayCapability(cfg harnesses.HarnessConfig) HarnessCapability {
 	}
 	if cfg.Name == "codex" || cfg.Name == "claude" {
 		return capOptional("direct PTY discovery and quota probes produce replayable sanitized cassettes")
+	}
+	if cfg.Name == "gemini" {
+		return capOptional("credential-free replay fixtures cover model discovery, auth evidence parsing, and stream-json usage")
 	}
 	return capUnsupported("production harness does not provide deterministic record/replay")
 }
