@@ -104,6 +104,14 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 			base -= 30
 		}
 	}
+	if cand.ProviderSuccessRate >= 0 {
+		switch {
+		case cand.ProviderSuccessRate >= 0.8:
+			base += 25
+		case cand.ProviderSuccessRate < 0.5:
+			base -= 35
+		}
+	}
 
 	// Cooldown demotion: candidate has had recent failures.
 	if cand.InCooldown {
@@ -120,6 +128,11 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 	if cand.ObservedTokensPerSec > 0 {
 		// Small additive bonus, scaled.
 		base += cand.ObservedTokensPerSec / 100.0
+	}
+	if cand.ObservedLatencyMS > 0 {
+		// Latency is a tiebreaker-scale signal: faster endpoints gain a small
+		// bonus while very slow endpoints receive little benefit.
+		base += 1000.0 / cand.ObservedLatencyMS
 	}
 	if cand.CostClass == "experimental" {
 		base -= 75

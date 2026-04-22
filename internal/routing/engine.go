@@ -99,12 +99,15 @@ type HarnessEntry struct {
 
 // ProviderEntry describes one provider available under a harness.
 type ProviderEntry struct {
-	Name           string
-	BaseURL        string
-	DefaultModel   string
-	DiscoveredIDs  []string // models discovered via /v1/models or equivalent
-	ContextWindows map[string]int
-	SupportsTools  bool
+	Name               string
+	BaseURL            string
+	EndpointName       string
+	EndpointBaseURL    string
+	DefaultModel       string
+	DiscoveredIDs      []string // models discovered via /v1/models or equivalent
+	DiscoveryAttempted bool
+	ContextWindows     map[string]int
+	SupportsTools      bool
 
 	// InCooldown reflects whether this provider is in a failure-cooldown window.
 	InCooldown bool
@@ -115,6 +118,7 @@ type ProviderEntry struct {
 type Decision struct {
 	Harness    string
 	Provider   string
+	Endpoint   string
 	Model      string
 	Reason     string
 	Candidates []Candidate
@@ -124,6 +128,7 @@ type Decision struct {
 type Candidate struct {
 	Harness  string
 	Provider string
+	Endpoint string
 	Model    string
 	Score    float64
 	Eligible bool
@@ -132,19 +137,22 @@ type Candidate struct {
 
 // Inputs bundles the engine's external data sources.
 type Inputs struct {
-	Harnesses         []HarnessEntry
-	HistoricalSuccess map[string]float64   // by harness name; -1 = insufficient data
-	ObservedSpeedTPS  map[string]float64   // by "provider:model"
-	ProviderCooldowns map[string]time.Time // by provider name
-	CooldownDuration  time.Duration        // 0 = no cooldown enforcement
-	Now               time.Time            // injected for deterministic testing; default time.Now()
-	CatalogResolver   func(ref, surface string) (concreteModel string, ok bool)
+	Harnesses           []HarnessEntry
+	HistoricalSuccess   map[string]float64   // by harness name; -1 = insufficient data
+	ObservedSpeedTPS    map[string]float64   // by "provider:model"
+	ProviderSuccessRate map[string]float64   // by ProviderModelKey(provider, endpoint, model)
+	ObservedLatencyMS   map[string]float64   // by ProviderModelKey(provider, endpoint, model)
+	ProviderCooldowns   map[string]time.Time // by provider name
+	CooldownDuration    time.Duration        // 0 = no cooldown enforcement
+	Now                 time.Time            // injected for deterministic testing; default time.Now()
+	CatalogResolver     func(ref, surface string) (concreteModel string, ok bool)
 }
 
 // candidateInternal carries the engine's intermediate state per (harness, provider, model).
 type candidateInternal struct {
 	Harness               string
 	Provider              string
+	EndpointName          string
 	Model                 string
 	CostClass             string
 	IsSubscription        bool
@@ -154,10 +162,22 @@ type candidateInternal struct {
 	QuotaTrend            string
 	SubscriptionOK        bool
 	HistoricalSuccessRate float64
+	ProviderSuccessRate   float64
 	ObservedTokensPerSec  float64
+	ObservedLatencyMS     float64
 	InCooldown            bool
 	ProviderAffinityMatch bool
 	ProviderPreference    string
+}
+
+// ProviderModelKey is the metrics key used by routing callers for provider
+// performance signals. Endpoint is optional; when empty the key remains
+// compatible with older provider:model metrics.
+func ProviderModelKey(provider, endpoint, model string) string {
+	if endpoint == "" {
+		return provider + ":" + model
+	}
+	return provider + "@" + endpoint + ":" + model
 }
 
 // Resolve runs the engine end-to-end and returns a Decision.
@@ -239,13 +259,42 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 			return &Decision{
 				Harness:    out[i].Harness,
 				Provider:   out[i].Provider,
+				Endpoint:   out[i].Endpoint,
 				Model:      out[i].Model,
 				Reason:     fmt.Sprintf("profile=%s; score=%.1f", req.Profile, out[i].Score),
 				Candidates: out,
 			}, nil
 		}
 	}
+	if requested := requestedModelIntent(req); requested != "" && hasLiveDiscoveryCandidates(ranked) {
+		return &Decision{Candidates: out}, fmt.Errorf("no live endpoint offers a match for %s", requested)
+	}
 	return &Decision{Candidates: out}, fmt.Errorf("no viable routing candidate: %d candidates rejected", len(out))
+}
+
+func requestedModelIntent(req Request) string {
+	switch {
+	case req.Model != "":
+		return req.Model
+	case req.ModelRef != "":
+		return req.ModelRef
+	case req.Profile != "":
+		return req.Profile
+	default:
+		return ""
+	}
+}
+
+func hasLiveDiscoveryCandidates(candidates []rankedCandidate) bool {
+	for _, c := range candidates {
+		if c.out.Provider != "" && c.internal.Model == "" {
+			return true
+		}
+		if c.out.Provider != "" && c.out.Reason != "" {
+			return true
+		}
+	}
+	return false
 }
 
 type rankedCandidate struct {
@@ -297,8 +346,23 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		entryCaps.ContextWindow = ctxWin
 		entryCaps.SupportsTools = caps.SupportsTools || p.SupportsTools
 
-		key := p.Name + ":" + model
+		key := ProviderModelKey(p.Name, p.EndpointName, model)
 		obs := in.ObservedSpeedTPS[key]
+		if obs == 0 && p.EndpointName != "" {
+			obs = in.ObservedSpeedTPS[ProviderModelKey(p.Name, "", model)]
+		}
+		providerSuccessRate := -1.0
+		if rate, ok := in.ProviderSuccessRate[key]; ok {
+			providerSuccessRate = rate
+		} else if p.EndpointName != "" {
+			if rate, ok := in.ProviderSuccessRate[ProviderModelKey(p.Name, "", model)]; ok {
+				providerSuccessRate = rate
+			}
+		}
+		latencyMS := in.ObservedLatencyMS[key]
+		if latencyMS == 0 && p.EndpointName != "" {
+			latencyMS = in.ObservedLatencyMS[ProviderModelKey(p.Name, "", model)]
+		}
 
 		eligible := true
 		if reason == "" {
@@ -354,6 +418,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		ci := candidateInternal{
 			Harness:               h.Name,
 			Provider:              p.Name,
+			EndpointName:          p.EndpointName,
 			Model:                 model,
 			CostClass:             h.CostClass,
 			IsSubscription:        h.IsSubscription,
@@ -363,7 +428,9 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			QuotaTrend:            h.QuotaTrend,
 			SubscriptionOK:        h.SubscriptionOK,
 			HistoricalSuccessRate: histRate,
+			ProviderSuccessRate:   providerSuccessRate,
 			ObservedTokensPerSec:  obs,
+			ObservedLatencyMS:     latencyMS,
 			InCooldown:            inCooldown || h.InCooldown,
 			ProviderAffinityMatch: req.Provider != "" && p.Name != "" && req.Provider == p.Name,
 			ProviderPreference:    req.ProviderPreference,
@@ -372,6 +439,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			out: Candidate{
 				Harness:  h.Name,
 				Provider: p.Name,
+				Endpoint: p.EndpointName,
 				Model:    model,
 				Eligible: eligible,
 				Reason:   reason,
@@ -394,13 +462,10 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 			if matched := FuzzyMatch(req.Model, p.DiscoveredIDs); matched != "" {
 				return matched, ""
 			}
-			// Discovery present but no match — only reject if the model isn't
-			// in the catalog either (orphan check happens at dispatch time).
-			if in.CatalogResolver != nil {
-				if _, ok := in.CatalogResolver(req.Model, h.Surface); !ok {
-					return "", fmt.Sprintf("model %q not on provider %q", req.Model, p.Name)
-				}
-			}
+			return "", fmt.Sprintf("model %q not on provider %q", req.Model, p.Name)
+		}
+		if p.DiscoveryAttempted {
+			return "", fmt.Sprintf("provider %q has no live discovered models", p.Name)
 		}
 		return req.Model, ""
 	}
@@ -419,10 +484,14 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 					if matched := FuzzyMatch(req.ModelRef, p.DiscoveredIDs); matched != "" {
 						return matched, ""
 					}
+					return "", fmt.Sprintf("model ref %q not on provider %q", req.ModelRef, p.Name)
 				}
 				return concrete, ""
 			}
 			return "", fmt.Sprintf("model ref %q not available on surface %q", req.ModelRef, h.Surface)
+		}
+		if p.DiscoveryAttempted {
+			return "", fmt.Sprintf("provider %q has no live discovered models", p.Name)
 		}
 		// No catalog: pass the ref through.
 		return req.ModelRef, ""
@@ -462,6 +531,12 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 	// when no request fields constrained model selection — orphan validation
 	// happens at dispatch time.
 	if p.DefaultModel != "" {
+		if len(p.DiscoveredIDs) > 0 {
+			if matched := FuzzyMatch(p.DefaultModel, p.DiscoveredIDs); matched != "" {
+				return matched, ""
+			}
+			return "", fmt.Sprintf("provider default %q not on provider %q", p.DefaultModel, p.Name)
+		}
 		return p.DefaultModel, ""
 	}
 	if h.DefaultModel != "" {

@@ -58,6 +58,20 @@ type ProviderEndpoint struct {
 	BaseURL string `yaml:"base_url"`
 }
 
+// EndpointConfig describes one endpoint-first serving target. Unlike
+// ProviderConfig, endpoint blocks do not require a user-facing provider name
+// or a configured model; routing discovers live model IDs from /v1/models.
+type EndpointConfig struct {
+	Name      string              `yaml:"name,omitempty"`
+	Type      string              `yaml:"type"`
+	Host      string              `yaml:"host,omitempty"`
+	Port      int                 `yaml:"port,omitempty"`
+	BaseURL   string              `yaml:"base_url,omitempty"`
+	APIKey    string              `yaml:"api_key,omitempty"`
+	Headers   map[string]string   `yaml:"headers,omitempty"`
+	Reasoning reasoning.Reasoning `yaml:"reasoning,omitempty"`
+}
+
 // ImportMetadata records the last import source for drift detection.
 type ImportMetadata struct {
 	// Source is the import source ("pi" or "opencode").
@@ -173,6 +187,10 @@ const (
 type Config struct {
 	// Providers is a map of named provider configurations.
 	Providers map[string]ProviderConfig `yaml:"providers"`
+
+	// Endpoints is the endpoint-first provider schema. Each entry is expanded
+	// into an internal generated provider during finalization.
+	Endpoints []EndpointConfig `yaml:"endpoints,omitempty"`
 
 	// Routing configures default model-first resolution behavior.
 	Routing RoutingConfig `yaml:"routing,omitempty"`
@@ -887,6 +905,10 @@ func (c *Config) finalize() error {
 	c.warnings = nil
 	c.legacyModelRoutes = make(map[string]ModelRouteConfig)
 
+	if err := c.expandEndpointProviders(); err != nil {
+		return err
+	}
+
 	for name, pc := range c.Providers {
 		normalized := normalizeProviderConfig(pc)
 		c.Providers[name] = normalized
@@ -912,6 +934,129 @@ func (c *Config) finalize() error {
 	}
 
 	return nil
+}
+
+func (c *Config) expandEndpointProviders() error {
+	if len(c.Endpoints) == 0 {
+		return nil
+	}
+	if c.Providers == nil {
+		c.Providers = make(map[string]ProviderConfig, len(c.Endpoints))
+	}
+	firstGenerated := ""
+	used := make(map[string]bool, len(c.Providers)+len(c.Endpoints))
+	for name := range c.Providers {
+		used[name] = true
+	}
+	for i, endpoint := range c.Endpoints {
+		pc, name, err := providerConfigFromEndpoint(endpoint, i+1)
+		if err != nil {
+			return err
+		}
+		name = uniqueEndpointProviderName(name, used)
+		used[name] = true
+		c.Providers[name] = pc
+		if firstGenerated == "" {
+			firstGenerated = name
+		}
+	}
+	if c.Default == "" && firstGenerated != "" {
+		c.Default = firstGenerated
+	}
+	return nil
+}
+
+func providerConfigFromEndpoint(endpoint EndpointConfig, ordinal int) (ProviderConfig, string, error) {
+	providerType := strings.ToLower(strings.TrimSpace(endpoint.Type))
+	if providerType == "" {
+		providerType = inferProviderTypeFromBaseURL(endpoint.BaseURL)
+	}
+	if providerType == "" {
+		return ProviderConfig{}, "", fmt.Errorf("config: endpoint %d: type is required when base_url does not identify a provider", ordinal)
+	}
+	baseURL, err := endpointBaseURL(endpoint, providerType)
+	if err != nil {
+		return ProviderConfig{}, "", fmt.Errorf("config: endpoint %d: %w", ordinal, err)
+	}
+	name := strings.TrimSpace(endpoint.Name)
+	if name == "" {
+		name = generatedEndpointProviderName(endpoint, providerType, baseURL, ordinal)
+	}
+	return ProviderConfig{
+		Type:    providerType,
+		BaseURL: baseURL,
+		Endpoints: []ProviderEndpoint{{
+			Name:    "default",
+			BaseURL: baseURL,
+		}},
+		APIKey:    endpoint.APIKey,
+		Headers:   endpoint.Headers,
+		Reasoning: endpoint.Reasoning,
+	}, name, nil
+}
+
+func endpointBaseURL(endpoint EndpointConfig, providerType string) (string, error) {
+	if baseURL := strings.TrimSpace(endpoint.BaseURL); baseURL != "" {
+		return baseURL, nil
+	}
+	if providerType == "openrouter" {
+		return openrouter.DefaultBaseURL, nil
+	}
+	host := strings.TrimSpace(endpoint.Host)
+	if host == "" {
+		return "", fmt.Errorf("host or base_url is required")
+	}
+	port := endpoint.Port
+	if port == 0 {
+		port = defaultEndpointPort(providerType)
+	}
+	if port == 0 {
+		return "", fmt.Errorf("port is required for provider type %q", providerType)
+	}
+	if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+		return strings.TrimRight(fmt.Sprintf("%s:%d", strings.TrimRight(host, "/"), port), "/") + "/v1", nil
+	}
+	return fmt.Sprintf("http://%s:%d/v1", host, port), nil
+}
+
+func defaultEndpointPort(providerType string) int {
+	switch providerType {
+	case "lmstudio":
+		return 1234
+	case "omlx":
+		return 1235
+	case "ollama":
+		return 11434
+	default:
+		return 0
+	}
+}
+
+func generatedEndpointProviderName(endpoint EndpointConfig, providerType, baseURL string, ordinal int) string {
+	host := strings.TrimSpace(endpoint.Host)
+	if host == "" {
+		host = strings.TrimSpace(baseURL)
+	}
+	host = strings.NewReplacer("http://", "", "https://", "", "/v1", "", "/", "-", ":", "-").Replace(host)
+	if host == "" {
+		return fmt.Sprintf("%s-%d", providerType, ordinal)
+	}
+	if endpoint.Port > 0 {
+		return fmt.Sprintf("%s-%s-%d", providerType, host, endpoint.Port)
+	}
+	return fmt.Sprintf("%s-%s", providerType, host)
+}
+
+func uniqueEndpointProviderName(name string, used map[string]bool) string {
+	if !used[name] {
+		return name
+	}
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s-%d", name, i)
+		if !used[candidate] {
+			return candidate
+		}
+	}
 }
 
 func normalizeProviderConfig(pc ProviderConfig) ProviderConfig {

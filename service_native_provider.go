@@ -43,6 +43,9 @@ func selectConfiguredNativeProvider(sc ServiceConfig, req ServiceExecuteRequest)
 		if entry, ok := sc.Provider(req.Provider); ok {
 			return req.Provider, entry, true
 		}
+		if name, entry, ok := selectConfiguredEndpointProvider(sc, req.Provider); ok {
+			return name, entry, true
+		}
 	}
 
 	wantedType := requestedNativeProviderType(req)
@@ -70,6 +73,41 @@ func selectConfiguredNativeProvider(sc ServiceConfig, req ServiceExecuteRequest)
 	}
 
 	return "", ServiceProviderEntry{}, false
+}
+
+func selectConfiguredEndpointProvider(sc ServiceConfig, ref string) (string, ServiceProviderEntry, bool) {
+	providerName, endpointName, ok := splitEndpointProviderRef(ref)
+	if !ok {
+		return "", ServiceProviderEntry{}, false
+	}
+	entry, ok := sc.Provider(providerName)
+	if !ok {
+		return "", ServiceProviderEntry{}, false
+	}
+	for _, endpoint := range modelDiscoveryEndpoints(entry) {
+		if endpoint.Name != endpointName {
+			continue
+		}
+		entry.BaseURL = endpoint.BaseURL
+		entry.Endpoints = []ServiceProviderEndpoint{{Name: endpoint.Name, BaseURL: endpoint.BaseURL}}
+		return ref, entry, true
+	}
+	return "", ServiceProviderEntry{}, false
+}
+
+func endpointProviderRef(providerName, endpointName string) string {
+	if endpointName == "" {
+		return providerName
+	}
+	return providerName + "@" + endpointName
+}
+
+func splitEndpointProviderRef(ref string) (string, string, bool) {
+	providerName, endpointName, ok := strings.Cut(ref, "@")
+	if !ok || providerName == "" || endpointName == "" {
+		return "", "", false
+	}
+	return providerName, endpointName, true
 }
 
 func requestedNativeProviderType(req ServiceExecuteRequest) string {

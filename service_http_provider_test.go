@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -173,6 +174,143 @@ func TestExecuteHTTPProviderHarnessNoMatchDiagnostic(t *testing.T) {
 	}
 }
 
+func TestExecuteEndpointFirstRoutingSkipsDeadAndNormalizesModel(t *testing.T) {
+	var deadChatCalls atomic.Int64
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			http.Error(w, "bad gateway", http.StatusBadGateway)
+			return
+		}
+		if r.URL.Path == "/v1/chat/completions" {
+			deadChatCalls.Add(1)
+		}
+		http.Error(w, "dead endpoint should be skipped", http.StatusInternalServerError)
+	}))
+	defer dead.Close()
+
+	live := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "pong")
+	defer live.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"dead": {Type: "lmstudio", BaseURL: dead.URL + "/v1"},
+			"live": {Type: "omlx", BaseURL: live.URL + "/v1"},
+		},
+		names:       []string{"dead", "live"},
+		defaultName: "dead",
+	}
+	svc, err := New(ServiceOptions{ServiceConfig: sc})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	final := executeAndFinal(t, svc, ServiceExecuteRequest{
+		Prompt:          "ping",
+		Model:           "qwen3.6",
+		Timeout:         5 * time.Second,
+		ProviderTimeout: 2 * time.Second,
+	})
+	if final.Status != "success" {
+		t.Fatalf("Status = %q, want success (error=%q)", final.Status, final.Error)
+	}
+	if final.RoutingActual == nil {
+		t.Fatal("RoutingActual is nil")
+	}
+	if final.RoutingActual.Provider != "live" {
+		t.Fatalf("RoutingActual.Provider = %q, want live", final.RoutingActual.Provider)
+	}
+	if final.RoutingActual.Model != "Qwen3.6-35B-A3B-4bit" {
+		t.Fatalf("RoutingActual.Model = %q, want normalized server model", final.RoutingActual.Model)
+	}
+	if got := deadChatCalls.Load(); got != 0 {
+		t.Fatalf("dead endpoint chat calls = %d, want 0", got)
+	}
+}
+
+func TestExecuteEndpointFirstRoutingUsesMetricsBeforeConfigOrder(t *testing.T) {
+	slow := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "slow")
+	defer slow.Close()
+	fast := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "fast")
+	defer fast.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"slow": {Type: "lmstudio", BaseURL: slow.URL + "/v1"},
+			"fast": {Type: "lmstudio", BaseURL: fast.URL + "/v1"},
+		},
+		names:       []string{"slow", "fast"},
+		defaultName: "slow",
+	}
+	svc, err := New(ServiceOptions{ServiceConfig: sc})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Harness:  "agent",
+		Provider: "slow",
+		Model:    "Qwen3.6-35B-A3B-4bit",
+		Status:   "success",
+		Duration: 5 * time.Second,
+	}); err != nil {
+		t.Fatalf("RecordRouteAttempt slow: %v", err)
+	}
+	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Harness:  "agent",
+		Provider: "fast",
+		Model:    "Qwen3.6-35B-A3B-4bit",
+		Status:   "success",
+		Duration: 100 * time.Millisecond,
+	}); err != nil {
+		t.Fatalf("RecordRouteAttempt fast: %v", err)
+	}
+
+	final := executeAndFinal(t, svc, ServiceExecuteRequest{
+		Prompt:          "ping",
+		Model:           "qwen3.6",
+		Timeout:         5 * time.Second,
+		ProviderTimeout: 2 * time.Second,
+	})
+	if final.Status != "success" {
+		t.Fatalf("Status = %q, want success (error=%q)", final.Status, final.Error)
+	}
+	if final.RoutingActual == nil || final.RoutingActual.Provider != "fast" {
+		t.Fatalf("RoutingActual = %#v, want provider fast", final.RoutingActual)
+	}
+	if final.FinalText != "fast" {
+		t.Fatalf("FinalText = %q, want fast", final.FinalText)
+	}
+}
+
+func TestExecuteEndpointFirstRoutingNoLiveModelMatchDiagnostic(t *testing.T) {
+	live := openAIModelChatServer(t, []string{"other-model"}, "other-model", "pong")
+	defer live.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"live": {Type: "lmstudio", BaseURL: live.URL + "/v1"},
+		},
+		names:       []string{"live"},
+		defaultName: "live",
+	}
+	svc, err := New(ServiceOptions{ServiceConfig: sc})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	final := executeAndFinal(t, svc, ServiceExecuteRequest{
+		Prompt:  "ping",
+		Model:   "qwen3.6",
+		Profile: "offline",
+		Timeout: 2 * time.Second,
+	})
+	if final.Status != "failed" {
+		t.Fatalf("Status = %q, want failed", final.Status)
+	}
+	if !strings.Contains(final.Error, "no live endpoint offers a match for qwen3.6") {
+		t.Fatalf("Error = %q, want no-live-match diagnostic", final.Error)
+	}
+}
+
 func openAIChatServer(t *testing.T, content string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +340,57 @@ func openAIChatServer(t *testing.T, content string) *httptest.Server {
 				"total_tokens":      2,
 			},
 		})
+	}))
+}
+
+func openAIModelChatServer(t *testing.T, models []string, wantModel, content string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			data := make([]map[string]string, 0, len(models))
+			for _, id := range models {
+				data = append(data, map[string]string{"id": id})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+		case "/v1/chat/completions":
+			var payload struct {
+				Model string `json:"model"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if payload.Model != wantModel {
+				http.Error(w, "unexpected model "+payload.Model, http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":      "chatcmpl-test",
+				"object":  "chat.completion",
+				"created": time.Now().Unix(),
+				"model":   wantModel,
+				"choices": []map[string]any{
+					{
+						"index": 0,
+						"message": map[string]any{
+							"role":    "assistant",
+							"content": content,
+						},
+						"finish_reason": "stop",
+					},
+				},
+				"usage": map[string]int{
+					"prompt_tokens":     1,
+					"completion_tokens": 1,
+					"total_tokens":      2,
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 }
 

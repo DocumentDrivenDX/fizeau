@@ -239,6 +239,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, meta, map[string]any{
 		"harness":    decision.Harness,
 		"provider":   decision.Provider,
+		"endpoint":   decision.Endpoint,
 		"model":      decision.Model,
 		"reason":     decision.Reason,
 		"session_id": sessionID,
@@ -475,7 +476,7 @@ func toolNames(tools []agentcore.Tool) []string {
 // is wrapped with WrapProviderWithDeadlinesTimeouts so per-HTTP timeouts
 // fire independently of the request wall-clock cap.
 func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time) {
-	resolvedProvider := s.resolveNativeProvider(req)
+	resolvedProvider := s.resolveNativeProvider(nativeProviderRequest(req, decision))
 	provider := resolvedProvider.Provider
 	actualHarness := decision.Harness
 	if actualHarness == "" {
@@ -729,6 +730,20 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	}
 
 	emitFinal(out, seq, meta, final)
+}
+
+func nativeProviderRequest(req ServiceExecuteRequest, decision RouteDecision) ServiceExecuteRequest {
+	out := req
+	if decision.Provider != "" {
+		out.Provider = decision.Provider
+	}
+	if decision.Model != "" {
+		out.Model = decision.Model
+	}
+	if decision.Harness != "" {
+		out.Harness = decision.Harness
+	}
+	return out
 }
 
 // runSubprocess delegates to a Runner under internal/harnesses/<name>. It

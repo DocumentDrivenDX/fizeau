@@ -103,6 +103,54 @@ max_iterations: 15
 	assert.Equal(t, "qwen3.5-7b", p.Model)
 }
 
+func TestLoad_EndpointOnlyBlocksExpandToProviders(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".agent")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+routing:
+  default_model: qwen3.6
+endpoints:
+  - type: lmstudio
+    host: vidar
+    port: 1234
+  - type: omlx
+    host: vidar
+    port: 1235
+  - type: openrouter
+    api_key: sk-test
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	names := cfg.ProviderNames()
+	require.Len(t, names, 3)
+	assert.Contains(t, names, "lmstudio-vidar-1234")
+	assert.Contains(t, names, "omlx-vidar-1235")
+	assert.Contains(t, names, "openrouter-openrouter.ai-api")
+	assert.Equal(t, "qwen3.6", cfg.Routing.DefaultModel)
+
+	lm, ok := cfg.GetProvider("lmstudio-vidar-1234")
+	require.True(t, ok)
+	assert.Equal(t, "lmstudio", lm.Type)
+	assert.Equal(t, "http://vidar:1234/v1", lm.BaseURL)
+	assert.Empty(t, lm.Model)
+
+	om, ok := cfg.GetProvider("omlx-vidar-1235")
+	require.True(t, ok)
+	assert.Equal(t, "http://vidar:1235/v1", om.BaseURL)
+	assert.Empty(t, om.Model)
+
+	router, ok := cfg.GetProvider("openrouter-openrouter.ai-api")
+	require.True(t, ok)
+	assert.Equal(t, "openrouter", router.Type)
+	assert.Equal(t, "sk-test", router.APIKey)
+	assert.Empty(t, router.Model)
+}
+
 func TestLoad_EnvExpansion(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()

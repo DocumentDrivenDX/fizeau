@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
 
 const defaultRouteAttemptCooldown = 30 * time.Second
@@ -29,6 +31,10 @@ func (s *service) RecordRouteAttempt(_ context.Context, attempt RouteAttempt) er
 	if s.routeAttempts == nil {
 		s.routeAttempts = make(map[routeAttemptKey]routeAttemptRecord)
 	}
+	if s.routeMetrics == nil {
+		s.routeMetrics = make(map[routeAttemptKey]routeMetricRecord)
+	}
+	s.recordRouteMetricLocked(key, routeAttemptSucceeded(status), attempt.Duration, recordedAt)
 
 	if routeAttemptSucceeded(status) {
 		s.clearRouteAttemptFailuresLocked(key)
@@ -44,6 +50,19 @@ func (s *service) RecordRouteAttempt(_ context.Context, attempt RouteAttempt) er
 		recordedAt: recordedAt,
 	}
 	return nil
+}
+
+func (s *service) recordRouteMetricLocked(key routeAttemptKey, success bool, duration time.Duration, recordedAt time.Time) {
+	record := s.routeMetrics[key]
+	record.attempts++
+	if success {
+		record.successes++
+	}
+	if duration > 0 {
+		record.totalDuration += duration
+	}
+	record.recordedAt = recordedAt
+	s.routeMetrics[key] = record
 }
 
 func normalizeRouteAttemptKey(attempt RouteAttempt) routeAttemptKey {
@@ -128,4 +147,40 @@ func routeAttemptCooldown(record routeAttemptRecord, ttl time.Duration) *Cooldow
 		LastError:   record.err,
 		LastAttempt: record.recordedAt,
 	}
+}
+
+func (s *service) routeMetricSignals(now time.Time, ttl time.Duration) (map[string]float64, map[string]float64) {
+	if ttl <= 0 {
+		ttl = defaultRouteAttemptCooldown
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	now = now.UTC()
+
+	s.routeAttemptMu.RLock()
+	defer s.routeAttemptMu.RUnlock()
+	if len(s.routeMetrics) == 0 {
+		return nil, nil
+	}
+	successRate := make(map[string]float64, len(s.routeMetrics))
+	latencyMS := make(map[string]float64, len(s.routeMetrics))
+	for key, record := range s.routeMetrics {
+		if record.attempts <= 0 {
+			continue
+		}
+		if !record.recordedAt.IsZero() && !record.recordedAt.Add(ttl).After(now) {
+			continue
+		}
+		metricKey := routingProviderModelKey(key)
+		successRate[metricKey] = float64(record.successes) / float64(record.attempts)
+		if record.totalDuration > 0 {
+			latencyMS[metricKey] = float64(record.totalDuration.Milliseconds()) / float64(record.attempts)
+		}
+	}
+	return successRate, latencyMS
+}
+
+func routingProviderModelKey(key routeAttemptKey) string {
+	return routing.ProviderModelKey(key.Provider, key.Endpoint, key.Model)
 }

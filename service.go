@@ -323,6 +323,7 @@ type RouteRequest struct {
 type RouteDecision struct {
 	Harness  string
 	Provider string
+	Endpoint string
 	Model    string
 	Reason   string
 }
@@ -444,6 +445,7 @@ type service struct {
 
 	routeAttemptMu sync.RWMutex
 	routeAttempts  map[routeAttemptKey]routeAttemptRecord
+	routeMetrics   map[routeAttemptKey]routeMetricRecord
 
 	// catalog is the service-scope model-catalog cache. Populated lazily
 	// on first use by routing + chat paths; shared across requests so the
@@ -472,6 +474,13 @@ type routeAttemptRecord struct {
 	err        string
 	duration   time.Duration
 	recordedAt time.Time
+}
+
+type routeMetricRecord struct {
+	attempts      int
+	successes     int
+	totalDuration time.Duration
+	recordedAt    time.Time
 }
 
 // loadServiceConfig, when non-nil, is called by New to load a ServiceConfig
@@ -507,10 +516,11 @@ func New(opts ServiceOptions) (DdxAgent, error) {
 		opts.ServiceConfig = sc
 	}
 	svc := &service{
-		opts:     opts,
-		registry: harnesses.NewRegistry(),
-		hub:      newSessionHub(),
-		catalog:  newCatalogCache(catalogCacheOptions{}),
+		opts:         opts,
+		registry:     harnesses.NewRegistry(),
+		hub:          newSessionHub(),
+		catalog:      newCatalogCache(catalogCacheOptions{}),
+		routeMetrics: make(map[routeAttemptKey]routeMetricRecord),
 	}
 	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()

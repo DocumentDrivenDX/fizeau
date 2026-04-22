@@ -43,6 +43,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	result := &RouteDecision{
 		Harness:  dec.Harness,
 		Provider: dec.Provider,
+		Endpoint: dec.Endpoint,
 		Model:    dec.Model,
 		Reason:   dec.Reason,
 	}
@@ -210,67 +211,95 @@ func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
 			}
 		}
 
-		// Native "agent" harness: enumerate configured providers.
+		// Native "agent" harness: enumerate live configured provider endpoints.
 		if name == "agent" && s.opts.ServiceConfig != nil {
 			for _, pname := range s.opts.ServiceConfig.ProviderNames() {
 				pcfg, ok := s.opts.ServiceConfig.Provider(pname)
 				if !ok {
 					continue
 				}
-				pe := routing.ProviderEntry{
-					Name:          pname,
-					BaseURL:       pcfg.BaseURL,
-					DefaultModel:  pcfg.Model,
-					SupportsTools: true,
-				}
-				// Populate DiscoveredIDs from the live /v1/models cache so
-				// FuzzyMatch matches against what the server actually
-				// serves — not the statically-configured default model
-				// string. Silent-fails: if the probe errors or the endpoint
-				// doesn't support discovery, DiscoveredIDs stays empty
-				// and routing falls back to DefaultModel behaviour.
-				if s.catalog != nil {
-					ids := s.probeProviderDiscoveredIDs(ctx, pcfg)
-					if len(ids) > 0 {
-						pe.DiscoveredIDs = ids
-					}
-				}
-				entry.Providers = append(entry.Providers, pe)
+				entry.Providers = append(entry.Providers, s.liveProviderEntries(ctx, pname, pcfg)...)
 			}
 		}
 		entries = append(entries, entry)
 	}
+	successRate, latencyMS := s.routeMetricSignals(time.Now(), s.routeAttemptTTL())
 	return routing.Inputs{
-		Harnesses: entries,
+		Harnesses:           entries,
+		ProviderSuccessRate: successRate,
+		ObservedLatencyMS:   latencyMS,
 	}
 }
 
-// probeProviderDiscoveredIDs returns the live /v1/models catalog for the
-// given provider via the service catalog cache. Returns nil on any error
-// or when discovery is unsupported; callers then fall back to the
-// configured DefaultModel behaviour.
+func (s *service) liveProviderEntries(ctx context.Context, providerName string, pcfg ServiceProviderEntry) []routing.ProviderEntry {
+	if providerUsesLiveDiscovery(pcfg.Type) && s.catalog != nil {
+		endpoints := modelDiscoveryEndpoints(pcfg)
+		out := make([]routing.ProviderEntry, 0, len(endpoints))
+		for _, endpoint := range endpoints {
+			ids, ok := s.probeEndpointDiscoveredIDs(ctx, pcfg, endpoint.BaseURL)
+			if !ok || len(ids) == 0 {
+				continue
+			}
+			routeName := providerName
+			if len(endpoints) > 1 {
+				routeName = endpointProviderRef(providerName, endpoint.Name)
+			}
+			out = append(out, routing.ProviderEntry{
+				Name:               routeName,
+				BaseURL:            endpoint.BaseURL,
+				EndpointName:       endpoint.Name,
+				EndpointBaseURL:    endpoint.BaseURL,
+				DefaultModel:       pcfg.Model,
+				DiscoveredIDs:      ids,
+				DiscoveryAttempted: true,
+				SupportsTools:      true,
+			})
+		}
+		return out
+	}
+	return []routing.ProviderEntry{{
+		Name:          providerName,
+		BaseURL:       pcfg.BaseURL,
+		DefaultModel:  pcfg.Model,
+		SupportsTools: true,
+	}}
+}
+
+func providerUsesLiveDiscovery(providerType string) bool {
+	switch normalizeServiceProviderType(providerType) {
+	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai":
+		return true
+	default:
+		return false
+	}
+}
+
+// probeEndpointDiscoveredIDs returns the live /v1/models catalog for one
+// endpoint via the service catalog cache. Reachability failures, timeouts,
+// unsupported discovery, and empty catalogs are treated as non-live so routing
+// skips the endpoint before any chat request is attempted.
 //
 // Probes use a 2-second deadline so a slow or partially-degraded endpoint
 // can't block route resolution. The cache's stale-while-revalidate flow
 // means this is usually sub-millisecond (fresh or stale hit).
-func (s *service) probeProviderDiscoveredIDs(ctx context.Context, pcfg ServiceProviderEntry) []string {
-	if pcfg.BaseURL == "" {
-		return nil
+func (s *service) probeEndpointDiscoveredIDs(ctx context.Context, pcfg ServiceProviderEntry, baseURL string) ([]string, bool) {
+	if s.catalog == nil || baseURL == "" {
+		return nil, false
 	}
-	key := newCatalogCacheKey(pcfg.BaseURL, pcfg.APIKey, nil)
+	key := newCatalogCacheKey(baseURL, pcfg.APIKey, nil)
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	probe := func(ctx context.Context) ([]string, error) {
-		return probeOpenAIModels(ctx, pcfg.BaseURL, pcfg.APIKey)
+		return probeOpenAIModels(ctx, baseURL, pcfg.APIKey)
 	}
 	result, err := s.catalog.Get(probeCtx, key, probe)
 	if err != nil {
-		return nil
+		return nil, false
 	}
-	if !result.DiscoverySupported {
-		return nil
+	if !result.DiscoverySupported || len(result.IDs) == 0 {
+		return nil, false
 	}
-	return result.IDs
+	return result.IDs, true
 }
 
 // resolveExecuteRouteWithEngine is the post-engine variant of resolveExecuteRoute.
