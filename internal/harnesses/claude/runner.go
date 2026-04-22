@@ -316,6 +316,11 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 		select {
 		case <-ctx.Done():
 			killProcessGroup(cmd)
+			select {
+			case <-stdoutDone:
+			case <-time.After(2 * time.Second):
+				forceKillProcessGroup(cmd)
+			}
 		case <-stdoutDone:
 		}
 	}()

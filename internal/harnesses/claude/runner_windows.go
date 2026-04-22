@@ -19,3 +19,7 @@ func killProcessGroup(cmd *osexec.Cmd) {
 	}
 	_ = cmd.Process.Kill()
 }
+
+func forceKillProcessGroup(cmd *osexec.Cmd) {
+	killProcessGroup(cmd)
+}

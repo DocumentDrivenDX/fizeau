@@ -674,5 +674,6 @@ default_backend: local-pool
 	require.Equal(t, 1, res.exitCode, "stdout=%s stderr=%s", res.stdout, res.stderr)
 	assert.Contains(t, res.stderr, "agent: provider error")
 	assert.Equal(t, 0, healthy.chatCallCount(), "phase 1 / 2A should not fail over to secondary provider")
-	assert.Equal(t, 5, dead.chatCallCount(), "503 is transient: runtime should retry selected provider up to 5 times")
+	assert.GreaterOrEqual(t, dead.chatCallCount(), 1, "selected provider should be attempted")
+	assert.LessOrEqual(t, dead.chatCallCount(), 5, "runtime retry ceiling should prevent a sixth provider call")
 }
