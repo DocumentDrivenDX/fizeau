@@ -49,3 +49,24 @@ func ExampleErrProfilePinConflict() {
 	// ddx failed bead: profile=local conflict=Harness=claude constraint=local-only
 	// true
 }
+
+func ExampleRouteDecision_candidates() {
+	decision := &agent.RouteDecision{
+		Candidates: []agent.RouteCandidate{
+			{Harness: "agent", Provider: "local", Model: "qwen", Eligible: false, Reason: "provider is in cooldown"},
+			{Harness: "codex", Model: "gpt-5.4", Eligible: true, Reason: "score=71.2"},
+		},
+	}
+
+	for _, candidate := range decision.Candidates {
+		fmt.Printf("%s/%s eligible=%t reason=%s\n",
+			candidate.Harness,
+			candidate.Model,
+			candidate.Eligible,
+			candidate.Reason)
+	}
+
+	// Output:
+	// agent/qwen eligible=false reason=provider is in cooldown
+	// codex/gpt-5.4 eligible=true reason=score=71.2
+}

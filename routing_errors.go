@@ -11,6 +11,31 @@ var (
 	errProfilePinConflict       = errors.New("agent: profile pin conflict")
 )
 
+// DecisionWithCandidates is implemented by routing errors that retain the
+// evaluated candidate trace for a failed ResolveRoute call.
+type DecisionWithCandidates interface {
+	error
+	// RouteCandidates returns the evaluated candidates that led to the error.
+	RouteCandidates() []RouteCandidate
+}
+
+type routeDecisionError struct {
+	err        error
+	candidates []RouteCandidate
+}
+
+func (e *routeDecisionError) Error() string {
+	return e.err.Error()
+}
+
+func (e *routeDecisionError) Unwrap() error {
+	return e.err
+}
+
+func (e *routeDecisionError) RouteCandidates() []RouteCandidate {
+	return append([]RouteCandidate(nil), e.candidates...)
+}
+
 // ErrHarnessModelIncompatible reports an explicit Harness+Model pin that the
 // harness allow-list cannot serve.
 //

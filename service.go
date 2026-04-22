@@ -322,11 +322,39 @@ type RouteRequest struct {
 
 // RouteDecision is the result of ResolveRoute.
 type RouteDecision struct {
-	Harness  string
+	// Harness is the selected harness name.
+	Harness string
+	// Provider is the selected provider for native agent routes.
 	Provider string
+	// Endpoint is the selected named endpoint when the provider exposes more
+	// than one endpoint.
 	Endpoint string
-	Model    string
-	Reason   string
+	// Model is the selected concrete model.
+	Model string
+	// Reason summarizes why the selected candidate won.
+	Reason string
+	// Candidates is the full ranked decision trace, including rejected
+	// candidates and their rejection reasons.
+	Candidates []RouteCandidate
+}
+
+// RouteCandidate is one routing candidate evaluated by ResolveRoute.
+type RouteCandidate struct {
+	// Harness is the candidate harness name.
+	Harness string
+	// Provider is the candidate provider name for native agent routes.
+	Provider string
+	// Endpoint is the provider endpoint name when applicable.
+	Endpoint string
+	// Model is the candidate concrete model.
+	Model string
+	// Score is the routing score assigned before final ordering.
+	Score float64
+	// Eligible reports whether the candidate passed all routing gates.
+	Eligible bool
+	// Reason is the scoring reason for eligible candidates or the rejection
+	// reason for ineligible candidates.
+	Reason string
 }
 
 // RouteAttempt is caller feedback about one attempted route candidate.

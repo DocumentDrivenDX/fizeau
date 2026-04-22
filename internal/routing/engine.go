@@ -234,6 +234,9 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 	// Compute scores.
 	for i := range ranked {
 		ranked[i].out.Score = scorePolicy(req.Profile, ranked[i].internal)
+		if ranked[i].out.Eligible {
+			ranked[i].out.Reason = fmt.Sprintf("profile=%s; score=%.1f", req.Profile, ranked[i].out.Score)
+		}
 	}
 
 	// Sort: eligible first, then descending score, then locality, then alphabetical.

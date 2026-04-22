@@ -40,39 +40,83 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	}
 	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
+	result := routeDecisionFromInternal(dec)
 	if err != nil {
-		return nil, publicRoutingError(err)
-	}
-	result := &RouteDecision{
-		Harness:  dec.Harness,
-		Provider: dec.Provider,
-		Endpoint: dec.Endpoint,
-		Model:    dec.Model,
-		Reason:   dec.Reason,
+		if result == nil {
+			result = &RouteDecision{}
+		}
+		return result, publicRoutingError(err, result.Candidates)
 	}
 	// Cache the decision so RouteStatus can surface LastDecision.
 	s.cacheRouteDecision(req.Model, result)
 	return result, nil
 }
 
-func publicRoutingError(err error) error {
+func routeDecisionFromInternal(dec *routing.Decision) *RouteDecision {
+	if dec == nil {
+		return nil
+	}
+	return &RouteDecision{
+		Harness:    dec.Harness,
+		Provider:   dec.Provider,
+		Endpoint:   dec.Endpoint,
+		Model:      dec.Model,
+		Reason:     dec.Reason,
+		Candidates: routeCandidatesFromInternal(dec.Candidates),
+	}
+}
+
+func routeCandidatesFromInternal(candidates []routing.Candidate) []RouteCandidate {
+	if len(candidates) == 0 {
+		return nil
+	}
+	out := make([]RouteCandidate, len(candidates))
+	for i, candidate := range candidates {
+		out[i] = routeCandidateFromInternal(candidate)
+	}
+	return out
+}
+
+func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
+	return RouteCandidate{
+		Harness:  candidate.Harness,
+		Provider: candidate.Provider,
+		Endpoint: candidate.Endpoint,
+		Model:    candidate.Model,
+		Score:    candidate.Score,
+		Eligible: candidate.Eligible,
+		Reason:   candidate.Reason,
+	}
+}
+
+func publicRoutingError(err error, candidates []RouteCandidate) error {
 	var modelErr *routing.ErrHarnessModelIncompatible
 	if errors.As(err, &modelErr) {
-		return &ErrHarnessModelIncompatible{
+		return withRouteCandidates(&ErrHarnessModelIncompatible{
 			Harness:         modelErr.Harness,
 			Model:           modelErr.Model,
 			SupportedModels: append([]string(nil), modelErr.SupportedModels...),
-		}
+		}, candidates)
 	}
 	var profileErr *routing.ErrProfilePinConflict
 	if errors.As(err, &profileErr) {
-		return &ErrProfilePinConflict{
+		return withRouteCandidates(&ErrProfilePinConflict{
 			Profile:           profileErr.Profile,
 			ConflictingPin:    profileErr.ConflictingPin,
 			ProfileConstraint: profileErr.ProfileConstraint,
-		}
+		}, candidates)
 	}
-	return err
+	return withRouteCandidates(err, candidates)
+}
+
+func withRouteCandidates(err error, candidates []RouteCandidate) error {
+	if err == nil || len(candidates) == 0 {
+		return err
+	}
+	return &routeDecisionError{
+		err:        err,
+		candidates: append([]RouteCandidate(nil), candidates...),
+	}
 }
 
 func (s *service) applyRouteAttemptCooldowns(in *routing.Inputs) {
