@@ -219,7 +219,7 @@ func ProviderModelKey(provider, endpoint, model string) string {
 //  1. Enumerates (harness, provider, model) candidates from inputs.
 //  2. Applies gating (capability, override, model-pin, surface).
 //  3. Scores per profile policy with cooldown demotion + perf bias.
-//  4. Sorts viable → score → locality → name.
+//  4. Sorts viable → score → cost → locality → name.
 //  5. Returns the top viable candidate with the full ranked list.
 //
 // Returns an error only when no viable candidate exists.

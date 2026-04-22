@@ -3,14 +3,13 @@ package agent
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
@@ -287,51 +286,110 @@ func TestBuildRoutingInputsHonorsLocalCostOption(t *testing.T) {
 }
 
 func TestResolveRouteNearQuotaClaudeDemotesBelowOpenRouter(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	requireNoError(t, claudeharness.WriteClaudeQuota(filepath.Join(dir, "claude-quota.json"), claudeharness.ClaudeQuotaSnapshot{
-		CapturedAt:        time.Now().UTC(),
-		FiveHourLimit:     100,
-		FiveHourRemaining: 8,
-		WeeklyLimit:       100,
-		WeeklyRemaining:   8,
-		Source:            "test",
-	}))
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-04-22T00:00:00Z
+models:
+  sonnet-4.6:
+    family: claude-sonnet
+    status: active
+    cost_input_per_m: 3
+    cost_output_per_m: 15
+    surfaces:
+      agent.openai: sonnet-4.6
+      claude-code: sonnet-4.6
+targets:
+  standard:
+    family: claude-sonnet
+    candidates: [sonnet-4.6]
+`)
+	svc := &service{}
 
-	registry := harnesses.NewRegistry()
-	registry.LookPath = func(file string) (string, error) {
-		if file == "claude" {
-			return "/usr/bin/claude", nil
-		}
-		return "", os.ErrNotExist
+	claude := routing.HarnessEntry{
+		Name:                "claude",
+		Surface:             "claude",
+		CostClass:           "medium",
+		IsSubscription:      true,
+		AutoRoutingEligible: true,
+		Available:           true,
+		QuotaOK:             true,
+		QuotaPercentUsed:    92,
+		QuotaTrend:          routing.QuotaTrendExhausting,
+		SubscriptionOK:      true,
+		DefaultModel:        "sonnet-4.6",
+		ExactPinSupport:     true,
+		SupportsTools:       true,
 	}
-	sc := &fakeServiceConfig{
-		providers: map[string]ServiceProviderEntry{
-			"openrouter": {Type: "openrouter", BaseURL: "https://openrouter.ai/api/v1", Model: "sonnet-4.6"},
+	svc.applySubscriptionRoutingCost(&claude, catalog)
+
+	openrouterProvider := routing.ProviderEntry{
+		Name:          "openrouter",
+		BaseURL:       "https://openrouter.ai/api/v1",
+		DefaultModel:  "sonnet-4.6",
+		SupportsTools: true,
+	}
+	svc.applyEndpointRoutingCost(&openrouterProvider, ServiceProviderEntry{
+		Type:    "openrouter",
+		BaseURL: "https://openrouter.ai/api/v1",
+		Model:   "sonnet-4.6",
+	}, catalog)
+
+	in := routing.Inputs{
+		Harnesses: []routing.HarnessEntry{
+			claude,
+			{
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "medium",
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				Providers:           []routing.ProviderEntry{openrouterProvider},
+			},
 		},
-		names:       []string{"openrouter"},
-		defaultName: "openrouter",
+		ObservedSpeedTPS: map[string]float64{
+			// Neutralize Claude's near-quota score penalty so the final base
+			// scores tie and the cost tiebreak is the deciding dimension.
+			routing.ProviderModelKey("", "", "sonnet-4.6"): 1900,
+		},
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: registry}
-
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "standard"})
+	dec, err := routing.Resolve(routing.Request{
+		Profile:            "standard",
+		Model:              "sonnet-4.6",
+		ProviderPreference: routing.ProviderPreferenceSubscriptionFirst,
+	}, in)
 	if err != nil {
-		t.Fatalf("ResolveRoute: %v", err)
+		t.Fatalf("Resolve: %v", err)
 	}
 	if dec.Harness != "agent" || dec.Provider != "openrouter" {
 		t.Fatalf("near-quota route selected harness=%q provider=%q, want agent/openrouter", dec.Harness, dec.Provider)
 	}
-	var sawClaude bool
+	var claudeCandidate, openrouterCandidate routing.Candidate
 	for _, candidate := range dec.Candidates {
-		if candidate.Harness == "claude" {
-			sawClaude = true
-			if candidate.CostSource != routing.CostSourceSubscription || candidate.CostUSDPer1kTokens <= 0 {
-				t.Fatalf("claude cost metadata=%#v, want subscription cost", candidate)
-			}
+		switch {
+		case candidate.Harness == "claude":
+			claudeCandidate = candidate
+		case candidate.Harness == "agent" && candidate.Provider == "openrouter":
+			openrouterCandidate = candidate
 		}
 	}
-	if !sawClaude {
-		t.Fatalf("expected claude candidate in trace: %#v", dec.Candidates)
+	if claudeCandidate.Harness == "" || openrouterCandidate.Harness == "" {
+		t.Fatalf("expected claude and openrouter candidates in trace: %#v", dec.Candidates)
+	}
+	if claudeCandidate.Score != openrouterCandidate.Score {
+		t.Fatalf("candidate scores should tie before cost tiebreak: claude=%.1f openrouter=%.1f", claudeCandidate.Score, openrouterCandidate.Score)
+	}
+	if claudeCandidate.CostSource != routing.CostSourceSubscription || !floatNear(claudeCandidate.CostUSDPer1kTokens, 0.0108) {
+		t.Fatalf("claude cost metadata=%#v, want 92%% subscription cost 0.0108", claudeCandidate)
+	}
+	if openrouterCandidate.CostSource != routing.CostSourceCatalog || !floatNear(openrouterCandidate.CostUSDPer1kTokens, 0.009) {
+		t.Fatalf("openrouter cost metadata=%#v, want catalog cost 0.009", openrouterCandidate)
+	}
+	if !(openrouterCandidate.CostUSDPer1kTokens < claudeCandidate.CostUSDPer1kTokens) {
+		t.Fatalf("openrouter cost %.4f should be below claude %.4f", openrouterCandidate.CostUSDPer1kTokens, claudeCandidate.CostUSDPer1kTokens)
 	}
 }
 
@@ -392,6 +450,10 @@ func requireNoError(t *testing.T, err error) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func floatNear(got, want float64) bool {
+	return math.Abs(got-want) < 1e-12
 }
 
 func TestDecisionWithCandidatesCopiesInput(t *testing.T) {
