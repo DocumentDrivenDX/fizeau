@@ -379,15 +379,13 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 
 	// Inject a fake refresher so no real PTY probe is invoked.
 	refreshCalled := false
-	orig := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		refreshCalled = true
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, nil, nil
-	}
-	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = orig })
+	})
 
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
 	// HealthCheck for "claude" requires the binary to be discoverable.
@@ -436,12 +434,10 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 
 	// Inject a fake refresher that must NOT be called.
 	refreshCalled := false
-	orig := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		refreshCalled = true
 		return nil, nil, nil
-	}
-	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = orig })
+	})
 
 	healthCheckRefreshClaudeQuota(context.Background())
 
@@ -465,12 +461,10 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 func TestHealthCheck_GeminiDoesNotInvokeQuotaProbe(t *testing.T) {
 	// Inject a counter to detect unexpected calls.
 	probeCalled := false
-	orig := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		probeCalled = true
 		return nil, nil, nil
-	}
-	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = orig })
+	})
 
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
 	// "gemini" is registered but unavailable in CI (binary not found).
@@ -498,12 +492,10 @@ func TestHealthCheck_CodexRefreshesQuotaWhenStale(t *testing.T) {
 	}
 
 	refreshCalled := false
-	orig := healthCheckCodexQuotaRefresher
-	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 		refreshCalled = true
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	}
-	t.Cleanup(func() { healthCheckCodexQuotaRefresher = orig })
+	})
 
 	healthCheckRefreshCodexQuota(context.Background())
 
@@ -541,12 +533,10 @@ func TestHealthCheck_CodexUsesFreshSessionQuotaBeforePTY(t *testing.T) {
 	writeServiceCodexSessionLine(t, filepath.Join(sessionRoot, "fresh.jsonl"), captured, serviceCodexTokenCountLine(captured, "pro", 12))
 
 	refreshCalled := false
-	orig := healthCheckCodexQuotaRefresher
-	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 		refreshCalled = true
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 1, State: "ok"}}, nil
-	}
-	t.Cleanup(func() { healthCheckCodexQuotaRefresher = orig })
+	})
 
 	healthCheckRefreshCodexQuota(context.Background())
 
@@ -600,12 +590,10 @@ func TestHealthCheck_CodexFallsBackToPTYForStaleOrNonSubsidizedSessionQuota(t *t
 			writeServiceCodexSessionLine(t, filepath.Join(sessionRoot, "session.jsonl"), captured, serviceCodexTokenCountLine(captured, tc.planType, 12))
 
 			refreshCalled := false
-			orig := healthCheckCodexQuotaRefresher
-			healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+			setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 				refreshCalled = true
 				return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 3, State: "ok"}}, nil
-			}
-			t.Cleanup(func() { healthCheckCodexQuotaRefresher = orig })
+			})
 
 			healthCheckRefreshCodexQuota(context.Background())
 			if !refreshCalled {
@@ -634,24 +622,20 @@ func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 	var codexCalls atomic.Int32
 	done := make(chan string, 2)
 
-	origClaude := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		claudeCalls.Add(1)
 		done <- "claude"
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	}
-	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+	})
 
-	origCodex := healthCheckCodexQuotaRefresher
-	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 		codexCalls.Add(1)
 		done <- "codex"
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	}
-	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+	})
 
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
 	if _, err := svc.ListHarnesses(context.Background()); err != nil {
@@ -680,20 +664,16 @@ func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
-	origClaude := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	}
-	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+	})
 
-	origCodex := healthCheckCodexQuotaRefresher
-	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	}
-	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+	})
 
 	if _, err := New(ServiceOptions{QuotaRefreshStartupWait: time.Second}); err != nil {
 		t.Fatalf("New: %v", err)
@@ -722,22 +702,18 @@ func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 		}
 	})
 
-	origClaude := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		<-release
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	}
-	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+	})
 
-	origCodex := healthCheckCodexQuotaRefresher
-	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 		<-release
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	}
-	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+	})
 
 	start := time.Now()
 	if _, err := New(ServiceOptions{QuotaRefreshStartupWait: 20 * time.Millisecond}); err != nil {
@@ -764,22 +740,18 @@ func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
 
 	var claudeCalls atomic.Int32
 	var codexCalls atomic.Int32
-	origClaude := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		claudeCalls.Add(1)
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	}
-	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+	})
 
-	origCodex := healthCheckCodexQuotaRefresher
-	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 		codexCalls.Add(1)
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	}
-	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -815,24 +787,20 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 	codexStarted := make(chan struct{}, 1)
 	release := make(chan struct{})
 
-	origClaude := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		claudeStarted <- struct{}{}
 		<-release
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	}
-	t.Cleanup(func() { healthCheckClaudeQuotaRefresher = origClaude })
+	})
 
-	origCodex := healthCheckCodexQuotaRefresher
-	healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 		codexStarted <- struct{}{}
 		<-release
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	}
-	t.Cleanup(func() { healthCheckCodexQuotaRefresher = origCodex })
+	})
 	t.Cleanup(func() { close(release) })
 
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
@@ -860,13 +828,45 @@ func resetPrimaryQuotaRefreshForTest(t *testing.T) {
 	})
 }
 
+func setClaudeQuotaRefresherForTest(t *testing.T, fn func(time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error)) {
+	t.Helper()
+	healthCheckQuotaProbeMu.Lock()
+	orig := healthCheckClaudeQuotaRefresher
+	healthCheckClaudeQuotaRefresher = fn
+	healthCheckQuotaProbeMu.Unlock()
+	t.Cleanup(func() {
+		healthCheckQuotaProbeMu.Lock()
+		healthCheckClaudeQuotaRefresher = orig
+		healthCheckQuotaProbeMu.Unlock()
+	})
+}
+
+func setCodexQuotaRefresherForTest(t *testing.T, fn func(time.Duration) ([]harnesses.QuotaWindow, error)) {
+	t.Helper()
+	healthCheckQuotaProbeMu.Lock()
+	orig := healthCheckCodexQuotaRefresher
+	healthCheckCodexQuotaRefresher = fn
+	healthCheckQuotaProbeMu.Unlock()
+	t.Cleanup(func() {
+		healthCheckQuotaProbeMu.Lock()
+		healthCheckCodexQuotaRefresher = orig
+		healthCheckQuotaProbeMu.Unlock()
+	})
+}
+
 func disableCodexSessionQuotaReaderForTest(t *testing.T) {
 	t.Helper()
+	healthCheckQuotaProbeMu.Lock()
 	orig := healthCheckCodexSessionQuotaReader
 	healthCheckCodexSessionQuotaReader = func() (*codexharness.CodexQuotaSnapshot, bool) {
 		return nil, false
 	}
-	t.Cleanup(func() { healthCheckCodexSessionQuotaReader = orig })
+	healthCheckQuotaProbeMu.Unlock()
+	t.Cleanup(func() {
+		healthCheckQuotaProbeMu.Lock()
+		healthCheckCodexSessionQuotaReader = orig
+		healthCheckQuotaProbeMu.Unlock()
+	})
 }
 
 func writeServiceCodexSessionLine(t *testing.T, path string, mtime time.Time, line string) {

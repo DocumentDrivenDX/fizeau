@@ -46,6 +46,8 @@ var healthCheckCodexSessionQuotaReader = func() (*codexharness.CodexQuotaSnapsho
 	return codexharness.ReadCodexQuotaFromSessionTokenCounts()
 }
 
+var healthCheckQuotaProbeMu sync.RWMutex
+
 var primaryQuotaRefresh = &quotaRefreshCoordinator{
 	lastAttempt: make(map[string]time.Time),
 	inFlight:    make(map[string]bool),
@@ -518,7 +520,7 @@ func refreshClaudeQuotaCache(_ context.Context, debounce, timeout time.Duration)
 	}
 
 	// Cache is absent or stale - run a direct PTY probe with a bounded timeout.
-	windows, acct, probeErr := healthCheckClaudeQuotaRefresher(timeout)
+	windows, acct, probeErr := callHealthCheckClaudeQuotaRefresher(timeout)
 	if probeErr != nil || len(windows) == 0 {
 		return
 	}
@@ -562,12 +564,12 @@ func refreshCodexQuotaCache(_ context.Context, debounce, timeout time.Duration) 
 		return
 	}
 
-	if sessionSnap, ok := healthCheckCodexSessionQuotaReader(); ok && codexSessionQuotaUsable(sessionSnap, debounce) {
+	if sessionSnap, ok := callHealthCheckCodexSessionQuotaReader(); ok && codexSessionQuotaUsable(sessionSnap, debounce) {
 		_ = codexharness.WriteCodexQuota(cachePath, *sessionSnap)
 		return
 	}
 
-	windows, probeErr := healthCheckCodexQuotaRefresher(timeout)
+	windows, probeErr := callHealthCheckCodexQuotaRefresher(timeout)
 	if probeErr != nil || len(windows) == 0 {
 		return
 	}
@@ -577,6 +579,27 @@ func refreshCodexQuotaCache(_ context.Context, debounce, timeout time.Duration) 
 		Windows:    windows,
 		Source:     "pty",
 	})
+}
+
+func callHealthCheckClaudeQuotaRefresher(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	healthCheckQuotaProbeMu.RLock()
+	fn := healthCheckClaudeQuotaRefresher
+	healthCheckQuotaProbeMu.RUnlock()
+	return fn(timeout)
+}
+
+func callHealthCheckCodexQuotaRefresher(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	healthCheckQuotaProbeMu.RLock()
+	fn := healthCheckCodexQuotaRefresher
+	healthCheckQuotaProbeMu.RUnlock()
+	return fn(timeout)
+}
+
+func callHealthCheckCodexSessionQuotaReader() (*codexharness.CodexQuotaSnapshot, bool) {
+	healthCheckQuotaProbeMu.RLock()
+	fn := healthCheckCodexSessionQuotaReader
+	healthCheckQuotaProbeMu.RUnlock()
+	return fn()
 }
 
 func codexSessionQuotaUsable(snap *codexharness.CodexQuotaSnapshot, debounce time.Duration) bool {

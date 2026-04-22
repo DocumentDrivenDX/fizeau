@@ -61,9 +61,9 @@ var _ net.Error = testNetErr{}
 
 func TestClassifyNetwork(t *testing.T) {
 	cases := []struct {
-		name       string
-		err        error
-		wantWrap   bool // true → expect ReachabilityError wrap
+		name     string
+		err      error
+		wantWrap bool // true → expect ReachabilityError wrap
 	}{
 		{"nil passes through", nil, false},
 		{"context canceled bubbles", context.Canceled, false},
@@ -124,10 +124,10 @@ func TestShouldFailover(t *testing.T) {
 	serverError := &HTTPStatusError{Endpoint: "url", Operation: "chat", StatusCode: 503, Body: "svc unavailable"}
 
 	cases := []struct {
-		name    string
-		err     error
-		pinned  bool
-		want    bool
+		name   string
+		err    error
+		pinned bool
+		want   bool
 	}{
 		{"nil err, unpinned", nil, false, false},
 		{"nil err, pinned", nil, true, false},

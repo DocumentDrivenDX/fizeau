@@ -8,7 +8,7 @@ import (
 
 const (
 	UsageSourceNativeStream     = "native_stream"
-	UsageSourceNativeTokenCount = "native_token_count"
+	UsageSourceNativeTokenCount = "native_token_count" // #nosec G101 -- usage source identifier, not a credential.
 	UsageSourceTranscript       = "transcript"
 	UsageSourceStatusOutput     = "status_output"
 	UsageSourceFallback         = "fallback"

@@ -74,13 +74,13 @@ func TestProbeOpenAIModels_AuthErrorBubbles(t *testing.T) {
 
 func TestExtractStatusCode(t *testing.T) {
 	cases := map[string]int{
-		"HTTP 502: Bad Gateway":                 502,
-		"HTTP 404: not found":                   404,
-		"HTTP 200: ok":                          200,
-		"HTTP 999: weird":                       999,
-		"nothing here":                          0,
-		"HTTP foo: oops":                        0,
-		"context deadline exceeded":             0,
+		"HTTP 502: Bad Gateway":     502,
+		"HTTP 404: not found":       404,
+		"HTTP 200: ok":              200,
+		"HTTP 999: weird":           999,
+		"nothing here":              0,
+		"HTTP foo: oops":            0,
+		"context deadline exceeded": 0,
 	}
 	for input, want := range cases {
 		t.Run(input, func(t *testing.T) {

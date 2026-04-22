@@ -3,7 +3,6 @@ package pi
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -37,7 +36,7 @@ func ReadPiModelDiscoveryFromHelp(ctx context.Context, binary string, args ...st
 	if len(args) == 0 {
 		args = []string{"--help"}
 	}
-	out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput()
+	out, err := harnesses.HarnessCommand(ctx, binary, args...).CombinedOutput()
 	if err != nil {
 		return harnesses.ModelDiscoverySnapshot{}, fmt.Errorf("pi help: %w", err)
 	}
@@ -59,7 +58,7 @@ func ReadPiModelDiscoveryFromListModels(ctx context.Context, binary string, args
 	if len(args) == 0 {
 		args = []string{"--list-models"}
 	}
-	out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput()
+	out, err := harnesses.HarnessCommand(ctx, binary, args...).CombinedOutput()
 	if err != nil {
 		return harnesses.ModelDiscoverySnapshot{}, fmt.Errorf("pi list models: %w", err)
 	}

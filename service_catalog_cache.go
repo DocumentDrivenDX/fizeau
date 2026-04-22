@@ -30,10 +30,10 @@ type CatalogProbeFunc func(ctx context.Context) (ids []string, err error)
 
 // Default cache timings. Overridable via catalogCacheOptions.
 const (
-	defaultCatalogFreshTTL           = 60 * time.Second
-	defaultCatalogStaleTTL           = 10 * time.Minute
+	defaultCatalogFreshTTL            = 60 * time.Second
+	defaultCatalogStaleTTL            = 10 * time.Minute
 	defaultCatalogUnreachableCooldown = 30 * time.Second
-	defaultCatalogUnreachableJitter  = 5 * time.Second
+	defaultCatalogUnreachableJitter   = 5 * time.Second
 )
 
 // catalogCacheKey identifies the cache entry. Uses fingerprinted auth so
@@ -238,8 +238,9 @@ func (c *catalogCache) Get(ctx context.Context, key catalogCacheKey, probe Catal
 			result.Stale = true
 			c.mu.Unlock()
 			// Kick async refresh — singleflight coalesces parallel callers.
+			parentCtx := context.WithoutCancel(ctx)
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				ctx, cancel := context.WithTimeout(parentCtx, 30*time.Second)
 				defer cancel()
 				_, _, _ = c.sf.Do(key.String(), func() (interface{}, error) {
 					return c.probe(ctx, key, probe)

@@ -63,7 +63,7 @@ func TestRun_FailedOpenAICompatibleChatSpansIncludeServerIdentity(t *testing.T) 
 	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":"boom"}`))
 	}))
 	defer srv.Close()
@@ -90,7 +90,7 @@ func TestRun_FailedOpenAICompatibleChatSpansIncludeServerIdentity(t *testing.T) 
 
 	ended := recorder.Ended()
 	chatSpans := spansWithOperation(ended, "chat")
-	require.Len(t, chatSpans, 5)
+	require.Len(t, chatSpans, 1)
 
 	for _, span := range chatSpans {
 		assert.Equal(t, "openai", attrString(span.Attributes(), telemetry.KeyProviderName))

@@ -100,6 +100,7 @@ func captureCodexQuotaViaPTY(ctx context.Context, timeout time.Duration, opts ..
 		Env:                cfg.env,
 		Command:            "/status\r",
 		ReadyMarkers:       []string{"›", "> "},
+		DoneAnyMarkers:     []string{"›", "> "},
 		DoneWhen:           codexQuotaOutputComplete,
 		ResetBeforeCommand: true,
 		Timeout:            timeout,
