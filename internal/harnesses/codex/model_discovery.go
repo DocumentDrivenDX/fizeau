@@ -20,7 +20,7 @@ var codexModelPattern = regexp.MustCompile(`\bgpt-[A-Za-z0-9][A-Za-z0-9._-]*\b`)
 func DefaultCodexModelDiscovery() harnesses.ModelDiscoverySnapshot {
 	return harnesses.ModelDiscoverySnapshot{
 		CapturedAt:      time.Now().UTC(),
-		Models:          []string{"gpt-5.4"},
+		Models:          []string{"gpt", "gpt-5", "gpt-5.4", "gpt-5.4-mini"},
 		ReasoningLevels: []string{"low", "medium", "high", "xhigh", "max"},
 		Source:          "compatibility-table:codex-cli",
 		FreshnessWindow: CodexModelDiscoveryFreshnessWindow.String(),
@@ -106,6 +106,103 @@ func codexDiscoveryFromText(text, source string) harnesses.ModelDiscoverySnapsho
 func parseCodexModels(text string) []string {
 	text = stripANSI(strings.ReplaceAll(text, "\r\n", "\n"))
 	return uniqueMatches(codexModelPattern.FindAllString(text, -1))
+}
+
+func ResolveCodexModelAlias(model string, snapshot harnesses.ModelDiscoverySnapshot) string {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return model
+	}
+	switch {
+	case model == "gpt":
+		if resolved := latestCodexModel("", snapshot.Models); resolved != "" {
+			return resolved
+		}
+	case regexp.MustCompile(`^gpt-[0-9]+$`).MatchString(model):
+		if resolved := latestCodexModel(strings.TrimPrefix(model, "gpt-"), snapshot.Models); resolved != "" {
+			return resolved
+		}
+	}
+	return model
+}
+
+func latestCodexModel(major string, models []string) string {
+	best := ""
+	var bestParts []int
+	bestHasSuffix := true
+	for _, model := range models {
+		candidate := strings.ToLower(strings.TrimSpace(model))
+		parts, hasSuffix, ok := parseCodexVersion(candidate)
+		if !ok {
+			continue
+		}
+		if major != "" && (len(parts) == 0 || fmt.Sprint(parts[0]) != major) {
+			continue
+		}
+		if best == "" || compareCodexVersion(parts, hasSuffix, bestParts, bestHasSuffix) > 0 {
+			best = candidate
+			bestParts = parts
+			bestHasSuffix = hasSuffix
+		}
+	}
+	return best
+}
+
+func parseCodexVersion(model string) ([]int, bool, bool) {
+	if !strings.HasPrefix(model, "gpt-") {
+		return nil, false, false
+	}
+	rest := strings.TrimPrefix(model, "gpt-")
+	raw := strings.FieldsFunc(rest, func(r rune) bool { return r == '.' || r == '-' })
+	if len(raw) == 0 {
+		return nil, false, false
+	}
+	parts := make([]int, 0, len(raw))
+	hasSuffix := false
+	for _, part := range raw {
+		if part == "" {
+			return nil, false, false
+		}
+		n := 0
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				hasSuffix = true
+				return parts, hasSuffix, len(parts) > 0
+			}
+			n = n*10 + int(r-'0')
+		}
+		parts = append(parts, n)
+	}
+	return parts, hasSuffix, true
+}
+
+func compareCodexVersion(a []int, aHasSuffix bool, b []int, bHasSuffix bool) int {
+	n := len(a)
+	if len(b) > n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		av, bv := 0, 0
+		if i < len(a) {
+			av = a[i]
+		}
+		if i < len(b) {
+			bv = b[i]
+		}
+		if av > bv {
+			return 1
+		}
+		if av < bv {
+			return -1
+		}
+	}
+	if aHasSuffix == bHasSuffix {
+		return 0
+	}
+	if !aHasSuffix {
+		return 1
+	}
+	return -1
 }
 
 func discoveryRecord(snapshot harnesses.ModelDiscoverySnapshot) cassette.DiscoveryRecord {

@@ -361,10 +361,23 @@ func TestListModels_harnessFilter(t *testing.T) {
 	if len(infos2) == 0 {
 		t.Fatal("want harness-native models for harness=claude")
 	}
+	claudeIDs := modelIDs(infos2)
+	if !containsModelString(claudeIDs, "claude:opus") || !containsModelString(claudeIDs, "claude:opus-4.7") {
+		t.Fatalf("want claude alias and discovered version in model list, got %v", claudeIDs)
+	}
 	for _, info := range infos2 {
 		if info.Provider != "claude" || info.Harness != "claude" || !info.Available {
 			t.Errorf("unexpected claude model info: %#v", info)
 		}
+	}
+
+	infosCodex, err := svc.ListModels(context.Background(), ModelFilter{Harness: "codex"})
+	if err != nil {
+		t.Fatalf("ListModels harness=codex: %v", err)
+	}
+	codexIDs := modelIDs(infosCodex)
+	if !containsModelString(codexIDs, "codex:gpt") || !containsModelString(codexIDs, "codex:gpt-5.4") {
+		t.Fatalf("want codex generic alias and discovered version in model list, got %v", codexIDs)
 	}
 
 	// Promoted subprocess harnesses expose their documented CLI model surface.
@@ -394,8 +407,11 @@ func TestListModels_harnessFilter(t *testing.T) {
 		t.Fatalf("first gemini model: got %q, want %q (all: %v)", got, want, modelInfoDebug(infos3))
 	}
 	for _, info := range infos3 {
-		if info.Provider != "gemini" || info.Harness != "gemini" || !info.Available || info.CatalogRef == "" {
+		if info.Provider != "gemini" || info.Harness != "gemini" || !info.Available {
 			t.Errorf("unexpected gemini model info: %#v", info)
+		}
+		if info.ID != "gemini" && info.ID != "gemini-2.5" && info.CatalogRef == "" {
+			t.Errorf("unexpected gemini model without catalog ref: %#v", info)
 		}
 	}
 }
@@ -435,6 +451,15 @@ func modelIDs(infos []ModelInfo) []string {
 		out[i] = info.Provider + ":" + info.ID
 	}
 	return out
+}
+
+func containsModelString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func modelInfoDebug(infos []ModelInfo) []string {

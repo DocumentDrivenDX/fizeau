@@ -149,6 +149,16 @@ func TestSmellCanonicalFormFuzzyMatcher(t *testing.T) {
 	if matched != "Qwen3.6-35B-A3B-4bit" {
 		t.Errorf("FuzzyMatch(qwen/qwen3.6): got %q, want Qwen3.6-35B-A3B-4bit", matched)
 	}
+	pool = []string{
+		"Qwen3.5-122B-A10B-RAM-100GB-MLX",
+		"Qwen3-Coder-Next-MLX-4bit",
+		"Qwen3.5-27B-4bit",
+		"Qwen3.6-35B-A3B-4bit",
+		"Qwen3.6-35B-A3B-nvfp4",
+	}
+	if matched := FuzzyMatch("qwen", pool); matched != "Qwen3.6-35B-A3B-4bit" {
+		t.Errorf("FuzzyMatch(qwen): got %q, want Qwen3.6-35B-A3B-4bit", matched)
+	}
 
 	// End-to-end: Model="qwen/qwen3.6" + Provider=vidar-omlx resolves to
 	// the provider-native ID via fuzzy match.

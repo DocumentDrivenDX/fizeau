@@ -42,6 +42,9 @@ func FuzzyMatch(input string, pool []string) string {
 	if cInput == "" {
 		return ""
 	}
+	if best := bestQwenFamilyMatch(cInput, pool); best != "" {
+		return best
+	}
 
 	// Pass 1: exact canonical match.
 	for _, m := range pool {
@@ -75,6 +78,135 @@ func FuzzyMatch(input string, pool []string) string {
 		}
 	}
 	return best
+}
+
+func bestQwenFamilyMatch(input string, pool []string) string {
+	if input != "qwen" && !strings.HasPrefix(input, "qwen3") && !strings.HasPrefix(input, "qwen-3") {
+		return ""
+	}
+	var best string
+	var bestVersion []int
+	bestParams := -1
+	bestVariant := -1
+	for _, model := range pool {
+		candidate := canonicalizeModelKey(model)
+		if !strings.Contains(candidate, input) {
+			continue
+		}
+		version, params, variant, ok := parseQwenRank(candidate)
+		if !ok {
+			continue
+		}
+		if best == "" || compareQwenRank(version, params, variant, bestVersion, bestParams, bestVariant) > 0 {
+			best = model
+			bestVersion = version
+			bestParams = params
+			bestVariant = variant
+		}
+	}
+	return best
+}
+
+func parseQwenRank(model string) ([]int, int, int, bool) {
+	if !strings.Contains(model, "qwen") {
+		return nil, 0, 0, false
+	}
+	idx := strings.Index(model, "qwen")
+	rest := model[idx+len("qwen"):]
+	rest = strings.TrimPrefix(rest, "-")
+	version := make([]int, 0, 2)
+	for len(rest) > 0 {
+		if rest[0] < '0' || rest[0] > '9' {
+			break
+		}
+		n := 0
+		for len(rest) > 0 && rest[0] >= '0' && rest[0] <= '9' {
+			n = n*10 + int(rest[0]-'0')
+			rest = rest[1:]
+		}
+		version = append(version, n)
+		if len(rest) == 0 || (rest[0] != '.' && rest[0] != '-') {
+			break
+		}
+		if len(rest) > 1 && rest[1] >= '0' && rest[1] <= '9' {
+			rest = rest[1:]
+			continue
+		}
+		break
+	}
+	if len(version) == 0 {
+		return nil, 0, 0, false
+	}
+	params := qwenParamBillions(model)
+	return version, params, qwenVariantRank(model), true
+}
+
+func qwenParamBillions(model string) int {
+	best := -1
+	for i := 0; i < len(model); i++ {
+		if model[i] < '0' || model[i] > '9' {
+			continue
+		}
+		n := 0
+		j := i
+		for j < len(model) && model[j] >= '0' && model[j] <= '9' {
+			n = n*10 + int(model[j]-'0')
+			j++
+		}
+		if j < len(model) && model[j] == 'b' && n > best {
+			best = n
+		}
+		i = j
+	}
+	return best
+}
+
+func qwenVariantRank(model string) int {
+	switch {
+	case strings.Contains(model, "4bit"):
+		return 40
+	case strings.Contains(model, "nvfp4"):
+		return 30
+	case strings.Contains(model, "mlx"):
+		return 20
+	default:
+		return 10
+	}
+}
+
+func compareQwenRank(aVersion []int, aParams, aVariant int, bVersion []int, bParams, bVariant int) int {
+	n := len(aVersion)
+	if len(bVersion) > n {
+		n = len(bVersion)
+	}
+	for i := 0; i < n; i++ {
+		av, bv := 0, 0
+		if i < len(aVersion) {
+			av = aVersion[i]
+		}
+		if i < len(bVersion) {
+			bv = bVersion[i]
+		}
+		if av > bv {
+			return 1
+		}
+		if av < bv {
+			return -1
+		}
+	}
+	if aParams != bParams {
+		if aParams > bParams {
+			return 1
+		}
+		return -1
+	}
+	if aVariant > bVariant {
+		return 1
+	}
+	if aVariant < bVariant {
+		return -1
+	}
+	return 0
 }
 
 // SameModelIntent returns true if two model strings refer to the same model

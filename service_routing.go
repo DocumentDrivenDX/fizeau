@@ -57,6 +57,9 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		return result, publicRoutingError(err, result.Candidates)
 	}
 	// Cache the decision so RouteStatus can surface LastDecision.
+	if result != nil {
+		result.Model = resolveSubprocessModelAlias(result.Harness, result.Model)
+	}
 	s.cacheRouteDecision(req.Model, result)
 	return result, nil
 }
@@ -243,7 +246,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 			TestOnly:            cfg.TestOnly,
 			ExactPinSupport:     cfg.ExactPinSupport,
 			DefaultModel:        cfg.DefaultModel,
-			SupportedModels:     append([]string(nil), cfg.Models...),
+			SupportedModels:     subprocessHarnessModelIDs(name, cfg),
 			SupportedReasoning:  supportedReasoning(cfg),
 			MaxReasoningTokens:  cfg.MaxReasoningTokens,
 			SupportedPerms:      supportedPermissions(cfg),

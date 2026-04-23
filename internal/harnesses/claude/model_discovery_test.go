@@ -16,8 +16,24 @@ import (
 
 func TestParseClaudeModelsAndReasoning(t *testing.T) {
 	text := "Model: 'sonnet' or 'opus' or 'claude-sonnet-4-6'\n--effort <level> (low, medium, high, xhigh, max)"
-	require.Equal(t, []string{"claude-sonnet-4-6", "sonnet", "opus"}, parseClaudeModels(text))
+	require.Equal(t, []string{"claude-sonnet-4-6", "sonnet-4.6", "sonnet", "opus"}, parseClaudeModels(text))
 	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, parseClaudeReasoningLevels(text))
+}
+
+func TestParseClaudeModelsFromTUIVersionLabels(t *testing.T) {
+	text := "Select model\n> Opus 4.7\n  Sonnet 4.6\n  Claude Haiku 5.5\n  claude-opus-4-8\n"
+
+	require.Equal(t, []string{"claude-opus-4-8", "opus-4.8", "opus-4.7", "sonnet-4.6", "haiku-5.5", "opus", "sonnet", "haiku"}, parseClaudeModels(text))
+}
+
+func TestResolveClaudeFamilyAliasUsesLatestDiscoveredVersion(t *testing.T) {
+	snapshot := DefaultClaudeModelDiscovery()
+	snapshot.Models = []string{"opus", "opus-4.6", "opus-4.10", "opus-4.7", "sonnet-4.6"}
+
+	require.Equal(t, "opus-4.10", ResolveClaudeFamilyAlias("opus", snapshot))
+	require.Equal(t, "sonnet-4.6", ResolveClaudeFamilyAlias("sonnet", snapshot))
+	require.Equal(t, "opus-4.7", ResolveClaudeFamilyAlias("opus-4.7", snapshot))
+	require.Equal(t, "gpt-5.4", ResolveClaudeFamilyAlias("gpt-5.4", snapshot))
 }
 
 func TestReadClaudeReasoningFromHelp(t *testing.T) {
@@ -47,14 +63,14 @@ func TestReadClaudeModelDiscoveryViaPTYRecordsDiscovery(t *testing.T) {
 	require.NoError(t, os.WriteFile(script, []byte(`#!/bin/sh
 printf '❯ '
 IFS= read line
-printf '/model\r\nSelect model\r\n> sonnet\r\n  opus\r\n  claude-sonnet-4-6\r\n❯ '
+printf '/model\r\nSelect model\r\n> Sonnet 4.6\r\n  Opus 4.7\r\n  claude-sonnet-4-6\r\n❯ '
 sleep 1
 `), 0o700))
 	cassetteDir := filepath.Join(dir, "cassette")
 
 	snapshot, err := ReadClaudeModelDiscoveryViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
 	require.NoError(t, err)
-	require.Equal(t, []string{"claude-sonnet-4-6", "sonnet", "opus"}, snapshot.Models)
+	require.Equal(t, []string{"claude-sonnet-4-6", "sonnet-4.6", "opus-4.7", "sonnet", "opus"}, snapshot.Models)
 	require.Contains(t, snapshot.ReasoningLevels, "xhigh")
 
 	replayed, err := ReadClaudeModelDiscoveryFromCassette(cassetteDir)

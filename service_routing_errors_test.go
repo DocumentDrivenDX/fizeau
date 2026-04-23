@@ -32,9 +32,60 @@ func TestResolveRouteExplicitHarnessModelIncompatible(t *testing.T) {
 	if typed.Model != "minimax/minimax-m2.7" {
 		t.Fatalf("Model=%q, want minimax/minimax-m2.7", typed.Model)
 	}
-	want := []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"}
+	want := []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini", "gemini-2.5"}
 	if !slices.Equal(typed.SupportedModels, want) {
 		t.Fatalf("SupportedModels=%v, want %v", typed.SupportedModels, want)
+	}
+}
+
+func TestValidateExplicitHarnessModelAcceptsClaudeDiscoveredFamilyVersion(t *testing.T) {
+	registry := harnesses.NewRegistry()
+	cfg, ok := registry.Get("claude")
+	if !ok {
+		t.Fatal("missing claude registry entry")
+	}
+
+	if err := validateExplicitHarnessModel("claude", cfg, "opus-4.7"); err != nil {
+		t.Fatalf("opus-4.7 should be accepted as a discovered Claude family version: %v", err)
+	}
+	err := validateExplicitHarnessModel("claude", cfg, "opus-9.9")
+	if err == nil {
+		t.Fatal("expected unknown claude family version to be rejected")
+	}
+	var typed *ErrHarnessModelIncompatible
+	if !errors.As(err, &typed) {
+		t.Fatalf("expected ErrHarnessModelIncompatible, got %T %v", err, err)
+	}
+	if !slices.Contains(typed.SupportedModels, "opus-4.7") {
+		t.Fatalf("supported models should include discovered opus version, got %v", typed.SupportedModels)
+	}
+}
+
+func TestResolveExecuteRouteResolvesGenericSubprocessAliases(t *testing.T) {
+	svc := testRoutingErrorService()
+
+	claudeDecision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{Harness: "claude", Model: "sonnet"})
+	if err != nil {
+		t.Fatalf("resolve claude sonnet alias: %v", err)
+	}
+	if claudeDecision.Model != "sonnet-4.6" {
+		t.Fatalf("claude sonnet alias resolved to %q, want sonnet-4.6", claudeDecision.Model)
+	}
+
+	codexDecision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{Harness: "codex", Model: "gpt"})
+	if err != nil {
+		t.Fatalf("resolve codex gpt alias: %v", err)
+	}
+	if codexDecision.Model != "gpt-5.4" {
+		t.Fatalf("codex gpt alias resolved to %q, want gpt-5.4", codexDecision.Model)
+	}
+
+	geminiDecision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{Harness: "gemini", Model: "gemini"})
+	if err != nil {
+		t.Fatalf("resolve gemini alias: %v", err)
+	}
+	if geminiDecision.Model != "gemini-2.5-pro" {
+		t.Fatalf("gemini alias resolved to %q, want gemini-2.5-pro", geminiDecision.Model)
 	}
 }
 

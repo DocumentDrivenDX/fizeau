@@ -18,6 +18,9 @@ import (
 	"sync"
 
 	"github.com/DocumentDrivenDX/agent/internal/harnesses"
+	claudeharness "github.com/DocumentDrivenDX/agent/internal/harnesses/claude"
+	codexharness "github.com/DocumentDrivenDX/agent/internal/harnesses/codex"
+	geminiharness "github.com/DocumentDrivenDX/agent/internal/harnesses/gemini"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
 )
 
@@ -92,7 +95,8 @@ func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelIn
 func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo {
 	name := harnesses.ResolveHarnessAlias(filter.Harness)
 	cfg, ok := s.registry.Get(name)
-	if !ok || cfg.IsHTTPProvider || cfg.IsLocal || len(cfg.Models) == 0 {
+	modelIDs := subprocessHarnessModelIDs(name, cfg)
+	if !ok || cfg.IsHTTPProvider || cfg.IsLocal || len(modelIDs) == 0 {
 		return nil
 	}
 	if filter.Provider != "" && filter.Provider != name {
@@ -100,8 +104,8 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 	}
 	cat, _ := modelcatalog.Default()
 	catalogRefs := catalogRefsForHarness(cat, name)
-	out := make([]ModelInfo, 0, len(cfg.Models))
-	for i, id := range cfg.Models {
+	out := make([]ModelInfo, 0, len(modelIDs))
+	for i, id := range modelIDs {
 		info := ModelInfo{
 			ID:           id,
 			Provider:     name,
@@ -119,6 +123,73 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 		out = append(out, info)
 	}
 	return out
+}
+
+func subprocessHarnessModelIDs(name string, cfg harnesses.HarnessConfig) []string {
+	models := append([]string(nil), cfg.Models...)
+	switch name {
+	case "claude":
+		snapshot := claudeharness.DefaultClaudeModelDiscovery()
+		models = appendUniqueModelIDs(models, snapshot.Models...)
+		for _, family := range []string{"sonnet", "opus", "haiku"} {
+			resolved := claudeharness.ResolveClaudeFamilyAlias(family, snapshot)
+			if resolved != family {
+				models = appendUniqueModelIDs(models, resolved)
+			}
+		}
+	case "codex":
+		snapshot := codexharness.DefaultCodexModelDiscovery()
+		models = appendUniqueModelIDs(models, snapshot.Models...)
+		for _, family := range []string{"gpt", "gpt-5"} {
+			resolved := codexharness.ResolveCodexModelAlias(family, snapshot)
+			if resolved != family {
+				models = appendUniqueModelIDs(models, resolved)
+			}
+		}
+	case "gemini":
+		snapshot := geminiharness.DefaultGeminiModelDiscovery()
+		models = appendUniqueModelIDs(models, snapshot.Models...)
+		for _, family := range []string{"gemini", "gemini-2.5"} {
+			resolved := geminiharness.ResolveGeminiModelAlias(family, snapshot)
+			if resolved != family {
+				models = appendUniqueModelIDs(models, resolved)
+			}
+		}
+	}
+	return models
+}
+
+func resolveSubprocessModelAlias(harness, model string) string {
+	switch harness {
+	case "claude":
+		return claudeharness.ResolveClaudeFamilyAlias(model, claudeharness.DefaultClaudeModelDiscovery())
+	case "codex":
+		return codexharness.ResolveCodexModelAlias(model, codexharness.DefaultCodexModelDiscovery())
+	case "gemini":
+		return geminiharness.ResolveGeminiModelAlias(model, geminiharness.DefaultGeminiModelDiscovery())
+	default:
+		return model
+	}
+}
+
+func appendUniqueModelIDs(values []string, additions ...string) []string {
+	for _, value := range additions {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		found := false
+		for _, existing := range values {
+			if existing == value {
+				found = true
+				break
+			}
+		}
+		if !found {
+			values = append(values, value)
+		}
+	}
+	return values
 }
 
 func catalogRefsForHarness(cat *modelcatalog.Catalog, harness string) map[string]string {

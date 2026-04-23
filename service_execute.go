@@ -160,7 +160,7 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	return &RouteDecision{
 		Harness:  canonical,
 		Provider: req.Provider,
-		Model:    req.Model,
+		Model:    resolveSubprocessModelAlias(canonical, req.Model),
 		Reason:   "explicit",
 	}, nil
 }
@@ -218,15 +218,16 @@ func validateExplicitHarnessModel(name string, cfg harnesses.HarnessConfig, mode
 	if modelSupportedForHarness(name, cfg, model) {
 		return nil
 	}
+	supportedModels := subprocessHarnessModelIDs(name, cfg)
 	return &ErrHarnessModelIncompatible{
 		Harness:         name,
 		Model:           model,
-		SupportedModels: append([]string(nil), cfg.Models...),
+		SupportedModels: append([]string(nil), supportedModels...),
 	}
 }
 
 func modelSupportedForHarness(name string, cfg harnesses.HarnessConfig, model string) bool {
-	for _, known := range cfg.Models {
+	for _, known := range subprocessHarnessModelIDs(name, cfg) {
 		if model == known {
 			return true
 		}

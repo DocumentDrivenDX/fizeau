@@ -17,19 +17,21 @@ import (
 const ClaudeModelDiscoveryFreshnessWindow = 24 * time.Hour
 
 var (
-	claudeFullModelPattern = regexp.MustCompile(`\bclaude-[a-z0-9][a-z0-9._-]*\b`)
-	claudeAliasPattern     = regexp.MustCompile(`(?m)(?:^|[\s'"])(sonnet|opus|haiku)(?:$|[\s'"])`)
-	claudeEffortPattern    = regexp.MustCompile(`--effort\s+<level>.*\(([^)]*)\)`)
+	claudeFullModelPattern         = regexp.MustCompile(`\bclaude-[a-z0-9][a-z0-9._-]*\b`)
+	claudeFullFamilyVersionPattern = regexp.MustCompile(`\bclaude-(sonnet|opus|haiku)-([0-9]+)[.-]([0-9]{1,2})(?:\b|-)`)
+	claudeFamilyVersionPattern     = regexp.MustCompile(`\b(?:claude\s+)?(sonnet|opus|haiku)\s+([0-9]+(?:[.-][0-9]+){0,2})\b`)
+	claudeAliasPattern             = regexp.MustCompile(`(?m)(?:^|[\s'"])(sonnet|opus|haiku)(?:$|[\s'"])`)
+	claudeEffortPattern            = regexp.MustCompile(`--effort\s+<level>.*\(([^)]*)\)`)
 )
 
 func DefaultClaudeModelDiscovery() harnesses.ModelDiscoverySnapshot {
 	return harnesses.ModelDiscoverySnapshot{
 		CapturedAt:      time.Now().UTC(),
-		Models:          []string{"sonnet", "opus", "claude-sonnet-4-6"},
+		Models:          []string{"sonnet", "sonnet-4.6", "opus", "opus-4.7", "claude-sonnet-4-6"},
 		ReasoningLevels: []string{"low", "medium", "high", "xhigh", "max"},
 		Source:          "cli-help:claude",
 		FreshnessWindow: ClaudeModelDiscoveryFreshnessWindow.String(),
-		Detail:          "claude --help documents --model aliases/full IDs and --effort levels; authenticated PTY record tests refresh model evidence",
+		Detail:          "claude --help documents --model aliases/full IDs and --effort levels; authenticated PTY /model evidence refreshes family alias versions",
 	}
 }
 
@@ -131,13 +133,102 @@ func claudeDiscoveryFromText(text, source string) harnesses.ModelDiscoverySnapsh
 
 func parseClaudeModels(text string) []string {
 	text = stripANSI(strings.ReplaceAll(text, "\r\n", "\n"))
-	models := uniqueMatches(claudeFullModelPattern.FindAllString(strings.ToLower(text), -1))
-	for _, match := range claudeAliasPattern.FindAllStringSubmatch(strings.ToLower(text), -1) {
+	lower := strings.ToLower(text)
+	models := uniqueMatches(claudeFullModelPattern.FindAllString(lower, -1))
+	for _, match := range claudeFullFamilyVersionPattern.FindAllStringSubmatch(lower, -1) {
+		if len(match) > 3 {
+			models = appendUniqueString(models, match[1]+"-"+match[2]+"."+match[3])
+		}
+	}
+	for _, match := range claudeFamilyVersionPattern.FindAllStringSubmatch(lower, -1) {
+		if len(match) > 2 {
+			models = appendUniqueString(models, match[1]+"-"+strings.ReplaceAll(match[2], "-", "."))
+		}
+	}
+	for _, match := range claudeAliasPattern.FindAllStringSubmatch(lower, -1) {
 		if len(match) > 1 {
 			models = appendUniqueString(models, match[1])
 		}
 	}
 	return models
+}
+
+func ResolveClaudeFamilyAlias(model string, snapshot harnesses.ModelDiscoverySnapshot) string {
+	family := strings.ToLower(strings.TrimSpace(model))
+	if family != "sonnet" && family != "opus" && family != "haiku" {
+		return model
+	}
+	if resolved := latestClaudeFamilyVersion(family, snapshot.Models); resolved != "" {
+		return resolved
+	}
+	return model
+}
+
+func latestClaudeFamilyVersion(family string, models []string) string {
+	prefix := family + "-"
+	best := ""
+	var bestParts []int
+	for _, model := range models {
+		model = strings.ToLower(strings.TrimSpace(model))
+		if !strings.HasPrefix(model, prefix) {
+			continue
+		}
+		parts, ok := parseClaudeVersionParts(strings.TrimPrefix(model, prefix))
+		if !ok {
+			continue
+		}
+		if best == "" || compareVersionParts(parts, bestParts) > 0 {
+			best = model
+			bestParts = parts
+		}
+	}
+	return best
+}
+
+func parseClaudeVersionParts(version string) ([]int, bool) {
+	version = strings.ReplaceAll(version, "-", ".")
+	raw := strings.Split(version, ".")
+	if len(raw) == 0 {
+		return nil, false
+	}
+	parts := make([]int, 0, len(raw))
+	for _, part := range raw {
+		if part == "" {
+			return nil, false
+		}
+		n := 0
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return nil, false
+			}
+			n = n*10 + int(r-'0')
+		}
+		parts = append(parts, n)
+	}
+	return parts, true
+}
+
+func compareVersionParts(a, b []int) int {
+	n := len(a)
+	if len(b) > n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		av, bv := 0, 0
+		if i < len(a) {
+			av = a[i]
+		}
+		if i < len(b) {
+			bv = b[i]
+		}
+		if av > bv {
+			return 1
+		}
+		if av < bv {
+			return -1
+		}
+	}
+	return 0
 }
 
 func parseClaudeReasoningLevels(text string) []string {
