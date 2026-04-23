@@ -363,6 +363,7 @@ def run_one(
         "difficulty": task.get("difficulty"),
         "base_rev": base_rev,
         "known_good_rev": task.get("known_good_rev"),
+        "model_comparison_valid": task.get("model_comparison_valid", True),
         "arm_id": arm_id,
         "arm": arm,
         "repetition": repetition,
@@ -889,6 +890,16 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
         add_group(by_task, result.get("task_id", "unknown"), result, verify_status)
 
     executable = verified_pass + verified_fail
+    comparison_valid_results = [
+        r for r in results if r.get("model_comparison_valid", True)
+    ]
+    excluded_task_ids = sorted(
+        {
+            r.get("task_id", "unknown")
+            for r in results
+            if not r.get("model_comparison_valid", True)
+        }
+    )
     return {
         "total_runs": total,
         "status_counts": status_counts,
@@ -902,6 +913,52 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
         "verified_pass_rate": ratio(verified_pass, executable),
         "dry_runs": dry_runs,
         "avg_duration_ms": int(sum(durations) / len(durations)) if durations else 0,
+        "by_arm": sorted(by_arm.values(), key=lambda item: item["id"]),
+        "by_task": sorted(by_task.values(), key=lambda item: item["id"]),
+        "model_comparison": model_comparison_summary(
+            comparison_valid_results, excluded_task_ids
+        ),
+    }
+
+
+def model_comparison_summary(
+    results: list[dict[str, Any]], excluded_task_ids: list[str]
+) -> dict[str, Any]:
+    """Aggregate only tasks eligible for model-vs-model separability scoring.
+
+    Tasks flagged ``model_comparison_valid: false`` in the manifest are
+    excluded from these rollups per README section "Tasks invalid for
+    model-comparison scoring" — their verifiers produce model-independent
+    results and would otherwise pollute leaderboard aggregates.
+    """
+    verified_pass = 0
+    verified_fail = 0
+    verified_timeout = 0
+    verified_skipped = 0
+    by_arm: dict[str, dict[str, Any]] = {}
+    by_task: dict[str, dict[str, Any]] = {}
+    for result in results:
+        verify_status = (result.get("verify") or {}).get("status")
+        if verify_status == "pass":
+            verified_pass += 1
+        elif verify_status == "fail":
+            verified_fail += 1
+        elif verify_status == "timeout":
+            verified_timeout += 1
+        else:
+            verified_skipped += 1
+        add_group(by_arm, result.get("arm_id", "unknown"), result, verify_status)
+        add_group(by_task, result.get("task_id", "unknown"), result, verify_status)
+    executable = verified_pass + verified_fail
+    return {
+        "total_runs": len(results),
+        "verified_pass": verified_pass,
+        "verified_fail": verified_fail,
+        "verified_timeout": verified_timeout,
+        "verified_skipped": verified_skipped,
+        "executable": executable,
+        "verified_pass_rate": ratio(verified_pass, executable),
+        "excluded_task_ids": excluded_task_ids,
         "by_arm": sorted(by_arm.values(), key=lambda item: item["id"]),
         "by_task": sorted(by_task.values(), key=lambda item: item["id"]),
     }
@@ -970,6 +1027,17 @@ def print_summary(summary: dict[str, Any]) -> None:
             f"pass={arm['verified_pass']}/{arm['executable']} "
             f"({arm['verified_pass_rate']:.1%})"
         )
+    comparison = summary.get("model_comparison") or {}
+    if comparison:
+        excluded = comparison.get("excluded_task_ids") or []
+        print(
+            "  model_comparison (separability aggregate, excludes "
+            f"{len(excluded)} flagged task(s)): "
+            f"pass={comparison['verified_pass']}/{comparison['executable']} "
+            f"({comparison['verified_pass_rate']:.1%})"
+        )
+        if excluded:
+            print(f"    excluded_task_ids: {', '.join(excluded)}")
 
 
 if __name__ == "__main__":

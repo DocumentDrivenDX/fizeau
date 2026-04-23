@@ -250,6 +250,13 @@ upstream project's state diverges from the pinned base revision). Such tasks
 should be excluded from separability aggregates and leaderboard-style rollups;
 the runner still executes them so harness-side regressions remain visible.
 
+The flag is wired through `run_beadbench.py`: each result echoes
+`model_comparison_valid`, and `summarize()` emits a `model_comparison` block
+(alongside the top-level totals) that excludes flagged tasks and records the
+`excluded_task_ids`. `print_summary` prints the separability pass rate and the
+excluded ids on every run. Top-level counts still include every run so harness
+regressions on flagged tasks remain visible.
+
 Currently marked invalid:
 
 - `helix-triage-blanket-priming` — the helix `tests/validate-skills.sh`
@@ -261,6 +268,17 @@ Currently marked invalid:
   `benchmark-results/beadbench/run-20260423T054306Z-3937255/report.json`). The
   task can be re-enabled once helix reconciles the CLI and validator views of
   the execution-ready surface.
+
+  Under the `model_comparison` aggregate, both the Codex GPT-5.4 and Sonnet 4.6
+  runs for this task id are dropped from separability totals — they currently
+  appear only in the top-level executable/verified counts as harness evidence.
+  The upstream fixture fix (reconciling `ddx bead ready --execution --json` with
+  `validate_execution_ready_beads.execution_ready_beads`, or rewriting the
+  expected-ids list to
+  `['hx-in-progress-build', 'hx-ready-build', 'hx-ready-review', 'hx-ready-vague']`)
+  lives in the helix repository and is intentionally deferred out of this bead's
+  scope; flipping `model_comparison_valid` back to `true` is the re-enable step
+  once that change lands.
 
 ## Evidence Rules
 

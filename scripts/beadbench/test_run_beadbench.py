@@ -299,6 +299,60 @@ def test_summary_counts_executable_over_non_skipped(tmp: pathlib.Path) -> None:
     assert arm["verified_pass_rate"] == 0.5
 
 
+def test_summary_excludes_flagged_tasks_from_comparison(tmp: pathlib.Path) -> None:
+    results = [
+        {
+            "status": "success",
+            "arm_id": "codex",
+            "task_id": "t-valid",
+            "duration_ms": 100,
+            "model_comparison_valid": True,
+            "verify": {"status": "pass"},
+        },
+        {
+            "status": "success",
+            "arm_id": "sonnet",
+            "task_id": "t-valid",
+            "duration_ms": 100,
+            "model_comparison_valid": True,
+            "verify": {"status": "fail"},
+        },
+        {
+            "status": "success",
+            "arm_id": "codex",
+            "task_id": "helix-triage-blanket-priming",
+            "duration_ms": 100,
+            "model_comparison_valid": False,
+            "verify": {"status": "fail"},
+        },
+        {
+            "status": "success",
+            "arm_id": "sonnet",
+            "task_id": "helix-triage-blanket-priming",
+            "duration_ms": 100,
+            "model_comparison_valid": False,
+            "verify": {"status": "fail"},
+        },
+    ]
+    summary = rb.summarize(results)
+    # Top-level aggregate still counts every run so harness regressions stay visible.
+    assert summary["executable"] == 4
+    assert summary["verified_pass"] == 1
+    assert summary["verified_fail"] == 3
+    comparison = summary["model_comparison"]
+    # Separability aggregate drops the flagged task on both arms.
+    assert comparison["total_runs"] == 2
+    assert comparison["executable"] == 2
+    assert comparison["verified_pass"] == 1
+    assert comparison["verified_fail"] == 1
+    assert comparison["verified_pass_rate"] == 0.5
+    assert comparison["excluded_task_ids"] == ["helix-triage-blanket-priming"]
+    arm_ids = [a["id"] for a in comparison["by_arm"]]
+    assert arm_ids == ["codex", "sonnet"]
+    task_ids = [t["id"] for t in comparison["by_task"]]
+    assert task_ids == ["t-valid"]
+
+
 def main() -> int:
     cases = [
         test_no_output_timeout,
@@ -313,6 +367,7 @@ def main() -> int:
         test_check_execute_bead_flags_ok,
         test_verify_result_records_verifier_timeout,
         test_summary_counts_executable_over_non_skipped,
+        test_summary_excludes_flagged_tasks_from_comparison,
     ]
     failures: list[str] = []
     for case in cases:
