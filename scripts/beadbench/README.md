@@ -55,6 +55,26 @@ python3 scripts/beadbench/run_beadbench.py --dry-run \
 
 Results are written to `benchmark-results/beadbench/run-<timestamp>-<pid>/report.json`.
 
+## Timeout evidence
+
+When `--timeout-seconds` trips before `execute-bead` returns, the runner still
+records what it has:
+
+- `stdout.txt` / `stderr.txt` hold the partial streams captured before the
+  child was killed.
+- `execute-result.json` is written whenever the trailing stdout contained a
+  recoverable JSON object; its `preserve_rev`/`result_rev` (if any) is lifted
+  into `result.timeout.preserve_rev`.
+- `timeout-sandbox-state.json` records the sandbox HEAD, commits ahead of
+  `base_rev`, `git status --short`, tracked diff names, and any
+  `refs/execute-bead/preserve/*` refs left behind.
+- `result.timeout.progress_class` buckets the run as `no_output`,
+  `read_only_progress`, or `write_progress` so slow-but-healthy local-model
+  runs can be told apart from stuck reasoning loops.
+
+Fixture coverage lives in `scripts/beadbench/test_run_beadbench.py`
+(`python3 scripts/beadbench/test_run_beadbench.py`).
+
 Probe model-side reasoning controls before local-model evidence runs:
 
 ```bash

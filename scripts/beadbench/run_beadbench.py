@@ -268,7 +268,7 @@ def run_one(
         result["status"] = "timeout"
         result["exit_code"] = None
         result["duration_ms"] = int((time.monotonic() - started) * 1000)
-        (artifact_dir / "timeout.txt").write_text(str(exc) + "\n")
+        result["timeout"] = record_timeout_evidence(exc, sandbox, base_rev, artifact_dir)
     except Exception as exc:
         result["status"] = "runner_error"
         result["duration_ms"] = int((time.monotonic() - started) * 1000)
@@ -434,6 +434,154 @@ def capture_result_artifacts(
         check=False,
     )
     (artifact_dir / "result.log").write_text(log.stdout + log.stderr)
+
+
+def record_timeout_evidence(
+    exc: subprocess.TimeoutExpired,
+    sandbox: pathlib.Path,
+    base_rev: str,
+    artifact_dir: pathlib.Path,
+) -> dict[str, Any]:
+    """Preserve as much evidence as possible from a timed-out execute-bead run.
+
+    Writes partial stdout/stderr, any recoverable trailing JSON object, any
+    `refs/execute-bead/preserve/*` references, and a sandbox status summary.
+    Returns a dict describing what was captured and a progress classification:
+
+    - ``no_output``          — the child emitted nothing on either stream.
+    - ``read_only_progress`` — output captured but no commits or tracked
+      writes were observed in the sandbox.
+    - ``write_progress``     — commits, preserve refs, or tracked edits are
+      present beyond ``base_rev``.
+    """
+    stdout_bytes = _as_text(exc.stdout)
+    stderr_bytes = _as_text(exc.stderr)
+
+    (artifact_dir / "timeout.txt").write_text(
+        f"TimeoutExpired: {exc.timeout}s elapsed; command={exc.cmd!r}\n"
+    )
+    (artifact_dir / "stdout.txt").write_text(stdout_bytes)
+    (artifact_dir / "stderr.txt").write_text(stderr_bytes)
+
+    evidence: dict[str, Any] = {
+        "timeout_seconds": exc.timeout,
+        "partial_stdout_bytes": len(stdout_bytes),
+        "partial_stderr_bytes": len(stderr_bytes),
+    }
+
+    parsed = parse_last_json_object(stdout_bytes)
+    if parsed:
+        (artifact_dir / "execute-result.json").write_text(json.dumps(parsed, indent=2) + "\n")
+        evidence["partial_execute_result"] = parsed
+        preserve_rev = first_string(parsed, "preserve_rev", "preserveRev", "result_rev", "resultRev")
+        if preserve_rev:
+            evidence["preserve_rev"] = preserve_rev
+
+    sandbox_state = inspect_sandbox_state(sandbox, base_rev)
+    if sandbox_state is not None:
+        (artifact_dir / "timeout-sandbox-state.json").write_text(
+            json.dumps(sandbox_state, indent=2) + "\n"
+        )
+        evidence["sandbox_state"] = sandbox_state
+        for ref in sandbox_state.get("preserve_refs", []):
+            evidence.setdefault("preserve_refs", []).append(ref)
+
+    evidence["progress_class"] = classify_timeout_progress(
+        stdout_bytes, stderr_bytes, sandbox_state
+    )
+    return evidence
+
+
+def _as_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def inspect_sandbox_state(sandbox: pathlib.Path, base_rev: str) -> dict[str, Any] | None:
+    """Probe the sandbox git state after a timeout.
+
+    Returns ``None`` if the sandbox directory no longer exists or is not a git
+    repository — the caller treats that as missing evidence.
+    """
+    if not sandbox.exists() or not (sandbox / ".git").exists():
+        return None
+
+    state: dict[str, Any] = {
+        "head": "",
+        "commits_ahead_of_base": 0,
+        "status_short": "",
+        "tracked_diff_names": [],
+        "preserve_refs": [],
+    }
+
+    head = run_cmd(["git", "-C", str(sandbox), "rev-parse", "HEAD"], cwd=None, check=False)
+    state["head"] = head.stdout.strip()
+
+    ahead = run_cmd(
+        ["git", "-C", str(sandbox), "rev-list", "--count", f"{base_rev}..HEAD"],
+        cwd=None,
+        check=False,
+    )
+    try:
+        state["commits_ahead_of_base"] = int(ahead.stdout.strip() or "0")
+    except ValueError:
+        state["commits_ahead_of_base"] = 0
+
+    status = run_cmd(["git", "-C", str(sandbox), "status", "--short"], cwd=None, check=False)
+    state["status_short"] = status.stdout
+
+    tracked = run_cmd(
+        ["git", "-C", str(sandbox), "diff", "--name-only", base_rev],
+        cwd=None,
+        check=False,
+    )
+    state["tracked_diff_names"] = [
+        line for line in tracked.stdout.splitlines() if line.strip()
+    ]
+
+    refs = run_cmd(
+        ["git", "-C", str(sandbox), "for-each-ref", "--format=%(refname) %(objectname)"],
+        cwd=None,
+        check=False,
+    )
+    for line in refs.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        name, _, sha = line.partition(" ")
+        if "preserve" in name or name.startswith("refs/execute-bead/"):
+            state["preserve_refs"].append({"ref": name, "sha": sha})
+
+    return state
+
+
+def classify_timeout_progress(
+    stdout_text: str,
+    stderr_text: str,
+    sandbox_state: dict[str, Any] | None,
+) -> str:
+    """Bucket a timed-out run into progress classes for triage.
+
+    The sandbox is consulted first so that silent child processes that still
+    produced commits or preserve refs count as ``write_progress`` rather than
+    ``no_output``.
+    """
+    if sandbox_state is not None:
+        if sandbox_state.get("commits_ahead_of_base", 0) > 0:
+            return "write_progress"
+        if sandbox_state.get("preserve_refs"):
+            return "write_progress"
+        if sandbox_state.get("tracked_diff_names"):
+            return "write_progress"
+        if sandbox_state.get("status_short", "").strip():
+            return "write_progress"
+
+    if stdout_text.strip() or stderr_text.strip():
+        return "read_only_progress"
+    return "no_output"
 
 
 def run_cmd(
