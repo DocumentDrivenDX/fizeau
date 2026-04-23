@@ -154,7 +154,7 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 		model = opts.Model
 	}
 
-	reqOpts, err := p.compatRequestOptions(opts)
+	reqOpts, err := p.compatRequestOptions(model, opts)
 	if err != nil {
 		return agent.Response{}, err
 	}
@@ -202,7 +202,7 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 		model = opts.Model
 	}
 
-	reqOpts, err := p.compatRequestOptions(opts)
+	reqOpts, err := p.compatRequestOptions(model, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -215,8 +215,8 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 	})
 }
 
-func (p *Provider) compatRequestOptions(opts agent.Options) (openaicompat.RequestOptions, error) {
-	extra, err := p.reasoningRequestOptions(opts)
+func (p *Provider) compatRequestOptions(model string, opts agent.Options) (openaicompat.RequestOptions, error) {
+	extra, err := p.reasoningRequestOptions(model, opts)
 	if err != nil {
 		return openaicompat.RequestOptions{}, err
 	}
@@ -254,9 +254,9 @@ func (p *Provider) costAttribution(rawUsage string) *agent.CostAttribution {
 }
 
 // reasoningRequestOptions builds per-request options. For thinking models
-// (Qwen3, DeepSeek-R1 etc.) apply a budget cap via the non-standard `thinking`
-// body field only for providers that declare support.
-func (p *Provider) reasoningRequestOptions(opts agent.Options) ([]option.RequestOption, error) {
+// (Qwen3, DeepSeek-R1 etc.) apply provider-specific non-standard body fields
+// only when the concrete provider declares the matching wire support.
+func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]option.RequestOption, error) {
 	policy, err := reasoningpolicy.Parse(opts.Reasoning)
 	if err != nil {
 		return nil, err
@@ -269,9 +269,50 @@ func (p *Provider) reasoningRequestOptions(opts agent.Options) ([]option.Request
 		}
 	}
 
-	if !policy.IsSet() || policy.Kind == reasoningpolicy.KindAuto || policy.IsExplicitOff() {
+	if !policy.IsSet() || policy.Kind == reasoningpolicy.KindAuto {
 		return nil, nil
 	}
+	if !p.SupportsThinking() {
+		if policy.IsExplicitOff() {
+			return nil, nil
+		}
+		if explicitRequest {
+			return nil, fmt.Errorf("openai: reasoning=%q is not supported by provider type %q", policy.Value, p.providerSystem)
+		}
+		return nil, nil
+	}
+
+	if policy.IsExplicitOff() {
+		switch p.thinkingWireFormat() {
+		case ThinkingWireFormatQwen:
+			if !isQwenModel(model) {
+				if explicitRequest {
+					return nil, fmt.Errorf("openai: qwen reasoning control is not supported for model %q on provider type %q", model, p.providerSystem)
+				}
+				return nil, nil
+			}
+			return []option.RequestOption{
+				option.WithJSONSet("enable_thinking", false),
+				option.WithJSONSet("thinking_budget", 0),
+			}, nil
+		case ThinkingWireFormatOpenRouter:
+			return []option.RequestOption{option.WithJSONSet("reasoning", map[string]interface{}{
+				"effort": "none",
+			})}, nil
+		}
+		return nil, nil
+	}
+
+	if p.thinkingWireFormat() == ThinkingWireFormatOpenRouter {
+		return openRouterReasoningOptions(policy)
+	}
+	if p.thinkingWireFormat() == ThinkingWireFormatQwen && !isQwenModel(model) {
+		if explicitRequest {
+			return nil, fmt.Errorf("openai: qwen reasoning control is not supported for model %q on provider type %q", model, p.providerSystem)
+		}
+		return nil, nil
+	}
+
 	thinkingBudget, err := reasoningpolicy.BudgetFor(policy, nil, 0)
 	if err != nil {
 		return nil, fmt.Errorf("openai: %w", err)
@@ -279,16 +320,47 @@ func (p *Provider) reasoningRequestOptions(opts agent.Options) ([]option.Request
 	if thinkingBudget <= 0 {
 		return nil, nil
 	}
-	if !p.SupportsThinking() {
-		if explicitRequest {
-			return nil, fmt.Errorf("openai: reasoning=%q is not supported by provider type %q", policy.Value, p.providerSystem)
-		}
-		return nil, nil
+
+	switch p.thinkingWireFormat() {
+	case ThinkingWireFormatQwen:
+		return []option.RequestOption{
+			option.WithJSONSet("enable_thinking", true),
+			option.WithJSONSet("thinking_budget", thinkingBudget),
+		}, nil
+	case "", ThinkingWireFormatThinkingMap:
+		return []option.RequestOption{option.WithJSONSet("thinking", map[string]interface{}{
+			"type":          "enabled",
+			"budget_tokens": thinkingBudget,
+		})}, nil
+	default:
+		return nil, fmt.Errorf("openai: unsupported thinking wire format %q for provider type %q", p.thinkingWireFormat(), p.providerSystem)
 	}
-	return []option.RequestOption{option.WithJSONSet("thinking", map[string]interface{}{
-		"type":          "enabled",
-		"budget_tokens": thinkingBudget,
-	})}, nil
+}
+
+func isQwenModel(model string) bool {
+	return strings.Contains(strings.ToLower(model), "qwen")
+}
+
+func openRouterReasoningOptions(policy reasoningpolicy.Policy) ([]option.RequestOption, error) {
+	reasoning := map[string]interface{}{}
+	switch policy.Kind {
+	case reasoningpolicy.KindTokens:
+		reasoning["max_tokens"] = policy.Tokens
+	case reasoningpolicy.KindNamed:
+		effort := string(policy.Value)
+		if policy.Value == reasoningpolicy.ReasoningMax {
+			effort = string(reasoningpolicy.ReasoningXHigh)
+		}
+		switch effort {
+		case "minimal", "low", "medium", "high", "xhigh":
+			reasoning["effort"] = effort
+		default:
+			return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning effort %q", policy.Value)
+		}
+	default:
+		return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning policy %q", policy.Kind)
+	}
+	return []option.RequestOption{option.WithJSONSet("reasoning", reasoning)}, nil
 }
 
 var _ agent.Provider = (*Provider)(nil)

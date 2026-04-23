@@ -1,0 +1,229 @@
+{
+  "version": "1",
+  "created": "2026-04-23",
+  "description": "Initial multi-project beadbench set for comparing DDx execute-bead harness/model arms.",
+  "selection_rule": "Closed historical beads with reachable implementation commits, parent base revisions, clear acceptance text, and coverage across agent, ddx, helix, axon, and niflheim. Niflheim lacks closing_commit_sha in bead records, so its known_good_rev values are recovered from commit subjects containing the bead id.",
+  "arms": [
+    {
+      "id": "agent-openrouter-gpt54",
+      "harness": "agent",
+      "provider": "openrouter",
+      "model": "gpt-5.4",
+      "effort": "medium",
+      "rationale": "Embedded DDx agent through OpenRouter using GPT-5.4."
+    },
+    {
+      "id": "codex-gpt54",
+      "harness": "codex",
+      "model": "gpt-5.4",
+      "effort": "medium",
+      "rationale": "Codex harness using GPT-5.4."
+    },
+    {
+      "id": "pi-qwen36-27b",
+      "harness": "pi",
+      "model": "qwen3.6-27b",
+      "rationale": "Pi harness with the requested Qwen 3.6 27B-class pin; validate exact model string before evidence-grade runs."
+    },
+    {
+      "id": "agent-vidar-omlx-qwen36-27b",
+      "harness": "agent",
+      "provider": "vidar-omlx",
+      "model": "Qwen3.6-27B-MLX-8bit",
+      "effort": "medium",
+      "rationale": "Native agent pinned to the healthy vidar OMLX endpoint on port 1235. Medium effort must map to an actual Qwen thinking budget control."
+    },
+    {
+      "id": "agent-bragi-lmstudio-qwen36-35b",
+      "harness": "agent",
+      "provider": "bragi",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "effort": "medium",
+      "rationale": "Native agent pinned to the healthy bragi LM Studio endpoint on port 1234. Medium effort must map to an actual local-model reasoning control."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "agent-nav-tools",
+      "project": "agent",
+      "project_root": "/Users/erik/Projects/agent",
+      "bead_id": "agent-4dde1671",
+      "known_good_rev": "4eccccd46572c943e25b772a758d5d7e156effed",
+      "base_rev": "9c8b5b09fb4058545201b8d72a21b0861e4a4cdb",
+      "category": "tooling",
+      "difficulty": "medium",
+      "acceptance_command": "go test ./...",
+      "verifier_command": "go test ./...",
+      "rationale": "Adds benchmark-critical navigation tools and eval scoring; exercises tool API design, tests, and benchmark behavior."
+    },
+    {
+      "id": "agent-benchmark-preset",
+      "project": "agent",
+      "project_root": "/Users/erik/Projects/agent",
+      "bead_id": "agent-5f35fdeb",
+      "known_good_rev": "dd1144800d5fe2e6745537ff9366f9a325eb76d1",
+      "base_rev": "89dbbfab4923dc98ea7919b7b8b59e2f5620b408",
+      "category": "prompting",
+      "difficulty": "small",
+      "acceptance_command": "go test ./...",
+      "verifier_command": "go test ./...",
+      "rationale": "Prompt/preset task with measurable non-interactive behavior, useful for lower-complexity harness comparison."
+    },
+    {
+      "id": "agent-benchmark-automation",
+      "project": "agent",
+      "project_root": "/Users/erik/Projects/agent",
+      "bead_id": "agent-78c86322",
+      "known_good_rev": "9c8b5b09fb4058545201b8d72a21b0861e4a4cdb",
+      "base_rev": "82644ed8bb9c1b54f13765e87c23d8939791b0bc",
+      "category": "benchmarking",
+      "difficulty": "medium",
+      "acceptance_command": "go test ./...",
+      "verifier_command": "go test ./...",
+      "rationale": "Adds reproducible benchmark automation and report artifacts; directly analogous to beadbench's own target behavior."
+    },
+    {
+      "id": "ddx-execute-bead-stash-fix",
+      "project": "ddx",
+      "project_root": "/Users/erik/Projects/ddx",
+      "bead_id": "hx-exec-bead-stash-fix",
+      "known_good_rev": "ada469a58561d9795471b0b02d10aa5c8a7f94aa",
+      "base_rev": "714648228642efeffdfa7e14319eee38ae226127",
+      "category": "orchestration",
+      "difficulty": "small",
+      "acceptance_command": "go test ./...",
+      "verifier_command": "go test ./...",
+      "rationale": "Targeted execute-bead dirty-worktree bug; high relevance to the benchmark harness."
+    },
+    {
+      "id": "ddx-execute-bead-rebase-ff",
+      "project": "ddx",
+      "project_root": "/Users/erik/Projects/ddx",
+      "bead_id": "hx-exec-bead-rebase-ff",
+      "known_good_rev": "65134ca7caedd43b6dab6e567d001b36fb32b665",
+      "base_rev": "8f9fd771e546bffe9e860162e2aa495cd0da1aa9",
+      "category": "orchestration",
+      "difficulty": "hard",
+      "acceptance_command": "go test ./...",
+      "verifier_command": "go test ./...",
+      "rationale": "Complex execute-bead land-flow change with conflict behavior and tests."
+    },
+    {
+      "id": "ddx-plugin-skill-validation",
+      "project": "ddx",
+      "project_root": "/Users/erik/Projects/ddx",
+      "bead_id": "hx-f7e65bcc",
+      "known_good_rev": "516fc8c8a7d25dbc47e3f8ba694bb2646b2c8d67",
+      "base_rev": "41478221fc851bf1b436618176e4f7a9e1a57423",
+      "category": "validation",
+      "difficulty": "medium",
+      "acceptance_command": "go test ./...",
+      "verifier_command": "go test ./...",
+      "rationale": "Installer validation bug with negative-path behavior and persistent state checks."
+    },
+    {
+      "id": "ddx-closing-sha-validation",
+      "project": "ddx",
+      "project_root": "/Users/erik/Projects/ddx",
+      "bead_id": "hx-fd99632b",
+      "known_good_rev": "3dd57abde265f3a9085ece2a0d51e3df9fa5d946",
+      "base_rev": "c38d7bbb2cf47baed8197c27cac19cb4adcd8644",
+      "category": "tracker",
+      "difficulty": "small",
+      "acceptance_command": "go test ./...",
+      "verifier_command": "go test ./...",
+      "rationale": "Tracker metadata validation with clear acceptance and focused tests."
+    },
+    {
+      "id": "helix-build-selector-readiness",
+      "project": "helix",
+      "project_root": "/Users/erik/Projects/helix",
+      "bead_id": "helix-ded1e007",
+      "known_good_rev": "2907b90c89e51c72bc1922eb096221a6800141e7",
+      "base_rev": "a9278a3ecca3e69b582e5497a3b2799c79139115",
+      "category": "workflow-cli",
+      "difficulty": "small",
+      "acceptance_command": "bash tests/helix-cli.sh",
+      "verifier_command": "bash tests/helix-cli.sh",
+      "rationale": "Focused HELIX CLI behavior with deterministic shell acceptance test."
+    },
+    {
+      "id": "helix-closing-sha-preservation",
+      "project": "helix",
+      "project_root": "/Users/erik/Projects/helix",
+      "bead_id": "helix-e28dc2fa",
+      "known_good_rev": "a671506734e3ad50fc9825398b8e57879656b4f1",
+      "base_rev": "94654ea2f3e213c4a35dd425613e25aa0e63ede9",
+      "category": "workflow-tracker",
+      "difficulty": "medium",
+      "acceptance_command": "bash tests/helix-cli.sh",
+      "verifier_command": "bash tests/helix-cli.sh",
+      "rationale": "Tracker provenance preservation across measure-close behavior."
+    },
+    {
+      "id": "helix-deploy-iterate-detection",
+      "project": "helix",
+      "project_root": "/Users/erik/Projects/helix",
+      "bead_id": "helix-f3051158",
+      "known_good_rev": "27c705147f16a3c26cc38fd547b1c8a9e1f47589",
+      "base_rev": "bc38bd4ae087fce8c17194f6886bbcbaea075561",
+      "category": "workflow-state",
+      "difficulty": "medium",
+      "acceptance_command": "bash tests/validate-state-rules.sh",
+      "verifier_command": "bash tests/validate-state-rules.sh",
+      "rationale": "State-rule ambiguity fix with deterministic workflow validation."
+    },
+    {
+      "id": "axon-auth-core-types",
+      "project": "axon",
+      "project_root": "/Users/erik/Projects/axon",
+      "bead_id": "axon-43ed769b",
+      "known_good_rev": "85b5ade619b9e19d8f9480020ba235adca842aec",
+      "base_rev": "803c0a007190565aef91f6a200a3e7a5cdb6c427",
+      "category": "rust-auth",
+      "difficulty": "hard",
+      "acceptance_command": "cargo test -p axon-core && cargo clippy -p axon-core -- -D warnings",
+      "verifier_command": "cargo test -p axon-core && cargo clippy -p axon-core -- -D warnings",
+      "rationale": "Rust domain-model correction with serde/proptest/clippy requirements."
+    },
+    {
+      "id": "axon-auth-schema",
+      "project": "axon",
+      "project_root": "/Users/erik/Projects/axon",
+      "bead_id": "axon-0478a1de",
+      "known_good_rev": "c59903f4eb21621499ce7afdd41782ccf5130ba8",
+      "base_rev": "64cd323819633f9272a6be011118850750840310",
+      "category": "rust-storage",
+      "difficulty": "hard",
+      "acceptance_command": "cargo test -p axon-storage",
+      "verifier_command": "cargo test -p axon-storage",
+      "rationale": "Schema/migration task with database constraints and integration-style tests."
+    },
+    {
+      "id": "niflheim-tenant-backend-factory",
+      "project": "niflheim",
+      "project_root": "/Users/erik/Projects/niflheim",
+      "bead_id": "niflheim-490c4d83",
+      "known_good_rev": "77b7f6db84d68129aa09f57f05fcb32e8e0e0e4b",
+      "base_rev": "8bc1a285f56796199d78ed915cff7338d9735637",
+      "category": "rust-control-plane",
+      "difficulty": "hard",
+      "acceptance_command": "scripts/with-pinned-rust.sh cargo test --workspace --exclude niflheim-contract-tests",
+      "verifier_command": "scripts/with-pinned-rust.sh cargo test --workspace --exclude niflheim-contract-tests",
+      "rationale": "Per-tenant backend isolation bug; recovered known_good_rev from commit subject because tracker lacks closing_commit_sha."
+    },
+    {
+      "id": "niflheim-tenant-isolation-tests",
+      "project": "niflheim",
+      "project_root": "/Users/erik/Projects/niflheim",
+      "bead_id": "niflheim-f882589b",
+      "known_good_rev": "406ffeb2ed13ec9cd07f80ba7385f98196d800e8",
+      "base_rev": "77b7f6db84d68129aa09f57f05fcb32e8e0e0e4b",
+      "category": "rust-testing",
+      "difficulty": "medium",
+      "acceptance_command": "scripts/with-pinned-rust.sh cargo test --workspace --exclude niflheim-contract-tests",
+      "verifier_command": "scripts/with-pinned-rust.sh cargo test --workspace --exclude niflheim-contract-tests",
+      "rationale": "Follow-on acceptance test task for tenant-local control-plane isolation; recovered known_good_rev from commit subject."
+    }
+  ]
+}

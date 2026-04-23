@@ -11,11 +11,24 @@ type ProtocolCapabilities struct {
 	Tools            bool
 	Stream           bool
 	StructuredOutput bool
-	// Thinking reports whether the provider accepts the non-standard `thinking`
-	// body field (openai-go WithJSONSet) that LM Studio and a few compatible
-	// servers tolerate.
-	Thinking bool
+	// Thinking reports whether the provider accepts non-standard body fields
+	// (openai-go WithJSONSet) used to control model-side reasoning.
+	Thinking       bool
+	ThinkingFormat ThinkingWireFormat
 }
+
+type ThinkingWireFormat string
+
+const (
+	// ThinkingWireFormatThinkingMap sends `thinking: {type, budget_tokens}`.
+	ThinkingWireFormatThinkingMap ThinkingWireFormat = "thinking_map"
+	// ThinkingWireFormatQwen sends Qwen-family controls:
+	// `enable_thinking` and `thinking_budget`.
+	ThinkingWireFormatQwen ThinkingWireFormat = "qwen"
+	// ThinkingWireFormatOpenRouter sends OpenRouter's nested `reasoning`
+	// object with `effort`, `max_tokens`, or `exclude`.
+	ThinkingWireFormatOpenRouter ThinkingWireFormat = "openrouter"
+)
 
 var (
 	OpenAIProtocolCapabilities  = ProtocolCapabilities{Tools: true, Stream: true, StructuredOutput: true, Thinking: false}
@@ -49,10 +62,20 @@ func (p *Provider) SupportsStructuredOutput() bool {
 	return p.protocolCapabilities().StructuredOutput
 }
 
-// SupportsThinking reports whether the provider accepts the non-standard
-// `thinking` request-body field used to cap reasoning-token budgets on
-// LM Studio and compatible servers. Providers returning false MUST have the
-// field stripped at serialization time.
+// SupportsThinking reports whether the provider accepts non-standard request
+// body fields used to cap or disable model-side reasoning. Providers returning
+// false MUST have those fields stripped at serialization time.
 func (p *Provider) SupportsThinking() bool {
 	return p.protocolCapabilities().Thinking
+}
+
+func (p *Provider) thinkingWireFormat() ThinkingWireFormat {
+	caps := p.protocolCapabilities()
+	if !caps.Thinking {
+		return ""
+	}
+	if caps.ThinkingFormat != "" {
+		return caps.ThinkingFormat
+	}
+	return ThinkingWireFormatThinkingMap
 }

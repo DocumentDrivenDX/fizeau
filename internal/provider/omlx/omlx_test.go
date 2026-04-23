@@ -64,7 +64,7 @@ func TestProtocolCapabilities(t *testing.T) {
 	assert.True(t, p.SupportsTools())
 	assert.True(t, p.SupportsStream())
 	assert.True(t, p.SupportsStructuredOutput())
-	assert.False(t, p.SupportsThinking())
+	assert.True(t, p.SupportsThinking())
 }
 
 func TestChatStream_SurvivesKeepAliveCommentFrames(t *testing.T) {

@@ -515,7 +515,7 @@ func TestThinkingSerializationReasoningPolicy(t *testing.T) {
 }
 
 func TestReasoningSerializationUnsupportedProviders(t *testing.T) {
-	for _, providerType := range []string{"omlx", "openrouter", "openai", "ollama"} {
+	for _, providerType := range []string{"openai", "ollama"} {
 		t.Run(providerType+"/default provider budget drops", func(t *testing.T) {
 			body, err := captureOpenAIChatBody(t, providerType, agent.ReasoningTokens(8192), agent.Options{})
 			require.NoError(t, err)
@@ -525,6 +525,159 @@ func TestReasoningSerializationUnsupportedProviders(t *testing.T) {
 			body, err := captureOpenAIChatBody(t, providerType, "", agent.Options{Reasoning: agent.ReasoningLow})
 			require.Error(t, err)
 			assert.Nil(t, body)
+		})
+	}
+}
+
+func TestOpenRouterReasoningSerialization(t *testing.T) {
+	tests := []struct {
+		name          string
+		opts          agent.Options
+		wantEffort    string
+		wantMaxTokens int
+	}{
+		{
+			name:       "medium maps to nested effort",
+			opts:       agent.Options{Reasoning: agent.ReasoningMedium},
+			wantEffort: "medium",
+		},
+		{
+			name:       "explicit off maps to effort none",
+			opts:       agent.Options{Reasoning: agent.ReasoningOff},
+			wantEffort: "none",
+		},
+		{
+			name:       "max maps to xhigh effort",
+			opts:       agent.Options{Reasoning: agent.ReasoningMax},
+			wantEffort: "xhigh",
+		},
+		{
+			name:          "numeric budget maps to max_tokens",
+			opts:          agent.Options{Reasoning: agent.ReasoningTokens(4321)},
+			wantMaxTokens: 4321,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+"/chat", func(t *testing.T) {
+			body, err := captureOpenAIChatBody(t, "openrouter", "", tt.opts)
+			require.NoError(t, err)
+			assertOpenRouterReasoningWire(t, body, tt.wantEffort, tt.wantMaxTokens)
+		})
+		t.Run(tt.name+"/stream", func(t *testing.T) {
+			body, err := captureOpenAIStreamBody(t, "openrouter", "", tt.opts)
+			require.NoError(t, err)
+			assertOpenRouterReasoningWire(t, body, tt.wantEffort, tt.wantMaxTokens)
+		})
+	}
+}
+
+func TestQwenReasoningSerialization(t *testing.T) {
+	tests := []struct {
+		name              string
+		configReasoning   agent.Reasoning
+		opts              agent.Options
+		wantEnabled       bool
+		wantBudget        int
+		wantAbsent        bool
+		wantErr           bool
+		wantNoHTTPRequest bool
+	}{
+		{
+			name:       "unset omits qwen reasoning fields",
+			wantAbsent: true,
+		},
+		{
+			name:        "low maps to qwen thinking budget",
+			opts:        agent.Options{Reasoning: agent.ReasoningLow},
+			wantEnabled: true,
+			wantBudget:  2048,
+		},
+		{
+			name:            "provider default sends qwen thinking budget",
+			configReasoning: agent.ReasoningMedium,
+			wantEnabled:     true,
+			wantBudget:      8192,
+		},
+		{
+			name:        "high maps to qwen thinking budget",
+			opts:        agent.Options{Reasoning: agent.ReasoningHigh},
+			wantEnabled: true,
+			wantBudget:  32768,
+		},
+		{
+			name:        "numeric budget maps to qwen thinking budget",
+			opts:        agent.Options{Reasoning: agent.ReasoningTokens(4321)},
+			wantEnabled: true,
+			wantBudget:  4321,
+		},
+		{
+			name:            "explicit off disables qwen thinking",
+			configReasoning: agent.ReasoningMedium,
+			opts:            agent.Options{Reasoning: agent.ReasoningOff},
+			wantEnabled:     false,
+			wantBudget:      0,
+		},
+		{
+			name:              "unsupported extended value fails before request",
+			opts:              agent.Options{Reasoning: agent.ReasoningXHigh},
+			wantErr:           true,
+			wantNoHTTPRequest: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name+"/chat", func(t *testing.T) {
+			body, err := captureOpenAIChatBody(t, "omlx", tt.configReasoning, tt.opts)
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantNoHTTPRequest {
+					assert.Nil(t, body)
+				}
+				return
+			}
+			require.NoError(t, err)
+			if tt.wantAbsent {
+				assertNoQwenReasoningWire(t, body)
+				return
+			}
+			assertQwenReasoningWireBudget(t, body, tt.wantEnabled, tt.wantBudget)
+		})
+		t.Run(tt.name+"/stream", func(t *testing.T) {
+			body, err := captureOpenAIStreamBody(t, "omlx", tt.configReasoning, tt.opts)
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.wantNoHTTPRequest {
+					assert.Nil(t, body)
+				}
+				return
+			}
+			require.NoError(t, err)
+			if tt.wantAbsent {
+				assertNoQwenReasoningWire(t, body)
+				return
+			}
+			assertQwenReasoningWireBudget(t, body, tt.wantEnabled, tt.wantBudget)
+		})
+	}
+}
+
+func TestQwenReasoningSerializationRejectsNonQwenModels(t *testing.T) {
+	for _, opts := range []agent.Options{
+		{Reasoning: agent.ReasoningMedium},
+		{Reasoning: agent.ReasoningOff},
+	} {
+		t.Run(string(opts.Reasoning)+"/chat", func(t *testing.T) {
+			body, err := captureOpenAIChatBodyWithModel(t, "omlx", "gpt-oss-20b-MXFP4-Q8", "", opts)
+			require.Error(t, err)
+			assert.Nil(t, body)
+			assert.Contains(t, err.Error(), "qwen reasoning control")
+			assert.Contains(t, err.Error(), "gpt-oss-20b")
+		})
+		t.Run(string(opts.Reasoning)+"/stream", func(t *testing.T) {
+			body, err := captureOpenAIStreamBodyWithModel(t, "omlx", "gpt-oss-20b-MXFP4-Q8", "", opts)
+			require.Error(t, err)
+			assert.Nil(t, body)
+			assert.Contains(t, err.Error(), "qwen reasoning control")
+			assert.Contains(t, err.Error(), "gpt-oss-20b")
 		})
 	}
 }
@@ -547,6 +700,10 @@ func TestSamplingOptionsSerialization(t *testing.T) {
 }
 
 func captureOpenAIChatBody(t *testing.T, providerType string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
+	return captureOpenAIChatBodyWithModel(t, providerType, testModelForProvider(providerType), providerReasoning, opts)
+}
+
+func captureOpenAIChatBodyWithModel(t *testing.T, providerType string, model string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
 	t.Helper()
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -565,7 +722,7 @@ func captureOpenAIChatBody(t *testing.T, providerType string, providerReasoning 
 	p := openai.New(openai.Config{
 		BaseURL:        srv.URL + "/v1",
 		APIKey:         "test",
-		Model:          "gpt-4o",
+		Model:          model,
 		ProviderSystem: providerType,
 		Capabilities:   capabilitiesForTestProvider(providerType),
 		Reasoning:      providerReasoning,
@@ -575,6 +732,10 @@ func captureOpenAIChatBody(t *testing.T, providerType string, providerReasoning 
 }
 
 func captureOpenAIStreamBody(t *testing.T, providerType string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
+	return captureOpenAIStreamBodyWithModel(t, providerType, testModelForProvider(providerType), providerReasoning, opts)
+}
+
+func captureOpenAIStreamBodyWithModel(t *testing.T, providerType string, model string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
 	t.Helper()
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -589,7 +750,7 @@ func captureOpenAIStreamBody(t *testing.T, providerType string, providerReasonin
 	p := openai.New(openai.Config{
 		BaseURL:        srv.URL + "/v1",
 		APIKey:         "test",
-		Model:          "gpt-4o",
+		Model:          model,
 		ProviderSystem: providerType,
 		Capabilities:   capabilitiesForTestProvider(providerType),
 		Reasoning:      providerReasoning,
@@ -606,11 +767,24 @@ func captureOpenAIStreamBody(t *testing.T, providerType string, providerReasonin
 	return capturedBody, nil
 }
 
+func testModelForProvider(providerType string) string {
+	if providerType == "omlx" {
+		return "Qwen3.6-27B-MLX-8bit"
+	}
+	return "gpt-4o"
+}
+
 func capabilitiesForTestProvider(providerType string) *openai.ProtocolCapabilities {
 	caps := openai.OpenAIProtocolCapabilities
 	switch providerType {
 	case "lmstudio":
 		caps.Thinking = true
+	case "omlx":
+		caps.Thinking = true
+		caps.ThinkingFormat = openai.ThinkingWireFormatQwen
+	case "openrouter":
+		caps.Thinking = true
+		caps.ThinkingFormat = openai.ThinkingWireFormatOpenRouter
 	case "ollama":
 		caps.StructuredOutput = false
 	}
@@ -630,6 +804,47 @@ func assertReasoningWireBudget(t *testing.T, body []byte, wantThinking bool, wan
 	require.True(t, ok, "request body must include thinking: %s", string(body))
 	assert.Equal(t, "enabled", thinking["type"])
 	assert.Equal(t, float64(wantBudget), thinking["budget_tokens"])
+}
+
+func assertOpenRouterReasoningWire(t *testing.T, body []byte, wantEffort string, wantMaxTokens int) {
+	t.Helper()
+	require.NotNil(t, body)
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	reasoning, ok := reqBody["reasoning"].(map[string]interface{})
+	require.True(t, ok, "request body must include reasoning: %s", string(body))
+	if wantEffort != "" {
+		assert.Equal(t, wantEffort, reasoning["effort"])
+		assert.NotContains(t, reasoning, "max_tokens")
+	} else {
+		assert.Equal(t, float64(wantMaxTokens), reasoning["max_tokens"])
+		assert.NotContains(t, reasoning, "effort")
+	}
+	assert.NotContains(t, reqBody, "thinking")
+	assert.NotContains(t, reqBody, "reasoning_effort")
+}
+
+func assertQwenReasoningWireBudget(t *testing.T, body []byte, wantEnabled bool, wantBudget int) {
+	t.Helper()
+	require.NotNil(t, body)
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	assert.Equal(t, wantEnabled, reqBody["enable_thinking"])
+	assert.Equal(t, float64(wantBudget), reqBody["thinking_budget"])
+	if _, ok := reqBody["thinking"]; ok {
+		t.Fatalf("qwen reasoning controls must not use thinking map: %s", string(body))
+	}
+}
+
+func assertNoQwenReasoningWire(t *testing.T, body []byte) {
+	t.Helper()
+	require.NotNil(t, body)
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	assert.NotContains(t, reqBody, "enable_thinking")
+	assert.NotContains(t, reqBody, "thinking_budget")
+	assert.NotContains(t, reqBody, "thinking")
+	assert.NotContains(t, reqBody, "reasoning")
 }
 
 func assertSamplingWireOptions(t *testing.T, body []byte, wantTemperature float64, wantSeed int64) {

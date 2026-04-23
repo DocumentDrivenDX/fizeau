@@ -20,7 +20,8 @@ var ProtocolCapabilities = openai.ProtocolCapabilities{
 	Tools:            true,
 	Stream:           true,
 	StructuredOutput: true,
-	Thinking:         false,
+	Thinking:         true,
+	ThinkingFormat:   openai.ThinkingWireFormatQwen,
 }
 
 type Config struct {
