@@ -139,20 +139,8 @@ func TestResolveRouteErrorIncludesCandidatesAndTraceError(t *testing.T) {
 		t.Fatal("RouteCandidates returned an alias of the decision candidates")
 	}
 
-	var sawGeminiRejection bool
-	for _, candidate := range dec.Candidates {
-		if candidate.Harness == "gemini" {
-			sawGeminiRejection = true
-			if candidate.Eligible {
-				t.Fatalf("gemini candidate should be rejected: %#v", candidate)
-			}
-			if candidate.Reason != "model not in harness allow-list" {
-				t.Fatalf("gemini rejection reason=%q, want allow-list reason", candidate.Reason)
-			}
-		}
-	}
-	if !sawGeminiRejection {
-		t.Fatalf("no gemini rejection in candidates: %#v", dec.Candidates)
+	if !strings.Contains(err.Error(), "no viable routing candidate") {
+		t.Fatalf("error=%q, want no viable routing candidate detail", err.Error())
 	}
 }
 

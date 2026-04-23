@@ -719,12 +719,12 @@ test-only harnesses, and current provider-backend rows. It is not the
 authoritative health signal for the primary harnesses. Primary harness health is
 specified separately in
 `docs/helix/02-design/primary-harness-capability-baseline.md` and covers only
-`agent`, `codex`, `claude`, and `gemini`.
+`agent`, `codex`, and `claude`.
 
 Primary-harness baseline capabilities are strict: `Run`, `FinalText`,
 `ProgressEvents`, `Cancel`, `WorkdirContext`, `PermissionModes`, `ListModels`,
 `SetModel`, `ListReasoning`, `SetReasoning`, `TokenUsage`, `QuotaStatus` for
-subscription harnesses, `ErrorStatus`, and `RequestMetadata`. These capabilities
+primary subscription harnesses, `ErrorStatus`, and `RequestMetadata`. These capabilities
 must not be reported as `optional` in the primary baseline. In particular,
 `ListModels` is required for `codex` and `claude`; if model choices are only
 available through their interactive TUI surfaces and no headless collector is
@@ -737,7 +737,7 @@ Current builtin matrix:
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | codex | required | unsupported | optional | optional | optional | optional | required | optional | optional | optional | optional | unsupported |
 | claude | required | unsupported | optional | optional | optional | optional | required | optional | optional | optional | optional | unsupported |
-| gemini | required | optional | optional | optional | unsupported | optional | required | optional | optional | unsupported | required | optional |
+| gemini | required | optional | optional | optional | unsupported | optional | required | optional | optional | unsupported | unsupported | optional |
 | opencode | required | unsupported | optional | optional | optional | optional | required | optional | optional | unsupported | unsupported | unsupported |
 | agent | required | optional | optional | optional | optional | optional | required | optional | optional | optional | not_applicable | unsupported |
 | pi | required | unsupported | optional | optional | optional | unsupported | required | optional | optional | unsupported | unsupported | unsupported |

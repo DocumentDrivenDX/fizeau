@@ -69,19 +69,19 @@ Current evidence:
 
 Only harnesses whose current baseline evidence is complete may set
 `AutoRoutingEligible=true`. For subscription-backed primary harnesses, complete
-evidence includes a fresh durable quota/account decision at routing time; Gemini
-uses fresh auth/account evidence until the CLI exposes a stable numeric quota
-counter. Missing or stale quota cache, blocked quota windows, auth failures, or
-failed probes must make that harness ineligible and explain why. For
+evidence includes a fresh durable quota/account decision at routing time.
+Missing or stale quota cache, blocked quota windows, auth failures, or failed
+probes must make that harness ineligible and explain why. For
 non-subscription harnesses, full runner coverage still does not imply automatic
 routing unless cost and quota policy are concrete enough to compete with
 subsidized primary capacity.
 
-Codex, Claude, and Gemini are the primary subscription smart-routing drivers.
-When Codex or Claude is blocked by quota extraction, the required response is to
-fix the PTY probe/cache and keep routing honest. Gemini is eligible only through
-fresh auth/account evidence until it exposes a stable quota counter; it must not
-mask missing Codex/Claude quota evidence as a silent fallback.
+Codex and Claude are the primary subscription smart-routing drivers. When
+Codex or Claude is blocked by quota extraction, the required response is to fix
+the PTY probe/cache and keep routing honest. Gemini remains secondary until the
+service owns a real Gemini quota probe/parser. Fresh auth/account evidence alone
+must not be promoted to quota status, and Gemini must not mask missing
+Codex/Claude quota evidence as a silent fallback.
 
 Quota refresh ownership belongs to the service, not the operator. Foreground
 routing remains cache-only and must not synchronously run live PTY probes on
@@ -100,7 +100,7 @@ Current status:
 | agent | eligible | Native service evidence covers the baseline rows above. |
 | codex | eligible, conditional on fresh subsidized account/quota evidence | Codex runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; `internal/harnesses/codex/account_test.go` and quota-cache tests prove account metadata is extracted from Codex auth state and API-key-only or missing account evidence is not enough for auto-routing; `service_route_attempts_test.go:TestResolveRoute_CodexUsesDurableQuotaCache` proves automatic routing consumes fresh durable quota state. |
 | claude | eligible, conditional on fresh complete account/quota evidence | Claude runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; quota-cache and PTY tests now reject incomplete account, source, session, or weekly-window evidence; foreground routing consumes the durable Claude quota decision before automatic selection. |
-| gemini | eligible, conditional on fresh auth/account evidence | Gemini runner tests cover request controls, final text, progress, usage, cancellation/error behavior, and model discovery fixtures. Gemini CLI does not expose a stable non-interactive numeric quota counter, so automatic routing is gated on fresh non-secret auth/account evidence and service status reports `ok`, `stale`, or `unauthenticated` for that gate while leaving quota windows empty. |
+| gemini | secondary; not auto-routed | Gemini runner tests cover request controls, final text, progress, usage, cancellation/error behavior, and model discovery fixtures. Google documents Gemini CLI daily request quotas and upstream Gemini CLI docs describe `/stats model` quota information, but the service has no accepted Gemini quota probe/parser/cache yet. Auth/account evidence and DDx session usage windows may be displayed, but quota status stays unsupported until parsed quota remaining/limit/reset evidence exists. |
 
 ## Capability Contracts
 
@@ -309,7 +309,6 @@ Quota status is required for subscription harnesses:
 
 - `codex`
 - `claude`
-- `gemini`
 
 Quota is `n/a` for the native `agent` harness because quota belongs to the
 selected provider backend, not to the harness itself.
@@ -338,11 +337,12 @@ The supported implementation drives Claude `/usage` and Codex `/status` through
 direct PTYs, normalizes missing binary/auth/timeout failures, and validates
 sanitized quota cassettes through the replay layer.
 
-Gemini quota status is currently an auth/account gate, not a numeric remaining
-quota counter: fresh authenticated Gemini evidence is `ok`, stale evidence is
-`stale`, and missing/unusable evidence is `unauthenticated`. Per-run rate-limit
-or quota failures remain execution errors until Gemini CLI exposes a stable
-non-interactive quota surface.
+Gemini quota status is unsupported until the service probes and parses actual
+Gemini quota remaining/limit/reset evidence. Google documents Gemini CLI
+request limits and upstream Gemini CLI docs describe `/stats model` quota
+information, but auth/account freshness is not quota. Per-run rate-limit or
+quota failures remain execution errors until a Gemini quota cache can be
+refreshed and consumed by routing.
 
 ### ErrorStatus
 
@@ -386,7 +386,7 @@ to these fields as evidence.
 The service must expose a primary-harness baseline report that is separate from
 the broad harness/provider capability matrix. The report must:
 
-- include only `agent`, `codex`, `claude`, and `gemini`
+- include only `agent`, `codex`, and `claude`
 - exclude HTTP provider backends such as `openrouter`, `lmstudio`, and `omlx`
 - avoid `optional` for baseline capabilities
 - show `gap` or `blocked` for missing primary requirements
@@ -403,7 +403,7 @@ passes in both live record mode and credential-free playback mode.
 ## Acceptance Criteria
 
 1. A primary-harness baseline report exists and renders as a compact table for
-   `agent`, `codex`, `claude`, and `gemini`.
+   `agent`, `codex`, and `claude`.
 2. The report includes all baseline capabilities in this spec.
 3. `ListModels` is required for all primary harnesses and cannot be reported as
    optional.
@@ -411,9 +411,9 @@ passes in both live record mode and credential-free playback mode.
    implementation provides evidence-backed model choices.
 5. Reasoning listing and setting are both reported independently.
 6. Token usage is required and missing token data is reported as a gap.
-7. Quota status is required for Codex, Claude, and Gemini and includes source,
-   freshness, and state. Gemini may omit numeric windows while the CLI has no
-   stable non-interactive quota counter.
+7. Quota status is required for Codex and Claude and includes source,
+   freshness, and state. Gemini remains secondary until it has parsed quota
+   remaining/limit/reset evidence.
 8. HTTP provider backends are not displayed as primary harnesses.
 9. Tests fail if a primary baseline capability is silently downgraded to
    optional or omitted.

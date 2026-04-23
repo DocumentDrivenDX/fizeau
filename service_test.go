@@ -163,10 +163,10 @@ func TestListHarnesses_shape(t *testing.T) {
 		}
 	})
 
-	t.Run("gemini_promoted_with_auth_gated_routing", func(t *testing.T) {
+	t.Run("gemini_secondary_until_quota_probe_exists", func(t *testing.T) {
 		h := byName["gemini"]
-		if !h.AutoRoutingEligible {
-			t.Errorf("gemini AutoRoutingEligible: want true")
+		if h.AutoRoutingEligible {
+			t.Errorf("gemini AutoRoutingEligible: want false until quota evidence exists")
 		}
 		if h.CostClass != "medium" {
 			t.Errorf("gemini CostClass: want medium, got %q", h.CostClass)
@@ -251,7 +251,7 @@ func TestListHarnesses_shape(t *testing.T) {
 				UsageCapture:    capStatus(agent.HarnessCapabilityOptional),
 				FinalText:       capStatus(agent.HarnessCapabilityOptional),
 				ToolEvents:      capStatus(agent.HarnessCapabilityUnsupported),
-				QuotaStatus:     capStatus(agent.HarnessCapabilityRequired),
+				QuotaStatus:     capStatus(agent.HarnessCapabilityUnsupported),
 				RecordReplay:    capStatus(agent.HarnessCapabilityOptional),
 			},
 			"opencode": {

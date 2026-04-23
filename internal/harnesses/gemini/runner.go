@@ -49,7 +49,7 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		Type:                 "subprocess",
 		IsLocal:              false,
 		IsSubscription:       true,
-		AutoRoutingEligible:  true,
+		AutoRoutingEligible:  false,
 		ExactPinSupport:      true,
 		DefaultModel:         "gemini-2.5-flash",
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},

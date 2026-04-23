@@ -694,37 +694,6 @@ func codexAccountStatus() *AccountStatus {
 	return accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, decision.Fresh)
 }
 
-func geminiQuotaState() *QuotaState {
-	snap := geminiharness.ReadAuthEvidence(time.Now())
-	qs := &QuotaState{
-		CapturedAt: snap.CapturedAt,
-		Fresh:      snap.Fresh,
-		Source:     snap.Source,
-		Status:     "unknown",
-	}
-	switch {
-	case !snap.Authenticated:
-		qs.Status = "unauthenticated"
-		qs.LastError = &StatusError{
-			Type:      "unauthenticated",
-			Detail:    snap.Detail,
-			Source:    snap.Source,
-			Timestamp: time.Now().UTC(),
-		}
-	case !snap.Fresh:
-		qs.Status = "stale"
-		qs.LastError = &StatusError{
-			Type:      "error",
-			Detail:    "Gemini auth evidence is stale; rerun a Gemini auth/status probe before routing automatically",
-			Source:    snap.Source,
-			Timestamp: snap.CapturedAt,
-		}
-	default:
-		qs.Status = "ok"
-	}
-	return qs
-}
-
 func geminiAccountStatus() *AccountStatus {
 	snap := geminiharness.ReadAuthEvidence(time.Now())
 	if !snap.Authenticated {
@@ -749,16 +718,31 @@ func (s *service) codexUsageWindows() []UsageWindow {
 }
 
 func (s *service) geminiUsageWindows() []UsageWindow {
-	return s.harnessUsageWindows("gemini")
+	out := make([]UsageWindow, 0, 3)
+	for _, since := range []string{"today", "7d", "30d"} {
+		window := s.harnessUsageWindow("gemini", since)
+		if window != nil {
+			out = append(out, *window)
+		}
+	}
+	return out
 }
 
 func (s *service) harnessUsageWindows(provider string) []UsageWindow {
+	window := s.harnessUsageWindow(provider, "30d")
+	if window == nil {
+		return nil
+	}
+	return []UsageWindow{*window}
+}
+
+func (s *service) harnessUsageWindow(provider, since string) *UsageWindow {
 	logDir := s.serviceSessionLogDir()
 	if logDir == "" {
 		return nil
 	}
 	now := time.Now().UTC()
-	report, err := sessionusage.AggregateUsage(logDir, sessionusage.UsageOptions{Since: "30d", Now: now})
+	report, err := sessionusage.AggregateUsage(logDir, sessionusage.UsageOptions{Since: since, Now: now})
 	if err != nil || report == nil {
 		return nil
 	}
@@ -789,7 +773,7 @@ func (s *service) harnessUsageWindows(provider string) []UsageWindow {
 		return nil
 	}
 	window := UsageWindow{
-		Name:                "30d",
+		Name:                since,
 		Source:              logDir,
 		CapturedAt:          now,
 		Fresh:               true,
@@ -804,7 +788,7 @@ func (s *service) harnessUsageWindows(provider string) []UsageWindow {
 	if total.KnownCostUSD != nil {
 		window.CostUSD = *total.KnownCostUSD
 	}
-	return []UsageWindow{window}
+	return &window
 }
 
 func (s *service) serviceSessionLogDir() string {
@@ -884,7 +868,6 @@ func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
 			info.Account = codexAccountStatus()
 			info.UsageWindows = s.codexUsageWindows()
 		case "gemini":
-			info.Quota = geminiQuotaState()
 			info.Account = geminiAccountStatus()
 			info.UsageWindows = s.geminiUsageWindows()
 		}

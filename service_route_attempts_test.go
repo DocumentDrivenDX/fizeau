@@ -214,7 +214,7 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	}
 }
 
-func TestBuildRoutingInputs_SecondaryHarnessesAndGeminiPromotion(t *testing.T) {
+func TestBuildRoutingInputs_SecondaryHarnesses(t *testing.T) {
 	registry := harnesses.NewRegistry()
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 	inputs := svc.buildRoutingInputs(context.Background())
@@ -239,7 +239,7 @@ func TestBuildRoutingInputs_SecondaryHarnessesAndGeminiPromotion(t *testing.T) {
 	}
 
 	gemini := routingHarnessEntry(t, inputs.Harnesses, "gemini")
-	if !gemini.AutoRoutingEligible || gemini.DefaultModel != "gemini-2.5-flash" {
+	if gemini.AutoRoutingEligible || gemini.DefaultModel != "gemini-2.5-flash" {
 		t.Fatalf("gemini routing metadata: AutoRoutingEligible=%v DefaultModel=%q", gemini.AutoRoutingEligible, gemini.DefaultModel)
 	}
 	if !containsRouteString(gemini.SupportedModels, "gemini-2.5-pro") || !containsRouteString(gemini.SupportedModels, "gemini-2.5-flash-lite") {

@@ -45,8 +45,8 @@ func TestRegistryNamesPreferenceOrder(t *testing.T) {
 	require.Len(t, names, 11)
 	assert.Equal(t, "codex", names[0])
 	assert.Equal(t, "claude", names[1])
-	assert.Equal(t, "gemini", names[2])
-	assert.Equal(t, "opencode", names[3])
+	assert.Equal(t, "opencode", names[2])
+	assert.Equal(t, "gemini", names[8])
 	assert.Contains(t, names, "virtual")
 }
 
@@ -137,7 +137,7 @@ func TestBuiltinHarnessesMetadata(t *testing.T) {
 	assert.True(t, claude.AutoRoutingEligible)
 
 	gemini, _ := r.Get("gemini")
-	assert.True(t, gemini.AutoRoutingEligible)
+	assert.False(t, gemini.AutoRoutingEligible)
 	assert.True(t, gemini.IsSubscription)
 	assert.Equal(t, "medium", gemini.CostClass)
 	assert.Contains(t, gemini.Models, "gemini-2.5-pro")

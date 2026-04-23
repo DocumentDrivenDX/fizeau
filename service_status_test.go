@@ -149,7 +149,7 @@ func TestListHarnesses_CodexUsageWindowsFromDDXSessionLogs(t *testing.T) {
 	}
 }
 
-func TestListHarnesses_GeminiQuotaAndUsageWindows(t *testing.T) {
+func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 	dir := t.TempDir()
 	logDir := filepath.Join(dir, ".agent", "sessions")
 	t.Setenv("GOOGLE_GENAI_USE_GCA", "")
@@ -197,24 +197,25 @@ func TestListHarnesses_GeminiQuotaAndUsageWindows(t *testing.T) {
 	if geminiInfo == nil {
 		t.Fatal("missing gemini harness")
 	}
-	if geminiInfo.Quota == nil || geminiInfo.Quota.Status != "ok" || !geminiInfo.Quota.Fresh || geminiInfo.Quota.Source != "environment" {
-		t.Fatalf("gemini quota status: %#v", geminiInfo.Quota)
+	if geminiInfo.Quota != nil {
+		t.Fatalf("gemini quota must stay unset until a real quota probe/parser exists: %#v", geminiInfo.Quota)
 	}
 	if geminiInfo.Account == nil || !geminiInfo.Account.Authenticated || geminiInfo.Account.PlanType != "Gemini API key" {
 		t.Fatalf("gemini account: %#v", geminiInfo.Account)
 	}
-	if len(geminiInfo.UsageWindows) != 1 {
+	if len(geminiInfo.UsageWindows) != 3 {
 		t.Fatalf("UsageWindows: got %#v", geminiInfo.UsageWindows)
 	}
-	window := geminiInfo.UsageWindows[0]
-	if window.Name != "30d" || window.Source != logDir || !window.Fresh {
-		t.Fatalf("usage window metadata: %#v", window)
-	}
-	if window.InputTokens != 21 || window.OutputTokens != 3 || window.TotalTokens != 24 || window.CacheReadTokens != 5 {
-		t.Fatalf("usage totals should come only from DDx gemini logs, not other providers: %#v", window)
-	}
-	if window.KnownCostUSD == nil || *window.KnownCostUSD != 0.02 || window.CostUSD != 0.02 || window.UnknownCostSessions != 0 {
-		t.Fatalf("known/unknown cost state: %#v", window)
+	for _, window := range geminiInfo.UsageWindows {
+		if window.Source != logDir || !window.Fresh {
+			t.Fatalf("usage window metadata: %#v", window)
+		}
+		if window.InputTokens != 21 || window.OutputTokens != 3 || window.TotalTokens != 24 || window.CacheReadTokens != 5 {
+			t.Fatalf("usage totals should come only from DDx gemini logs, not other providers: %#v", window)
+		}
+		if window.KnownCostUSD == nil || *window.KnownCostUSD != 0.02 || window.CostUSD != 0.02 || window.UnknownCostSessions != 0 {
+			t.Fatalf("known/unknown cost state: %#v", window)
+		}
 	}
 }
 
