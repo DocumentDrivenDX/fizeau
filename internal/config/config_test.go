@@ -398,7 +398,7 @@ func TestResolveProviderConfig_ModelRefAnthropic(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "opus-4.6", pc.Model)
+	assert.Equal(t, "opus-4.7", pc.Model)
 	assert.Equal(t, "code-high", resolved.CanonicalID)
 }
 
@@ -498,7 +498,7 @@ func TestBuildProviderWithOverrides(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
-	assert.Equal(t, "opus-4.6", pc.Model)
+	assert.Equal(t, "opus-4.7", pc.Model)
 	require.NotNil(t, resolved)
 	assert.Equal(t, "code-high", resolved.CanonicalID)
 }
@@ -745,7 +745,7 @@ func TestResolveBackend_WithModelRef(t *testing.T) {
 	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{})
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "opus-4.6", pc.Model)
+	assert.Equal(t, "opus-4.7", pc.Model)
 	assert.Equal(t, "code-high", resolved.CanonicalID)
 }
 
@@ -768,7 +768,7 @@ func TestResolveBackend_OverrideModelRef(t *testing.T) {
 	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{ModelRef: "code-smart"})
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "opus-4.6", pc.Model)
+	assert.Equal(t, "opus-4.7", pc.Model)
 }
 
 func TestResolveBackend_ExplicitModelBypassesCatalog(t *testing.T) {

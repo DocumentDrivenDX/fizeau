@@ -73,7 +73,7 @@ func TestDefault_LoadsEmbeddedManifest(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "code-high", resolved.Profile)
 	assert.Equal(t, "code-high", resolved.CanonicalID)
-	assert.Equal(t, "opus-4.6", resolved.ConcreteModel)
+	assert.Equal(t, "opus-4.7", resolved.ConcreteModel)
 	assert.Equal(t, reasoning.ReasoningHigh, resolved.SurfacePolicy.ReasoningDefault)
 	assert.Equal(t, "embedded", resolved.ManifestSource)
 	assert.Equal(t, "2026-04-12.3", resolved.CatalogVersion)

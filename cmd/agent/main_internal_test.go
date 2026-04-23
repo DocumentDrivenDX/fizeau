@@ -156,8 +156,8 @@ func TestResolveProviderForRun_ModelRef(t *testing.T) {
 	assert.Equal(t, "code-high", selection.Route)
 	assert.Equal(t, "cloud", selection.Provider)
 	assert.Equal(t, "code-high", selection.ResolvedModelRef)
-	assert.Equal(t, "opus-4.6", selection.ResolvedModel)
-	assert.Equal(t, "opus-4.6", pc.Model)
+	assert.Equal(t, "opus-4.7", selection.ResolvedModel)
+	assert.Equal(t, "opus-4.7", pc.Model)
 }
 
 func TestResolveProviderForRun_DeprecatedModelRefRejectedByDefault(t *testing.T) {

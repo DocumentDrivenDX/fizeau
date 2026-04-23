@@ -119,7 +119,7 @@ model_routes:
     strategy: ordered-failover
     candidates:
       - provider: anthropic
-        model: opus-4.6
+        model: opus-4.7
         reasoning_default: high
         priority: 100
       - provider: openrouter
@@ -391,7 +391,7 @@ Built-in preset details are defined by SD-003 and implemented in
 
 ```bash
 ddx-agent run --provider vidar "prompt"
-ddx-agent run --provider anthropic --model opus-4.6 "prompt"
+ddx-agent run --provider anthropic --model opus-4.7 "prompt"
 ddx-agent run --model-ref code-high "prompt"
 ddx-agent run --model-ref code-high --reasoning max "prompt"
 ddx-agent run --model-ref code-medium --reasoning off "prompt"

@@ -169,11 +169,11 @@ func TestCatalogModels_ListsModels(t *testing.T) {
 	output := string(out)
 	assert.Contains(t, output, "MODEL")
 	assert.Contains(t, output, "PROVIDER")
-	// The embedded v4 catalog has model entries like haiku-5.5, sonnet-4.6, opus-4.6.
+	// The embedded v4 catalog has model entries like haiku-5.5, sonnet-4.6, opus-4.7.
 	assert.True(t,
 		strings.Contains(output, "haiku-5.5") ||
 			strings.Contains(output, "sonnet-4.6") ||
-			strings.Contains(output, "opus-4.6"),
+			strings.Contains(output, "opus-4.7"),
 		"expected at least one v4 catalog model entry in output, got: %s", output,
 	)
 }

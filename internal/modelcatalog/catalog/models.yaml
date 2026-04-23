@@ -3,9 +3,9 @@ generated_at: 2026-04-13T00:00:00Z
 catalog_version: 2026-04-12.3
 
 models:
-  opus-4.6:
+  opus-4.7:
     family: claude-opus
-    display_name: Claude Opus 4.6
+    display_name: Claude Opus 4.7
     tier: code-high
     status: active
     provider_system: anthropic
@@ -16,10 +16,10 @@ models:
     context_window: 1000000
     swe_bench_verified: 80.8
     benchmark_as_of: "2026-04-12"
-    openrouter_id: anthropic/claude-opus-4.6
+    openrouter_id: anthropic/claude-opus-4.7
     surfaces:
-      agent.anthropic: opus-4.6
-      claude-code: opus-4.6
+      agent.anthropic: opus-4.7
+      claude-code: opus-4.7
 
   gpt-5.4:
     family: gpt
@@ -240,7 +240,7 @@ targets:
     status: active
     context_window_min: 1000000
     swe_bench_min: 80.0
-    candidates: [opus-4.6, gpt-5.4, gemini-2.5-pro]
+    candidates: [opus-4.7, gpt-5.4, gemini-2.5-pro]
     surface_policy:
       agent.anthropic:
         reasoning_default: high

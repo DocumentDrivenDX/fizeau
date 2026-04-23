@@ -98,12 +98,12 @@
       "rationale": "Claude harness Sonnet baseline for identifying medium-complexity tasks that subscription frontier models solve while local Qwen fails."
     },
     {
-      "id": "claude-opus46",
+      "id": "claude-opus47",
       "harness": "claude",
-      "model": "claude-opus-4-6",
+      "model": "opus",
       "effort": "high",
       "tier": "frontier",
-      "rationale": "Claude harness Opus baseline for hard-task separability and future complexity-estimator labels."
+      "rationale": "Claude harness Opus baseline for hard-task separability and future complexity-estimator labels. Uses the Claude CLI `opus` alias so it tracks the current Opus default, now expected to be Opus 4.7."
     },
     {
       "id": "gemini-25-pro",

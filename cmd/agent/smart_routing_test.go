@@ -196,7 +196,7 @@ func TestComparableModelName(t *testing.T) {
 		{"anthropic/claude-opus-4", "claude-opus-4"},
 		{"qwen3.5-27b", "qwen3.5-27b"},
 		{"gpt-4-turbo-2024-04-09", "gpt-4-turbo"},
-		{"opus-4.6", "opus-4.6"},
+		{"opus-4.7", "opus-4.7"},
 		{"", ""},
 	}
 

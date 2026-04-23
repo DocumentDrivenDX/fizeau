@@ -21,7 +21,7 @@ current catalog is still incomplete as an operational system:
 The immediate product need is to support a current coding-policy baseline with
 three stable levels:
 
-- `code-high`: `opus-4.6` / `gpt-5.4` at `high` effort
+- `code-high`: `opus-4.7` / `gpt-5.4` at `high` effort
 - `code-medium`: `sonnet-4.6` / `gpt-5.4-mini` at `medium` effort
 - `code-economy`: `haiku-5.5` at `medium` effort and `qwen3.5-27b` at `high`
   effort
@@ -256,8 +256,8 @@ targets:
     status: active
     aliases: [high]
     surfaces:
-      agent.anthropic: opus-4.6
-      claude-code: opus-4.6
+      agent.anthropic: opus-4.7
+      claude-code: opus-4.7
       agent.openai: gpt-5.4
       codex: gpt-5.4
     surface_policy:

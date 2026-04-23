@@ -84,11 +84,11 @@ set, but only inside the active profile's hard constraints.
    another candidate can still win if the profile score, gates, and tie-breaks
    rank it higher.
 
-10. `--profile local --model opus-4.6`
+10. `--profile local --model opus-4.7`
 
-    If `opus-4.6` is only servable by subscription harnesses in the current
+    If `opus-4.7` is only servable by subscription harnesses in the current
     inputs, the model pin violates `local-only`. Routing returns
-    `ErrProfilePinConflict` with `ConflictingPin=Model=opus-4.6`.
+    `ErrProfilePinConflict` with `ConflictingPin=Model=opus-4.7`.
 
 11. `--model gpt-5.4`
 

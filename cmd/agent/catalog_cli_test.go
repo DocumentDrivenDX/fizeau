@@ -560,7 +560,7 @@ func TestCLI_CatalogShow_EmbeddedFallback(t *testing.T) {
 	assert.Contains(t, output, "catalog_version: 2026-04-12.3")
 	assert.Contains(t, output, "code-high:")
 	assert.Contains(t, output, "agent.openai: gpt-5.4")
-	assert.Contains(t, output, "agent.anthropic: opus-4.6")
+	assert.Contains(t, output, "agent.anthropic: opus-4.7")
 }
 
 func TestCLI_CatalogCheck_ShowsUpdateAvailable(t *testing.T) {
