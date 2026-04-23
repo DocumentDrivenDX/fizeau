@@ -122,6 +122,27 @@ behaviorally no-op, and the beadbench tracker's `effort` label does not
 change observable runtime reasoning. Use OMLX `Qwen3.6-27B-MLX-8bit` /
 `Qwen3.6-35B-A3B-4bit` when enforced reasoning budgets are needed.
 
+## Tasks invalid for model-comparison scoring
+
+A task may carry `"model_comparison_valid": false` in `manifest-v1.json` when its
+verifier is known to produce model-independent results (for example, the verifier
+fixture is internally inconsistent, the acceptance command has a defect, or the
+upstream project's state diverges from the pinned base revision). Such tasks
+should be excluded from separability aggregates and leaderboard-style rollups;
+the runner still executes them so harness-side regressions remain visible.
+
+Currently marked invalid:
+
+- `helix-triage-blanket-priming` — the helix `tests/validate-skills.sh`
+  mixed-ready-semantics block diffs `ddx bead ready --execution --json` against
+  `validate_execution_ready_beads.execution_ready_beads` on a shared fixture; the
+  two views disagree (`hx-in-progress-build` vs `hx-ready-epic`) regardless of
+  what the agent edits, so both Codex and Sonnet execute-success runs fail the
+  verifier identically (see
+  `benchmark-results/beadbench/run-20260423T054306Z-3937255/report.json`). The
+  task can be re-enabled once helix reconciles the CLI and validator views of
+  the execution-ready surface.
+
 ## Evidence Rules
 
 - Evidence-grade claims require at least three repetitions per task/arm.

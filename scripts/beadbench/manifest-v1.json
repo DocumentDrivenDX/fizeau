@@ -445,7 +445,9 @@
       "tier": "core",
       "acceptance_command": "bash tests/validate-skills.sh",
       "verifier_command": "bash tests/validate-skills.sh",
-      "rationale": "Validator hardening against semantically equivalent bad prompt wording; exercises textual reasoning plus deterministic shell tests."
+      "rationale": "Validator hardening against semantically equivalent bad prompt wording; exercises textual reasoning plus deterministic shell tests.",
+      "model_comparison_valid": false,
+      "comparison_invalid_reason": "The helix tests/validate-skills.sh mixed-ready-semantics block compares `ddx bead ready --execution --json` against `validate_execution_ready_beads.execution_ready_beads`, and the two views disagree on the bundled fixture independently of the agent's edits: `ddx bead ready` treats `hx-in-progress-build` as ready (missing in_progress filter) while `validate_execution_ready_beads` treats `hx-ready-epic` as ready (excludes epic issue_type). Both Codex GPT-5.4 and Claude Sonnet 4.6 execute-success runs fail the verifier with the same `expected ready ids ['hx-in-progress-build', 'hx-ready-build', 'hx-ready-review', 'hx-ready-vague'], got ['hx-ready-build', 'hx-ready-epic', 'hx-ready-review', 'hx-ready-vague']` error (run-20260423T054306Z-3937255). The verifier is deterministic but its intent does not match its assertion, so this task cannot separate Codex and Claude until the helix-side fixture or CLI is harmonized. Exclude from scoring aggregates; see README section 'Tasks invalid for model-comparison scoring'."
     },
     {
       "id": "helix-deploy-contract-docs",
