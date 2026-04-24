@@ -56,6 +56,15 @@
       "rationale": "Same Vidar OMLX Qwen 27B model at lower reasoning budget; isolates whether medium effort causes unnecessary loops on local Qwen."
     },
     {
+      "id": "agent-vidar-omlx-qwen36-27b-high",
+      "harness": "agent",
+      "provider": "vidar-omlx",
+      "model": "Qwen3.6-27B-MLX-8bit",
+      "effort": "high",
+      "tier": "reasoning-control",
+      "rationale": "Same Vidar OMLX Qwen 27B model at higher reasoning budget; isolates whether extra budget helps on hard tasks or just increases loop risk and latency."
+    },
+    {
       "id": "agent-vidar-omlx-qwen36-35b",
       "harness": "agent",
       "provider": "vidar-omlx",
@@ -97,6 +106,15 @@
       "effort": "medium",
       "tier": "core",
       "rationale": "Claude harness Sonnet baseline for identifying medium-complexity tasks that subscription frontier models solve while local Qwen fails."
+    },
+    {
+      "id": "agent-openrouter-sonnet46",
+      "harness": "agent",
+      "provider": "openrouter",
+      "model": "anthropic/claude-sonnet-4.6",
+      "effort": "medium",
+      "tier": "harness-control",
+      "rationale": "Native agent through OpenRouter on the same Sonnet 4.6 family used by the Claude harness baseline; isolates agent/tool-loop quality from model quality."
     },
     {
       "id": "claude-opus47",
