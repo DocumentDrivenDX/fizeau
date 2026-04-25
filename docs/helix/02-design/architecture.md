@@ -155,6 +155,45 @@ CLI / caller
 6. Any new CLI-visible execution/status behavior must be added to
    `CONTRACT-003` before the CLI reaches into internals to fetch it.
 
+## Caching
+
+DDx uses native provider prompt-caching where supported. The Anthropic provider
+emits `cache_control: {type: "ephemeral"}` breakpoints on a stable request
+prefix so multi-turn sessions hit Anthropic's prompt cache. The OpenAI-compatible
+providers (gemini, lmstudio, omlx, openrouter) rely on the upstream's
+auto-caching of stable prefixes; DDx's responsibility there is to keep request
+prefixes byte-stable across turns.
+
+- **Prefix order invariant.** The Anthropic request body is laid out as
+  `tools` → `system` → conversation history → trailing user message, in that
+  exact order. Anything before the trailing user message must remain byte-stable
+  across consecutive turns within a session for the cache to hit.
+- **Two-marker placement.** A `cache_control: ephemeral` breakpoint is stamped
+  on the LAST tool definition and on the LAST `system` block. An Anthropic
+  breakpoint marks the END of a cacheable prefix, so placing one marker at the
+  end of the tool list caches `tools[*]`, and a second at the end of the system
+  list caches `tools[*] + system[*]`. The conversation history that follows is
+  not separately marked — the next turn re-uses these two boundaries while the
+  trailing turn-specific user message remains uncached, which is the intended
+  shape.
+- **Compaction caveat.** `internal/compaction` rewrites retained messages to
+  shrink the working context. A compaction event will change bytes inside the
+  `messages` array and is therefore expected to break the cache prefix. The
+  next turn pays a cache-write cost and subsequent turns re-cache against the
+  new prefix. This is intentional, not a bug — compaction trades cache continuity
+  for a smaller working context.
+- **Tool-mutation caveat.** Any text inside a `Tool.Description` (or any other
+  field of the tools/system prefix) that varies per turn silently kills caching:
+  the prefix bytes change, so Anthropic treats it as a cold prefix. Tools
+  registered via `agent.ToolDef` must be deterministic across turns within a
+  session. If a tool needs per-turn state, surface it through tool input rather
+  than baking it into the description.
+
+The public opt-out is `Options.CachePolicy`. Values: `""` and `"default"` both
+mean "cache as designed"; `"off"` suppresses BOTH the tool and system markers
+on the wire and signals the cost-attribution layer to emit explicit zero
+cache-amounts rather than nil.
+
 ## Key Design Decisions
 
 | Decision | Choice | Rationale |

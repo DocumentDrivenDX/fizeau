@@ -59,16 +59,7 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 		model = opts.Model
 	}
 
-	// Separate system message from conversation
-	var system []ant.TextBlockParam
-	var convMsgs []agent.Message
-	for _, m := range messages {
-		if m.Role == agent.RoleSystem {
-			system = append(system, ant.TextBlockParam{Text: m.Content})
-		} else {
-			convMsgs = append(convMsgs, m)
-		}
-	}
+	system, convMsgs := buildSystemBlocks(messages, opts)
 
 	params := ant.MessageNewParams{
 		Model:    ant.Model(model),
@@ -78,12 +69,6 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 	if len(system) > 0 {
 		params.System = system
 	}
-
-	// CachePolicy wiring point. opts.CachePolicy carries the public opt-out
-	// ("" / "default" / "off"); the cache_control writer in a follow-up bead
-	// reads this field to decide whether to stamp cache markers on the
-	// system block and final user turn. No behavior here yet.
-	_ = opts.CachePolicy
 
 	maxTokens := 4096
 	if opts.MaxTokens > 0 {
@@ -96,7 +81,7 @@ func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []a
 	}
 
 	if len(tools) > 0 {
-		params.Tools = convertTools(tools)
+		params.Tools = convertTools(tools, opts)
 	}
 
 	var resp agent.Response
@@ -193,7 +178,7 @@ func convertMessages(msgs []agent.Message) []ant.MessageParam {
 	return result
 }
 
-func convertTools(tools []agent.ToolDef) []ant.ToolUnionParam {
+func convertTools(tools []agent.ToolDef, opts agent.Options) []ant.ToolUnionParam {
 	var result []ant.ToolUnionParam
 	for _, t := range tools {
 		var schema ant.ToolInputSchemaParam
@@ -207,7 +192,37 @@ func convertTools(tools []agent.ToolDef) []ant.ToolUnionParam {
 			},
 		})
 	}
+	// Stamp an ephemeral cache_control breakpoint at the END of the tool list
+	// so the entire tool prefix becomes a cacheable boundary. CachePolicy "off"
+	// suppresses the marker.
+	if len(result) > 0 && opts.CachePolicy != "off" {
+		last := len(result) - 1
+		if result[last].OfTool != nil {
+			result[last].OfTool.CacheControl = ant.NewCacheControlEphemeralParam()
+		}
+	}
 	return result
+}
+
+// buildSystemBlocks separates system messages from the conversation tail and
+// returns the typed Anthropic system-block slice plus the remaining messages.
+// When at least one system block is produced and CachePolicy is not "off",
+// a cache_control: ephemeral breakpoint is set on the LAST block so the
+// system prefix is cached.
+func buildSystemBlocks(msgs []agent.Message, opts agent.Options) ([]ant.TextBlockParam, []agent.Message) {
+	var system []ant.TextBlockParam
+	var convMsgs []agent.Message
+	for _, m := range msgs {
+		if m.Role == agent.RoleSystem {
+			system = append(system, ant.TextBlockParam{Text: m.Content})
+		} else {
+			convMsgs = append(convMsgs, m)
+		}
+	}
+	if len(system) > 0 && opts.CachePolicy != "off" {
+		system[len(system)-1].CacheControl = ant.NewCacheControlEphemeralParam()
+	}
+	return system, convMsgs
 }
 
 // ChatStream implements agent.StreamingProvider for token-level streaming.
@@ -217,15 +232,7 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 		model = opts.Model
 	}
 
-	var system []ant.TextBlockParam
-	var convMsgs []agent.Message
-	for _, m := range messages {
-		if m.Role == agent.RoleSystem {
-			system = append(system, ant.TextBlockParam{Text: m.Content})
-		} else {
-			convMsgs = append(convMsgs, m)
-		}
-	}
+	system, convMsgs := buildSystemBlocks(messages, opts)
 
 	params := ant.MessageNewParams{
 		Model:    ant.Model(model),
@@ -234,8 +241,6 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 	if len(system) > 0 {
 		params.System = system
 	}
-	// CachePolicy wiring point — see Chat. No behavior here yet.
-	_ = opts.CachePolicy
 	maxTokens := 4096
 	if opts.MaxTokens > 0 {
 		maxTokens = opts.MaxTokens
@@ -245,7 +250,7 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 		params.Temperature = ant.Float(*opts.Temperature)
 	}
 	if len(tools) > 0 {
-		params.Tools = convertTools(tools)
+		params.Tools = convertTools(tools, opts)
 	}
 
 	stream := p.client.Messages.NewStreaming(ctx, params)
