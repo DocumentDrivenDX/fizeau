@@ -401,6 +401,15 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 				}
 				entry.Providers = append(entry.Providers, s.liveProviderEntries(ctx, pname, pcfg, cat)...)
 			}
+			// Tool support for the agent harness is per-(provider, model);
+			// the harness-level baseline is whether ANY provider supports
+			// tools. Engine OR-combines harness and provider SupportsTools
+			// so this lets a per-model no_tools catalog flag actually fire
+			// the RequiresTools gate when every provider's resolved model
+			// is no-tools.
+			if len(entry.Providers) > 0 {
+				entry.SupportsTools = anyProviderSupportsTools(entry.Providers)
+			}
 		}
 		s.applySubscriptionRoutingCost(&entry, cat)
 		entries = append(entries, entry)
@@ -480,7 +489,8 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 				DefaultModel:       pcfg.Model,
 				DiscoveredIDs:      ids,
 				DiscoveryAttempted: true,
-				SupportsTools:      true,
+				ContextWindows:     buildProviderContextWindows(cat, pcfg.Model, ids),
+				SupportsTools:      providerSupportsTools(cat, pcfg.Model, ids),
 			}
 			s.applyEndpointRoutingCost(&entry, pcfg, cat)
 			out = append(out, entry)
@@ -488,13 +498,85 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 		return out
 	}
 	entry := routing.ProviderEntry{
-		Name:          providerName,
-		BaseURL:       pcfg.BaseURL,
-		DefaultModel:  pcfg.Model,
-		SupportsTools: true,
+		Name:           providerName,
+		BaseURL:        pcfg.BaseURL,
+		DefaultModel:   pcfg.Model,
+		ContextWindows: buildProviderContextWindows(cat, pcfg.Model, nil),
+		SupportsTools:  providerSupportsTools(cat, pcfg.Model, nil),
 	}
 	s.applyEndpointRoutingCost(&entry, pcfg, cat)
 	return []routing.ProviderEntry{entry}
+}
+
+// buildProviderContextWindows assembles the ContextWindows map for a
+// ProviderEntry from the model catalog. Entries are added for the provider's
+// configured DefaultModel and every DiscoveredID that has a non-zero
+// context_window declared in the catalog. Models the catalog does not know
+// about are omitted (engine treats missing entries as unknown context).
+func buildProviderContextWindows(cat *modelcatalog.Catalog, defaultModel string, discoveredIDs []string) map[string]int {
+	if cat == nil {
+		return nil
+	}
+	out := make(map[string]int)
+	if defaultModel != "" {
+		if n := cat.ContextWindowForModel(defaultModel); n > 0 {
+			out[defaultModel] = n
+		}
+	}
+	for _, id := range discoveredIDs {
+		if id == "" {
+			continue
+		}
+		if _, exists := out[id]; exists {
+			continue
+		}
+		if n := cat.ContextWindowForModel(id); n > 0 {
+			out[id] = n
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// providerSupportsTools returns whether the provider should be advertised as
+// supporting tools to the routing engine. Defaults to true; only flips to
+// false when the catalog explicitly marks every relevant model (the
+// DefaultModel and any DiscoveredIDs) with no_tools=true.
+func providerSupportsTools(cat *modelcatalog.Catalog, defaultModel string, discoveredIDs []string) bool {
+	if cat == nil {
+		return true
+	}
+	checked := false
+	if defaultModel != "" {
+		if cat.SupportsToolsForModel(defaultModel) {
+			return true
+		}
+		checked = true
+	}
+	for _, id := range discoveredIDs {
+		if id == "" {
+			continue
+		}
+		if cat.SupportsToolsForModel(id) {
+			return true
+		}
+		checked = true
+	}
+	if !checked {
+		return true
+	}
+	return false
+}
+
+func anyProviderSupportsTools(providers []routing.ProviderEntry) bool {
+	for _, p := range providers {
+		if p.SupportsTools {
+			return true
+		}
+	}
+	return false
 }
 
 func providerUsesLiveDiscovery(providerType string) bool {

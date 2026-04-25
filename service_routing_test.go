@@ -444,6 +444,177 @@ func floatNear(got, want float64) bool {
 	return math.Abs(got-want) < 1e-12
 }
 
+// gateFixtureCatalog returns a catalog used by the ContextWindow / RequiresTools
+// gate-firing tests below. It declares two concrete models on the agent.openai
+// surface: small-ctx-model has a 4096-token context window (and supports
+// tools), while no-tools-model has a generous context window but is marked
+// no_tools=true so RequiresTools=true requests are rejected against it.
+const gateFixtureCatalogYAML = `
+version: 4
+generated_at: 2026-04-25T00:00:00Z
+models:
+  small-ctx-model:
+    family: gate
+    status: active
+    context_window: 4096
+    surfaces: {agent.openai: small-ctx-model}
+  no-tools-model:
+    family: gate
+    status: active
+    context_window: 200000
+    no_tools: true
+    surfaces: {agent.openai: no-tools-model}
+targets:
+  small-ctx:
+    family: gate
+    candidates: [small-ctx-model]
+  no-tools:
+    family: gate
+    candidates: [no-tools-model]
+`
+
+func newGateFixtureService(t *testing.T, providerModel string) *service {
+	t.Helper()
+	catalog := loadRoutingFixtureCatalog(t, gateFixtureCatalogYAML)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"local": {Type: "test", BaseURL: "http://127.0.0.1:9999/v1", Model: providerModel},
+		},
+		names:       []string{"local"},
+		defaultName: "local",
+	}
+	return publicRouteTraceService(sc)
+}
+
+func findCandidate(t *testing.T, dec *RouteDecision, harness, provider string) RouteCandidate {
+	t.Helper()
+	if dec == nil {
+		t.Fatal("nil decision")
+	}
+	for _, c := range dec.Candidates {
+		if c.Harness == harness && c.Provider == provider {
+			return c
+		}
+	}
+	t.Fatalf("candidate harness=%q provider=%q not found in %#v", harness, provider, dec.Candidates)
+	return RouteCandidate{}
+}
+
+// TestResolveRoute_FiltersByEstimatedPromptTokens proves the engine's
+// context-window gate fires end-to-end: with ContextWindows wired from the
+// catalog, a 1M-token prompt against a 4096-token model is marked ineligible
+// with FilterReasonContextTooSmall.
+func TestResolveRoute_FiltersByEstimatedPromptTokens(t *testing.T) {
+	svc := newGateFixtureService(t, "small-ctx-model")
+
+	dec, _ := svc.ResolveRoute(context.Background(), RouteRequest{
+		Harness:               "agent",
+		Model:                 "small-ctx-model",
+		EstimatedPromptTokens: 1_000_000,
+	})
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	candidate := findCandidate(t, dec, "agent", "local")
+	if candidate.Eligible {
+		t.Fatalf("candidate eligible with 1M tokens against 4096 context: %#v", candidate)
+	}
+	if candidate.FilterReason != FilterReasonContextTooSmall {
+		t.Fatalf("FilterReason=%q, want %q (Reason=%q)", candidate.FilterReason, FilterReasonContextTooSmall, candidate.Reason)
+	}
+}
+
+// TestResolveRoute_FiltersByRequiresTools proves the RequiresTools gate fires
+// when the catalog marks the resolved model with no_tools=true.
+func TestResolveRoute_FiltersByRequiresTools(t *testing.T) {
+	svc := newGateFixtureService(t, "no-tools-model")
+
+	dec, _ := svc.ResolveRoute(context.Background(), RouteRequest{
+		Harness:       "agent",
+		Model:         "no-tools-model",
+		RequiresTools: true,
+	})
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	candidate := findCandidate(t, dec, "agent", "local")
+	if candidate.Eligible {
+		t.Fatalf("candidate eligible despite no_tools=true: %#v", candidate)
+	}
+	if candidate.FilterReason != FilterReasonNoToolSupport {
+		t.Fatalf("FilterReason=%q, want %q (Reason=%q)", candidate.FilterReason, FilterReasonNoToolSupport, candidate.Reason)
+	}
+}
+
+// TestResolveRoute_NoOpWhenZero proves that an unset EstimatedPromptTokens /
+// RequiresTools request does not change which candidates are eligible compared
+// to a baseline request — no spurious filtering on the same model that the
+// previous two tests reject under stress.
+func TestResolveRoute_NoOpWhenZero(t *testing.T) {
+	smallCtxSvc := newGateFixtureService(t, "small-ctx-model")
+	noToolsSvc := newGateFixtureService(t, "no-tools-model")
+
+	smallDec, err := smallCtxSvc.ResolveRoute(context.Background(), RouteRequest{
+		Harness: "agent",
+		Model:   "small-ctx-model",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute small-ctx-model: %v", err)
+	}
+	smallCandidate := findCandidate(t, smallDec, "agent", "local")
+	if !smallCandidate.Eligible {
+		t.Fatalf("small-ctx-model candidate ineligible without EstimatedPromptTokens: %#v", smallCandidate)
+	}
+	if smallCandidate.FilterReason != "" {
+		t.Fatalf("small-ctx-model FilterReason=%q, want empty (no-op gate)", smallCandidate.FilterReason)
+	}
+
+	noToolsDec, err := noToolsSvc.ResolveRoute(context.Background(), RouteRequest{
+		Harness: "agent",
+		Model:   "no-tools-model",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute no-tools-model: %v", err)
+	}
+	noToolsCandidate := findCandidate(t, noToolsDec, "agent", "local")
+	if !noToolsCandidate.Eligible {
+		t.Fatalf("no-tools-model candidate ineligible without RequiresTools=true: %#v", noToolsCandidate)
+	}
+	if noToolsCandidate.FilterReason != "" {
+		t.Fatalf("no-tools-model FilterReason=%q, want empty (no-op gate)", noToolsCandidate.FilterReason)
+	}
+}
+
+// TestBuildRoutingInputsWiresContextWindowsFromCatalog asserts the structural
+// wiring requested by the bead: ProviderEntry.ContextWindows is populated for
+// the configured DefaultModel from the catalog so the engine's context-window
+// gate has data to act on.
+func TestBuildRoutingInputsWiresContextWindowsFromCatalog(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, gateFixtureCatalogYAML)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"local": {Type: "test", BaseURL: "http://127.0.0.1:9999/v1", Model: "small-ctx-model"},
+		},
+		names:       []string{"local"},
+		defaultName: "local",
+	}
+	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+
+	in := svc.buildRoutingInputs(context.Background())
+	providers := providerCostsByName(in, "agent")
+	provider, ok := providers["local"]
+	if !ok {
+		t.Fatalf("agent/local provider not in inputs: %#v", providers)
+	}
+	if got := provider.ContextWindows["small-ctx-model"]; got != 4096 {
+		t.Fatalf("ContextWindows[small-ctx-model]=%d, want 4096 (full map=%#v)", got, provider.ContextWindows)
+	}
+}
+
 func TestDecisionWithCandidatesCopiesInput(t *testing.T) {
 	candidates := []RouteCandidate{{Harness: "agent", Reason: "original"}}
 	err := withRouteCandidates(errors.New("no viable routing candidate"), candidates)

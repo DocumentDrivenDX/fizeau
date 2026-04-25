@@ -343,6 +343,26 @@ func (c *Catalog) ContextWindowForModel(id string) int {
 	return 0
 }
 
+// SupportsToolsForModel reports whether the given concrete model ID supports
+// tool/function calling per the catalog. Returns true when the model is not
+// in the catalog (caller assumes capable by default) and false only when the
+// catalog explicitly marks the model with no_tools=true. Matching is
+// case-insensitive to mirror ContextWindowForModel.
+func (c *Catalog) SupportsToolsForModel(id string) bool {
+	if c == nil {
+		return true
+	}
+	if entry, ok := c.manifest.Models[id]; ok {
+		return !entry.NoTools
+	}
+	for mid, entry := range c.manifest.Models {
+		if strings.EqualFold(mid, id) {
+			return !entry.NoTools
+		}
+	}
+	return true
+}
+
 // CandidatesFor returns the ordered list of candidate concrete model IDs for
 // the given surface and target key. For old-style single-string surfaces this
 // returns a one-element slice. Returns nil if the target or surface is absent.

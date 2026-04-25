@@ -53,6 +53,7 @@ type ModelEntry struct {
 	Surfaces           map[string]string           `yaml:"surfaces,omitempty"`
 	SpeedTokensPerSec  float64                     `yaml:"speed_tokens_per_sec,omitempty"`
 	ContextWindow      int                         `yaml:"context_window,omitempty"`
+	NoTools            bool                        `yaml:"no_tools,omitempty"`
 	ReasoningMaxTokens int                         `yaml:"reasoning_max_tokens,omitempty"`
 	ReasoningBudgets   map[reasoning.Reasoning]int `yaml:"reasoning_budgets,omitempty"`
 }
