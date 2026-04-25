@@ -11,6 +11,7 @@ var (
 	errProfilePinConflict       = errors.New("agent: profile pin conflict")
 	errNoProfileCandidate       = errors.New("agent: no profile candidate")
 	errUnknownProfile           = errors.New("agent: unknown profile")
+	errNoLiveProvider           = errors.New("agent: no live provider")
 )
 
 // DecisionWithCandidates is implemented by routing errors that retain the
@@ -152,4 +153,33 @@ func (e ErrUnknownProfile) Is(target error) bool {
 
 func (e ErrUnknownProfile) Unwrap() error {
 	return errUnknownProfile
+}
+
+// ErrNoLiveProvider reports that profile-tier escalation walked the entire
+// cheap → standard → smart ladder without finding a live provider that
+// could serve the request. The message names the prompt size and tool
+// requirement so operators know what capability is missing across all
+// tiers, rather than the engine's "no viable routing candidate" jargon.
+type ErrNoLiveProvider struct {
+	PromptTokens  int
+	RequiresTools bool
+	StartingTier  string
+}
+
+func (e ErrNoLiveProvider) Error() string {
+	return fmt.Sprintf("no live provider supports prompt of %d tokens with tools=%v at tier ≥ %s",
+		e.PromptTokens, e.RequiresTools, e.StartingTier)
+}
+
+func (e ErrNoLiveProvider) Is(target error) bool {
+	switch target.(type) {
+	case ErrNoLiveProvider, *ErrNoLiveProvider:
+		return true
+	default:
+		return errors.Is(errNoLiveProvider, target)
+	}
+}
+
+func (e ErrNoLiveProvider) Unwrap() error {
+	return errNoLiveProvider
 }

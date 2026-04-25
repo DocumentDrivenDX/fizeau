@@ -173,6 +173,32 @@ func (e *NoViableCandidateError) Error() string {
 	return fmt.Sprintf("no viable routing candidate: %d candidates rejected", e.Rejected)
 }
 
+// ErrNoLiveProvider reports that profile-tier escalation walked the entire
+// ladder (cheap → standard → smart) without finding a live provider that
+// can serve the request. Callers translate this into a precise user-facing
+// message naming the prompt size and tool requirement so operators know
+// what capability is missing across all tiers.
+type ErrNoLiveProvider struct {
+	// PromptTokens is the request's EstimatedPromptTokens at the time
+	// escalation began. Zero means no prompt-token gating was active.
+	PromptTokens int
+	// RequiresTools mirrors the request's RequiresTools flag.
+	RequiresTools bool
+	// StartingTier is the profile name that escalation began from
+	// (the profile in the original request).
+	StartingTier string
+}
+
+func (e *ErrNoLiveProvider) Error() string {
+	return fmt.Sprintf("no live provider supports prompt of %d tokens with tools=%v at tier ≥ %s",
+		e.PromptTokens, e.RequiresTools, e.StartingTier)
+}
+
+// ProfileEscalationLadder is the fixed cheap → standard → smart progression
+// service.ResolveRoute walks when every candidate at the requested tier is
+// filtered out (unhealthy or capability-rejected).
+var ProfileEscalationLadder = []string{"cheap", "standard", "smart"}
+
 // Inputs bundles the engine's external data sources.
 type Inputs struct {
 	Harnesses           []HarnessEntry

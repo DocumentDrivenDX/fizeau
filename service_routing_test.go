@@ -615,6 +615,154 @@ func TestBuildRoutingInputsWiresContextWindowsFromCatalog(t *testing.T) {
 	}
 }
 
+// TestResolveRoute_LivenessEscalation exercises the profile→tier ladder
+// (cheap → standard → smart) wired into ResolveRoute. When every candidate
+// at the requested tier is filtered out (here: per-provider context-window
+// rejection driven by the catalog), ResolveRoute walks the ladder and
+// returns the first higher-tier candidate that still satisfies the request.
+// When the entire remaining ladder is also empty, ResolveRoute surfaces
+// the precise *ErrNoLiveProvider error rather than the engine's
+// "no viable routing candidate" jargon.
+func TestResolveRoute_LivenessEscalation(t *testing.T) {
+	const fixtureCatalog = `
+version: 4
+generated_at: 2026-04-25T00:00:00Z
+models:
+  medium-model:
+    family: tier
+    status: active
+    context_window: 4096
+    surfaces: {agent.openai: medium-model}
+  high-model:
+    family: tier
+    status: active
+    context_window: 200000
+    surfaces: {agent.openai: high-model}
+targets:
+  code-medium:
+    family: tier
+    candidates: [medium-model]
+  code-high:
+    family: tier
+    candidates: [high-model]
+profiles:
+  cheap:
+    target: code-medium
+    provider_preference: local-first
+  standard:
+    target: code-medium
+    provider_preference: local-first
+  smart:
+    target: code-high
+    provider_preference: local-first
+`
+
+	newSvc := func(t *testing.T) (*service, func()) {
+		t.Helper()
+		// Block claude/codex/gemini subprocess harnesses from the
+		// candidate set so the test isolates the agent harness's
+		// per-provider tier escalation behavior.
+		t.Setenv("GEMINI_API_KEY", "")
+		t.Setenv("GOOGLE_API_KEY", "")
+		t.Setenv("GOOGLE_GENAI_USE_VERTEXAI", "")
+		t.Setenv("GOOGLE_GENAI_USE_GCA", "")
+		t.Setenv("GEMINI_CLI_USE_COMPUTE_ADC", "")
+		t.Setenv("CLOUD_SHELL", "")
+
+		mediumSrv := openAIModelChatServer(t, []string{"medium-model"}, "medium-model", "ok")
+		highSrv := openAIModelChatServer(t, []string{"high-model"}, "high-model", "ok")
+		catalog := loadRoutingFixtureCatalog(t, fixtureCatalog)
+		restore := replaceRoutingCatalogForTest(t, catalog)
+		sc := &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"alpha-medium": {Type: "openai", BaseURL: mediumSrv.URL + "/v1", APIKey: "k", Model: "medium-model"},
+				"beta-high":    {Type: "openai", BaseURL: highSrv.URL + "/v1", APIKey: "k", Model: "high-model"},
+			},
+			names:       []string{"alpha-medium", "beta-high"},
+			defaultName: "alpha-medium",
+		}
+		registry := harnesses.NewRegistry()
+		registry.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
+		svc := &service{
+			opts:     ServiceOptions{ServiceConfig: sc},
+			registry: registry,
+			hub:      newSessionHub(),
+			catalog:  newCatalogCache(catalogCacheOptions{}),
+		}
+		cleanup := func() {
+			mediumSrv.Close()
+			highSrv.Close()
+			restore()
+		}
+		return svc, cleanup
+	}
+
+	t.Run("escalates_when_lower_tier_filtered_out", func(t *testing.T) {
+		svc, cleanup := newSvc(t)
+		defer cleanup()
+
+		// Record a route attempt failure on the lower-tier provider so the
+		// real cooldown bookkeeping path (applyRouteAttemptCooldowns) runs
+		// against this fixture, exercising the AC's "real ServiceConfig +
+		// cooldown fixture" requirement.
+		if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+			Harness:  "agent",
+			Provider: "alpha-medium",
+			Model:    "medium-model",
+			Status:   "failed",
+			Reason:   "synthetic unhealthy fixture",
+		}); err != nil {
+			t.Fatalf("RecordRouteAttempt: %v", err)
+		}
+
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+			Profile:               "standard",
+			EstimatedPromptTokens: 50_000,
+		})
+		if err != nil {
+			t.Fatalf("ResolveRoute: %v", err)
+		}
+		if dec == nil || dec.Harness != "agent" {
+			t.Fatalf("decision=%#v, want agent harness", dec)
+		}
+		if dec.Provider != "beta-high" {
+			t.Fatalf("decision provider=%q, want beta-high (escalated to smart tier)", dec.Provider)
+		}
+		if dec.Model != "high-model" {
+			t.Fatalf("decision model=%q, want high-model", dec.Model)
+		}
+	})
+
+	t.Run("returns_no_live_provider_when_ladder_exhausted", func(t *testing.T) {
+		svc, cleanup := newSvc(t)
+		defer cleanup()
+
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+			Profile:               "standard",
+			EstimatedPromptTokens: 1_000_000, // exceeds both 4096 and 200000 contexts
+		})
+		if err == nil {
+			t.Fatalf("ResolveRoute returned no error, decision=%#v", dec)
+		}
+		if !strings.Contains(err.Error(), "no live provider") {
+			t.Fatalf("error=%q, want 'no live provider' message", err.Error())
+		}
+		if strings.Contains(err.Error(), "no viable routing candidate") {
+			t.Fatalf("error=%q must NOT contain engine 'no viable routing candidate' jargon", err.Error())
+		}
+		var noLive *ErrNoLiveProvider
+		if !errors.As(err, &noLive) {
+			t.Fatalf("errors.As ErrNoLiveProvider: %T %v", err, err)
+		}
+		if noLive.StartingTier != "standard" {
+			t.Fatalf("StartingTier=%q, want standard", noLive.StartingTier)
+		}
+		if noLive.PromptTokens != 1_000_000 {
+			t.Fatalf("PromptTokens=%d, want 1000000", noLive.PromptTokens)
+		}
+	})
+}
+
 func TestDecisionWithCandidatesCopiesInput(t *testing.T) {
 	candidates := []RouteCandidate{{Harness: "agent", Reason: "original"}}
 	err := withRouteCandidates(errors.New("no viable routing candidate"), candidates)

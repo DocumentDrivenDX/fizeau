@@ -51,6 +51,12 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	}
 	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
+	if err != nil {
+		if escalated, edec, eerr := escalateProfileLadder(rReq, in, err); escalated {
+			dec = edec
+			err = eerr
+		}
+	}
 	result := routeDecisionFromInternal(dec)
 	if err != nil {
 		if result == nil {
@@ -158,6 +164,60 @@ func capabilityScoreForCostClass(class string) float64 {
 	}
 }
 
+// escalateProfileLadder walks routing.ProfileEscalationLadder when Resolve
+// returns a "no eligible candidate" error and the request's profile is in
+// the ladder. Returns (true, decision, nil) when a higher tier resolves to
+// an eligible candidate, or (true, nil, *routing.ErrNoLiveProvider) when
+// the entire remaining ladder is also empty. Returns (false, _, _) when
+// escalation does not apply (hard pin error, profile not in ladder, etc.).
+func escalateProfileLadder(req routing.Request, in routing.Inputs, origErr error) (bool, *routing.Decision, error) {
+	if origErr == nil || req.Profile == "" {
+		return false, nil, nil
+	}
+	if !shouldEscalateOnError(origErr) {
+		return false, nil, nil
+	}
+	startIdx := -1
+	for i, p := range routing.ProfileEscalationLadder {
+		if p == req.Profile {
+			startIdx = i
+			break
+		}
+	}
+	if startIdx < 0 {
+		return false, nil, nil
+	}
+	for i := startIdx + 1; i < len(routing.ProfileEscalationLadder); i++ {
+		probe := req
+		probe.Profile = routing.ProfileEscalationLadder[i]
+		dec, err := routing.Resolve(probe, in)
+		if err == nil && dec != nil && dec.Harness != "" {
+			return true, dec, nil
+		}
+	}
+	return true, nil, &routing.ErrNoLiveProvider{
+		PromptTokens:  req.EstimatedPromptTokens,
+		RequiresTools: req.RequiresTools,
+		StartingTier:  req.Profile,
+	}
+}
+
+// shouldEscalateOnError gates ladder escalation to "no eligible candidate"
+// errors. Hard caller-pin conflicts (ErrHarnessModelIncompatible,
+// ErrProfilePinConflict) are surfaced as-is — escalating past an explicit
+// pin would silently change the caller's intent.
+func shouldEscalateOnError(err error) bool {
+	var modelErr *routing.ErrHarnessModelIncompatible
+	if errors.As(err, &modelErr) {
+		return false
+	}
+	var pinErr *routing.ErrProfilePinConflict
+	if errors.As(err, &pinErr) {
+		return false
+	}
+	return true
+}
+
 func publicRoutingError(err error, candidates []RouteCandidate) error {
 	var modelErr *routing.ErrHarnessModelIncompatible
 	if errors.As(err, &modelErr) {
@@ -181,6 +241,14 @@ func publicRoutingError(err error, candidates []RouteCandidate) error {
 			Profile:           noProfileErr.Profile,
 			MissingCapability: noProfileErr.MissingCapability,
 			Rejected:          noProfileErr.Rejected,
+		}, candidates)
+	}
+	var noLiveErr *routing.ErrNoLiveProvider
+	if errors.As(err, &noLiveErr) {
+		return withRouteCandidates(&ErrNoLiveProvider{
+			PromptTokens:  noLiveErr.PromptTokens,
+			RequiresTools: noLiveErr.RequiresTools,
+			StartingTier:  noLiveErr.StartingTier,
 		}, candidates)
 	}
 	return withRouteCandidates(err, candidates)
