@@ -181,3 +181,57 @@ func TestCachePolicyOffZerosCacheAttribution(t *testing.T) {
 	assert.Equal(t, 0.0, *cost.CacheReadAmount)
 	assert.Equal(t, 0.0, *cost.CacheWriteAmount)
 }
+
+// TestCacheAttributionNilWhenHarnessReportsZeroAndPolicyDefault verifies the
+// nil leg of the cache-amount convention: when CachePolicy is unset/default
+// AND the harness reports zero cache-read/write tokens, the CacheReadAmount
+// and CacheWriteAmount pointers must be nil (not explicit zero). This
+// preserves the distinction reviewer flagged in agent-6e2ebcdb: nil = "not
+// reported by this harness/provider"; explicit zero = CachePolicy=off.
+func TestCacheAttributionNilWhenHarnessReportsZeroAndPolicyDefault(t *testing.T) {
+	provider := &mockProvider{
+		responses: []Response{
+			{
+				Content: "done",
+				Usage:   TokenUsage{Input: 10_000, Output: 2_000, Total: 12_000},
+				Model:   "claude-sonnet-4.6",
+				Attempt: &AttemptMetadata{
+					ProviderName:   "anthropic",
+					ProviderSystem: "anthropic",
+					RequestedModel: "claude-sonnet-4.6",
+					ResponseModel:  "claude-sonnet-4.6",
+					ResolvedModel:  "claude-sonnet-4.6",
+					Cost:           &CostAttribution{Source: CostSourceUnknown},
+				},
+			},
+		},
+	}
+
+	tel := telemetry.New(telemetry.Config{
+		Pricing: telemetry.RuntimePricing{
+			"anthropic": {
+				"claude-sonnet-4.6": {
+					InputPerMTok:   3.0,
+					OutputPerMTok:  15.0,
+					CacheReadPerM:  0.30,
+					CacheWritePerM: 3.75,
+					Currency:       "USD",
+					PricingRef:     "anthropic/claude-sonnet-4.6",
+				},
+			},
+		},
+	})
+
+	_, err := Run(context.Background(), Request{
+		Prompt:    "test",
+		Provider:  provider,
+		Telemetry: tel,
+		// CachePolicy unset == default
+	})
+	require.NoError(t, err)
+
+	cost := provider.responses[0].Attempt.Cost
+	require.NotNil(t, cost)
+	assert.Nil(t, cost.CacheReadAmount, "CacheReadAmount must be nil when harness reports zero cache-read tokens and CachePolicy is default")
+	assert.Nil(t, cost.CacheWriteAmount, "CacheWriteAmount must be nil when harness reports zero cache-write tokens and CachePolicy is default")
+}

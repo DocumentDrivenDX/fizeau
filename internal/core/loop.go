@@ -313,8 +313,17 @@ func Run(ctx context.Context, req Request) (Result, error) {
 							float64(resp.Usage.Output)/1_000_000*configuredCost.OutputPerMTok +
 							cacheReadCost + cacheWriteCost
 						amount = &computed
-						cacheReadAmount = &cacheReadCost
-						cacheWriteAmount = &cacheWriteCost
+						// Preserve the nil-vs-zero distinction: only emit a non-nil
+						// CacheReadAmount/CacheWriteAmount pointer when the harness
+						// actually reported cache-token usage. nil = not reported by
+						// this harness/provider; explicit zero is reserved for the
+						// CachePolicy="off" case below.
+						if resp.Usage.CacheRead > 0 {
+							cacheReadAmount = &cacheReadCost
+						}
+						if resp.Usage.CacheWrite > 0 {
+							cacheWriteAmount = &cacheWriteCost
+						}
 					}
 					if req.CachePolicy == "off" {
 						zeroR, zeroW := 0.0, 0.0
