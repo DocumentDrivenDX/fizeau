@@ -9,14 +9,72 @@ import (
 )
 
 const (
-	ServiceEventTypeTextDelta       = "text_delta"
-	ServiceEventTypeToolCall        = "tool_call"
-	ServiceEventTypeToolResult      = "tool_result"
-	ServiceEventTypeCompaction      = "compaction"
-	ServiceEventTypeRoutingDecision = "routing_decision"
-	ServiceEventTypeStall           = "stall"
-	ServiceEventTypeFinal           = "final"
+	ServiceEventTypeTextDelta         = "text_delta"
+	ServiceEventTypeToolCall          = "tool_call"
+	ServiceEventTypeToolResult        = "tool_result"
+	ServiceEventTypeCompaction        = "compaction"
+	ServiceEventTypeRoutingDecision   = "routing_decision"
+	ServiceEventTypeStall             = "stall"
+	ServiceEventTypeFinal             = "final"
+	ServiceEventTypeOverride          = "override"
+	ServiceEventTypeRejectedOverride  = "rejected_override"
 )
+
+// ServiceOverridePin captures a (harness, provider, model) tuple, used both
+// for the user-supplied pin and the unconstrained auto decision in
+// override / rejected_override events. Empty fields mean "axis not asserted /
+// not produced" rather than zero.
+type ServiceOverridePin struct {
+	Harness  string `json:"harness"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
+// ServiceOverrideAutoComponents mirrors RouteCandidateComponents for the
+// candidate the unconstrained auto pipeline would have picked. Zero fields
+// mean "unknown / not contributing".
+type ServiceOverrideAutoComponents struct {
+	Cost        float64 `json:"cost"`
+	LatencyMS   float64 `json:"latency_ms"`
+	SuccessRate float64 `json:"success_rate"`
+	Capability  float64 `json:"capability"`
+}
+
+// ServiceOverridePromptFeatures captures prompt-classification inputs that
+// fed routing — used by post-hoc analysis to pivot override-class breakdowns.
+// EstimatedTokens is nullable (nil = harness tokenizer did not produce a
+// value); RequiresTools is the boolean carried on the request; Reasoning is
+// the request's Reasoning level as a string.
+type ServiceOverridePromptFeatures struct {
+	EstimatedTokens *int   `json:"estimated_tokens,omitempty"`
+	RequiresTools   bool   `json:"requires_tools"`
+	Reasoning       string `json:"reasoning,omitempty"`
+}
+
+// ServiceOverrideOutcome carries post-execution status mirrored from the
+// final event. Always omitted on rejected_override events.
+type ServiceOverrideOutcome struct {
+	Status     string  `json:"status"`
+	CostUSD    float64 `json:"cost_usd,omitempty"`
+	DurationMS int64   `json:"duration_ms"`
+}
+
+// ServiceOverrideData is the payload for both override and rejected_override
+// events. Outcome is nil for rejected_override and populated post-execution
+// for override.
+type ServiceOverrideData struct {
+	SessionID      string                        `json:"session_id,omitempty"`
+	UserPin        ServiceOverridePin            `json:"user_pin"`
+	AutoDecision   ServiceOverridePin            `json:"auto_decision"`
+	AxesOverridden []string                      `json:"axes_overridden"`
+	MatchPerAxis   map[string]bool               `json:"match_per_axis"`
+	AutoScore      float64                       `json:"auto_score"`
+	AutoComponents ServiceOverrideAutoComponents `json:"auto_components"`
+	PromptFeatures ServiceOverridePromptFeatures `json:"prompt_features"`
+	ReasonHint     string                        `json:"reason_hint,omitempty"`
+	Outcome        *ServiceOverrideOutcome       `json:"outcome,omitempty"`
+	RejectionError string                        `json:"rejection_error,omitempty"`
+}
 
 type ServiceTextDeltaData struct {
 	Text string `json:"text"`
@@ -194,13 +252,15 @@ type ServiceDecodedEvent struct {
 	Time     time.Time
 	Metadata map[string]string
 
-	TextDelta       *ServiceTextDeltaData
-	ToolCall        *ServiceToolCallData
-	ToolResult      *ServiceToolResultData
-	Compaction      *ServiceCompactionData
-	RoutingDecision *ServiceRoutingDecisionData
-	Stall           *ServiceStallData
-	Final           *ServiceFinalData
+	TextDelta        *ServiceTextDeltaData
+	ToolCall         *ServiceToolCallData
+	ToolResult       *ServiceToolResultData
+	Compaction       *ServiceCompactionData
+	RoutingDecision  *ServiceRoutingDecisionData
+	Stall            *ServiceStallData
+	Final            *ServiceFinalData
+	Override         *ServiceOverrideData
+	RejectedOverride *ServiceOverrideData
 }
 
 func DecodeServiceEvent(ev ServiceEvent) (ServiceDecodedEvent, error) {
@@ -253,6 +313,18 @@ func DecodeServiceEvent(ev ServiceEvent) (ServiceDecodedEvent, error) {
 			return decoded, err
 		}
 		decoded.Final = &payload
+	case ServiceEventTypeOverride:
+		var payload ServiceOverrideData
+		if err := decodeServicePayload(ev, &payload); err != nil {
+			return decoded, err
+		}
+		decoded.Override = &payload
+	case ServiceEventTypeRejectedOverride:
+		var payload ServiceOverrideData
+		if err := decodeServicePayload(ev, &payload); err != nil {
+			return decoded, err
+		}
+		decoded.RejectedOverride = &payload
 	default:
 		return decoded, fmt.Errorf("decode service event %q: unknown type", ev.Type)
 	}
@@ -275,10 +347,12 @@ type DrainExecuteResult struct {
 	TextDeltas      []ServiceTextDeltaData
 	ToolCalls       []ServiceToolCallData
 	ToolResults     []ServiceToolResultData
-	Compactions     []ServiceCompactionData
-	Stalls          []ServiceStallData
-	RoutingDecision *ServiceRoutingDecisionData
-	Final           *ServiceFinalData
+	Compactions      []ServiceCompactionData
+	Stalls           []ServiceStallData
+	RoutingDecision  *ServiceRoutingDecisionData
+	Override         *ServiceOverrideData
+	RejectedOverride *ServiceOverrideData
+	Final            *ServiceFinalData
 
 	FinalStatus    string
 	FinalText      string
@@ -325,6 +399,10 @@ func (r *DrainExecuteResult) append(ev ServiceDecodedEvent) {
 		r.Compactions = append(r.Compactions, *ev.Compaction)
 	case ev.RoutingDecision != nil:
 		r.RoutingDecision = ev.RoutingDecision
+	case ev.Override != nil:
+		r.Override = ev.Override
+	case ev.RejectedOverride != nil:
+		r.RejectedOverride = ev.RejectedOverride
 	case ev.Stall != nil:
 		r.Stalls = append(r.Stalls, *ev.Stall)
 	case ev.Final != nil:

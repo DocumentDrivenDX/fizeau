@@ -95,12 +95,32 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 
 	outer := make(chan ServiceEvent, 64)
 
+	// ADR-006 §3/§4: capture the override context (user pin + unconstrained
+	// auto decision) before route resolution so we can fire the matching
+	// override / rejected_override event regardless of which path the route
+	// resolution takes.
+	overrideCtx := s.buildOverrideContext(ctx, req)
+
 	// Resolve the route.
 	decision, err := s.resolveExecuteRoute(req)
 	if err != nil {
 		if isExplicitPinError(err) {
+			// Emit a rejected_override event (no outcome) when the pin
+			// fails pre-dispatch. Surface the typed error wrapped with
+			// the rejected_override payload so callers that errors.As
+			// the typed pin error still get it; callers wanting the
+			// telemetry can extract via AsRejectedOverride.
+			pinErr := err
+			if overrideCtx != nil {
+				if rejectedEv, ok := makeRejectedOverrideEvent(overrideCtx, sessionID, pinErr, req.Metadata); ok {
+					s.hub.broadcastEvent(sessionID, rejectedEv)
+					var payload ServiceOverrideData
+					_ = json.Unmarshal(rejectedEv.Data, &payload)
+					pinErr = &ErrRejectedOverride{Inner: err, Event: payload}
+				}
+			}
 			s.hub.closeSession(sessionID, ServiceEvent{})
-			return nil, err
+			return nil, pinErr
 		}
 		// Still return a channel that yields a single failed final event so
 		// downstream consumers don't have to special-case the error path.
@@ -125,8 +145,10 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	meta := req.Metadata
 
 	// Wrap the inner channel through the hub so every event is broadcast to
-	// TailSessionLog subscribers. The fan-out goroutine owns outer's close.
-	inner := s.hub.wrapExecuteWithHub(sessionID, outer)
+	// TailSessionLog subscribers. The fan-out goroutine owns outer's close
+	// and is responsible for inserting the override event (if any) immediately
+	// before the final event per ADR-006 §7.
+	inner := s.hub.wrapExecuteWithHub(sessionID, outer, overrideCtx, meta)
 
 	// Emit start-of-execution routing_decision so consumers know the picked
 	// chain before any real work fires. The actual chain (post-fallback) is

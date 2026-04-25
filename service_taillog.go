@@ -167,12 +167,25 @@ func (s *service) TailSessionLog(ctx context.Context, sessionID string) (<-chan 
 //
 // The fan-out goroutine closes outer when inner closes, and calls
 // closeSession on the hub with the last final event seen.
-func (h *sessionHub) wrapExecuteWithHub(sessionID string, outer chan ServiceEvent) (inner chan ServiceEvent) {
+func (h *sessionHub) wrapExecuteWithHub(sessionID string, outer chan ServiceEvent, ovr *overrideContext, meta map[string]string) (inner chan ServiceEvent) {
 	inner = make(chan ServiceEvent, 64)
 	go func() {
 		defer close(outer)
 		var lastFinal ServiceEvent
 		for ev := range inner {
+			// ADR-006 §7: emit the override event immediately before the
+			// final event so consumers correlating per-session can join
+			// cleanly. Outcome is populated from the final event itself.
+			if ev.Type == harnesses.EventTypeFinal && ovr != nil && !ovr.emitted.Load() {
+				if overrideEv, ok := makeOverrideEvent(ovr, sessionID, ev, meta); ok {
+					ovr.emitted.Store(true)
+					select {
+					case outer <- overrideEv:
+					case <-time.After(5 * time.Second):
+					}
+					h.broadcastEvent(sessionID, overrideEv)
+				}
+			}
 			// Forward to the caller's channel.
 			select {
 			case outer <- ev:
