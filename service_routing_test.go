@@ -444,6 +444,132 @@ func floatNear(got, want float64) bool {
 	return math.Abs(got-want) < 1e-12
 }
 
+func TestResolveRouteModelRouteOrderedFailoverShortCircuit(t *testing.T) {
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"primary":   {Type: "openai", BaseURL: "http://primary.invalid/v1", Model: "primary-default"},
+			"secondary": {Type: "openai", BaseURL: "http://secondary.invalid/v1", Model: "secondary-default"},
+		},
+		names:       []string{"primary", "secondary"},
+		defaultName: "primary",
+		routeConfigs: map[string]ServiceModelRouteConfig{
+			"team-route": {
+				Strategy: "ordered-failover",
+				Candidates: []ServiceRouteCandidateEntry{
+					{Provider: "primary", Model: "primary-model", Priority: 10},
+					{Provider: "secondary", Priority: 100},
+				},
+			},
+		},
+	}
+	svc := publicRouteTraceService(sc)
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "team-route"})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	if dec.Harness != "agent" || dec.Provider != "primary" || dec.Model != "primary-model" {
+		t.Fatalf("decision=%#v, want agent/primary/primary-model", dec)
+	}
+	if len(dec.Candidates) != 2 {
+		t.Fatalf("Candidates length=%d, want 2: %#v", len(dec.Candidates), dec.Candidates)
+	}
+	if dec.Candidates[0].Provider != "primary" || dec.Candidates[0].Model != "primary-model" {
+		t.Fatalf("candidate[0]=%#v, want primary/primary-model", dec.Candidates[0])
+	}
+	if dec.Candidates[1].Provider != "secondary" || dec.Candidates[1].Model != "secondary-default" {
+		t.Fatalf("candidate[1]=%#v, want secondary/secondary-default (provider default)", dec.Candidates[1])
+	}
+	for i, c := range dec.Candidates {
+		if c.Harness != "agent" || !c.Eligible {
+			t.Fatalf("candidate[%d]=%#v, want agent + eligible", i, c)
+		}
+	}
+}
+
+func TestResolveRouteModelRoutePriorityRoundRobinShortCircuit(t *testing.T) {
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"low":  {Type: "openai", BaseURL: "http://low.invalid/v1", Model: "low-default"},
+			"high": {Type: "openai", BaseURL: "http://high.invalid/v1", Model: "high-default"},
+			"mid":  {Type: "openai", BaseURL: "http://mid.invalid/v1", Model: "mid-default"},
+		},
+		names:       []string{"low", "high", "mid"},
+		defaultName: "low",
+		routeConfigs: map[string]ServiceModelRouteConfig{
+			"prio-route": {
+				Strategy: "priority-round-robin",
+				Candidates: []ServiceRouteCandidateEntry{
+					{Provider: "low", Model: "low-model", Priority: 1},
+					{Provider: "high", Model: "high-model", Priority: 100},
+					{Provider: "mid", Model: "mid-model", Priority: 50},
+				},
+			},
+		},
+	}
+	svc := publicRouteTraceService(sc)
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "prio-route"})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	if dec.Harness != "agent" || dec.Provider != "high" || dec.Model != "high-model" {
+		t.Fatalf("decision=%#v, want agent/high/high-model", dec)
+	}
+	if len(dec.Candidates) != 3 {
+		t.Fatalf("Candidates length=%d, want 3: %#v", len(dec.Candidates), dec.Candidates)
+	}
+	wantOrder := []string{"high", "mid", "low"}
+	for i, want := range wantOrder {
+		if dec.Candidates[i].Provider != want {
+			t.Fatalf("candidate[%d].Provider=%q, want %q (priority desc order: %#v)",
+				i, dec.Candidates[i].Provider, want, dec.Candidates)
+		}
+	}
+}
+
+func TestResolveRouteModelRouteSmartStrategyFallsThrough(t *testing.T) {
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"local": {Type: "test", BaseURL: "http://127.0.0.1:9999/v1", Model: "model-a"},
+		},
+		names:       []string{"local"},
+		defaultName: "local",
+		routeConfigs: map[string]ServiceModelRouteConfig{
+			"model-a": {
+				Strategy: "smart",
+				Candidates: []ServiceRouteCandidateEntry{
+					{Provider: "local", Model: "model-a", Priority: 100},
+				},
+			},
+		},
+	}
+	svc := publicRouteTraceService(sc)
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Harness: "agent",
+		Model:   "model-a",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil || len(dec.Candidates) == 0 {
+		t.Fatalf("expected engine-flow decision, got %#v", dec)
+	}
+	// Engine flow produces scoring reasons; short-circuit reasons start with model_routes.
+	for _, c := range dec.Candidates {
+		if strings.HasPrefix(c.Reason, "model_routes ") {
+			t.Fatalf("smart strategy short-circuited; candidate=%#v", c)
+		}
+	}
+}
+
 func TestDecisionWithCandidatesCopiesInput(t *testing.T) {
 	candidates := []RouteCandidate{{Harness: "agent", Reason: "original"}}
 	err := withRouteCandidates(errors.New("no viable routing candidate"), candidates)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,6 +26,10 @@ var loadRoutingCatalog = modelcatalog.Default
 // agent-side provider failover ordering.
 func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error) {
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
+	if dec, ok := s.resolveExplicitModelRoute(req); ok {
+		s.cacheRouteDecision(req.Model, dec)
+		return dec, nil
+	}
 	cat := serviceRoutingCatalog()
 	profile := req.Profile
 	if profile == "" {
@@ -62,6 +67,112 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	}
 	s.cacheRouteDecision(req.Model, result)
 	return result, nil
+}
+
+// resolveExplicitModelRoute short-circuits ResolveRoute when req.Model matches
+// a configured ServiceConfig.ModelRouteConfig whose strategy is
+// "ordered-failover" or "priority-round-robin". The returned decision uses the
+// configured candidate list directly so that explicit failover lists are not
+// pruned by per-endpoint discovery health. Strategies "" and "smart" return
+// (nil, false) so the request continues through internal/routing.Resolve.
+func (s *service) resolveExplicitModelRoute(req RouteRequest) (*RouteDecision, bool) {
+	if req.Model == "" || s.opts.ServiceConfig == nil {
+		return nil, false
+	}
+	route := s.opts.ServiceConfig.ModelRouteConfig(req.Model)
+	if len(route.Candidates) == 0 {
+		return nil, false
+	}
+	ordered, ok := orderModelRouteCandidates(route)
+	if !ok {
+		return nil, false
+	}
+	ordered = demoteCooledCandidates(ordered, s.activeRouteAttempts(time.Now(), s.routeAttemptTTL()))
+	candidates := make([]RouteCandidate, 0, len(ordered))
+	for _, entry := range ordered {
+		candidates = append(candidates, RouteCandidate{
+			Harness:  "agent",
+			Provider: entry.Provider,
+			Model:    s.modelForRouteCandidate(entry),
+			Eligible: true,
+			Reason: fmt.Sprintf(
+				"model_routes %q strategy=%s priority=%d",
+				req.Model, route.Strategy, entry.Priority,
+			),
+		})
+	}
+	first := candidates[0]
+	return &RouteDecision{
+		Harness:    "agent",
+		Provider:   first.Provider,
+		Model:      first.Model,
+		Reason:     fmt.Sprintf("model_routes %q strategy=%s", req.Model, route.Strategy),
+		Candidates: candidates,
+	}, true
+}
+
+func (s *service) modelForRouteCandidate(entry ServiceRouteCandidateEntry) string {
+	if entry.Model != "" {
+		return entry.Model
+	}
+	if s.opts.ServiceConfig == nil {
+		return ""
+	}
+	if pc, ok := s.opts.ServiceConfig.Provider(entry.Provider); ok {
+		return pc.Model
+	}
+	return ""
+}
+
+// demoteCooledCandidates moves any candidate whose provider has an active
+// route-attempt failure to the end of the list, preserving relative order
+// within each bucket. The configured candidate set is never pruned — the
+// bead's contract is that the explicit failover list is preserved.
+func demoteCooledCandidates(candidates []ServiceRouteCandidateEntry, active []routeAttemptRecord) []ServiceRouteCandidateEntry {
+	if len(active) == 0 || len(candidates) == 0 {
+		return candidates
+	}
+	cooled := make(map[string]bool)
+	for _, record := range active {
+		if record.key.Provider == "" {
+			continue
+		}
+		if record.key.Harness != "" && record.key.Harness != "agent" {
+			continue
+		}
+		cooled[record.key.Provider] = true
+	}
+	if len(cooled) == 0 {
+		return candidates
+	}
+	healthy := make([]ServiceRouteCandidateEntry, 0, len(candidates))
+	demoted := make([]ServiceRouteCandidateEntry, 0)
+	for _, c := range candidates {
+		if cooled[c.Provider] {
+			demoted = append(demoted, c)
+		} else {
+			healthy = append(healthy, c)
+		}
+	}
+	if len(healthy) == 0 {
+		return candidates
+	}
+	return append(healthy, demoted...)
+}
+
+func orderModelRouteCandidates(route ServiceModelRouteConfig) ([]ServiceRouteCandidateEntry, bool) {
+	switch route.Strategy {
+	case "ordered-failover":
+		return append([]ServiceRouteCandidateEntry(nil), route.Candidates...), true
+	case "priority-round-robin":
+		out := append([]ServiceRouteCandidateEntry(nil), route.Candidates...)
+		sort.SliceStable(out, func(i, j int) bool {
+			return out[i].Priority > out[j].Priority
+		})
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func routeDecisionFromInternal(dec *routing.Decision) *RouteDecision {
