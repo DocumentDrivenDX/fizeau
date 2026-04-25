@@ -957,12 +957,29 @@ Closed union of event types. Every harness backend emits these identically.
 }
 ```
 
+### Final Text Empty Outcome
+
+A `success` final event with empty `final_text` is a valid outcome. Legitimate
+cases include: the model declined to answer, returned a refusal, produced a
+structured-output-only response (e.g. tool calls with no final assistant
+message), or completed under a system policy that suppresses user-visible
+text. Consumers MUST NOT treat empty `final_text` as a transient failure and
+MUST NOT trigger a retry on empty text alone. The terminal classification is
+carried by `status` (and `error` when non-success); `final_text` length is
+not a liveness or success signal. Reviewers and orchestrators that need to
+distinguish "model produced nothing useful" from "model produced something
+useful" should consult tool-call/tool-result events plus `status`, not the
+length of `final_text`.
+
 ### Final Usage Source Policy
 
 Final-event `usage` is optional. A missing `usage` object means per-run token
 usage was unavailable, not zero. When a harness explicitly reports zero tokens,
-the relevant fields are present with value `0`. Token dimensions that the
-harness did not expose are omitted rather than serialized as fabricated zeros.
+the relevant fields are present with value `0` — this preserves upstream
+provenance: nil means "harness did not emit this dimension" while a present
+zero means "upstream provider explicitly reported zero". Harness emitters MUST
+NOT silently substitute zero for unknown. Token dimensions that the harness
+did not expose are omitted rather than serialized as fabricated zeros.
 
 The normalized token vocabulary is `input_tokens`, `output_tokens`,
 `cache_read_tokens`, `cache_write_tokens`, `cache_tokens`,

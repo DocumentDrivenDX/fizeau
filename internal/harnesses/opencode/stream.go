@@ -18,17 +18,25 @@ import (
 //
 // From DDx ExtractUsage: envelope.Usage.InputTokens, envelope.Usage.OutputTokens,
 // envelope.TotalCostUSD. Response text is the raw output.
-type opencodeEnvelope struct {
-	Usage struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
-	} `json:"usage"`
-	TotalCostUSD float64 `json:"total_cost_usd"`
+type opencodeUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
 }
 
-// streamAggregate captures usage from the opencode output.
+type opencodeEnvelope struct {
+	// Pointer so a missing usage object stays nil; presence (even with all-
+	// zero counts) signals an upstream-reported usage envelope per
+	// CONTRACT-003.
+	Usage        *opencodeUsage `json:"usage,omitempty"`
+	TotalCostUSD float64        `json:"total_cost_usd"`
+}
+
+// streamAggregate captures usage from the opencode output. HasUsage is set
+// when the provider envelope carried a usage object — InputTokens /
+// OutputTokens then preserve the upstream values verbatim, including zero.
 type streamAggregate struct {
 	FinalText    string
+	HasUsage     bool
 	InputTokens  int
 	OutputTokens int
 	CostUSD      float64
@@ -93,13 +101,25 @@ func parseOpencodeStream(ctx context.Context, r io.Reader, out chan<- harnesses.
 
 	// Try to parse as a JSON envelope to extract usage.
 	// opencode may emit usage in the envelope or as the last non-empty line.
+	// Detection is by *envelope presence* (Usage pointer non-nil OR cost
+	// reported), not by positive values, so explicit upstream zeros are
+	// preserved per CONTRACT-003.
+	applyEnv := func(env opencodeEnvelope) bool {
+		if env.Usage != nil {
+			agg.HasUsage = true
+			agg.InputTokens = env.Usage.InputTokens
+			agg.OutputTokens = env.Usage.OutputTokens
+		}
+		if env.TotalCostUSD > 0 {
+			agg.CostUSD = env.TotalCostUSD
+		}
+		return env.Usage != nil || env.TotalCostUSD > 0
+	}
+
 	parsed := false
 	var env opencodeEnvelope
 	if err := json.Unmarshal([]byte(output), &env); err == nil {
-		if env.Usage.InputTokens > 0 || env.Usage.OutputTokens > 0 || env.TotalCostUSD > 0 {
-			agg.InputTokens = env.Usage.InputTokens
-			agg.OutputTokens = env.Usage.OutputTokens
-			agg.CostUSD = env.TotalCostUSD
+		if applyEnv(env) {
 			parsed = true
 		}
 	}
@@ -113,11 +133,7 @@ func parseOpencodeStream(ctx context.Context, r io.Reader, out chan<- harnesses.
 			}
 			var env2 opencodeEnvelope
 			if err := json.Unmarshal([]byte(line), &env2); err == nil {
-				if env2.Usage.InputTokens > 0 || env2.Usage.OutputTokens > 0 || env2.TotalCostUSD > 0 {
-					agg.InputTokens = env2.Usage.InputTokens
-					agg.OutputTokens = env2.Usage.OutputTokens
-					agg.CostUSD = env2.TotalCostUSD
-				}
+				applyEnv(env2)
 			}
 			break
 		}

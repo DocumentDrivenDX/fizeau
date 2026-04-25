@@ -127,6 +127,20 @@ type ServiceFinalData struct {
 	RoutingActual  *ServiceRoutingActual `json:"routing_actual,omitempty"`
 }
 
+// ServiceFinalUsage is the public token-usage payload emitted on service
+// final events. Token-count fields are *int so callers can distinguish an
+// explicit upstream zero from "harness did not report this dimension":
+//
+//   - nil pointer  → the harness did not emit this token count (unknown).
+//     Consumers MUST NOT treat nil as zero or use it for budgeting.
+//   - non-nil *int → the harness emitted this exact value (including 0).
+//     Zero means the upstream provider explicitly reported zero usage; it
+//     is a real signal, not a gap.
+//
+// Consumers that aggregate or compare usage across runs should branch on
+// presence (nil vs non-nil) before reading the int. Per CONTRACT-003, the
+// service preserves provider provenance verbatim — emitters at the harness
+// boundary are forbidden from silently substituting zero for unknown.
 type ServiceFinalUsage struct {
 	InputTokens      *int                         `json:"input_tokens,omitempty"`
 	OutputTokens     *int                         `json:"output_tokens,omitempty"`

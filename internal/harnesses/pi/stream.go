@@ -20,27 +20,26 @@ import (
 //
 // The last line with a "response" field carries the final answer text
 // (per DDx extractOutputPiGemini).
+type piUsage struct {
+	Input  int `json:"input"`
+	Output int `json:"output"`
+	Cost   struct {
+		Total float64 `json:"total"`
+	} `json:"cost"`
+}
+
 type piEvent struct {
 	Type     string `json:"type"`
 	Response string `json:"response,omitempty"`
 	Message  struct {
 		Content []piContentBlock `json:"content"`
-		Usage   struct {
-			Input  int `json:"input"`
-			Output int `json:"output"`
-			Cost   struct {
-				Total float64 `json:"total"`
-			} `json:"cost"`
-		} `json:"usage"`
+		// Pointer so a missing usage object stays nil; presence (even with
+		// all-zero counts) signals the upstream provider explicitly reported
+		// usage. CONTRACT-003 requires preserving that distinction.
+		Usage *piUsage `json:"usage,omitempty"`
 	} `json:"message"`
 	Partial struct {
-		Usage struct {
-			Input  int `json:"input"`
-			Output int `json:"output"`
-			Cost   struct {
-				Total float64 `json:"total"`
-			} `json:"cost"`
-		} `json:"usage"`
+		Usage *piUsage `json:"usage,omitempty"`
 	} `json:"partial"`
 	AssistantMessageEvent struct {
 		Type    string `json:"type"`
@@ -55,8 +54,14 @@ type piContentBlock struct {
 }
 
 // streamAggregate captures running totals from the pi stream.
+//
+// HasUsage is true when the upstream provider emitted a usage envelope on
+// any line (regardless of values). InputTokens / OutputTokens then carry the
+// provider's exact counts, including explicit zero. When HasUsage is false,
+// the int fields are not meaningful and the runner emits no FinalUsage.
 type streamAggregate struct {
 	FinalText    string
+	HasUsage     bool
 	InputTokens  int
 	OutputTokens int
 	CostUSD      float64
@@ -94,19 +99,25 @@ func parsePiStream(ctx context.Context, r io.Reader, out chan<- harnesses.Event,
 		return agg, err
 	}
 
-	// Scan backwards for usage (per DDx ExtractUsage("pi")).
+	// Scan backwards for usage (per DDx ExtractUsage("pi")). The first line
+	// (newest first) that carries a usage *envelope* wins — including when
+	// the provider explicitly reports zero counts. Detection is by JSON
+	// presence (pointer non-nil), not by positive value, so explicit zero is
+	// preserved verbatim per CONTRACT-003.
 	for i := len(lines) - 1; i >= 0; i-- {
 		var ev piEvent
 		if err := json.Unmarshal([]byte(lines[i]), &ev); err != nil {
 			continue
 		}
-		if ev.Message.Usage.Input > 0 || ev.Message.Usage.Output > 0 {
+		if ev.Message.Usage != nil {
+			agg.HasUsage = true
 			agg.InputTokens = ev.Message.Usage.Input
 			agg.OutputTokens = ev.Message.Usage.Output
 			agg.CostUSD = ev.Message.Usage.Cost.Total
 			break
 		}
-		if ev.Partial.Usage.Input > 0 || ev.Partial.Usage.Output > 0 {
+		if ev.Partial.Usage != nil {
+			agg.HasUsage = true
 			agg.InputTokens = ev.Partial.Usage.Input
 			agg.OutputTokens = ev.Partial.Usage.Output
 			agg.CostUSD = ev.Partial.Usage.Cost.Total

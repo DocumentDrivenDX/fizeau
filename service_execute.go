@@ -421,13 +421,14 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 	}
 	final.Status = "success"
 	final.FinalText = resp.Content
-	if resp.Usage.Input > 0 || resp.Usage.Output > 0 || resp.Usage.Total > 0 {
-		final.Usage = &harnesses.FinalUsage{
-			InputTokens:  harnesses.IntPtr(resp.Usage.Input),
-			OutputTokens: harnesses.IntPtr(resp.Usage.Output),
-			TotalTokens:  harnesses.IntPtr(resp.Usage.Total),
-			Source:       harnesses.UsageSourceFallback,
-		}
+	// Virtual provider always tracks usage (synthetic but provenance-preserving):
+	// emit the exact counts upstream returned, including explicit zero. A nil
+	// usage from this path is reserved for the no-Chat (failure) branch above.
+	final.Usage = &harnesses.FinalUsage{
+		InputTokens:  harnesses.IntPtr(resp.Usage.Input),
+		OutputTokens: harnesses.IntPtr(resp.Usage.Output),
+		TotalTokens:  harnesses.IntPtr(resp.Usage.Total),
+		Source:       harnesses.UsageSourceFallback,
 	}
 	if resp.Content != "" {
 		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: resp.Content})
@@ -775,24 +776,27 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 			FallbackChainFired: append([]string(nil), result.AttemptedProviders...),
 		},
 	}
-	if result.Tokens.Total > 0 || result.Tokens.Input > 0 || result.Tokens.Output > 0 {
-		final.Usage = &harnesses.FinalUsage{
-			InputTokens:      harnesses.IntPtr(result.Tokens.Input),
-			OutputTokens:     harnesses.IntPtr(result.Tokens.Output),
-			CacheReadTokens:  nil,
-			CacheWriteTokens: nil,
-			TotalTokens:      harnesses.IntPtr(result.Tokens.Total),
-			Source:           harnesses.UsageSourceFallback,
-		}
-		if result.Tokens.CacheRead > 0 {
-			final.Usage.CacheReadTokens = harnesses.IntPtr(result.Tokens.CacheRead)
-		}
-		if result.Tokens.CacheWrite > 0 {
-			final.Usage.CacheWriteTokens = harnesses.IntPtr(result.Tokens.CacheWrite)
-		}
-		if result.Tokens.CacheRead > 0 || result.Tokens.CacheWrite > 0 {
-			final.Usage.CacheTokens = harnesses.IntPtr(result.Tokens.CacheRead + result.Tokens.CacheWrite)
-		}
+	// Native loop tracks usage by accumulating per-iteration provider responses
+	// (TokenUsage.Add). Emit the totals verbatim — including explicit zero —
+	// so consumers can distinguish "provider reported zero" from "harness
+	// could not tell". Nil pointers are reserved for cache dimensions the
+	// loop did not observe at all.
+	final.Usage = &harnesses.FinalUsage{
+		InputTokens:      harnesses.IntPtr(result.Tokens.Input),
+		OutputTokens:     harnesses.IntPtr(result.Tokens.Output),
+		CacheReadTokens:  nil,
+		CacheWriteTokens: nil,
+		TotalTokens:      harnesses.IntPtr(result.Tokens.Total),
+		Source:           harnesses.UsageSourceFallback,
+	}
+	if result.Tokens.CacheRead > 0 {
+		final.Usage.CacheReadTokens = harnesses.IntPtr(result.Tokens.CacheRead)
+	}
+	if result.Tokens.CacheWrite > 0 {
+		final.Usage.CacheWriteTokens = harnesses.IntPtr(result.Tokens.CacheWrite)
+	}
+	if result.Tokens.CacheRead > 0 || result.Tokens.CacheWrite > 0 {
+		final.Usage.CacheTokens = harnesses.IntPtr(result.Tokens.CacheRead + result.Tokens.CacheWrite)
 	}
 	if result.CostUSD > 0 {
 		final.CostUSD = result.CostUSD

@@ -136,7 +136,7 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 	}
 	if agg != nil {
 		final.FinalText = agg.FinalText
-		if agg.InputTokens > 0 || agg.OutputTokens > 0 {
+		if agg.HasUsage {
 			final.Usage = &harnesses.FinalUsage{
 				InputTokens:  harnesses.IntPtr(agg.InputTokens),
 				OutputTokens: harnesses.IntPtr(agg.OutputTokens),

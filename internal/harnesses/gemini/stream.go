@@ -6,9 +6,12 @@ import (
 	"strings"
 )
 
-// streamAggregate captures usage extracted from gemini output.
+// streamAggregate captures usage extracted from gemini output. HasUsage is
+// set when the gemini stats / quota envelope was present at all (regardless
+// of values), so explicit upstream zeros are preserved per CONTRACT-003.
 type streamAggregate struct {
 	FinalText    string
+	HasUsage     bool
 	InputTokens  int
 	OutputTokens int
 	CacheTokens  int
@@ -22,42 +25,49 @@ type streamAggregate struct {
 //	{"stats":{"models":{"<model>":{"tokens":{"input":N,"total":M}}}}}
 //
 // output_tokens = total - input.
+type geminiStatsModel struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	CacheTokens  int `json:"cached"`
+	TotalTokens  int `json:"total_tokens"`
+	Tokens       struct {
+		Input int `json:"input"`
+		Total int `json:"total"`
+	} `json:"tokens"`
+}
+
+type geminiStatsBlock struct {
+	InputTokens  int                         `json:"input_tokens"`
+	OutputTokens int                         `json:"output_tokens"`
+	CacheTokens  int                         `json:"cached"`
+	TotalTokens  int                         `json:"total_tokens"`
+	CostUSD      float64                     `json:"cost_usd"`
+	TotalCostUSD float64                     `json:"total_cost_usd"`
+	Models       map[string]geminiStatsModel `json:"models"`
+}
+
+type geminiQuotaTokenCount struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+}
+
+type geminiMetaBlock struct {
+	Quota struct {
+		TokenCount geminiQuotaTokenCount `json:"token_count"`
+		ModelUsage []struct {
+			Model      string                `json:"model"`
+			TokenCount geminiQuotaTokenCount `json:"token_count"`
+		} `json:"model_usage"`
+	} `json:"quota"`
+}
+
 type geminiStatsEnvelope struct {
-	Stats struct {
-		InputTokens  int     `json:"input_tokens"`
-		OutputTokens int     `json:"output_tokens"`
-		CacheTokens  int     `json:"cached"`
-		TotalTokens  int     `json:"total_tokens"`
-		CostUSD      float64 `json:"cost_usd"`
-		TotalCostUSD float64 `json:"total_cost_usd"`
-		Models       map[string]struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
-			CacheTokens  int `json:"cached"`
-			TotalTokens  int `json:"total_tokens"`
-			Tokens       struct {
-				Input int `json:"input"`
-				Total int `json:"total"`
-			} `json:"tokens"`
-		} `json:"models"`
-	} `json:"stats"`
-	Meta struct {
-		Quota struct {
-			TokenCount struct {
-				InputTokens  int `json:"input_tokens"`
-				OutputTokens int `json:"output_tokens"`
-				TotalTokens  int `json:"total_tokens"`
-			} `json:"token_count"`
-			ModelUsage []struct {
-				Model      string `json:"model"`
-				TokenCount struct {
-					InputTokens  int `json:"input_tokens"`
-					OutputTokens int `json:"output_tokens"`
-					TotalTokens  int `json:"total_tokens"`
-				} `json:"token_count"`
-			} `json:"model_usage"`
-		} `json:"quota"`
-	} `json:"_meta"`
+	// Pointers so a missing top-level "stats" / "_meta" object stays nil;
+	// presence (even all-zero) is preserved as an upstream usage signal per
+	// CONTRACT-003.
+	Stats *geminiStatsBlock `json:"stats,omitempty"`
+	Meta  *geminiMetaBlock  `json:"_meta,omitempty"`
 }
 
 type geminiStreamEnvelope struct {
@@ -133,52 +143,58 @@ func parseGeminiStreamOutput(output string) (*streamAggregate, bool) {
 }
 
 func applyGeminiStats(agg *streamAggregate, env geminiStatsEnvelope) {
-	if env.Stats.InputTokens > 0 || env.Stats.OutputTokens > 0 || env.Stats.TotalTokens > 0 || env.Stats.CacheTokens > 0 {
-		agg.InputTokens = env.Stats.InputTokens
-		agg.OutputTokens = env.Stats.OutputTokens
-		agg.CacheTokens = env.Stats.CacheTokens
-		agg.TotalTokens = env.Stats.TotalTokens
-		if agg.TotalTokens == 0 && (agg.InputTokens > 0 || agg.OutputTokens > 0) {
-			agg.TotalTokens = agg.InputTokens + agg.OutputTokens
-		}
-	} else {
-		for _, model := range env.Stats.Models {
-			input := firstPositive(model.InputTokens, model.Tokens.Input)
-			output := model.OutputTokens
-			total := firstPositive(model.TotalTokens, model.Tokens.Total)
-			if output == 0 && total > 0 {
-				output = total - input
+	if env.Stats != nil {
+		agg.HasUsage = true
+		if env.Stats.InputTokens > 0 || env.Stats.OutputTokens > 0 || env.Stats.TotalTokens > 0 || env.Stats.CacheTokens > 0 {
+			agg.InputTokens = env.Stats.InputTokens
+			agg.OutputTokens = env.Stats.OutputTokens
+			agg.CacheTokens = env.Stats.CacheTokens
+			agg.TotalTokens = env.Stats.TotalTokens
+			if agg.TotalTokens == 0 && (agg.InputTokens > 0 || agg.OutputTokens > 0) {
+				agg.TotalTokens = agg.InputTokens + agg.OutputTokens
 			}
-			agg.InputTokens += input
-			agg.OutputTokens += output
-			agg.CacheTokens += model.CacheTokens
-			agg.TotalTokens += total
+		} else {
+			for _, model := range env.Stats.Models {
+				input := firstPositive(model.InputTokens, model.Tokens.Input)
+				output := model.OutputTokens
+				total := firstPositive(model.TotalTokens, model.Tokens.Total)
+				if output == 0 && total > 0 {
+					output = total - input
+				}
+				agg.InputTokens += input
+				agg.OutputTokens += output
+				agg.CacheTokens += model.CacheTokens
+				agg.TotalTokens += total
+			}
+			if agg.TotalTokens == 0 && (agg.InputTokens > 0 || agg.OutputTokens > 0) {
+				agg.TotalTokens = agg.InputTokens + agg.OutputTokens
+			}
 		}
-		if agg.TotalTokens == 0 && (agg.InputTokens > 0 || agg.OutputTokens > 0) {
-			agg.TotalTokens = agg.InputTokens + agg.OutputTokens
+		agg.CostUSD = firstPositiveFloat(env.Stats.CostUSD, env.Stats.TotalCostUSD)
+	}
+	if env.Meta != nil {
+		agg.HasUsage = true
+		if env.Meta.Quota.TokenCount.InputTokens > 0 || env.Meta.Quota.TokenCount.OutputTokens > 0 || env.Meta.Quota.TokenCount.TotalTokens > 0 {
+			agg.InputTokens = env.Meta.Quota.TokenCount.InputTokens
+			agg.OutputTokens = env.Meta.Quota.TokenCount.OutputTokens
+			agg.TotalTokens = env.Meta.Quota.TokenCount.TotalTokens
+			if agg.TotalTokens == 0 {
+				agg.TotalTokens = agg.InputTokens + agg.OutputTokens
+			}
+		} else if len(env.Meta.Quota.ModelUsage) > 0 {
+			agg.InputTokens = 0
+			agg.OutputTokens = 0
+			agg.TotalTokens = 0
+			for _, model := range env.Meta.Quota.ModelUsage {
+				agg.InputTokens += model.TokenCount.InputTokens
+				agg.OutputTokens += model.TokenCount.OutputTokens
+				agg.TotalTokens += model.TokenCount.TotalTokens
+			}
+			if agg.TotalTokens == 0 {
+				agg.TotalTokens = agg.InputTokens + agg.OutputTokens
+			}
 		}
 	}
-	if env.Meta.Quota.TokenCount.InputTokens > 0 || env.Meta.Quota.TokenCount.OutputTokens > 0 || env.Meta.Quota.TokenCount.TotalTokens > 0 {
-		agg.InputTokens = env.Meta.Quota.TokenCount.InputTokens
-		agg.OutputTokens = env.Meta.Quota.TokenCount.OutputTokens
-		agg.TotalTokens = env.Meta.Quota.TokenCount.TotalTokens
-		if agg.TotalTokens == 0 {
-			agg.TotalTokens = agg.InputTokens + agg.OutputTokens
-		}
-	} else if len(env.Meta.Quota.ModelUsage) > 0 {
-		agg.InputTokens = 0
-		agg.OutputTokens = 0
-		agg.TotalTokens = 0
-		for _, model := range env.Meta.Quota.ModelUsage {
-			agg.InputTokens += model.TokenCount.InputTokens
-			agg.OutputTokens += model.TokenCount.OutputTokens
-			agg.TotalTokens += model.TokenCount.TotalTokens
-		}
-		if agg.TotalTokens == 0 {
-			agg.TotalTokens = agg.InputTokens + agg.OutputTokens
-		}
-	}
-	agg.CostUSD = firstPositiveFloat(env.Stats.CostUSD, env.Stats.TotalCostUSD)
 }
 
 func firstPositive(values ...int) int {
