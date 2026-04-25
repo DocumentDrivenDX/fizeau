@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/agent/internal/harnesses"
 	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
 
@@ -223,19 +222,15 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 	}
 }
 
-// TestResolveRouteThreadsAutoSelectionInputs verifies that
-// EstimatedPromptTokens and RequiresTools are forwarded to the routing
-// engine so context-window and tool-support gates apply.
-func TestResolveRouteThreadsAutoSelectionInputs(t *testing.T) {
-	// Minimal smoke test: build a service with a single configured local
-	// provider, then call ResolveRoute with EstimatedPromptTokens larger
-	// than any reasonable context window. Expect either an error or an
-	// ineligible candidate marked context_too_small. The point is to
-	// prove the field survives the round trip from public to internal.
-	svc := &service{
-		opts:     ServiceOptions{},
-		registry: harnesses.NewRegistry(),
-	}
+// TestRouteRequestMinContextWindowDerivedFromEstimatedTokens verifies
+// the public-to-internal mapping for the auto-selection inputs that
+// ADR-005 step 1 added: EstimatedPromptTokens populates routing.Request
+// such that MinContextWindow() returns a positive value, which is the
+// hook the engine's context-window filter consults in step 2
+// (agent-d9c358ba). End-to-end FilterReason assertions through
+// ResolveRoute live in step 2's tests; step 1's responsibility ends at
+// the public-to-internal boundary.
+func TestRouteRequestMinContextWindowDerivedFromEstimatedTokens(t *testing.T) {
 	rReq := routing.Request{
 		EstimatedPromptTokens: 1_000_000,
 		RequiresTools:         true,
@@ -243,5 +238,4 @@ func TestResolveRouteThreadsAutoSelectionInputs(t *testing.T) {
 	if rReq.MinContextWindow() == 0 {
 		t.Fatal("MinContextWindow must be positive when EstimatedPromptTokens is set")
 	}
-	_ = svc // svc is referenced to make the test depend on the service type
 }
