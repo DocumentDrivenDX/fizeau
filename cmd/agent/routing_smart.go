@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	rootagent "github.com/DocumentDrivenDX/agent"
 	agentConfig "github.com/DocumentDrivenDX/agent/internal/config"
 	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
@@ -747,11 +748,53 @@ func abs(v float64) float64 {
 	return v
 }
 
+// routeStatusComponents mirrors agent.RouteCandidateComponents in the
+// route-status JSON envelope. Operators read these to answer "why did the
+// router pick X?" without parsing the free-form Reason string.
+type routeStatusComponents struct {
+	Cost        float64 `json:"cost"`
+	LatencyMS   float64 `json:"latency_ms"`
+	SuccessRate float64 `json:"success_rate"`
+	Capability  float64 `json:"capability"`
+}
+
+type routeStatusCandidate struct {
+	Harness      string                `json:"harness,omitempty"`
+	Provider     string                `json:"provider"`
+	Endpoint     string                `json:"endpoint,omitempty"`
+	Model        string                `json:"model"`
+	Score        float64               `json:"score"`
+	Components   routeStatusComponents `json:"components"`
+	Eligible     bool                  `json:"eligible"`
+	FilterReason string                `json:"filter_reason"`
+	Reason       string                `json:"reason,omitempty"`
+	CostSource   string                `json:"cost_source,omitempty"`
+	Winner       bool                  `json:"winner"`
+}
+
+type routeStatusOutput struct {
+	Profile    string                 `json:"profile,omitempty"`
+	Model      string                 `json:"model,omitempty"`
+	ModelRef   string                 `json:"model_ref,omitempty"`
+	Provider   string                 `json:"provider,omitempty"`
+	Harness    string                 `json:"harness,omitempty"`
+	Winner     *routeStatusCandidate  `json:"winner,omitempty"`
+	Candidates []routeStatusCandidate `json:"candidates"`
+	Error      string                 `json:"error,omitempty"`
+}
+
+// cmdRouteStatus reports the routing engine's eligible-candidate trace for a
+// requested intent (per ADR-005 §5). It calls service.ResolveRoute rather than
+// enumerating model_routes — score components and filter reasons come from the
+// engine itself, not a parallel CLI implementation.
 func cmdRouteStatus(workDir string, args []string) int {
 	fs := flag.NewFlagSet("route-status", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	model := fs.String("model", "", "Requested model intent")
+	profile := fs.String("profile", "", "Routing profile (cheap|standard|smart)")
+	model := fs.String("model", "", "Pin a specific model")
 	modelRef := fs.String("model-ref", "", "Model catalog reference")
+	provider := fs.String("provider", "", "Pin a specific provider")
+	harness := fs.String("harness", "", "Pin a specific harness")
 	jsonOut := fs.Bool("json", false, "Output JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -763,87 +806,113 @@ func cmdRouteStatus(workDir string, args []string) int {
 		return 1
 	}
 
-	routeKey, routeModelRef, legacyBackend, err := resolveRouteTarget(cfg, "", "", agentConfig.ProviderOverrides{
-		Model:    *model,
-		ModelRef: *modelRef,
+	svc, err := rootagent.New(rootagent.ServiceOptions{
+		ServiceConfig: agentConfig.NewServiceConfig(cfg, workDir),
+		SessionLogDir: sessionLogDir(workDir, cfg),
 	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %s\n", err)
-		return 2
-	}
-	if legacyBackend != "" {
-		fmt.Fprintf(os.Stderr, "error: route-status requires model intent, not deprecated backend selection\n")
-		return 2
-	}
-	if routeKey == "" {
-		fmt.Fprintf(os.Stderr, "error: no route target resolved (use --model or --model-ref, or configure routing defaults)\n")
-		return 2
-	}
-
-	var explicitRoute *agentConfig.ModelRouteConfig
-	if route, ok := cfg.GetModelRoute(routeKey); ok {
-		explicitRoute = &route
-	}
-	plan, err := buildSmartRoutePlan(cfg, workDir, routeKey, routeModelRef, false, explicitRoute, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 1
 	}
 
-	selectedProvider := ""
-	selectedModel := ""
-	if len(plan.Order) > 0 {
-		selectedProvider = plan.Candidates[plan.Order[0]].Provider
-		selectedModel = plan.Candidates[plan.Order[0]].Model
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	decision, resolveErr := svc.ResolveRoute(ctx, rootagent.RouteRequest{
+		Profile:  *profile,
+		Model:    *model,
+		ModelRef: *modelRef,
+		Provider: *provider,
+		Harness:  *harness,
+	})
+
+	out := routeStatusOutput{
+		Profile:    *profile,
+		Model:      *model,
+		ModelRef:   *modelRef,
+		Provider:   *provider,
+		Harness:    *harness,
+		Candidates: []routeStatusCandidate{},
+	}
+	if resolveErr != nil {
+		out.Error = resolveErr.Error()
+	}
+	if decision != nil {
+		winnerSet := decision.Harness != "" || decision.Provider != "" || decision.Model != ""
+		for _, c := range decision.Candidates {
+			entry := routeStatusCandidate{
+				Harness:      c.Harness,
+				Provider:     c.Provider,
+				Endpoint:     c.Endpoint,
+				Model:        c.Model,
+				Score:        c.Score,
+				Eligible:     c.Eligible,
+				FilterReason: c.FilterReason,
+				Reason:       c.Reason,
+				CostSource:   c.CostSource,
+				Components: routeStatusComponents{
+					Cost:        c.Components.Cost,
+					LatencyMS:   c.Components.LatencyMS,
+					SuccessRate: c.Components.SuccessRate,
+					Capability:  c.Components.Capability,
+				},
+			}
+			if winnerSet && out.Winner == nil &&
+				c.Harness == decision.Harness &&
+				c.Provider == decision.Provider &&
+				c.Model == decision.Model {
+				entry.Winner = true
+				w := entry
+				out.Winner = &w
+			}
+			out.Candidates = append(out.Candidates, entry)
+		}
 	}
 
 	if *jsonOut {
-		payload := struct {
-			RouteKey          string                `json:"route_key"`
-			RequestedModel    string                `json:"requested_model,omitempty"`
-			RequestedModelRef string                `json:"requested_model_ref,omitempty"`
-			Strategy          string                `json:"strategy"`
-			SelectedProvider  string                `json:"selected_provider,omitempty"`
-			SelectedModel     string                `json:"selected_model,omitempty"`
-			Candidates        []smartRouteCandidate `json:"candidates"`
-		}{
-			RouteKey:          plan.RouteKey,
-			RequestedModel:    plan.RequestedModel,
-			RequestedModelRef: plan.RequestedModelRef,
-			Strategy:          plan.Strategy,
-			SelectedProvider:  selectedProvider,
-			SelectedModel:     selectedModel,
-			Candidates:        orderedCandidates(plan),
-		}
-		data, _ := json.MarshalIndent(payload, "", "  ")
+		data, _ := json.MarshalIndent(out, "", "  ")
 		fmt.Println(string(data))
+		if resolveErr != nil && (decision == nil || decision.Harness == "") {
+			return 1
+		}
 		return 0
 	}
 
-	fmt.Printf("Route: %s\n", plan.RouteKey)
-	if plan.RequestedModelRef != "" {
-		fmt.Printf("Model Ref: %s\n", plan.RequestedModelRef)
+	if out.Profile != "" {
+		fmt.Printf("Profile: %s\n", out.Profile)
 	}
-	fmt.Printf("Strategy: %s\n", plan.Strategy)
-	if selectedProvider != "" {
-		fmt.Printf("Selected: %s (%s)\n", selectedProvider, selectedModel)
+	if out.Model != "" {
+		fmt.Printf("Model: %s\n", out.Model)
 	}
-	fmt.Printf("%-12s %-32s %-8s %-10s %-12s %-12s %-8s %s\n", "PROVIDER", "MODEL", "HEALTH", "SCORE", "RELIABILITY", "LATENCY", "LOAD", "REASON")
-	for _, candidate := range orderedCandidates(plan) {
-		health := "down"
-		if candidate.Healthy {
-			health = "healthy"
+	if out.ModelRef != "" {
+		fmt.Printf("Model Ref: %s\n", out.ModelRef)
+	}
+	if out.Winner != nil {
+		fmt.Printf("Winner: %s/%s/%s score=%.2f\n", out.Winner.Harness, out.Winner.Provider, out.Winner.Model, out.Winner.Score)
+	}
+	if resolveErr != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", resolveErr)
+	}
+	fmt.Printf("%-10s %-12s %-32s %-5s %-9s %-10s %-10s %-9s %s\n",
+		"HARNESS", "PROVIDER", "MODEL", "ELIG", "SCORE", "COST", "LATENCY", "SUCCESS", "FILTER_REASON")
+	for _, c := range out.Candidates {
+		elig := "no"
+		if c.Eligible {
+			elig = "yes"
 		}
-		fmt.Printf("%-12s %-32s %-8s %-10.3f %-12.2f %-12.0f %-8d %s\n",
-			candidate.Provider,
-			truncate(candidate.Model, 32),
-			health,
-			candidate.Score,
-			candidate.Reliability,
-			candidate.AvgDurationMs,
-			candidate.RecentSelections,
-			candidate.Reason,
+		fmt.Printf("%-10s %-12s %-32s %-5s %-9.2f %-10.4f %-10.0f %-9.2f %s\n",
+			c.Harness,
+			c.Provider,
+			truncate(c.Model, 32),
+			elig,
+			c.Score,
+			c.Components.Cost,
+			c.Components.LatencyMS,
+			c.Components.SuccessRate,
+			c.FilterReason,
 		)
+	}
+	if resolveErr != nil && (decision == nil || decision.Harness == "") {
+		return 1
 	}
 	return 0
 }

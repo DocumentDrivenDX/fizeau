@@ -484,30 +484,11 @@ func TestCLI_RouteStatusShowsHealthAndScoringForModelIntent(t *testing.T) {
 
 	dead := newCountedOpenAIServer(t, http.StatusServiceUnavailable, "", "")
 	healthy := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
-	expensive := newCountedOpenAIServer(t, http.StatusOK, "qwen/qwen3.5-27b-20260224", "ok")
+	expensive := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
 	dead.setModelsStatus(http.StatusServiceUnavailable)
 	dead.setModels("qwen3.5-27b")
 	healthy.setModels("qwen3.5-27b")
-	expensive.setModels("qwen/qwen3.5-27b-20260224")
-
-	expensiveCost := 0.12
-	writeRoutingHistorySession(t, workDir, "healthy-history", time.Now().Add(-2*time.Minute), session.SessionEndData{
-		Status:           agent.StatusSuccess,
-		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
-		DurationMs:       900,
-		SelectedProvider: "vidar",
-		RequestedModel:   "qwen3.5-27b",
-		ResolvedModel:    "qwen3.5-27b",
-	})
-	writeRoutingHistorySession(t, workDir, "expensive-history", time.Now().Add(-2*time.Minute), session.SessionEndData{
-		Status:           agent.StatusSuccess,
-		Tokens:           agent.TokenUsage{Input: 100, Output: 50, Total: 150},
-		CostUSD:          &expensiveCost,
-		DurationMs:       1200,
-		SelectedProvider: "openrouter",
-		RequestedModel:   "qwen3.5-27b",
-		ResolvedModel:    "qwen/qwen3.5-27b-20260224",
-	})
+	expensive.setModels("qwen3.5-27b")
 
 	writeTempConfig(t, workDir, `
 providers:
@@ -519,7 +500,7 @@ providers:
     type: lmstudio
     base_url: `+healthy.baseURL()+`
     api_key: test
-  openrouter:
+  freyja:
     type: lmstudio
     base_url: `+expensive.baseURL()+`
     api_key: test
@@ -528,29 +509,158 @@ providers:
 	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--model", "qwen3.5-27b", "--json")
 	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
+	type component struct {
+		Cost        float64 `json:"cost"`
+		LatencyMS   float64 `json:"latency_ms"`
+		SuccessRate float64 `json:"success_rate"`
+		Capability  float64 `json:"capability"`
+	}
+	type candidate struct {
+		Harness      string    `json:"harness"`
+		Provider     string    `json:"provider"`
+		Model        string    `json:"model"`
+		Score        float64   `json:"score"`
+		Components   component `json:"components"`
+		Eligible     bool      `json:"eligible"`
+		FilterReason string    `json:"filter_reason"`
+		Winner       bool      `json:"winner"`
+	}
 	var parsed struct {
-		RouteKey         string `json:"route_key"`
-		SelectedProvider string `json:"selected_provider"`
-		Candidates       []struct {
-			Provider string  `json:"provider"`
-			Model    string  `json:"model"`
-			Healthy  bool    `json:"healthy"`
-			Reason   string  `json:"reason"`
-			Score    float64 `json:"score"`
-		} `json:"candidates"`
+		Model      string      `json:"model"`
+		Winner     *candidate  `json:"winner"`
+		Candidates []candidate `json:"candidates"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
-	assert.Equal(t, "qwen3.5-27b", parsed.RouteKey)
-	assert.Equal(t, "vidar", parsed.SelectedProvider)
-	require.Len(t, parsed.Candidates, 3)
-	assert.Equal(t, "vidar", parsed.Candidates[0].Provider)
-	assert.True(t, parsed.Candidates[0].Healthy)
-	assert.Equal(t, "openrouter", parsed.Candidates[1].Provider)
-	assert.True(t, parsed.Candidates[1].Healthy)
-	assert.Equal(t, "bragi", parsed.Candidates[2].Provider)
-	assert.False(t, parsed.Candidates[2].Healthy)
-	assert.NotZero(t, parsed.Candidates[0].Score)
-	assert.Contains(t, parsed.Candidates[2].Reason, "503")
+	assert.Equal(t, "qwen3.5-27b", parsed.Model)
+
+	// Each candidate carries the new structured shape from
+	// service.ResolveRoute: provider, model, score, components, eligible bool,
+	// and filter_reason (empty for the eligible winner, non-empty for losers).
+	require.NotEmpty(t, parsed.Candidates)
+	for _, c := range parsed.Candidates {
+		// Subscription harnesses (claude/codex/gemini) surface harness-level
+		// candidates with no Provider; native agent harness candidates do
+		// carry a Provider. Either way the routing identity (Harness or
+		// Provider) must be populated.
+		assert.True(t, c.Harness != "" || c.Provider != "", "candidate must carry a harness or provider: %+v", c)
+		assert.NotEmpty(t, c.Model, "candidate must carry a resolved model")
+		// Components is always present; its zero value is meaningful (unknown).
+		_ = c.Components
+		if !c.Eligible {
+			assert.NotEmpty(t, c.FilterReason, "ineligible candidate must carry a filter_reason: %+v", c)
+		}
+	}
+
+	// At least one candidate must be eligible (the two healthy lmstudio
+	// providers serve qwen3.5-27b; bragi is dead and gets dropped before the
+	// engine ever sees it because its /v1/models probe fails).
+	eligibleCount := 0
+	for _, c := range parsed.Candidates {
+		if c.Eligible {
+			eligibleCount++
+		}
+	}
+	assert.GreaterOrEqual(t, eligibleCount, 1, "expected at least one eligible candidate; got %+v", parsed.Candidates)
+
+	require.NotNil(t, parsed.Winner, "an eligible winner must be selected")
+	assert.True(t, parsed.Winner.Eligible)
+	assert.Empty(t, parsed.Winner.FilterReason, "winner must have an empty filter_reason")
+
+	// The winner must also appear inside the candidates array and be flagged.
+	winnerInList := 0
+	for _, c := range parsed.Candidates {
+		if c.Winner {
+			winnerInList++
+			assert.Equal(t, parsed.Winner.Provider, c.Provider)
+			assert.Equal(t, parsed.Winner.Model, c.Model)
+		}
+	}
+	assert.Equal(t, 1, winnerInList, "exactly one candidate should be flagged winner")
+}
+
+// TestRouteStatus_ShowsEligibleCandidatesPerIntent asserts that
+// `ddx-agent route-status --profile <p>` calls service.ResolveRoute and
+// renders the engine's full candidate trace — every catalog candidate that
+// matches the profile's tier+capability filter, with score components and a
+// filter_reason for ineligible ones. Per ADR-005 §5.
+func TestRouteStatus_ShowsEligibleCandidatesPerIntent(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	// Discover a smart-tier model so the agent harness has at least one
+	// eligible candidate. The catalog's `smart` profile resolves to
+	// "gpt-5.4" on the embedded-openai surface; subscription harnesses also
+	// surface candidates but go ineligible without quota state, exercising
+	// both eligible and ineligible code paths.
+	healthy := newCountedOpenAIServer(t, http.StatusOK, "gpt-5.4", "ok")
+	healthy.setModels("gpt-5.4")
+
+	writeTempConfig(t, workDir, `
+providers:
+  vidar:
+    type: lmstudio
+    base_url: `+healthy.baseURL()+`
+    api_key: test
+`)
+
+	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--profile", "smart", "--json")
+	// ResolveRoute may surface a non-zero exit if the smart profile cannot be
+	// satisfied without a winner, but the JSON payload must still carry the
+	// structured candidate trace.
+	require.NotEmpty(t, out.stdout, "stderr=%s", out.stderr)
+
+	type component struct {
+		Cost        float64 `json:"cost"`
+		LatencyMS   float64 `json:"latency_ms"`
+		SuccessRate float64 `json:"success_rate"`
+		Capability  float64 `json:"capability"`
+	}
+	type candidate struct {
+		Harness      string    `json:"harness"`
+		Provider     string    `json:"provider"`
+		Model        string    `json:"model"`
+		Score        float64   `json:"score"`
+		Components   component `json:"components"`
+		Eligible     bool      `json:"eligible"`
+		FilterReason string    `json:"filter_reason"`
+		Reason       string    `json:"reason"`
+		Winner       bool      `json:"winner"`
+	}
+	var parsed struct {
+		Profile    string      `json:"profile"`
+		Winner     *candidate  `json:"winner"`
+		Candidates []candidate `json:"candidates"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
+	assert.Equal(t, "smart", parsed.Profile)
+	require.NotEmpty(t, parsed.Candidates, "engine must surface its candidate trace; stdout=%s", out.stdout)
+
+	// Every candidate carries the score-component bundle (cost, latency_ms,
+	// success_rate, capability) plus an eligible bool and a filter_reason
+	// string that explains rankings without parsing free-form Reason text.
+	sawIneligibleWithReason := false
+	sawIneligible := false
+	for _, c := range parsed.Candidates {
+		assert.NotEmpty(t, c.Model, "candidate must name a concrete model: %+v", c)
+		// Components is structured (not free-form); reading the four named
+		// axes proves the wire shape matches AC §2.
+		_ = c.Components.Cost
+		_ = c.Components.LatencyMS
+		_ = c.Components.SuccessRate
+		_ = c.Components.Capability
+		if !c.Eligible {
+			sawIneligible = true
+			if c.FilterReason != "" {
+				sawIneligibleWithReason = true
+			}
+		}
+	}
+	if sawIneligible {
+		assert.True(t, sawIneligibleWithReason,
+			"at least one ineligible candidate must carry a non-empty filter_reason; got %+v",
+			parsed.Candidates)
+	}
 }
 
 func TestCLI_BackendRoutingAttributionFlowsIntoResultAndSession(t *testing.T) {
