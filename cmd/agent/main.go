@@ -251,9 +251,8 @@ func run() int {
 		RequestedModelRef:       selection.RequestedModelRef,
 		ResolvedModelRef:        selection.ResolvedModelRef,
 		ResolvedModel:           selection.ResolvedModel,
-		RouteCandidates:         selection.RouteCandidates,
 		Reasoning:               resolvedReasoning,
-		NoStream:                selection.NoStream || (selection.Route != "" && selection.Route != selection.Provider && len(selection.RouteCandidates) == 0),
+		NoStream:                selection.NoStream,
 		MaxIterations:           iterations,
 		MaxTokens:               resolvedMaxTokens,
 		ReasoningByteLimit:      cfg.ReasoningByteLimit,
@@ -397,7 +396,6 @@ type serviceExecuteRequestParams struct {
 	RequestedModelRef       string
 	ResolvedModelRef        string
 	ResolvedModel           string
-	RouteCandidates         []agent.RouteCandidate
 	Reasoning               agent.Reasoning
 	NoStream                bool
 	MaxIterations           int
@@ -437,26 +435,18 @@ type cliTokenUsage struct {
 }
 
 func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.ServiceExecuteRequest {
-	model := params.ResolvedModel
-	if params.RequestedModel != "" {
-		model = params.RequestedModel
+	// Prefer the catalog-resolved concrete model when present so the
+	// service issues chat completions against the actual model id (not
+	// the user-facing alias / routeKey). Falls back to the requested
+	// model for direct provider pins where no catalog resolution ran.
+	model := params.RequestedModel
+	if params.ResolvedModel != "" {
+		model = params.ResolvedModel
 	}
 	provider := params.SelectedProvider
 	harness := ""
 	if params.SelectedProvider != "" {
 		harness = "agent"
-	}
-	if len(params.RouteCandidates) > 0 {
-		// Pin the first scored candidate explicitly. Multi-candidate
-		// failover via PreResolved was removed in ADR-005 step 1; until
-		// model_routes deletion (step 3) ships, we fall back to the
-		// top-scored candidate from the CLI smart-route plan.
-		first := params.RouteCandidates[0]
-		harness = "agent"
-		provider = first.Provider
-		if first.Model != "" {
-			model = first.Model
-		}
 	}
 	req := agent.ServiceExecuteRequest{
 		Prompt:                  params.Prompt,
@@ -549,7 +539,6 @@ type providerSelection struct {
 	RequestedModelRef string
 	ResolvedModelRef  string
 	ResolvedModel     string
-	RouteCandidates   []agent.RouteCandidate
 	ReasoningDefault  agent.Reasoning
 	NoStream          bool
 }
@@ -622,6 +611,7 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 			Route:             useLegacyBackend,
 			ResolvedModel:     pc.Model,
 			RequestedModelRef: overrides.ModelRef,
+			NoStream:          true,
 		}
 		if bc, ok := cfg.GetBackend(useLegacyBackend); ok && len(bc.Providers) > 0 {
 			idx := selectBackendProviderIndex(bc.Strategy, counter, len(bc.Providers))
@@ -736,25 +726,6 @@ func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}
 	pc.Model = selected.Model
-	routeCandidates := make([]agentConfig.ModelRouteCandidateConfig, 0, len(plan.Candidates))
-	for _, candidate := range plan.Candidates {
-		if routeModelRef != "" && (candidate.Model == "" || candidate.Model == routeKey) {
-			resolvedPC, _, err := cfg.ResolveProviderConfig(candidate.Provider, agentConfig.ProviderOverrides{ModelRef: routeModelRef, AllowDeprecated: allowDeprecated})
-			if err != nil {
-				return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-			}
-			candidate.Model = resolvedPC.Model
-		}
-		routeCandidates = append(routeCandidates, agentConfig.ModelRouteCandidateConfig{
-			Provider: candidate.Provider,
-			Model:    candidate.Model,
-			Priority: candidate.Priority,
-		})
-	}
-	p = newRouteProvider(cfg, workDir, routeKey, routeKey, routeModelRef, agentConfig.ModelRouteConfig{
-		Strategy:   plan.Strategy,
-		Candidates: routeCandidates,
-	}, plan.Order, selected.Provider, allowDeprecated)
 
 	selection := providerSelection{
 		Route:             routeKey,
@@ -780,16 +751,6 @@ func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 				selection.ResolvedModelRef = catalogResolved.CanonicalID
 			}
 		}
-	}
-	selection.RouteCandidates = make([]agent.RouteCandidate, 0, len(plan.Order))
-	for _, idx := range plan.Order {
-		candidate := routeCandidates[idx]
-		selection.RouteCandidates = append(selection.RouteCandidates, agent.RouteCandidate{
-			Harness:  "agent",
-			Provider: candidate.Provider,
-			Model:    candidate.Model,
-			Eligible: true,
-		})
 	}
 	return selection, p, pc, nil
 }

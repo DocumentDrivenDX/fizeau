@@ -102,69 +102,10 @@ func TestResolveRouteTarget_PrecedenceOrder(t *testing.T) {
 	assert.Equal(t, "default-route", routeKey)
 }
 
-func TestShouldFailover_TransportErrors(t *testing.T) {
-	testCases := []struct {
-		err      error
-		expectOk bool
-	}{
-		{err: assert.AnError, expectOk: false},
-	}
-
-	for _, tc := range testCases {
-		result := shouldFailover(tc.err)
-		assert.Equal(t, tc.expectOk, result)
-	}
-}
-
-func TestShouldFailover_StatusCodes(t *testing.T) {
-	testCases := []struct {
-		errMsg   string
-		failover bool
-	}{
-		{"401 unauthorized", true},
-		{"403 forbidden", true},
-		{"status code: 429", true},
-		{"500 internal server error", true},
-		{"502 bad gateway", true},
-		{"connection refused", true},
-		{"dial tcp: connection refused", true},
-		{"no such host", true},
-		{"timeout exceeded", true},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.errMsg, func(t *testing.T) {
-			err := &testError{msg: tc.errMsg}
-			result := shouldFailover(err)
-			assert.Equal(t, tc.failover, result)
-		})
-	}
-}
-
-func TestShouldFailover_NoFailover(t *testing.T) {
-	testCases := []string{
-		"invalid request: missing required field",
-		"tool schema error",
-		"rate limit exceeded: user rate limit",
-		"context canceled",
-	}
-
-	for _, msg := range testCases {
-		t.Run(msg, func(t *testing.T) {
-			err := &testError{msg: msg}
-			result := shouldFailover(err)
-			assert.False(t, result)
-		})
-	}
-}
-
-type testError struct {
-	msg string
-}
-
-func (e *testError) Error() string {
-	return e.msg
-}
+// TestShouldFailover_* and the testError helper were removed as part of
+// ADR-005 step 3. The CLI no longer hosts a Chat-level failover wrapper;
+// transient-error retry policy moved to the service-side smart-routing
+// engine.
 
 func TestHealthyCandidateIndexes_AllHealthy(t *testing.T) {
 	candidates := []agentConfig.ModelRouteCandidateConfig{
@@ -352,9 +293,5 @@ func TestRouteHealthCooldown_Invalid(t *testing.T) {
 	assert.Equal(t, defaultRouteHealthCooldown, cooldown)
 }
 
-func TestMax(t *testing.T) {
-	assert.Equal(t, 5, max(3, 5))
-	assert.Equal(t, 5, max(5, 3))
-	assert.Equal(t, 5, max(5, 5))
-	assert.Equal(t, 0, max(0, 0))
-}
+// TestMax removed: the local `max` helper was deleted with the
+// routeProvider in ADR-005 step 3 (Go 1.21 has a builtin).
