@@ -644,12 +644,13 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	defer cancel()
 
 	// Bridge agent.Event (loop callback) → harnesses.Event (out chan).
+	// Every callback event is also persisted to the session log so
+	// kept-sandbox bundles preserve the full native trace (llm.request,
+	// llm.response, tool.call, compaction.*) needed to reconstruct a run
+	// for benchmark reruns and post-mortem debugging. The public out-chan
+	// translation below only forwards CONTRACT-003 event types.
 	cb := func(ev agentcore.Event) {
-		// Translate to a harnesses.Event of best-fit type. We only forward
-		// types that map onto CONTRACT-003's closed event union; internal
-		// session.start / llm.* / compaction.* events do not have a public
-		// equivalent and are dropped here. They still land in the session
-		// log via the session logger that consumers attach themselves.
+		sl.writeEvent(ev)
 		switch ev.Type {
 		case agentcore.EventToolCall:
 			// Map tool.call → tool_call + tool_result. The loop emits a

@@ -942,6 +942,99 @@ func TestExecute_SessionLogDirOverride(t *testing.T) {
 	}
 }
 
+// TestExecute_NativeSessionLogPreservesFullTrace locks in the contract that
+// kept-sandbox bundles for the native ("agent") harness preserve a complete
+// session trace — not just session.start + session.end. Benchmark reruns and
+// post-mortem debugging need to see llm.request / llm.response (and tool.call
+// when applicable) to reconstruct what the loop did, so the runNative
+// callback forwards every internal agent event into the session log file.
+func TestExecute_NativeSessionLogPreservesFullTrace(t *testing.T) {
+	fp := &agent.FakeProvider{
+		Static: []agent.FakeResponse{
+			{Text: "ok"},
+		},
+	}
+	opts := agent.ServiceOptions{}
+	opts.FakeProvider = fp
+	svc, err := agent.New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	dir := t.TempDir()
+	req := agent.ServiceExecuteRequest{
+		Prompt:        "hi",
+		Harness:       "agent",
+		Provider:      "fake",
+		Model:         "fake-model",
+		SessionLogDir: dir,
+	}
+	ch, err := svc.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	_ = drainEvents(t, ch, 5*time.Second)
+
+	matches, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatalf("no session log written to %s", dir)
+	}
+	body, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("read session log %s: %v", matches[0], err)
+	}
+	lines := strings.Split(strings.TrimRight(string(body), "\n"), "\n")
+	if len(lines) < 4 {
+		t.Fatalf("expected multi-event session log (>=4 lines: session.start, llm.request, llm.response, session.end), got %d:\n%s", len(lines), string(body))
+	}
+	types := make([]string, 0, len(lines))
+	for _, line := range lines {
+		var ev struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("decode line %q: %v", line, err)
+		}
+		types = append(types, ev.Type)
+	}
+	want := map[string]bool{
+		"session.start": false,
+		"llm.request":   false,
+		"llm.response":  false,
+		"session.end":   false,
+	}
+	for _, ty := range types {
+		if _, ok := want[ty]; ok {
+			want[ty] = true
+		}
+	}
+	for ty, present := range want {
+		if !present {
+			t.Errorf("missing event type %q in session log; got types %v", ty, types)
+		}
+	}
+	// Service writes session.start/session.end exactly once each. Verify the
+	// loop's own start/end records were filtered out so consumers don't see
+	// duplicates.
+	starts, ends := 0, 0
+	for _, ty := range types {
+		switch ty {
+		case "session.start":
+			starts++
+		case "session.end":
+			ends++
+		}
+	}
+	if starts != 1 {
+		t.Errorf("session.start count: want 1, got %d (types %v)", starts, types)
+	}
+	if ends != 1 {
+		t.Errorf("session.end count: want 1, got %d (types %v)", ends, types)
+	}
+}
+
 // TestExecute_OSCancelDuringStreaming verifies that ctx.Done() while
 // the loop is mid-flight terminates the stream cleanly with a
 // cancelled-status final.

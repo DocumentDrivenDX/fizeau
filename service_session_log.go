@@ -96,6 +96,23 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 	})
 }
 
+// writeEvent persists a raw agent event to the session log. Used by the
+// native loop callback to capture llm.request / llm.response / tool.call /
+// compaction.* events so kept-sandbox bundles preserve a complete trace
+// for benchmark reruns and post-mortem debugging. session.start and
+// session.end are skipped because writeStart/writeEnd own those records and
+// enrich them with service-side routing fields the loop does not see.
+func (sl *serviceSessionLog) writeEvent(ev agentcore.Event) {
+	if sl == nil || sl.logger == nil {
+		return
+	}
+	switch ev.Type {
+	case agentcore.EventSessionStart, agentcore.EventSessionEnd:
+		return
+	}
+	sl.logger.Write(ev)
+}
+
 // close flushes the underlying file. Safe to call multiple times.
 func (sl *serviceSessionLog) close() {
 	if sl == nil || sl.logger == nil {
