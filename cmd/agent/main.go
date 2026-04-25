@@ -305,12 +305,16 @@ func executeViaService(ctx context.Context, req agent.ServiceExecuteRequest, sel
 		return cliExecutionResult{}, err
 	}
 
+	// Hand the resolved session-log directory to the service. Per
+	// CONTRACT-003, the service owns lifecycle + terminal record persistence;
+	// the CLI only chooses the storage location and consumes the event
+	// stream.
+	req.SessionLogDir = logDir
+
 	ch, err := svc.Execute(ctx, req)
 	if err != nil {
 		return cliExecutionResult{}, err
 	}
-	recorder := newCLIServiceSessionRecorder(logDir, serviceConfig)
-	defer recorder.Close()
 
 	result := cliExecutionResult{
 		Status:            "failed",
@@ -329,7 +333,6 @@ func executeViaService(ctx context.Context, req agent.ServiceExecuteRequest, sel
 		if err != nil {
 			return result, fmt.Errorf("decode service event: %w", err)
 		}
-		recorder.Record(req, selection, decoded)
 		switch decoded.Type {
 		case agent.ServiceEventTypeRoutingDecision:
 			if decoded.RoutingDecision != nil {
@@ -375,7 +378,6 @@ func executeViaService(ctx context.Context, req agent.ServiceExecuteRequest, sel
 		if ctx.Err() != nil {
 			result.Status = "cancelled"
 			result.Error = ctx.Err().Error()
-			recorder.RecordSyntheticCancel(req, selection, result)
 			return result, nil
 		}
 		return result, fmt.Errorf("service execution ended without final event")
@@ -467,6 +469,8 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.Servic
 		ReasoningStallTimeout:   params.ReasoningStallTimeout,
 		CompactionContextWindow: params.CompactionContextWindow,
 		CompactionReserveTokens: params.CompactionReserveTokens,
+		SelectedRoute:           params.SelectedRoute,
+		ResolvedModelRef:        params.ResolvedModelRef,
 	}
 	if len(params.RouteCandidates) > 0 {
 		first := params.RouteCandidates[0]

@@ -484,6 +484,17 @@ type ServiceExecuteRequest struct {
 	// request (e.g. an execute-bead per-bundle evidence directory).
 	SessionLogDir string
 
+	// SelectedRoute is the configured model-route name the caller picked
+	// (e.g. "code-pool"). Recorded into the service-owned session log so
+	// post-hoc routing analytics can correlate logs to route keys without
+	// reconstructing attribution from the event stream.
+	SelectedRoute string
+
+	// ResolvedModelRef is the profile/model reference (e.g. "code-medium")
+	// that was mapped onto the concrete Model for this request. Paired with
+	// ModelRef (the caller-requested reference) in the session log.
+	ResolvedModelRef string
+
 	// Metadata is bidirectional: echoed back in every Event AND stamped
 	// onto every line of the session log so external consumers correlate.
 	Metadata map[string]string

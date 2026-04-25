@@ -22,7 +22,6 @@ import (
 	virtualprovider "github.com/DocumentDrivenDX/agent/internal/provider/virtual"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 	"github.com/DocumentDrivenDX/agent/internal/routing"
-	"github.com/DocumentDrivenDX/agent/internal/sessionlog"
 	"github.com/DocumentDrivenDX/agent/internal/tool"
 )
 
@@ -293,6 +292,28 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	start := time.Now()
 	var seq atomic.Int64
 
+	// Open the service-owned session log writer and guarantee a terminal
+	// session.end record plus a clean file close even on unexpected exits.
+	// CONTRACT-003 makes session-log lifecycle a service responsibility; the
+	// per-path finalizeAndEmit calls below feed writeEnd in lock-step with
+	// the public final event.
+	sl := s.openSessionLog(req, decision, sessionID)
+	defer func() {
+		if !sl.endWritten() {
+			sl.writeEnd(req, meta, harnesses.FinalData{
+				Status:     "cancelled",
+				Error:      "session ended without final event",
+				DurationMS: time.Since(start).Milliseconds(),
+				RoutingActual: &harnesses.RoutingActual{
+					Harness:  decision.Harness,
+					Provider: decision.Provider,
+					Model:    decision.Model,
+				},
+			})
+		}
+		sl.close()
+	}()
+
 	// Wall-clock cap.
 	runCtx := ctx
 	if req.Timeout > 0 {
@@ -316,29 +337,29 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	// paths instantiate the matching internal/harnesses/<name>.Runner.
 	switch decision.Harness {
 	case "agent", "":
-		s.runNative(runCtx, req, decision, meta, out, &seq, start)
+		s.runNative(runCtx, req, decision, meta, out, &seq, start, sl)
 	case "claude":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &claudeharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &claudeharness.Runner{})
 	case "codex":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &codexharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &codexharness.Runner{})
 	case "gemini":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &geminiharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &geminiharness.Runner{})
 	case "opencode":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &opencodeharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &opencodeharness.Runner{})
 	case "pi":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, &piharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &piharness.Runner{})
 	case "virtual":
-		s.runVirtual(runCtx, req, decision, meta, out, &seq, start)
+		s.runVirtual(runCtx, req, decision, meta, out, &seq, start, sl)
 	case "script":
-		s.runScript(runCtx, req, decision, meta, out, &seq, start)
+		s.runScript(runCtx, req, decision, meta, out, &seq, start, sl)
 	default:
 		if cfg, ok := s.registry.Get(decision.Harness); ok && cfg.IsHTTPProvider {
-			s.runNative(runCtx, req, decision, meta, out, &seq, start)
+			s.runNative(runCtx, req, decision, meta, out, &seq, start, sl)
 			return
 		}
 		// Unknown / unimplemented subprocess harnesses fail with an explicit
 		// final event so callers do not silently fall back.
-		emitFinal(out, &seq, meta, harnesses.FinalData{
+		finalizeAndEmit(out, &seq, meta, req, sl, harnesses.FinalData{
 			Status:     "failed",
 			Error:      fmt.Sprintf("harness %q dispatch not yet wired in service.Execute", decision.Harness),
 			DurationMS: time.Since(start).Milliseconds(),
@@ -351,7 +372,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	}
 }
 
-func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time) {
+func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog) {
 	inlineText := meta["virtual.response"]
 	cfg := virtualprovider.Config{
 		DictDir: meta["virtual.dict_dir"],
@@ -372,7 +393,7 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 		}}
 	}
 	if cfg.DictDir == "" && len(cfg.InlineResponses) == 0 {
-		emitFinal(out, seq, meta, harnesses.FinalData{
+		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
 			Status:     "failed",
 			Error:      "virtual harness requires metadata virtual.response or virtual.dict_dir",
 			DurationMS: time.Since(start).Milliseconds(),
@@ -397,7 +418,7 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 	if err != nil {
 		final.Status = "failed"
 		final.Error = err.Error()
-		emitFinal(out, seq, meta, final)
+		finalizeAndEmit(out, seq, meta, req, sl, final)
 		return
 	}
 	final.Status = "success"
@@ -413,17 +434,17 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 	if resp.Content != "" {
 		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: resp.Content})
 	}
-	emitFinal(out, seq, meta, final)
+	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
 
-func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time) {
+func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog) {
 	delay := metadataInt(meta, "script.delay_ms")
 	if delay > 0 {
 		timer := time.NewTimer(time.Duration(delay) * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			emitFinal(out, seq, meta, harnesses.FinalData{
+			finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
 				Status:     "cancelled",
 				Error:      ctx.Err().Error(),
 				DurationMS: time.Since(start).Milliseconds(),
@@ -440,7 +461,7 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 
 	text, ok := meta["script.stdout"]
 	if !ok {
-		emitFinal(out, seq, meta, harnesses.FinalData{
+		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
 			Status:     "failed",
 			Error:      "script harness requires metadata script.stdout",
 			DurationMS: time.Since(start).Milliseconds(),
@@ -471,7 +492,7 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 		final.Status = "failed"
 		final.Error = metaValue(meta, "script.stderr", fmt.Sprintf("script exited with status %d", exitCode))
 	}
-	emitFinal(out, seq, meta, final)
+	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
 
 func metaValue(meta map[string]string, key, fallback string) string {
@@ -542,7 +563,7 @@ func toolNames(tools []agentcore.Tool) []string {
 // runNative drives the in-process agent loop (loop.go's Run). The provider
 // is wrapped with WrapProviderWithDeadlinesTimeouts so per-HTTP timeouts
 // fire independently of the request wall-clock cap.
-func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time) {
+func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog) {
 	provider := s.nativeExecutionProvider(req, decision)
 	actualHarness := decision.Harness
 	if actualHarness == "" {
@@ -558,7 +579,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		actualModel = resolvedProvider.Entry.Model
 	}
 	if provider == nil {
-		emitFinal(out, seq, meta, harnesses.FinalData{
+		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
 			Status:     "failed",
 			Error:      s.nativeProviderNotConfiguredError(req, decision),
 			DurationMS: time.Since(start).Milliseconds(),
@@ -572,7 +593,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	}
 	permission, permissionErr := nativePermissionMode(req.Permissions)
 	if permissionErr != nil {
-		emitFinal(out, seq, meta, harnesses.FinalData{
+		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
 			Status:     "failed",
 			Error:      permissionErr.Error(),
 			DurationMS: time.Since(start).Milliseconds(),
@@ -809,16 +830,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		final.Status = "success"
 	}
 
-	// Session log path: when the caller supplied a SessionLogDir, place a
-	// per-session JSONL there. We write a minimal final-event line so the
-	// path exists and is non-empty even when no streaming sink is wired
-	// (e.g., FakeProvider tests). Real session-log writing is the session
-	// package's job and runs alongside this.
-	if req.SessionLogDir != "" {
-		final.SessionLogPath = writeSessionLogStub(req.SessionLogDir, result.SessionID, final, meta)
-	}
-
-	emitFinal(out, seq, meta, final)
+	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
 
 func (s *service) nativeExecutionProvider(req ServiceExecuteRequest, decision RouteDecision) agentcore.Provider {
@@ -1068,7 +1080,7 @@ func newServiceCompactor(req ServiceExecuteRequest, model string) agentcore.Comp
 // runSubprocess delegates to a Runner under internal/harnesses/<name>. It
 // re-uses the wall-clock-bounded ctx so PTY/orphan reaping is automatic
 // when our ctx (which already carries the request Timeout) cancels.
-func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, runner harnesses.Harness) {
+func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, runner harnesses.Harness) {
 	hReq := harnesses.ExecuteRequest{
 		Prompt:        req.Prompt,
 		SystemPrompt:  req.SystemPrompt,
@@ -1086,7 +1098,7 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 	}
 	in, err := runner.Execute(ctx, hReq)
 	if err != nil {
-		emitFinal(out, seq, meta, harnesses.FinalData{
+		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
 			Status:     "failed",
 			Error:      err.Error(),
 			DurationMS: time.Since(start).Milliseconds(),
@@ -1107,6 +1119,13 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 		}
 		if ev.Type == harnesses.EventTypeFinal {
 			ev = stampSubprocessFinalRouting(ev, decision)
+			ev = stampSubprocessFinalSessionLog(ev, sl)
+			// Mirror the terminal event into the service-owned session log
+			// so subprocess runs produce the same start+end records natives do.
+			var final harnesses.FinalData
+			if err := json.Unmarshal(ev.Data, &final); err == nil {
+				sl.writeEnd(req, meta, final)
+			}
 		}
 		// Re-sequence events so a single Execute presents a monotonically
 		// increasing sequence to the consumer.
@@ -1117,6 +1136,26 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 			return
 		}
 	}
+}
+
+// stampSubprocessFinalSessionLog overwrites the subprocess-reported
+// SessionLogPath with the service-owned lifecycle log path so consumers
+// consistently resolve to the authoritative record.
+func stampSubprocessFinalSessionLog(ev ServiceEvent, sl *serviceSessionLog) ServiceEvent {
+	if sl == nil || sl.path == "" {
+		return ev
+	}
+	var final harnesses.FinalData
+	if err := json.Unmarshal(ev.Data, &final); err != nil {
+		return ev
+	}
+	final.SessionLogPath = sl.path
+	raw, err := json.Marshal(final)
+	if err != nil {
+		return ev
+	}
+	ev.Data = raw
+	return ev
 }
 
 func stampSubprocessFinalRouting(ev ServiceEvent, decision RouteDecision) ServiceEvent {
@@ -1240,29 +1279,17 @@ func (p *timeoutProviderInline) Chat(ctx context.Context, messages []agentcore.M
 	return resp, err
 }
 
-// writeSessionLogStub creates the session log directory and writes a single
-// final-event line so the per-request session log path is real on disk.
-// Real progress streaming is the session package's responsibility and is
-// orthogonal to this stub. Returns the absolute file path.
-func writeSessionLogStub(dir, sessionID string, final harnesses.FinalData, meta map[string]string) string {
-	if sessionID == "" {
-		sessionID = fmt.Sprintf("s-%d", time.Now().UnixNano())
+// finalizeAndEmit stamps the service-owned session-log path onto final,
+// records the terminal session.end event, and forwards the final to the
+// public event stream. Every terminal emit path in runExecute funnels
+// through this helper so the session log and the event channel stay in
+// lock-step (CONTRACT-003).
+func finalizeAndEmit(out chan<- ServiceEvent, seq *atomic.Int64, meta map[string]string, req ServiceExecuteRequest, sl *serviceSessionLog, final harnesses.FinalData) {
+	if sl != nil && sl.path != "" {
+		final.SessionLogPath = sl.path
 	}
-	f, err := sessionlog.OpenAppend(dir, sessionID)
-	if err != nil {
-		return ""
+	if sl != nil {
+		sl.writeEnd(req, meta, final)
 	}
-	defer f.Close()
-	path := f.Name()
-	line, err := json.Marshal(map[string]any{
-		"type":     "final",
-		"final":    final,
-		"metadata": meta,
-		"time":     time.Now().UTC(),
-	})
-	if err == nil {
-		// Stamp metadata onto the session log line per CONTRACT-003.
-		_, _ = f.Write(append(line, '\n'))
-	}
-	return path
+	emitFinal(out, seq, meta, final)
 }
