@@ -162,7 +162,10 @@ func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
 	t.Setenv("DDX_AGENT_GEMINI_QUOTA_CACHE", filepath.Join(dir, "missing-gemini-quota.json"))
 
-	start := time.Now().UTC().Add(-time.Hour)
+	// Anchor "now" at midday UTC so the "today" window deterministically
+	// contains start (= now - 1h) regardless of wall-clock time-of-day.
+	now := time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC)
+	start := now.Add(-time.Hour)
 	writeServiceUsageSession(t, logDir, "gemini-known", start, sessionlog.SessionStartData{
 		Provider: "gemini",
 		Model:    "gemini-2.5-flash",
@@ -189,6 +192,7 @@ func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 	svc := &service{
 		opts:     ServiceOptions{ServiceConfig: &fakeServiceConfig{workDir: dir}},
 		registry: harnesses.NewRegistry(),
+		nowFn:    func() time.Time { return now },
 	}
 	harnesses, err := svc.ListHarnesses(context.Background())
 	if err != nil {

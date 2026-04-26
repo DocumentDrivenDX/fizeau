@@ -650,6 +650,18 @@ type service struct {
 	// Populated by Execute on every request and read by RouteStatus and
 	// UsageReport.
 	routingQuality *routingQualityStore
+
+	// nowFn returns the reference time for usage-window aggregation. Tests
+	// inject a deterministic clock so windows like "today" don't depend on
+	// wall-clock UTC time-of-day.
+	nowFn func() time.Time
+}
+
+func (s *service) now() time.Time {
+	if s.nowFn != nil {
+		return s.nowFn().UTC()
+	}
+	return time.Now().UTC()
 }
 
 // lastDecisionEntry caches the most recent RouteDecision for a route key.
@@ -908,7 +920,7 @@ func (s *service) harnessUsageWindow(provider, since string) *UsageWindow {
 	if logDir == "" {
 		return nil
 	}
-	now := time.Now().UTC()
+	now := s.now()
 	report, err := sessionusage.AggregateUsage(logDir, sessionusage.UsageOptions{Since: since, Now: now})
 	if err != nil || report == nil {
 		return nil
