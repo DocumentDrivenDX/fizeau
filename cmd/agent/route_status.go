@@ -30,14 +30,14 @@ const defaultRouteStatusOverridesWindow = 7 * 24 * time.Hour
 // TestRouteStatusOverridesJSONStable; new fields must be added at the end
 // or behind a new flag.
 type routeStatusOverridesOutput struct {
-	Since                    string                        `json:"since"`
-	WindowStart              time.Time                     `json:"window_start"`
-	WindowEnd                time.Time                     `json:"window_end"`
-	AxisFilter               string                        `json:"axis_filter,omitempty"`
-	AutoAcceptanceRate       float64                       `json:"auto_acceptance_rate"`
-	OverrideDisagreementRate float64                       `json:"override_disagreement_rate"`
-	TotalRequests            int                           `json:"total_requests"`
-	TotalOverrides           int                           `json:"total_overrides"`
+	Since                    string                          `json:"since"`
+	WindowStart              time.Time                       `json:"window_start"`
+	WindowEnd                time.Time                       `json:"window_end"`
+	AxisFilter               string                          `json:"axis_filter,omitempty"`
+	AutoAcceptanceRate       float64                         `json:"auto_acceptance_rate"`
+	OverrideDisagreementRate float64                         `json:"override_disagreement_rate"`
+	TotalRequests            int                             `json:"total_requests"`
+	TotalOverrides           int                             `json:"total_overrides"`
 	OverrideClassBreakdown   []rootagent.OverrideClassBucket `json:"override_class_breakdown"`
 }
 

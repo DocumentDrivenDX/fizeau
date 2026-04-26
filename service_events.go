@@ -9,15 +9,15 @@ import (
 )
 
 const (
-	ServiceEventTypeTextDelta         = "text_delta"
-	ServiceEventTypeToolCall          = "tool_call"
-	ServiceEventTypeToolResult        = "tool_result"
-	ServiceEventTypeCompaction        = "compaction"
-	ServiceEventTypeRoutingDecision   = "routing_decision"
-	ServiceEventTypeStall             = "stall"
-	ServiceEventTypeFinal             = "final"
-	ServiceEventTypeOverride          = "override"
-	ServiceEventTypeRejectedOverride  = "rejected_override"
+	ServiceEventTypeTextDelta        = "text_delta"
+	ServiceEventTypeToolCall         = "tool_call"
+	ServiceEventTypeToolResult       = "tool_result"
+	ServiceEventTypeCompaction       = "compaction"
+	ServiceEventTypeRoutingDecision  = "routing_decision"
+	ServiceEventTypeStall            = "stall"
+	ServiceEventTypeFinal            = "final"
+	ServiceEventTypeOverride         = "override"
+	ServiceEventTypeRejectedOverride = "rejected_override"
 )
 
 // ServiceOverridePin captures a (harness, provider, model) tuple, used both
@@ -343,10 +343,10 @@ func decodeServicePayload(ev ServiceEvent, dst any) error {
 
 // DrainExecuteResult is a typed aggregate of one Execute event stream.
 type DrainExecuteResult struct {
-	Events          []ServiceDecodedEvent
-	TextDeltas      []ServiceTextDeltaData
-	ToolCalls       []ServiceToolCallData
-	ToolResults     []ServiceToolResultData
+	Events           []ServiceDecodedEvent
+	TextDeltas       []ServiceTextDeltaData
+	ToolCalls        []ServiceToolCallData
+	ToolResults      []ServiceToolResultData
 	Compactions      []ServiceCompactionData
 	Stalls           []ServiceStallData
 	RoutingDecision  *ServiceRoutingDecisionData

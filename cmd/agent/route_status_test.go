@@ -82,7 +82,7 @@ func TestRouteStatusOverridesAxisFilter(t *testing.T) {
 		axis     string
 		wantRows int
 	}{
-		{"harness", 1},  // both harness overrides land in the same bucket
+		{"harness", 1}, // both harness overrides land in the same bucket
 		{"model", 1},
 		{"provider", 1},
 		{"", 3}, // no filter → all axes

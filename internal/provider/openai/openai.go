@@ -18,15 +18,15 @@ import (
 
 // Provider implements agent.Provider for OpenAI-compatible APIs.
 type Provider struct {
-	client           *openaicompat.Client
-	model            string
-	modelPattern     string            // regex filter for auto-discovery; "" means first model
-	knownModels      map[string]string // catalog-recognized model IDs (modelID → catalogRef)
-	baseURL          string            // stored for lazy model discovery
-	apiKey           string            // stored for lazy model discovery
-	providerName     string
-	providerSystem   string
-	capabilities     *ProtocolCapabilities
+	client             *openaicompat.Client
+	model              string
+	modelPattern       string            // regex filter for auto-discovery; "" means first model
+	knownModels        map[string]string // catalog-recognized model IDs (modelID → catalogRef)
+	baseURL            string            // stored for lazy model discovery
+	apiKey             string            // stored for lazy model discovery
+	providerName       string
+	providerSystem     string
+	capabilities       *ProtocolCapabilities
 	usageCost          func(rawUsage string) (*agent.CostAttribution, bool)
 	serverAddress      string
 	serverPort         int
@@ -88,15 +88,15 @@ func New(cfg Config) *Provider {
 			APIKey:  cfg.APIKey,
 			Headers: cfg.Headers,
 		}),
-		model:            cfg.Model,
-		modelPattern:     cfg.ModelPattern,
-		knownModels:      cfg.KnownModels,
-		baseURL:          cfg.BaseURL,
-		apiKey:           cfg.APIKey,
-		providerName:     providerName,
-		providerSystem:   providerSystem,
-		capabilities:     cfg.Capabilities,
-		usageCost:        cfg.UsageCostAttribution,
+		model:              cfg.Model,
+		modelPattern:       cfg.ModelPattern,
+		knownModels:        cfg.KnownModels,
+		baseURL:            cfg.BaseURL,
+		apiKey:             cfg.APIKey,
+		providerName:       providerName,
+		providerSystem:     providerSystem,
+		capabilities:       cfg.Capabilities,
+		usageCost:          cfg.UsageCostAttribution,
 		serverAddress:      serverAddress,
 		serverPort:         serverPort,
 		reasoningDefault:   cfg.Reasoning,
