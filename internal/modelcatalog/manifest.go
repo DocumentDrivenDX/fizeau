@@ -56,7 +56,21 @@ type ModelEntry struct {
 	NoTools            bool                        `yaml:"no_tools,omitempty"`
 	ReasoningMaxTokens int                         `yaml:"reasoning_max_tokens,omitempty"`
 	ReasoningBudgets   map[reasoning.Reasoning]int `yaml:"reasoning_budgets,omitempty"`
+	ReasoningLevels    []string                    `yaml:"reasoning_levels,omitempty"`
+	ReasoningControl   string                      `yaml:"reasoning_control,omitempty"`
+	ReasoningWire      string                      `yaml:"reasoning_wire,omitempty"`
 }
+
+// Reasoning capability control values.
+const (
+	ReasoningControlTunable = "tunable"
+	ReasoningControlFixed   = "fixed"
+	ReasoningControlNone    = "none"
+
+	ReasoningWireProvider = "provider"
+	ReasoningWireModelID  = "model_id"
+	ReasoningWireNone     = "none"
+)
 
 type manifest struct {
 	Version        int                     `yaml:"version"`
@@ -357,6 +371,16 @@ func validateManifest(m manifest) error {
 			if model.ReasoningMaxTokens > 0 && budget > model.ReasoningMaxTokens {
 				return fmt.Errorf("model %q reasoning_budgets %q exceeds reasoning_max_tokens", modelID, level)
 			}
+		}
+		switch model.ReasoningControl {
+		case "", ReasoningControlTunable, ReasoningControlFixed, ReasoningControlNone:
+		default:
+			return fmt.Errorf("model %q has invalid reasoning_control %q (must be one of tunable, fixed, none)", modelID, model.ReasoningControl)
+		}
+		switch model.ReasoningWire {
+		case "", ReasoningWireProvider, ReasoningWireModelID, ReasoningWireNone:
+		default:
+			return fmt.Errorf("model %q has invalid reasoning_wire %q (must be one of provider, model_id, none)", modelID, model.ReasoningWire)
 		}
 	}
 
