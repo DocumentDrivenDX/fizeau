@@ -70,6 +70,12 @@ func cmdCatalogShow(workDir string, args []string) int {
 	fmt.Printf("schema_version: %d\n", meta.ManifestVersion)
 	fmt.Printf("catalog_version: %s\n", blankIfEmpty(meta.CatalogVersion))
 
+	if profiles := catalog.SamplingProfileNames(); len(profiles) > 0 {
+		fmt.Printf("sampling_profiles: %s\n", strings.Join(profiles, ", "))
+	} else {
+		fmt.Println("sampling_profiles: (none — using server defaults; run 'ddx-agent catalog update' if missing)")
+	}
+
 	for _, ref := range []string{"code-high", "code-medium", "code-economy"} {
 		fmt.Printf("%s:\n", ref)
 		printResolvedSurface(catalog, ref, modelcatalog.SurfaceAgentAnthropic)

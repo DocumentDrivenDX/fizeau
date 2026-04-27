@@ -572,10 +572,44 @@ func TestCLI_CatalogShow_EmbeddedFallback(t *testing.T) {
 	require.NoError(t, err, string(out))
 	output := string(out)
 	assert.Contains(t, output, "source: embedded")
-	assert.Contains(t, output, "catalog_version: 2026-04-12.3")
+	assert.Contains(t, output, "catalog_version: 2026-04-27.1")
 	assert.Contains(t, output, "code-high:")
 	assert.Contains(t, output, "agent.openai: gpt-5.4")
 	assert.Contains(t, output, "agent.anthropic: opus-4.7")
+	// ADR-007 §7: catalog show advertises declared sampling profiles so
+	// operators can see the feature is live and which profiles ship.
+	assert.Contains(t, output, "sampling_profiles: code")
+}
+
+func TestCLI_CatalogShow_ReportsAbsentSamplingProfiles(t *testing.T) {
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	// Install a v2 manifest predating ADR-007 (no sampling_profiles section).
+	configDir := filepath.Join(home, ".config", "agent")
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+	manifest := `version: 2
+generated_at: 2026-04-11T00:00:00Z
+catalog_version: 2026-04-11.1
+profiles:
+  code-high:
+    target: code-high
+targets:
+  code-high:
+    family: coding-tier
+    surfaces:
+      agent.openai: gpt-5.4
+`
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "models.yaml"), []byte(manifest), 0o644))
+
+	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "show")
+	require.NoError(t, err, string(out))
+	output := string(out)
+	assert.Contains(t, output, "catalog_version: 2026-04-11.1")
+	// Stale manifest path: the output must point at the refresh command
+	// so operators can self-serve the upgrade.
+	assert.Contains(t, output, "sampling_profiles: (none")
+	assert.Contains(t, output, "ddx-agent catalog update")
 }
 
 func TestCLI_CatalogCheck_ShowsUpdateAvailable(t *testing.T) {

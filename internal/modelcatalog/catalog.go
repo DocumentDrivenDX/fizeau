@@ -297,6 +297,21 @@ func (c *Catalog) SamplingProfile(name string) (sampling.Profile, bool) {
 	return p, ok
 }
 
+// SamplingProfileNames returns the names of all sampling profiles declared
+// in the manifest, sorted lexicographically. Used by `catalog show` and
+// other ops surfaces to advertise what profiles are available.
+func (c *Catalog) SamplingProfileNames() []string {
+	if len(c.manifest.SamplingProfiles) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(c.manifest.SamplingProfiles))
+	for name := range c.manifest.SamplingProfiles {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // ModelSamplingControl returns the SamplingControl string for the model ID,
 // or "" when the model is not declared in the catalog or carries no
 // explicit value (treated as the default "client_settable" by callers).
