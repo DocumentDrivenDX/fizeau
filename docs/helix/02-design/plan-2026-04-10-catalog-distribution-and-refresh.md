@@ -4,6 +4,12 @@
 **Status**: CONVERGED
 **Refinement Rounds**: 4
 
+> **Worked example of additive schema evolution**:
+> [ADR-007: Sampling Profiles in the Model Catalog](adr/ADR-007-sampling-profiles-in-catalog.md)
+> extends the schema with `sampling_profiles` (top-level) and
+> `sampling_control` (per-model) within the existing version, demonstrating
+> the additive-evolution + graceful-degradation rules this plan calls for.
+
 ## Problem Statement
 
 DDX Agent has the right ownership boundary for shared model policy, but the

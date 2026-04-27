@@ -28,9 +28,10 @@ func ptrI64(v int64) *int64     { return &v }
 
 func TestResolve_EmptyAllLayersOmitsAllFields(t *testing.T) {
 	cat := stubCatalog{}
-	got, sources := Resolve(cat, "any-model", "code", nil)
-	assert.Equal(t, Profile{}, got, "no layer set anything → all-nil profile")
-	assert.Empty(t, sources, "no fields → no source records")
+	res := Resolve(cat, "any-model", "code", nil)
+	assert.Equal(t, Profile{}, res.Profile, "no layer set anything → all-nil profile")
+	assert.Empty(t, res.Sources, "no fields → no source records")
+	assert.True(t, res.MissingProfile, "catalog had no 'code' → MissingProfile should fire so CLI nudges")
 }
 
 func TestResolve_CatalogOnly(t *testing.T) {
@@ -39,38 +40,40 @@ func TestResolve_CatalogOnly(t *testing.T) {
 			"code": {Temperature: ptrF64(0.6), TopP: ptrF64(0.95), TopK: ptrInt(20)},
 		},
 	}
-	got, sources := Resolve(cat, "any-model", "code", nil)
+	res := Resolve(cat, "any-model", "code", nil)
 
-	require.NotNil(t, got.Temperature)
-	assert.InDelta(t, 0.6, *got.Temperature, 1e-9)
-	require.NotNil(t, got.TopP)
-	assert.InDelta(t, 0.95, *got.TopP, 1e-9)
-	require.NotNil(t, got.TopK)
-	assert.Equal(t, 20, *got.TopK)
-	assert.Nil(t, got.MinP, "min_p stays nil → wire-omit")
-	assert.Nil(t, got.RepetitionPenalty)
-	assert.Nil(t, got.Seed)
+	require.NotNil(t, res.Profile.Temperature)
+	assert.InDelta(t, 0.6, *res.Profile.Temperature, 1e-9)
+	require.NotNil(t, res.Profile.TopP)
+	assert.InDelta(t, 0.95, *res.Profile.TopP, 1e-9)
+	require.NotNil(t, res.Profile.TopK)
+	assert.Equal(t, 20, *res.Profile.TopK)
+	assert.Nil(t, res.Profile.MinP, "min_p stays nil → wire-omit")
+	assert.Nil(t, res.Profile.RepetitionPenalty)
+	assert.Nil(t, res.Profile.Seed)
+	assert.False(t, res.MissingProfile, "profile present → no nudge")
 
 	expected := []FieldSource{
 		{Field: "temperature", Source: SourceCatalog},
 		{Field: "top_k", Source: SourceCatalog},
 		{Field: "top_p", Source: SourceCatalog},
 	}
-	assert.Equal(t, expected, sources)
-	assert.Equal(t, "catalog", SourceSummary(sources))
+	assert.Equal(t, expected, res.Sources)
+	assert.Equal(t, "catalog", SourceSummary(res.Sources))
 }
 
 func TestResolve_ProviderOverrideOnly(t *testing.T) {
 	cat := stubCatalog{}
 	override := Profile{Temperature: ptrF64(0.0)} // explicit greedy
-	got, sources := Resolve(cat, "any-model", "code", &override)
+	res := Resolve(cat, "any-model", "code", &override)
 
-	require.NotNil(t, got.Temperature)
-	assert.InDelta(t, 0.0, *got.Temperature, 1e-9, "T=0 is a meaningful value, not unset")
+	require.NotNil(t, res.Profile.Temperature)
+	assert.InDelta(t, 0.0, *res.Profile.Temperature, 1e-9, "T=0 is a meaningful value, not unset")
 
-	require.Len(t, sources, 1)
-	assert.Equal(t, FieldSource{Field: "temperature", Source: SourceProviderConfig}, sources[0])
-	assert.Equal(t, "provider_config", SourceSummary(sources))
+	require.Len(t, res.Sources, 1)
+	assert.Equal(t, FieldSource{Field: "temperature", Source: SourceProviderConfig}, res.Sources[0])
+	assert.Equal(t, "provider_config", SourceSummary(res.Sources))
+	assert.True(t, res.MissingProfile, "catalog still missing 'code' even when override fills fields")
 }
 
 func TestResolve_PerFieldStomping(t *testing.T) {
@@ -80,23 +83,24 @@ func TestResolve_PerFieldStomping(t *testing.T) {
 		},
 	}
 	override := Profile{Temperature: ptrF64(0.0)} // override only T
-	got, sources := Resolve(cat, "any-model", "code", &override)
+	res := Resolve(cat, "any-model", "code", &override)
 
 	// T comes from override, top_p and top_k come from catalog
-	require.NotNil(t, got.Temperature)
-	assert.InDelta(t, 0.0, *got.Temperature, 1e-9)
-	require.NotNil(t, got.TopP)
-	assert.InDelta(t, 0.95, *got.TopP, 1e-9)
-	require.NotNil(t, got.TopK)
-	assert.Equal(t, 20, *got.TopK)
+	require.NotNil(t, res.Profile.Temperature)
+	assert.InDelta(t, 0.0, *res.Profile.Temperature, 1e-9)
+	require.NotNil(t, res.Profile.TopP)
+	assert.InDelta(t, 0.95, *res.Profile.TopP, 1e-9)
+	require.NotNil(t, res.Profile.TopK)
+	assert.Equal(t, 20, *res.Profile.TopK)
 
 	want := []FieldSource{
 		{Field: "temperature", Source: SourceProviderConfig},
 		{Field: "top_k", Source: SourceCatalog},
 		{Field: "top_p", Source: SourceCatalog},
 	}
-	assert.Equal(t, want, sources)
-	assert.Equal(t, "catalog,provider_config", SourceSummary(sources))
+	assert.Equal(t, want, res.Sources)
+	assert.Equal(t, "catalog,provider_config", SourceSummary(res.Sources))
+	assert.False(t, res.MissingProfile)
 }
 
 func TestResolve_HarnessPinnedShortCircuits(t *testing.T) {
@@ -107,38 +111,47 @@ func TestResolve_HarnessPinnedShortCircuits(t *testing.T) {
 		control: map[string]string{"wrapped-model": "harness_pinned"},
 	}
 	override := Profile{Seed: ptrI64(42)}
-	got, sources := Resolve(cat, "wrapped-model", "code", &override)
+	res := Resolve(cat, "wrapped-model", "code", &override)
 
-	assert.Equal(t, Profile{}, got, "harness_pinned forces zero-value profile")
-	assert.Empty(t, sources, "harness_pinned emits no source attribution")
+	assert.Equal(t, Profile{}, res.Profile, "harness_pinned forces zero-value profile")
+	assert.Empty(t, res.Sources, "harness_pinned emits no source attribution")
+	assert.False(t, res.MissingProfile, "harness_pinned is a deliberate skip, not a missing-data condition")
 }
 
-func TestResolve_UnknownProfileNameSilentSkip(t *testing.T) {
+func TestResolve_UnknownProfileNameSetsMissingProfile(t *testing.T) {
 	cat := stubCatalog{
 		profiles: map[string]Profile{
 			"code": {Temperature: ptrF64(0.6)},
 		},
 	}
 	override := Profile{TopP: ptrF64(0.5)}
-	got, sources := Resolve(cat, "any-model", "no-such-profile", &override)
+	res := Resolve(cat, "any-model", "no-such-profile", &override)
 
 	// Catalog skip; only override fires.
-	assert.Nil(t, got.Temperature)
-	require.NotNil(t, got.TopP)
-	assert.InDelta(t, 0.5, *got.TopP, 1e-9)
+	assert.Nil(t, res.Profile.Temperature)
+	require.NotNil(t, res.Profile.TopP)
+	assert.InDelta(t, 0.5, *res.Profile.TopP, 1e-9)
 
-	require.Len(t, sources, 1)
-	assert.Equal(t, FieldSource{Field: "top_p", Source: SourceProviderConfig}, sources[0])
+	require.Len(t, res.Sources, 1)
+	assert.Equal(t, FieldSource{Field: "top_p", Source: SourceProviderConfig}, res.Sources[0])
+	assert.True(t, res.MissingProfile, "named-but-undeclared profile → MissingProfile fires")
+}
+
+func TestResolve_EmptyProfileNameDoesNotFireMissing(t *testing.T) {
+	cat := stubCatalog{}
+	res := Resolve(cat, "any-model", "", nil)
+	assert.False(t, res.MissingProfile, "no profile requested → no missing-profile nudge")
 }
 
 func TestResolve_NilCatalogToleratedForOverrideOnly(t *testing.T) {
 	override := Profile{Temperature: ptrF64(0.7)}
-	got, sources := Resolve(nil, "", "code", &override)
+	res := Resolve(nil, "", "code", &override)
 
-	require.NotNil(t, got.Temperature)
-	assert.InDelta(t, 0.7, *got.Temperature, 1e-9)
-	require.Len(t, sources, 1)
-	assert.Equal(t, SourceProviderConfig, sources[0].Source)
+	require.NotNil(t, res.Profile.Temperature)
+	assert.InDelta(t, 0.7, *res.Profile.Temperature, 1e-9)
+	require.Len(t, res.Sources, 1)
+	assert.Equal(t, SourceProviderConfig, res.Sources[0].Source)
+	assert.True(t, res.MissingProfile, "nil catalog with named profile → MissingProfile fires")
 }
 
 func TestSourceSummary_OrderingAndDedup(t *testing.T) {
@@ -159,8 +172,8 @@ func TestMergeFrom_DoesNotShareUnderlyingPointer(t *testing.T) {
 	src := Profile{Temperature: ptrF64(0.6)}
 	cat := stubCatalog{profiles: map[string]Profile{"code": src}}
 
-	got, _ := Resolve(cat, "m", "code", nil)
-	require.NotNil(t, got.Temperature)
+	res := Resolve(cat, "m", "code", nil)
+	require.NotNil(t, res.Profile.Temperature)
 	*src.Temperature = 99.0
-	assert.InDelta(t, 0.6, *got.Temperature, 1e-9, "catalog mutation must not bleed into resolved profile")
+	assert.InDelta(t, 0.6, *res.Profile.Temperature, 1e-9, "catalog mutation must not bleed into resolved profile")
 }

@@ -199,6 +199,12 @@ type AttemptMetadata struct {
      reasoning-capable models; the Qwen3 model cards explicitly warn that
      greedy decoding under `enable_thinking=True` causes endless repetitions
      and is the failure mode catalog-driven sampling exists to prevent.
+22d. Sampling profiles ship through the catalog distribution channel
+     (see plan-2026-04-10-catalog-distribution-and-refresh) and reach users
+     via `ddx-agent catalog update`, not via binary upgrades. Existing
+     installations on stale manifests degrade gracefully — server defaults
+     apply, and the agent emits a single first-use nudge pointing at the
+     refresh command. ADR-007 §7 covers the schema-evolution rules.
 
 #### Model Auto-Discovery
 

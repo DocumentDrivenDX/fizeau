@@ -71,6 +71,22 @@ The Anthropic-direct path is `partial` in principle but ships in v1 as `client_s
 
 Out-of-range values (`top_p=2.5`, `temperature=-1`) pass through unchanged. The server is the authoritative checker and will reject. We do not maintain per-server ranges.
 
+### 7. Manifest evolution and feature degradation
+
+The model catalog is a **versioned data artifact published on a cadence independent of binary releases** (see [`plan-2026-04-10-catalog-distribution-and-refresh.md`](../plan-2026-04-10-catalog-distribution-and-refresh.md), CONVERGED). The published source of truth lives at the project's catalog channel (`https://documentdrivendx.github.io/agent/catalog` by default); the embedded copy is a bootstrap snapshot used only when no external manifest is installed.
+
+This decoupling drives three rules for any feature — including ADR-007 itself — that depends on new catalog data:
+
+1. **Additive schema evolution.** New fields are added within the existing `version`. The YAML decoder operates non-strictly (verified: `internal/modelcatalog/manifest.go` does not enable `KnownFields`/`Strict` mode), so old code reading a new manifest silently ignores unknown keys, and new code reading an old manifest sees missing fields as nil/zero. Schema-version bumps are reserved for breaking changes.
+
+2. **Graceful degradation when the installed manifest predates the feature.** Code that depends on new catalog data MUST behave correctly when those fields are absent. For sampling profiles specifically: the resolver's L1 lookup fails silently when `sampling_profiles.code` is missing, returning a zero-value bundle and falling through to L2 (provider config) or to the server's own defaults. The user does not get the new behavior, but no run breaks.
+
+3. **`catalog_version` bumps are the user-facing pull signal.** Whenever a code release introduces a feature that depends on new catalog data, the embedded manifest's `catalog_version` MUST bump alongside it. This drives `ddx-agent catalog check` to report an update is available. Optionally, the published bundle's `min_agent_version` can be raised when the manifest itself depends on new code semantics — but that direction is for protecting old binaries from new manifests, not for protecting new binaries from old manifests.
+
+4. **One actionable nudge per feature, not silent regressions.** A feature whose graceful-degraded behavior is materially worse than its catalog-on behavior MUST log a single, actionable warning at first-use noting that the installed manifest predates the feature and pointing at `ddx-agent catalog update`. For ADR-007 v1: when the resolver is called with a `code` profile name and the catalog returns no profile, log once. Repeat warnings per-process are noise; per-session-per-feature is the right granularity.
+
+Embedded manifest edits never silently override an installed external manifest. The embedded snapshot's role is bootstrap-only.
+
 ## Consequences
 
 **Positive:**

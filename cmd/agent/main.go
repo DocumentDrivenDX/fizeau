@@ -28,6 +28,18 @@ import (
 	"github.com/DocumentDrivenDX/agent/picompat"
 )
 
+// samplingProfileNudgeOnce gates the ADR-007 §7 first-use catalog-stale
+// warning: when the resolver reports MissingProfile (the user's installed
+// catalog predates the requested sampling profile), we emit one warning
+// per process pointing at `ddx-agent catalog update`. Test code can swap
+// the sink via samplingNudgeSink.
+var (
+	samplingProfileNudgeOnce sync.Once
+	samplingNudgeSink        io.Writer = os.Stderr
+)
+
+const samplingProfileNudgeMessage = "warning: model catalog does not declare sampling_profiles.code; samplers will use server defaults. Run 'ddx-agent catalog update' to fetch the latest profiles (see ADR-007)."
+
 // Version info set via -ldflags.
 var (
 	Version   = "dev"
@@ -256,17 +268,22 @@ func run() int {
 		if catalog, err := cfg.LoadModelCatalog(); err == nil && catalog != nil {
 			lookup = catalog
 		}
-		resolved, sources := sampling.Resolve(lookup, selection.ResolvedModel, "code", pc.Sampling)
-		samplingSource = sampling.SourceSummary(sources)
-		if resolved.Temperature != nil {
-			t := float32(*resolved.Temperature)
+		res := sampling.Resolve(lookup, selection.ResolvedModel, "code", pc.Sampling)
+		samplingSource = sampling.SourceSummary(res.Sources)
+		if res.MissingProfile {
+			samplingProfileNudgeOnce.Do(func() {
+				fmt.Fprintln(samplingNudgeSink, samplingProfileNudgeMessage)
+			})
+		}
+		if res.Profile.Temperature != nil {
+			t := float32(*res.Profile.Temperature)
 			sTemp = &t
 		}
-		sTopP = resolved.TopP
-		sTopK = resolved.TopK
-		sMinP = resolved.MinP
-		sRep = resolved.RepetitionPenalty
-		sSeed = resolved.Seed
+		sTopP = res.Profile.TopP
+		sTopK = res.Profile.TopK
+		sMinP = res.Profile.MinP
+		sRep = res.Profile.RepetitionPenalty
+		sSeed = res.Profile.Seed
 	}
 	req := buildServiceExecuteRequest(serviceExecuteRequestParams{
 		Prompt:                  promptText,

@@ -40,6 +40,24 @@ type CatalogLookup interface {
 	ModelSamplingControl(modelID string) string
 }
 
+// ResolveResult is the full output of Resolve: the merged Profile, the
+// per-field origin record, and a flag the caller uses to drive the
+// catalog-stale nudge per ADR-007 §7 rule 4.
+type ResolveResult struct {
+	// Profile is the per-field-merged sampling bundle to send on the wire.
+	Profile Profile
+	// Sources records which layer supplied each non-nil field.
+	Sources []FieldSource
+	// MissingProfile is true when the caller asked for a named catalog
+	// profile (profileName != "") but the catalog did not declare it. The
+	// CLI uses this to emit a single first-use nudge pointing at
+	// "ddx-agent catalog update". MissingProfile is false when
+	// profileName is empty (no L1 lookup was attempted) or when the
+	// resolver short-circuited via harness_pinned (deliberate skip, not
+	// a missing-data condition).
+	MissingProfile bool
+}
+
 // Resolve walks the precedence chain (catalog profile → provider override)
 // and produces a per-field-merged Profile plus a record of which layer
 // supplied each non-nil field. nil at every layer means the wire field is
@@ -54,10 +72,12 @@ type CatalogLookup interface {
 // fields, so emitting them would only mislead telemetry.
 //
 // profileName is the name of the catalog profile to seed L1 from (e.g.,
-// "code"). Empty or unknown names skip L1 silently.
+// "code"). Empty names skip L1 silently. Unknown names (caller asked for a
+// profile the catalog does not declare) set ResolveResult.MissingProfile
+// so the CLI can emit an ADR-007 §7 catalog-stale nudge.
 //
 // providerOverride is the user-config L2 override; nil means none.
-func Resolve(catalog CatalogLookup, modelID string, profileName string, providerOverride *Profile) (Profile, []FieldSource) {
+func Resolve(catalog CatalogLookup, modelID string, profileName string, providerOverride *Profile) ResolveResult {
 	// Harness-pinned short-circuit: catalog says wire-side fields are
 	// ignored for this model. Per ADR-007 §4 the resolver returns the
 	// zero-value profile and emits no source attribution; the caller will
@@ -65,17 +85,25 @@ func Resolve(catalog CatalogLookup, modelID string, profileName string, provider
 	// but we preserve correctness even if it does not.
 	if catalog != nil && modelID != "" {
 		if catalog.ModelSamplingControl(modelID) == "harness_pinned" {
-			return Profile{}, nil
+			return ResolveResult{}
 		}
 	}
 
 	resolved := Profile{}
 	sources := map[string]Source{}
+	missingProfile := false
 
 	// L1 — catalog profile.
-	if catalog != nil && profileName != "" {
-		if cat, ok := catalog.SamplingProfile(profileName); ok {
-			mergeFrom(&resolved, cat, sources, SourceCatalog)
+	if profileName != "" {
+		var found bool
+		if catalog != nil {
+			if cat, ok := catalog.SamplingProfile(profileName); ok {
+				mergeFrom(&resolved, cat, sources, SourceCatalog)
+				found = true
+			}
+		}
+		if !found {
+			missingProfile = true
 		}
 	}
 
@@ -84,7 +112,11 @@ func Resolve(catalog CatalogLookup, modelID string, profileName string, provider
 		mergeFrom(&resolved, *providerOverride, sources, SourceProviderConfig)
 	}
 
-	return resolved, sortedFieldSources(sources)
+	return ResolveResult{
+		Profile:        resolved,
+		Sources:        sortedFieldSources(sources),
+		MissingProfile: missingProfile,
+	}
 }
 
 // mergeFrom copies any non-nil field from src into dst, recording the

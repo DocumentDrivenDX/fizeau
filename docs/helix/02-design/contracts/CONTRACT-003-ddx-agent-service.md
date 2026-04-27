@@ -1255,6 +1255,16 @@ catalog sampling — they pin samplers internally; the catalog's
 requiring strict deterministic parity should note that the oMLX server
 silently ignores `Seed` (empirical, 2026-04-27).
 
+The catalog is a versioned data artifact published independently of binary
+releases (see
+[`plan-2026-04-10-catalog-distribution-and-refresh.md`](../plan-2026-04-10-catalog-distribution-and-refresh.md)).
+A new sampling profile reaches existing users when they run
+`ddx-agent catalog update` against the published channel. New code reading an
+old installed manifest degrades gracefully — the resolver's L1 lookup returns
+nothing, lower layers and server defaults apply, and a single first-use
+warning points at the refresh command. See ADR-007 §7 for the schema-evolution
+rules that govern future additions to this contract surface.
+
 ## Bead Execution Policy
 
 DDx bead implementation should use a two-pass policy against this service:
