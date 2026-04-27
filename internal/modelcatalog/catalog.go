@@ -297,6 +297,18 @@ func (c *Catalog) SamplingProfile(name string) (sampling.Profile, bool) {
 	return p, ok
 }
 
+// ModelSamplingControl returns the SamplingControl string for the model ID,
+// or "" when the model is not declared in the catalog or carries no
+// explicit value (treated as the default "client_settable" by callers).
+// Implements the sampling.CatalogLookup interface.
+func (c *Catalog) ModelSamplingControl(modelID string) string {
+	entry, ok := c.LookupModel(modelID)
+	if !ok {
+		return ""
+	}
+	return entry.SamplingControl
+}
+
 // LookupModel returns the ModelEntry for the given model ID from the top-level
 // models: map (manifest v4+). The second return value is false if not found.
 func (c *Catalog) LookupModel(id string) (ModelEntry, bool) {
