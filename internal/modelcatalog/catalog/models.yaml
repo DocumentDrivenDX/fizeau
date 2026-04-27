@@ -2,6 +2,26 @@ version: 4
 generated_at: 2026-04-13T00:00:00Z
 catalog_version: 2026-04-12.3
 
+# Sampling profiles (ADR-007 L1 — generic per-task bundles).
+# A field unset here stays nil through the resolver and is omitted from
+# the wire so the server's own default applies — preserving the
+# "let the server handle it" outcome.
+sampling_profiles:
+  # "code" mirrors Qwen3.6-27B "Best Practices: Thinking Mode — Precise
+  # Coding" recommendation: T=0.6, top_p=0.95, top_k=20. presence_penalty
+  # and repetition_penalty are explicitly omitted because Qwen3.x
+  # recommends them at their no-op defaults (0 / 1.0) for this profile;
+  # leaving them nil here means we don't burn a wire field on the
+  # default value. These values are also non-greedy enough to be safe in
+  # the non-thinking-mode case (slightly off the upstream non-thinking
+  # optimum, but never in the loop-inducing T=0 regime that the Qwen
+  # team's own model cards bold-warn against).
+  # Source: https://huggingface.co/Qwen/Qwen3.6-27B "Best Practices".
+  code:
+    temperature: 0.6
+    top_p: 0.95
+    top_k: 20
+
 models:
   opus-4.7:
     family: claude-opus

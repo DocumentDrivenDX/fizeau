@@ -9,7 +9,7 @@ ddx:
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-27 | Proposed | DDX Agent maintainers | `ADR-005`, `ADR-006` | High |
+| 2026-04-27 | Accepted | DDX Agent maintainers | `ADR-005`, `ADR-006` | High |
 
 ## Context
 
