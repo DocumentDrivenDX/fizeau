@@ -271,6 +271,13 @@ func Run(ctx context.Context, req Request) (Result, error) {
 					"attempt_index": attempt,
 					"messages":      providerMessages,
 					"tools":         toolDefs,
+					"model":         opts.Model,
+					"temperature":   opts.Temperature,
+					"max_tokens":    opts.MaxTokens,
+					"seed":          opts.Seed,
+					"stop":          opts.Stop,
+					"reasoning":     opts.Reasoning,
+					"cache_policy":  opts.CachePolicy,
 				}),
 			})
 			seq++

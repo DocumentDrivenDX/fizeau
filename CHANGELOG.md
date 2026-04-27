@@ -5,6 +5,29 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.9.14] — 2026-04-27
+
+Session-log instrumentation: capture sampling params and reasoning
+policy on every `llm.request` event. Behavior unchanged; this exists
+so post-hoc diffs across providers/quants on the same task can
+distinguish harness-side request differences from server-side
+divergence.
+
+### Changed
+
+- `LLMRequestData` (and the corresponding `core.loop` emit) now
+  include `model`, `temperature`, `max_tokens`, `seed`, `stop`,
+  `reasoning`, and `cache_policy` alongside messages and tools.
+  Lets a session log diff prove that two providers received
+  byte-identical request bodies modulo the wire-format reasoning
+  control split. (`internal/session/event.go`,
+  `internal/core/loop.go`)
+- Beadbench manifest gains vidar-omlx Qwen quantization-sweep arms
+  (`agent-omlx-vidar-qwen35-27b-claude-distilled`,
+  `agent-omlx-vidar-qwen36-27b-8bit`,
+  `agent-omlx-vidar-qwen36-35b-a3b`) for the local-vs-cloud
+  gap-closing investigation. (`scripts/beadbench/manifest-v1.json`)
+
 ## [v0.9.13] — 2026-04-26
 
 Iteration-cap fix for the execute-bead service path. Live Claude Opus

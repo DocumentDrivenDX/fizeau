@@ -29,8 +29,15 @@ type SessionStartData struct {
 
 // LLMRequestData is the data payload for an llm.request event.
 type LLMRequestData struct {
-	Messages []agent.Message `json:"messages"`
-	Tools    []agent.ToolDef `json:"tools,omitempty"`
+	Messages    []agent.Message `json:"messages"`
+	Tools       []agent.ToolDef `json:"tools,omitempty"`
+	Model       string          `json:"model,omitempty"`
+	Temperature *float64        `json:"temperature,omitempty"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Seed        int64           `json:"seed,omitempty"`
+	Stop        []string        `json:"stop,omitempty"`
+	Reasoning   agent.Reasoning `json:"reasoning,omitempty"`
+	CachePolicy string          `json:"cache_policy,omitempty"`
 }
 
 // LLMResponseData is the data payload for an llm.response event.

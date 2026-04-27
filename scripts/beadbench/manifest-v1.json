@@ -201,6 +201,39 @@
       "rationale": "Native agent harness against bragi LM Studio qwen3.5-27b. Third server-side variation paired with omlx-vidar and openrouter for the same model family."
     },
     {
+      "id": "agent-omlx-vidar-qwen35-27b-claude-distilled",
+      "harness": "agent",
+      "provider": "vidar-omlx",
+      "model": "Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit",
+      "effort": "off",
+      "tier": "harness-parity",
+      "review_harness": "codex",
+      "review_model": "gpt-5.5",
+      "rationale": "Vidar OMLX Qwen 3.5 27B Claude-Opus-distilled (4bit MLX). Same server/quantization-bits as base 3.5-27B-4bit but distilled from Claude — tests whether instruction-following improves on identical hardware/software."
+    },
+    {
+      "id": "agent-omlx-vidar-qwen36-27b-8bit",
+      "harness": "agent",
+      "provider": "vidar-omlx",
+      "model": "Qwen3.6-27B-MLX-8bit",
+      "effort": "off",
+      "tier": "harness-parity",
+      "review_harness": "codex",
+      "review_model": "gpt-5.5",
+      "rationale": "Vidar OMLX Qwen 3.6 27B at 8-bit (vs base 3.5 at 4-bit). Treated as Qwen3.5-equivalent for this gap-closing exploration; isolates quantization-precision contribution to local-vs-cloud gap."
+    },
+    {
+      "id": "agent-omlx-vidar-qwen36-35b-a3b",
+      "harness": "agent",
+      "provider": "vidar-omlx",
+      "model": "Qwen3.6-35B-A3B-4bit",
+      "effort": "off",
+      "tier": "harness-parity",
+      "review_harness": "codex",
+      "review_model": "gpt-5.5",
+      "rationale": "Vidar OMLX Qwen 3.6 35B-A3B at 4-bit. Tests whether more parameters (35B vs 27B) at same quant level closes the gap; A3B is the active-3B-MoE variant."
+    },
+    {
       "id": "agent-openrouter-qwen35-27b",
       "harness": "agent",
       "provider": "openrouter",
