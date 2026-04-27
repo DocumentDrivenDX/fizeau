@@ -551,6 +551,10 @@ type ServiceExecuteRequest struct {
 	MinP              *float64
 	RepetitionPenalty *float64
 	Seed              *int64
+	// SamplingSource is the comma-separated layer attribution produced by
+	// internal/sampling.Resolve. Plumbed through to the llm.request
+	// telemetry event for ADR-007 override-tracking; never on the wire.
+	SamplingSource string
 	Reasoning         Reasoning
 	NoStream          bool
 	Permissions       string

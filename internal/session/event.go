@@ -42,6 +42,12 @@ type LLMRequestData struct {
 	Stop              []string        `json:"stop,omitempty"`
 	Reasoning         agent.Reasoning `json:"reasoning,omitempty"`
 	CachePolicy       string          `json:"cache_policy,omitempty"`
+	// SamplingSource is the comma-separated list of resolution layers that
+	// supplied non-nil sampler fields, in chain order. Values:
+	// "catalog", "provider_config", "cli", or combinations like
+	// "catalog,provider_config". Empty when all sampler fields were nil
+	// (server defaults applied). See ADR-007 §5.
+	SamplingSource string `json:"sampling_source,omitempty"`
 }
 
 // LLMResponseData is the data payload for an llm.response event.

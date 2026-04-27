@@ -224,6 +224,21 @@ func (p *Provider) ChatStream(ctx context.Context, messages []agent.Message, too
 	})
 }
 
+// compatRequestOptions is the canonical openai-compat wire-field assembler
+// and, per ADR-007 §3, the architectural home for any future
+// (model_family × reasoning_state × profile) sampling-composition rule.
+// Reasoning policy and the resolved sampling profile both reach this seam;
+// when a profile field needs to be clipped or substituted because the
+// model is in a thinking state (or vice-versa), the rule lives here — not
+// in the resolver, not in the catalog.
+//
+// v1 ships without an active composition rule. The seeded "code" profile
+// (T=0.6, top_p=0.95, top_k=20) matches Qwen3.x's published thinking-mode
+// precise-coding recommendation exactly, and is also non-greedy enough to
+// be safe in the non-thinking-mode case. When a future profile adds a
+// value that diverges between thinking and non-thinking states for some
+// family, add the clip rule here; for now, all five sampler fields pass
+// through unchanged regardless of reasoning state.
 func (p *Provider) compatRequestOptions(model string, opts agent.Options) (openaicompat.RequestOptions, error) {
 	extra, err := p.reasoningRequestOptions(model, opts)
 	if err != nil {

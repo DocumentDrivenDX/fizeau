@@ -117,6 +117,7 @@ var approvedProductionInternalImports = []string{
 	"github.com/DocumentDrivenDX/agent/internal/prompt",
 	"github.com/DocumentDrivenDX/agent/internal/reasoning",
 	"github.com/DocumentDrivenDX/agent/internal/safefs",
+	"github.com/DocumentDrivenDX/agent/internal/sampling",
 }
 
 // forbiddenCLIInternalImports lists internal packages that must NEVER be

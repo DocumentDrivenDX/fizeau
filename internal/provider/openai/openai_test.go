@@ -738,6 +738,66 @@ func TestSamplingOptionsSerialization(t *testing.T) {
 	})
 }
 
+// TestSamplingProfilePassesThroughSeam pins ADR-007 §3 v1 behavior: the
+// seeded "code" profile values flow unchanged to the wire regardless of
+// the reasoning state. The provider seam is the architectural home for
+// future (model_family × reasoning_state × profile) clipping rules; v1
+// ships without one because the seeded code-profile values happen to be
+// safe in both thinking and non-thinking states for Qwen3.x. When this
+// test starts asserting different values across reasoning states, the
+// seam-side rule has been added and ADR-007 §3 should be revisited.
+func TestSamplingProfilePassesThroughSeam(t *testing.T) {
+	temp := 0.6
+	topP := 0.95
+	topK := 20
+	codeProfile := agent.Options{
+		Temperature: &temp,
+		TopP:        &topP,
+		TopK:        &topK,
+	}
+
+	cases := []struct {
+		name      string
+		reasoning agent.Reasoning
+	}{
+		{"reasoning_off", agent.ReasoningOff},
+		{"reasoning_unset", ""},
+		{"reasoning_low", agent.ReasoningLow},
+		{"reasoning_high", agent.ReasoningHigh},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := codeProfile
+			opts.Reasoning = tc.reasoning
+			body, err := captureOpenAIChatBody(t, "omlx", "", opts)
+			require.NoError(t, err)
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(body, &got))
+
+			// All five sampler fields land on the wire as-supplied,
+			// regardless of reasoning state. JSON numbers decode as float64.
+			gotTemp, ok := got["temperature"].(float64)
+			require.True(t, ok, "temperature must be present")
+			assert.InDelta(t, 0.6, gotTemp, 1e-9)
+
+			gotTopP, ok := got["top_p"].(float64)
+			require.True(t, ok, "top_p must be present")
+			assert.InDelta(t, 0.95, gotTopP, 1e-9)
+
+			gotTopK, ok := got["top_k"].(float64)
+			require.True(t, ok, "top_k must be present")
+			assert.Equal(t, 20.0, gotTopK)
+
+			// Unset fields stay unset — the v1 contract for "leave-unset
+			// → server default applies".
+			_, hasMinP := got["min_p"]
+			assert.False(t, hasMinP, "min_p was nil → must not appear on wire")
+			_, hasRep := got["repetition_penalty"]
+			assert.False(t, hasRep, "repetition_penalty was nil → must not appear on wire")
+		})
+	}
+}
+
 func captureOpenAIChatBody(t *testing.T, providerType string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
 	return captureOpenAIChatBodyWithModel(t, providerType, testModelForProvider(providerType), providerReasoning, opts)
 }

@@ -844,6 +844,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		MinP:                  req.MinP,
 		RepetitionPenalty:     req.RepetitionPenalty,
 		Seed:                  seed,
+		SamplingSource:        req.SamplingSource,
 		Reasoning:             effectiveReasoning(req.Reasoning),
 		NoStream:              req.NoStream,
 		MaxTokens:             req.MaxTokens,

@@ -23,6 +23,7 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/prompt"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/agent/internal/sampling"
 	"github.com/DocumentDrivenDX/agent/occompat"
 	"github.com/DocumentDrivenDX/agent/picompat"
 )
@@ -235,27 +236,37 @@ func run() int {
 	if cfg.CompactionPercent > 0 {
 		compactionCfg.EffectivePercent = cfg.CompactionPercent
 	}
-	// Apply provider-level sampling profile (config.yaml `providers.<name>.sampling`)
-	// when no per-call override is in scope. CLI flags / catalog profiles
-	// will layer on top in a follow-up.
+	// Resolve the sampling profile through the ADR-007 chain:
+	// catalog sampling_profiles → providers.<name>.sampling. v1 hardcodes
+	// the profile name "code"; per-request profile selection is deferred.
+	// Wrapped harnesses are not invoked through this CLI path, so no
+	// harness check is needed here — the resolver still respects the
+	// per-model sampling_control = harness_pinned short-circuit defensively.
 	var (
-		sTemp *float32
-		sTopP *float64
-		sTopK *int
-		sMinP *float64
-		sRep  *float64
-		sSeed *int64
+		sTemp          *float32
+		sTopP          *float64
+		sTopK          *int
+		sMinP          *float64
+		sRep           *float64
+		sSeed          *int64
+		samplingSource string
 	)
-	if pc.Sampling != nil {
-		if pc.Sampling.Temperature != nil {
-			t := float32(*pc.Sampling.Temperature)
+	{
+		var lookup sampling.CatalogLookup
+		if catalog, err := cfg.LoadModelCatalog(); err == nil && catalog != nil {
+			lookup = catalog
+		}
+		resolved, sources := sampling.Resolve(lookup, selection.ResolvedModel, "code", pc.Sampling)
+		samplingSource = sampling.SourceSummary(sources)
+		if resolved.Temperature != nil {
+			t := float32(*resolved.Temperature)
 			sTemp = &t
 		}
-		sTopP = pc.Sampling.TopP
-		sTopK = pc.Sampling.TopK
-		sMinP = pc.Sampling.MinP
-		sRep = pc.Sampling.RepetitionPenalty
-		sSeed = pc.Sampling.Seed
+		sTopP = resolved.TopP
+		sTopK = resolved.TopK
+		sMinP = resolved.MinP
+		sRep = resolved.RepetitionPenalty
+		sSeed = resolved.Seed
 	}
 	req := buildServiceExecuteRequest(serviceExecuteRequestParams{
 		Prompt:                  promptText,
@@ -284,6 +295,7 @@ func run() int {
 		MinP:                    sMinP,
 		RepetitionPenalty:       sRep,
 		Seed:                    sSeed,
+		SamplingSource:          samplingSource,
 	})
 
 	result, err := executeViaService(ctx, req, selection, sessionLogDir(wd, cfg), agentConfig.NewServiceConfig(cfg, wd))
@@ -439,6 +451,7 @@ type serviceExecuteRequestParams struct {
 	MinP              *float64
 	RepetitionPenalty *float64
 	Seed              *int64
+	SamplingSource    string
 }
 
 type cliExecutionResult struct {
@@ -510,6 +523,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) agent.Servic
 		MinP:                    params.MinP,
 		RepetitionPenalty:       params.RepetitionPenalty,
 		Seed:                    params.Seed,
+		SamplingSource:          params.SamplingSource,
 	}
 	return req
 }

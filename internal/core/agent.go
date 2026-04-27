@@ -107,6 +107,11 @@ type Options struct {
 	Seed              int64    `json:"seed,omitempty"`
 	MaxTokens         int      `json:"max_tokens,omitempty"`
 	Stop              []string `json:"stop,omitempty"`
+	// SamplingSource is a comma-separated record of which resolution layers
+	// supplied non-nil sampler fields, e.g. "catalog" or
+	// "catalog,provider_config". Used only for the llm.request telemetry
+	// event; never sent on the provider wire. See ADR-007 §5.
+	SamplingSource string `json:"sampling_source,omitempty"`
 	// Reasoning controls model-side reasoning with one scalar value. Empty means
 	// unset; use ReasoningOff or ReasoningTokens(0) for explicit off.
 	Reasoning Reasoning `json:"reasoning,omitempty"`
@@ -346,6 +351,10 @@ type Request struct {
 
 	// Seed is an optional model sampling seed. Zero means unset/provider chooses.
 	Seed int64
+
+	// SamplingSource is the resolved sampling-layer attribution, plumbed
+	// through to the llm.request telemetry event. See ADR-007 §5.
+	SamplingSource string
 
 	// Reasoning controls model-side reasoning with one scalar value. Empty means
 	// unset; use ReasoningOff or ReasoningTokens(0) for explicit off.
