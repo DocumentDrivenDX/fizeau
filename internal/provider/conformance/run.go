@@ -215,9 +215,113 @@ func Run(t *testing.T, factory Factory, caps Capabilities) {
 			if result.toolName != "inspect" {
 				t.Fatalf("%s: stream tool name %q, want inspect", caps.Name, result.toolName)
 			}
-			if !strings.Contains(result.toolArgs, "target") {
-				t.Fatalf("%s: stream tool args %q, want target field", caps.Name, result.toolArgs)
+			// Tighten the args check: the aggregate must parse as JSON
+			// with a non-empty "target" string. The previous "contains
+			// target" assertion would have passed on malformed deltas.
+			var args map[string]any
+			if err := json.Unmarshal([]byte(result.toolArgs), &args); err != nil {
+				t.Fatalf("%s: stream tool args %q did not parse as JSON: %v", caps.Name, result.toolArgs, err)
 			}
+			target, ok := args["target"].(string)
+			if !ok || target == "" {
+				t.Fatalf("%s: stream tool args missing non-empty 'target' string: %v", caps.Name, args)
+			}
+		})
+
+		t.Run("non-streaming tool call", func(t *testing.T) {
+			// Validates the non-streaming Chat path independently of the
+			// streaming path. Many servers handle them through different
+			// code routes; a regression in either is invisible without
+			// exercising both.
+			subject := newSubject(t, factory)
+			ctx, cancel := scenarioContext(caps)
+			defer cancel()
+			resp, err := subject.Provider.Chat(ctx, []agent.Message{
+				{Role: agent.RoleUser, Content: "conformance: call the inspect tool"},
+			}, []agent.ToolDef{inspectTool()}, agent.Options{MaxTokens: caps.chatMaxTokens()})
+			if err != nil {
+				t.Fatalf("%s: non-streaming Chat with tools failed: %v", caps.Name, err)
+			}
+			if len(resp.ToolCalls) == 0 {
+				t.Fatalf("%s: non-streaming response had no tool_calls (content=%q)", caps.Name, resp.Content)
+			}
+			tc := resp.ToolCalls[0]
+			if tc.ID == "" {
+				t.Fatalf("%s: non-streaming tool call missing id", caps.Name)
+			}
+			if tc.Name != "inspect" {
+				t.Fatalf("%s: non-streaming tool name %q, want inspect", caps.Name, tc.Name)
+			}
+			var args map[string]any
+			if err := json.Unmarshal(tc.Arguments, &args); err != nil {
+				t.Fatalf("%s: non-streaming tool args did not parse as JSON: %v (raw=%s)", caps.Name, err, string(tc.Arguments))
+			}
+			if target, ok := args["target"].(string); !ok || target == "" {
+				t.Fatalf("%s: non-streaming tool args missing non-empty 'target': %v", caps.Name, args)
+			}
+		})
+
+		t.Run("multi-tool wire shape", func(t *testing.T) {
+			// Sends multiple tool defs in one request; asserts the
+			// provider handles a non-singleton tools array and returns
+			// a tool_call whose name matches one of the supplied tools.
+			// Does not assert which tool — that depends on model
+			// intelligence and is not what wire conformance tests.
+			subject := newSubject(t, factory)
+			streamer := requireStreamer(t, caps.Name, subject.Provider)
+			ctx, cancel := scenarioContext(caps)
+			defer cancel()
+			tools := []agent.ToolDef{inspectTool(), summarizeTool(), countWordsTool()}
+			result := collectStream(t, caps.Name, streamer, ctx, []agent.Message{
+				{Role: agent.RoleUser, Content: "conformance: pick a tool and call it"},
+			}, tools, agent.Options{MaxTokens: caps.chatMaxTokens()})
+			if result.toolID == "" {
+				t.Fatalf("%s: multi-tool request emitted no tool call (content=%q)", caps.Name, result.content)
+			}
+			validNames := map[string]bool{"inspect": true, "summarize": true, "count_words": true}
+			if !validNames[result.toolName] {
+				t.Fatalf("%s: multi-tool response chose unknown tool %q (valid: inspect, summarize, count_words)", caps.Name, result.toolName)
+			}
+			if result.toolArgs != "" {
+				var args map[string]any
+				if err := json.Unmarshal([]byte(result.toolArgs), &args); err != nil {
+					t.Fatalf("%s: multi-tool args did not parse as JSON: %v (raw=%s)", caps.Name, err, result.toolArgs)
+				}
+			}
+		})
+
+		t.Run("tool result roundtrip", func(t *testing.T) {
+			// Sends a synthetic conversation with a prior tool call +
+			// tool result, asks for a final answer. Validates that the
+			// provider's wire serialization includes tool_call_id pairing
+			// and that the subsequent assistant turn does not re-emit the
+			// tool call.
+			subject := newSubject(t, factory)
+			streamer := requireStreamer(t, caps.Name, subject.Provider)
+			ctx, cancel := scenarioContext(caps)
+			defer cancel()
+			toolCallID := "call_test_inspect_1"
+			messages := []agent.Message{
+				{Role: agent.RoleUser, Content: "conformance: inspect the widget then tell me what you found"},
+				{Role: agent.RoleAssistant, ToolCalls: []agent.ToolCall{{
+					ID:        toolCallID,
+					Name:      "inspect",
+					Arguments: json.RawMessage(`{"target":"widget"}`),
+				}}},
+				{Role: agent.RoleTool, ToolCallID: toolCallID, Content: "inspected widget: status=ok"},
+			}
+			result := collectStream(t, caps.Name, streamer, ctx, messages, []agent.ToolDef{inspectTool()}, agent.Options{MaxTokens: caps.chatMaxTokens()})
+			if result.toolID != "" {
+				t.Fatalf("%s: tool-result follow-up unexpectedly re-emitted a tool call (id=%q name=%q)", caps.Name, result.toolID, result.toolName)
+			}
+			if !result.done {
+				t.Fatalf("%s: tool-result follow-up did not emit Done", caps.Name)
+			}
+			// Some servers return empty content if the model decides the
+			// tool result is sufficient; we only assert the wire
+			// completed cleanly without re-tool-calling. Stronger
+			// content assertions would test model behavior, not wire
+			// conformance.
 		})
 	}
 }
@@ -279,6 +383,22 @@ func inspectTool() agent.ToolDef {
 		Name:        "inspect",
 		Description: "Inspect a named test target.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"target":{"type":"string"}},"required":["target"]}`),
+	}
+}
+
+func summarizeTool() agent.ToolDef {
+	return agent.ToolDef{
+		Name:        "summarize",
+		Description: "Summarize a piece of text.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"max_words":{"type":"integer"}},"required":["text"]}`),
+	}
+}
+
+func countWordsTool() agent.ToolDef {
+	return agent.ToolDef{
+		Name:        "count_words",
+		Description: "Count the number of words in a string.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}`),
 	}
 }
 

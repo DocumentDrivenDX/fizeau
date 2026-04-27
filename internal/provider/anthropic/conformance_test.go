@@ -134,8 +134,54 @@ func handleAnthropicConformanceMessage(w http.ResponseWriter, r *http.Request, m
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
+	// Tool-result roundtrip: Anthropic delivers tool results as user
+	// messages with content blocks of type "tool_result". When the
+	// conversation already contains one, the shaped double returns final
+	// assistant text without re-emitting a tool_use block — mirrors what
+	// the real API does once the tool_use_id pairing closes.
+	historyHasToolResult := false
+	for _, m := range req.Messages {
+		blocks, ok := m.Content.([]interface{})
+		if !ok {
+			continue
+		}
+		for _, block := range blocks {
+			obj, ok := block.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if t, _ := obj["type"].(string); t == "tool_result" {
+				historyHasToolResult = true
+				break
+			}
+		}
+		if historyHasToolResult {
+			break
+		}
+	}
+
 	prompt := lastAnthropicPrompt(req.Messages)
 	if !req.Stream {
+		// Non-streaming tool call: when tools[] is present and history
+		// has no prior tool result, return a tool_use content block.
+		if len(req.Tools) > 0 && !historyHasToolResult {
+			writeAnthropicJSON(w, map[string]interface{}{
+				"id":   "msg_conformance",
+				"type": "message",
+				"role": "assistant",
+				"content": []map[string]interface{}{{
+					"type":  "tool_use",
+					"id":    "toolu_inspect_nonstream",
+					"name":  "inspect",
+					"input": map[string]string{"target": "fixture"},
+				}},
+				"model":         model,
+				"stop_reason":   "tool_use",
+				"stop_sequence": nil,
+				"usage":         map[string]int{"input_tokens": 4, "output_tokens": 3},
+			})
+			return
+		}
 		writeAnthropicJSON(w, map[string]interface{}{
 			"id":            "msg_conformance",
 			"type":          "message",
@@ -149,7 +195,7 @@ func handleAnthropicConformanceMessage(w http.ResponseWriter, r *http.Request, m
 		return
 	}
 
-	if len(req.Tools) > 0 {
+	if len(req.Tools) > 0 && !historyHasToolResult {
 		writeAnthropicSSE(w, []anthropicEvent{
 			{"message_start", fmt.Sprintf(`{"type":"message_start","message":{"id":"msg_conformance","type":"message","role":"assistant","model":%q},"usage":{"input_tokens":5}}`, model)},
 			{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_inspect","name":"inspect","input":{}}}`},

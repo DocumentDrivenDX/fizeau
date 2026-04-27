@@ -248,13 +248,63 @@ func handleOpenAICompatChat(w http.ResponseWriter, r *http.Request, desc openAIC
 	}
 	_ = json.Unmarshal(body, &req)
 
+	// Tool-result roundtrip: when the conversation already contains an
+	// assistant tool_call followed by a tool message, the shaped double
+	// returns final assistant content without re-emitting a tool call.
+	// Mirrors what real servers do once the tool_call_id pairing closes.
+	historyHasToolResult := false
+	for _, m := range req.Messages {
+		if m.Role == "tool" {
+			historyHasToolResult = true
+			break
+		}
+	}
+
 	prompt := lastOpenAIPrompt(req.Messages)
 	if !req.Stream {
+		// Non-streaming tool call: when tools[] is present and history
+		// has no prior tool result, return a tool_calls message instead
+		// of plain content. Validates the non-streaming tool path.
+		if len(req.Tools) > 0 && !historyHasToolResult {
+			writeJSON(w, map[string]interface{}{
+				"id":    "chatcmpl-conformance",
+				"model": desc.model,
+				"choices": []map[string]interface{}{{
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": nil,
+						"tool_calls": []map[string]interface{}{{
+							"id":   "call_inspect_nonstream",
+							"type": "function",
+							"function": map[string]string{
+								"name":      "inspect",
+								"arguments": `{"target":"fixture"}`,
+							},
+						}},
+					},
+					"finish_reason": "tool_calls",
+				}},
+				"usage": openAIUsage(desc, 4, 3),
+			})
+			return
+		}
 		writeJSON(w, map[string]interface{}{
 			"id":      "chatcmpl-conformance",
 			"model":   desc.model,
 			"choices": []map[string]interface{}{{"index": 0, "message": map[string]string{"role": "assistant", "content": "pong"}, "finish_reason": "stop"}},
 			"usage":   openAIUsage(desc, 4, 1),
+		})
+		return
+	}
+
+	// Streaming + tool_result roundtrip: emit visible content only, no
+	// tool_calls. The tool_call_id round-trip already happened on the
+	// previous turn; this validates the follow-up pathway closes cleanly.
+	if historyHasToolResult {
+		writeOpenAISSE(w, desc, []string{
+			openAIChunk(desc, "tool result acknowledged", "", "", nil),
+			openAIChunk(desc, "", "", "stop", openAIUsage(desc, 6, 3)),
 		})
 		return
 	}
