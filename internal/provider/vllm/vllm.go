@@ -3,7 +3,7 @@
 // one behavior worth distinguishing in the catalog stack: by default it
 // applies the target model's HuggingFace `generation_config.json` when the
 // client omits sampler fields. Most other local servers we wrap (omlx,
-// lmstudio, luce) cannot do this — MLX / GGUF repackaging typically drops
+// lmstudio, lucebox) cannot do this — MLX / GGUF repackaging typically drops
 // generation_config.json from the bundle, and the servers ship their own
 // presets instead.
 //

@@ -3,7 +3,7 @@ package harnesses
 import "github.com/DocumentDrivenDX/agent/internal/productinfo"
 
 // PreferenceOrder defines the default harness preference when multiple are available.
-var PreferenceOrder = []string{"codex", "claude", "opencode", "agent", "pi", "openrouter", "lmstudio", "omlx", "luce", "vllm", "gemini"}
+var PreferenceOrder = []string{"codex", "claude", "opencode", "agent", "pi", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "gemini"}
 
 // builtinHarnesses defines known harnesses and how to invoke them.
 var builtinHarnesses = map[string]HarnessConfig{
@@ -179,8 +179,8 @@ var builtinHarnesses = map[string]HarnessConfig{
 		IsHTTPProvider: true,
 		IsLocal:        true,
 	},
-	"luce": {
-		Name:           "luce",
+	"lucebox": {
+		Name:           "lucebox",
 		Binary:         "",
 		Surface:        "embedded-openai",
 		CostClass:      "local",

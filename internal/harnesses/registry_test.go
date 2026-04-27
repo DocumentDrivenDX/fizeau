@@ -46,7 +46,7 @@ func TestRegistryNamesPreferenceOrder(t *testing.T) {
 	assert.Equal(t, "codex", names[0])
 	assert.Equal(t, "claude", names[1])
 	assert.Equal(t, "opencode", names[2])
-	assert.Equal(t, "luce", names[8])
+	assert.Equal(t, "lucebox", names[8])
 	assert.Equal(t, "vllm", names[9])
 	assert.Equal(t, "gemini", names[10])
 	assert.Contains(t, names, "virtual")

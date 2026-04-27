@@ -81,10 +81,10 @@ func TestSamplingProfileNudge_SoftMessageForImplicitGenerationConfig(t *testing.
 }
 
 // TestSamplingProfileNudge_HardMessageForExplicitProviders covers the other
-// branch: providers without ImplicitGenerationConfig (omlx, lmstudio, luce)
+// branch: providers without ImplicitGenerationConfig (omlx, lmstudio, lucebox)
 // get the loud warning because their server fallback is decode-greedy.
 func TestSamplingProfileNudge_HardMessageForExplicitProviders(t *testing.T) {
-	for _, providerType := range []string{"omlx", "lmstudio", "luce"} {
+	for _, providerType := range []string{"omlx", "lmstudio", "lucebox"} {
 		t.Run(providerType, func(t *testing.T) {
 			samplingProfileNudgeOnce = sync.Once{}
 			var buf bytes.Buffer

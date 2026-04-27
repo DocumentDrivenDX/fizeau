@@ -17,7 +17,7 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
 	"github.com/DocumentDrivenDX/agent/internal/provider/limits"
 	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
-	"github.com/DocumentDrivenDX/agent/internal/provider/luce"
+	"github.com/DocumentDrivenDX/agent/internal/provider/lucebox"
 	"github.com/DocumentDrivenDX/agent/internal/provider/ollama"
 	"github.com/DocumentDrivenDX/agent/internal/provider/omlx"
 	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
@@ -32,7 +32,7 @@ import (
 
 // ProviderConfig describes a single named provider.
 type ProviderConfig struct {
-	Type      string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "omlx", "luce", "vllm", "ollama", or "anthropic"
+	Type      string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "ollama", or "anthropic"
 	BaseURL   string             `yaml:"base_url,omitempty"` // shorthand for one endpoint
 	Endpoints []ProviderEndpoint `yaml:"endpoints,omitempty"`
 	APIKey    string             `yaml:"api_key,omitempty"`
@@ -812,8 +812,8 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 			Headers:      pc.Headers,
 			Reasoning:    pc.Reasoning,
 		}), nil
-	case "luce":
-		return luce.New(luce.Config{
+	case "lucebox":
+		return lucebox.New(lucebox.Config{
 			BaseURL:      pc.BaseURL,
 			APIKey:       pc.APIKey,
 			Model:        pc.Model,
@@ -1055,7 +1055,7 @@ func defaultEndpointPort(providerType string) int {
 		return 1234
 	case "omlx":
 		return 1235
-	case "luce":
+	case "lucebox":
 		return 1236
 	case "vllm":
 		return 8000
@@ -1123,9 +1123,9 @@ func normalizeProviderConfig(pc ProviderConfig) ProviderConfig {
 		if pc.BaseURL == "" {
 			pc.BaseURL = omlx.DefaultBaseURL
 		}
-	case "luce":
+	case "lucebox":
 		if pc.BaseURL == "" {
-			pc.BaseURL = luce.DefaultBaseURL
+			pc.BaseURL = lucebox.DefaultBaseURL
 		}
 	case "vllm":
 		if pc.BaseURL == "" {
@@ -1166,7 +1166,7 @@ func inferProviderTypeFromBaseURL(baseURL string) string {
 	case strings.Contains(low, ":1235"):
 		return "omlx"
 	case strings.Contains(low, ":1236"):
-		return "luce"
+		return "lucebox"
 	case strings.Contains(low, ":8000"):
 		return "vllm"
 	default:
@@ -1176,7 +1176,7 @@ func inferProviderTypeFromBaseURL(baseURL string) string {
 
 func providerUsesEndpoint(providerType string) bool {
 	switch providerType {
-	case "openai", "openrouter", "lmstudio", "omlx", "luce", "vllm", "ollama", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "ollama", "minimax", "qwen", "zai":
 		return true
 	default:
 		return false
@@ -1227,7 +1227,7 @@ func ProviderImplicitGenerationConfig(providerType string) bool {
 
 func surfaceForProviderType(providerType string) (modelcatalog.Surface, error) {
 	switch providerType {
-	case "openai", "openrouter", "lmstudio", "omlx", "luce", "vllm", "ollama", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "ollama", "minimax", "qwen", "zai":
 		return modelcatalog.SurfaceAgentOpenAI, nil
 	case "anthropic":
 		return modelcatalog.SurfaceAgentAnthropic, nil
@@ -1285,7 +1285,7 @@ func (c *Config) validateProviders() error {
 			return fmt.Errorf("config: provider %q: type openai-compat is no longer supported; use openai, openrouter, lmstudio, omlx, or ollama", name)
 		}
 		switch pc.Type {
-		case "openai", "openrouter", "lmstudio", "omlx", "luce", "vllm", "ollama", "minimax", "qwen", "zai", "anthropic":
+		case "openai", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "ollama", "minimax", "qwen", "zai", "anthropic":
 		default:
 			return fmt.Errorf("config: provider %q has unknown type %q (use openai, openrouter, lmstudio, omlx, luce, vllm, ollama, or anthropic)", name, pc.Type)
 		}

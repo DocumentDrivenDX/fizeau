@@ -27,7 +27,7 @@ type ProtocolCapabilities struct {
 	// ImplicitGenerationConfig declares that the inference server applies
 	// the model's HuggingFace `generation_config.json` automatically when
 	// the request omits sampler fields. vLLM does this by default; most
-	// other local servers (omlx, lmstudio, luce) ship custom presets and
+	// other local servers (omlx, lmstudio, lucebox) ship custom presets and
 	// either ignore upstream defaults or replace them at repackage time
 	// (MLX / GGUF strip generation_config.json), which is why ADR-007's
 	// catalog sampling_profiles exist. Routing and the catalog-stale

@@ -5,7 +5,7 @@ generated_at: 2026-04-27T00:00:00Z
 # `ddx-agent catalog update` to reach existing installations — including
 # additive schema extensions per ADR-007 §7. Format: YYYY-MM-DD.N
 # (calendar date, increment N for same-day changes).
-catalog_version: 2026-04-27.3
+catalog_version: 2026-04-27.4
 
 # Sampling profiles (ADR-007 L1 — generic per-task bundles).
 # A field unset here stays nil through the resolver and is omitted from
@@ -173,21 +173,23 @@ models:
       agent.anthropic: haiku-5.5
       claude-code: haiku-5.5
 
-  luce-dflash:
+  lucebox-dflash:
     family: qwen
-    display_name: Luce DFlash (Qwen3.5/3.6 27B speculative)
+    display_name: Lucebox DFlash (Qwen3.5/3.6 27B speculative)
     tier: code-economy
     status: active
-    provider_system: luce
+    provider_system: lucebox
     # Speculative-decoding inference server from lucebox-hub
-    # (https://github.com/Luce-Org/lucebox-hub). Single hardcoded model id
-    # on the wire; underlying weights are Qwen3.5-27B-Q4_K_M GGUF (3.6-27B
-    # drop-in supported per upstream README, experimental). Treated like a
-    # normal openai-compat local model so beadbench arms and routing
-    # comparisons see it as a peer of lmstudio / omlx.
+    # (https://github.com/Luce-Org/lucebox-hub). Underlying weights are
+    # Qwen3.5-27B-Q4_K_M GGUF (3.6-27B drop-in supported per upstream
+    # README, experimental). Treated like a normal openai-compat local
+    # model so beadbench arms and routing comparisons see it as a peer of
+    # lmstudio / omlx. The server's /v1/models reports the GGUF file name
+    # (e.g., "Qwen3.5-27B-Q4_K_M") rather than this catalog id; this entry
+    # exists for catalog-side routing references.
     context_window: 131072
     surfaces:
-      agent.openai: luce-dflash
+      agent.openai: lucebox-dflash
 
   qwen3.5-27b:
     family: qwen

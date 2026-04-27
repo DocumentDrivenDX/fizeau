@@ -36,6 +36,45 @@ type Capabilities struct {
 	ChatContains      string
 	StreamContains    string
 	ReasoningContains string
+
+	// ChatMaxTokens overrides the default chat/stream max-tokens budget
+	// (8 tokens). Thinking-mode providers like luce burn output budget on
+	// reasoning_content before the visible content; without headroom they
+	// return empty content and the chat assertions fail. 0 = use default.
+	ChatMaxTokens int
+	// StreamMaxTokensCheck overrides the per-test cap for the
+	// "streaming max_tokens honored" subtest. The check still asserts the
+	// returned word count is bounded by this value + MaxTokensSlack. 0 =
+	// use the existing default of 3.
+	StreamMaxTokensCheck int
+	// ScenarioTimeout overrides the per-subtest wall-clock budget
+	// (default 5 seconds). Local thinking-capable providers can need
+	// substantially more — set generously for those. 0 = use default.
+	ScenarioTimeout time.Duration
+}
+
+// chatMaxTokens returns the configured chat budget or the default.
+func (c Capabilities) chatMaxTokens() int {
+	if c.ChatMaxTokens > 0 {
+		return c.ChatMaxTokens
+	}
+	return 8
+}
+
+// streamMaxTokensCheck returns the configured stream cap or the default.
+func (c Capabilities) streamMaxTokensCheck() int {
+	if c.StreamMaxTokensCheck > 0 {
+		return c.StreamMaxTokensCheck
+	}
+	return 3
+}
+
+// scenarioTimeout returns the configured timeout or the default 5s.
+func (c Capabilities) scenarioTimeout() time.Duration {
+	if c.ScenarioTimeout > 0 {
+		return c.ScenarioTimeout
+	}
+	return 5 * time.Second
 }
 
 // Run executes the shared provider conformance catalog.
@@ -62,7 +101,7 @@ func Run(t *testing.T, factory Factory, caps Capabilities) {
 		if subject.HealthCheck == nil {
 			t.Fatalf("%s: health check hook is required", caps.Name)
 		}
-		ctx, cancel := scenarioContext()
+		ctx, cancel := scenarioContext(caps)
 		defer cancel()
 		if err := subject.HealthCheck(ctx); err != nil {
 			t.Fatalf("%s: health check failed: %v", caps.Name, err)
@@ -77,7 +116,7 @@ func Run(t *testing.T, factory Factory, caps Capabilities) {
 		if subject.ListModels == nil {
 			t.Fatalf("%s: model discovery hook is required", caps.Name)
 		}
-		ctx, cancel := scenarioContext()
+		ctx, cancel := scenarioContext(caps)
 		defer cancel()
 		models, err := subject.ListModels(ctx)
 		if err != nil {
@@ -92,11 +131,11 @@ func Run(t *testing.T, factory Factory, caps Capabilities) {
 
 	t.Run("non-streaming chat", func(t *testing.T) {
 		subject := newSubject(t, factory)
-		ctx, cancel := scenarioContext()
+		ctx, cancel := scenarioContext(caps)
 		defer cancel()
 		resp, err := subject.Provider.Chat(ctx, []agent.Message{
 			{Role: agent.RoleUser, Content: "conformance: reply with pong"},
-		}, nil, agent.Options{MaxTokens: 8})
+		}, nil, agent.Options{MaxTokens: caps.chatMaxTokens()})
 		if err != nil {
 			t.Fatalf("%s: Chat failed: %v", caps.Name, err)
 		}
@@ -115,11 +154,11 @@ func Run(t *testing.T, factory Factory, caps Capabilities) {
 	t.Run("streaming chat", func(t *testing.T) {
 		subject := newSubject(t, factory)
 		streamer := requireStreamer(t, caps.Name, subject.Provider)
-		ctx, cancel := scenarioContext()
+		ctx, cancel := scenarioContext(caps)
 		defer cancel()
 		result := collectStream(t, caps.Name, streamer, ctx, []agent.Message{
 			{Role: agent.RoleUser, Content: "conformance: stream-pong"},
-		}, nil, agent.Options{MaxTokens: 8})
+		}, nil, agent.Options{MaxTokens: caps.chatMaxTokens()})
 		if !result.done {
 			t.Fatalf("%s: stream did not emit Done", caps.Name)
 		}
@@ -131,9 +170,9 @@ func Run(t *testing.T, factory Factory, caps Capabilities) {
 	t.Run("streaming max_tokens honored", func(t *testing.T) {
 		subject := newSubject(t, factory)
 		streamer := requireStreamer(t, caps.Name, subject.Provider)
-		ctx, cancel := scenarioContext()
+		ctx, cancel := scenarioContext(caps)
 		defer cancel()
-		maxTokens := 3
+		maxTokens := caps.streamMaxTokensCheck()
 		result := collectStream(t, caps.Name, streamer, ctx, []agent.Message{
 			{Role: agent.RoleUser, Content: "conformance: max tokens"},
 		}, nil, agent.Options{MaxTokens: maxTokens})
@@ -150,11 +189,11 @@ func Run(t *testing.T, factory Factory, caps Capabilities) {
 		t.Run("thinking reasoning", func(t *testing.T) {
 			subject := newSubject(t, factory)
 			streamer := requireStreamer(t, caps.Name, subject.Provider)
-			ctx, cancel := scenarioContext()
+			ctx, cancel := scenarioContext(caps)
 			defer cancel()
 			result := collectStream(t, caps.Name, streamer, ctx, []agent.Message{
 				{Role: agent.RoleUser, Content: "conformance: reason briefly then answer"},
-			}, nil, agent.Options{MaxTokens: 8, Reasoning: agent.ReasoningTokens(32)})
+			}, nil, agent.Options{MaxTokens: caps.chatMaxTokens(), Reasoning: agent.ReasoningTokens(32)})
 			if !strings.Contains(result.reasoning, caps.ReasoningContains) {
 				t.Fatalf("%s: reasoning content %q, want substring %q", caps.Name, result.reasoning, caps.ReasoningContains)
 			}
@@ -165,11 +204,11 @@ func Run(t *testing.T, factory Factory, caps Capabilities) {
 		t.Run("tool call streaming", func(t *testing.T) {
 			subject := newSubject(t, factory)
 			streamer := requireStreamer(t, caps.Name, subject.Provider)
-			ctx, cancel := scenarioContext()
+			ctx, cancel := scenarioContext(caps)
 			defer cancel()
 			result := collectStream(t, caps.Name, streamer, ctx, []agent.Message{
 				{Role: agent.RoleUser, Content: "conformance: call the inspect tool"},
-			}, []agent.ToolDef{inspectTool()}, agent.Options{MaxTokens: 8})
+			}, []agent.ToolDef{inspectTool()}, agent.Options{MaxTokens: caps.chatMaxTokens()})
 			if result.toolID == "" {
 				t.Fatalf("%s: stream did not emit a tool call id", caps.Name)
 			}
@@ -243,8 +282,8 @@ func inspectTool() agent.ToolDef {
 	}
 }
 
-func scenarioContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), 5*time.Second)
+func scenarioContext(caps Capabilities) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), caps.scenarioTimeout())
 }
 
 func contains(values []string, want string) bool {

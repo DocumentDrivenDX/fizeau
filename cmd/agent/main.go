@@ -283,7 +283,7 @@ func run() int {
 		if res.MissingProfile {
 			// ADR-007 §7 rule 4: tone the nudge by provider capability.
 			// Servers that auto-load generation_config.json (vLLM) get the
-			// soft note; servers that do not (omlx, lmstudio, luce) get
+			// soft note; servers that do not (omlx, lmstudio, lucebox) get
 			// the loud warning because their fallback is decode-greedy or
 			// worse.
 			msg := samplingProfileNudgeMessage
