@@ -14,7 +14,6 @@ import (
 
 	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/agent/internal/sampling"
 	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
 	"github.com/DocumentDrivenDX/agent/internal/provider/limits"
 	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
@@ -24,6 +23,7 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/provider/openrouter"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
+	"github.com/DocumentDrivenDX/agent/internal/sampling"
 	"github.com/DocumentDrivenDX/agent/telemetry"
 	"gopkg.in/yaml.v3"
 )

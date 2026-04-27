@@ -555,9 +555,9 @@ type ServiceExecuteRequest struct {
 	// internal/sampling.Resolve. Plumbed through to the llm.request
 	// telemetry event for ADR-007 override-tracking; never on the wire.
 	SamplingSource string
-	Reasoning         Reasoning
-	NoStream          bool
-	Permissions       string
+	Reasoning      Reasoning
+	NoStream       bool
+	Permissions    string
 	// Tools overrides the built-in native agent tool set when Harness is
 	// "agent". Nil uses the native built-ins for ToolPreset and WorkDir.
 	Tools []Tool
