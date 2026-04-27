@@ -5,7 +5,38 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
-## [v0.9.16] — 2026-04-27
+## [v0.9.17] — 2026-04-27
+
+Adds support for `luce`, a new provider type backed by the lucebox-hub
+DFlash speculative-decoding server
+(https://github.com/Luce-Org/lucebox-hub, dflash/scripts/server.py).
+The server wraps a CUDA inference engine (DFlash + DDTree) behind an
+OpenAI-compatible HTTP shape but is intentionally narrow: greedy
+decoding only, no tool calling, no reasoning toggle, single hardcoded
+model id `luce-dflash` (current weights Qwen3.5-27B Q4_K_M GGUF on a
+3090; Qwen3.6-27B is a drop-in target per upstream).
+
+### Added
+
+- `internal/provider/luce/` — Tools=false / Stream=true /
+  Thinking=false wrapper around the openai-compat provider. Default
+  port 1236 (alongside the existing :1234 lmstudio and :1235 omlx
+  conventions).
+- `luce` registered in `internal/config/config.go` (factory,
+  validator, default port, default base URL, surface map,
+  `inferProviderTypeFromBaseURL` on `:1236`, `providerUsesEndpoint`)
+  and `internal/harnesses/registry.go` (PreferenceOrder +
+  builtinHarnesses, embedded-openai surface, local cost class).
+- `luce-dflash` ModelEntry in the embedded catalog with
+  `sampling_control: harness_pinned` and `reasoning_control: none`,
+  reflecting the server's wire-level pinning so the resolver
+  short-circuits and telemetry stays honest.
+
+### Changed
+
+- Embedded `catalog_version`: `2026-04-27.1` → `2026-04-27.2`.
+
+
 
 Lands ADR-007 v1: sampling profiles become catalog policy. The
 embedded model catalog now ships a `code` profile (T=0.6, top_p=0.95,
