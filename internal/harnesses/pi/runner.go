@@ -117,7 +117,7 @@ func (r *Runner) Execute(ctx context.Context, req harnesses.ExecuteRequest) (<-c
 	return out, nil
 }
 
-func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan<- harnesses.Event) {
+func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan harnesses.Event) {
 	defer close(out)
 
 	start := time.Now()
@@ -168,7 +168,7 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 	}
 }
 
-func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan<- harnesses.Event, seq *int64) (agg *streamAggregate, exitCode int, stderr string, runErr error, status string) {
+func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan harnesses.Event, seq *int64) (agg *streamAggregate, exitCode int, stderr string, runErr error, status string) {
 	base := r.BaseArgs
 	if base == nil {
 		base = []string{"--mode", "json", "--print"}
@@ -245,8 +245,12 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	var parseErr error
 	go func() {
 		defer close(parseDone)
-		mirrored := mirroredEvents(out, progressLog, ctx)
+		mirrored, owned, mirrorDone := mirroredEvents(out, progressLog, ctx)
 		parseAgg, parseErr = parsePiStream(runCtx, parserReader, mirrored, req.Metadata, seq)
+		if owned {
+			close(mirrored)
+			<-mirrorDone
+		}
 	}()
 
 	stdoutDone := make(chan struct{})
@@ -324,12 +328,23 @@ func (w *stringBuilderWriter) Write(p []byte) (int, error) {
 	return w.sb.Write(p)
 }
 
-func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Context) chan<- harnesses.Event {
+// mirroredEvents wraps dst with an event-mirroring goroutine when log is
+// non-nil. It returns:
+//   - mid: the channel the parser should send on
+//   - owned: true when mid was newly created (caller must close mid and
+//     wait on done before closing dst — otherwise an in-flight event can
+//     race a closed dst and panic with "send on closed channel")
+//   - done: signals the mirror goroutine has exited; pre-closed when no
+//     mirror was started.
+func mirroredEvents(dst chan harnesses.Event, log *os.File, ctx context.Context) (mid chan harnesses.Event, owned bool, done <-chan struct{}) {
+	doneCh := make(chan struct{})
 	if log == nil {
-		return dst
+		close(doneCh)
+		return dst, false, doneCh
 	}
-	mid := make(chan harnesses.Event, cap(dst))
+	mid = make(chan harnesses.Event, cap(dst))
 	go func() {
+		defer close(doneCh)
 		for ev := range mid {
 			if data, err := json.Marshal(ev); err == nil {
 				_, _ = log.Write(data)
@@ -338,11 +353,13 @@ func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Contex
 			select {
 			case dst <- ev:
 			case <-ctx.Done():
+				for range mid {
+				}
 				return
 			}
 		}
 	}()
-	return mid
+	return mid, true, doneCh
 }
 
 func trimErrorBlob(s string) string {

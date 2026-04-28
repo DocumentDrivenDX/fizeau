@@ -5,6 +5,31 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.9.24] — 2026-04-28
+
+Two harness-parity blockers surfaced by the first agent-vs-pi paired
+beadbench run.
+
+### Fixed
+
+- **Pi-runner panic on `send on closed channel`** (`agent-195bb183`).
+  The `mirroredEvents` goroutine in `internal/harnesses/pi/runner.go`
+  was leaked: nothing closed the intermediate channel after
+  `parsePiStream` returned, so an in-flight event could race
+  `run()`'s deferred `close(out)` and panic. Fix: `mirroredEvents`
+  now reports ownership of the mid-channel; the parser-goroutine
+  closes it and waits for the mirror goroutine to drain before
+  signaling done. Added `TestRunner_Execute_MirrorClosesCleanly`,
+  passes 20× under `-race`.
+- **Test-config isolation in `agent_test`** (`agent-27806ad5`). Tests
+  calling `agent.New(ServiceOptions{})` auto-loaded the developer's
+  live `~/.config/agent/config.yaml`, including provider types older
+  base revisions didn't know about — making bead-verify-worktrees
+  fail on `go test ./...` for reasons unrelated to the bead. New
+  package-level `TestMain` (`service_testmain_test.go`) points
+  `HOME` and `XDG_CONFIG_HOME` at a fresh tempdir before `m.Run()`.
+  Per-test `t.Setenv("HOME", …)` calls still take precedence.
+
 ## [v0.9.23] — 2026-04-28
 
 External-benchmark integration. First adapter to compare our harness

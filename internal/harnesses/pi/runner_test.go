@@ -409,6 +409,66 @@ EOF
 	}
 }
 
+// Regression for agent-195bb183: when SessionLogDir is set, the mirror
+// goroutine forwards events from parser → out. If the runner closed `out`
+// before the mirror goroutine drained, an in-flight send panicked with
+// "send on closed channel". This test exercises the mirror path and asserts
+// clean teardown.
+func TestRunner_Execute_MirrorClosesCleanly(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+
+	script := `#!/bin/sh
+cat <<'EOF'
+{"type":"text_end","message":{"usage":{"input":1,"output":1,"cost":{"total":0.0}}},"response":"ok"}
+EOF
+`
+	f, err := os.CreateTemp("", "fake-pi-mirror-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(script); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if err := os.Chmod(f.Name(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	logDir := t.TempDir()
+	r := &Runner{Binary: f.Name(), BaseArgs: []string{}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ch, err := r.Execute(ctx, harnesses.ExecuteRequest{
+		Prompt:        "p",
+		SessionLogDir: logDir,
+		SessionID:     "mirror-test",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	var sawDelta, sawFinal bool
+	for ev := range ch {
+		switch ev.Type {
+		case harnesses.EventTypeTextDelta:
+			sawDelta = true
+		case harnesses.EventTypeFinal:
+			sawFinal = true
+		}
+	}
+	if !sawDelta {
+		t.Error("expected text_delta event through mirror")
+	}
+	if !sawFinal {
+		t.Error("expected final event")
+	}
+}
+
 func TestParsePiStream_EventTypes(t *testing.T) {
 	input := `{"type":"text_delta","partial":{"usage":{"input":10,"output":4,"cost":{"total":0.002}}}}
 {"type":"text_end","message":{"usage":{"input":10,"output":4,"cost":{"total":0.002}}},"response":"pi response text"}
