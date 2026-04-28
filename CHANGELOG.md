@@ -5,6 +5,27 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.9.22] — 2026-04-28
+
+Refactor + reliability release. Closes the architectural smell that
+caused v0.9.18-.20's lucebox/vllm shipping bug, lays down the
+internal-benchmark-corpus foundation, and unblocks lucebox conformance
+on thinking-mode locals.
+
+### Refactor
+
+- **Provider registry** (`agent-8e4eb44c`). Single source of truth for
+  provider-type → factory mappings in `internal/provider/registry/`.
+  Each provider package registers a Descriptor in `init()`. The two
+  parallel factories (`internal/config/config.go:buildProviderFromConfig`
+  and `service_native_provider.go:buildNativeProvider`) collapse to
+  a `registry.Lookup(...)` + `Factory(Inputs{...})`. 11 types
+  registered (anthropic, lmstudio, lucebox, minimax, ollama, omlx,
+  openai, openrouter, qwen, vllm, zai). Round-trip test in
+  `registry_test.go` enumerates expected types and asserts every one
+  resolves and produces a non-nil provider — catches drift on import.
+  Independent fresh-eyes review verified no information loss.
+
 ### Added
 
 - **Internal benchmark corpus + curation flow** (bead `agent-4f03f33d`).
@@ -20,6 +41,37 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
   Seeded with three beads: `agent-39f79181` (sampling resolver CLI
   wiring), `agent-b6b15fb0` (openai-flavor thinking-leak — failure
   mode), `agent-37aeb88e` (beadbench harness instrumentation).
+
+### Fixed
+
+- **Conformance prompt brittleness for thinking-mode locals**
+  (`agent-bcea2d77`). Replaced literal-substring assertions
+  ("pong" / "stream-pong" / "reasoning") with structural checks
+  (non-empty content + finish_reason). Literal-substring assertions
+  remain available as opt-in for shaped-double fixtures.
+  `streaming_max_tokens_honored` cap floors at 256 for
+  `SupportsThinking=true` providers since the 3-token default is
+  incompatible with reasoning_content emission. Live conformance
+  against lucebox should pass the streaming chat tests once the
+  upstream `tool_choice` fix lands (separate report).
+- **CI route-status flake** (`agent-901cd778`). Two cmd/agent
+  route-status tests asserted every candidate has a non-empty
+  Model field. Subscription-harness candidates (claude/codex/gemini)
+  appear ineligible with empty Model in clean CI environments
+  (their CLI binaries aren't on PATH). Tightened: only Eligible
+  candidates must name a resolved model.
+
+### Documentation
+
+- `docs/research/qwen3.6-27b-cross-provider-2026-04-27.md` — Tier-3
+  beadbench results added. Tier-2 single-prompt grading was 100%
+  on every target; Tier-3 multi-turn agent loop revealed local
+  27B is not yet production-viable (both vidar omlx 8bit and
+  bragi LM Studio timed out at 1 hour on a real bead while
+  openrouter qwen3.6-plus finished in 4.5 min, $0.32).
+- `docs/research/lucebox-tool-support-2026-04-27.md` extended
+  with Gap 3 (Blackwell-consumer sm_120 perf unswept) and Gap 4
+  (server stability under burst load).
 
 ## [v0.9.21] — 2026-04-27
 
