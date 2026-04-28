@@ -24,11 +24,32 @@
 package vllm
 
 import (
+	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
+	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 )
 
 const DefaultBaseURL = "http://localhost:8000/v1"
+
+func init() {
+	registry.Register(registry.Descriptor{
+		Type: "vllm",
+		Factory: func(in registry.Inputs) agentcore.Provider {
+			return New(Config{
+				BaseURL:      in.BaseURL,
+				APIKey:       in.APIKey,
+				Model:        in.Model,
+				ModelPattern: in.ModelPattern,
+				KnownModels:  in.KnownModels,
+				Headers:      in.Headers,
+				Reasoning:    in.Reasoning,
+			})
+		},
+		DefaultBaseURL: DefaultBaseURL,
+		DefaultPort:    8000,
+	})
+}
 
 // ProtocolCapabilities mirrors lmstudio's openai-compat surface and adds
 // ImplicitGenerationConfig=true so the catalog-stale nudge can soften.

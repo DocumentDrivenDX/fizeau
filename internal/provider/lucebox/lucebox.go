@@ -28,11 +28,32 @@
 package lucebox
 
 import (
+	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
+	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 )
 
 const DefaultBaseURL = "http://localhost:1236/v1"
+
+func init() {
+	registry.Register(registry.Descriptor{
+		Type: "lucebox",
+		Factory: func(in registry.Inputs) agentcore.Provider {
+			return New(Config{
+				BaseURL:      in.BaseURL,
+				APIKey:       in.APIKey,
+				Model:        in.Model,
+				ModelPattern: in.ModelPattern,
+				KnownModels:  in.KnownModels,
+				Headers:      in.Headers,
+				Reasoning:    in.Reasoning,
+			})
+		},
+		DefaultBaseURL: DefaultBaseURL,
+		DefaultPort:    1236,
+	})
+}
 
 // ProtocolCapabilities mirrors lmstudio's openai-compat surface — the
 // routing engine treats lucebox as a full participant rather than a narrow

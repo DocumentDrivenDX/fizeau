@@ -14,14 +14,15 @@ import (
 
 	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
 	"github.com/DocumentDrivenDX/agent/internal/provider/limits"
 	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
 	"github.com/DocumentDrivenDX/agent/internal/provider/lucebox"
 	"github.com/DocumentDrivenDX/agent/internal/provider/ollama"
 	"github.com/DocumentDrivenDX/agent/internal/provider/omlx"
-	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/openai"
 	"github.com/DocumentDrivenDX/agent/internal/provider/openrouter"
+	provregistry "github.com/DocumentDrivenDX/agent/internal/provider/registry"
 	"github.com/DocumentDrivenDX/agent/internal/provider/vllm"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 	"github.com/DocumentDrivenDX/agent/internal/safefs"
@@ -762,108 +763,27 @@ func (c *Config) ResolveBackend(name string, counter int, overrides ProviderOver
 	return p, pc, resolved, nil
 }
 
+// buildProviderFromConfig is the config-time factory. Per agent-8e4eb44c
+// the per-type switch is gone — both this and service_native_provider's
+// buildNativeProvider go through registry.Lookup. Adding a new
+// provider type is one Register() call in the new package.
 func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 	pc = normalizeProviderConfig(pc)
-	knownModels := openAIKnownModels()
-	modelWire := modelReasoningWireMap()
-	switch pc.Type {
-	case "openai":
-		return oaiProvider.New(oaiProvider.Config{
-			BaseURL:            pc.BaseURL,
-			APIKey:             pc.APIKey,
-			Model:              pc.Model,
-			ProviderName:       "openai",
-			ProviderSystem:     "openai",
-			ModelPattern:       pc.ModelPattern,
-			KnownModels:        knownModels,
-			Headers:            pc.Headers,
-			Reasoning:          pc.Reasoning,
-			Capabilities:       &oaiProvider.OpenAIProtocolCapabilities,
-			ModelReasoningWire: modelWire,
-		}), nil
-	case "openrouter":
-		return openrouter.New(openrouter.Config{
-			BaseURL:            pc.BaseURL,
-			APIKey:             pc.APIKey,
-			Model:              pc.Model,
-			ModelPattern:       pc.ModelPattern,
-			KnownModels:        knownModels,
-			Headers:            pc.Headers,
-			Reasoning:          pc.Reasoning,
-			ModelReasoningWire: modelWire,
-		}), nil
-	case "lmstudio":
-		return lmstudio.New(lmstudio.Config{
-			BaseURL:      pc.BaseURL,
-			APIKey:       pc.APIKey,
-			Model:        pc.Model,
-			ModelPattern: pc.ModelPattern,
-			KnownModels:  knownModels,
-			Headers:      pc.Headers,
-			Reasoning:    pc.Reasoning,
-		}), nil
-	case "omlx":
-		return omlx.New(omlx.Config{
-			BaseURL:      pc.BaseURL,
-			APIKey:       pc.APIKey,
-			Model:        pc.Model,
-			ModelPattern: pc.ModelPattern,
-			KnownModels:  knownModels,
-			Headers:      pc.Headers,
-			Reasoning:    pc.Reasoning,
-		}), nil
-	case "lucebox":
-		return lucebox.New(lucebox.Config{
-			BaseURL:      pc.BaseURL,
-			APIKey:       pc.APIKey,
-			Model:        pc.Model,
-			ModelPattern: pc.ModelPattern,
-			KnownModels:  knownModels,
-			Headers:      pc.Headers,
-			Reasoning:    pc.Reasoning,
-		}), nil
-	case "vllm":
-		return vllm.New(vllm.Config{
-			BaseURL:      pc.BaseURL,
-			APIKey:       pc.APIKey,
-			Model:        pc.Model,
-			ModelPattern: pc.ModelPattern,
-			KnownModels:  knownModels,
-			Headers:      pc.Headers,
-			Reasoning:    pc.Reasoning,
-		}), nil
-	case "ollama":
-		return ollama.New(ollama.Config{
-			BaseURL:      pc.BaseURL,
-			APIKey:       pc.APIKey,
-			Model:        pc.Model,
-			ModelPattern: pc.ModelPattern,
-			KnownModels:  knownModels,
-			Headers:      pc.Headers,
-			Reasoning:    pc.Reasoning,
-		}), nil
-	case "minimax", "qwen", "zai":
-		return oaiProvider.New(oaiProvider.Config{
-			BaseURL:            pc.BaseURL,
-			APIKey:             pc.APIKey,
-			Model:              pc.Model,
-			ProviderName:       pc.Type,
-			ProviderSystem:     pc.Type,
-			ModelPattern:       pc.ModelPattern,
-			KnownModels:        knownModels,
-			Headers:            pc.Headers,
-			Reasoning:          pc.Reasoning,
-			ModelReasoningWire: modelWire,
-		}), nil
-	case "anthropic":
-		return anthropic.New(anthropic.Config{
-			BaseURL: pc.BaseURL,
-			APIKey:  pc.APIKey,
-			Model:   pc.Model,
-		}), nil
-	default:
+	d, ok := provregistry.Lookup(pc.Type)
+	if !ok {
 		return nil, fmt.Errorf("config: unknown provider type %q", pc.Type)
 	}
+	return d.Factory(provregistry.Inputs{
+		ProviderName:       pc.Type,
+		BaseURL:            pc.BaseURL,
+		APIKey:             pc.APIKey,
+		Model:              pc.Model,
+		ModelPattern:       pc.ModelPattern,
+		KnownModels:        openAIKnownModels(),
+		Headers:            pc.Headers,
+		Reasoning:          pc.Reasoning,
+		ModelReasoningWire: modelReasoningWireMap(),
+	}), nil
 }
 
 // LookupModelLimits queries the concrete provider package for provider-owned

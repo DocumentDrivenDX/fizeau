@@ -11,9 +11,25 @@ import (
 	"time"
 
 	agent "github.com/DocumentDrivenDX/agent/internal/core"
+	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
 	ant "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
+
+func init() {
+	registry.Register(registry.Descriptor{
+		Type: "anthropic",
+		Factory: func(in registry.Inputs) agent.Provider {
+			return New(Config{
+				BaseURL: in.BaseURL,
+				APIKey:  in.APIKey,
+				Model:   in.Model,
+			})
+		},
+		// Anthropic uses api.anthropic.com — no LAN-port inference,
+		// explicit BaseURL (or SDK default) required.
+	})
+}
 
 // Provider implements agent.Provider for the Anthropic Messages API.
 type Provider struct {

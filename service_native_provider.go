@@ -6,14 +6,20 @@ import (
 
 	agentcore "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
-	"github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
-	"github.com/DocumentDrivenDX/agent/internal/provider/lucebox"
-	"github.com/DocumentDrivenDX/agent/internal/provider/ollama"
-	"github.com/DocumentDrivenDX/agent/internal/provider/omlx"
-	oaiProvider "github.com/DocumentDrivenDX/agent/internal/provider/openai"
-	"github.com/DocumentDrivenDX/agent/internal/provider/openrouter"
-	"github.com/DocumentDrivenDX/agent/internal/provider/vllm"
+	// Provider packages are imported for their init() side-effects so
+	// they self-register into the registry. The factory below uses
+	// registry.Lookup; the per-package import paths used to live in
+	// the case branches and stayed even after agent-8e4eb44c collapsed
+	// them — they're load-bearing for the init() registration.
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/anthropic"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/lmstudio"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/lucebox"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/ollama"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/omlx"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/openai"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/openrouter"
+	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
+	_ "github.com/DocumentDrivenDX/agent/internal/provider/vllm"
 )
 
 type nativeProviderResolution struct {
@@ -161,64 +167,23 @@ func (s *service) availableProviderTypes() string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
+// buildNativeProvider is the service-time factory. Per agent-8e4eb44c
+// the per-type switch is gone; both this and internal/config's
+// BuildProvider go through registry.Lookup. Adding a new provider type
+// is one Register() call in the new package; no edits to this file
+// or internal/config/config.go's factory.
 func buildNativeProvider(name string, entry ServiceProviderEntry) agentcore.Provider {
-	modelWire := nativeModelReasoningWireMap()
-	switch normalizeServiceProviderType(entry.Type) {
-	case "anthropic":
-		return anthropic.New(anthropic.Config{
-			BaseURL: entry.BaseURL,
-			APIKey:  entry.APIKey,
-			Model:   entry.Model,
-		})
-	case "lmstudio":
-		return lmstudio.New(lmstudio.Config{
-			BaseURL: entry.BaseURL,
-			APIKey:  entry.APIKey,
-			Model:   entry.Model,
-		})
-	case "openrouter":
-		return openrouter.New(openrouter.Config{
-			BaseURL:            entry.BaseURL,
-			APIKey:             entry.APIKey,
-			Model:              entry.Model,
-			ModelReasoningWire: modelWire,
-		})
-	case "omlx":
-		return omlx.New(omlx.Config{
-			BaseURL: entry.BaseURL,
-			APIKey:  entry.APIKey,
-			Model:   entry.Model,
-		})
-	case "lucebox":
-		return lucebox.New(lucebox.Config{
-			BaseURL: entry.BaseURL,
-			APIKey:  entry.APIKey,
-			Model:   entry.Model,
-		})
-	case "vllm":
-		return vllm.New(vllm.Config{
-			BaseURL: entry.BaseURL,
-			APIKey:  entry.APIKey,
-			Model:   entry.Model,
-		})
-	case "ollama":
-		return ollama.New(ollama.Config{
-			BaseURL: entry.BaseURL,
-			APIKey:  entry.APIKey,
-			Model:   entry.Model,
-		})
-	case "openai", "minimax", "qwen", "zai":
-		return oaiProvider.New(oaiProvider.Config{
-			BaseURL:            entry.BaseURL,
-			APIKey:             entry.APIKey,
-			Model:              entry.Model,
+	typ := normalizeServiceProviderType(entry.Type)
+	if d, ok := registry.Lookup(typ); ok {
+		return d.Factory(registry.Inputs{
 			ProviderName:       name,
-			ProviderSystem:     normalizeServiceProviderType(entry.Type),
-			ModelReasoningWire: modelWire,
+			BaseURL:            entry.BaseURL,
+			APIKey:             entry.APIKey,
+			Model:              entry.Model,
+			ModelReasoningWire: nativeModelReasoningWireMap(),
 		})
-	default:
-		return nil
 	}
+	return nil
 }
 
 // nativeModelReasoningWireMap returns the catalog reasoning_wire map for use

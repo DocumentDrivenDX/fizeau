@@ -12,10 +12,30 @@ import (
 	agent "github.com/DocumentDrivenDX/agent/internal/core"
 	"github.com/DocumentDrivenDX/agent/internal/provider/limits"
 	"github.com/DocumentDrivenDX/agent/internal/provider/openai"
+	"github.com/DocumentDrivenDX/agent/internal/provider/registry"
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 )
 
 const DefaultBaseURL = "https://openrouter.ai/api/v1"
+
+func init() {
+	registry.Register(registry.Descriptor{
+		Type: "openrouter",
+		Factory: func(in registry.Inputs) agent.Provider {
+			return New(Config{
+				BaseURL:            in.BaseURL,
+				APIKey:             in.APIKey,
+				Model:              in.Model,
+				ModelPattern:       in.ModelPattern,
+				KnownModels:        in.KnownModels,
+				Headers:            in.Headers,
+				Reasoning:          in.Reasoning,
+				ModelReasoningWire: in.ModelReasoningWire,
+			})
+		},
+		DefaultBaseURL: DefaultBaseURL,
+	})
+}
 
 var ProtocolCapabilities = openai.ProtocolCapabilities{
 	Tools:            true,
