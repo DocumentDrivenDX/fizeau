@@ -111,6 +111,7 @@ func TestCLIMainDoesNotImportOrCallInternalCoreRun(t *testing.T) {
 // there is no public re-export that would do.
 var approvedProductionInternalImports = []string{
 	"github.com/DocumentDrivenDX/agent/internal/config",
+	"github.com/DocumentDrivenDX/agent/internal/corpus",
 	"github.com/DocumentDrivenDX/agent/internal/modelcatalog",
 	"github.com/DocumentDrivenDX/agent/internal/observations",
 	"github.com/DocumentDrivenDX/agent/internal/productinfo",
