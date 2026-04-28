@@ -41,6 +41,11 @@ def main() -> int:
     tasks = filter_items(tasks, "tier", args.tier)
     arms = filter_items(arms, "tier", args.arm_tier)
 
+    if args.corpus_only or args.capability:
+        corpus_path = pathlib.Path(__file__).resolve().parent / "corpus.yaml"
+        corpus_index = load_corpus_index(corpus_path)
+        tasks = filter_corpus(tasks, corpus_index, capability=args.capability)
+
     if args.limit_tasks:
         tasks = tasks[: args.limit_tasks]
     if args.limit_arms:
@@ -141,6 +146,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--difficulty", action="append", help="Task difficulty filter; repeatable")
     parser.add_argument("--tier", action="append", help="Task tier filter; repeatable")
     parser.add_argument("--arm-tier", action="append", help="Arm tier filter; repeatable")
+    parser.add_argument(
+        "--corpus-only",
+        action="store_true",
+        help="Limit task set to beads listed in scripts/beadbench/corpus.yaml",
+    )
+    parser.add_argument(
+        "--capability",
+        help=(
+            "Limit to tasks whose bead_id is tagged with this capability or "
+            "failure_mode in scripts/beadbench/corpus.yaml"
+        ),
+    )
     parser.add_argument("--limit-tasks", type=int, default=0)
     parser.add_argument("--limit-arms", type=int, default=0)
     parser.add_argument("--repetitions", type=int, default=1)
@@ -170,6 +187,78 @@ def load_json(path: pathlib.Path) -> dict[str, Any]:
         return json.loads(path.read_text())
     except Exception as exc:
         raise SystemExit(f"beadbench: read manifest {path}: {exc}") from exc
+
+
+def load_corpus_index(path: pathlib.Path) -> dict[str, dict[str, str]]:
+    """Read scripts/beadbench/corpus.yaml without depending on PyYAML.
+
+    The file is purposefully simple — top-level ``version`` and ``beads:`` list
+    of mapping nodes with scalar fields ``id``, ``capability``, ``failure_mode``,
+    ``promoted``, ``promoted_by``. We parse only that shape; anything richer
+    will need a real YAML loader.
+
+    Returns a dict mapping bead_id → {"capability": str, "failure_mode": str}.
+    Raises ``SystemExit`` if the file is missing or malformed enough that
+    we cannot extract bead ids.
+    """
+    if not path.exists():
+        raise SystemExit(f"beadbench: corpus index not found at {path}")
+    out: dict[str, dict[str, str]] = {}
+    current: dict[str, str] | None = None
+    in_beads = False
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        if not in_beads:
+            if line.strip().rstrip(":") == "beads":
+                in_beads = True
+            continue
+        # New entry begins with `  - id: <bead-id>` (any indent, then "- ").
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if stripped.startswith("- "):
+            if current and current.get("id"):
+                out[current["id"]] = current
+            current = {}
+            stripped = stripped[2:]
+            key, _, value = stripped.partition(":")
+            current[key.strip()] = value.strip()
+            continue
+        if current is None:
+            continue
+        # A continuation line under the current entry (indent > the dash line).
+        if indent == 0:
+            # Back to a top-level key; stop scanning beads.
+            break
+        key, _, value = stripped.partition(":")
+        current[key.strip()] = value.strip()
+    if current and current.get("id"):
+        out[current["id"]] = current
+    return out
+
+
+def filter_corpus(
+    tasks: list[dict[str, Any]],
+    corpus_index: dict[str, dict[str, str]],
+    capability: str | None,
+) -> list[dict[str, Any]]:
+    """Restrict tasks to those whose bead_id is in the corpus index.
+
+    When ``capability`` is set, additionally drop tasks whose bead is not
+    tagged with that capability or failure_mode value.
+    """
+    out: list[dict[str, Any]] = []
+    for task in tasks:
+        bead_id = task.get("bead_id")
+        if not bead_id or bead_id not in corpus_index:
+            continue
+        if capability:
+            entry = corpus_index[bead_id]
+            if entry.get("capability") != capability and entry.get("failure_mode") != capability:
+                continue
+        out.append(task)
+    return out
 
 
 def select_by_id(items: list[dict[str, Any]], selected: list[str] | None) -> list[dict[str, Any]]:

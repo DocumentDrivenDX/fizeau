@@ -116,6 +116,8 @@ func run() int {
 			return cmdProviders(wd, *jsonOutput)
 		case "catalog":
 			return cmdCatalog(wd, args[1:])
+		case "corpus":
+			return cmdCorpus(wd, args[1:])
 		case "route-status":
 			return cmdRouteStatus(wd, args[1:])
 		case "import":

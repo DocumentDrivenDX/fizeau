@@ -353,6 +353,56 @@ def test_summary_excludes_flagged_tasks_from_comparison(tmp: pathlib.Path) -> No
     assert task_ids == ["t-valid"]
 
 
+def test_corpus_index_parses_minimal_shape(tmp: pathlib.Path) -> None:
+    corpus = tmp / "corpus.yaml"
+    corpus.write_text(
+        "# header comment\n"
+        "version: 1\n"
+        "beads:\n"
+        "  - id: agent-aaa\n"
+        "    capability: tag-cap\n"
+        "    promoted: 2026-04-27\n"
+        "    promoted_by: tester\n"
+        "  - id: agent-bbb\n"
+        "    failure_mode: tag-fail\n"
+        "    promoted: 2026-04-27\n"
+        "    promoted_by: tester\n"
+    )
+    idx = rb.load_corpus_index(corpus)
+    assert set(idx.keys()) == {"agent-aaa", "agent-bbb"}, idx
+    assert idx["agent-aaa"]["capability"] == "tag-cap"
+    assert idx["agent-bbb"].get("failure_mode") == "tag-fail"
+
+
+def test_filter_corpus_corpus_only(tmp: pathlib.Path) -> None:
+    tasks = [
+        {"id": "t-in", "bead_id": "agent-aaa"},
+        {"id": "t-out", "bead_id": "agent-zzz"},
+    ]
+    idx = {"agent-aaa": {"id": "agent-aaa", "capability": "tag-cap"}}
+    filtered = rb.filter_corpus(tasks, idx, capability=None)
+    assert [t["id"] for t in filtered] == ["t-in"], filtered
+
+
+def test_filter_corpus_capability(tmp: pathlib.Path) -> None:
+    tasks = [
+        {"id": "t-cap", "bead_id": "agent-aaa"},
+        {"id": "t-fail", "bead_id": "agent-bbb"},
+        {"id": "t-other", "bead_id": "agent-ccc"},
+    ]
+    idx = {
+        "agent-aaa": {"id": "agent-aaa", "capability": "tag-cap"},
+        "agent-bbb": {"id": "agent-bbb", "failure_mode": "tag-fail"},
+        "agent-ccc": {"id": "agent-ccc", "capability": "other-cap"},
+    }
+    cap_filtered = rb.filter_corpus(tasks, idx, capability="tag-cap")
+    assert [t["id"] for t in cap_filtered] == ["t-cap"]
+    fail_filtered = rb.filter_corpus(tasks, idx, capability="tag-fail")
+    assert [t["id"] for t in fail_filtered] == ["t-fail"]
+    miss_filtered = rb.filter_corpus(tasks, idx, capability="ghost")
+    assert miss_filtered == []
+
+
 def main() -> int:
     cases = [
         test_no_output_timeout,
@@ -368,6 +418,9 @@ def main() -> int:
         test_verify_result_records_verifier_timeout,
         test_summary_counts_executable_over_non_skipped,
         test_summary_excludes_flagged_tasks_from_comparison,
+        test_corpus_index_parses_minimal_shape,
+        test_filter_corpus_corpus_only,
+        test_filter_corpus_capability,
     ]
     failures: list[str] = []
     for case in cases:

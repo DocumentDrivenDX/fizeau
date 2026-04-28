@@ -5,6 +5,22 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+### Added
+
+- **Internal benchmark corpus + curation flow** (bead `agent-4f03f33d`).
+  New `internal/corpus` package + `ddx-agent corpus
+  promote|validate|list` subcommand stand up a capability-tagged
+  corpus of closed beads worth regression-tracking. Files live under
+  `scripts/beadbench/corpus.yaml`, `scripts/beadbench/corpus/<bead-id>.yaml`,
+  and `scripts/beadbench/corpus/capabilities.yaml` (controlled
+  vocabulary). `run_beadbench.py` learned `--corpus-only` and
+  `--capability=<tag>` filters. Promotion is intentionally manual —
+  curation is the value. See
+  `docs/helix/02-design/benchmark-corpus.md` for the curation rules.
+  Seeded with three beads: `agent-39f79181` (sampling resolver CLI
+  wiring), `agent-b6b15fb0` (openai-flavor thinking-leak — failure
+  mode), `agent-37aeb88e` (beadbench harness instrumentation).
+
 ## [v0.9.21] — 2026-04-27
 
 Bug-fix release. Closes the lucebox + vllm provider integration loop
