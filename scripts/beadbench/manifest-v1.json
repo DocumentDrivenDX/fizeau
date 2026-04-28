@@ -221,7 +221,7 @@
       "tier": "harness-parity",
       "review_harness": "codex",
       "review_model": "gpt-5.5",
-      "rationale": "Vidar OMLX Qwen 3.5 27B Claude-Opus-distilled (4bit MLX). Same server/quantization-bits as base 3.5-27B-4bit but distilled from Claude — tests whether instruction-following improves on identical hardware/software."
+      "rationale": "Vidar OMLX Qwen 3.5 27B Claude-Opus-distilled (4bit MLX). Same server/quantization-bits as base 3.5-27B-4bit but distilled from Claude \u2014 tests whether instruction-following improves on identical hardware/software."
     },
     {
       "id": "agent-omlx-vidar-qwen36-27b-8bit",
@@ -255,6 +255,39 @@
       "review_harness": "codex",
       "review_model": "gpt-5.5",
       "rationale": "Native agent harness against OpenRouter qwen/qwen3.5-27b to isolate server-side (omlx local vs cloud-hosted) from harness behavior. Closest single-axis (server-only) variation OpenRouter offers near the 3.6 27B used on omlx-vidar; pairs with agent-omlx-vidar-qwen36 and pi-omlx-vidar-qwen36."
+    },
+    {
+      "id": "agent-bragi-lucebox-qwen36",
+      "harness": "agent",
+      "provider": "lucebox",
+      "model": "Qwen3.6-27B-Q4_K_M",
+      "effort": "off",
+      "tier": "harness-parity",
+      "review_harness": "codex",
+      "review_model": "gpt-5.5",
+      "rationale": "Agent harness against bragi lucebox-hub dflash speculative decoder serving Qwen3.6-27B-Q4_K_M GGUF on a mobile 5090 (sm_120, 24 GB). Paired with agent-bragi-lmstudio-qwen36-27b to isolate the runtime \u2014 same hardware, same model class, lucebox vs llama.cpp under LM Studio."
+    },
+    {
+      "id": "agent-bragi-lmstudio-qwen36-27b",
+      "harness": "agent",
+      "provider": "bragi",
+      "model": "qwen/qwen3.6-27b",
+      "effort": "off",
+      "tier": "harness-parity",
+      "review_harness": "codex",
+      "review_model": "gpt-5.5",
+      "rationale": "Agent harness against bragi LM Studio (llama.cpp-backed) serving qwen/qwen3.6-27b on the same mobile 5090 hardware. Reference local-serving baseline \u2014 Tier-2 measured 5.2s mean per prompt, matching cloud latency."
+    },
+    {
+      "id": "agent-openrouter-qwen36plus",
+      "harness": "agent",
+      "provider": "openrouter",
+      "model": "qwen/qwen3.6-plus",
+      "effort": "off",
+      "tier": "harness-parity",
+      "review_harness": "codex",
+      "review_model": "gpt-5.5",
+      "rationale": "Agent harness against openrouter qwen/qwen3.6-plus (Alibaba-hosted). Cloud baseline for the harness-parity Qwen3.6 comparison."
     }
   ],
   "tasks": [

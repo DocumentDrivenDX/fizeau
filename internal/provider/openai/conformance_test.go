@@ -109,10 +109,10 @@ func TestConformance_OpenAICompatLive(t *testing.T) {
 	}{
 		{name: "omlx", providerType: "omlx", urlEnv: "OMLX_URL", modelEnv: "OMLX_MODEL", supportsToolCalls: false},
 		{name: "lmstudio", providerType: "lmstudio", urlEnv: "LMSTUDIO_URL", modelEnv: "LMSTUDIO_MODEL", supportsToolCalls: false},
-		// lucebox serves Qwen3 with thinking-mode-on by default; the
-		// response emits reasoning_content first, content second. Need
-		// headroom on both axes for the chat assertions to land.
-		{name: "lucebox", providerType: "lucebox", urlEnv: "LUCEBOX_URL", modelEnv: "LUCEBOX_MODEL", supportsThinking: true, supportsToolCalls: true, chatMaxTokens: 1024, scenarioTimeout: 120 * time.Second},
+		// lucebox serves Qwen3 with thinking-mode-on by default; defaults
+		// (1024 tokens / 5min timeout) already accommodate this. Set
+		// supportsThinking so the reasoning subtest runs.
+		{name: "lucebox", providerType: "lucebox", urlEnv: "LUCEBOX_URL", modelEnv: "LUCEBOX_MODEL", supportsThinking: true, supportsToolCalls: true},
 		{name: "vllm", providerType: "vllm", urlEnv: "VLLM_URL", modelEnv: "VLLM_MODEL", supportsToolCalls: true},
 		{name: "openrouter", providerType: "openrouter", apiKeyEnv: "OPENROUTER_API_KEY", modelEnv: "OPENROUTER_MODEL", defaultBaseURL: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini", supportsToolCalls: true},
 		{name: "openai", providerType: "openai", apiKeyEnv: "OPENAI_API_KEY", modelEnv: "OPENAI_MODEL", defaultBaseURL: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini", supportsToolCalls: true},

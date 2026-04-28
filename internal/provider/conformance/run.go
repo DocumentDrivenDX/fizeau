@@ -53,12 +53,17 @@ type Capabilities struct {
 	ScenarioTimeout time.Duration
 }
 
-// chatMaxTokens returns the configured chat budget or the default.
+// chatMaxTokens returns the configured chat budget or the default. The
+// default is 1024 — thinking-mode local models route most of their
+// budget through reasoning_content before content; an 8-token cap
+// produced empty content even when the wire was working correctly.
+// Cloud non-thinking providers ignore the headroom; setting a high
+// floor has no cost for them.
 func (c Capabilities) chatMaxTokens() int {
 	if c.ChatMaxTokens > 0 {
 		return c.ChatMaxTokens
 	}
-	return 8
+	return 1024
 }
 
 // streamMaxTokensCheck returns the configured stream cap or the default.
@@ -69,12 +74,18 @@ func (c Capabilities) streamMaxTokensCheck() int {
 	return 3
 }
 
-// scenarioTimeout returns the configured timeout or the default 5s.
+// scenarioTimeout returns the configured timeout or the default. The
+// default is 5 minutes — local 27B-class models legitimately take tens
+// of seconds per response when thinking is on, and arbitrary tight
+// timeouts produce "the server is broken" false positives. Cloud
+// providers complete in under a second; the high ceiling has no cost
+// for them. Override only when a faster failure signal is genuinely
+// useful.
 func (c Capabilities) scenarioTimeout() time.Duration {
 	if c.ScenarioTimeout > 0 {
 		return c.ScenarioTimeout
 	}
-	return 5 * time.Second
+	return 5 * time.Minute
 }
 
 // Run executes the shared provider conformance catalog.
