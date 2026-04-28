@@ -542,7 +542,14 @@ providers:
 		// carry a Provider. Either way the routing identity (Harness or
 		// Provider) must be populated.
 		assert.True(t, c.Harness != "" || c.Provider != "", "candidate must carry a harness or provider: %+v", c)
-		assert.NotEmpty(t, c.Model, "candidate must carry a resolved model")
+		// Eligible candidates must name a resolved model. Ineligible
+		// subscription-harness candidates (claude / codex / gemini that
+		// fail health because their CLI isn't on PATH — common in CI)
+		// legitimately surface with empty Model; the FilterReason
+		// covers them.
+		if c.Eligible {
+			assert.NotEmpty(t, c.Model, "eligible candidate must carry a resolved model: %+v", c)
+		}
 		// Components is always present; its zero value is meaningful (unknown).
 		_ = c.Components
 		if !c.Eligible {
@@ -641,7 +648,13 @@ providers:
 	sawIneligibleWithReason := false
 	sawIneligible := false
 	for _, c := range parsed.Candidates {
-		assert.NotEmpty(t, c.Model, "candidate must name a concrete model: %+v", c)
+		// Eligible candidates must name a concrete model. Ineligible
+		// subscription-harness candidates (claude / codex / gemini)
+		// surface with Model:"" in environments without their CLI on
+		// PATH (e.g., CI); FilterReason is the explanation there.
+		if c.Eligible {
+			assert.NotEmpty(t, c.Model, "eligible candidate must name a concrete model: %+v", c)
+		}
 		// Components is structured (not free-form); reading the four named
 		// axes proves the wire shape matches AC §2.
 		_ = c.Components.Cost
