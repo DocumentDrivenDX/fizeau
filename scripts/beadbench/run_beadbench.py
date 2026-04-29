@@ -77,6 +77,14 @@ def main() -> int:
         print("beadbench: --preflight and --skip-preflight are mutually exclusive", file=sys.stderr)
         return 2
 
+    if not args.no_warmup and not args.dry_run:
+        warmup_results = run_warmup(
+            arms,
+            timeout_s=args.warmup_timeout_seconds,
+            config_path=pathlib.Path.home() / ".config" / "agent" / "config.yaml",
+        )
+        (run_dir / "warmup.json").write_text(json.dumps(warmup_results, indent=2) + "\n")
+
     report: dict[str, Any] = {
         "schema_version": "1",
         "captured": timestamp,
@@ -179,6 +187,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sandbox-root",
         default=os.environ.get("DDX_BEADBENCH_SANDBOX_ROOT", tempfile.gettempdir()),
+    )
+    parser.add_argument(
+        "--no-warmup",
+        action="store_true",
+        help=(
+            "Skip the pre-warm phase that sends a 1-token completion to each "
+            "unique (base_url, model) referenced by selected arms. Default is "
+            "to warm — the first MLX inference loads ~27GB of weights into "
+            "VRAM and burns ~6-7 minutes that would otherwise eat the per-arm "
+            "budget (agent-1c147b05)."
+        ),
+    )
+    parser.add_argument(
+        "--warmup-timeout-seconds",
+        type=int,
+        default=600,
+        help="Per-endpoint timeout for the warmup completion (default 600s).",
     )
     return parser.parse_args()
 
@@ -387,6 +412,135 @@ def check_task_refs(task: dict[str, Any]) -> dict[str, Any]:
 
     out["ok"] = not out["errors"]
     return out
+
+
+def load_agent_provider_map(config_path: pathlib.Path) -> dict[str, dict[str, str]]:
+    """Parse ~/.config/agent/config.yaml's `providers:` section.
+
+    Returns a dict mapping provider name -> {"base_url": str, "model": str}.
+    Hand-rolled because PyYAML is not a guaranteed dependency. The format is
+    constrained to what the agent CLI emits / accepts:
+
+        providers:
+          name:
+            type: ...
+            base_url: http://host:port/v1
+            model: ...
+    """
+    if not config_path.exists():
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    current: str | None = None
+    in_providers = False
+    for raw in config_path.read_text().splitlines():
+        line = raw.rstrip()
+        if not line or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith(" "):
+            in_providers = line.strip().rstrip(":") == "providers"
+            current = None
+            continue
+        if not in_providers:
+            continue
+        # Two-space indent introduces a new provider name.
+        if line.startswith("  ") and not line.startswith("    ") and line.rstrip().endswith(":"):
+            current = line.strip().rstrip(":")
+            out[current] = {}
+            continue
+        if current is None or not line.startswith("    "):
+            continue
+        body = line.strip()
+        if ":" not in body:
+            continue
+        key, _, value = body.partition(":")
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if key in ("base_url", "model"):
+            out[current][key] = value
+    # Drop entries lacking either field.
+    return {k: v for k, v in out.items() if "base_url" in v and "model" in v}
+
+
+def collect_warmup_targets(
+    arms: list[dict[str, Any]], provider_map: dict[str, dict[str, str]]
+) -> list[dict[str, str]]:
+    """Build a deduplicated list of (base_url, model) endpoints to pre-warm.
+
+    Each arm specifies a provider name that the agent config resolves to a
+    base_url. Pi-side arm names (e.g. "vidar") may not appear in the agent
+    config; those are skipped because their physical endpoint is the same as
+    the paired agent-side arm and one warm-up amortizes both.
+    """
+    seen: set[tuple[str, str]] = set()
+    targets: list[dict[str, str]] = []
+    for arm in arms:
+        provider = arm.get("provider", "")
+        model = arm.get("model", "")
+        if not provider or not model:
+            continue
+        entry = provider_map.get(provider)
+        if not entry:
+            continue
+        key = (entry["base_url"], model)
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append({"provider": provider, "base_url": entry["base_url"], "model": model})
+    return targets
+
+
+def warmup_endpoint(target: dict[str, str], timeout_s: int) -> dict[str, Any]:
+    """Send a 1-token completion to force the model into VRAM."""
+    import urllib.request
+    import urllib.error
+
+    url = target["base_url"].rstrip("/") + "/chat/completions"
+    payload = json.dumps({
+        "model": target["model"],
+        "messages": [{"role": "user", "content": "."}],
+        "max_tokens": 1,
+        "temperature": 0,
+        "stream": False,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json", "Authorization": "Bearer warmup"},
+        method="POST",
+    )
+    started = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            resp.read()
+        return {"ok": True, "duration_s": time.monotonic() - started, **target}
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        return {
+            "ok": False,
+            "duration_s": time.monotonic() - started,
+            "error": str(exc),
+            **target,
+        }
+
+
+def run_warmup(
+    arms: list[dict[str, Any]], timeout_s: int, config_path: pathlib.Path
+) -> list[dict[str, Any]]:
+    provider_map = load_agent_provider_map(config_path)
+    targets = collect_warmup_targets(arms, provider_map)
+    if not targets:
+        print("beadbench: warmup — no resolvable (provider, model) targets")
+        return []
+    print(f"beadbench: warmup — {len(targets)} unique endpoint(s)")
+    results: list[dict[str, Any]] = []
+    for t in targets:
+        print(f"  {t['provider']} {t['model']} -> {t['base_url']} ...", flush=True)
+        r = warmup_endpoint(t, timeout_s)
+        results.append(r)
+        if r["ok"]:
+            print(f"    ok ({r['duration_s']:.1f}s)")
+        else:
+            print(f"    FAIL ({r['duration_s']:.1f}s): {r['error']}")
+    return results
 
 
 def run_preflight(

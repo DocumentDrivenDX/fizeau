@@ -40,6 +40,58 @@ def _init_sandbox(root: pathlib.Path) -> str:
 # already-emitted stdout/stderr. run_cmd_streamed tees to disk in real time
 # so artifact files survive the kill with whatever was written up to that
 # moment.
+def test_load_agent_provider_map_parses_minimal(tmp: pathlib.Path) -> None:
+    cfg = tmp / "config.yaml"
+    cfg.write_text(
+        "providers:\n"
+        "  vidar-omlx:\n"
+        "    type: omlx\n"
+        "    base_url: http://vidar:1235/v1\n"
+        "    model: Qwen3.6-27B-MLX-8bit\n"
+        "  bragi:\n"
+        "    # comment line should be ignored\n"
+        "    type: lmstudio\n"
+        "    base_url: 'http://bragi:1234/v1'\n"
+        "    model: \"qwen3.5-27b\"\n"
+        "default_provider: bragi\n"
+    )
+    m = rb.load_agent_provider_map(cfg)
+    assert m == {
+        "vidar-omlx": {"base_url": "http://vidar:1235/v1", "model": "Qwen3.6-27B-MLX-8bit"},
+        "bragi": {"base_url": "http://bragi:1234/v1", "model": "qwen3.5-27b"},
+    }
+
+
+def test_load_agent_provider_map_missing_file(tmp: pathlib.Path) -> None:
+    assert rb.load_agent_provider_map(tmp / "nonexistent.yaml") == {}
+
+
+def test_collect_warmup_targets_dedupes(tmp: pathlib.Path) -> None:
+    provider_map = {
+        "vidar-omlx": {"base_url": "http://vidar:1235/v1", "model": "Qwen3.6-27B-MLX-8bit"},
+        "bragi": {"base_url": "http://bragi:1234/v1", "model": "qwen3.5-27b"},
+    }
+    arms = [
+        # two arms hit the same (base_url, model) — only one warmup target
+        {"id": "a1", "provider": "vidar-omlx", "model": "Qwen3.6-27B-MLX-8bit"},
+        {"id": "a2", "provider": "vidar-omlx", "model": "Qwen3.6-27B-MLX-8bit"},
+        # different model on same endpoint — separate target
+        {"id": "a3", "provider": "vidar-omlx", "model": "Qwen3.5-27B-4bit"},
+        # bragi
+        {"id": "a4", "provider": "bragi", "model": "qwen3.5-27b"},
+        # pi-side name not in agent config — skipped
+        {"id": "a5", "provider": "vidar", "model": "Qwen3.6-27B-MLX-8bit"},
+    ]
+    targets = rb.collect_warmup_targets(arms, provider_map)
+    assert len(targets) == 3
+    keys = {(t["base_url"], t["model"]) for t in targets}
+    assert keys == {
+        ("http://vidar:1235/v1", "Qwen3.6-27B-MLX-8bit"),
+        ("http://vidar:1235/v1", "Qwen3.5-27B-4bit"),
+        ("http://bragi:1234/v1", "qwen3.5-27b"),
+    }
+
+
 def test_run_cmd_streamed_preserves_output_on_timeout(tmp: pathlib.Path) -> None:
     artifacts = tmp / "stream-timeout"
     artifacts.mkdir()
@@ -478,6 +530,9 @@ def main() -> int:
         test_filter_corpus_capability,
         test_run_cmd_streamed_returns_completed_process,
         test_run_cmd_streamed_preserves_output_on_timeout,
+        test_load_agent_provider_map_parses_minimal,
+        test_load_agent_provider_map_missing_file,
+        test_collect_warmup_targets_dedupes,
     ]
     failures: list[str] = []
     for case in cases:
