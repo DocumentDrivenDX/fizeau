@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/DocumentDrivenDX/agent/internal/reasoning"
 	"github.com/DocumentDrivenDX/agent/internal/sampling"
@@ -377,6 +378,32 @@ func (c *Catalog) ContextWindowForModel(id string) int {
 		}
 	}
 	return 0
+}
+
+// ReasoningStallTimeoutForModel returns the per-model reasoning-stall timeout
+// declared in the catalog for the given concrete model ID. The second return
+// value is true when the catalog declares a positive timeout for this model,
+// false otherwise (caller falls back to the request- or config-level default).
+// Matching is case-insensitive to mirror ContextWindowForModel.
+func (c *Catalog) ReasoningStallTimeoutForModel(id string) (time.Duration, bool) {
+	if c == nil {
+		return 0, false
+	}
+	if entry, ok := c.manifest.Models[id]; ok {
+		if entry.ReasoningStallTimeoutMS > 0 {
+			return time.Duration(entry.ReasoningStallTimeoutMS) * time.Millisecond, true
+		}
+		return 0, false
+	}
+	for mid, entry := range c.manifest.Models {
+		if strings.EqualFold(mid, id) {
+			if entry.ReasoningStallTimeoutMS > 0 {
+				return time.Duration(entry.ReasoningStallTimeoutMS) * time.Millisecond, true
+			}
+			return 0, false
+		}
+	}
+	return 0, false
 }
 
 // SupportsToolsForModel reports whether the given concrete model ID supports

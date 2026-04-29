@@ -56,6 +56,14 @@ type ModelEntry struct {
 	ContextWindow      int                         `yaml:"context_window,omitempty"`
 	NoTools            bool                        `yaml:"no_tools,omitempty"`
 	ReasoningMaxTokens int                         `yaml:"reasoning_max_tokens,omitempty"`
+	// ReasoningStallTimeoutMS is the per-model maximum duration (in
+	// milliseconds) that only reasoning_content deltas may arrive before
+	// the agent aborts the stream with a REASONING_STALL error. Zero falls
+	// through to the request- or config-level default. Some thinking-mode
+	// local models (e.g. Qwen, Gemma reasoning variants) legitimately need
+	// more wall-clock thinking than the global default; this knob lets the
+	// catalog encode that without touching code.
+	ReasoningStallTimeoutMS int `yaml:"reasoning_stall_timeout_ms,omitempty"`
 	ReasoningBudgets   map[reasoning.Reasoning]int `yaml:"reasoning_budgets,omitempty"`
 	ReasoningLevels    []string                    `yaml:"reasoning_levels,omitempty"`
 	ReasoningControl   string                      `yaml:"reasoning_control,omitempty"`

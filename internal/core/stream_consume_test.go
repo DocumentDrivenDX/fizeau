@@ -722,4 +722,97 @@ func TestConsumeStream_DefaultThresholds(t *testing.T) {
 func TestDefaultConstants(t *testing.T) {
 	assert.Equal(t, 256*1024, DefaultReasoningByteLimit)
 	assert.Equal(t, 300*time.Second, DefaultReasoningStallTimeout)
+	assert.Equal(t, 2000, DefaultReasoningTailBytes)
+}
+
+// TestConsumeStream_ReasoningStall_StructuredErrorAndEvent exercises the full
+// REASONING_STALL contract from the stub-provider side:
+//
+//   - The returned error unwraps to ErrReasoningStall (legacy errors.Is path).
+//   - It also satisfies errors.As(*ReasoningStallError) and exposes the
+//     stable code, model, timeout, captured reasoning tail, and prompt id.
+//   - A reasoning.stall session-log event is emitted carrying the same fields
+//     so downstream harnesses can count stall rate without parsing strings.
+func TestConsumeStream_ReasoningStall_StructuredErrorAndEvent(t *testing.T) {
+	shortStall := 50 * time.Millisecond
+
+	sp := &mockStreamingProvider{
+		delayBetween: 30 * time.Millisecond,
+		deltas: []StreamDelta{
+			{ReasoningContent: "step-1: examining the problem"},
+			{ReasoningContent: "step-2: still examining"},
+			{ReasoningContent: "step-3: this is taking forever"},
+			{Done: true},
+		},
+	}
+
+	var events []Event
+	cb := func(e Event) { events = append(events, e) }
+	seq := 0
+	start := time.Now()
+
+	_, err := consumeStream(context.Background(), sp, nil, nil, Options{}, cb, "sess-stall", start, &seq, streamThresholds{
+		reasoningStallTimeout: shortStall,
+		reasoningTailBytes:    64,
+		modelName:             "qwen3.5-27b",
+		promptID:              "sess-stall/i1/a1",
+	})
+
+	// Legacy compatibility: errors.Is must continue to match the sentinel.
+	require.ErrorIs(t, err, ErrReasoningStall)
+
+	// Structured form: errors.As must surface a *ReasoningStallError with the
+	// expected fields populated.
+	var stall *ReasoningStallError
+	require.True(t, errors.As(err, &stall), "expected *ReasoningStallError, got %T", err)
+	assert.Equal(t, ReasoningStallCode, stall.Code())
+	assert.Equal(t, "qwen3.5-27b", stall.Model)
+	assert.Equal(t, shortStall, stall.Timeout)
+	assert.Equal(t, "sess-stall/i1/a1", stall.PromptID)
+	assert.NotEmpty(t, stall.ReasoningTail, "reasoning tail should be captured")
+	assert.LessOrEqual(t, len(stall.ReasoningTail), 64, "tail must respect reasoningTailBytes")
+	assert.Contains(t, stall.ReasoningTail, "step-3", "tail should hold the most recent reasoning")
+
+	// Event emission: a reasoning.stall event must be present in the session
+	// log with model, timeout_ms, reasoning_tail, prompt_id, and the code.
+	var stallEvent *Event
+	for i := range events {
+		if events[i].Type == EventReasoningStall {
+			stallEvent = &events[i]
+			break
+		}
+	}
+	require.NotNil(t, stallEvent, "expected a reasoning.stall event to be emitted")
+	assert.Equal(t, "sess-stall", stallEvent.SessionID)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(stallEvent.Data, &payload))
+	assert.Equal(t, "qwen3.5-27b", payload["model"])
+	assert.Equal(t, float64(shortStall.Milliseconds()), payload["timeout_ms"])
+	assert.Equal(t, "sess-stall/i1/a1", payload["prompt_id"])
+	assert.Equal(t, ReasoningStallCode, payload["code"])
+	tail, ok := payload["reasoning_tail"].(string)
+	require.True(t, ok, "reasoning_tail should be a JSON string")
+	assert.Contains(t, tail, "step-3")
+}
+
+func TestAppendBoundedTail(t *testing.T) {
+	t.Run("under limit accumulates", func(t *testing.T) {
+		out := appendBoundedTail(nil, "abc", 10)
+		out = appendBoundedTail(out, "def", 10)
+		assert.Equal(t, "abcdef", string(out))
+	})
+	t.Run("trims to last N when exceeded", func(t *testing.T) {
+		out := appendBoundedTail([]byte("abcdefgh"), "ijkl", 5)
+		// total "abcdefghijkl" trimmed to last 5 = "hijkl"
+		assert.Equal(t, "hijkl", string(out))
+		assert.Len(t, out, 5)
+	})
+	t.Run("chunk larger than limit uses chunk tail only", func(t *testing.T) {
+		out := appendBoundedTail([]byte("xx"), "abcdefghij", 4)
+		assert.Equal(t, "ghij", string(out))
+	})
+	t.Run("zero limit is a no-op", func(t *testing.T) {
+		out := appendBoundedTail([]byte("abc"), "def", 0)
+		assert.Equal(t, "abc", string(out))
+	})
 }

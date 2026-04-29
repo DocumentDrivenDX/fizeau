@@ -304,6 +304,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 					reasoningByteLimit:    req.ReasoningByteLimit,
 					reasoningStallTimeout: req.ReasoningStallTimeout,
 					modelName:             sessionModel,
+					promptID:              fmt.Sprintf("%s/i%d/a%d", sessionID, iteration+1, attempt),
 				})
 			} else {
 				resp, err = req.Provider.Chat(chatCtx, providerMessages, toolDefs, opts)
@@ -442,7 +443,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				// looping — this is non-retryable and should not count as an error
 				// in benchmark mode.
 				if errors.Is(err, ErrReasoningOverflow) || errors.Is(err, ErrReasoningStall) {
-					slog.Warn("reasoning overflow: aborting stream", "err", err)
+					slog.Warn("reasoning loop detected: aborting stream", "err", err)
 					result.Status = StatusError
 					result.Error = fmt.Errorf("agent: %w", err)
 					result.Duration = time.Since(start)
