@@ -2,7 +2,9 @@
 
 Append-only summary across all dated `AR-YYYY-MM-DD-agent-vs-pi-*` measurements. Goal: track our native agent harness against pi on shared backings until parity is achieved on real coding tasks.
 
-Governing bead: [`agent-f43d1ed2`](../../.ddx/beads.jsonl). Depends on the methodology established in [`AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36.md`](AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36.md).
+This tracker is the **iteration-loop scoreboard**. Each row is a measurement taken after a tweak to compaction, tools, system prompt, or reasoning level; the trend across rows shows whether the native agent is closing the gap with pi on the same backing.
+
+Governing bead: [`agent-f43d1ed2`](../../.ddx/beads.jsonl). Methodology established in [`AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36.md`](AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36.md); initial measurement provided by `agent-b5d67344`.
 
 ## Match criterion
 
@@ -69,13 +71,13 @@ Once the prior dated AR doc ([AR-2026-04-26-agent-vs-pi-omlx-vidar-qwen36](AR-20
 
 ## Backing-model rotation
 
-First several measurements use **openrouter qwen/qwen3.6-plus** per the initial bead `agent-3663e287`. This is the same backing pi defaults to for non-Anthropic flows on this LAN, so it isolates harness behavior from provider-side variation.
+Primary backing for the iteration loop is **`Qwen3.6-27B-MLX-8bit` on vidar (omlx)**, per bead `agent-b5d67344`. Local inference removes provider-side variance and keeps the cost ratio interpretable across runs. The earlier openrouter qwen/qwen3.6-plus row from `agent-3663e287` is retained for historical continuity but is not the active series.
 
-After matching is established for the qwen3.6-plus backing, optionally extend to additional shared backings to test whether the gap is model-dependent:
+After matching is established on the vidar omlx backing, optionally extend to additional shared backings to test whether the gap is model-dependent:
 
+- `qwen/qwen3.6-plus` on openrouter (original framing; one row exists, both arms blocked on infra bugs)
 - `claude-opus-4-6` (if pi exposes it via Anthropic credentials)
 - `gpt-5.5` (if pi exposes it via OpenAI credentials)
-- `Qwen3.6-27B-MLX-8bit` on omlx (covered by AR-2026-04-26 separately)
 - `qwen/qwen3.6-27b` on bragi LM Studio (added via beadbench arms today)
 
 Each new backing starts a separate row series. Don't conflate backings within a run.
