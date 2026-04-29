@@ -27,6 +27,8 @@ func run(args []string) int {
 		return cmdRun(args[1:])
 	case "report":
 		return cmdReport(args[1:])
+	case "profiles":
+		return cmdProfiles(args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return 0
@@ -48,6 +50,7 @@ Commands:
   discover   List discovered (harness, provider, model) candidates
   run        Run corpus against discovered candidates
   report     Render a results file as table, json, or markdown
+  profiles   Manage v7 benchmark profiles (subcommand: list)
 
 Run '%s <command> -h' for command-specific flags.
 `, benchCommandName(), benchCommandName())
