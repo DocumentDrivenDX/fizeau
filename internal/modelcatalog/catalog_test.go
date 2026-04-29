@@ -682,6 +682,66 @@ func TestContextWindowForModel_CaseInsensitive(t *testing.T) {
 	assert.Equal(t, 262144, catalog.ContextWindowForModel("Beta-Model-1"))
 }
 
+func TestReasoningStallTimeoutForModel(t *testing.T) {
+	catalog, err := Load(LoadOptions{
+		ManifestPath: writeFixtureManifest(t, `
+version: 4
+generated_at: 2026-04-29T00:00:00Z
+catalog_version: 2026-04-29.1
+models:
+  thinker-1:
+    family: qwen
+    tier: thinker-tier
+    status: active
+    reasoning_stall_timeout_ms: 600000
+    surfaces:
+      agent.openai: thinker-1
+  speedy-1:
+    family: gpt
+    tier: speedy-tier
+    status: active
+    surfaces:
+      agent.openai: speedy-1
+profiles:
+  thinker:
+    target: thinker-tier
+targets:
+  thinker-tier:
+    family: qwen
+    candidates: [thinker-1, speedy-1]
+  speedy-tier:
+    family: gpt
+    candidates: [speedy-1]
+`),
+	})
+	require.NoError(t, err)
+
+	t.Run("declared model returns positive duration", func(t *testing.T) {
+		d, ok := catalog.ReasoningStallTimeoutForModel("thinker-1")
+		require.True(t, ok)
+		assert.Equal(t, 600*time.Second, d)
+	})
+	t.Run("model without timeout returns false", func(t *testing.T) {
+		d, ok := catalog.ReasoningStallTimeoutForModel("speedy-1")
+		assert.False(t, ok)
+		assert.Equal(t, time.Duration(0), d)
+	})
+	t.Run("unknown model returns false", func(t *testing.T) {
+		_, ok := catalog.ReasoningStallTimeoutForModel("does-not-exist")
+		assert.False(t, ok)
+	})
+	t.Run("case-insensitive lookup", func(t *testing.T) {
+		d, ok := catalog.ReasoningStallTimeoutForModel("Thinker-1")
+		require.True(t, ok)
+		assert.Equal(t, 600*time.Second, d)
+	})
+	t.Run("nil receiver is safe", func(t *testing.T) {
+		var c *Catalog
+		_, ok := c.ReasoningStallTimeoutForModel("anything")
+		assert.False(t, ok)
+	})
+}
+
 func TestContextWindowForModel_EmbeddedCatalogHasQwenWindow(t *testing.T) {
 	// Regression test for the CLI fallback: the embedded v4 catalog ships with
 	// context_window: 262144 on qwen3.5-27b. If this ever stops resolving,

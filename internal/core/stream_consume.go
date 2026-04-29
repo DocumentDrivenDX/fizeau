@@ -20,12 +20,26 @@ const DefaultReasoningByteLimit = 256 * 1024 // 256KB
 // 0 = unlimited.
 const DefaultReasoningStallTimeout = 300 * time.Second
 
+// DefaultReasoningTailBytes is the default size of the reasoning-tail buffer
+// captured for inclusion in ReasoningStallError. Sized to roughly the last
+// 500 reasoning tokens at ~4 chars/token. Configurable via
+// streamThresholds.reasoningTailBytes; 0 falls back to this default.
+const DefaultReasoningTailBytes = 2000
+
 // streamThresholds holds the configurable reasoning-loop detection thresholds
 // passed into consumeStream.
 type streamThresholds struct {
 	reasoningByteLimit    int
 	reasoningStallTimeout time.Duration
-	modelName             string // included in error messages
+	// reasoningTailBytes bounds the rolling buffer of reasoning_content
+	// retained for the ReasoningStallError. Zero means
+	// DefaultReasoningTailBytes; negative disables the buffer.
+	reasoningTailBytes int
+	modelName          string // included in error messages
+	// promptID is included in the reasoning.stall event payload and the
+	// returned ReasoningStallError so callers can correlate the stall to a
+	// specific prompt/turn. May be empty.
+	promptID string
 }
 
 // consumeStream reads from a StreamingProvider's channel, emits delta events,
@@ -56,6 +70,16 @@ func consumeStream(
 	// 0 means unlimited for both thresholds (same pattern as MaxIterations).
 	byteLimit := thresholds.reasoningByteLimit
 	stallTimeout := thresholds.reasoningStallTimeout
+
+	// Reasoning tail buffer: bounded ring of the most recent reasoning
+	// content. On stall, the trailing slice is attached to ReasoningStallError
+	// and emitted in the reasoning.stall event so callers can debug what the
+	// model was reasoning about at the time.
+	tailLimit := thresholds.reasoningTailBytes
+	if tailLimit == 0 {
+		tailLimit = DefaultReasoningTailBytes
+	}
+	var reasoningTail []byte
 
 	// Runaway reasoning loop detection.
 	// These track state only while the model is in pure-reasoning mode (no
@@ -139,12 +163,32 @@ func consumeStream(
 				nonReasoningSeen = true
 			} else if delta.ReasoningContent != "" {
 				reasoningBytes += len(delta.ReasoningContent)
+				if tailLimit > 0 {
+					reasoningTail = appendBoundedTail(reasoningTail, delta.ReasoningContent, tailLimit)
+				}
 				// 0 means unlimited (no limit).
 				if byteLimit > 0 && reasoningBytes > byteLimit {
 					return resp, reasoningOverflowError(thresholds.modelName, byteLimit, reasoningBytes)
 				}
 				if stallTimeout > 0 && time.Since(reasoningStallStart) > stallTimeout {
-					return resp, reasoningStallError(thresholds.modelName, stallTimeout)
+					stallErr := newReasoningStallError(thresholds.modelName, stallTimeout, reasoningTail, thresholds.promptID)
+					if callback != nil {
+						emitCallback(callback, Event{
+							SessionID: sessionID,
+							Seq:       *seq,
+							Type:      EventReasoningStall,
+							Timestamp: time.Now().UTC(),
+							Data: mustMarshal(map[string]any{
+								"model":          stallErr.Model,
+								"timeout_ms":     stallTimeout.Milliseconds(),
+								"reasoning_tail": stallErr.ReasoningTail,
+								"prompt_id":      stallErr.PromptID,
+								"code":           ReasoningStallCode,
+							}),
+						})
+						*seq++
+					}
+					return resp, stallErr
 				}
 			}
 		}
@@ -206,10 +250,42 @@ func reasoningOverflowError(model string, limit, actual int) error {
 		ErrReasoningOverflow, model, limit/1024, actual/1024)
 }
 
-// reasoningStallError wraps ErrReasoningStall with model name and threshold.
-func reasoningStallError(model string, timeout time.Duration) error {
+// newReasoningStallError builds a structured ReasoningStallError. The legacy
+// helper reasoningStallError(model, timeout) used to return a flat
+// fmt.Errorf wrapping; the structured form preserves errors.Is matching via
+// the error's Unwrap method while exposing Model, Timeout, ReasoningTail, and
+// PromptID for programmatic access (see ReasoningStallCode).
+func newReasoningStallError(model string, timeout time.Duration, tail []byte, promptID string) *ReasoningStallError {
 	if model == "" {
 		model = "unknown"
 	}
-	return fmt.Errorf("%w (model=%s, timeout=%s)", ErrReasoningStall, model, timeout)
+	tailStr := ""
+	if len(tail) > 0 {
+		tailStr = string(tail)
+	}
+	return &ReasoningStallError{
+		Model:         model,
+		Timeout:       timeout,
+		ReasoningTail: tailStr,
+		PromptID:      promptID,
+	}
+}
+
+// appendBoundedTail keeps the last `limit` bytes of (existing + chunk).
+// Avoids unbounded growth of the reasoning tail buffer over a long stream.
+func appendBoundedTail(existing []byte, chunk string, limit int) []byte {
+	if limit <= 0 || chunk == "" {
+		return existing
+	}
+	if len(chunk) >= limit {
+		// New chunk alone exceeds the limit: keep only its trailing bytes.
+		out := make([]byte, limit)
+		copy(out, chunk[len(chunk)-limit:])
+		return out
+	}
+	combined := append(existing, chunk...)
+	if len(combined) <= limit {
+		return combined
+	}
+	return combined[len(combined)-limit:]
 }

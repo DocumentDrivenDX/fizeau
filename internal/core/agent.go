@@ -184,6 +184,11 @@ const (
 	// metrics across restarts and beyond the in-memory ring's retention.
 	EventOverride         EventType = "override"
 	EventRejectedOverride EventType = "rejected_override"
+	// EventReasoningStall fires immediately before consumeStream returns
+	// ErrReasoningStall. Its data payload carries model, timeout_ms,
+	// reasoning_tail, and prompt_id so harnesses and dashboards can count
+	// stall rate and debug what the model was reasoning about at the time.
+	EventReasoningStall EventType = "reasoning.stall"
 )
 
 // Event is a structured event emitted during a internal agent loop.
