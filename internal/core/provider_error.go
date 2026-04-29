@@ -1,6 +1,9 @@
 package core
 
-import "regexp"
+import (
+	"errors"
+	"regexp"
+)
 
 // overflowPattern matches error messages that indicate the request exceeded the
 // model's context window.
@@ -41,6 +44,12 @@ var fatalPattern = regexp.MustCompile(
 // Returns false for fatal errors (auth failures, bad requests, etc.).
 func IsTransientError(err error) bool {
 	if err == nil {
+		return false
+	}
+	// Provider-capability errors are deterministic for a given provider+model
+	// combination. Retrying just burns the same call repeatedly with the same
+	// outcome, so classify them as non-transient regardless of substring shape.
+	if errors.Is(err, ErrProviderCapabilityMissing) {
 		return false
 	}
 	msg := err.Error()

@@ -216,7 +216,7 @@ func (c *Client) ChatStream(ctx context.Context, model string, messages []agent.
 		}
 
 		if err := stream.Err(); err != nil {
-			send(agent.StreamDelta{Err: err})
+			send(agent.StreamDelta{Err: classifyStreamErr(err)})
 			return
 		}
 
