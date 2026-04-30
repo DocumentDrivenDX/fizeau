@@ -937,6 +937,9 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	default:
 		final.Status = "success"
 	}
+	if final.Status == "failed" && final.Error != "" && final.RoutingActual != nil {
+		final.RoutingActual.FailureClass = classifyDispatchFailure(final.Error)
+	}
 
 	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
@@ -966,48 +969,48 @@ type serviceRouteProvider struct {
 }
 
 func (p *serviceRouteProvider) Chat(ctx context.Context, messages []agentcore.Message, tools []agentcore.ToolDef, opts agentcore.Options) (agentcore.Response, error) {
-	var failures []string
-	for i, candidate := range p.candidates {
-		if candidate.Provider == "" {
+	candidate, ok := p.selectedCandidate()
+	if !ok {
+		return agentcore.Response{}, fmt.Errorf("agent: route %q has no selected provider candidate", p.routeKey)
+	}
+	p.attempted = append(p.attempted, candidate.Provider)
+	req := p.baseRequest
+	req.Provider = candidate.Provider
+	req.Model = candidate.Model
+	if candidate.Endpoint != "" {
+		req.Provider = endpointProviderRef(candidate.Provider, candidate.Endpoint)
+	}
+	resolved := p.service.resolveNativeProvider(req)
+	if resolved.Provider == nil {
+		return agentcore.Response{}, fmt.Errorf("agent: provider error: no provider configured for %q", req.Provider)
+	}
+	opts.Model = candidate.Model
+	resp, err := resolved.Provider.Chat(ctx, messages, tools, opts)
+	if err != nil {
+		return agentcore.Response{}, err
+	}
+	p.selectedProvider = candidate.Provider
+	if resp.Attempt == nil {
+		resp.Attempt = &agentcore.AttemptMetadata{}
+	}
+	resp.Attempt.ProviderName = candidate.Provider
+	resp.Attempt.Route = p.routeKey
+	if resp.Attempt.RequestedModel == "" {
+		resp.Attempt.RequestedModel = p.routeKey
+	}
+	return resp, nil
+}
+
+func (p *serviceRouteProvider) selectedCandidate() (RouteCandidate, bool) {
+	for _, candidate := range p.candidates {
+		if !candidate.Eligible || candidate.Provider == "" {
 			continue
 		}
-		p.attempted = append(p.attempted, candidate.Provider)
-		req := p.baseRequest
-		req.Provider = candidate.Provider
-		req.Model = candidate.Model
-		if candidate.Endpoint != "" {
-			req.Provider = endpointProviderRef(candidate.Provider, candidate.Endpoint)
-		}
-		resolved := p.service.resolveNativeProvider(req)
-		if resolved.Provider == nil {
-			err := fmt.Errorf("agent: provider error: no provider configured for %q", req.Provider)
-			failures = append(failures, fmt.Sprintf("%s: %v", candidate.Provider, err))
-			if i == len(p.candidates)-1 || !shouldServiceFailover(err) {
-				return agentcore.Response{}, err
-			}
-			continue
-		}
-		opts.Model = candidate.Model
-		resp, err := resolved.Provider.Chat(ctx, messages, tools, opts)
-		if err == nil {
-			p.selectedProvider = candidate.Provider
-			p.failoverCount = i
-			if resp.Attempt == nil {
-				resp.Attempt = &agentcore.AttemptMetadata{}
-			}
-			resp.Attempt.ProviderName = candidate.Provider
-			resp.Attempt.Route = p.routeKey
-			if resp.Attempt.RequestedModel == "" {
-				resp.Attempt.RequestedModel = p.routeKey
-			}
-			return resp, nil
-		}
-		failures = append(failures, fmt.Sprintf("%s: %v", candidate.Provider, err))
-		if i == len(p.candidates)-1 || !shouldServiceFailover(err) {
-			return agentcore.Response{}, err
+		if p.selectedProvider == "" || candidate.Provider == p.selectedProvider {
+			return candidate, true
 		}
 	}
-	return agentcore.Response{}, fmt.Errorf("agent: route %q failed after attempts: %s", p.routeKey, strings.Join(failures, " | "))
+	return RouteCandidate{}, false
 }
 
 func (p *serviceRouteProvider) RoutingReport() agentcore.RoutingReport {
@@ -1045,41 +1048,30 @@ func shouldRetryNativeNoStream(requestedStream bool, result agentcore.Result, ru
 	return result.Tokens.Input == 0 && result.Tokens.Output == 0 && result.Tokens.Total == 0
 }
 
-func shouldServiceFailover(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
+func classifyDispatchFailure(errMsg string) string {
+	msg := strings.ToLower(errMsg)
 	switch {
-	case strings.Contains(msg, "status code: 401"),
-		strings.Contains(msg, "status code: 403"),
-		strings.Contains(msg, "status code: 408"),
-		strings.Contains(msg, "status code: 409"),
-		strings.Contains(msg, "status code: 429"),
-		strings.Contains(msg, "status code: 500"),
-		strings.Contains(msg, "status code: 502"),
-		strings.Contains(msg, "status code: 503"),
-		strings.Contains(msg, "status code: 504"),
-		strings.Contains(msg, "401 unauthorized"),
-		strings.Contains(msg, "403 forbidden"),
-		strings.Contains(msg, "408 request timeout"),
-		strings.Contains(msg, "409 conflict"),
-		strings.Contains(msg, "429 too many requests"),
-		strings.Contains(msg, "500 internal server error"),
-		strings.Contains(msg, "502 bad gateway"),
-		strings.Contains(msg, "503 service unavailable"),
-		strings.Contains(msg, "504 gateway timeout"),
-		strings.Contains(msg, "connection refused"),
-		strings.Contains(msg, "dial tcp"),
+	case strings.Contains(msg, "no provider configured"),
+		strings.Contains(msg, "not available"),
+		strings.Contains(msg, "exhausted"),
+		strings.Contains(msg, "not configured"):
+		return "availability"
+	case strings.Contains(msg, "timeout"),
+		strings.Contains(msg, "deadline"),
+		strings.Contains(msg, "connection"),
+		strings.Contains(msg, "refused"),
 		strings.Contains(msg, "no such host"),
-		strings.Contains(msg, "timeout"),
-		strings.Contains(msg, "temporarily unavailable"),
-		strings.Contains(msg, "service unavailable"),
-		strings.Contains(msg, "unreachable"),
-		strings.Contains(msg, "connection reset"):
-		return true
+		strings.Contains(msg, "transport"):
+		return "transport"
+	case strings.Contains(msg, "http "),
+		strings.Contains(msg, "status "),
+		strings.Contains(msg, "bad request"),
+		strings.Contains(msg, "unauthorized"),
+		strings.Contains(msg, "not found"),
+		strings.Contains(msg, "unsupported"):
+		return "protocol"
 	default:
-		return false
+		return "unknown"
 	}
 }
 

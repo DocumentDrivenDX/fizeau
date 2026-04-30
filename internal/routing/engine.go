@@ -229,6 +229,8 @@ type NoViableCandidateError struct {
 	Model    string
 	Provider string
 	Harness  string
+	MinPower int
+	MaxPower int
 }
 
 func (e *NoViableCandidateError) Error() string {
@@ -241,6 +243,12 @@ func (e *NoViableCandidateError) Error() string {
 	}
 	if e.Harness != "" {
 		pins = append(pins, "harness="+e.Harness)
+	}
+	if e.MinPower > 0 {
+		pins = append(pins, fmt.Sprintf("min_power=%d", e.MinPower))
+	}
+	if e.MaxPower > 0 {
+		pins = append(pins, fmt.Sprintf("max_power=%d", e.MaxPower))
 	}
 	if len(pins) > 0 {
 		return fmt.Sprintf("no viable routing candidate for pins %s: %d candidates rejected", strings.Join(pins, " "), e.Rejected)
@@ -461,6 +469,8 @@ func noViableCandidateError(req Request, rejected int) *NoViableCandidateError {
 		Model:    req.Model,
 		Provider: req.Provider,
 		Harness:  canonicalHarnessPin(req.Harness),
+		MinPower: req.MinPower,
+		MaxPower: req.MaxPower,
 	}
 }
 

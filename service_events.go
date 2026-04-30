@@ -260,6 +260,7 @@ type ServiceRoutingActual struct {
 	Provider           string   `json:"provider,omitempty"`
 	Model              string   `json:"model"`
 	FallbackChainFired []string `json:"fallback_chain_fired,omitempty"`
+	FailureClass       string   `json:"failure_class,omitempty"`
 }
 
 // ServiceDecodedEvent is a typed view of one ServiceEvent. Exactly one payload

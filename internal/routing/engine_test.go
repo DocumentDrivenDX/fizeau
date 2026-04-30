@@ -421,6 +421,18 @@ func TestAutomaticRoutingFiltersMinMaxPower(t *testing.T) {
 			t.Fatalf("large FilterReason=%q, want %q", c.FilterReason, FilterReasonAboveMaxPower)
 		}
 	}
+
+	dec, err = Resolve(Request{MinPower: 9, MaxPower: 9}, in)
+	if err == nil {
+		t.Fatalf("Resolve impossible power bounds selected %#v, want no viable error", dec)
+	}
+	var noViable *NoViableCandidateError
+	if !errors.As(err, &noViable) {
+		t.Fatalf("error=%T %v, want *NoViableCandidateError", err, err)
+	}
+	if !strings.Contains(err.Error(), "min_power=9") || !strings.Contains(err.Error(), "max_power=9") {
+		t.Fatalf("error=%q, want requested power bounds", err.Error())
+	}
 }
 
 func TestExactModelPinBypassesCatalogPowerEligibility(t *testing.T) {

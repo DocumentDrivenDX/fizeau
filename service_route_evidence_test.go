@@ -1,0 +1,99 @@
+//go:build testseam
+
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestExecuteRouteEvidenceNoRetryAfterSelectedDispatchFailure(t *testing.T) {
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"alpha": {Type: "test", BaseURL: "http://127.0.0.1:1/v1", Model: "route-model"},
+			"beta":  {Type: "test", BaseURL: "http://127.0.0.1:2/v1", Model: "route-model"},
+		},
+		names:       []string{"alpha", "beta"},
+		defaultName: "alpha",
+	}
+	var calls atomic.Int64
+	svc, err := New(ServiceOptions{
+		ServiceConfig: sc,
+		FakeProvider: &FakeProvider{
+			InjectError: func(int) error {
+				calls.Add(1)
+				return errors.New("connection refused")
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := svc.Execute(context.Background(), ServiceExecuteRequest{
+		Prompt: "try once",
+		Model:  "route-model",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	events := drainServiceEvents(t, ch, 2*time.Second)
+	if calls.Load() != 1 {
+		t.Fatalf("provider calls=%d, want exactly one selected-candidate attempt", calls.Load())
+	}
+	final := finalServiceData(t, events)
+	if final.Status != "failed" {
+		t.Fatalf("final status=%q, want failed", final.Status)
+	}
+	if final.RoutingActual == nil {
+		t.Fatal("final routing_actual is nil")
+	}
+	if final.RoutingActual.Provider != "alpha" || final.RoutingActual.Model != "route-model" {
+		t.Fatalf("routing_actual=%#v, want attempted alpha/route-model", final.RoutingActual)
+	}
+	if final.RoutingActual.FailureClass != "transport" {
+		t.Fatalf("failure_class=%q, want transport", final.RoutingActual.FailureClass)
+	}
+	if got := final.RoutingActual.FallbackChainFired; len(got) != 1 || got[0] != "alpha" {
+		t.Fatalf("attempted providers=%v, want [alpha]", got)
+	}
+}
+
+func drainServiceEvents(t *testing.T, ch <-chan ServiceEvent, timeout time.Duration) []ServiceEvent {
+	t.Helper()
+	var events []ServiceEvent
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				return events
+			}
+			events = append(events, ev)
+		case <-timer.C:
+			t.Fatalf("timed out waiting for service events")
+			return events
+		}
+	}
+}
+
+func finalServiceData(t *testing.T, events []ServiceEvent) ServiceFinalData {
+	t.Helper()
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type != "final" {
+			continue
+		}
+		var final ServiceFinalData
+		if err := json.Unmarshal(events[i].Data, &final); err != nil {
+			t.Fatalf("unmarshal final: %v", err)
+		}
+		return final
+	}
+	t.Fatalf("final event not found in %v", events)
+	return ServiceFinalData{}
+}

@@ -180,6 +180,7 @@ type RoutingActual struct {
 	Provider           string   `json:"provider,omitempty"`
 	Model              string   `json:"model"`
 	FallbackChainFired []string `json:"fallback_chain_fired,omitempty"`
+	FailureClass       string   `json:"failure_class,omitempty"`
 }
 
 // HarnessInfo describes a registered harness. Mirrors the public
