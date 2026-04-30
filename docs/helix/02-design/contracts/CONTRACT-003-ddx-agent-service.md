@@ -6,9 +6,11 @@
 
 ## Purpose
 
-This contract defines the **entire public Go surface** of the `ddx-agent` module.
-Anything not reachable through the `DdxAgent` interface — or through the input/output
-struct types referenced by its methods — is internal and may change without notice.
+This contract defines the public Go surface of the `ddx-agent` module. The
+service surface is the `DdxAgent` interface plus the input/output struct types
+referenced by its methods. The only public CLI embedding surface is the
+`agentcli` mountable command tree described below. Anything else is internal
+and may change without notice.
 
 Consumers (DDx CLI, future HELIX/Dun integrations, the standalone `ddx-agent`
 binary, anything else) interact only through this surface. **They do not import
@@ -143,6 +145,56 @@ legacy `ResolveProfile`, legacy `ProfileAliases`, `HealthCheck`,
 routing/status surface; `UsageReport`, `ListSessionLogs`, `WriteSessionLog`,
 and `ReplaySession` are the historical session-log projection used by
 `ddx-agent log`, `replay`, and `usage`.
+
+## Mountable CLI Surface
+
+The standalone `ddx-agent` binary and embedding callers use the same public
+Cobra command tree from package `agentcli`:
+
+```go
+package agentcli
+
+type MountOption func(...)
+
+func MountCLI(opts ...MountOption) *cobra.Command
+func WithUse(use string) MountOption
+func WithShort(short string) MountOption
+func WithLong(long string) MountOption
+func WithStdin(stdin io.Reader) MountOption
+func WithStdout(stdout io.Writer) MountOption
+func WithStderr(stderr io.Writer) MountOption
+func WithVersion(version, buildTime, gitCommit string) MountOption
+
+type ExitError struct { Code int }
+func ExitCode(err error) (int, bool)
+
+type Options struct { Args []string; Stdin io.Reader; Stdout io.Writer; Stderr io.Writer; Version, BuildTime, GitCommit string }
+func Run(opts Options) int
+```
+
+Implementation references: `agentcli/mount.go` defines `MountCLI`, mount
+options, `ExitError`, and `ExitCode`; `agentcli/run.go` defines the non-exiting
+`Run` runner; `cmd/agent/main.go` mounts the command and is the only
+`ddx-agent` command path that converts returned errors into `os.Exit`.
+
+Contract guarantees for embedders:
+
+- `MountCLI` returns a fresh, unattached `*cobra.Command` on each call.
+- `WithUse`, `WithShort`, and `WithLong` customize help metadata without
+  changing execution behavior.
+- `WithStdin`, `WithStdout`, and `WithStderr` inject the streams used by the
+  mounted root and delegated runner. Native subcommands should preserve the
+  standalone command behavior; when a legacy implementation still writes to
+  process streams internally, that is an implementation debt, not a license for
+  embedding callers to parse private state.
+- `WithVersion` supplies the version/build metadata printed by `--version`.
+- Mounted execution never calls `os.Exit`; non-zero CLI outcomes are returned
+  as `*ExitError`, and callers may use `ExitCode` to recover the process-style
+  code. The standalone binary owns process termination in `cmd/agent/main.go`.
+- Existing command paths are registered on the Cobra tree. Compatibility
+  delegation may remain for the default prompt path and explicitly delegated
+  commands, but migrated subcommands must not require callers to inject the
+  `--` passthrough sentinel.
 
 ### Power-Routing Implementation Status
 
@@ -293,6 +345,15 @@ type ExecuteRequest struct {
     // Metadata is bidirectional: echoed back in every Event via Event.Metadata,
     // AND stamped onto every line written to the session log (e.g., bead_id,
     // attempt_id) so external log consumers can correlate.
+    //
+    // Reserved cross-tool keys:
+    //   produces_artifact — caller-declared artifact path or URI produced by the task
+    //   media_type        — MIME/media type for produces_artifact
+    //
+    // The service currently treats metadata as an opaque string map and echoes
+    // it; these keys are reserved so DDx/HELIX consumers can agree on artifact
+    // semantics without parsing model output. Implemented echo path:
+    // service.go ExecuteRequest.Metadata plus service_events.go Event.Metadata.
     Metadata map[string]string
 }
 

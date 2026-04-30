@@ -97,9 +97,9 @@ func WithVersion(version, buildTime, gitCommit string) MountOption {
 	}
 }
 
-// MountCLI returns a fresh, unattached Cobra root command. This wrapper
-// intentionally delegates argument parsing to the existing runner until the
-// native Cobra command tree lands.
+// MountCLI returns a fresh, unattached Cobra root command. Most command paths
+// are native Cobra commands; legacy compatibility remains for the default
+// prompt path and explicitly delegated commands.
 func MountCLI(opts ...MountOption) *cobra.Command {
 	cfg := mountConfig{
 		use:    productinfo.BinaryName,
