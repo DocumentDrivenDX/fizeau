@@ -115,7 +115,49 @@ The rename is **broad** — every public-facing surface and internal reference i
 
 ## Release/Updater Decision
 
-- **Version bump**: The rename commit is paired with a major version bump (e.g. `v2.0.0` or the next major). This signals the breaking change to downstream consumers.
-- **Release assets**: Tarballs and binaries are named `fizeau-<version>-<os>-<arch>.tar.gz` with the binary inside named `fiz`.
-- **Self-updater**: If the project has a self-update mechanism, the update endpoint and asset naming are updated to the new names. No backward-compat download path is maintained.
-- **Git tags**: A `rename/fizeau` tag is created at the rename commit for traceability. The next release tag follows normal semver.
+**Release repository**: The canonical release repository after the rename is
+`DocumentDrivenDX/fizeau`. `DocumentDrivenDX/agent` is treated only as the old
+location that GitHub may redirect from; release tooling, installer snippets, and
+self-update code must not rely on that redirect as a supported contract.
+
+**Exact choreography**:
+
+1. Land the rename change on `master` while still in the old checkout. The
+   change updates module/import paths, binary names, config/env names, docs,
+   installer constants, release asset names, and updater constants to
+   `fizeau`/`fiz`.
+2. Rename the GitHub repository from `DocumentDrivenDX/agent` to
+   `DocumentDrivenDX/fizeau` before publishing any renamed release tag. This
+   ensures the tagged Go module path and release URLs are canonical at the
+   moment downstream consumers fetch them.
+3. Create a traceability tag named `rename/fizeau` at the rename commit.
+4. Create the first pre-release tag and GitHub pre-release as `v1.0.0-rc.1`.
+   The current binary version is `v0.0.8`, so `v1.0.0` is the next major
+   without requiring a Go module `/v2` path.
+5. Publish only new-name assets for the pre-release:
+   `fizeau-v1.0.0-rc.1-<os>-<arch>.tar.gz` containing a `fiz` binary, plus any
+   checksums under the `fizeau` name.
+6. Bump DDx downstream to consume
+   `github.com/DocumentDrivenDX/fizeau@v1.0.0-rc.1` and invoke `fiz`. Run the
+   DDx integration checks there before cutting a final release.
+7. If DDx exposes a rename defect, fix it in this repository and repeat with
+   `v1.0.0-rc.2`, `v1.0.0-rc.3`, and so on. DDx must be bumped to the newest
+   accepted RC before final.
+8. Create the final `v1.0.0` tag and GitHub release from the exact commit
+   validated by the accepted RC. Publish the same new-name asset pattern as the
+   RC with the final version.
+9. Update DDx from the accepted RC to `github.com/DocumentDrivenDX/fizeau@v1.0.0`
+   after the final release is live.
+
+**Bridge artifacts**: **No.** Do not publish `ddx-agent-*` binaries, tarballs,
+checksums, aliases, or a final `DocumentDrivenDX/agent` release that points to
+the renamed project. Do not add an old `ddx-agent update` bridge that downloads
+`fiz` or rewrites user config. Existing `ddx-agent` installs stop at their last
+old-name release and users move by installing `fiz` from the renamed repository.
+
+**Rationale**: This keeps the rename consistent with the no compatibility
+window policy above: there is one supported repo, one supported binary name, one
+config/env namespace, and one update endpoint after the break. The RC gives DDx
+a real published artifact to validate before the final release without creating
+a parallel old-name distribution channel that would need its own support and
+failure handling.
