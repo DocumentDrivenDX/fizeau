@@ -1,6 +1,7 @@
 package agentcli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -32,6 +33,16 @@ type ExitError struct {
 
 func (e *ExitError) Error() string {
 	return fmt.Sprintf("%s exited with code %d", productinfo.BinaryName, e.Code)
+}
+
+// ExitCode extracts a process-style exit code from errors returned by mounted
+// command execution.
+func ExitCode(err error) (int, bool) {
+	var exitErr *ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.Code, true
+	}
+	return 0, false
 }
 
 // WithUse overrides the Cobra command use/name string.
@@ -102,30 +113,120 @@ func MountCLI(opts ...MountOption) *cobra.Command {
 		}
 	}
 	cmd := &cobra.Command{
-		Use:                cfg.use,
-		Short:              cfg.short,
-		Long:               cfg.long,
-		SilenceUsage:       true,
-		SilenceErrors:      true,
-		DisableFlagParsing: true,
+		Use:           cfg.use,
+		Short:         cfg.short,
+		Long:          cfg.long,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			code := Run(Options{
-				Args:      args,
-				Stdin:     cfg.stdin,
-				Stdout:    cfg.stdout,
-				Stderr:    cfg.stderr,
-				Version:   cfg.version,
-				BuildTime: cfg.buildTime,
-				GitCommit: cfg.gitCommit,
-			})
-			if code == 0 {
-				return nil
-			}
-			return &ExitError{Code: code}
+			return runMounted(cfg, legacyArgs(cmd, args...))
 		},
+	}
+	addLegacyPersistentFlags(cmd)
+	for _, name := range mountedSubcommands() {
+		subcommandName := name
+		cmd.AddCommand(&cobra.Command{
+			Use:                subcommandName,
+			SilenceUsage:       true,
+			SilenceErrors:      true,
+			DisableFlagParsing: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				legacy := legacyArgs(cmd, append([]string{subcommandName}, args...)...)
+				return runMounted(cfg, legacy)
+			},
+		})
 	}
 	cmd.SetIn(cfg.stdin)
 	cmd.SetOut(cfg.stdout)
 	cmd.SetErr(cfg.stderr)
 	return cmd
+}
+
+func mountedSubcommands() []string {
+	return []string{
+		"log",
+		"replay",
+		"usage",
+		"models",
+		"check",
+		"providers",
+		"catalog",
+		"corpus",
+		"route-status",
+		"import",
+		"version",
+		"update",
+		"run",
+	}
+}
+
+func addLegacyPersistentFlags(cmd *cobra.Command) {
+	flags := cmd.PersistentFlags()
+	flags.StringP("p", "p", "", "Prompt (use @file to read from file)")
+	flags.Bool("json", false, "Output result as JSON")
+	flags.String("provider", "", "Named provider from config")
+	flags.String("backend", "", "Deprecated named backend pool from config")
+	flags.String("model", "", "Model route key or explicit concrete model override")
+	flags.String("model-ref", "", "Model catalog reference")
+	flags.Bool("list-models", false, "List available models with routing metadata")
+	flags.Int("min-power", 0, "Minimum catalog model power for automatic routing")
+	flags.Int("max-power", 0, "Maximum catalog model power for automatic routing")
+	flags.String("reasoning", "", "Reasoning control")
+	flags.Bool("allow-deprecated-model", false, "Allow deprecated model catalog references")
+	flags.Int("max-iter", 0, "Max iterations")
+	flags.String("work-dir", "", "Working directory")
+	flags.Bool("version", false, "Print version")
+	flags.String("system", "", "System prompt")
+	flags.String("preset", "", "System prompt preset")
+}
+
+func legacyArgs(cmd *cobra.Command, args ...string) []string {
+	flags := cmd.Root().PersistentFlags()
+	out := make([]string, 0, len(args)+flags.NFlag()*2)
+	for _, name := range []string{
+		"allow-deprecated-model",
+		"json",
+		"list-models",
+		"version",
+	} {
+		if flag := flags.Lookup(name); flag != nil && flag.Changed {
+			out = append(out, "--"+name)
+		}
+	}
+	for _, name := range []string{
+		"backend",
+		"max-power",
+		"max-iter",
+		"min-power",
+		"model",
+		"model-ref",
+		"p",
+		"preset",
+		"provider",
+		"reasoning",
+		"system",
+		"work-dir",
+	} {
+		if flag := flags.Lookup(name); flag != nil && flag.Changed {
+			out = append(out, "--"+name, flag.Value.String())
+		}
+	}
+	out = append(out, args...)
+	return out
+}
+
+func runMounted(cfg mountConfig, args []string) error {
+	code := Run(Options{
+		Args:      args,
+		Stdin:     cfg.stdin,
+		Stdout:    cfg.stdout,
+		Stderr:    cfg.stderr,
+		Version:   cfg.version,
+		BuildTime: cfg.buildTime,
+		GitCommit: cfg.gitCommit,
+	})
+	if code == 0 {
+		return nil
+	}
+	return &ExitError{Code: code}
 }

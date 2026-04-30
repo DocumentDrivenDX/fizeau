@@ -42,7 +42,7 @@ func TestMountCLI_ReturnsFreshCommandAndInjectedOutput(t *testing.T) {
 func TestMountCLI_ReturnsExitErrorForNonZeroRunnerExit(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd := MountCLI(WithStdout(&stdout), WithStderr(&stderr))
-	cmd.SetArgs([]string{"--definitely-not-a-real-flag"})
+	cmd.SetArgs([]string{"--", "--definitely-not-a-real-flag"})
 	err := cmd.Execute()
 	var exitErr *ExitError
 	if !errors.As(err, &exitErr) {
@@ -50,5 +50,43 @@ func TestMountCLI_ReturnsExitErrorForNonZeroRunnerExit(t *testing.T) {
 	}
 	if exitErr.Code == 0 {
 		t.Fatalf("ExitError.Code = 0, want non-zero")
+	}
+}
+
+func TestMountCLI_RegistersExistingTopLevelCommands(t *testing.T) {
+	cmd := MountCLI()
+	for _, name := range mountedSubcommands() {
+		if child, _, err := cmd.Find([]string{name}); err != nil || child == cmd || child.Name() != name {
+			t.Fatalf("Find(%q) = child %q err %v, want registered child", name, child.Name(), err)
+		}
+	}
+}
+
+func TestMountCLI_ChildCommandsDelegateWithoutExiting(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "version", args: []string{"version", "--check-only"}},
+		{name: "replay", args: []string{"replay"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			cmd := MountCLI(
+				WithStdout(&stdout),
+				WithStderr(&stderr),
+				WithVersion("dev", "", ""),
+			)
+			cmd.SetArgs(tt.args)
+			err := cmd.Execute()
+			if err == nil {
+				return
+			}
+			var exitErr *ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("Execute error = %T %v, want nil or ExitError", err, err)
+			}
+		})
 	}
 }

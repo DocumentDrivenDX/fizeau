@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/DocumentDrivenDX/agent/agentcli"
@@ -15,13 +16,18 @@ var (
 )
 
 func main() {
-	os.Exit(agentcli.Run(agentcli.Options{
-		Args:      os.Args[1:],
-		Stdin:     os.Stdin,
-		Stdout:    os.Stdout,
-		Stderr:    os.Stderr,
-		Version:   Version,
-		BuildTime: BuildTime,
-		GitCommit: GitCommit,
-	}))
+	cmd := agentcli.MountCLI(
+		agentcli.WithStdin(os.Stdin),
+		agentcli.WithStdout(os.Stdout),
+		agentcli.WithStderr(os.Stderr),
+		agentcli.WithVersion(Version, BuildTime, GitCommit),
+	)
+	cmd.SetArgs(append([]string{"--"}, os.Args[1:]...))
+	if err := cmd.Execute(); err != nil {
+		if code, ok := agentcli.ExitCode(err); ok {
+			os.Exit(code)
+		}
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
