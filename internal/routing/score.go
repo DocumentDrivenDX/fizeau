@@ -118,8 +118,9 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 		base -= 50
 	}
 
-	// Provider-affinity soft preference (fixes ddx-8610020e):
-	// when req.Provider matches the candidate's provider, give a bonus.
+	// Provider affinity: explicit provider pins are filtered before scoring;
+	// this bonus only affects the ordering among still-eligible candidates
+	// that share the pinned provider identity.
 	if cand.ProviderAffinityMatch {
 		base += 15
 	}

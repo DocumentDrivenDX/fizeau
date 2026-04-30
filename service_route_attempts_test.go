@@ -13,12 +13,11 @@ import (
 	"github.com/DocumentDrivenDX/agent/internal/routing"
 )
 
-func TestRecordRouteAttempt_DemotesFailedProvider(t *testing.T) {
+func TestRecordRouteAttempt_DemotesFailedProviderForAutomaticRouting(t *testing.T) {
 	svc := routeAttemptTestService(30 * time.Second)
 
 	before, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Model:    "qwen",
-		Provider: "bragi",
+		Model: "qwen",
 	})
 	if err != nil {
 		t.Fatalf("ResolveRoute before failure: %v", err)
@@ -39,14 +38,24 @@ func TestRecordRouteAttempt_DemotesFailedProvider(t *testing.T) {
 	}
 
 	after, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Model:    "qwen",
-		Provider: "bragi",
+		Model: "qwen",
 	})
 	if err != nil {
 		t.Fatalf("ResolveRoute after failure: %v", err)
 	}
 	if after.Provider == "bragi" {
 		t.Fatalf("after failure Provider: got bragi, want a non-cooldown provider")
+	}
+
+	pinned, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Model:    "qwen",
+		Provider: "bragi",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute with provider pin after failure: %v", err)
+	}
+	if pinned.Provider != "bragi" {
+		t.Fatalf("provider pin after failure: got %q, want bragi", pinned.Provider)
 	}
 }
 

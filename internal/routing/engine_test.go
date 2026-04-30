@@ -109,13 +109,12 @@ func newTestRoutingEngine() Inputs {
 
 // === Smell 1: ddx-8610020e — Provider field present from day one ===
 //
-// RouteRequest carries Provider as a soft preference; the engine ranks
-// candidates that match req.Provider higher, and applies a hard pin
-// when both Harness and Provider are set.
+// RouteRequest carries Provider as a hard pin; the engine must never select
+// a different provider when Provider is set.
 func TestSmellProviderFieldDayOne(t *testing.T) {
 	in := newTestRoutingEngine()
 
-	// Soft preference: req.Provider boosts matching candidates.
+	// Provider pin: req.Provider constrains routing.
 	req := Request{Profile: "cheap", Provider: "vidar-omlx"}
 	dec, err := Resolve(req, in)
 	if err != nil {
@@ -133,6 +132,162 @@ func TestSmellProviderFieldDayOne(t *testing.T) {
 	}
 	if dec2.Provider != "openrouter" {
 		t.Errorf("hard pin: got provider=%q, want openrouter", dec2.Provider)
+	}
+}
+
+func TestExplicitProviderPinDoesNotSubstituteAvailableProvider(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{
+						Name:               "lmstudio",
+						DiscoveryAttempted: true,
+						SupportsTools:      true,
+					},
+					{
+						Name:          "openrouter",
+						DiscoveredIDs: []string{"qwen/qwen3.6"},
+						SupportsTools: true,
+					},
+				},
+			},
+		},
+		Now: time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{Provider: "lmstudio", Model: "qwen/qwen3.6"}, in)
+	if err == nil {
+		t.Fatalf("Resolve selected provider=%q model=%q, want no viable candidate", dec.Provider, dec.Model)
+	}
+	var noViable *NoViableCandidateError
+	if !errors.As(err, &noViable) {
+		t.Fatalf("error type=%T, want *NoViableCandidateError: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "provider=lmstudio") {
+		t.Fatalf("error=%q, want provider pin detail", err.Error())
+	}
+	if dec == nil || dec.Harness != "" || dec.Provider != "" || dec.Model != "" {
+		t.Fatalf("error decision selected a candidate: %#v", dec)
+	}
+
+	seenOpenRouter := false
+	for _, c := range dec.Candidates {
+		if c.Provider == "openrouter" {
+			seenOpenRouter = true
+			if c.Eligible {
+				t.Fatalf("openrouter must not remain eligible under provider pin: %#v", c)
+			}
+			if c.FilterReason != FilterReasonPinMismatch {
+				t.Fatalf("openrouter filter reason=%q, want %q", c.FilterReason, FilterReasonPinMismatch)
+			}
+			if !strings.Contains(c.Reason, "provider override requires lmstudio") {
+				t.Fatalf("openrouter rejection reason=%q, want provider pin detail", c.Reason)
+			}
+		}
+		if c.Eligible && c.Provider != "lmstudio" {
+			t.Fatalf("non-pinned provider remained eligible: %#v", c)
+		}
+	}
+	if !seenOpenRouter {
+		t.Fatal("test must include the attractive non-pinned openrouter candidate")
+	}
+}
+
+func TestExplicitModelPinDoesNotSubstituteCloudDefaults(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "codex",
+				Surface:             "codex",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportedModels:     []string{"gpt-5.4", "gpt-5.4-mini"},
+				SupportsTools:       true,
+				DefaultModel:        "gpt-5.4",
+			},
+			{
+				Name:                "claude",
+				Surface:             "claude",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportedModels:     []string{"claude-sonnet-4-6", "opus-4.7"},
+				SupportsTools:       true,
+				DefaultModel:        "claude-sonnet-4-6",
+			},
+		},
+		Now: time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{Model: "qwen-3.6-27b"}, in)
+	if err == nil {
+		t.Fatalf("Resolve selected harness=%q model=%q, want exact pin failure", dec.Harness, dec.Model)
+	}
+	var noViable *NoViableCandidateError
+	if !errors.As(err, &noViable) {
+		t.Fatalf("error type=%T, want *NoViableCandidateError: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "model=qwen-3.6-27b") {
+		t.Fatalf("error=%q, want model pin detail", err.Error())
+	}
+	for _, c := range dec.Candidates {
+		if c.Eligible {
+			t.Fatalf("candidate must be rejected under unsupported exact model pin: %#v", c)
+		}
+		if c.Model == "gpt-5.4" || c.Model == "claude-sonnet-4-6" {
+			t.Fatalf("candidate substituted default model under exact pin: %#v", c)
+		}
+		if c.Reason != "model not in harness allow-list" {
+			t.Fatalf("candidate reason=%q, want allow-list rejection", c.Reason)
+		}
+	}
+}
+
+func TestExplicitHarnessPinDoesNotSubstituteOtherHarness(t *testing.T) {
+	in := newTestRoutingEngine()
+	for i, h := range in.Harnesses {
+		if h.Name == "agent" {
+			in.Harnesses[i].Available = false
+		}
+	}
+
+	dec, err := Resolve(Request{Harness: "agent", Model: "qwen/qwen3.6"}, in)
+	if err == nil {
+		t.Fatalf("Resolve selected harness=%q, want no viable candidate", dec.Harness)
+	}
+	if dec == nil {
+		t.Fatal("Resolve returned nil decision")
+	}
+	for _, c := range dec.Candidates {
+		if c.Harness != "agent" {
+			t.Fatalf("non-pinned harness appeared in candidate list: %#v", c)
+		}
+		if c.Eligible {
+			t.Fatalf("unavailable pinned harness must not be eligible: %#v", c)
+		}
+	}
+	if !strings.Contains(err.Error(), "harness=agent") {
+		t.Fatalf("error=%q, want harness pin detail", err.Error())
 	}
 }
 

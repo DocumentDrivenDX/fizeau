@@ -3,6 +3,7 @@ package routing
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -16,7 +17,7 @@ type Request struct {
 	Profile            string // "cheap" | "standard" | "smart"
 	ModelRef           string // catalog alias (e.g. "qwen/qwen3.6")
 	Model              string // exact concrete model pin
-	Provider           string // soft preference (hard when Harness also set)
+	Provider           string // exact provider pin; constrains routing to one provider identity
 	Harness            string // hard preference; constrains routing to one harness
 	Reasoning          string // public reasoning scalar
 	Permissions        string // "safe" | "supervised" | "unrestricted"
@@ -196,15 +197,34 @@ const (
 	// mismatches such as permissions/model-pin/exact-pin and for model
 	// resolution failures).
 	FilterReasonScoredBelowTop FilterReason = "scored_below_top"
+	// FilterReasonPinMismatch: candidate was rejected because it does not
+	// satisfy an explicit caller pin such as Provider.
+	FilterReasonPinMismatch FilterReason = "pin_mismatch"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
 // one failed a gate.
 type NoViableCandidateError struct {
 	Rejected int
+	Model    string
+	Provider string
+	Harness  string
 }
 
 func (e *NoViableCandidateError) Error() string {
+	var pins []string
+	if e.Model != "" {
+		pins = append(pins, "model="+e.Model)
+	}
+	if e.Provider != "" {
+		pins = append(pins, "provider="+e.Provider)
+	}
+	if e.Harness != "" {
+		pins = append(pins, "harness="+e.Harness)
+	}
+	if len(pins) > 0 {
+		return fmt.Sprintf("no viable routing candidate for pins %s: %d candidates rejected", strings.Join(pins, " "), e.Rejected)
+	}
 	return fmt.Sprintf("no viable routing candidate: %d candidates rejected", e.Rejected)
 }
 
@@ -391,7 +411,7 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 			}, nil
 		}
 	}
-	if requested := requestedModelIntent(req); requested != "" && hasLiveDiscoveryCandidates(ranked) {
+	if requested := requestedModelIntent(req); requested != "" && req.Provider == "" && canonicalHarness == "" && hasLiveDiscoveryCandidates(ranked) {
 		return &Decision{Candidates: out}, fmt.Errorf("no live endpoint offers a match for %s", requested)
 	}
 	if missingCapability := missingProfileCapability(req); missingCapability != "" {
@@ -401,7 +421,16 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 			Rejected:          len(out),
 		}
 	}
-	return &Decision{Candidates: out}, &NoViableCandidateError{Rejected: len(out)}
+	return &Decision{Candidates: out}, noViableCandidateError(req, len(out))
+}
+
+func noViableCandidateError(req Request, rejected int) *NoViableCandidateError {
+	return &NoViableCandidateError{
+		Rejected: rejected,
+		Model:    req.Model,
+		Provider: req.Provider,
+		Harness:  canonicalHarnessPin(req.Harness),
+	}
 }
 
 func explicitPinError(req Request, in Inputs) error {
@@ -698,11 +727,12 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			filterReason = FilterReasonUnhealthy
 		}
 
-		if eligible && req.Provider != "" && p.Name != "" && req.Provider != p.Name && req.Harness != "" {
-			// Hard provider pin under explicit harness: reject other providers.
+		if eligible && req.Provider != "" && req.Provider != candidateProviderIdentity(h, p) {
+			// Hard provider pin: reject every other provider identity, even
+			// when a non-pinned candidate would otherwise score higher.
 			eligible = false
 			reason = fmt.Sprintf("provider override requires %s", req.Provider)
-			filterReason = FilterReasonScoredBelowTop
+			filterReason = FilterReasonPinMismatch
 		}
 
 		inCooldown := false
@@ -735,7 +765,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			ObservedTokensPerSec:  obs,
 			ObservedLatencyMS:     latencyMS,
 			InCooldown:            inCooldown || h.InCooldown,
-			ProviderAffinityMatch: req.Provider != "" && p.Name != "" && req.Provider == p.Name,
+			ProviderAffinityMatch: req.Provider != "" && req.Provider == candidateProviderIdentity(h, p),
 			ProviderPreference:    req.ProviderPreference,
 		}
 		out = append(out, rankedCandidate{
@@ -757,6 +787,13 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		})
 	}
 	return out
+}
+
+func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return h.Name
 }
 
 func normalizeCostSource(source string) string {
