@@ -31,6 +31,8 @@ func run(args []string) int {
 		return cmdProfiles(args[1:])
 	case "matrix":
 		return cmdMatrix(args[1:])
+	case "matrix-aggregate":
+		return cmdMatrixAggregate(args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return 0
@@ -54,6 +56,8 @@ Commands:
   report     Render a results file as table, json, or markdown
   profiles   Manage v7 benchmark profiles (subcommand: list)
   matrix     Run the SD-010 harness/profile/task matrix
+  matrix-aggregate
+             Aggregate matrix cell reports into matrix.json, matrix.md, costs.json
 
 Run '%s <command> -h' for command-specific flags.
 `, benchCommandName(), benchCommandName())
