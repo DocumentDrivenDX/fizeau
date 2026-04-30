@@ -160,7 +160,7 @@ func TestResolveDebugSink_DisabledByDefault(t *testing.T) {
 	assert.False(t, envBoolTrue(envDebugWire))
 }
 
-// Sanity: ResolveDebugSink returns a non-nil sink when AGENT_DEBUG_WIRE is set
+// Sanity: ResolveDebugSink returns a non-nil sink when FIZEAU_DEBUG_WIRE is set
 // the first time the package observes the env. Because sinkOnce is global we
 // can't reset it; this test runs in isolation only when the env is set at
 // process start. Documented here so future readers understand the coverage gap.

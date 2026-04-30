@@ -22,15 +22,15 @@ import (
 // raw bodies, and SSE chunk boundaries. Do not duplicate the logical fields.
 //
 // Env vars:
-//   AGENT_DEBUG_WIRE      — "1" or "true" enables the dump; default off
-//   AGENT_DEBUG_WIRE_FILE — optional path; when set, JSONL is written to this
-//                           file, otherwise events go to stderr as JSONL
+//   FIZEAU_DEBUG_WIRE      — "1" or "true" enables the dump; default off
+//   FIZEAU_DEBUG_WIRE_FILE — optional path; when set, JSONL is written to this
+//                            file, otherwise events go to stderr as JSONL
 //
 // When disabled, no middleware is installed and overhead is zero.
 
 const (
-	envDebugWire     = "AGENT_DEBUG_WIRE"
-	envDebugWireFile = "AGENT_DEBUG_WIRE_FILE"
+	envDebugWire     = "FIZEAU_DEBUG_WIRE"
+	envDebugWireFile = "FIZEAU_DEBUG_WIRE_FILE"
 )
 
 // bearerTokenPattern matches "Authorization: Bearer <token>" so we can redact
@@ -49,7 +49,7 @@ type DebugSink struct {
 
 var (
 	sinkOnce sync.Once
-	sink     *DebugSink // nil when AGENT_DEBUG_WIRE is unset
+	sink     *DebugSink // nil when FIZEAU_DEBUG_WIRE is unset
 )
 
 // envBoolTrue reports whether the named env var is set to a truthy value
@@ -73,7 +73,7 @@ func ResolveDebugSink() *DebugSink {
 			// #nosec G304 G703 -- path comes from operator-set env var; intentional.
 			f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "agent: AGENT_DEBUG_WIRE_FILE open failed: %v — falling back to stderr\n", err)
+				fmt.Fprintf(os.Stderr, "agent: FIZEAU_DEBUG_WIRE_FILE open failed: %v — falling back to stderr\n", err)
 				sink = &DebugSink{w: os.Stderr}
 				return
 			}
@@ -111,7 +111,7 @@ const maxBodyBytes = 64 * 1024
 // avoid flooding stderr during long reasoning-model generations; this knob
 // disables the cap so the full stream is available for post-mortem analysis
 // of client-side truncation defects (see bead agent-f237e07b).
-const envDebugWireStreamFull = "AGENT_DEBUG_WIRE_STREAM_FULL"
+const envDebugWireStreamFull = "FIZEAU_DEBUG_WIRE_STREAM_FULL"
 
 func (s *DebugSink) emit(ev wireEvent) {
 	s.mu.Lock()
@@ -166,7 +166,7 @@ func captureBody(body io.ReadCloser) ([]byte, bool, io.ReadCloser, error) {
 //
 // When streamFull is false (default), cumulative captured bytes are capped at
 // maxBodyBytes to avoid flooding stderr on long reasoning-model generations.
-// Setting AGENT_DEBUG_WIRE_STREAM_FULL=1 disables the cap so the entire
+// Setting FIZEAU_DEBUG_WIRE_STREAM_FULL=1 disables the cap so the entire
 // stream is captured — necessary when diagnosing client-side truncation
 // defects (bead agent-f237e07b wire capture stopped at 186 bytes because the
 // cap + the teeBody emitting only up to the first cap-sized prefix made

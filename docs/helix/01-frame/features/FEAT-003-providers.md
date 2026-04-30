@@ -253,9 +253,9 @@ type AttemptMetadata struct {
 
 #### Debug and Observability
 
-32. A process-wide opt-in debug mode (`AGENT_DEBUG_WIRE=1`) dumps every HTTP
+32. A process-wide opt-in debug mode (`FIZEAU_DEBUG_WIRE=1`) dumps every HTTP
     request and response at the openai-go transport boundary to stderr (or a
-    file via `AGENT_DEBUG_WIRE_FILE=<path>`). Default off, zero cost when
+    file via `FIZEAU_DEBUG_WIRE_FILE=<path>`). Default off, zero cost when
     disabled. Authorization Bearer tokens are redacted before any event is
     written. Complements session events (`EventLLMRequest`/`EventLLMResponse`)
     which capture the logical view; wire dump captures the HTTP view.
