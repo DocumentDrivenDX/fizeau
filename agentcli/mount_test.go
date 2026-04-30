@@ -62,6 +62,32 @@ func TestMountCLI_RegistersExistingTopLevelCommands(t *testing.T) {
 	}
 }
 
+func TestMountCLI_MigratedCommandsUseNativeFlagParsing(t *testing.T) {
+	cmd := MountCLI()
+	for _, path := range [][]string{
+		{"log"},
+		{"replay"},
+		{"usage"},
+		{"route-status"},
+		{"corpus"},
+		{"corpus", "list"},
+		{"corpus", "promote"},
+		{"corpus", "validate"},
+		{"import"},
+		{"update"},
+		{"catalog", "update"},
+		{"catalog", "update-pricing"},
+	} {
+		child, _, err := cmd.Find(path)
+		if err != nil {
+			t.Fatalf("Find(%v): %v", path, err)
+		}
+		if child.DisableFlagParsing {
+			t.Fatalf("Find(%v) has DisableFlagParsing=true, want native pflag parsing", path)
+		}
+	}
+}
+
 func TestMountCLI_ChildCommandsDelegateWithoutExiting(t *testing.T) {
 	tests := []struct {
 		name string
@@ -103,7 +129,8 @@ func TestNeedsLegacyPassthrough(t *testing.T) {
 		{name: "native session command", args: []string{"--work-dir", "/tmp/work", "usage", "--since", "7d"}, want: false},
 		{name: "native route status command", args: []string{"--work-dir", "/tmp/work", "route-status", "--profile", "smart"}, want: false},
 		{name: "native read-only catalog subcommand", args: []string{"--work-dir", "/tmp/work", "catalog", "show"}, want: false},
-		{name: "legacy mutating catalog subcommand", args: []string{"--work-dir", "/tmp/work", "catalog", "update"}, want: true},
+		{name: "native mutating catalog subcommand", args: []string{"--work-dir", "/tmp/work", "catalog", "update"}, want: false},
+		{name: "native import command", args: []string{"--work-dir", "/tmp/work", "import", "pi", "--diff"}, want: false},
 		{name: "unknown positional", args: []string{"unknown-subcommand"}, want: true},
 	}
 	for _, tt := range tests {

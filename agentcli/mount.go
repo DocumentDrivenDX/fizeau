@@ -138,9 +138,12 @@ func addMountedSubcommands(root *cobra.Command, cfg mountConfig) {
 	root.AddCommand(nativeProvidersCommand())
 	root.AddCommand(nativeModelsCommand())
 	root.AddCommand(nativeCheckCommand())
-	root.AddCommand(nativeCatalogCommand(cfg))
+	root.AddCommand(nativeCatalogCommand())
 	root.AddCommand(nativeRouteStatusCommand())
-	for _, name := range []string{"corpus", "import", "version", "update", "run"} {
+	root.AddCommand(nativeCorpusCommand())
+	root.AddCommand(nativeImportCommand())
+	root.AddCommand(nativeUpdateCommand())
+	for _, name := range []string{"version", "run"} {
 		subcommandName := name
 		root.AddCommand(&cobra.Command{
 			Use:                subcommandName,
@@ -266,7 +269,88 @@ func nativeCheckCommand() *cobra.Command {
 	}
 }
 
-func nativeCatalogCommand(cfg mountConfig) *cobra.Command {
+func nativeCorpusCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "corpus",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCorpus(rootWorkDir(cmd), args))
+		},
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:           "validate",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCorpusValidate(rootWorkDir(cmd), args))
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:           "list",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCorpusList(rootWorkDir(cmd), corpusListArgs(cmd, args)))
+		},
+	})
+	promote := &cobra.Command{
+		Use:           "promote <bead-id>",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCorpusPromote(rootWorkDir(cmd), corpusPromoteArgs(cmd, args)))
+		},
+	}
+	promote.Flags().String("capability", "", "Capability tag")
+	promote.Flags().String("failure-mode", "", "Failure-mode tag")
+	promote.Flags().String("difficulty", "", "easy|medium|hard")
+	promote.Flags().String("prompt-kind", "", "Prompt kind")
+	promote.Flags().String("notes", "", "Free-text notes")
+	promote.Flags().String("base-rev", "", "Pre-change revision")
+	promote.Flags().String("known-good-rev", "", "Resolution revision")
+	promote.Flags().String("project-root", "", "Repository root")
+	promote.Flags().String("promoted-by", "", "Promotion identity")
+	promote.Flags().Bool("yes", false, "Skip confirmation")
+	cmd.AddCommand(promote)
+	return cmd
+}
+
+func nativeImportCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "import <pi|opencode>",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdImport(rootWorkDir(cmd), importArgs(cmd, args)))
+		},
+	}
+	cmd.Flags().Bool("diff", false, "Show imported config diff")
+	cmd.Flags().Bool("merge", false, "Merge providers into existing config")
+	cmd.Flags().Bool("project", false, "Write project config")
+	return cmd
+}
+
+func nativeUpdateCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "update",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdUpdate(updateArgs(cmd, args)))
+		},
+	}
+	cmd.Flags().BoolP("check-only", "c", false, "Only check for an update")
+	cmd.Flags().BoolP("force", "f", false, "Skip confirmation")
+	return cmd
+}
+
+func nativeCatalogCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "catalog",
 		SilenceUsage:  true,
@@ -325,18 +409,29 @@ func nativeCatalogCommand(cfg mountConfig) *cobra.Command {
 	check.Flags().String("version", "", "Exact catalog version to inspect")
 	cmd.AddCommand(check)
 
-	for _, name := range []string{"update", "update-pricing"} {
-		subcommandName := name
-		cmd.AddCommand(&cobra.Command{
-			Use:                subcommandName,
-			SilenceUsage:       true,
-			SilenceErrors:      true,
-			DisableFlagParsing: true,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return runMounted(cfg, legacyArgs(cmd, append([]string{"catalog", subcommandName}, args...)...))
-			},
-		})
+	update := &cobra.Command{
+		Use:           "update",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCatalogUpdate(rootWorkDir(cmd), catalogCheckArgs(cmd, args)))
+		},
 	}
+	update.Flags().String("base-url", defaultCatalogBaseURL, "Published catalog base URL")
+	update.Flags().String("channel", "stable", "Channel to install")
+	update.Flags().String("version", "", "Exact catalog version to install")
+	cmd.AddCommand(update)
+
+	cmd.AddCommand(&cobra.Command{
+		Use:           "update-pricing",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCatalogUpdatePricing(rootWorkDir(cmd), args))
+		},
+	})
 	return cmd
 }
 
@@ -430,6 +525,37 @@ func routeStatusArgs(cmd *cobra.Command, args []string) []string {
 	return append(out, args...)
 }
 
+func corpusListArgs(cmd *cobra.Command, args []string) []string {
+	out := changedRootBoolFlagArgs(cmd, "json")
+	return append(out, args...)
+}
+
+func corpusPromoteArgs(cmd *cobra.Command, args []string) []string {
+	out := changedBoolFlagArgs(cmd, "yes")
+	out = append(out, changedFlagArgs(cmd,
+		"capability",
+		"failure-mode",
+		"difficulty",
+		"prompt-kind",
+		"notes",
+		"base-rev",
+		"known-good-rev",
+		"project-root",
+		"promoted-by",
+	)...)
+	return append(out, args...)
+}
+
+func importArgs(cmd *cobra.Command, args []string) []string {
+	out := append([]string{}, args...)
+	return append(out, changedBoolFlagArgs(cmd, "diff", "merge", "project")...)
+}
+
+func updateArgs(cmd *cobra.Command, args []string) []string {
+	out := changedBoolFlagArgs(cmd, "check-only", "force")
+	return append(out, args...)
+}
+
 func catalogModelsArgs(cmd *cobra.Command, args []string) []string {
 	out := changedFlagArgs(cmd, "model", "format")
 	return append(out, args...)
@@ -479,12 +605,12 @@ func NeedsLegacyPassthrough(args []string) bool {
 			return false
 		}
 		switch arg {
-		case "log", "replay", "usage", "providers", "models", "check", "route-status":
+		case "log", "replay", "usage", "providers", "models", "check", "route-status", "corpus", "import", "update":
 			return false
 		case "catalog":
 			if i+1 < len(args) {
 				switch args[i+1] {
-				case "show", "models", "observations", "check":
+				case "show", "models", "observations", "check", "update", "update-pricing":
 					return false
 				}
 			}
