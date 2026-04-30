@@ -9,11 +9,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	"github.com/DocumentDrivenDX/agent"
@@ -75,6 +77,7 @@ func run() int {
 	backendFlag := fs.String("backend", "", "Deprecated named backend pool from config")
 	model := fs.String("model", "", "Model route key or explicit concrete model override")
 	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target)")
+	listModels := fs.Bool("list-models", false, "List available models with routing metadata")
 	reasoningFlag := fs.String("reasoning", "", "Reasoning control: auto, off, low, medium, high, xhigh, max, or token budget")
 	allowDeprecatedModel := fs.Bool("allow-deprecated-model", false, "Allow deprecated model catalog references")
 	maxIter := fs.Int("max-iter", 0, "Max iterations")
@@ -97,6 +100,9 @@ func run() int {
 	if wd == "" {
 		wd, _ = os.Getwd()
 	}
+	if *listModels {
+		return cmdListModels(wd, *jsonOutput, agent.ModelFilter{Provider: *providerFlag})
+	}
 
 	// Handle subcommands
 	args := fs.Args()
@@ -109,7 +115,7 @@ func run() int {
 		case "usage":
 			return cmdUsage(wd, args[1:])
 		case "models":
-			return cmdModels(wd, *providerFlag, args[1:])
+			return cmdModels(wd, *jsonOutput, *providerFlag, args[1:])
 		case "check":
 			return cmdCheck(wd, *providerFlag, args[1:])
 		case "providers":
@@ -1171,105 +1177,218 @@ func redactedProviders(providers map[string]agentConfig.ProviderConfig) map[stri
 	return redacted
 }
 
-func cmdModels(workDir, providerName string, args []string) int {
+func cmdModels(workDir string, jsonOutput bool, providerName string, args []string) int {
+	filter := agent.ModelFilter{Provider: providerName}
+	for _, arg := range args {
+		switch arg {
+		case "--json":
+			jsonOutput = true
+		case "--all":
+			filter.Provider = ""
+		}
+	}
+	return cmdListModels(workDir, jsonOutput, filter)
+}
+
+type cliModelInventoryRow struct {
+	Model             string  `json:"model"`
+	Harness           string  `json:"harness"`
+	Provider          string  `json:"provider"`
+	ProviderType      string  `json:"provider_type,omitempty"`
+	EndpointName      string  `json:"endpoint_name,omitempty"`
+	EndpointBaseURL   string  `json:"endpoint_base_url,omitempty"`
+	Endpoint          string  `json:"endpoint,omitempty"`
+	Power             int     `json:"power"`
+	AutoRoutable      bool    `json:"auto_routable"`
+	ExactPinOnly      bool    `json:"exact_pin_only"`
+	CostInputPerMTok  float64 `json:"cost_input_per_mtok,omitempty"`
+	CostOutputPerMTok float64 `json:"cost_output_per_mtok,omitempty"`
+	SpeedTokensPerSec float64 `json:"speed_tokens_per_sec,omitempty"`
+	SWEBenchVerified  float64 `json:"swe_bench_verified,omitempty"`
+	ContextLength     int     `json:"context_length,omitempty"`
+	Available         bool    `json:"available"`
+	CatalogRef        string  `json:"catalog_ref,omitempty"`
+	RankPosition      int     `json:"rank_position"`
+}
+
+func cmdListModels(workDir string, jsonOutput bool, filter agent.ModelFilter) int {
 	cfg, err := agentConfig.Load(workDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 1
 	}
 
-	// Load catalog once for all annotations.
-	cat, _ := modelcatalog.Default()
-
-	showAll := len(args) > 0 && args[0] == "--all"
-
-	if showAll {
-		for _, name := range cfg.ProviderNames() {
-			pc := cfg.Providers[name]
-			fmt.Printf("[%s]\n", name)
-			printProviderModels(pc, cat)
-			fmt.Println()
-		}
-		return 0
-	}
-
-	name := providerName
-	if name == "" {
-		name = cfg.DefaultName()
-	}
-	pc, ok := cfg.GetProvider(name)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "error: unknown provider %q\n", name)
+	svc, err := agent.New(agent.ServiceOptions{ServiceConfig: agentConfig.NewServiceConfig(cfg, workDir)})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 1
 	}
 
-	if pc.Type == "anthropic" {
-		fmt.Println("Anthropic does not support model listing.")
-		if pc.Model != "" {
-			fmt.Printf("Configured model: %s\n", pc.Model)
+	models, err := svc.ListModels(context.Background(), filter)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		return 1
+	}
+	if filter.Provider == "" && filter.Harness == "" {
+		harnesses, err := svc.ListHarnesses(context.Background())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			return 1
 		}
+		for _, harness := range harnesses {
+			if harness.Type != "subprocess" {
+				continue
+			}
+			harnessModels, err := svc.ListModels(context.Background(), agent.ModelFilter{Harness: harness.Name})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %s\n", err)
+				return 1
+			}
+			models = append(models, harnessModels...)
+		}
+	}
+
+	rows := modelInventoryRows(models)
+	if jsonOutput {
+		data, err := json.MarshalIndent(rows, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			return 1
+		}
+		fmt.Println(string(data))
 		return 0
 	}
 
-	printProviderModels(pc, cat)
+	printModelInventory(rows)
 	return 0
 }
 
-// printProviderModels probes a provider's /v1/models endpoint and prints the
-// full ranked list. The auto-selected model is marked with "*". Catalog-
-// recognized models show their catalog target ID in brackets.
-func printProviderModels(pc agentConfig.ProviderConfig, cat *modelcatalog.Catalog) {
-	if pc.Type == "anthropic" {
-		fmt.Println("  (anthropic — no model listing endpoint)")
-		return
-	}
-
-	// Build known-models map for ranking.
-	var knownModels map[string]string
-	if cat != nil {
-		knownModels = cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
-	}
-
-	ids := probeProviderModels(pc, routingProbeTimeout(nil)).models
-	if len(ids) == 0 {
-		fmt.Println("  (unavailable)")
-		return
-	}
-
-	ranked, err := agent.RankModels(ids, knownModels, pc.ModelPattern)
-	if err != nil {
-		// Pattern compile error — fall back to plain list.
-		for _, id := range ids {
-			fmt.Printf("  %s\n", id)
+func modelInventoryRows(models []agent.ModelInfo) []cliModelInventoryRow {
+	rows := make([]cliModelInventoryRow, 0, len(models))
+	for _, model := range models {
+		row := cliModelInventoryRow{
+			Model:             model.ID,
+			Harness:           model.Harness,
+			Provider:          model.Provider,
+			ProviderType:      model.ProviderType,
+			EndpointName:      model.EndpointName,
+			EndpointBaseURL:   model.EndpointBaseURL,
+			Endpoint:          modelInventoryEndpoint(model),
+			Power:             model.Power,
+			AutoRoutable:      model.AutoRoutable,
+			ExactPinOnly:      model.ExactPinOnly,
+			CostInputPerMTok:  model.Cost.InputPerMTok,
+			CostOutputPerMTok: model.Cost.OutputPerMTok,
+			SpeedTokensPerSec: model.PerfSignal.SpeedTokensPerSec,
+			SWEBenchVerified:  model.PerfSignal.SWEBenchVerified,
+			ContextLength:     model.ContextLength,
+			Available:         model.Available,
+			CatalogRef:        model.CatalogRef,
+			RankPosition:      model.RankPosition,
 		}
-		return
+		rows = append(rows, row)
 	}
+	return rows
+}
 
-	// Determine the auto-selected model (first in ranked list when no static model).
-	autoSelected := ""
-	if pc.Model == "" && len(ranked) > 0 {
-		autoSelected = ranked[0].ID
+func printModelInventory(rows []cliModelInventoryRow) {
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "MODEL\tHARNESS\tPROVIDER\tENDPOINT\tPOWER\tCOST/M\tPERF\tCONTEXT\tROUTE")
+	for _, row := range rows {
+		fmt.Fprintf(
+			tw,
+			"%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			row.Model,
+			row.Harness,
+			modelInventoryProvider(row),
+			emptyDash(row.Endpoint),
+			formatInventoryPower(row.Power),
+			formatInventoryCost(row.CostInputPerMTok, row.CostOutputPerMTok),
+			formatInventoryPerf(row.SpeedTokensPerSec, row.SWEBenchVerified),
+			formatInventoryContext(row.ContextLength),
+			formatInventoryRoute(row),
+		)
 	}
+	_ = tw.Flush()
+}
 
-	for _, sm := range ranked {
-		marker := "  "
-		if sm.ID == pc.Model {
-			marker = "* "
-		} else if sm.ID == autoSelected {
-			marker = "> " // would be auto-selected
-		}
-		annotation := ""
-		if sm.CatalogRef != "" {
-			annotation = "  [catalog: " + sm.CatalogRef + "]"
-		} else if sm.PatternMatch {
-			annotation = "  [pattern]"
-		}
-		fmt.Printf("%s%s%s\n", marker, sm.ID, annotation)
+func modelInventoryProvider(row cliModelInventoryRow) string {
+	if row.ProviderType == "" || row.ProviderType == row.Provider {
+		return row.Provider
 	}
-	if pc.Model == "" {
-		fmt.Println()
-		fmt.Println("  * = configured  > = would auto-select")
+	return row.Provider + "/" + row.ProviderType
+}
+
+func modelInventoryEndpoint(model agent.ModelInfo) string {
+	name := strings.TrimSpace(model.EndpointName)
+	host := ""
+	if model.EndpointBaseURL != "" {
+		if u, err := url.Parse(model.EndpointBaseURL); err == nil {
+			host = u.Host
+		}
 	}
+	switch {
+	case name != "" && host != "":
+		return name + "@" + host
+	case name != "":
+		return name
+	case host != "":
+		return host
+	default:
+		return ""
+	}
+}
+
+func formatInventoryPower(power int) string {
+	if power <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d", power)
+}
+
+func formatInventoryCost(input, output float64) string {
+	if input == 0 && output == 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%.2f/%.2f", input, output)
+}
+
+func formatInventoryPerf(speed, swe float64) string {
+	switch {
+	case speed > 0:
+		return fmt.Sprintf("%.1f tok/s", speed)
+	case swe > 0:
+		return fmt.Sprintf("SWE %.1f", swe)
+	default:
+		return "-"
+	}
+}
+
+func formatInventoryContext(contextLength int) string {
+	if contextLength <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d", contextLength)
+}
+
+func formatInventoryRoute(row cliModelInventoryRow) string {
+	if !row.Available {
+		return "unavailable"
+	}
+	if row.ExactPinOnly {
+		return "exact-pin"
+	}
+	if row.AutoRoutable {
+		return "auto"
+	}
+	return "pin-only"
+}
+
+func emptyDash(value string) string {
+	if value == "" {
+		return "-"
+	}
+	return value
 }
 
 func cmdCheck(workDir, providerName string, args []string) int {

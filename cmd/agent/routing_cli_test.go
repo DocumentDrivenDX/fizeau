@@ -596,11 +596,11 @@ func TestRouteStatus_ShowsEligibleCandidatesPerIntent(t *testing.T) {
 
 	// Discover a smart-tier model so the agent harness has at least one
 	// eligible candidate. The catalog's `smart` profile resolves to
-	// "gpt-5.4" on the embedded-openai surface; subscription harnesses also
+	// "gpt-5.5" on the embedded-openai surface; subscription harnesses also
 	// surface candidates but go ineligible without quota state, exercising
 	// both eligible and ineligible code paths.
-	healthy := newCountedOpenAIServer(t, http.StatusOK, "gpt-5.4", "ok")
-	healthy.setModels("gpt-5.4")
+	healthy := newCountedOpenAIServer(t, http.StatusOK, "gpt-5.5", "ok")
+	healthy.setModels("gpt-5.5")
 
 	writeTempConfig(t, workDir, `
 providers:
