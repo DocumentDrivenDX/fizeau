@@ -70,8 +70,8 @@ resolve_provider_key() {
     local config_path=""
     local config_key=""
     local -a config_candidates=(
-        "${REPO_ROOT}/.agent/config.yaml"
-        "${HOME}/.config/agent/config.yaml"
+        "${REPO_ROOT}/.fizeau/config.yaml"
+        "${HOME}/.config/fizeau/config.yaml"
     )
 
     for config_path in "${config_candidates[@]}"; do
@@ -139,9 +139,9 @@ echo "[3/4] Running smoke task '${SMOKE_TASK}'..."
 SMOKE_JOB_NAME="smoke-${SMOKE_TASK}-$(date -u +%Y%m%dT%H%M%SZ)"
 SMOKE_JOBS_DIR="${REPO_ROOT}/benchmark-results/harbor-jobs"
 mkdir -p "${SMOKE_JOBS_DIR}"
-AGENT_ENV_ARGS=()
+ENV_ARGS=()
 if [[ -n "${!PROVIDER_API_KEY_ENV:-}" ]]; then
-    AGENT_ENV_ARGS+=(--ae "${PROVIDER_API_KEY_ENV}=${!PROVIDER_API_KEY_ENV}")
+    ENV_ARGS+=(--ae "${PROVIDER_API_KEY_ENV}=${!PROVIDER_API_KEY_ENV}")
 fi
 JOB_OUTPUT=$( \
     PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+:${PYTHONPATH}}" \
@@ -164,7 +164,7 @@ JOB_OUTPUT=$( \
     --env "${RUNTIME}" \
     --jobs-dir "${SMOKE_JOBS_DIR}" \
     --job-name "${SMOKE_JOB_NAME}" \
-    "${AGENT_ENV_ARGS[@]}" \
+    "${ENV_ARGS[@]}" \
     2>&1)
 echo "${JOB_OUTPUT}"
 JOB_DIR="${SMOKE_JOBS_DIR}/${SMOKE_JOB_NAME}"

@@ -45,8 +45,8 @@ type dockerConformanceRecord struct {
 }
 
 func TestDockerTUIConformanceSuite(t *testing.T) {
-	if os.Getenv("AGENT_PTY_INTEGRATION") != "1" {
-		t.Skip("set AGENT_PTY_INTEGRATION=1 to run Docker-backed PTY conformance")
+	if os.Getenv("FIZEAU_PTY_INTEGRATION") != "1" {
+		t.Skip("set FIZEAU_PTY_INTEGRATION=1 to run Docker-backed PTY conformance")
 	}
 	fixtures := dockerConformanceFixtureDir(t)
 	buildDockerConformanceImage(t)
@@ -568,7 +568,7 @@ func requireFrameSpread(t *testing.T, events []cassette.Event, text string, minS
 func buildDockerConformanceImage(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Fatalf("docker binary required for AGENT_PTY_INTEGRATION=1: %v", err)
+		t.Fatalf("docker binary required for FIZEAU_PTY_INTEGRATION=1: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

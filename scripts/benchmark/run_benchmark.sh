@@ -43,9 +43,9 @@ PROVIDER_API_KEY_ENV="${DDX_BENCH_PROVIDER_API_KEY_ENV:-ANTHROPIC_API_KEY}"
 PROVIDER_HEADERS_JSON="${DDX_BENCH_PROVIDER_HEADERS_JSON:-}"
 PROVIDER_REASONING="${DDX_BENCH_PROVIDER_REASONING:-}"
 SYSTEM_APPEND="${DDX_BENCH_SYSTEM_APPEND:-}"
-AGENT_TIMEOUT_MULTIPLIER="${DDX_BENCH_AGENT_TIMEOUT_MULTIPLIER:-1.0}"
+TIMEOUT_MULTIPLIER="${DDX_BENCH_TIMEOUT_MULTIPLIER:-1.0}"
 DRY_RUN="${DDX_BENCH_DRY_RUN:-0}"
-AGENT_SHA_OVERRIDE="${FIZEAU_BENCH_SHA:-}"
+SHA_OVERRIDE="${FIZEAU_BENCH_SHA:-}"
 HARBOR_BIN=""
 
 BUNDLE_DIR="$(mktemp -d /tmp/ddx-bench-agent-XXXXXX)"
@@ -99,8 +99,8 @@ resolve_provider_api_key() {
     local config_key=""
     local fallback_provider=""
     local -a config_candidates=(
-        "${REPO_ROOT}/.agent/config.yaml"
-        "${HOME}/.config/agent/config.yaml"
+        "${REPO_ROOT}/.fizeau/config.yaml"
+        "${HOME}/.config/fizeau/config.yaml"
     )
 
     if [[ "${PROVIDER_NAME}" == "openrouter" || "${PROVIDER_BASE_URL}" == *"openrouter.ai"* ]]; then
@@ -213,15 +213,15 @@ else
     BINARY_SHA256="unknown"
 fi
 
-if [[ -n "${AGENT_SHA_OVERRIDE}" ]]; then
-    AGENT_GIT_SHA="${AGENT_SHA_OVERRIDE}"
+if [[ -n "${SHA_OVERRIDE}" ]]; then
+    GIT_SHA="${SHA_OVERRIDE}"
 elif [[ -z "${FIZEAU_BENCH_BINARY:-}" ]]; then
-    AGENT_GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+    GIT_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
 else
-    AGENT_GIT_SHA="unknown"
+    GIT_SHA="unknown"
 fi
-AGENT_GIT_SHA_SHORT="$(printf '%s' "${AGENT_GIT_SHA}" | cut -c1-12)"
-AGENT_VERSION="$("${INPUT_BINARY}" --version 2>/dev/null | head -1 || echo unknown)"
+GIT_SHA_SHORT="$(printf '%s' "${GIT_SHA}" | cut -c1-12)"
+BINARY_VERSION="$("${INPUT_BINARY}" --version 2>/dev/null | head -1 || echo unknown)"
 HARNESS_REPO_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
 
 # ---------------------------------------------------------------------------- #
@@ -235,8 +235,8 @@ DRY RUN
   staged_agent_config=${STAGED_AGENT_CONFIG}
   staged_binary=${STAGED_BINARY}
   harness_repo_sha=${HARNESS_REPO_SHA}
-  agent_git_sha=${AGENT_GIT_SHA}
-  agent_version=${AGENT_VERSION}
+  agent_git_sha=${GIT_SHA}
+  agent_version=${BINARY_VERSION}
   dataset=${DATASET}
   runtime=${RUNTIME}
   preset=${PRESET}
@@ -247,7 +247,7 @@ DRY RUN
   provider_base_url=${PROVIDER_BASE_URL}
   provider_headers_json=${PROVIDER_HEADERS_JSON}
   provider_reasoning=${PROVIDER_REASONING}
-  agent_timeout_multiplier=${AGENT_TIMEOUT_MULTIPLIER}
+  agent_timeout_multiplier=${TIMEOUT_MULTIPLIER}
   subset_version=${SUBSET_VERSION}
   subset_file=${SUBSET_FILE}
   binary_sha256=${BINARY_SHA256}
@@ -270,9 +270,9 @@ while IFS= read -r TASK_ID; do
     TASK_JOB_NAME="${TASK_ID}-${TIMESTAMP}"
     TASK_JOB_DIR="${HARBOR_JOBS_DIR}/${TASK_JOB_NAME}"
     JOB_ID=""
-    AGENT_ENV_ARGS=()
+    ENV_ARGS=()
     if [[ -n "${!PROVIDER_API_KEY_ENV:-}" ]]; then
-        AGENT_ENV_ARGS+=(--ae "${PROVIDER_API_KEY_ENV}=${!PROVIDER_API_KEY_ENV}")
+        ENV_ARGS+=(--ae "${PROVIDER_API_KEY_ENV}=${!PROVIDER_API_KEY_ENV}")
     fi
     HARBOR_OUT="$( \
         PYTHONPATH="${BUNDLE_DIR}${PYTHONPATH:+:${PYTHONPATH}}" \
@@ -296,8 +296,8 @@ while IFS= read -r TASK_ID; do
         --env "${RUNTIME}" \
         --jobs-dir "${HARBOR_JOBS_DIR}" \
         --job-name "${TASK_JOB_NAME}" \
-        --agent-timeout-multiplier "${AGENT_TIMEOUT_MULTIPLIER}" \
-        "${AGENT_ENV_ARGS[@]}" \
+        --agent-timeout-multiplier "${TIMEOUT_MULTIPLIER}" \
+        "${ENV_ARGS[@]}" \
         2>&1)" || true
     TASK_END="$(date -u +%s%3N)"
     TASK_DURATION_MS=$(( TASK_END - TASK_START ))
@@ -388,9 +388,9 @@ report = {
     "schema_version": "2",
     "captured": "${TIMESTAMP}",
     "harness_repo_sha": "${HARNESS_REPO_SHA}",
-    "agent_version": "${AGENT_VERSION}",
-    "agent_git_sha": "${AGENT_GIT_SHA}",
-    "agent_git_sha_short": "${AGENT_GIT_SHA_SHORT}",
+    "agent_version": "${BINARY_VERSION}",
+    "agent_git_sha": "${GIT_SHA}",
+    "agent_git_sha_short": "${GIT_SHA_SHORT}",
     "agent_binary_path": "${INPUT_BINARY}",
     "agent_binary_sha256": "${BINARY_SHA256}",
     "subset_version": "${SUBSET_VERSION}",
@@ -407,7 +407,7 @@ report = {
         "provider_api_key_env": "${PROVIDER_API_KEY_ENV}",
         "provider_headers_json": "${PROVIDER_HEADERS_JSON}",
         "provider_reasoning": "${PROVIDER_REASONING}",
-        "agent_timeout_multiplier": ${AGENT_TIMEOUT_MULTIPLIER},
+        "agent_timeout_multiplier": ${TIMEOUT_MULTIPLIER},
     },
     "summary": {
         "total_tasks": total,

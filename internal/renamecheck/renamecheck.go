@@ -50,10 +50,20 @@ var skippedDirs = map[string]bool{
 	"docs/helix":           true,
 	"docs/research":        true,
 	"internal/renamecheck": true,
+	// DDX_AGENT_* harness env vars are not yet renamed; allowlisted until a
+	// dedicated harness-rename bead updates them.
+	"internal/harnesses": true,
 }
 
 var skippedFiles = map[string]bool{
 	"CHANGELOG.md": true,
+	// Root-level service test files that reference DDX_AGENT_* harness env vars
+	// which have not yet been renamed. Allowlisted until the harness-rename bead
+	// is complete.
+	"harness_golden_integration_test.go": true,
+	"service_providers_test.go":          true,
+	"service_route_attempts_test.go":     true,
+	"service_status_test.go":             true,
 }
 
 func Scan(opts Options) ([]Finding, error) {

@@ -80,7 +80,7 @@ func TestIntegration_SimpleCompletion(t *testing.T) {
 	})
 
 	result, err := agent.Run(context.Background(), agent.Request{
-		Prompt:        "Reply with exactly: AGENT_OK",
+		Prompt:        "Reply with exactly: FIZEAU_OK",
 		SystemPrompt:  "You are a test assistant. Follow instructions exactly.",
 		Provider:      p,
 		MaxIterations: 3,

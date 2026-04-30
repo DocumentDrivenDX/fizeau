@@ -135,7 +135,7 @@ run_shell_case() {
     export HOME="${home}"
     export PATH="${mock_bin}:/usr/bin:/bin"
     export SHELL="/bin/${shell_name}"
-    export AGENT_INSTALL_DIR="${install_dir}"
+    export FIZEAU_INSTALL_DIR="${install_dir}"
     export MOCK_BINARY_PAYLOAD="${payload}"
     export MOCK_URL_LOG="${url_log}"
     bash "${INSTALL_SCRIPT}" >"${out}" 2>&1
@@ -161,7 +161,7 @@ run_shell_case() {
     export HOME="${home}"
     export PATH="${mock_bin}:/usr/bin:/bin"
     export SHELL="/bin/${shell_name}"
-    export AGENT_INSTALL_DIR="${install_dir}"
+    export FIZEAU_INSTALL_DIR="${install_dir}"
     export MOCK_BINARY_PAYLOAD="${payload}"
     export MOCK_URL_LOG="${url_log}"
     bash "${INSTALL_SCRIPT}" >>"${out}" 2>&1

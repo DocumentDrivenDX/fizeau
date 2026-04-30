@@ -81,7 +81,7 @@ def main() -> int:
         warmup_results = run_warmup(
             arms,
             timeout_s=args.warmup_timeout_seconds,
-            config_path=pathlib.Path.home() / ".config" / "agent" / "config.yaml",
+            config_path=pathlib.Path.home() / ".config" / "fizeau" / "config.yaml",
         )
         (run_dir / "warmup.json").write_text(json.dumps(warmup_results, indent=2) + "\n")
 
@@ -415,7 +415,7 @@ def check_task_refs(task: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_agent_provider_map(config_path: pathlib.Path) -> dict[str, dict[str, str]]:
-    """Parse ~/.config/agent/config.yaml's `providers:` section.
+    """Parse ~/.config/fizeau/config.yaml's `providers:` section.
 
     Returns a dict mapping provider name -> {"base_url": str, "model": str}.
     Hand-rolled because PyYAML is not a guaranteed dependency. The format is

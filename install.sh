@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 # Configuration
 REPO="DocumentDrivenDX/agent"
 BINARY_NAME="${BINARY_NAME:-ddx-agent}"
-INSTALL_DIR="${AGENT_INSTALL_DIR:-$HOME/.local/bin}"
+INSTALL_DIR="${FIZEAU_INSTALL_DIR:-$HOME/.local/bin}"
 SHELL_NAME=""
 RC_FILE=""
 
@@ -71,8 +71,8 @@ detect_platform() {
 get_latest_release() {
     log "Fetching latest release..."
     
-    if [ -n "${AGENT_VERSION:-}" ]; then
-        TAG="${AGENT_VERSION}"
+    if [ -n "${FIZEAU_VERSION:-}" ]; then
+        TAG="${FIZEAU_VERSION}"
         # Normalize to tag format (add v prefix if missing)
         if [[ ! "$TAG" =~ ^v ]]; then
             TAG="v${TAG}"
@@ -86,7 +86,7 @@ get_latest_release() {
         fi
 
         if [ -z "$TAG" ]; then
-            error "Could not determine latest release. Set AGENT_VERSION to specify a version."
+            error "Could not determine latest release. Set FIZEAU_VERSION to specify a version."
         fi
         
         log "Latest release: ${TAG}"
