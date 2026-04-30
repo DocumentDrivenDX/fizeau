@@ -5,87 +5,96 @@ ddx:
     - CONTRACT-003
     - SD-005
 ---
-# ADR-005: Smart Routing Replaces `model_routes`
+# ADR-005: Power-Based Routing Replaces `model_routes`
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-25 | Proposed | DDX Agent maintainers | `CONTRACT-003`, `SD-005` | Medium |
+| 2026-04-25 | Proposed | DDX Agent maintainers | `CONTRACT-003`, `SD-005`, `FEAT-004` | Medium |
 
 ## Context
 
-SD-005 currently makes `model_routes:` the resolution surface: users hand-author per-tier candidate lists in YAML, the CLI re-reads them and synthesizes a `RouteDecision` injected through `ServiceExecuteRequest.PreResolved`, and the service treats that as authoritative. The block exists to coordinate same-tier failover among local LM Studio hosts and to keep the routing engine from stripping configured candidates whose discovery probe is failing.
+SD-005 currently makes `model_routes:` the resolution surface: users
+hand-author ordered candidate lists in YAML, the CLI re-reads them and
+synthesizes a `RouteDecision` injected through
+`ServiceExecuteRequest.PreResolved`, and the service treats that injected
+decision as authoritative. The block exists to coordinate same-strength
+failover among local LM Studio hosts and to keep the routing engine from
+stripping configured candidates whose discovery probe is failing.
 
-This is two failure modes welded together:
+That design creates two problems:
 
-1. **Configurable failover in user YAML** is the wrong surface. The model catalog already knows which models occupy each tier (`code-economy`/`code-medium`/`code-high`/`smart`), provider config already lists endpoints, and the routing engine already scores `(harness, provider, model)` candidates with cost / latency / capability inputs. Forcing users to also write `model_routes:` makes them coordinate three sources of truth that the service could coordinate itself.
+1. **Configurable failover in user YAML is the wrong surface.** Provider source
+   config should declare transport and auth. The model catalog should own model
+   metadata and policy. The routing engine should build live candidates by
+   joining discovered inventory with catalog data. Requiring users to also
+   maintain `model_routes:` forces them to coordinate three sources of truth.
+2. **The CLI synthesis path is leaky.** `cmd/agent/main.go:474-487` builds a
+   `RouteDecision{Reason: "cli configured route"}`, threads it through
+   `ServiceExecuteRequest.PreResolved`, and overwrites the request's
+   `Provider`/`Model`/`Harness` fields, even though the contract says
+   `PreResolved` mode ignores those fields. The mechanism exists only because
+   the routing engine strips configured candidates on probe failure.
 
-2. **The CLI synthesis path is leaky.** `cmd/agent/main.go:474-487` builds a `RouteDecision{Reason: "cli configured route"}`, threads it through `ServiceExecuteRequest.PreResolved`, and overwrites the request's `Provider`/`Model`/`Harness` fields — which the contract claims `PreResolved` mode ignores. The mechanism only exists because the routing engine strips configured candidates on probe failure; without that strip, the CLI synthesis would not be needed.
-
-Two adjacent observed behaviors confirm the design is wrong:
-
-- When all configured local providers are down (`vidar`, `grendel` 502/timeout), the engine returns "all tiers exhausted — no viable provider found" instead of falling forward to a healthy subscription harness (`claude-max`, `codex-pro`). The user's expectation is automatic fallback when quota allows.
-- The `adaptive min-tier` heuristic locks out the `cheap` tier after a low trailing-window success rate (observed: 0.06 over 17 attempts), and the lockout never recovers because no cheap-tier attempts run to refresh the signal.
-
-The shape we want: providers are transport, the catalog is policy, the routing engine decides per request based on liveness, prompt characteristics, and a cost/latency/capability score. Users do not maintain a routing table.
+The target shape is automatic routing: users configure provider sources and
+endpoints, the agent asks those sources which models they can serve, joins the
+inventory with the catalog, tracks service-observed usage and availability, and
+selects the best candidate that satisfies the caller's hard constraints and
+optional power bounds. Users do not maintain routing tables.
 
 ## Decision
 
-Replace the `model_routes`-driven resolution surface with deterministic smart routing.
+Replace the `model_routes`-driven resolution surface with deterministic
+power-based routing.
 
-### 2026-04-30 clarification: power-driven candidate inventory
+### Power-Driven Candidate Inventory
 
-This ADR's original wording was too easy to implement as "profile resolves to
-one model, then score providers for that one model." That is not the intended
-router. The primary routing strength input is numeric model `power`. Human
-labels such as `cheap`, `fast`, `standard`, or `smart` may exist as CLI aliases
-over power ranges, but the agent routing contract is numeric.
+The primary routing strength input is numeric model `power`, an integer from
+1..10 owned by the catalog. Higher means more capable for agent tasks. `0`
+means unknown, missing, or not eligible for automatic routing. The routing
+contract is numeric: request fields are `MinPower` and `MaxPower`
+(`--min-power` / `--max-power` in CLI form).
 
-The service MUST build a complete candidate inventory before choosing:
+The service must build a complete joined inventory before choosing:
 
-1. **Provider/harness inventory** — enumerate every available execution surface:
-   prepaid subscription harnesses (`claude`, `codex`, `gemini` when quota
-   evidence says usable), native provider endpoints (`lmstudio`, `omlx`,
-   `ollama`, OpenRouter/OpenAI-compatible endpoints), and test harnesses only
-   when explicitly requested.
+1. **Provider source and harness inventory** — enumerate every available
+   execution surface: prepaid subscription harnesses, native provider sources,
+   configured endpoints, and test harnesses only when explicitly requested.
 2. **Model inventory** — ask each surface what concrete models it can serve.
-   Live `/models` or harness discovery output wins; configured provider
-   defaults are fallback hints, not the whole inventory.
+   Live `/models` or harness discovery output wins. Configured endpoint default
+   models are fallback hints, not the whole inventory.
 3. **Catalog join** — match discovered concrete models to catalog entries.
-   Catalog metadata supplies tier, family, context window, reasoning support,
-   tool support, quality benchmarks, deprecation status, list price, and a
-   required `power` integer. Discovered models without catalog power remain
-   inspectable and may be used when explicitly pinned, but they are not
-   eligible for automatic routing.
+   Catalog metadata supplies family, context window, reasoning support, tool
+   support, quality benchmarks, deprecation status, list price,
+   provider/deployment class, and required `power`. Discovered models without
+   catalog power remain inspectable and may be used when explicitly pinned, but
+   they are not eligible for automatic routing.
 4. **Usage/cost join** — attach live usage/quota signals where the surface can
    provide them. Prepaid harnesses expose quota remaining and reset time; paid
    metered providers expose static or live cost; local/free providers expose
    zero marginal cost plus measured latency/reliability when known.
-5. **Inspectable output** — expose this joined inventory through a public CLI
-   surface (`ddx agent available-models --json`, or an equivalent
-   `ddx agent models --available --json`) and the service `ListModels` API.
-   Operators must be able to see the same candidate table the router scores:
-   harness, provider, endpoint, model, power, tier, family, placement, cost class,
-   marginal cost, quota/reset, context, tool support, reasoning support,
-   health, recent latency, availability status, and filter reasons.
+5. **Inspectable output** — expose the joined inventory through
+   `ddx-agent --list-models` and the service `ListModels` API. Operators must
+   be able to inspect the same candidate table the router scores: harness,
+   provider source, endpoint/host, model, power, family,
+   provider/deployment class, marginal cost, quota/reset, context, tool
+   support, reasoning support, health, recent latency, availability status,
+   auto-routable status, exact-pin-only status, and filter reasons.
 
-Optional human aliases compile to power bounds, placement policy, and score
-weights:
+Power is a catalog-owned ordering. The catalog must assign power to every
+model eligible for automatic routing. Initial values can be synthesized from
+normalized coding benchmarks, context window, tool/reasoning support, recency,
+cost, and provider/deployment class. Cost times recency is the default proxy
+when benchmark data is sparse: within a provider/model family, the newest and
+most expensive model is assumed to be that provider's strongest model unless
+the catalog contains an explicit power/cost override. Older models in the same
+family are not eligible for automatic routing unless the caller directly pins
+them or the catalog records why their cost/power tradeoff is still useful.
 
-| Alias | Power bounds | Placement policy | Primary weights |
-|---|---:|---|---|
-| `local`, `offline`, `air-gapped` | `min=10`, no upper bound | local/free only | cost, availability, latency |
-| `cheap` | `10..39` | local/free first; prepaid/cheap metered fallback | cost, availability, latency |
-| `fast` | `20..49` | local/free or prepaid, whichever is low-latency and capable | latency, availability, cost |
-| `standard` | `50..79` | local/free first when capable; prepaid fallback | availability, cost, latency |
-| `smart` | `min=80`, no upper bound | prepaid frontier first when quota is healthy; local fallback only when frontier/prepaid is unavailable or explicitly cheaper for equivalent quality | power, availability, quota, latency |
-
-Power is a catalog-owned ordering where higher means more capable for the agent
-task domain. The service MUST expose power-band aliases and each available
-model's power through `ListPowerBands`, `ListModels`, and the CLI inventory
-surface so callers can choose their own retry policy. The primitive request
-fields are `MinPower` and `MaxPower` (`--min-power` / `--max-power` in CLI
-form). Power bounds never override hard `--model`, `--provider`, or `--harness`
-pins.
+Provider/deployment class is part of power assignment. A local, community, or
+self-hosted copy must not receive the same power as a managed cloud frontier
+model solely because one benchmark is high. The catalog should keep raw inputs
+and derived power together so new benchmark data can revise power
+quantitatively instead of relying on hand-guessed membership buckets.
 
 Implementation status as of 2026-04-30: the embedded v4 catalog does not yet
 define `power`, and `UpdateManifestPricing` only imports OpenRouter pricing and
@@ -93,21 +102,11 @@ context length. Adding catalog power schema and bootstrapping values for every
 auto-routable model is prerequisite work before this routing interface can
 ship.
 
-Initial power can be synthesized from normalized coding benchmarks (for
-example SWE-bench, terminal/TypeScript-oriented task benchmarks when present),
-context window, tool/reasoning support, recency, and cost. Cost times recency is
-the default proxy when benchmark data is sparse: within a provider/model family,
-the newest and most expensive model is assumed to be that provider's strongest
-model unless the catalog contains an explicit power/cost override. Older models
-in the same family are not eligible for automatic routing unless they are
-directly requested or the catalog records why their cost/power tradeoff is still
-useful. The catalog should keep the raw inputs and derived `power` together so
-new benchmark data can revise power quantitatively instead of relying on
-hand-guessed profile membership.
+### Scoring
 
 Selection is a transparent utility calculation, not a hidden preference:
 
-```
+```text
 score = power_weighted_capability
       + latency_weight
       + placement_bonus
@@ -117,123 +116,84 @@ score = power_weighted_capability
       - stale_signal_penalty
 ```
 
-Prepaid quota changes the marginal-cost term. If Claude Code reports usable
-Opus quota with a reset in five minutes, `smart` may rank Opus first because
-the effective marginal cost is near zero and the quality score is high. If the
-same quota is exhausted, stale, or near a long reset horizon, the quota bonus
-disappears and cost/availability penalties apply. Local LM Studio/oMLX/Ollama
-providers are treated as free marginal cost but still compete on capability,
-tool support, context, latency, and availability.
+Prepaid quota changes the marginal-cost term. If a prepaid frontier harness has
+healthy quota with a near reset, the effective marginal cost can be close to
+zero and the highest-power model may rank first. If the same quota is
+exhausted, stale, or far from reset, the quota bonus disappears and
+cost/availability penalties apply. Local LM Studio, oMLX, and Ollama providers
+are treated as free marginal cost but still compete on capability, tool
+support, context, latency, and availability.
 
-When no hard axes or power bounds are supplied, the service should select the
-best available model it can use according to the score components above. If
-strong prepaid quota is available, "best" may be a current frontier model. If
-only local providers are live, "best" may be a local model that clears
-capability gates.
+When no hard axes or power bounds are supplied, the service selects the best
+lowest-cost viable auto-routable model it can use from the discovered
+inventory. If strong prepaid quota is available and inexpensive at the margin,
+the selected model may be a current frontier model. If only local providers are
+live, the selected model may be a local model that clears capability gates.
 
 Provider placement is candidate-level. The native `agent` harness is not
-itself "local" or "subscription"; its child provider endpoints are. A single
-native harness may contain local oMLX, local LM Studio, and paid OpenRouter
-providers, and placement filtering must operate on those provider candidates.
+itself local/free, prepaid, or metered; its child provider endpoints are. A
+single native harness may contain local oMLX, local LM Studio, and paid
+OpenRouter providers, and placement filtering must operate on those provider
+candidates.
 
-Retry is not an agent responsibility. `Execute` selects the best candidate,
-dispatches that one candidate, and reports what happened. It does not try
-candidate 2 and it does not silently widen power bounds. Provider-specific
-authentication, quota, transport, timeout, stream,
-or protocol failures are reported as facts about the attempted
-`(harness, provider, endpoint, model)` tuple; callers decide whether to issue a
-new request using another power range or different hard pins.
-
-Task-level escalation across power ranges is caller-owned. A caller such as DDx
-owns that policy because it has task context, budget, retry limits, and semantic
-evidence from tests/reviews. The service must therefore return enough structured
-evidence for the caller to decide:
-
-- requested/effective power bounds and hard constraints
-- selected candidate and full candidate trace with power and filter reasons
-- attempted candidate and availability/transport failure class when dispatch
-  failed
-- score components and live cost/quota/latency facts
-
-The service exposes stronger/weaker power bands as static metadata, but it must
-not present that metadata as a retry decision. The caller applies budgets, task
-policy, and semantic evidence before retrying.
-
-### 1. Auto-selection rules
+### Hard Constraints
 
 `Execute` auto-fills only the axes the caller left unconstrained. `MinPower`
 and `MaxPower` are broad routing policy. `Harness`, `Provider`, and exact model
 identity are hard constraints:
 
 - `Harness=claude` means only the Claude harness may be used.
-- `Provider=lmstudio` means only LM Studio providers/endpoints may be used.
-- `Model=qwen-3.6-27b` means only that model, including provider-native aliases
-  that fuzzy-match the same catalog model, may be used. The router may optimize
-  provider/endpoint choice inside that model constraint, but it must not select
-  a different model such as GPT-5 mini.
+- `Provider=lmstudio` means only that provider source, or a clearly scoped
+  endpoint selector on request surfaces that support endpoint selection, may be
+  used.
+- `Model=qwen-3.6-27b` means only that model identity may be used. The router
+  may optimize provider source and endpoint choice inside that model
+  constraint, but it must not select a different model.
 
-A `ModelRef` is interpreted by catalog type: refs that resolve to a concrete
-model entry are exact model constraints; refs that resolve to a power-band alias
-expand to numeric `MinPower`/`MaxPower`. If a constrained request cannot be
+Catalog model aliases may resolve exact model identity or migration names, but
+they do not define routing personas. If a constrained request cannot be
 satisfied, routing fails with a detailed candidate/error trace instead of
 broadening the constraint.
 
-When no power/model intent is supplied, the router uses no power bound and
-scores all eligible catalog-powered candidates.
+Power bounds never override hard `--model`, provider-source/endpoint, or
+`--harness` pins. Models with missing or zero power remain inspectable and may
+be used by exact pin when available, but are excluded from unpinned automatic
+routing.
 
-Auto-selection signals are deterministic and already available:
-
-- `EstimatedPromptTokens` — prompt size in tokens. Used to filter candidates whose context window cannot hold the prompt.
-- `RequiresTools` — whether the request requires tool calls. It is explicit
-  caller intent; automatic derivation is allowed only when the request surface
-  has unambiguously enabled tool execution. Text-only requests do not become
-  tool-requiring merely because a harness can use tools.
-- `Reasoning` — caller's reasoning request. Used to filter providers whose support level is below the request.
-
-These existed in `internal/routing.Request` already (`internal/routing/engine.go:15`); the gap is that public `RouteRequest`/`ServiceExecuteRequest` did not surface them, so service-side smart routing was blind. ADR adds them to the public surface (see CONTRACT-003 update).
-
-No prose-heuristic complexity classifier. Token count plus `RequiresTools` is the entire signal in this round.
-
-### 2. Routing decision
+### Routing Decision
 
 Per request:
 
-1. **Build the candidate set** = every available `(harness, provider,
-   endpoint, model)` joined with the catalog and live provider/harness signals,
-   then apply hard caller constraints before scoring. The requested power
-   bounds filter models by catalog power; they do not collapse the set to
-   one primary model unless the caller supplied an exact model constraint.
-2. **Filter by liveness** via `HealthCheck` and live model discovery. Drop
-   endpoints whose latest probe failed or which do not advertise the candidate
-   model. If the filter empties the set, return a no-candidate decision with
-   the full rejected trace; do not silently change aliases or power bounds
-   inside the same request.
-3. **Filter by capability**: drop candidates whose context window <
+1. **Build the candidate set** = every available `(harness, provider source,
+   endpoint, model)` joined with the catalog and live provider/harness signals.
+2. **Apply hard constraints** before scoring: exact model identity, provider
+   source/endpoint, harness, and any caller capability requirements.
+3. **Filter by liveness** via `HealthCheck`, recent cooldown state, and live
+   model discovery. Drop endpoints whose latest probe failed or which do not
+   advertise the candidate model. If the filter empties the set, return a
+   no-candidate decision with the full rejected trace.
+4. **Filter by capability and power**: drop candidates whose context window <
    `EstimatedPromptTokens`, whose `SupportsTools()` is false when
-   `RequiresTools` is true, whose reasoning support is below the request, or
-   whose catalog power/family is outside the requested power bounds.
-4. **Score each survivor** using explicit score components: catalog quality,
-   observed latency, marginal cost, quota/reset state, placement preference,
-   availability, and staleness penalties. Candidate trace
-   output must expose these components.
-5. **Dispatch top-1 once**, return the full ranked candidate trace in the
+   `RequiresTools` is true, whose reasoning support is below the request, whose
+   catalog power is outside `MinPower`/`MaxPower`, or whose catalog status
+   excludes automatic routing.
+5. **Score each survivor** using explicit score components: catalog quality,
+   observed latency, marginal cost, quota/reset state, local/free preference
+   when constraints are satisfied, availability, and staleness penalties.
+   Candidate trace output must expose these components.
+6. **Dispatch top-1 once**, return the full ranked candidate trace in the
    routing decision event so callers can see why candidates 2..N lost.
-6. **Report dispatch outcome** for the attempted candidate. Do not rotate to a
+7. **Report dispatch outcome** for the attempted candidate. Do not rotate to a
    second candidate. Record only availability/transport/protocol outcome facts
-   for the attempted `(harness, provider, endpoint, model)` tuple and return
-   structured evidence to the caller.
+   for the attempted `(harness, provider source, endpoint, model)` tuple and
+   return structured evidence to the caller.
 
-#### Pipeline order
-
-Steps 1–6 above describe the user-visible flow. The implementation collapses them into the engine's two phases:
+The implementation collapses these user-visible steps into two phases:
 
 **In `routing.Resolve` (`internal/routing/engine.go`):** consume a fully joined
-candidate inventory → apply inline gates (liveness via provider/endpoint
-cooldown, capability via `EstimatedPromptTokens` / `RequiresTools` /
-`Reasoning`, placement policy, subscription quota, catalog power bounds, harness
-allowlist) → score eligible candidates with power, cost, latency, capability,
-availability, placement, and quota signals → rank and tie-break by cost and
-latency.
+candidate inventory, apply inline gates, score eligible candidates with power,
+cost, latency, capability, availability, placement, and quota signals, then
+rank and tie-break by cost and latency.
 
 **In `service.ResolveRoute` (`service_routing.go`):** call the engine once for
 the requested power bounds/constraints and preserve the candidate trace even on
@@ -241,25 +201,41 @@ failure. Catalog power filtering happens in the engine's inline gates as part
 of candidate construction. Retry is not performed here; the service returns the
 ordered trace and attempted-route outcome for callers that own retry policy.
 
-#### Caller-owned retry by power
+### Caller-Owned Retry
 
-Power bands expose a machine-readable ordering. Callers retry by raising
-`MinPower` or otherwise changing the requested power range. The service exposes
-that ordering; it does not decide whether retry is warranted. Local-only
-placement constraints stay in force even when callers raise power.
+Retry is not an agent responsibility. `Execute` selects the best candidate,
+dispatches that one candidate, and reports what happened. It does not try a
+second candidate and it does not widen power bounds. Provider-specific
+authentication, quota, transport, timeout, stream, subprocess, or protocol
+failures are reported as facts about the attempted `(harness, provider source,
+endpoint, model)` tuple; callers decide whether to issue a new request using a
+different power range or different hard pins.
 
-DDx execute-loop policy: first attempt may use a low or medium power floor
-depending on queue policy. If the attempt reaches the agent and DDx later
-determines from tests, review, or acceptance evidence that the model was too
-weak, DDx may retry the same task with a higher power floor while preserving
+Task-level escalation across power ranges is caller-owned. A caller such as
+DDx owns that policy because it has task context, budget, retry limits, and
+semantic evidence from tests/reviews. The service must therefore return enough
+structured evidence for the caller to decide:
+
+- requested/effective power bounds and hard constraints
+- selected candidate and full candidate trace with power and filter reasons
+- attempted candidate and availability/transport failure class when dispatch
+  failed
+- score components and live cost/quota/latency facts
+
+The service exposes numeric power as machine-readable metadata, but it must not
+present that metadata as a retry decision. The caller applies budgets, task
+policy, and semantic evidence before issuing another request. If DDx later
+determines from tests, review, or acceptance evidence that the chosen model was
+too weak, DDx may retry the same task with a higher `MinPower` while preserving
 first-attempt logs and budget accounting. DDx must not retry on deterministic
 setup/config failures.
 
-### 3. Provider availability feedback
+### Provider Availability Feedback
 
 The agent service owns only provider availability feedback for candidate
-selection. Minimum signal key: `(harness, provider, endpoint, model)`. A single
-bad endpoint must not poison its whole tier or provider family.
+selection. Minimum signal key: `(harness, provider source, endpoint, model)`.
+A single bad endpoint must not poison its whole provider source, model family,
+or power range.
 
 `Execute` records the attempted route's service-observed availability outcome:
 success, transport errors, auth/quota/rate limits, 5xx responses, stream loss,
@@ -269,85 +245,129 @@ latency, quota, and cooldown state from this store.
 
 Semantic task outcomes are not agent route feedback. If DDx learns that a model
 was too weak because tests failed, review blocked, or acceptance criteria were
-missed, that evidence belongs to DDx and may be contributed to the model catalog
-or catalog-derived power ratings. It does not directly demote a live provider in
-agent's transient routing state.
+missed, that evidence belongs to DDx and may be contributed to the model
+catalog or catalog-derived power ratings. It does not directly demote a live
+provider in agent's transient routing state.
 
-### 4. Subscription quota inputs
+### Subscription Quota Inputs
 
-Claude/Codex/Gemini already publish quota signals via harness caches (`service_routing.go:335`). Cost ramping when ≥80% used already exists. Keep both unchanged.
+Subscription harnesses already publish quota signals via harness caches
+(`service_routing.go:335`). Cost ramping when at least 80% used already
+exists. Keep both unchanged.
 
-OpenRouter and native HTTP providers do not publish live quota. Treat their cost as static catalog cost in this round; file a follow-up bead for live-quota plumbing on those providers but do not block this work on it.
+OpenRouter and native HTTP providers do not publish live quota. Treat their
+cost as static catalog cost in this round; file a follow-up bead for live-quota
+plumbing on those providers but do not block this work on it.
 
-### 5. `route-status` redesigned
+### `route-status` Redesigned
 
 Today `route-status` enumerates configured `model_routes` keys. Post-deletion
-it must report **eligible candidates for requested power bounds**, with score
-components (power, cost, latency, availability, filter reason) per candidate and
-per-(provider,model,endpoint) availability/latency facts. Operators read it to
-answer "why did the router pick X?" — not to inspect their own YAML.
+it must report eligible candidates for requested power bounds, with score
+components (power, cost, latency, availability, filter reason) per candidate
+and per-(provider source, model, endpoint) availability/latency facts.
+Operators read it to answer "why did the router pick X?" rather than to
+inspect their own YAML.
 
-### 6. Delete
+### Delete
 
-- `model_routes:` config block; its loader in `internal/config/config.go`; `ServiceConfig.ModelRouteConfig`/`ModelRouteNames`.
-- `service_routing.go` model_routes short-circuit landed in `90d9b03` (revert).
-- `ServiceExecuteRequest.PreResolved` and `RouteDecision`-as-input. `PreResolved` was specified for a dry-run-then-execute flow that has no current consumer; its only producer in the repo is the CLI synthesis at `cmd/agent/main.go:474-487`, which is itself part of the `model_routes` deletion. `ResolveRoute` remains as a public method (operator dashboard / debug surface), but its result is informational, not re-injectable.
-- CLI `selection.RouteCandidates` and `cmd/agent/routing_provider.go` provider-construction wrappers.
-- SD-005 D4–D7 (model-route surface). SD-005 rewritten from this ADR.
+- `model_routes:` config block; its loader in `internal/config/config.go`;
+  `ServiceConfig.ModelRouteConfig`/`ModelRouteNames`.
+- `service_routing.go` `model_routes` short-circuit landed in `90d9b03`
+  (revert).
+- `ServiceExecuteRequest.PreResolved` and `RouteDecision`-as-input.
+  `PreResolved` was specified for a dry-run-then-execute flow that has no
+  current consumer; its only producer in the repo is the CLI synthesis at
+  `cmd/agent/main.go:474-487`, which is itself part of the `model_routes`
+  deletion. `ResolveRoute` remains as a public method (operator dashboard /
+  debug surface), but its result is informational, not re-injectable.
+- CLI `selection.RouteCandidates` and `cmd/agent/routing_provider.go`
+  provider-construction wrappers.
+- SD-005 D4-D7 (`model_routes` surface). SD-005 rewritten from this ADR.
 
-### 7. Keep
+### Keep
 
-- `routing.default_model`, `routing.default_model_ref`, `routing.health_cooldown` config keys. These are useful defaults, not model_routes.
-- `internal/modelcatalog` — source of truth for tier policy, cost, context, capability.
-- `internal/routing` engine scoring — refactor input source, do not rewrite scoring.
-- Provider adapters, `internal/reasoning`, the three session-log refactors landed earlier in this stack (`agent-7faa0edf`, `agent-b9bd700f`, `agent-99549438`).
-- `--min-power`, `--max-power`, `--model`, `--provider`, `--reasoning`, `--model-ref` CLI flags.
-
-### 8. Backward compatibility
-
-For one release: parse `model_routes:` if present, log a deprecation warning naming the offending config path, **honor the configured ordering**. Hard-erroring immediately is safer than silently ignoring (warn-and-ignore is the worst option — semantic drift). Remove the parser and the warning in the next release.
-
-Add a `cmd/agent/service_boundary_test.go` structural check that fails if `internal/config` reintroduces `model_routes` parsing after the deprecation cycle ends.
+- `routing.default_model`, `routing.default_model_ref`,
+  `routing.health_cooldown` config keys. These are useful defaults, not
+  `model_routes`.
+- `internal/modelcatalog` as source of truth for cost, context, capability,
+  power, provider/deployment class, and deprecation state.
+- `internal/routing` engine scoring; refactor input source, do not rewrite
+  scoring wholesale.
+- Provider adapters, `internal/reasoning`, and the three session-log refactors
+  landed earlier in this stack (`agent-7faa0edf`, `agent-b9bd700f`,
+  `agent-99549438`).
+- `--min-power`, `--max-power`, `--model`, `--provider`, `--reasoning`, and
+  `--model-ref` CLI flags.
 
 ## Consequences
 
 ### Positive
 
-- One source of routing truth (catalog + provider config + engine), not three.
-- Live-provider fallback works automatically: when local LM Studio hosts are down and subscription quota is available, requests route to `claude-max`/`codex-pro` without operator config.
-- Per-(provider,model) signal recovers from transient failures; one bad model no longer locks out its tier indefinitely.
-- `RouteCandidate` exposes structured score components, not a free-form `Reason` string. Operator debugging gets a real surface.
-- Public `RouteRequest` exposes the prompt-aware inputs the engine already needed; service-side smart routing is no longer blind.
+- One source of routing truth: provider source/endpoint config plus catalog
+  metadata plus the engine's live inventory join.
+- Local/free preference works automatically when local/free candidates satisfy
+  requested power, tools, context, and availability constraints.
+- Subscription harnesses can win when quota is healthy and effective marginal
+  cost is low.
+- Per-(provider source, endpoint, model) signal recovers from transient
+  failures; one bad model or endpoint no longer locks out unrelated candidates.
+- `RouteCandidate` exposes structured score components, not a free-form
+  `Reason` string. Operator debugging gets a real surface.
+- Public `RouteRequest` exposes the prompt-aware inputs the engine needs;
+  service-side routing is no longer blind.
 
 ### Negative
 
-- Removes a configurable failover surface. Power users who deliberately wire an ordered candidate list lose that knob. Mitigation: explicit `--provider <name>` and `--model <name>` pins remain; chaining failover by ordering candidates was already a workaround for the engine's probe-strip behavior, which this ADR fixes at the source.
-- Public surface change to `RouteRequest`/`ServiceExecuteRequest` (new fields; one removed). Consumers re-bind.
-- One-release deprecation window means operators with `model_routes:` configs do not get an immediate hard error. Acceptable trade-off vs. silent drift.
+- Removes a configurable failover surface. Operators who deliberately wire an
+  ordered candidate list lose that knob. Mitigation: explicit provider
+  source/endpoint and exact model pins remain; chaining failover by ordering
+  candidates was already a workaround for the engine's probe-strip behavior,
+  which this ADR fixes at the source.
+- Public surface change to `RouteRequest`/`ServiceExecuteRequest` (new fields;
+  one removed). Consumers re-bind.
+- One-release deprecation window means operators with `model_routes:` configs
+  do not get an immediate hard error. Acceptable trade-off vs. silent drift.
 
 ## Migration
 
-Plan in three sharper beads (replacing the obsolete chain `agent-9d120ece`/`6dd4ad97`/`873081a9`/`8804194f`, which is canceled with note "superseded by ADR-005"):
+Plan in three sharper beads (replacing the obsolete chain
+`agent-9d120ece`/`6dd4ad97`/`873081a9`/`8804194f`, which is canceled with note
+"superseded by ADR-005"):
 
-1. **Public surface update** — add `EstimatedPromptTokens` / `RequiresTools` to `RouteRequest` and `ServiceExecuteRequest`; remove `ServiceExecuteRequest.PreResolved`; add structured score components to `RouteCandidate`; update CONTRACT-003. Revert `90d9b03`. Update SD-005 with the auto-selection section and deprecation note.
+1. **Public surface update** — add `EstimatedPromptTokens` / `RequiresTools` to
+   `RouteRequest` and `ServiceExecuteRequest`; remove
+   `ServiceExecuteRequest.PreResolved`; add structured score components to
+   `RouteCandidate`; update CONTRACT-003. Revert `90d9b03`. Update SD-005 with
+   the auto-selection section and deprecation note.
+2. **Wire inputs + scoring + route-status** — plumb new `RouteRequest` fields
+   from CLI through `Execute`; wire engine gates against them; expose score
+   components in routing-decision events; redesign `route-status` to show
+   eligible candidates per intent. Add per-(provider source, endpoint, model)
+   success/latency keying.
+3. **Config + CLI cleanup + deprecation** — delete `model_routes` parser and
+   `ServiceConfig.ModelRouteConfig`; delete CLI `selection.RouteCandidates`
+   synthesis and `routing_provider.go` provider-construction wrappers; add
+   deprecation warning when parsing legacy config; add boundary test forbidding
+   `model_routes` re-entry.
 
-2. **Wire inputs + scoring + route-status** — plumb new `RouteRequest` fields from CLI through `Execute`; wire engine gates against them; expose score components in routing-decision events; redesign `route-status` to show eligible candidates per intent. Add per-(provider,model) success/latency keying. Replace per-tier adaptive min-tier with per-model signal.
+Step 1 blocks steps 2 and 3.
 
-3. **Config + CLI cleanup + deprecation** — delete `model_routes` parser and `ServiceConfig.ModelRouteConfig`; delete CLI `selection.RouteCandidates` synthesis and `routing_provider.go` provider-construction wrappers; add deprecation warning when parsing legacy config; add boundary test forbidding `model_routes` re-entry.
+## Out of Scope
 
-Beads in steps 2 and 3 can be parallelized across two workers; step 1 blocks both.
-
-## Out of scope (deferred)
-
-- Persistent EWMA across process restarts. In-memory + TTL is fine for this round; persistence + warm-start is its own design.
-- ML-style prompt classification beyond `EstimatedPromptTokens`/`RequiresTools`. Ship deterministic smart routing first.
-- Live quota plumbing for OpenRouter and native HTTP providers. Static catalog cost suffices in this round.
-- Reviewer pipeline overflow fixes — tracked separately in upstream `ddx` repo (FEAT-022 + `ddx-021bd69b`); this repo's only related work is one bead in step 1 to tighten the success-final usage convention.
+- Persistent EWMA across process restarts. In-memory + TTL is fine for this
+  round; persistence + warm-start is its own design.
+- ML-style prompt classification beyond `EstimatedPromptTokens`/`RequiresTools`.
+  Ship deterministic power-based routing first.
+- Live quota plumbing for OpenRouter and native HTTP providers. Static catalog
+  cost suffices in this round.
+- Reviewer pipeline overflow fixes, tracked separately in the upstream `ddx`
+  repo.
 
 ## Related
 
 - `CONTRACT-003` — public service surface; updated in step 1.
 - `SD-005` — provider/model/routing config; rewritten from this ADR.
-- `internal/routing/engine.go` — existing scoring engine; input source refactored, scoring unchanged.
-- `service_routing.go` — subscription quota cost ramp at line 593 stays; `90d9b03` short-circuit reverts.
-- Upstream `ddx-021bd69b` — reviewer JSON verdict contract (sibling repo, separate fix path).
+- `internal/routing/engine.go` — existing scoring engine; input source
+  refactored, scoring retained.
+- `service_routing.go` — subscription quota cost ramp stays; `90d9b03`
+  short-circuit reverts.
