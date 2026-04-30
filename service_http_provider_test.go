@@ -450,7 +450,7 @@ func openAIModelChatServer(t *testing.T, models []string, wantModel, content str
 	}))
 }
 
-func executeAndFinal(t *testing.T, svc DdxAgent, req ServiceExecuteRequest) harnesses.FinalData {
+func executeAndFinal(t *testing.T, svc FizeauService, req ServiceExecuteRequest) harnesses.FinalData {
 	t.Helper()
 	ch, err := svc.Execute(context.Background(), req)
 	if err != nil {

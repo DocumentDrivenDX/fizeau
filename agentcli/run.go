@@ -1638,11 +1638,11 @@ func cmdUsage(workDir string, args []string) int {
 	return 0
 }
 
-// newSessionProjectionService constructs a DdxAgent for the historical
+// newSessionProjectionService constructs a FizeauService for the historical
 // session-log subcommands (log/replay/usage). The session-log directory is
 // resolved from cfg and handed to the service via ServiceOptions so that the
 // CLI never reads the on-disk session-log layout directly.
-func newSessionProjectionService(workDir string, cfg *agentConfig.Config) (fizeau.DdxAgent, error) {
+func newSessionProjectionService(workDir string, cfg *agentConfig.Config) (fizeau.FizeauService, error) {
 	logDir := sessionLogDir(workDir, cfg)
 	return fizeau.New(fizeau.ServiceOptions{
 		ServiceConfig: agentConfig.NewServiceConfig(cfg, workDir),

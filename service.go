@@ -15,9 +15,9 @@ import (
 	sessionusage "github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
-// DdxAgent is the entire public Go surface of the ddx-agent module.
+// FizeauService is the entire public Go surface of the ddx-agent module.
 // See CONTRACT-003 for the full specification.
-type DdxAgent interface {
+type FizeauService interface {
 	Execute(ctx context.Context, req ServiceExecuteRequest) (<-chan ServiceEvent, error)
 	TailSessionLog(ctx context.Context, sessionID string) (<-chan ServiceEvent, error)
 	ListHarnesses(ctx context.Context) ([]HarnessInfo, error)
@@ -91,7 +91,7 @@ type ServiceProviderEndpoint struct {
 	BaseURL string
 }
 
-// ServiceOptions configures a DdxAgent instance.
+// ServiceOptions configures a FizeauService instance.
 //
 // seamOptions is embedded so production builds (no testseam tag) get an
 // empty struct — making it a compile-time error to set seam fields without
@@ -668,7 +668,7 @@ type StallPolicy struct {
 	MaxNoopCompactions        int // 0 = disabled
 }
 
-// service is the concrete DdxAgent implementation.
+// service is the concrete FizeauService implementation.
 type service struct {
 	opts     ServiceOptions
 	registry *harnesses.Registry
@@ -748,7 +748,7 @@ func RegisterConfigLoader(fn func(dir string) (ServiceConfig, error)) {
 	loadServiceConfig = fn
 }
 
-// New constructs a DdxAgent. When opts.ServiceConfig is nil, New attempts to
+// New constructs a FizeauService. When opts.ServiceConfig is nil, New attempts to
 // load configuration automatically:
 //  1. If opts.ConfigPath is non-empty, load from filepath.Dir(opts.ConfigPath).
 //  2. Otherwise, load from the default global config location.
@@ -757,7 +757,7 @@ func RegisterConfigLoader(fn func(dir string) (ServiceConfig, error)) {
 // binary (it registers the loader via init). If the config package is not
 // imported and ServiceConfig is nil, the service starts without provider config
 // (ListProviders/HealthCheck will return errors until config is injected).
-func New(opts ServiceOptions) (DdxAgent, error) {
+func New(opts ServiceOptions) (FizeauService, error) {
 	if opts.ServiceConfig == nil && loadServiceConfig != nil && shouldAutoLoadServiceConfig(opts) {
 		dir := ""
 		if opts.ConfigPath != "" {

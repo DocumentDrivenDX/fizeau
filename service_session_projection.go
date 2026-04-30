@@ -15,7 +15,7 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
-// UsageReportOptions configures DdxAgent.UsageReport.
+// UsageReportOptions configures FizeauService.UsageReport.
 type UsageReportOptions struct {
 	// Since limits the report window. Supported values include "today", "7d",
 	// "30d", a date range "YYYY-MM-DD..YYYY-MM-DD", or a single start date.

@@ -46,15 +46,15 @@ func TestNew_AcceptsExplicitServiceConfig(t *testing.T) {
 // ServiceConfig is nil but ConfigPath is set, New loads config from the
 // directory containing ConfigPath and makes it available to ListProviders.
 func TestNew_LoadsFromConfigPathWhenServiceConfigNil(t *testing.T) {
-	// config.Load reads ~/.config/agent/config.yaml (global) then
-	// <workDir>/.agent/config.yaml (project). Write our test config as the
+	// config.Load reads ~/.config/fizeau/config.yaml (global) then
+	// <workDir>/.fizeau/config.yaml (project). Write our test config as the
 	// project config file and isolate the HOME dir so the global path is empty.
 	workDir := t.TempDir()
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 
-	// Write project config under workDir/.agent/config.yaml
-	agentDir := filepath.Join(workDir, ".agent")
+	// Write project config under workDir/.fizeau/config.yaml
+	agentDir := filepath.Join(workDir, ".fizeau")
 	if err := os.MkdirAll(agentDir, 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

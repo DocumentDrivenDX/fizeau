@@ -20,7 +20,7 @@ type Candidate struct {
 }
 
 // discoverCandidates enumerates available harnesses and, for provider-backed
-// harnesses, the configured models. It creates a DdxAgent via fizeau.New with
+// harnesses, the configured models. It creates a FizeauService via fizeau.New with
 // the loaded ServiceConfig and calls ListHarnesses + ListModels per
 // CONTRACT-003.
 func discoverCandidates(wd string) ([]Candidate, error) {

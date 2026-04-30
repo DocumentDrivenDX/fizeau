@@ -1,6 +1,6 @@
 package fizeau
 
-// This file implements ListProviders and HealthCheck for the DdxAgent service.
+// This file implements ListProviders and HealthCheck for the FizeauService service.
 // It lives in the root package to avoid import cycles; provider config data is
 // injected via the ServiceConfig interface defined in service.go.
 //

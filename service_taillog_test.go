@@ -33,7 +33,7 @@ func extractSessionID(t *testing.T, events []fizeau.ServiceEvent) string {
 
 // newFakeSvc is a convenience helper that constructs a service with a
 // FakeProvider that returns a single static response.
-func newFakeSvc(t *testing.T, responses []fizeau.FakeResponse) fizeau.DdxAgent {
+func newFakeSvc(t *testing.T, responses []fizeau.FakeResponse) fizeau.FizeauService {
 	t.Helper()
 	opts := fizeau.ServiceOptions{}
 	opts.FakeProvider = &fizeau.FakeProvider{Static: responses}

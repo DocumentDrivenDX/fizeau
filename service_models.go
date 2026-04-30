@@ -1,6 +1,6 @@
 package fizeau
 
-// This file implements ListModels for the DdxAgent service.
+// This file implements ListModels for the FizeauService service.
 // It lives in the root package to avoid import cycles; provider and catalog
 // data is injected via ServiceConfig (defined in service.go).
 //

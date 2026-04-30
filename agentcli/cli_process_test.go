@@ -269,7 +269,7 @@ default: local
 	require.NoError(t, json.Unmarshal([]byte(res.stdout), &parsed), "stdout=%s", res.stdout)
 	assert.Equal(t, "success", parsed.Status)
 	assert.Equal(t, "stub ok", parsed.Output)
-	assert.True(t, strings.HasPrefix(parsed.SessionID, "svc-"), "session_id=%q proves DdxAgent.Execute generated the run", parsed.SessionID)
+	assert.True(t, strings.HasPrefix(parsed.SessionID, "svc-"), "session_id=%q proves FizeauService.Execute generated the run", parsed.SessionID)
 	assert.Equal(t, "gpt-4o", fake.lastModel())
 	assert.Equal(t, 10, parsed.Tokens.Input)
 	assert.Equal(t, 2, parsed.Tokens.Output)

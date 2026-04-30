@@ -634,7 +634,7 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
-func assertGoldenCapabilities(t *testing.T, svc DdxAgent) {
+func assertGoldenCapabilities(t *testing.T, svc FizeauService) {
 	t.Helper()
 	list, err := svc.ListHarnesses(context.Background())
 	if err != nil {
