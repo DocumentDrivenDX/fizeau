@@ -12,6 +12,7 @@ import (
 )
 
 func TestExecuteRouteEvidenceNoRetryAfterSelectedDispatchFailure(t *testing.T) {
+	policyStatement := "agent does not retry candidate 2 after selected candidate dispatch failure"
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"alpha": {Type: "test", BaseURL: "http://127.0.0.1:1/v1", Model: "route-model"},
@@ -43,23 +44,23 @@ func TestExecuteRouteEvidenceNoRetryAfterSelectedDispatchFailure(t *testing.T) {
 	}
 	events := drainServiceEvents(t, ch, 2*time.Second)
 	if calls.Load() != 1 {
-		t.Fatalf("provider calls=%d, want exactly one selected-candidate attempt", calls.Load())
+		t.Fatalf("policy_statement=%q: provider calls=%d, want exactly one selected-candidate attempt", policyStatement, calls.Load())
 	}
 	final := finalServiceData(t, events)
 	if final.Status != "failed" {
-		t.Fatalf("final status=%q, want failed", final.Status)
+		t.Fatalf("policy_statement=%q: final status=%q, want failed", policyStatement, final.Status)
 	}
 	if final.RoutingActual == nil {
-		t.Fatal("final routing_actual is nil")
+		t.Fatalf("policy_statement=%q: final routing_actual is nil", policyStatement)
 	}
 	if final.RoutingActual.Provider != "alpha" || final.RoutingActual.Model != "route-model" {
-		t.Fatalf("routing_actual=%#v, want attempted alpha/route-model", final.RoutingActual)
+		t.Fatalf("policy_statement=%q: routing_actual=%#v, want attempted alpha/route-model", policyStatement, final.RoutingActual)
 	}
 	if final.RoutingActual.FailureClass != "transport" {
-		t.Fatalf("failure_class=%q, want transport", final.RoutingActual.FailureClass)
+		t.Fatalf("policy_statement=%q: failure_class=%q, want transport", policyStatement, final.RoutingActual.FailureClass)
 	}
 	if got := final.RoutingActual.FallbackChainFired; len(got) != 1 || got[0] != "alpha" {
-		t.Fatalf("attempted providers=%v, want [alpha]", got)
+		t.Fatalf("policy_statement=%q: attempted providers=%v, want [alpha]", policyStatement, got)
 	}
 }
 
