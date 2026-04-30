@@ -1007,7 +1007,7 @@ func legacyRouteCounterName(backendName string) string {
 
 // routeStateFile returns the path to the per-route rotation counter file.
 func routeStateFile(workDir, routeName string) string {
-	return filepath.Join(workDir, ".agent", "route-state-"+routeStateKey(routeName)+".counter")
+	return agentConfig.ProjectRouteStateCounterPath(workDir, routeStateKey(routeName))
 }
 
 // routeCounterMu serializes counter reads and writes within a process.
@@ -1652,7 +1652,7 @@ func newSessionProjectionService(workDir string, cfg *agentConfig.Config) (agent
 
 func sessionLogDir(workDir string, cfg *agentConfig.Config) string {
 	if cfg == nil || cfg.SessionLogDir == "" {
-		return filepath.Join(workDir, ".agent", "sessions")
+		return filepath.Join(workDir, agentConfig.DefaultSessionLogDir())
 	}
 	if filepath.IsAbs(cfg.SessionLogDir) {
 		return cfg.SessionLogDir
@@ -1818,8 +1818,8 @@ func cmdImport(workDir string, args []string) int {
 		if strings.ToLower(response) != "y" {
 			return 0
 		}
-		configPath = filepath.Join(workDir, ".agent", "config.yaml")
-		if err := safefs.MkdirAll(filepath.Join(workDir, ".agent"), 0o750); err != nil {
+		configPath = agentConfig.ProjectConfigPath(workDir)
+		if err := safefs.MkdirAll(filepath.Dir(configPath), 0o750); err != nil {
 			fmt.Fprintf(os.Stderr, "error: cannot create .agent directory: %v\n", err)
 			return 1
 		}
@@ -1829,7 +1829,7 @@ func cmdImport(workDir string, args []string) int {
 			fmt.Fprintf(os.Stderr, "error: cannot determine home directory: %v\n", err)
 			return 1
 		}
-		configPath = filepath.Join(home, ".config", "agent", "config.yaml")
+		configPath = agentConfig.GlobalConfigPath(home)
 		if err := safefs.MkdirAll(filepath.Dir(configPath), 0o750); err != nil {
 			fmt.Fprintf(os.Stderr, "error: cannot create config directory: %v\n", err)
 			return 1
@@ -2156,7 +2156,7 @@ func shouldCheckDrift(source string) bool {
 		return true
 	}
 
-	checkFile := filepath.Join(home, ".config", "agent", ".import-check-"+source)
+	checkFile := filepath.Join(home, ".config", agentConfig.GlobalConfigDirName(), ".import-check-"+source)
 
 	// Check if file exists and is recent (within 24 hours)
 	info, err := os.Stat(checkFile)

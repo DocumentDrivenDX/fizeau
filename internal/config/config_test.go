@@ -19,6 +19,20 @@ func isolateHome(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 }
 
+func TestPathHelpersPreserveCurrentAgentPaths(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	workDir := filepath.Join(t.TempDir(), "work")
+
+	assert.Equal(t, ".agent", ProjectConfigDirName())
+	assert.Equal(t, "agent", GlobalConfigDirName())
+	assert.Equal(t, ".agent/sessions", DefaultSessionLogDir())
+	assert.Equal(t, filepath.Join(workDir, ".agent", "config.yaml"), ProjectConfigPath(workDir))
+	assert.Equal(t, filepath.Join(home, ".config", "agent", "config.yaml"), GlobalConfigPath(home))
+	assert.Equal(t, filepath.Join(workDir, ".agent", "route-health-main.json"), ProjectRouteHealthPath(workDir, "main"))
+	assert.Equal(t, filepath.Join(workDir, ".agent", "route-state-main.counter"), ProjectRouteStateCounterPath(workDir, "main"))
+	assert.Equal(t, filepath.Join(".config", "agent", "models.yaml"), FallbackModelCatalogManifestPath())
+}
+
 func TestLoad_NewFormat(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()

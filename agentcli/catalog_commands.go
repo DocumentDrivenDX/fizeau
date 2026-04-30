@@ -440,7 +440,7 @@ func cmdCatalogUpdatePricing(_ string, args []string) int {
 		fmt.Fprintf(os.Stderr, "error: resolve config dir: %v\n", err)
 		return 1
 	}
-	manifestPath := filepath.Join(configDir, "agent", "models.yaml")
+	manifestPath := filepath.Join(configDir, agentConfig.GlobalConfigDirName(), "models.yaml")
 
 	updated, notFound, err := modelcatalog.UpdateManifestPricing(manifestPath, 15*time.Second)
 	if err != nil {
@@ -471,11 +471,11 @@ func catalogManifestPath(cfg *agentConfig.Config) string {
 	if cfg != nil && strings.TrimSpace(cfg.ModelCatalog.Manifest) != "" {
 		return cfg.ModelCatalog.Manifest
 	}
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return filepath.Join(".config", "agent", "models.yaml")
+	manifestPath := agentConfig.DefaultModelCatalogManifestPath()
+	if manifestPath == "" {
+		return agentConfig.FallbackModelCatalogManifestPath()
 	}
-	return filepath.Join(configDir, "agent", "models.yaml")
+	return manifestPath
 }
 
 func printResolvedSurface(catalog *modelcatalog.Catalog, ref string, surface modelcatalog.Surface) {

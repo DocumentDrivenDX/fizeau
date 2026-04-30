@@ -188,6 +188,46 @@ const (
 	globalConfigDirName = "agent"
 )
 
+func ProjectConfigDirName() string {
+	return projectConfigDir
+}
+
+func GlobalConfigDirName() string {
+	return globalConfigDirName
+}
+
+func DefaultSessionLogDir() string {
+	return filepath.Join(projectConfigDir, "sessions")
+}
+
+func ProjectConfigPath(workDir string) string {
+	return filepath.Join(workDir, projectConfigDir, "config.yaml")
+}
+
+func GlobalConfigPath(home string) string {
+	return filepath.Join(home, ".config", globalConfigDirName, "config.yaml")
+}
+
+func ProjectRouteHealthPath(workDir, routeKey string) string {
+	return filepath.Join(workDir, projectConfigDir, "route-health-"+routeKey+".json")
+}
+
+func ProjectRouteStateCounterPath(workDir, routeKey string) string {
+	return filepath.Join(workDir, projectConfigDir, "route-state-"+routeKey+".counter")
+}
+
+func DefaultModelCatalogManifestPath() string {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(configDir, globalConfigDirName, "models.yaml")
+}
+
+func FallbackModelCatalogManifestPath() string {
+	return filepath.Join(".config", globalConfigDirName, "models.yaml")
+}
+
 // Config is the top-level agent configuration.
 type Config struct {
 	// Providers is a map of named provider configurations.
@@ -268,7 +308,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		MaxIterations:         100,
-		SessionLogDir:         filepath.Join(projectConfigDir, "sessions"),
+		SessionLogDir:         DefaultSessionLogDir(),
 		Preset:                "default",
 		ReasoningByteLimit:    agent.DefaultReasoningByteLimit,
 		ReasoningStallTimeout: agent.DefaultReasoningStallTimeout.String(),
@@ -299,9 +339,9 @@ func Load(workDir string) (*Config, error) {
 	// Try global config first, then project config (project wins)
 	var paths []string
 	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".config", globalConfigDirName, "config.yaml"))
+		paths = append(paths, GlobalConfigPath(home))
 	}
-	paths = append(paths, filepath.Join(workDir, projectConfigDir, "config.yaml"))
+	paths = append(paths, ProjectConfigPath(workDir))
 
 	for _, p := range paths {
 		data, err := safefs.ReadFile(p)
@@ -1111,19 +1151,11 @@ func providerUsesEndpoint(providerType string) bool {
 func (c *Config) LoadModelCatalog() (*modelcatalog.Catalog, error) {
 	manifestPath := c.ModelCatalog.Manifest
 	if strings.TrimSpace(manifestPath) == "" {
-		manifestPath = defaultModelCatalogManifestPath()
+		manifestPath = DefaultModelCatalogManifestPath()
 	}
 	return modelcatalog.Load(modelcatalog.LoadOptions{
 		ManifestPath: manifestPath,
 	})
-}
-
-func defaultModelCatalogManifestPath() string {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(configDir, globalConfigDirName, "models.yaml")
 }
 
 // ProviderImplicitGenerationConfig reports whether the inference server

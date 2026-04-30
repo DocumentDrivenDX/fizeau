@@ -98,7 +98,7 @@ func healthyCandidateIndexes(candidates []agentConfig.ModelRouteCandidateConfig,
 }
 
 func routeHealthStateFile(workDir, routeKey string) string {
-	return filepath.Join(workDir, ".agent", "route-health-"+routeStateKey(routeKey)+".json")
+	return agentConfig.ProjectRouteHealthPath(workDir, routeStateKey(routeKey))
 }
 
 func loadRouteHealthState(workDir, routeKey string) (routeHealthState, error) {
