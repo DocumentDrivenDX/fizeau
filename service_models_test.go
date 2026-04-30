@@ -331,6 +331,99 @@ func TestListModels_catalogRefSetForKnown(t *testing.T) {
 	}
 }
 
+func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T) {
+	ts := fakeModelsServer([]string{"qwen3.5-27b", "unknown-model-xyz"})
+	defer ts.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
+		},
+		names:       []string{"bragi"},
+		defaultName: "bragi",
+	}
+	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+
+	infos, err := svc.ListModels(context.Background(), ModelFilter{})
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(infos) != 2 {
+		t.Fatalf("want 2 models, got %d: %v", len(infos), modelInfoDebug(infos))
+	}
+
+	byID := map[string]ModelInfo{}
+	for _, info := range infos {
+		byID[info.ID] = info
+	}
+
+	known := byID["qwen3.5-27b"]
+	if known.CatalogRef == "" {
+		t.Fatalf("known model missing CatalogRef: %#v", known)
+	}
+	if known.Power != 5 || !known.AutoRoutable || known.ExactPinOnly {
+		t.Errorf("known model eligibility = power %d auto %v exact %v, want power 5 auto true exact false", known.Power, known.AutoRoutable, known.ExactPinOnly)
+	}
+	if known.Cost.InputPerMTok != 0.10 || known.Cost.OutputPerMTok != 0.30 {
+		t.Errorf("known model cost = %#v, want 0.10/0.30", known.Cost)
+	}
+	if known.ContextLength != 262144 {
+		t.Errorf("known model context = %d, want 262144", known.ContextLength)
+	}
+	if known.PerfSignal.SWEBenchVerified != 59.0 {
+		t.Errorf("known model SWE = %.1f, want 59.0", known.PerfSignal.SWEBenchVerified)
+	}
+	if known.EndpointName == "" || known.EndpointBaseURL == "" {
+		t.Errorf("known model endpoint identity missing: %#v", known)
+	}
+
+	unknown := byID["unknown-model-xyz"]
+	if unknown.CatalogRef != "" {
+		t.Errorf("unknown model CatalogRef = %q, want empty", unknown.CatalogRef)
+	}
+	if unknown.Power != 0 || unknown.AutoRoutable || unknown.ExactPinOnly {
+		t.Errorf("unknown model eligibility = power %d auto %v exact %v, want zero/false/false", unknown.Power, unknown.AutoRoutable, unknown.ExactPinOnly)
+	}
+	if unknown.EndpointName == "" || unknown.EndpointBaseURL == "" {
+		t.Errorf("unknown model endpoint identity missing: %#v", unknown)
+	}
+}
+
+func TestListModels_catalogMetadataForSubprocessHarnessModels(t *testing.T) {
+	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+
+	infos, err := svc.ListModels(context.Background(), ModelFilter{Harness: "claude"})
+	if err != nil {
+		t.Fatalf("ListModels harness=claude: %v", err)
+	}
+
+	var opus ModelInfo
+	for _, info := range infos {
+		if info.ID == "opus-4.7" {
+			opus = info
+			break
+		}
+	}
+	if opus.ID == "" {
+		t.Fatalf("want opus-4.7 in claude harness models, got %v", modelInfoDebug(infos))
+	}
+	if opus.CatalogRef == "" {
+		t.Fatalf("opus missing CatalogRef: %#v", opus)
+	}
+	if opus.Power != 10 || !opus.AutoRoutable || opus.ExactPinOnly {
+		t.Errorf("opus eligibility = power %d auto %v exact %v, want power 10 auto true exact false", opus.Power, opus.AutoRoutable, opus.ExactPinOnly)
+	}
+	if opus.Cost.InputPerMTok != 15.00 || opus.Cost.OutputPerMTok != 75.00 {
+		t.Errorf("opus cost = %#v, want 15/75", opus.Cost)
+	}
+	if opus.ContextLength != 1000000 {
+		t.Errorf("opus context = %d, want 1000000", opus.ContextLength)
+	}
+	if opus.EndpointName != "claude" {
+		t.Errorf("opus endpoint name = %q, want claude", opus.EndpointName)
+	}
+}
+
 func TestListModels_harnessFilter(t *testing.T) {
 	ts := fakeModelsServer([]string{"model-a"})
 	defer ts.Close()

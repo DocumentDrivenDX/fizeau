@@ -291,6 +291,9 @@ type ModelInfo struct {
 	Capabilities    []string
 	Cost            CostInfo
 	PerfSignal      PerfSignal
+	Power           int
+	AutoRoutable    bool
+	ExactPinOnly    bool
 	Available       bool
 	IsConfigured    bool   // matches an explicit model_routes entry
 	IsDefault       bool   // matches the configured default model

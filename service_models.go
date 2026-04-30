@@ -110,6 +110,7 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 			ID:           id,
 			Provider:     name,
 			Harness:      name,
+			EndpointName: name,
 			Capabilities: []string{"streaming", "tool_use"},
 			Available:    true,
 			IsDefault:    cfg.DefaultModel != "" && id == cfg.DefaultModel,
@@ -119,6 +120,7 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 		if cat != nil {
 			info.ContextLength = resolveContextLength(context.Background(), ServiceProviderEntry{}, id, cat)
 			info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
+			info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
 		}
 		out = append(out, info)
 	}
@@ -284,9 +286,11 @@ func listModelsForProvider(
 			// Cost and PerfSignal from catalog.
 			if cat != nil && info.CatalogRef != "" {
 				info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
+				info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
 			} else if cat != nil {
 				// Try direct model lookup by ID even without a catalog ref.
 				info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
+				info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
 			}
 
 			// IsDefault: provider is default AND this model is the configured default model.
@@ -496,8 +500,8 @@ func catalogCostAndPerf(cat *modelcatalog.Catalog, modelID string) (CostInfo, Pe
 	entry, ok := cat.LookupModel(modelID)
 	if ok {
 		return CostInfo{
-				InputPerMTok:  entry.CostInputPerMTok,
-				OutputPerMTok: entry.CostOutputPerMTok,
+				InputPerMTok:  catalogEntryInputCost(entry),
+				OutputPerMTok: catalogEntryOutputCost(entry),
 			}, PerfSignal{
 				SpeedTokensPerSec: entry.SpeedTokensPerSec,
 				SWEBenchVerified:  entry.SWEBenchVerified,
@@ -514,6 +518,28 @@ func catalogCostAndPerf(cat *modelcatalog.Catalog, modelID string) (CostInfo, Pe
 	}
 
 	return CostInfo{}, PerfSignal{}
+}
+
+func catalogPowerEligibility(cat *modelcatalog.Catalog, modelID string) (int, bool, bool) {
+	eligibility, ok := cat.ModelEligibility(modelID)
+	if !ok {
+		return 0, false, false
+	}
+	return eligibility.Power, eligibility.AutoRoutable, eligibility.ExactPinOnly
+}
+
+func catalogEntryInputCost(entry modelcatalog.ModelEntry) float64 {
+	if entry.CostInputPerM != 0 {
+		return entry.CostInputPerM
+	}
+	return entry.CostInputPerMTok
+}
+
+func catalogEntryOutputCost(entry modelcatalog.ModelEntry) float64 {
+	if entry.CostOutputPerM != 0 {
+		return entry.CostOutputPerM
+	}
+	return entry.CostOutputPerMTok
 }
 
 // providerCapabilities returns the capability set for a provider entry.
