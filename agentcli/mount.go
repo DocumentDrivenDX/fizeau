@@ -124,9 +124,21 @@ func MountCLI(opts ...MountOption) *cobra.Command {
 		},
 	}
 	addLegacyPersistentFlags(cmd)
-	for _, name := range mountedSubcommands() {
+	addMountedSubcommands(cmd, cfg)
+	cmd.SetIn(cfg.stdin)
+	cmd.SetOut(cfg.stdout)
+	cmd.SetErr(cfg.stderr)
+	return cmd
+}
+
+func addMountedSubcommands(root *cobra.Command, cfg mountConfig) {
+	root.AddCommand(nativeProvidersCommand())
+	root.AddCommand(nativeModelsCommand())
+	root.AddCommand(nativeCheckCommand())
+	root.AddCommand(nativeCatalogCommand(cfg))
+	for _, name := range []string{"log", "replay", "usage", "corpus", "route-status", "import", "version", "update", "run"} {
 		subcommandName := name
-		cmd.AddCommand(&cobra.Command{
+		root.AddCommand(&cobra.Command{
 			Use:                subcommandName,
 			SilenceUsage:       true,
 			SilenceErrors:      true,
@@ -137,10 +149,6 @@ func MountCLI(opts ...MountOption) *cobra.Command {
 			},
 		})
 	}
-	cmd.SetIn(cfg.stdin)
-	cmd.SetOut(cfg.stdout)
-	cmd.SetErr(cfg.stderr)
-	return cmd
 }
 
 func mountedSubcommands() []string {
@@ -159,6 +167,163 @@ func mountedSubcommands() []string {
 		"update",
 		"run",
 	}
+}
+
+func nativeProvidersCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:           "providers",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdProviders(rootWorkDir(cmd), rootBool(cmd, "json")))
+		},
+	}
+}
+
+func nativeModelsCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:           "models",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdModels(rootWorkDir(cmd), rootBool(cmd, "json"), rootString(cmd, "provider"), args))
+		},
+	}
+}
+
+func nativeCheckCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:           "check",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCheck(rootWorkDir(cmd), rootString(cmd, "provider"), args))
+		},
+	}
+}
+
+func nativeCatalogCommand(cfg mountConfig) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "catalog",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCatalog(rootWorkDir(cmd), args))
+		},
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:           "show",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCatalogShow(rootWorkDir(cmd), args))
+		},
+	})
+	models := &cobra.Command{
+		Use:           "models",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCatalogModels(rootWorkDir(cmd), catalogModelsArgs(cmd, args)))
+		},
+	}
+	models.Flags().String("model", "", "Show details for a specific model ID")
+	models.Flags().String("format", "", "Output format: json")
+	cmd.AddCommand(models)
+
+	observations := &cobra.Command{
+		Use:           "observations",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCatalogObservations(rootWorkDir(cmd), catalogObservationArgs(cmd, args)))
+		},
+	}
+	observations.Flags().String("format", "", "Output format: json")
+	observations.Flags().String("provider", "", "Filter by provider")
+	observations.Flags().String("model", "", "Filter by model")
+	cmd.AddCommand(observations)
+
+	check := &cobra.Command{
+		Use:           "check",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCatalogCheck(rootWorkDir(cmd), catalogCheckArgs(cmd, args)))
+		},
+	}
+	check.Flags().String("base-url", defaultCatalogBaseURL, "Published catalog base URL")
+	check.Flags().String("channel", "stable", "Channel to inspect")
+	check.Flags().String("version", "", "Exact catalog version to inspect")
+	cmd.AddCommand(check)
+
+	for _, name := range []string{"update", "update-pricing"} {
+		subcommandName := name
+		cmd.AddCommand(&cobra.Command{
+			Use:                subcommandName,
+			SilenceUsage:       true,
+			SilenceErrors:      true,
+			DisableFlagParsing: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return runMounted(cfg, legacyArgs(cmd, append([]string{"catalog", subcommandName}, args...)...))
+			},
+		})
+	}
+	return cmd
+}
+
+func exitError(code int) error {
+	if code == 0 {
+		return nil
+	}
+	return &ExitError{Code: code}
+}
+
+func rootWorkDir(cmd *cobra.Command) string {
+	return rootString(cmd, "work-dir")
+}
+
+func rootBool(cmd *cobra.Command, name string) bool {
+	value, _ := cmd.Root().PersistentFlags().GetBool(name)
+	return value
+}
+
+func rootString(cmd *cobra.Command, name string) string {
+	value, _ := cmd.Root().PersistentFlags().GetString(name)
+	return value
+}
+
+func changedFlagArgs(cmd *cobra.Command, names ...string) []string {
+	out := make([]string, 0, len(names)*2)
+	for _, name := range names {
+		flag := cmd.Flags().Lookup(name)
+		if flag != nil && flag.Changed {
+			out = append(out, "--"+name, flag.Value.String())
+		}
+	}
+	return out
+}
+
+func catalogModelsArgs(cmd *cobra.Command, args []string) []string {
+	out := changedFlagArgs(cmd, "model", "format")
+	return append(out, args...)
+}
+
+func catalogObservationArgs(cmd *cobra.Command, args []string) []string {
+	out := changedFlagArgs(cmd, "format", "provider", "model")
+	return append(out, args...)
+}
+
+func catalogCheckArgs(cmd *cobra.Command, args []string) []string {
+	out := changedFlagArgs(cmd, "base-url", "channel", "version")
+	return append(out, args...)
 }
 
 // NeedsLegacyPassthrough reports whether argv should bypass Cobra traversal
@@ -194,7 +359,20 @@ func NeedsLegacyPassthrough(args []string) bool {
 		if arg == "run" {
 			return false
 		}
-		return subcommands[arg] || arg != ""
+		switch arg {
+		case "providers", "models", "check":
+			return false
+		case "catalog":
+			if i+1 < len(args) {
+				switch args[i+1] {
+				case "show", "models", "observations", "check":
+					return false
+				}
+			}
+			return true
+		default:
+			return subcommands[arg] || arg != ""
+		}
 	}
 	return false
 }
