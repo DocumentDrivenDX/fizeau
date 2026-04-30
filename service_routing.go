@@ -478,6 +478,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ProviderSuccessRate: successRate,
 		ObservedLatencyMS:   latencyMS,
 		CatalogResolver:     serviceRoutingCatalogResolver(cat),
+		ModelEligibility:    serviceRoutingModelEligibility(cat),
 		ReasoningResolver:   serviceRoutingReasoningResolver(cat),
 	}
 }
@@ -507,6 +508,23 @@ func serviceRoutingCatalogResolver(cat *modelcatalog.Catalog) func(ref, surface 
 			return "", false
 		}
 		return resolved.ConcreteModel, true
+	}
+}
+
+func serviceRoutingModelEligibility(cat *modelcatalog.Catalog) func(model string) (routing.ModelEligibility, bool) {
+	if cat == nil {
+		return nil
+	}
+	return func(model string) (routing.ModelEligibility, bool) {
+		eligibility, ok := cat.ModelEligibility(model)
+		if !ok {
+			return routing.ModelEligibility{}, false
+		}
+		return routing.ModelEligibility{
+			Power:        eligibility.Power,
+			ExactPinOnly: eligibility.ExactPinOnly,
+			AutoRoutable: eligibility.AutoRoutable,
+		}, true
 	}
 }
 

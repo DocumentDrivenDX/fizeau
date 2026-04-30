@@ -711,6 +711,10 @@ targets:
 	require.True(t, ok)
 	assert.Equal(t, routable, bySurface)
 
+	byMixedCaseSurface, ok := catalog.ModelEligibility("Provider/Routable-Model")
+	require.True(t, ok)
+	assert.Equal(t, routable, byMixedCaseSurface)
+
 	missingPower, ok := catalog.ModelEligibility("missing-power-model")
 	require.True(t, ok)
 	assert.Equal(t, 0, missingPower.Power)

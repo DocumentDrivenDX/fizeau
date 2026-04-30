@@ -631,11 +631,13 @@ models:
   medium-model:
     family: tier
     status: active
+    power: 5
     context_window: 4096
     surfaces: {agent.openai: medium-model}
   high-model:
     family: tier
     status: active
+    power: 8
     context_window: 200000
     surfaces: {agent.openai: high-model}
 targets:

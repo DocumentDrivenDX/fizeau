@@ -119,6 +119,38 @@ func CheckGating(cap Capabilities, req Request) (string, FilterReason) {
 	return "", FilterReasonEligible
 }
 
+// CheckPowerEligibility applies catalog-power gates for unpinned automatic
+// routing. Exact model pins bypass this gate so callers can intentionally run
+// a discovered model that is missing catalog power or marked exact-pin-only.
+func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model string, req Request) (string, FilterReason) {
+	if req.Model != "" || lookup == nil {
+		return "", FilterReasonEligible
+	}
+	if model == "" {
+		return "model has no catalog power metadata", FilterReasonPowerMissing
+	}
+	eligibility, ok := lookup(model)
+	if !ok {
+		return fmt.Sprintf("model %q has no catalog power metadata", model), FilterReasonPowerMissing
+	}
+	if eligibility.ExactPinOnly {
+		return fmt.Sprintf("model %q is exact-pin-only", model), FilterReasonExactPinOnly
+	}
+	if !eligibility.AutoRoutable {
+		if eligibility.Power <= 0 {
+			return fmt.Sprintf("model %q has no catalog power metadata", model), FilterReasonPowerMissing
+		}
+		return fmt.Sprintf("model %q is not auto-routable", model), FilterReasonNotAutoRoutable
+	}
+	if req.MinPower > 0 && eligibility.Power < req.MinPower {
+		return fmt.Sprintf("model %q power %d < min_power %d", model, eligibility.Power, req.MinPower), FilterReasonBelowMinPower
+	}
+	if req.MaxPower > 0 && eligibility.Power > req.MaxPower {
+		return fmt.Sprintf("model %q power %d > max_power %d", model, eligibility.Power, req.MaxPower), FilterReasonAboveMaxPower
+	}
+	return "", FilterReasonEligible
+}
+
 // resolveRequestReasoning returns a copy of req with Reasoning resolved to the
 // catalog's surface_policy reasoning_default for the request's profile/surface
 // when the request asks for Reasoning=auto. This must run before CheckGating

@@ -72,7 +72,27 @@ func TestOverrideReasonHint_FromMetadata(t *testing.T) {
 // that exposes a single provider so ResolveRoute deterministically picks
 // that one provider regardless of pin. Used by coincidence and per-axis
 // override tests to anchor stripped-auto resolution.
-func coincidenceFakeService() *service {
+func coincidenceFakeService(t *testing.T) *service {
+	t.Helper()
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-04-30T00:00:00Z
+models:
+  model-a:
+    family: test
+    status: active
+    power: 5
+    surfaces: {agent.openai: model-a}
+targets:
+  test-standard:
+    family: test
+    candidates: [model-a]
+profiles:
+  standard:
+    target: test-standard
+    provider_preference: local-first
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"local": {Type: "test", BaseURL: "http://127.0.0.1:9999/v1", Model: "model-a"},
@@ -90,7 +110,7 @@ func coincidenceFakeService() *service {
 // the stripped auto resolution lands on the same Harness/Provider/Model
 // the user pinned.
 func TestOverrideEventCoincidentalAgreement(t *testing.T) {
-	svc := coincidenceFakeService()
+	svc := coincidenceFakeService(t)
 
 	// Pin Provider only. Stripped auto resolution still picks "local"
 	// because it is the sole configured provider — coincidental agreement.
@@ -151,7 +171,7 @@ func TestOverrideEventCoincidentalAgreement(t *testing.T) {
 // service to dispatch successfully). Each subtest pins exactly one or two
 // axes and asserts the override-context payload reflects the pin.
 func TestBuildOverrideContext_AxesIndividuallyAndInCombination(t *testing.T) {
-	svc := coincidenceFakeService()
+	svc := coincidenceFakeService(t)
 	cases := []struct {
 		name     string
 		req      ServiceExecuteRequest

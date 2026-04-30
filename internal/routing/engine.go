@@ -200,6 +200,20 @@ const (
 	// FilterReasonPinMismatch: candidate was rejected because it does not
 	// satisfy an explicit caller pin such as Provider.
 	FilterReasonPinMismatch FilterReason = "pin_mismatch"
+	// FilterReasonPowerMissing: automatic routing requires catalog power
+	// metadata, but the candidate model is unknown or has zero power.
+	FilterReasonPowerMissing FilterReason = "power_missing"
+	// FilterReasonBelowMinPower: candidate model power is below req.MinPower.
+	FilterReasonBelowMinPower FilterReason = "below_min_power"
+	// FilterReasonAboveMaxPower: candidate model power is above req.MaxPower.
+	FilterReasonAboveMaxPower FilterReason = "above_max_power"
+	// FilterReasonExactPinOnly: catalog marks the model as only eligible for
+	// explicit model pins.
+	FilterReasonExactPinOnly FilterReason = "exact_pin_only"
+	// FilterReasonNotAutoRoutable: catalog metadata exists but marks the
+	// model inactive, deprecated, stale, or otherwise excluded from
+	// automatic routing.
+	FilterReasonNotAutoRoutable FilterReason = "not_auto_routable"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -265,6 +279,7 @@ type Inputs struct {
 	CooldownDuration    time.Duration        // 0 = no cooldown enforcement
 	Now                 time.Time            // injected for deterministic testing; default time.Now()
 	CatalogResolver     func(ref, surface string) (concreteModel string, ok bool)
+	ModelEligibility    func(model string) (ModelEligibility, bool)
 
 	// ReasoningResolver returns the catalog's surface_policy reasoning_default
 	// for a (profile, surface) pair. When set, buildHarnessCandidates uses it
@@ -273,6 +288,15 @@ type Inputs struct {
 	// (e.g. an off-only variant under a profile whose surface default is
 	// "high") are correctly disqualified instead of slipping through.
 	ReasoningResolver func(profile, surface string) (resolved string, ok bool)
+}
+
+// ModelEligibility is the routing engine's catalog-power view for one model.
+// Unknown or zero-power models are still usable through exact Model pins, but
+// are excluded from unpinned automatic routing.
+type ModelEligibility struct {
+	Power        int
+	ExactPinOnly bool
+	AutoRoutable bool
 }
 
 // candidateInternal carries the engine's intermediate state per (harness, provider, model).
@@ -687,7 +711,11 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		eligible := true
 		var filterReason FilterReason
 		if reason == "" {
-			if g, fr := CheckGating(entryCaps, gateReq); g != "" {
+			if g, fr := CheckPowerEligibility(in.ModelEligibility, model, gateReq); g != "" {
+				eligible = false
+				reason = g
+				filterReason = fr
+			} else if g, fr := CheckGating(entryCaps, gateReq); g != "" {
 				eligible = false
 				reason = g
 				filterReason = fr

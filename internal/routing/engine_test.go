@@ -291,6 +291,180 @@ func TestExplicitHarnessPinDoesNotSubstituteOtherHarness(t *testing.T) {
 	}
 }
 
+func TestAutomaticRoutingFiltersCatalogPowerEligibility(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{
+						Name:          "local-unknown",
+						DefaultModel:  "unknown-local",
+						DiscoveredIDs: []string{"unknown-local"},
+						SupportsTools: true,
+					},
+					{
+						Name:          "local-exact-only",
+						DefaultModel:  "exact-only",
+						DiscoveredIDs: []string{"exact-only"},
+						SupportsTools: true,
+					},
+					{
+						Name:          "openrouter",
+						DefaultModel:  "known-cloud",
+						DiscoveredIDs: []string{"known-cloud"},
+						SupportsTools: true,
+					},
+				},
+			},
+		},
+		ModelEligibility: func(model string) (ModelEligibility, bool) {
+			switch model {
+			case "known-cloud":
+				return ModelEligibility{Power: 7, AutoRoutable: true}, true
+			case "exact-only":
+				return ModelEligibility{Power: 6, ExactPinOnly: true, AutoRoutable: false}, true
+			default:
+				return ModelEligibility{}, false
+			}
+		},
+		Now: time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "openrouter" || dec.Model != "known-cloud" {
+		t.Fatalf("selected provider=%q model=%q, want openrouter/known-cloud", dec.Provider, dec.Model)
+	}
+
+	byProvider := map[string]Candidate{}
+	for _, c := range dec.Candidates {
+		byProvider[c.Provider] = c
+	}
+	if got := byProvider["local-unknown"].FilterReason; got != FilterReasonPowerMissing {
+		t.Fatalf("local-unknown FilterReason=%q, want %q", got, FilterReasonPowerMissing)
+	}
+	if got := byProvider["local-exact-only"].FilterReason; got != FilterReasonExactPinOnly {
+		t.Fatalf("local-exact-only FilterReason=%q, want %q", got, FilterReasonExactPinOnly)
+	}
+	if !strings.Contains(byProvider["local-unknown"].Reason, "catalog power") {
+		t.Fatalf("local-unknown reason=%q, want catalog power detail", byProvider["local-unknown"].Reason)
+	}
+}
+
+func TestAutomaticRoutingFiltersMinMaxPower(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{Name: "small", DefaultModel: "small-model", DiscoveredIDs: []string{"small-model"}, SupportsTools: true},
+					{Name: "large", DefaultModel: "large-model", DiscoveredIDs: []string{"large-model"}, SupportsTools: true},
+				},
+			},
+		},
+		ModelEligibility: func(model string) (ModelEligibility, bool) {
+			switch model {
+			case "small-model":
+				return ModelEligibility{Power: 4, AutoRoutable: true}, true
+			case "large-model":
+				return ModelEligibility{Power: 8, AutoRoutable: true}, true
+			default:
+				return ModelEligibility{}, false
+			}
+		},
+		Now: time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{MinPower: 7}, in)
+	if err != nil {
+		t.Fatalf("Resolve MinPower: %v", err)
+	}
+	if dec.Provider != "large" {
+		t.Fatalf("MinPower selected provider=%q, want large", dec.Provider)
+	}
+	for _, c := range dec.Candidates {
+		if c.Provider == "small" && c.FilterReason != FilterReasonBelowMinPower {
+			t.Fatalf("small FilterReason=%q, want %q", c.FilterReason, FilterReasonBelowMinPower)
+		}
+	}
+
+	dec, err = Resolve(Request{MaxPower: 5}, in)
+	if err != nil {
+		t.Fatalf("Resolve MaxPower: %v", err)
+	}
+	if dec.Provider != "small" {
+		t.Fatalf("MaxPower selected provider=%q, want small", dec.Provider)
+	}
+	for _, c := range dec.Candidates {
+		if c.Provider == "large" && c.FilterReason != FilterReasonAboveMaxPower {
+			t.Fatalf("large FilterReason=%q, want %q", c.FilterReason, FilterReasonAboveMaxPower)
+		}
+	}
+}
+
+func TestExactModelPinBypassesCatalogPowerEligibility(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{{
+					Name:               "lmstudio",
+					DiscoveredIDs:      []string{"unknown-local"},
+					DiscoveryAttempted: true,
+					SupportsTools:      true,
+				}},
+			},
+		},
+		ModelEligibility: func(string) (ModelEligibility, bool) {
+			return ModelEligibility{}, false
+		},
+		Now: time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{Harness: "agent", Provider: "lmstudio", Model: "unknown-local", MinPower: 10}, in)
+	if err != nil {
+		t.Fatalf("Resolve exact pin: %v", err)
+	}
+	if dec.Provider != "lmstudio" || dec.Model != "unknown-local" {
+		t.Fatalf("selected provider=%q model=%q, want lmstudio/unknown-local", dec.Provider, dec.Model)
+	}
+	for _, c := range dec.Candidates {
+		if c.Provider == "lmstudio" && c.FilterReason != FilterReasonEligible {
+			t.Fatalf("exact pin candidate FilterReason=%q, want eligible", c.FilterReason)
+		}
+	}
+}
+
 // === Smell 2: ddx-0486e601 — canonical-form fuzzy matcher ===
 //
 // "qwen/qwen3.6" must match "Qwen3.6-35B-A3B-4bit" (case + vendor

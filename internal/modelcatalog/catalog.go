@@ -356,7 +356,26 @@ func (c *Catalog) LookupModel(id string) (ModelEntry, bool) {
 func (c *Catalog) ModelEligibility(id string) (ModelEligibility, bool) {
 	entry, ok := c.LookupModel(id)
 	if !ok {
-		return ModelEligibility{}, false
+		for modelID, candidate := range c.manifest.Models {
+			if strings.EqualFold(modelID, id) {
+				entry = candidate
+				ok = true
+				break
+			}
+			for _, surfaceID := range candidate.Surfaces {
+				if strings.EqualFold(surfaceID, id) {
+					entry = candidate
+					ok = true
+					break
+				}
+			}
+			if ok {
+				break
+			}
+		}
+		if !ok {
+			return ModelEligibility{}, false
+		}
 	}
 	return ModelEligibility{
 		Power:        entry.Power,
