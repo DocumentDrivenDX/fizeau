@@ -694,10 +694,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	}
 
 	// Provider-deadline wrapping: every HTTP call gets the per-request cap.
-	// We mirror internal/execution.WrapProviderWithDeadlinesTimeouts in
-	// package-local form to avoid the import cycle (internal/execution
-	// imports the agent package; agent.service.Execute therefore wraps
-	// the provider through the local helper below).
+	// We use a package-local timeout wrapper to avoid import cycles.
 	if req.ProviderTimeout > 0 {
 		provider = wrapProviderRequestTimeout(provider, req.ProviderTimeout)
 	}
@@ -1357,16 +1354,13 @@ func emitJSONRaw(out chan<- ServiceEvent, seq *atomic.Int64, t harnesses.EventTy
 	emitJSON(out, seq, t, meta, payload)
 }
 
-// errProviderRequestTimeout is the package-local equivalent of
-// internal/execution.ErrProviderRequestTimeout. service.Execute can't
-// import internal/execution (cycle) so we declare the sentinel locally.
+// errProviderRequestTimeout is the package-local sentinel for per-request
+// provider timeouts.
 var errProviderRequestTimeout = errors.New("provider request timeout")
 
 // wrapProviderRequestTimeout decorates p with a per-Chat wall-clock cap.
-// It is the in-package mirror of execution.WrapProviderWithDeadlinesTimeouts
-// minus the streaming variant (the in-process loop uses the non-streaming
-// Provider interface in this code path; streaming wrapping lives in
-// internal/execution and is reachable via the CLI command layer).
+// The in-process loop uses the non-streaming Provider interface in this
+// code path; streaming wrapping lives in the CLI command layer.
 func wrapProviderRequestTimeout(p agentcore.Provider, requestTimeout time.Duration) agentcore.Provider {
 	if p == nil || requestTimeout <= 0 {
 		return p
