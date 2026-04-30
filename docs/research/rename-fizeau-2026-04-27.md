@@ -113,6 +113,35 @@ The rename is **broad** — every public-facing surface and internal reference i
 - DDx execution artifacts (`.ddx/executions/`) are **not** rewritten — they are historical evidence. New executions after the rename will use the new names.
 - The `ddx init` command must **not** be re-run; the workspace is already initialized.
 
+## Rename Mechanism Decision
+
+Use a committed, deterministic script for the module/import-path rewrite. Do
+not use `gopls`/`gorename` for the module path because the change is a literal
+repository import rewrite, not a single Go symbol rename. Do not leave the
+mechanism to local model judgment during FZ-010.
+
+FZ-010 must create and commit the script at
+`scripts/rename-fizeau-module.sh` before applying the rewrite. The required
+dry-run command is:
+
+```bash
+bash scripts/rename-fizeau-module.sh --dry-run
+```
+
+The script owns only the FZ-010 surface:
+
+- `go.mod` module path from `github.com/DocumentDrivenDX/agent` to
+  `github.com/DocumentDrivenDX/fizeau`
+- Go import paths and active non-historical references that name the old module
+  path
+- `gofmt`, `go mod tidy`, `go build ./...`, and `go test ./...` verification
+  hooks or printed follow-up commands
+
+Root package declarations, exported Go symbol decisions, and `cmd/` directory
+moves remain split into their dedicated FZ beads. Those beads may use `git mv`
+or focused manual edits where their acceptance criteria say so, but local
+models execute the bead-prescribed mechanics rather than choosing a new policy.
+
 ## Release/Updater Decision
 
 - **Version bump**: The rename commit is paired with a major version bump (e.g. `v2.0.0` or the next major). This signals the breaking change to downstream consumers.
