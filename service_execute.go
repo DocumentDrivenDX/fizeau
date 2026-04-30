@@ -648,8 +648,8 @@ func toolNames(tools []agentcore.Tool) []string {
 }
 
 // runNative drives the in-process agent loop (loop.go's Run). The provider
-// is wrapped with WrapProviderWithDeadlinesTimeouts so per-HTTP timeouts
-// fire independently of the request wall-clock cap.
+// is wrapped so per-HTTP timeouts fire independently of the request wall-clock
+// cap.
 func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog) {
 	provider := s.nativeExecutionProvider(req, decision)
 	actualHarness := decision.Harness
