@@ -675,6 +675,76 @@ providers:
 	}
 }
 
+func TestRouteStatus_ExplainsPowerFilteredCandidates(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+
+	local := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "local ok")
+	frontier := newCountedOpenAIServer(t, http.StatusOK, "gpt-5.5", "frontier ok")
+	local.setModels("qwen3.5-27b")
+	frontier.setModels("gpt-5.5")
+
+	writeTempConfig(t, workDir, `
+providers:
+  local:
+    type: lmstudio
+    base_url: `+local.baseURL()+`
+    api_key: test
+    model: qwen3.5-27b
+  frontier:
+    type: lmstudio
+    base_url: `+frontier.baseURL()+`
+    api_key: test
+    model: gpt-5.5
+`)
+
+	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--min-power", "9", "--max-power", "10", "--json")
+	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
+
+	type component struct {
+		Power     int     `json:"power"`
+		Cost      float64 `json:"cost"`
+		CostClass string  `json:"cost_class"`
+		SpeedTPS  float64 `json:"speed_tps"`
+	}
+	type candidate struct {
+		Provider     string    `json:"provider"`
+		Model        string    `json:"model"`
+		Eligible     bool      `json:"eligible"`
+		FilterReason string    `json:"filter_reason"`
+		Components   component `json:"components"`
+		Winner       bool      `json:"winner"`
+	}
+	var parsed struct {
+		MinPower   int         `json:"min_power"`
+		MaxPower   int         `json:"max_power"`
+		Winner     *candidate  `json:"winner"`
+		Candidates []candidate `json:"candidates"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
+	assert.Equal(t, 9, parsed.MinPower)
+	assert.Equal(t, 10, parsed.MaxPower)
+	require.NotNil(t, parsed.Winner)
+	assert.Equal(t, "frontier", parsed.Winner.Provider)
+	assert.Equal(t, "gpt-5.5", parsed.Winner.Model)
+	assert.True(t, parsed.Winner.Eligible)
+	assert.Equal(t, 10, parsed.Winner.Components.Power)
+	assert.Contains(t, out.stdout, `"cost"`)
+	assert.Contains(t, out.stdout, `"speed_tps"`)
+
+	byProvider := make(map[string]candidate)
+	for _, c := range parsed.Candidates {
+		byProvider[c.Provider] = c
+		_ = c.Components.SpeedTPS
+		_ = c.Components.CostClass
+	}
+	localCandidate := byProvider["local"]
+	assert.False(t, localCandidate.Eligible, "local low-power candidate should be rejected: %+v", localCandidate)
+	assert.Equal(t, "below_min_power", localCandidate.FilterReason)
+	assert.Equal(t, 5, localCandidate.Components.Power)
+}
+
 func TestCLI_BackendRoutingAttributionFlowsIntoResultAndSession(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()

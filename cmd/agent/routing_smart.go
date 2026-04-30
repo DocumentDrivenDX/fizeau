@@ -781,6 +781,8 @@ type routeStatusOutput struct {
 	ModelRef   string                 `json:"model_ref,omitempty"`
 	Provider   string                 `json:"provider,omitempty"`
 	Harness    string                 `json:"harness,omitempty"`
+	MinPower   int                    `json:"min_power,omitempty"`
+	MaxPower   int                    `json:"max_power,omitempty"`
 	Winner     *routeStatusCandidate  `json:"winner,omitempty"`
 	Candidates []routeStatusCandidate `json:"candidates"`
 	Error      string                 `json:"error,omitempty"`
@@ -853,6 +855,8 @@ func cmdRouteStatus(workDir string, args []string) int {
 		ModelRef:   *modelRef,
 		Provider:   *provider,
 		Harness:    *harness,
+		MinPower:   *minPower,
+		MaxPower:   *maxPower,
 		Candidates: []routeStatusCandidate{},
 	}
 	if resolveErr != nil {
@@ -913,6 +917,12 @@ func cmdRouteStatus(workDir string, args []string) int {
 	}
 	if out.ModelRef != "" {
 		fmt.Printf("Model Ref: %s\n", out.ModelRef)
+	}
+	if out.MinPower > 0 {
+		fmt.Printf("Min Power: %d\n", out.MinPower)
+	}
+	if out.MaxPower > 0 {
+		fmt.Printf("Max Power: %d\n", out.MaxPower)
 	}
 	if out.Winner != nil {
 		fmt.Printf("Winner: %s/%s/%s score=%.2f\n", out.Winner.Harness, out.Winner.Provider, out.Winner.Model, out.Winner.Score)
