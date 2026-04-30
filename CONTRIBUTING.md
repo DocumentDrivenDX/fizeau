@@ -60,7 +60,7 @@ provider/anthropic/       # Anthropic Claude provider
 provider/virtual/         # Dictionary replay for testing
 tool/                     # Built-in tools: read, write, edit, bash
 session/                  # JSONL logging, replay, cost tracking
-cmd/agent/            # Standalone CLI
+cmd/fiz/            # Standalone CLI
 website/                  # Hugo/Hextra microsite
 demos/                    # Demo scripts and session fixtures
 ```

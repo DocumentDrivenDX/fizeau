@@ -1166,7 +1166,7 @@ func (c *Config) LoadModelCatalog() (*modelcatalog.Catalog, error) {
 // defaults; everyone else is in the loop-bug regime.
 //
 // The single source of truth is each provider package's
-// ProtocolCapabilities; this function exists because cmd/agent cannot
+// ProtocolCapabilities; this function exists because cmd/fiz cannot
 // import provider packages directly.
 func ProviderImplicitGenerationConfig(providerType string) bool {
 	switch providerType {

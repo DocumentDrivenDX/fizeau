@@ -6,7 +6,7 @@ weight: 1
 ## Install
 
 ```bash
-go install github.com/DocumentDrivenDX/fizeau/cmd/agent@latest
+go install github.com/DocumentDrivenDX/fizeau/cmd/fiz@latest
 ```
 
 ## Quick Start with LM Studio

@@ -90,16 +90,16 @@ func TestCLIServiceContractUsesTypedEventDecoder(t *testing.T) {
 
 func TestCLIMainDoesNotImportOrCallInternalCoreRun(t *testing.T) {
 	root := repoRootForBoundaryTest(t)
-	data, err := os.ReadFile(filepath.Join(root, "cmd", "agent", "main.go"))
+	data, err := os.ReadFile(filepath.Join(root, "cmd", "fiz", "main.go"))
 	if err != nil {
 		t.Fatalf("read main.go: %v", err)
 	}
 	src := string(data)
 	if strings.Contains(src, "internal/core") {
-		t.Fatal("cmd/agent/main.go must not import internal/core; execution belongs behind the service boundary")
+		t.Fatal("cmd/fiz/main.go must not import internal/core; execution belongs behind the service boundary")
 	}
 	if strings.Contains(src, "agentcore.Run(") {
-		t.Fatal("cmd/agent/main.go must not call agentcore.Run directly")
+		t.Fatal("cmd/fiz/main.go must not call agentcore.Run directly")
 	}
 }
 
@@ -140,7 +140,7 @@ var forbiddenCLIInternalImports = []string{
 // forbiddenCLISymbols rejects callers that re-grow the boundary by
 // referencing core execution symbols even via aliases or unusual import
 // paths. The list is small and targeted — each entry is a symbol that has
-// a public replacement and whose presence in a cmd/agent file means the
+// a public replacement and whose presence in a cmd/fiz file means the
 // boundary is leaking again.
 var forbiddenCLISymbols = []string{
 	"agentcore.Run(",

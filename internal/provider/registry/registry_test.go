@@ -5,7 +5,7 @@ import (
 
 	// Blank-import every provider package so init()-side registrations
 	// fire under the test binary. This mirrors the production import
-	// graph (cmd/agent transitively imports all providers via service)
+	// graph (cmd/fiz transitively imports all providers via service)
 	// without depending on those packages directly here.
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/anthropic"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"

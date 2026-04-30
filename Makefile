@@ -7,7 +7,7 @@ BINARY_NAME := ddx-agent
 LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
 
 build:
-	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/agent
+	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/fiz
 
 catalog-dist:
 	go run ./cmd/catalogdist \

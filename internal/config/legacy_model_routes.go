@@ -113,7 +113,7 @@ func (c *Config) LegacyModelRouteNames() []string {
 }
 
 // ModelRouteNames is kept as a thin alias to LegacyModelRouteNames for
-// out-of-package callers (cmd/agent, cmd/bench) that read configured
+// out-of-package callers (cmd/fiz, cmd/bench) that read configured
 // route names. Defined here (not in config.go) so config.go stays free
 // of the deprecated surface.
 func (c *Config) ModelRouteNames() []string {
