@@ -102,6 +102,15 @@ disappears and cost/availability penalties apply. Local LM Studio/oMLX/Ollama
 providers are treated as free marginal cost but still compete on capability,
 tool support, context, latency, and recent success.
 
+When no hard axes are supplied, the requested profile controls the whole
+selection. With the default `smart` profile, the service should select the best
+available model it can use according to the score components above. If strong
+prepaid quota is available, "best" may be a current frontier model. If only
+local providers are live, "best" may be a local model that clears the smart
+floor and capability gates. If the caller requests `cheap`, the service stays
+within the cheap policy; it does not silently promote to `standard` or `smart`
+for the same task attempt.
+
 Provider placement is candidate-level. The native `agent` harness is not
 itself "local" or "subscription"; its child provider endpoints are. A single
 native harness may contain local oMLX, local LM Studio, and paid OpenRouter
@@ -117,6 +126,26 @@ pins, or configuration parse failures. Provider-specific authentication or
 quota failures are transient for that candidate and may fail over to another
 endpoint/provider only when the caller did not hard-constrain that axis; global
 missing configuration is not.
+
+Task-level escalation across profiles is caller-owned. The agent service owns
+candidate selection and failover inside one request's constraints; it does not
+decide that a failed cheap attempt should be retried as standard or smart. A
+caller such as DDx owns that policy because it has task context, budget, retry
+limits, and knowledge of whether failure quality is likely to improve with a
+stronger model. The service must therefore return enough structured evidence
+for the caller to decide:
+
+- requested profile, effective profile, and hard constraints
+- winning candidate and full candidate trace with filter reasons
+- final failure class: setup/config, no-candidate, provider-transient,
+  capability, model-quality/task-failure, cancelled/timeout
+- retryability and candidate scope exhausted
+- suggested next profile when applicable, e.g. `standard` after `cheap`,
+  `smart` after `standard`, and no suggestion for local-only profiles or
+  deterministic setup failures
+
+The suggestion is advisory. The caller applies budgets and policy before
+retrying.
 
 ### 1. Auto-selection rules
 
@@ -164,9 +193,9 @@ Per request:
    model constraint.
 2. **Filter by liveness** via `HealthCheck` and live model discovery. Drop
    endpoints whose latest probe failed or which do not advertise the candidate
-   model. If the filter empties the set, escalate the catalog floor only for
-   profiles whose policy allows escalation. Local-only profiles never escalate
-   into subscription/cloud placement.
+   model. If the filter empties the set, return a no-candidate decision with
+   the full rejected trace and caller escalation advice; do not silently change
+   profiles inside the same request.
 3. **Filter by capability**: drop candidates whose context window <
    `EstimatedPromptTokens`, whose `SupportsTools()` is false when
    `RequiresTools` is true, whose reasoning support is below the request, or
@@ -176,7 +205,13 @@ Per request:
    placement preference, and cooldown/staleness penalties. Candidate trace
    output must expose these components.
 5. **Dispatch top-1**, return the full ranked candidate trace in the routing decision event so callers can see why candidates 2..N lost.
-6. **On failure rotate** within the same tier; only escalate the tier when the same-tier set is exhausted. Record outcome to update per-(provider,model) stats. **Replaces the per-tier trailing-window adaptive min-tier** (which was too coarse — locked the cheap tier out forever after 17 failed attempts because no cheap attempts could refresh the signal).
+6. **On failure rotate** within the same requested profile and hard
+   constraints. Do not auto-escalate `cheap` to `standard` or `smart` inside the
+   agent service. Record outcome to update per-(provider,model,endpoint)
+   stats and return structured retry advice to the caller. **Replaces the
+   per-tier trailing-window adaptive min-tier** (which was too coarse — locked
+   the cheap tier out forever after 17 failed attempts because no cheap
+   attempts could refresh the signal).
 
 #### Pipeline order
 
@@ -190,21 +225,57 @@ allowlist) → score eligible candidates with cost, latency, capability,
 reliability, placement, and quota signals → rank and tie-break by cost and
 latency.
 
-**In `service.ResolveRoute` (`service_routing.go`):** wrap the engine with profile-tier escalation when the engine returns `ErrNoLiveProvider`. Catalog tier filtering and profile ceiling enforcement happen in the engine's inline gates as part of candidate construction; cross-tier escalation lives at the service layer because it loops `routing.Resolve` over successive ladder profiles.
+**In `service.ResolveRoute` (`service_routing.go`):** call the engine once for
+the requested profile/constraints and preserve the candidate trace even on
+failure. Catalog tier filtering and profile ceiling enforcement happen in the
+engine's inline gates as part of candidate construction. Cross-profile retry is
+not performed here; the service returns retry advice for callers that own
+task-level escalation.
 
-#### Escalation ladder
+#### Caller-owned profile escalation
 
-When same-tier candidates are exhausted (all filtered or all scored
-ineligible), `service.ResolveRoute` walks the profile escalation chain declared
-by the profile policy. Built-in default: `cheap → standard → smart`.
-Escalation is **one-way upward only**. Profiles with local-only placement
-(`local`, `offline`, `air-gapped`) do not escalate into subscription/cloud.
-Custom profiles escalate only when their catalog profile or future policy block
-declares a next profile; absence of that declaration means no escalation.
+The built-in advisory chain is `cheap → standard → smart`. The service reports
+that chain in failure evidence, but the caller decides whether to issue a new
+request with the next profile. Profiles with local-only placement (`local`,
+`offline`, `air-gapped`) do not suggest subscription/cloud escalation. Custom
+profiles suggest a next profile only when their catalog profile or future policy
+block declares one; absence of that declaration means no suggestion.
 
-### 3. Per-(provider, model) success/latency
+DDx execute-loop policy: first attempt may use `cheap` or `standard` depending
+on queue policy. If the attempt reaches the agent and fails in a retryable
+quality/capability/provider-transient way, DDx may retry the same task with the
+next profile while preserving first-attempt logs and budget accounting. DDx
+must not retry on deterministic setup/config failures.
 
-In-memory + TTL only this round (matches today's `service_route_attempts.go:13`). Persistent state across restarts is deferred until storage and warm-start behavior are designed. Key change vs. today: signal is keyed on `(provider, model)`, not on tier. A single bad model does not lock out its whole tier.
+### 3. Per-(provider, model, endpoint) route feedback
+
+The agent service owns route feedback collection for candidate selection.
+Minimum signal key: `(harness, provider, endpoint, model)`. A single bad model
+or endpoint must not poison its whole tier or provider family.
+
+Two input paths feed the same signal:
+
+1. `Execute` records the selected route outcome automatically: success,
+   failure class, duration, usage, and cost when known. This covers
+   service-observed provider/harness failures such as transport errors, quota,
+   timeouts, stream loss, subprocess exit, malformed protocol output, and
+   capability mismatches.
+2. `RecordRouteAttempt` lets callers report task outcomes the service cannot
+   infer from a successful model response: tests failed, review blocked,
+   acceptance criteria were missed, or the task succeeded. It also supports
+   routed work executed outside the service.
+
+The scoring engine uses recent success rate, failure class, latency, and
+cooldown state from this store. Initial implementation may keep a bounded
+in-process TTL ring plus service-owned session-log reconstruction; the public
+contract is that route feedback is agent-owned and inspectable, not that
+callers maintain private scoring tables.
+
+Setup/config/cancelled outcomes are evidence for the caller but do not lower
+model quality. Provider-transient and timeout outcomes demote the
+provider/endpoint/model tuple. Model-quality/task-failure outcomes affect
+future reliability scoring and are the main signal for DDx to retry with the
+next profile.
 
 ### 4. Subscription quota inputs
 

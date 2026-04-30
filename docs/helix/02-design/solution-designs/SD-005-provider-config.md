@@ -55,12 +55,17 @@ Caller boundary (see CONTRACT-003):
   auto-selection inputs (`EstimatedPromptTokens`, `RequiresTools`). Explicit
   pins always win over auto-selection.
 - Embedded `ddx-agent` chooses the concrete provider candidate, constructs the
-  provider adapter, and owns passive failover.
+  provider adapter, and owns passive failover inside the current request's
+  profile and hard constraints.
 - Callers receive attribution facts from the embedded run (the full ranked
   candidate trace, score components per candidate, and the actual provider
   fired), but do not build providers, inspect private candidate tables, or
   re-inject pre-resolved `RouteDecision` values. `ResolveRoute` results are
   informational only — `Execute` re-resolves on its own inputs.
+- Callers own task-level escalation. If a weak/cheap attempt fails, DDx or
+  another caller decides whether to issue a new request with a stronger
+  profile; the agent reports evidence and retry advice but does not silently
+  promote profiles during the same attempt.
 
 ### Config Format
 
@@ -278,14 +283,46 @@ Per request, the service:
 
 6. Dispatches the top candidate. On transient provider/harness failures, the
    service records the attempt and tries the next eligible candidate in the
-   ranked trace, but only within the caller's hard constraints. It does not
-   fail over deterministic caller/config errors.
+   ranked trace, but only within the caller's requested profile and hard
+   constraints. It does not fail over deterministic caller/config errors and
+   it does not promote `cheap` to `standard` or `smart` inside the same
+   request.
 7. Falls back to `default:` provider only when no routing intent was supplied
    and the profile/catalog path cannot produce a candidate.
 
 The full ranked candidate trace and per-candidate score components are
 emitted as part of the routing-decision event (CONTRACT-003) so operators can
 explain why candidate 2 lost via `route-status`, not by reading config.
+
+### Failure Evidence and Escalation Boundary
+
+The router has two different recovery mechanisms:
+
+1. **In-request failover** is service-owned. The service may try the next
+   eligible candidate only when that candidate satisfies the same profile,
+   model, provider, and harness constraints.
+2. **Cross-profile escalation** is caller-owned. A failed `cheap` attempt does
+   not automatically become a `standard` or `smart` attempt. The caller issues
+   a second request with the stronger profile when its task policy says the
+   extra cost/time is justified.
+
+Every failed routed `Execute` returns enough structured evidence for that
+caller decision:
+
+- requested profile, effective profile, hard constraints, and exact pins
+- winning candidate, attempted candidates, rejected candidates, and filter
+  reasons
+- score components and the live/cost/quota facts used for ranking
+- final failure class: `setup/config`, `no-candidate`, `provider-transient`,
+  `capability`, `model-quality/task-failure`, `cancelled`, or `timeout`
+- retryability, whether the candidate scope was exhausted, and advisory
+  `suggested_next_profile` when applicable
+
+The advisory escalation chain is `cheap -> standard -> smart`. Local-only
+profiles (`local`, `offline`, `air-gapped`) do not suggest cloud/prepaid
+escalation. Hard pins do not suggest broader alternatives; if
+`--model qwen-3.6-27b` cannot be satisfied, the error explains that exact
+constraint and the inspected providers rather than recommending GPT or Claude.
 
 ### Available Model Inventory
 
@@ -409,10 +446,11 @@ tool support), and `Reasoning` (filter by reasoning support). No prose
 heuristic complexity classifier. `RequiresTools` is explicit caller intent, or
 derived only when a request surface has unambiguously enabled tool execution.
 
-**D7: Passive availability with same-tier rotation, then escalation.** The
-routing engine ranks candidates with explicit components. On dispatch failure,
-the service rotates within the same profile/tier first; only escalates when
-the same-tier set is exhausted and the profile policy allows escalation.
+**D7: Passive availability with same-profile rotation.** The routing engine
+ranks candidates with explicit components. On dispatch failure, the service
+rotates only within the same requested profile and hard constraints. It returns
+structured retry advice when the scope is exhausted; DDx or another caller
+owns any follow-up request with a stronger profile.
 Per-(provider,model,endpoint) success/latency replaces the per-tier adaptive
 min-tier window — one bad model no longer locks out its whole tier.
 

@@ -415,26 +415,34 @@ type RouteDecision struct {
 }
 
 type Candidate struct {
-    Harness       string
-    Provider      string
-    Model         string
-    Score         float64
-    Eligible      bool
-    Reason        string
-    EstimatedCost CostEstimate
-    PerfSignal    PerfSignal
+    Harness         string
+    Provider        string
+    Endpoint        string
+    Model           string
+    Score           float64
+    ScoreComponents map[string]float64
+    Eligible        bool
+    Reason          string
+    FilterReason    string // machine-readable rejection reason when Eligible=false
+    EstimatedCost   CostEstimate
+    PerfSignal      PerfSignal
 }
 
 type RouteAttempt struct {
-    Harness   string
-    Provider  string
-    Model     string
-    Endpoint  string
-    Status    string        // "success" clears active failures; other values record failure
-    Reason    string        // machine-readable failure reason when available
-    Error     string        // human-readable failure detail
-    Duration  time.Duration
-    Timestamp time.Time     // zero = service clock
+    Harness                 string
+    Provider                string
+    Model                   string
+    Endpoint                string
+    Status                  string // "success" clears active failures; other values record failure
+    FailureClass            string // setup/config|no-candidate|provider-transient|capability|model-quality/task-failure|cancelled|timeout
+    Reason                  string // machine-readable failure reason when available
+    Error                   string // human-readable failure detail
+    OutcomeSource           string // service-dispatch|caller-task-result|caller-review|caller-test
+    Retryable               bool
+    CandidateScopeExhausted bool
+    SuggestedNextProfile    string
+    Duration                time.Duration
+    Timestamp               time.Time // zero = service clock
 }
 
 type HarnessInfo struct {
@@ -1023,7 +1031,18 @@ Closed union of event types. Every harness backend emits these identically.
   "provider": "bragi",
   "model": "qwen/qwen3.6-35b-a3b",
   "reason": "cheap-tier match; bragi reachable; 256K context",
-  "fallback_chain": ["openrouter:qwen/qwen3.6"]
+  "fallback_chain": ["openrouter:qwen/qwen3.6"],
+  "candidates": [
+    {
+      "harness": "agent",
+      "provider": "bragi",
+      "endpoint": "http://bragi:1234/v1",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "eligible": true,
+      "score": 0.82,
+      "score_components": {"capability": 0.38, "cost": 0.24, "latency": 0.2}
+    }
+  ]
 }
 
 // type=stall
@@ -1036,6 +1055,14 @@ Closed union of event types. Every harness backend emits these identically.
   "status": "success" | "failed" | "stalled" | "timed_out" | "cancelled",
   "exit_code": 0,
   "error": "",
+  "routing_failure": null,
+  // on routed failure:
+  // "routing_failure": {
+  //   "failure_class": "provider-transient",
+  //   "retryable": true,
+  //   "candidate_scope_exhausted": true,
+  //   "suggested_next_profile": "standard"
+  // },
   "final_text": "user-facing final response text, stripped of harness stream envelopes",
   "duration_ms": 12345,
   "usage": {
@@ -1267,17 +1294,27 @@ rules that govern future additions to this contract surface.
 
 ## Bead Execution Policy
 
-DDx bead implementation should use a two-pass policy against this service:
-try a cheap or standard profile with `reasoning=off` first, then escalate only
-when the first pass produced evidence that a smarter model is likely to help.
-The initial pass should use `ModelRef=cheap` or `ModelRef=standard` with an
-explicit `ReasoningOff` request so local/economy models do not spend
-reasoning tokens by default.
+DDx bead implementation owns cross-profile retry policy. The agent service
+selects the best candidate inside one request's `Profile`, hard pins, and
+auto-selection inputs; it does not decide that a failed `cheap` attempt should
+become a `standard` or `smart` attempt. When DDx wants to escalate, it issues a
+new `Execute` request with a stronger `Profile`, preserving the same bead
+context, logs, and execution budget.
+
+DDx should normally try `Profile=cheap` or `Profile=standard` with
+`reasoning=off` first, then escalate only when the first pass produced
+evidence that a stronger model is likely to help. The escalation chain is
+`cheap -> standard -> smart`; exact `Model`, `Provider`, or `Harness` pins
+remain hard constraints and are not widened by escalation.
 
 Smart retry is eligible when the first pass failed because of model capability,
 reasoning quality, a post-implementation test failure, or an explicit agent
-failure after the agent had a valid checkout and attempted the bead. The retry
-uses `ModelRef=smart` and the smart-tier catalog default, currently
+failure after the agent had a valid checkout and attempted the bead. DDx
+reports that first-pass outcome through `RecordRouteAttempt` with
+`OutcomeSource` set to `caller-task-result`, `caller-review`, or `caller-test`;
+this lets the service learn that the model/harness combination struggled with
+real task work. The retry uses `Profile=smart` and the smart-tier catalog
+default, currently
 `reasoning=high`, unless the caller supplies a tighter explicit value. The
 retry must preserve the same bead context and retain first-pass logs/evidence
 so reviewers can compare the cheap attempt with the smart attempt.
@@ -1295,17 +1332,49 @@ paired DDx repo bead `ddx-785d02f7`.
 
 ## Route Attempt Feedback
 
-`RecordRouteAttempt` is deterministic, process-local routing feedback. It does
-not persist across process restarts. The active TTL is `ServiceConfig`
-`HealthCooldown`; when that is unset the default is 30 seconds.
+The agent service owns route feedback for model selection. It learns from two
+sources:
+
+1. **Service dispatch outcomes.** `Execute` records the selected candidate's
+   provider/harness result automatically: transport errors, auth/quota/rate
+   limits, 5xx responses, stream loss, subprocess exit, timeout, malformed
+   protocol output, and capability mismatches. These are direct signals about
+   the provider, endpoint, harness, or candidate model.
+2. **Caller task outcomes.** `RecordRouteAttempt` lets DDx or another caller
+   report results the service cannot infer from a successful model response:
+   tests failed, review blocked, acceptance criteria were missed, or the task
+   succeeded after a candidate produced a usable implementation.
+
+`RecordRouteAttempt` is the public feedback API for the second source and for
+external routed work. The minimum implementation is deterministic,
+process-local routing feedback. The active TTL is `ServiceConfig`
+`HealthCooldown`; when that is unset the default is 30 seconds. Implementations
+may additionally reconstruct longer-lived feedback from agent-owned session
+logs, but callers must not maintain private routing-score tables as the
+canonical source of truth.
 
 Candidate keying uses the tuple `(Harness, Provider, Model, Endpoint)`.
-Consumers should provide every field they know. A non-success `Status` records
-an active failure and future `ResolveRoute` calls demote matching candidates
-inside the same process until the TTL expires. `Status="success"` clears
-matching active failures so a recovered candidate is eligible without waiting
-for TTL expiry. `RouteStatus` reports active route-attempt cooldowns on matching
-candidates with `Reason`, `LastError`, `LastAttempt`, and `Until` timestamps.
+Consumers should provide every field they know. A non-success `Status` with a
+routing-relevant `FailureClass` records an active failure and future
+`ResolveRoute` calls demote matching candidates inside the same process until
+the TTL expires. `Status="success"` clears matching active failures so a
+recovered candidate is eligible without waiting for TTL expiry. `RouteStatus`
+reports active route-attempt cooldowns on matching candidates with `Reason`,
+`LastError`, `LastAttempt`, and `Until` timestamps.
+
+Failure classes control what gets penalized:
+
+- `provider-transient` and `timeout` demote the provider/endpoint/model tuple
+  and may trigger same-profile failover when another candidate is eligible.
+- `capability` marks the candidate ineligible for requests needing that missing
+  context/tool/reasoning capability.
+- `model-quality/task-failure` contributes to model/harness reliability for
+  future ranking and is the main signal DDx uses to justify a stronger profile
+  retry.
+- `setup/config`, `no-candidate`, and `cancelled` are returned to the caller as
+  actionable evidence but do not poison model quality. Auth/config failures may
+  mark a provider unusable until configuration changes, but they are not proof
+  that the model itself is weak.
 
 ## Harness Integration Testing
 
