@@ -40,6 +40,8 @@ type ModelEntry struct {
 	Tier               string            `yaml:"tier,omitempty"`
 	Status             string            `yaml:"status,omitempty"`
 	ProviderSystem     string            `yaml:"provider_system,omitempty"`
+	DeploymentClass    string            `yaml:"deployment_class,omitempty" json:"deployment_class,omitempty"`
+	PowerProvenance    PowerProvenance   `yaml:"power_provenance,omitempty" json:"power_provenance,omitempty"`
 	CostInputPerM      float64           `yaml:"cost_input_per_m,omitempty"`
 	CostOutputPerM     float64           `yaml:"cost_output_per_m,omitempty"`
 	CostCacheReadPerM  float64           `yaml:"cost_cache_read_per_m,omitempty"`
@@ -79,6 +81,17 @@ type ModelEntry struct {
 	//   partial                    — provider honors a subset (reserved; not
 	//                                 enforced in v1).
 	SamplingControl string `yaml:"sampling_control,omitempty"`
+}
+
+// PowerProvenance records why a model received its catalog power score.
+type PowerProvenance struct {
+	Method          string             `yaml:"method,omitempty" json:"method,omitempty"`
+	Benchmarks      map[string]float64 `yaml:"benchmarks,omitempty" json:"benchmarks,omitempty"`
+	Recency         string             `yaml:"recency,omitempty" json:"recency,omitempty"`
+	CostInputPerM   float64            `yaml:"cost_input_per_m,omitempty" json:"cost_input_per_m,omitempty"`
+	CostOutputPerM  float64            `yaml:"cost_output_per_m,omitempty" json:"cost_output_per_m,omitempty"`
+	DeploymentClass string             `yaml:"deployment_class,omitempty" json:"deployment_class,omitempty"`
+	OverrideReason  string             `yaml:"override_reason,omitempty" json:"override_reason,omitempty"`
 }
 
 // Reasoning capability control values.
