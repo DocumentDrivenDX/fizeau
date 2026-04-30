@@ -408,6 +408,9 @@ func validateManifest(m manifest) error {
 		if model.Power < 0 {
 			return fmt.Errorf("model %q power must be >= 0", modelID)
 		}
+		if model.Power > 10 {
+			return fmt.Errorf("model %q power must be <= 10", modelID)
+		}
 		if model.ReasoningMaxTokens < 0 {
 			return fmt.Errorf("model %q reasoning_max_tokens must be >= 0", modelID)
 		}

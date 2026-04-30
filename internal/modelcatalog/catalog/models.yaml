@@ -5,7 +5,7 @@ generated_at: 2026-04-27T00:00:00Z
 # `ddx-agent catalog update` to reach existing installations — including
 # additive schema extensions per ADR-007 §7. Format: YYYY-MM-DD.N
 # (calendar date, increment N for same-day changes).
-catalog_version: 2026-04-27.4
+catalog_version: 2026-04-30.1
 
 # Sampling profiles (ADR-007 L1 — generic per-task bundles).
 # A field unset here stays nil through the resolver and is omitted from
@@ -34,6 +34,16 @@ models:
     tier: code-high
     status: active
     provider_system: anthropic
+    deployment_class: managed_cloud_frontier
+    power: 10
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 80.8
+      recency: "2026-04-12"
+      cost_input_per_m: 15.00
+      cost_output_per_m: 75.00
+      deployment_class: managed_cloud_frontier
     cost_input_per_m: 15.00
     cost_output_per_m: 75.00
     cost_cache_read_per_m: 1.50
@@ -55,6 +65,16 @@ models:
     tier: code-high
     status: active
     provider_system: openai
+    deployment_class: managed_cloud_frontier
+    power: 10
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 81.5
+      recency: "2026-04-25"
+      cost_input_per_m: 15.00
+      cost_output_per_m: 60.00
+      deployment_class: managed_cloud_frontier
     cost_input_per_m: 15.00
     cost_output_per_m: 60.00
     context_window: 1000000
@@ -73,6 +93,17 @@ models:
     tier: code-high
     status: active
     provider_system: openai
+    deployment_class: managed_cloud_frontier
+    power: 0
+    exact_pin_only: true
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 80.8
+      recency: "2026-04-12"
+      cost_input_per_m: 15.00
+      cost_output_per_m: 60.00
+      deployment_class: managed_cloud_frontier
     cost_input_per_m: 15.00
     cost_output_per_m: 60.00
     context_window: 1000000
@@ -88,6 +119,14 @@ models:
     tier: code-high
     status: active
     provider_system: google
+    deployment_class: metered_cloud
+    power: 9
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      recency: "2026-04-21"
+      cost_input_per_m: 1.25
+      cost_output_per_m: 10.00
+      deployment_class: metered_cloud
     cost_input_per_m: 1.25
     cost_output_per_m: 10.00
     cost_cache_read_per_m: 0.125
@@ -105,6 +144,16 @@ models:
     tier: code-medium
     status: active
     provider_system: anthropic
+    deployment_class: managed_cloud_frontier
+    power: 8
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 79.6
+      recency: "2026-04-12"
+      cost_input_per_m: 3.00
+      cost_output_per_m: 15.00
+      deployment_class: managed_cloud_frontier
     cost_input_per_m: 3.00
     cost_output_per_m: 15.00
     cost_cache_read_per_m: 0.30
@@ -126,6 +175,16 @@ models:
     tier: code-medium
     status: active
     provider_system: openai
+    deployment_class: metered_cloud
+    power: 8
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 77.2
+      recency: "2026-04-12"
+      cost_input_per_m: 3.00
+      cost_output_per_m: 12.00
+      deployment_class: metered_cloud
     cost_input_per_m: 3.00
     cost_output_per_m: 12.00
     context_window: 1000000
@@ -141,6 +200,14 @@ models:
     tier: code-medium
     status: active
     provider_system: google
+    deployment_class: metered_cloud
+    power: 7
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      recency: "2026-04-21"
+      cost_input_per_m: 0.30
+      cost_output_per_m: 2.50
+      deployment_class: metered_cloud
     cost_input_per_m: 0.30
     cost_output_per_m: 2.50
     cost_cache_read_per_m: 0.03
@@ -158,6 +225,16 @@ models:
     tier: code-economy
     status: active
     provider_system: anthropic
+    deployment_class: metered_cloud
+    power: 7
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 73.3
+      recency: "2026-04-12"
+      cost_input_per_m: 0.80
+      cost_output_per_m: 4.00
+      deployment_class: metered_cloud
     cost_input_per_m: 0.80
     cost_output_per_m: 4.00
     cost_cache_read_per_m: 0.08
@@ -179,6 +256,13 @@ models:
     tier: code-economy
     status: active
     provider_system: lucebox
+    deployment_class: local_free
+    power: 5
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      recency: "2026-04-12"
+      deployment_class: local_free
+      override_reason: "Local accelerated Qwen deployment remains routable because availability and speed can beat generic local OpenAI-compatible endpoints."
     # Speculative-decoding inference server from lucebox-hub
     # (https://github.com/Luce-Org/lucebox-hub). Underlying weights are
     # Qwen3.5-27B-Q4_K_M GGUF (3.6-27B drop-in supported per upstream
@@ -197,6 +281,16 @@ models:
     tier: code-economy
     status: active
     provider_system: openai
+    deployment_class: local_free
+    power: 5
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 59.0
+      recency: "2026-04-12"
+      cost_input_per_m: 0.10
+      cost_output_per_m: 0.30
+      deployment_class: local_free
     cost_input_per_m: 0.10
     cost_output_per_m: 0.30
     context_window: 262144
@@ -219,6 +313,17 @@ models:
     tier: code-economy
     status: active
     provider_system: openai
+    deployment_class: local_free
+    power: 0
+    exact_pin_only: true
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 45.0
+      recency: "2026-04-12"
+      cost_input_per_m: 0.04
+      cost_output_per_m: 0.12
+      deployment_class: local_free
     cost_input_per_m: 0.04
     cost_output_per_m: 0.12
     context_window: 131072
@@ -238,6 +343,14 @@ models:
     tier: code-economy
     status: active
     provider_system: google
+    deployment_class: metered_cloud
+    power: 5
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      recency: "2026-04-21"
+      cost_input_per_m: 0.10
+      cost_output_per_m: 0.40
+      deployment_class: metered_cloud
     cost_input_per_m: 0.10
     cost_output_per_m: 0.40
     cost_cache_read_per_m: 0.01
@@ -255,6 +368,14 @@ models:
     tier: claude-sonnet-4
     status: deprecated
     provider_system: anthropic
+    deployment_class: managed_cloud_frontier
+    power: 0
+    exact_pin_only: true
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 72.7
+      deployment_class: managed_cloud_frontier
     cost_input_per_m: 3.00
     cost_output_per_m: 15.00
     swe_bench_verified: 72.7
@@ -267,6 +388,14 @@ models:
     tier: claude-sonnet-3.7
     status: deprecated
     provider_system: anthropic
+    deployment_class: managed_cloud_frontier
+    power: 0
+    exact_pin_only: true
+    power_provenance:
+      method: catalog_bootstrap_cost_recency
+      benchmarks:
+        swe_bench_verified: 70.3
+      deployment_class: managed_cloud_frontier
     cost_input_per_m: 3.00
     cost_output_per_m: 15.00
     swe_bench_verified: 70.3
@@ -322,7 +451,7 @@ targets:
     status: active
     context_window_min: 1000000
     swe_bench_min: 80.0
-    candidates: [opus-4.7, gpt-5.4, gemini-2.5-pro]
+    candidates: [opus-4.7, gpt-5.5, gemini-2.5-pro]
     surface_policy:
       agent.anthropic:
         reasoning_default: high
@@ -374,7 +503,7 @@ targets:
     status: active
     context_window_min: 131072
     swe_bench_min: 45.0
-    candidates: [claude-haiku-5.5, qwen3.5-27b, qwen3.5-7b, gemini-2.5-flash-lite]
+    candidates: [claude-haiku-5.5, lucebox-dflash, qwen3.5-27b, gemini-2.5-flash-lite]
     surface_policy:
       agent.anthropic:
         reasoning_default: medium

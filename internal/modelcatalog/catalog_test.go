@@ -76,7 +76,7 @@ func TestDefault_LoadsEmbeddedManifest(t *testing.T) {
 	assert.Equal(t, "opus-4.7", resolved.ConcreteModel)
 	assert.Equal(t, reasoning.ReasoningHigh, resolved.SurfacePolicy.ReasoningDefault)
 	assert.Equal(t, "embedded", resolved.ManifestSource)
-	assert.Equal(t, "2026-04-27.4", resolved.CatalogVersion)
+	assert.Equal(t, "2026-04-30.1", resolved.CatalogVersion)
 }
 
 func TestDefault_ReasoningDefaultsByTier(t *testing.T) {
@@ -984,13 +984,13 @@ func TestDefault_V4TargetsUseModelCandidates(t *testing.T) {
 	assert.Empty(t, target.Surfaces)
 	assert.Zero(t, target.CostInputPerM)
 	assert.Empty(t, target.OpenRouterRefID)
-	assert.Equal(t, []string{"claude-haiku-5.5", "qwen3.5-27b", "qwen3.5-7b", "gemini-2.5-flash-lite"}, target.Candidates)
+	assert.Equal(t, []string{"claude-haiku-5.5", "lucebox-dflash", "qwen3.5-27b", "gemini-2.5-flash-lite"}, target.Candidates)
 
 	models := catalog.AllModelsInTier("code-economy")
 	require.Len(t, models, 4)
 	assert.Equal(t, "claude-haiku-5.5", models[0].ID)
-	assert.Equal(t, "qwen3.5-27b", models[1].ID)
-	assert.Equal(t, "qwen3.5-7b", models[2].ID)
+	assert.Equal(t, "lucebox-dflash", models[1].ID)
+	assert.Equal(t, "qwen3.5-27b", models[2].ID)
 	assert.Equal(t, "gemini-2.5-flash-lite", models[3].ID)
 }
 
