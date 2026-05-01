@@ -1,12 +1,12 @@
-# DDX Agent
+# Fizeau
 
-Embeddable Go agent runtime — local-model-first via LM Studio.
+Embeddable Go agent runtime - local-model-first via LM Studio.
 
 [![CI](https://github.com/DocumentDrivenDX/fizeau/actions/workflows/ci.yml/badge.svg)](https://github.com/DocumentDrivenDX/fizeau/actions/workflows/ci.yml)
 [![Release](https://github.com/DocumentDrivenDX/fizeau/releases/latest/badge.svg)](https://github.com/DocumentDrivenDX/fizeau/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-DDX Agent is a Go library that implements a coding agent runtime — a tool-calling
+Fizeau is a Go library that implements a coding agent runtime - a tool-calling
 LLM loop with file read/write, shell execution, navigation helpers, and
 structured I/O. Designed to be embedded in
 [DDx](https://github.com/DocumentDrivenDX/ddx) and other build orchestrators.
@@ -16,7 +16,7 @@ escalation to cloud providers.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/agent/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/fizeau/master/install.sh | bash
 ```
 
 Or with Go:
@@ -31,10 +31,10 @@ Start [LM Studio](https://lmstudio.ai/) with a model that supports tool
 calling (Qwen 3.5+, Llama 3.2+), then:
 
 ```bash
-ddx-agent -p "Read main.go and tell me the package name"
+fiz -p "Read main.go and tell me the package name"
 ```
 
-DDX Agent connects to `localhost:1234` by default.
+Fizeau connects to `localhost:1234` by default.
 
 ### With Anthropic
 
@@ -42,7 +42,7 @@ DDX Agent connects to `localhost:1234` by default.
 export FIZEAU_PROVIDER=anthropic
 export FIZEAU_API_KEY=sk-ant-...
 export FIZEAU_MODEL=claude-sonnet-4-20250514
-ddx-agent -p "Read main.go and tell me the package name"
+fiz -p "Read main.go and tell me the package name"
 ```
 
 ## Demos
@@ -52,17 +52,17 @@ ddx-agent -p "Read main.go and tell me the package name"
 [![asciicast](https://asciinema.org/a/placeholder.svg)](website/static/demos/file-read.cast)
 
 ```
-$ ddx-agent -p 'Read main.go and explain what this program does'
+$ fiz -p 'Read main.go and explain what this program does'
 
 This program is a simple HTTP server that listens on port 8080 and responds
-with "Hello from DDX Agent!" to any request.
+with "Hello from Fizeau!" to any request.
 [success] tokens: 1861 in / 70 out
 ```
 
 ### Edit a config file
 
 ```
-$ ddx-agent -p 'Read config.yaml, change the server port from 8080 to 9090, then verify'
+$ fiz -p 'Read config.yaml, change the server port from 8080 to 9090, then verify'
 
 Done. The server port in config.yaml has been changed from 8080 to 9090.
 [success] tokens: 4082 in / 127 out
@@ -71,7 +71,7 @@ Done. The server port in config.yaml has been changed from 8080 to 9090.
 ### Explore project structure
 
 ```
-$ ddx-agent -p 'List all Go files and summarize the package structure'
+$ fiz -p 'List all Go files and summarize the package structure'
 
 Package Structure:
 ├── cmd/server/main.go       (package main)
@@ -95,11 +95,11 @@ import (
 )
 
 func main() {
-    a, err := agent.New(agent.ServiceOptions{})
+    svc, err := fizeau.New(fizeau.ServiceOptions{})
     if err != nil {
         panic(err)
     }
-    events, err := a.Execute(context.Background(), agent.ServiceExecuteRequest{
+    events, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
         Prompt:   "Read main.go and tell me the package name",
         ModelRef: "cheap",
         WorkDir:  ".",
@@ -115,18 +115,18 @@ func main() {
 
 ## Features
 
-- **Embeddable library** — `agent.New(...).Execute(ctx, request)`, no subprocess overhead
+- **Embeddable library** — `fizeau.New(...).Execute(ctx, request)`, no subprocess overhead
 - **Local-model-first** — LM Studio, Ollama via OpenAI-compatible API
 - **Multi-provider** — OpenAI-compatible, Anthropic Claude, virtual (test replay)
 - **9 built-in tools** — read, write, edit, bash, find, grep, ls, patch, task
 - **Session logging** — JSONL with replay and cost tracking
 - **System prompt composition** — pi-style builder with context file discovery
-- **Standalone CLI** — `ddx-agent -p "prompt"` with config, logging, replay
+- **Standalone CLI** — `fiz -p "prompt"` with config, logging, replay
 
 ## Configuration
 
 ```yaml
-# .agent/config.yaml
+# .fizeau/config.yaml
 providers:
   local:
     type: lmstudio
@@ -135,7 +135,7 @@ providers:
 default: local
 preset: default                  # system prompt style (see below)
 max_iterations: 20
-session_log_dir: .agent/sessions
+session_log_dir: .fizeau/sessions
 tools:
   bash:
     output_filter:
@@ -153,7 +153,7 @@ Built-in `read`, `find`, `grep`, and `ls` are not filtered.
 
 ## System Prompt Presets
 
-DDX Agent ships built-in system prompt presets that describe prompt intent.
+Fizeau ships built-in system prompt presets that describe prompt intent.
 Select one with `--preset` or the
 top-level `preset` config field:
 
@@ -172,15 +172,15 @@ When no preset is specified, `default` is used.
 Every run is logged. Replay past sessions:
 
 ```bash
-ddx-agent log                  # list sessions
-ddx-agent replay <session-id>  # human-readable replay
+fiz log                  # list sessions
+fiz replay <session-id>  # human-readable replay
 ```
 
 ## Documentation
 
-- [Getting Started](https://documentdrivendx.github.io/agent/docs/getting-started/)
+- [Getting Started](https://documentdrivendx.github.io/fizeau/docs/getting-started/)
 - [Routing Reference](docs/routing/index.md)
-- [Microsite](https://documentdrivendx.github.io/agent/)
+- [Microsite](https://documentdrivendx.github.io/fizeau/)
 
 ## Contributing
 
