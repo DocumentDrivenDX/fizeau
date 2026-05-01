@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke_run.sh — Run a single Terminal-Bench task to validate the ddx-agent adapter.
+# smoke_run.sh — Run a single Terminal-Bench task to validate the fiz adapter.
 # See docs/helix/02-design/solution-designs/SD-009-benchmark-mode.md §4 for the full
 # smoke-run workflow and passing criteria.
 #
@@ -17,7 +17,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DIST_DIR="${REPO_ROOT}/dist"
-DEFAULT_BINARY="${DIST_DIR}/ddx-agent-linux-amd64"
+DEFAULT_BINARY="${DIST_DIR}/fiz-linux-amd64"
 INPUT_BINARY="${FIZEAU_BENCH_BINARY:-${DEFAULT_BINARY}}"
 SMOKE_TASK="${DDX_BENCH_SMOKE_TASK:-break-filter-js-from-html}"
 DATASET="${DDX_BENCH_DATASET:-terminal-bench@2.0}"
@@ -109,7 +109,7 @@ resolve_provider_key() {
     done
 }
 
-echo "=== ddx-agent benchmark smoke run ==="
+echo "=== fiz benchmark smoke run ==="
 echo "Repo: ${REPO_ROOT}"
 echo "Task: ${SMOKE_TASK}"
 echo ""
@@ -202,6 +202,6 @@ echo "      trajectory.json: ${STEP_COUNT} steps"
 
 echo ""
 echo "=== Smoke run PASSED ==="
-echo "  Harness: ddx-agent exited cleanly, trajectory produced, reward captured"
+echo "  Harness: fiz exited cleanly, trajectory produced, reward captured"
 echo "  Task result: reward=${REWARD} (1=pass, 0=fail; both valid for smoke)"
 echo "  Trial dir: ${TRIAL_DIR}"

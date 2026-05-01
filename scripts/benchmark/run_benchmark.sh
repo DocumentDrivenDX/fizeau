@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# run_benchmark.sh — Run the full ddx-agent benchmark subset and emit a report.
+# run_benchmark.sh — Run the full fiz benchmark subset and emit a report.
 #
 # Usage:
 #   ANTHROPIC_API_KEY=sk-... ./scripts/benchmark/run_benchmark.sh
 #   OPENROUTER_API_KEY=sk-or-... ./scripts/benchmark/run_benchmark.sh
-#   FIZEAU_BENCH_BINARY=/path/to/ddx-agent-linux-amd64 ./scripts/benchmark/run_benchmark.sh
+#   FIZEAU_BENCH_BINARY=/path/to/fiz-linux-amd64 ./scripts/benchmark/run_benchmark.sh
 #
 # Output:
 #   benchmark-results/report-<TIMESTAMP>.json
@@ -26,7 +26,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DIST_DIR="${REPO_ROOT}/dist"
-DEFAULT_BINARY="${DIST_DIR}/ddx-agent-linux-amd64"
+DEFAULT_BINARY="${DIST_DIR}/fiz-linux-amd64"
 INPUT_BINARY="${FIZEAU_BENCH_BINARY:-${DEFAULT_BINARY}}"
 SUBSET_FILE="${DDX_BENCH_SUBSET_FILE:-${SCRIPT_DIR}/task-subset-v2.yaml}"
 RESULTS_DIR="${DDX_BENCH_RESULTS_DIR:-${REPO_ROOT}/benchmark-results}"
@@ -49,7 +49,7 @@ SHA_OVERRIDE="${FIZEAU_BENCH_SHA:-}"
 HARBOR_BIN=""
 
 BUNDLE_DIR="$(mktemp -d /tmp/ddx-bench-agent-XXXXXX)"
-STAGED_BINARY="${BUNDLE_DIR}/ddx-agent-linux-amd64"
+STAGED_BINARY="${BUNDLE_DIR}/fiz-linux-amd64"
 STAGED_AGENT_CONFIG="${BUNDLE_DIR}/harbor_agent.py"
 TASK_RESULTS_FILE="$(mktemp /tmp/ddx-bench-tasks-XXXXXX.jsonl)"
 SCORES_FILE="$(mktemp /tmp/ddx-bench-scores-XXXXXX.json)"
@@ -145,7 +145,7 @@ resolve_provider_api_key() {
     done
 }
 
-echo "=== ddx-agent benchmark run ==="
+echo "=== fiz benchmark run ==="
 echo "Repo:    ${REPO_ROOT}"
 echo "Binary:  ${INPUT_BINARY}"
 echo "Subset:  ${SUBSET_FILE}"

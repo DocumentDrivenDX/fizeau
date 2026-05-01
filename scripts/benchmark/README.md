@@ -1,6 +1,6 @@
-# DDX Agent Benchmark Scripts
+# Fizeau Benchmark Scripts
 
-This directory contains scripts and config for running ddx-agent under
+This directory contains scripts and config for running fiz under
 Terminal-Bench/Harbor and capturing reproducible benchmark baselines.
 
 ---
@@ -33,7 +33,7 @@ OPENROUTER_API_KEY=sk-or-... ./scripts/benchmark/smoke_run.sh
 ```
 
 **Passing criterion**:
-- ddx-agent exits 0
+- fiz exits 0
 - `trajectory.json` is valid JSON with ≥ 1 step
 - `reward.txt` exists (0 or 1 — both valid for smoke)
 
@@ -53,11 +53,11 @@ the aggregate resolved-task rate.
 
 ### Commit-independent runs
 
-You can point the same harness at a prebuilt ddx-agent binary instead of
+You can point the same harness at a prebuilt fiz binary instead of
 rebuilding the current checkout:
 
 ```bash
-FIZEAU_BENCH_BINARY=/path/to/ddx-agent-linux-amd64 \
+FIZEAU_BENCH_BINARY=/path/to/fiz-linux-amd64 \
 FIZEAU_BENCH_SHA=<commit-under-test> \
 ./scripts/benchmark/run_benchmark.sh
 ```
@@ -72,7 +72,7 @@ without invoking Harbor:
 
 ```bash
 DDX_BENCH_DRY_RUN=1 \
-FIZEAU_BENCH_BINARY=/path/to/ddx-agent-linux-amd64 \
+FIZEAU_BENCH_BINARY=/path/to/fiz-linux-amd64 \
 DDX_BENCH_PROVIDER_MODEL=qwen/qwen3.6-plus \
 ./scripts/benchmark/run_benchmark.sh
 ```
@@ -117,10 +117,10 @@ The only per-run inputs that should change are:
 ## Harbor Adapter
 
 `harbor_agent.py` is the `BaseInstalledAgent` Python adapter that Harbor uses
-to install and run ddx-agent inside each task container. It handles:
+to install and run fiz inside each task container. It handles:
 
 1. **`install()`** — copies the `linux/amd64` binary and writes a provider config
-2. **`run()`** — invokes `ddx-agent --json --preset benchmark -p "<task>"`
+2. **`run()`** — invokes `fiz --json --preset benchmark -p "<task>"`
 3. **`populate_context_post_run()`** — converts session JSONL to ATIF v1.4 trajectory
 
 The adapter's provider and prompt behavior are controlled by benchmark env vars
@@ -138,19 +138,19 @@ supplied by the runner, including:
 **Build the linux/amd64 binary before running**:
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -o scripts/benchmark/ddx-agent-linux-amd64 ./cmd/fiz
+GOOS=linux GOARCH=amd64 go build -o scripts/benchmark/fiz-linux-amd64 ./cmd/fiz
 ```
 
 ### Credential injection
 
 The adapter passes `ANTHROPIC_API_KEY` and `OPENROUTER_API_KEY` from the host
 into the container via `get_env()`. A minimal config file is written during
-`install()` that references `${ANTHROPIC_API_KEY}` — ddx-agent's config loader
+`install()` that references `${ANTHROPIC_API_KEY}` — fiz's config loader
 expands env vars at load time.
 
 If the expected key env var is unset, the benchmark scripts now fall back to the
-matching provider entry in the host ddx-agent config (`.agent/config.yaml` or
-`~/.config/agent/config.yaml`) and export the discovered `api_key` before
+matching provider entry in the host fiz config (`.fizeau/config.yaml` or
+`~/.config/fizeau/config.yaml`) and export the discovered `api_key` before
 invoking Harbor.
 
 ---

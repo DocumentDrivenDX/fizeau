@@ -23,7 +23,7 @@ pattern — great library proven by a usable CLI app.
   check capability. Users must manually re-run install script to upgrade.
 - **Pain points**: No way to check if running version is outdated. No safe in-place
   binary replacement. Installer lacks colored output and PATH configuration.
-- **Desired outcome**: `ddx-agent update` command that checks for updates, prompts user,
+- **Desired outcome**: `fiz update` command that checks for updates, prompts user,
   downloads new binary safely, and replaces old one atomically. Enhanced installer
   with better UX matching DDx patterns.
 
@@ -31,7 +31,7 @@ pattern — great library proven by a usable CLI app.
 
 ### Functional Requirements
 
-#### Update Command (`ddx-agent update`)
+#### Update Command (`fiz update`)
 
 1. Check current version against latest GitHub release
 2. Display version comparison: "Current: v0.0.8 | Latest: v0.0.9"
@@ -43,7 +43,7 @@ pattern — great library proven by a usable CLI app.
 8. Preserve permissions and ownership
 9. Show success message with new version
 
-#### Update Check Only (`ddx-agent update --check-only`)
+#### Update Check Only (`fiz update --check-only`)
 
 10. Compare versions without downloading
 11. Exit code 0 if up-to-date, exit code 1 if outdated
@@ -54,12 +54,12 @@ pattern — great library proven by a usable CLI app.
 13. Colored output (blue info, green success, yellow warning, red error)
 14. Prerequisites checking (curl/wget availability)
 15. PATH configuration in shell rc files (.bashrc, .zshrc, .config/fish/config.fish)
-16. Installation verification (`ddx-agent --version` test)
+16. Installation verification (`fiz --version` test)
 17. Getting started guide with quick commands
 
 #### Version Command Enhancement
 
-18. `ddx-agent version` shows current version and whether update is available
+18. `fiz version` shows current version and whether update is available
 19. If outdated: "v0.0.8 (update available: v0.0.9)"
 20. If up-to-date: "v0.0.8 (latest)"
 
@@ -109,12 +109,12 @@ func findBinaryPath() (string, error) {
     dir := filepath.Dir(exe)
     if strings.Contains(dir, ".local/bin") || 
        strings.Contains(dir, "go/bin") ||
-       strings.Contains(dir, "bin/ddx-agent") {
+       strings.Contains(dir, "bin/fiz") {
         return exe, nil
     }
     
     // 3. Fall back to which command
-    cmd := exec.Command("which", "ddx-agent")
+    cmd := exec.Command("which", "fiz")
     output, err := cmd.Output()
     if err != nil {
         return "", fmt.Errorf("cannot locate agent binary: %w", err)
@@ -225,7 +225,7 @@ func getLatestRelease(repo string) (*GitHubRelease, error) {
 
 ## Success Metrics
 
-- User can run `ddx-agent update` and upgrade from v0.0.8 to v0.0.9 in one command
+- User can run `fiz update` and upgrade from v0.0.8 to v0.0.9 in one command
 - Update check completes in < 3 seconds on typical network
 - Binary replacement is atomic — no corrupted binaries after failed updates
 - Installer successfully configures PATH for bash, zsh, and fish shells
@@ -234,12 +234,12 @@ func getLatestRelease(repo string) (*GitHubRelease, error) {
 
 | ID | Criterion | Suggested Verification |
 |----|-----------|------------------------|
-| AC-FEAT-007-01 | `ddx-agent version` and `ddx-agent update --check-only` perform semantic-version comparison against cached/latest release data, print scripting-friendly output, and return exit `0` when current and exit `1` when outdated. | `go test ./cmd/ddx-agent ./...` |
-| AC-FEAT-007-02 | `ddx-agent update` downloads the correct platform binary, verifies the download, atomically replaces the current binary, preserves executable permissions, and leaves no partial replacement on success. | `go test ./cmd/ddx-agent ./...` |
-| AC-FEAT-007-03 | Network, API, permission, temp-dir, and disk/write failures leave the existing binary intact, clean up partial downloads, and emit actionable operator-facing errors. | `go test ./cmd/ddx-agent ./...` |
+| AC-FEAT-007-01 | `fiz version` and `fiz update --check-only` perform semantic-version comparison against cached/latest release data, print scripting-friendly output, and return exit `0` when current and exit `1` when outdated. | `go test ./cmd/fiz ./...` |
+| AC-FEAT-007-02 | `fiz update` downloads the correct platform binary, verifies the download, atomically replaces the current binary, preserves executable permissions, and leaves no partial replacement on success. | `go test ./cmd/fiz ./...` |
+| AC-FEAT-007-03 | Network, API, permission, temp-dir, and disk/write failures leave the existing binary intact, clean up partial downloads, and emit actionable operator-facing errors. | `go test ./cmd/fiz ./...` |
 | AC-FEAT-007-04 | `install.sh` verifies prerequisites, selects the correct release artifact for Linux/macOS amd64/arm64, installs into the requested target directory, and verifies the resulting binary. | shell-based acceptance test in CI/local temp directories |
 | AC-FEAT-007-05 | `install.sh` updates bash, zsh, and fish PATH configuration idempotently and prints correct immediate-use guidance when the binary is not yet on the current shell `PATH`. | shell-based acceptance test in CI/local temp directories |
-| AC-FEAT-007-06 | Install/update acceptance tests run without live GitHub dependencies by using mocked HTTP responses, temp files, and disposable shell rc files. | `go test ./cmd/ddx-agent ./...`; shell-based acceptance test in CI |
+| AC-FEAT-007-06 | Install/update acceptance tests run without live GitHub dependencies by using mocked HTTP responses, temp files, and disposable shell rc files. | `go test ./cmd/fiz ./...`; shell-based acceptance test in CI |
 
 ## Constraints and Assumptions
 
@@ -256,7 +256,7 @@ func getLatestRelease(repo string) (*GitHubRelease, error) {
 
 ## Out of Scope
 
-- Automatic background updates (user must explicitly run `ddx-agent update`)
+- Automatic background updates (user must explicitly run `fiz update`)
 - Rollback to previous version (would require keeping old binary)
 - Update notifications on startup (could be added later as opt-in feature)
 - Custom release channels (beta, nightly — use GitHub tags directly if needed)

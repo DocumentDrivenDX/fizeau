@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-harbor_agent.py — Harbor 0.3.x BaseInstalledAgent adapter for ddx-agent.
+harbor_agent.py — Harbor 0.3.x BaseInstalledAgent adapter for fiz.
 
-This adapter stages a prebuilt ddx-agent binary into the task environment,
-writes a minimal config rooted under /installed-agent/home, runs ddx-agent in
+This adapter stages a prebuilt fiz binary into the task environment,
+writes a minimal config rooted under /installed-agent/home, runs fiz in
 the task workspace, and converts downloaded session logs into a trajectory file
 that our benchmark scoring path can consume.
 """
@@ -22,11 +22,11 @@ from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
 _INSTALL_ROOT = "/installed-agent"
-_BINARY_TARGET = f"{_INSTALL_ROOT}/ddx-agent"
+_BINARY_TARGET = f"{_INSTALL_ROOT}/fiz"
 _HOME_DIR = f"{_INSTALL_ROOT}/home"
-_CONFIG_TARGET = f"{_HOME_DIR}/.config/agent/config.yaml"
+_CONFIG_TARGET = f"{_HOME_DIR}/.config/fizeau/config.yaml"
 _SESSION_LOG_DIR = "/logs/agent/sessions"
-_OUTPUT_LOG = "/logs/agent/ddx-agent.txt"
+_OUTPUT_LOG = "/logs/agent/fiz.txt"
 
 
 def _bench_env(name: str, default: str = "") -> str:
@@ -92,27 +92,27 @@ class DDXAgent(BaseInstalledAgent):
     SUPPORTS_ATIF: bool = False
 
     def __init__(self, *args: Any, **kwargs: Any):
-        kwargs.setdefault("version", "ddx-agent-benchmark")
+        kwargs.setdefault("version", "fiz-benchmark")
         super().__init__(*args, **kwargs)
 
     @staticmethod
     def name() -> str:
-        return "ddx-agent"
+        return "fiz"
 
     async def install(self, environment: BaseEnvironment) -> None:
         binary_src = Path(os.environ.get("HARBOR_AGENT_ARTIFACT", ""))
         if not binary_src.exists():
-            binary_src = Path(__file__).parent / "ddx-agent-linux-amd64"
+            binary_src = Path(__file__).parent / "fiz-linux-amd64"
         if not binary_src.exists():
             raise FileNotFoundError(
-                f"ddx-agent binary not found. Expected {binary_src} or set "
+                f"fiz binary not found. Expected {binary_src} or set "
                 "HARBOR_AGENT_ARTIFACT to the host binary path."
             )
 
         await self.exec_as_root(
             environment,
             command=(
-                f"mkdir -p {_INSTALL_ROOT} {_HOME_DIR}/.config/agent /logs/agent "
+                f"mkdir -p {_INSTALL_ROOT} {_HOME_DIR}/.config/fizeau /logs/agent "
                 f"&& chmod 755 {_INSTALL_ROOT}"
             ),
         )
@@ -297,7 +297,7 @@ class DDXAgent(BaseInstalledAgent):
             "schema_version": "ATIF-v1.6-ddx",
             "session_id": session_id,
             "agent": {
-                "name": "ddx-agent",
+                "name": "fiz",
                 "version": self.version() or "unknown",
                 "model_name": model_name,
             },
@@ -320,7 +320,7 @@ class DDXAgent(BaseInstalledAgent):
             "schema_version": "ATIF-v1.6-ddx",
             "session_id": str(uuid.uuid4()),
             "agent": {
-                "name": "ddx-agent",
+                "name": "fiz",
                 "version": self.version() or "unknown",
                 "model_name": self.model_name or "",
             },
