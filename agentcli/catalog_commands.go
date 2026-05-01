@@ -21,6 +21,7 @@ import (
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/observations"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
@@ -28,7 +29,7 @@ const defaultCatalogBaseURL = "https://documentdrivendx.github.io/agent/catalog"
 
 func cmdCatalog(workDir string, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ddx-agent catalog <show|models|observations|check|update|update-pricing> [flags]")
+		fmt.Fprintf(os.Stderr, "usage: %s catalog <show|models|observations|check|update|update-pricing> [flags]\n", productinfo.BinaryName)
 		return 2
 	}
 	switch args[0] {
@@ -73,7 +74,7 @@ func cmdCatalogShow(workDir string, args []string) int {
 	if profiles := catalog.SamplingProfileNames(); len(profiles) > 0 {
 		fmt.Printf("sampling_profiles: %s\n", strings.Join(profiles, ", "))
 	} else {
-		fmt.Println("sampling_profiles: (none — using server defaults; run 'ddx-agent catalog update' if missing)")
+		fmt.Printf("sampling_profiles: (none — using server defaults; run '%s catalog update' if missing)\n", productinfo.BinaryName)
 	}
 
 	for _, ref := range []string{"code-high", "code-medium", "code-economy"} {

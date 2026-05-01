@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/corpus"
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 )
 
 // corpusRoot is the conventional location for the curated benchmark corpus.
@@ -21,7 +22,7 @@ const corpusRoot = "scripts/beadbench"
 
 func cmdCorpus(workDir string, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ddx-agent corpus <promote|validate|list> [flags]")
+		fmt.Fprintf(os.Stderr, "usage: %s corpus <promote|validate|list> [flags]\n", productinfo.BinaryName)
 		return 2
 	}
 	switch args[0] {
@@ -105,7 +106,7 @@ func cmdCorpusPromote(workDir string, args []string) int {
 		return 2
 	}
 	if beadID == "" {
-		fmt.Fprintln(os.Stderr, "usage: ddx-agent corpus promote <bead-id> [flags]")
+		fmt.Fprintf(os.Stderr, "usage: %s corpus promote <bead-id> [flags]\n", productinfo.BinaryName)
 		return 2
 	}
 	if fs.NArg() > 0 {

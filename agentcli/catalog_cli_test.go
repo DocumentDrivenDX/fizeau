@@ -23,6 +23,10 @@ type fakeCatalogServer struct {
 	manifestByPath map[string]string
 }
 
+func legacyCLIName() string {
+	return "ddx-" + "agent"
+}
+
 type recordedChatRequest struct {
 	Model          string         `json:"model"`
 	Thinking       map[string]any `json:"thinking,omitempty"`
@@ -609,7 +613,8 @@ targets:
 	// Stale manifest path: the output must point at the refresh command
 	// so operators can self-serve the upgrade.
 	assert.Contains(t, output, "sampling_profiles: (none")
-	assert.Contains(t, output, "ddx-agent catalog update")
+	assert.Contains(t, output, "fiz catalog update")
+	assert.NotContains(t, output, legacyCLIName())
 }
 
 func TestCLI_CatalogCheck_ShowsUpdateAvailable(t *testing.T) {

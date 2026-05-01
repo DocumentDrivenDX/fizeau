@@ -38,7 +38,8 @@ func TestSamplingProfileNudge_FiresOnceWhenMissing(t *testing.T) {
 	emit(sampling.Resolve(nil, "any-model", "code", nil))
 	out := buf.String()
 	assert.Contains(t, out, "sampling_profiles.code", "warning identifies the missing profile name")
-	assert.Contains(t, out, "ddx-agent catalog update", "warning points at the refresh command")
+	assert.Contains(t, out, "fiz catalog update", "warning points at the refresh command")
+	assert.NotContains(t, out, legacyCLIName(), "warning should not use the old CLI name")
 	assert.Contains(t, out, "ADR-007", "warning cites the governing artifact for grep-ability")
 	assert.Equal(t, 1, strings.Count(out, samplingProfileNudgeMessage), "exactly one warning on first miss")
 
@@ -76,8 +77,13 @@ func TestSamplingProfileNudge_SoftMessageForImplicitGenerationConfig(t *testing.
 	out := buf.String()
 	assert.Contains(t, out, "note:", "vLLM gets the soft 'note:' prefix, not 'warning:'")
 	assert.Contains(t, out, "generation_config.json", "soft message names the model-card default mechanism")
-	assert.Contains(t, out, "ddx-agent catalog update", "soft message still points at the refresh path")
+	assert.Contains(t, out, "fiz catalog update", "soft message still points at the refresh path")
+	assert.NotContains(t, out, legacyCLIName(), "soft message should not use the old CLI name")
 	assert.NotContains(t, out, "samplers will use server defaults", "loud-warning phrasing must not leak into the soft note")
+}
+
+func legacyCLIName() string {
+	return "ddx-" + "agent"
 }
 
 // TestSamplingProfileNudge_HardMessageForExplicitProviders covers the other
