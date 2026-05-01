@@ -17,32 +17,32 @@ filter unpinned automatic routing.
 Examples:
 
 ```bash
-ddx-agent run --model qwen-3.6-27b "prompt"
+fiz run --model qwen-3.6-27b "prompt"
 ```
 
 Only that model identity may be used. The router may choose among available
 sources/endpoints that serve it, but it must not substitute a different model.
 
 ```bash
-ddx-agent run --provider lmstudio "prompt"
+fiz run --provider lmstudio "prompt"
 ```
 
 Only that provider source, or the selected endpoint when the surface supports
 endpoint selection, may be used.
 
 ```bash
-ddx-agent run --harness codex "prompt"
+fiz run --harness codex "prompt"
 ```
 
 Only that harness may be used.
 
 ```bash
-ddx-agent run --min-power 8 "prompt"
+fiz run --min-power 8 "prompt"
 ```
 
 Only auto-routable models with catalog power at or above 8 may be selected.
 
 If constraints cannot be met, the command fails before broadening the request.
-Use `ddx-agent --list-models --json` to inspect available models, power, cost,
+Use `fiz --list-models --json` to inspect available models, power, cost,
 speed, availability, endpoint/host identity, catalog reference,
 auto-routable state, and exact-pin-only state.

@@ -1,6 +1,6 @@
 # Routing
 
-DDX Agent routes automatically. Configure provider sources and endpoints, then
+Fizeau routes automatically. Configure provider sources and endpoints, then
 let the agent discover models, join them with the model catalog, track
 availability/usage, and select the best candidate for the request.
 
@@ -28,11 +28,11 @@ endpoint, or harness.
 Useful commands:
 
 ```bash
-ddx-agent --list-models --json
-ddx-agent run --min-power 5 "prompt"
-ddx-agent run --min-power 8 "prompt"
-ddx-agent run --model qwen-3.6-27b "prompt"
-ddx-agent run --provider lmstudio "prompt"
+fiz --list-models --json
+fiz run --min-power 5 "prompt"
+fiz run --min-power 8 "prompt"
+fiz run --model qwen-3.6-27b "prompt"
+fiz run --provider lmstudio "prompt"
 ```
 
 The agent dispatches one selected candidate per request. Semantic retry or
