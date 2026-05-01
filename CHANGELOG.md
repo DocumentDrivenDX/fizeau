@@ -3,6 +3,15 @@
 All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
+## [v0.9.27] — 2026-05-01
+
+### Fixed
+
+- `fiz update` now receives the same release metadata as `fiz version` when the
+  CLI is mounted from `cmd/fiz`. The `v0.9.26` binaries reported the correct
+  version via `fiz version`, but the native update command still saw the
+  package default `dev` version and refused to compare releases.
+
 ## [v0.9.26] — 2026-05-01
 
 ### Breaking Rename: Fizeau / fiz

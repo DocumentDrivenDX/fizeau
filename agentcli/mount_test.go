@@ -8,6 +8,11 @@ import (
 )
 
 func TestMountCLI_ReturnsFreshCommandAndInjectedOutput(t *testing.T) {
+	oldVersion, oldBuildTime, oldGitCommit := Version, BuildTime, GitCommit
+	t.Cleanup(func() {
+		Version, BuildTime, GitCommit = oldVersion, oldBuildTime, oldGitCommit
+	})
+
 	var stdout, stderr bytes.Buffer
 	cmd := MountCLI(
 		WithUse("ddx agent"),
@@ -36,6 +41,9 @@ func TestMountCLI_ReturnsFreshCommandAndInjectedOutput(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	if Version != "v-mounted" || BuildTime != "2026-04-30T00:00:00Z" || GitCommit != "abc123" {
+		t.Fatalf("package version metadata = %q %q %q, want mounted metadata", Version, BuildTime, GitCommit)
 	}
 }
 

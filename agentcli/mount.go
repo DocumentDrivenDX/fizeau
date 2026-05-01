@@ -113,6 +113,15 @@ func MountCLI(opts ...MountOption) *cobra.Command {
 			opt(&cfg)
 		}
 	}
+	if cfg.version != "" {
+		Version = cfg.version
+	}
+	if cfg.buildTime != "" {
+		BuildTime = cfg.buildTime
+	}
+	if cfg.gitCommit != "" {
+		GitCommit = cfg.gitCommit
+	}
 	cmd := &cobra.Command{
 		Use:           cfg.use,
 		Short:         cfg.short,
