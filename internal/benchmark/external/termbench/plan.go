@@ -29,7 +29,7 @@ type ExecutionPlan struct {
 // The defaults match what SD-008 §3 + §5 documented for the Harbor smoke
 // run, so callers can leave most fields zero-valued.
 type PlanOptions struct {
-	// Harness is the agent harness label (e.g. "ddx-agent", "claude-code",
+	// Harness is the agent harness label (e.g. "fiz", "claude-code",
 	// "codex"). Passed through verbatim into ServiceExecuteRequest.
 	Harness string
 

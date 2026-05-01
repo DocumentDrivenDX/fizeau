@@ -191,7 +191,7 @@ func TestBuildPlan_PassesThroughTimeoutAndPrompt(t *testing.T) {
 		MaxAgentTimeoutSec: 120,
 	}
 	plan := BuildPlan(task, PlanOptions{
-		Harness: "ddx-agent",
+		Harness: "fiz",
 		Model:   "openrouter/qwen/qwen3.6-plus",
 		WorkDir: "/work",
 	})
@@ -228,7 +228,7 @@ func TestCapture_FoldsTextAndFinal(t *testing.T) {
 	traj := Capture(ch, CaptureOptions{
 		SessionID: "s1",
 		TaskID:    "tid",
-		Agent:     AgentInfo{Name: "ddx-agent", Version: "test", ModelName: "qwen3.6"},
+		Agent:     AgentInfo{Name: "fiz", Version: "test", ModelName: "qwen3.6"},
 	})
 	if traj.SchemaVersion != ATIFSchemaVersion {
 		t.Errorf("SchemaVersion=%q", traj.SchemaVersion)
@@ -260,7 +260,7 @@ func TestWriteHarnessOutput_ProducesExpectedLayout(t *testing.T) {
 		SchemaVersion: ATIFSchemaVersion,
 		SessionID:     "s",
 		TaskID:        "t",
-		Agent:         AgentInfo{Name: "ddx-agent", Version: "v0"},
+		Agent:         AgentInfo{Name: "fiz", Version: "v0"},
 		Steps: []TrajectoryStep{
 			{StepID: 1, Source: "agent", Message: "ok"},
 		},

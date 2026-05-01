@@ -108,7 +108,7 @@ func Load(path string) (*Profile, error) {
 }
 
 // LoadDir loads every *.yaml / *.yml file under dir, sorted by id. It is the
-// entry point used by `ddx-agent-bench profiles list`.
+// entry point used by `fiz-bench profiles list`.
 func LoadDir(dir string) ([]*Profile, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
