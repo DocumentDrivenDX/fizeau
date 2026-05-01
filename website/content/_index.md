@@ -1,5 +1,5 @@
 ---
-title: DDX Agent
+title: Fizeau
 layout: hextra-home
 ---
 
@@ -49,6 +49,6 @@ layout: hextra-home
   >}}
   {{< hextra/feature-card
     title="Standalone CLI"
-    subtitle="ddx-agent -p 'prompt' proves the library works. Config, session logs, replay, usage reporting."
+    subtitle="fiz -p 'prompt' proves the library works. Config, session logs, replay, usage reporting."
   >}}
 {{< /hextra/feature-grid >}}

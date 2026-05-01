@@ -1,5 +1,5 @@
-baseURL: https://documentdrivendx.github.io/agent/
-title: DDX Agent
+baseURL: https://documentdrivendx.github.io/fizeau/
+title: Fizeau
 locale: en-us
 
 module:
