@@ -5,6 +5,52 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+### Breaking Rename: Fizeau / fiz
+
+This release renames the project from `ddx-agent` / `agent` to
+Fizeau / `fiz`. The rename is a hard break for users and downstream
+consumers; there is no compatibility window for old module paths, command
+names, config paths, or Fizeau-owned environment variables.
+
+Migration checklist:
+
+- **Go module path:** replace `github.com/DocumentDrivenDX/agent` with
+  `github.com/DocumentDrivenDX/fizeau`.
+- **Go package name:** imports of the root package should use package
+  `fizeau`, for example `import "github.com/DocumentDrivenDX/fizeau"` and
+  calls such as `fizeau.New(...)`.
+- **Binaries and commands:** use `fiz` instead of `ddx-agent`. Benchmark helper
+  command names follow the same product prefix: `fiz-bench` and
+  `fiz-benchscore`. Release assets are named `fiz-<os>-<arch>` and contain the
+  `fiz` binary; no new `ddx-agent-*` release assets are published.
+- **Config paths:** move project-local config from `.agent/config.yaml` to
+  `.fizeau/config.yaml`, global config from `~/.config/agent/config.yaml` to
+  `~/.config/fizeau/config.yaml`, project session logs to `.fizeau/sessions`,
+  and the local model catalog to `~/.config/fizeau/models.yaml`. Old
+  product config directories such as `~/.config/agent` and
+  `~/.config/lucebox` are not loaded.
+- **Environment variables:** use the `FIZEAU_*` namespace for product-owned
+  settings, including `FIZEAU_PROVIDER`, `FIZEAU_BASE_URL`,
+  `FIZEAU_API_KEY`, `FIZEAU_MODEL`, `FIZEAU_DEBUG_WIRE`,
+  `FIZEAU_DEBUG_WIRE_FILE`, `FIZEAU_DEBUG_WIRE_STREAM_FULL`,
+  `FIZEAU_HARNESS_RECORD`, `FIZEAU_HARNESS_CASSETTE_DIR`,
+  `FIZEAU_HARNESS_RECORD_DIR`, `FIZEAU_INSTALL_DIR`, and `FIZEAU_VERSION`.
+  Old product env vars such as `AGENT_*`, `DDX_AGENT_*`, or `LUCEBOX_*` are
+  not read as aliases for these settings.
+- **Config and env compatibility:** none. Users must move config and update
+  env vars explicitly. The old config paths and old env prefixes are not
+  migrated or loaded as fallbacks.
+- **DDx migration status:** DDx downstream migration is tracked separately by
+  the FZ-060/FZ-061/FZ-064 beads. At this point the Fizeau repository has the
+  new module, package, binary, config, env, release, and updater surfaces, but
+  DDx still needs to file and execute its downstream import bump against the
+  Fizeau pre-release, then pin the final Fizeau release.
+- **Updater behavior:** the supported updater is `fiz update`. It checks
+  `DocumentDrivenDX/fizeau` releases and downloads `fiz-<os>-<arch>` assets.
+  Existing `ddx-agent update` installations do not bridge to `fiz`, do not
+  rewrite user config, and stop at the last old-name release; users should
+  install `fiz` from the renamed repository.
+
 ## [v0.9.24] — 2026-04-28
 
 Two harness-parity blockers surfaced by the first agent-vs-pi paired
