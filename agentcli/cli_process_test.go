@@ -377,7 +377,7 @@ func TestCLI_Replay_NoArgs_UsageExitCode2(t *testing.T) {
 
 	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "replay")
 	require.Equal(t, 2, res.exitCode)
-	assert.Contains(t, res.stderr, "usage: ddx-agent replay <session-id>")
+	assert.Contains(t, res.stderr, "usage: fiz replay <session-id>")
 	assert.Equal(t, "", res.stdout)
 }
 
