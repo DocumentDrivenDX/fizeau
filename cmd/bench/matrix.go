@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -128,6 +129,7 @@ func cmdMatrix(args []string) int {
 	retryBudgetHalted := fs.Bool("retry-budget-halted", false, "Rerun budget_halted reports while resuming")
 	perRunBudgetUSD := fs.Float64("per-run-budget-usd", 0, "Per-run budget cap in USD (0 = no per-run cap)")
 	tasksDir := fs.String("tasks-dir", "", "Path to TB-2 tasks directory; when set, harbor run is used for grading")
+	jobs := fs.Int("jobs", 1, "Number of tuple runs to execute concurrently (default: 1)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -195,39 +197,94 @@ func cmdMatrix(args []string) int {
 		}
 	}
 
-	var runs []matrixRunReport
-	accumulatedCost := 0.0
+	// Build the full list of tuples to run.
+	type tupleSpec struct {
+		harness string
+		prof    *profile.Profile
+		rep     int
+		task    termbenchSubsetEntry
+	}
+	var tuples []tupleSpec
 	for _, harness := range harnesses {
 		for _, prof := range profiles {
 			for rep := 1; rep <= *reps; rep++ {
 				for _, task := range subsetData.Tasks {
-					report, skipped, err := runMatrixTuple(matrixTupleOptions{
-						workDir:           wd,
-						outDir:            outDir,
-						harness:           harness,
-						profile:           prof,
-						rep:               rep,
-						task:              task,
-						budgetUSD:         *budgetUSD,
-						perRunBudgetUSD:   *perRunBudgetUSD,
-						accumulatedCost:   accumulatedCost,
-						resume:            *resume,
-						forceRerun:        *forceRerun,
-						retryBudgetHalted: *retryBudgetHalted,
-						tasksDir:          resolvedTasksDir,
-						harborBin:         harborBin,
-					})
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "%s matrix: %v\n", benchCommandName(), err)
-						return 1
-					}
-					runs = append(runs, report)
-					if !skipped {
-						accumulatedCost += report.CostUSD
-					}
+					tuples = append(tuples, tupleSpec{harness, prof, rep, task})
 				}
 			}
 		}
+	}
+
+	concurrency := *jobs
+	if concurrency < 1 {
+		concurrency = 1
+	}
+
+	type tupleResult struct {
+		report  matrixRunReport
+		skipped bool
+		err     error
+	}
+
+	results := make([]tupleResult, len(tuples))
+	sem := make(chan struct{}, concurrency)
+
+	var (
+		mu              sync.Mutex
+		accumulatedCost float64
+		firstErr        error
+	)
+
+	var wg sync.WaitGroup
+	for i, spec := range tuples {
+		wg.Add(1)
+		go func(i int, spec tupleSpec) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			mu.Lock()
+			cost := accumulatedCost
+			mu.Unlock()
+
+			report, skipped, err := runMatrixTuple(matrixTupleOptions{
+				workDir:           wd,
+				outDir:            outDir,
+				harness:           spec.harness,
+				profile:           spec.prof,
+				rep:               spec.rep,
+				task:              spec.task,
+				budgetUSD:         *budgetUSD,
+				perRunBudgetUSD:   *perRunBudgetUSD,
+				accumulatedCost:   cost,
+				resume:            *resume,
+				forceRerun:        *forceRerun,
+				retryBudgetHalted: *retryBudgetHalted,
+				tasksDir:          resolvedTasksDir,
+				harborBin:         harborBin,
+			})
+
+			mu.Lock()
+			results[i] = tupleResult{report, skipped, err}
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+			if err == nil && !skipped {
+				accumulatedCost += report.CostUSD
+			}
+			mu.Unlock()
+		}(i, spec)
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		fmt.Fprintf(os.Stderr, "%s matrix: %v\n", benchCommandName(), firstErr)
+		return 1
+	}
+
+	var runs []matrixRunReport
+	for _, r := range results {
+		runs = append(runs, r.report)
 	}
 
 	sort.Slice(runs, func(i, j int) bool {
@@ -244,7 +301,7 @@ func cmdMatrix(args []string) int {
 		Runs:            runs,
 		Cells:           summarizeMatrixCells(runs),
 		Notes: []string{
-			"v1 runs serially; no concurrency flag is exposed.",
+			fmt.Sprintf("concurrency: --jobs %d", concurrency),
 			"adapter_module records the Python adapter path passed by the runner for the harness cell.",
 		},
 	}
