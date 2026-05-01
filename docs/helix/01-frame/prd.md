@@ -2,21 +2,21 @@
 ddx:
   id: helix.prd
 ---
-# Product Requirements Document — DDX Agent
+# Product Requirements Document — Fizeau
 
 ## Summary
 
-DDX Agent is a Go library that implements a coding agent runtime — a tool-calling
+Fizeau is a Go library that implements a coding agent runtime — a tool-calling
 LLM loop with file read/write, shell execution, navigation helpers, task
 tracking, and structured I/O — designed
 to be embedded in build orchestrators and related tooling. It prioritizes local
 model inference via LM Studio and Ollama, with transparent escalation to cloud
-providers when local models are insufficient. DDX Agent provides an in-process
+providers when local models are insufficient. Fizeau provides an in-process
 alternative to subprocess-based agent dispatch, eliminating process overhead,
 enabling direct state sharing, and providing native cost control. Following the
-ghostty model — great library, proven by a usable app — DDX Agent ships as a Go
+ghostty model — great library, proven by a usable app — Fizeau ships as a Go
 package plus a thin standalone CLI that showcases the library and serves as an
-embeddable harness backend (see CONTRACT-003). DDX Agent also owns a reusable
+embeddable harness backend (see CONTRACT-003). Fizeau also owns a reusable
 shared model catalog and updateable manifest so callers and related tooling can
 resolve aliases, tiers/profiles, canonical policy targets, and deprecations without
 copying model policy into each consumer. Every LLM interaction and tool call is
@@ -54,7 +54,7 @@ task the same: spawn a process, send to cloud, parse the result.
    with status, output, token usage, and timing
 4. **Full observability** — every LLM turn and tool call logged, replayable,
    cost-tracked via JSONL session logging (per-session detail)
-5. **Prove it with an app** — standalone `ddx-agent` CLI that showcases the library
+5. **Prove it with an app** — standalone `fiz` CLI that showcases the library
    and serves as an embeddable harness, following the ghostty pattern
 6. **Own reusable model policy** — provide a agent-owned shared model catalog,
    publishable updateable manifest, and explicit refresh workflow so aliases,
@@ -65,24 +65,24 @@ task the same: spawn a process, send to cloud, parse the result.
 
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|
-| Subprocess elimination | DDX Agent handles ≥1 harness in-process | Integration test |
+| Subprocess elimination | Fizeau handles ≥1 harness in-process | Integration test |
 | Local model completion rate | ≥70% of routine tasks succeed on local 7B+ | HELIX build pass logs |
-| Cost per bead (blended) | <$0.05 average | `ddx-agent usage` report |
+| Cost per bead (blended) | <$0.05 average | `fiz usage` report |
 | Agent loop overhead | <10ms beyond model inference time | Benchmark suite |
 
 ### Non-Goals
 
-- **TUI or interactive mode** — DDX Agent is headless-only. Interactive use goes
+- **TUI or interactive mode** — Fizeau is headless-only. Interactive use goes
   through pi, claude, or other standalone agents.
-- **MCP server** — DDX Agent provides tools directly, not via MCP protocol.
-- **Prompt engineering** — DDX Agent executes prompts; the caller owns
+- **MCP server** — Fizeau provides tools directly, not via MCP protocol.
+- **Prompt engineering** — Fizeau executes prompts; the caller owns
   prompt design and persona injection.
-- **Harness orchestration policy** — DDX Agent owns reusable model catalog data and
+- **Harness orchestration policy** — Fizeau owns reusable model catalog data and
   policy, but callers choose harnesses/providers for a task and HELIX owns only
   stage intent.
-- **Model hosting** — DDX Agent connects to LM Studio/Ollama/cloud APIs. It does
+- **Model hosting** — Fizeau connects to LM Studio/Ollama/cloud APIs. It does
   not run inference itself.
-- **IDE integration** — DDX Agent is a library, not an editor plugin.
+- **IDE integration** — Fizeau is a library, not an editor plugin.
 
 ## Users and Scope
 
@@ -94,13 +94,13 @@ task the same: spawn a process, send to cloud, parse the result.
 
 ### Secondary Persona: Build System Integrator
 
-**Role**: Developer embedding DDX Agent in custom CI pipelines or build tools
+**Role**: Developer embedding Fizeau in custom CI pipelines or build tools
 **Goals**: Run LLM-powered code tasks (fix lint, update deps, generate tests) in Go programs
 **Pain Points**: Existing agent CLIs require process management, don't expose a library API
 
 ### Tertiary Persona: CLI User
 
-**Role**: Developer using `ddx-agent` or a wrapper CLI from the command line
+**Role**: Developer using `fiz` or a wrapper CLI from the command line
 **Goals**: Faster, cheaper agent invocations with local model support
 **Pain Points**: Current harness is slower than necessary, no local model path
 
@@ -134,7 +134,7 @@ task the same: spawn a process, send to cloud, parse the result.
     available. If no reported cost exists, use only runtime-specific configured
     pricing for the exact provider system and resolved model; otherwise record
     cost as unknown. `agent.Result` includes `CostUSD` (`-1` when unknown).
-12. **Standalone CLI** — `ddx-agent` binary wrapping the library. Proves the library
+12. **Standalone CLI** — `fiz` binary wrapping the library. Proves the library
     works, serves as an embeddable harness backend (see CONTRACT-003). Reads its
     own config file. Accepts prompt via `-p` flag or stdin.
 
@@ -147,11 +147,11 @@ task the same: spawn a process, send to cloud, parse the result.
 3. **Streaming callbacks** — caller can receive tool call events and partial
    responses in real time — **Implemented**
 4. **Timeout management** — per-invocation and per-tool-call timeouts
-5. **Harness adapter** — implement the harness interface (CONTRACT-003) so DDX Agent
+5. **Harness adapter** — implement the harness interface (CONTRACT-003) so Fizeau
    appears as a native harness alongside claude/codex/pi
-6. **Usage reporting** — `ddx-agent usage` command:
+6. **Usage reporting** — `fiz usage` command:
    per-provider/model token and cost summaries with time-window filtering
-7. **Session replay** — `ddx-agent replay <session-id>` reads a session log and
+7. **Session replay** — `fiz replay <session-id>` reads a session log and
    prints the conversation in human-readable form (every turn, tool call,
    result, tokens, timing)
 8. **OpenTelemetry observability** — emit OTel GenAI-aligned spans and metrics
@@ -183,7 +183,7 @@ task the same: spawn a process, send to cloud, parse the result.
 ### Agent Loop
 
 - The loop MUST send the prompt + conversation history to the LLM provider
-- When the LLM responds with tool calls, DDX Agent MUST execute each tool and
+- When the LLM responds with tool calls, Fizeau MUST execute each tool and
   append the results to the conversation
 - When the LLM responds with text only (no tool calls), the loop MUST
   terminate and return the text as the result
@@ -218,14 +218,14 @@ task the same: spawn a process, send to cloud, parse the result.
 
 ### Model Catalog
 
-- DDX Agent MUST define a reusable shared model catalog for aliases, model
+- Fizeau MUST define a reusable shared model catalog for aliases, model
   families, tiers/profiles, canonical policy targets, and deprecation/stale
   metadata
 - The shared catalog MUST be distinct from system prompt presets and use its
   own naming/config surface
-- DDX Agent MUST ship an embedded release snapshot of the catalog and support an
+- Fizeau MUST ship an embedded release snapshot of the catalog and support an
   updateable external manifest for faster policy/data refresh where practical
-- DDX Agent MUST support publishing catalog manifests outside normal binary
+- Fizeau MUST support publishing catalog manifests outside normal binary
   releases and an explicit local refresh/install flow that does not introduce
   network access into ordinary request execution
 - Callers MUST be able to resolve model references through the agent-owned
@@ -259,13 +259,13 @@ tests, review findings, or execution beads.
 | Structured I/O | Structured envelope | JSON envelope with prompt and response_schema | Result matches schema |
 | Token tracking | Count tokens | Any successful completion | Result.tokens has non-zero input and output counts |
 | Session logging | Run any task | Any successful completion | JSONL log entry with full prompt, response, tool calls, tokens, timing |
-| Session replay | Read logged session | `ddx-agent replay <id>` on a completed session | Human-readable dump of every turn, tool call, and result |
+| Session replay | Read logged session | `fiz replay <id>` on a completed session | Human-readable dump of every turn, tool call, and result |
 | Cost tracking | Run cloud task with billed cost returned | Claude or gateway completion with reported billing | Result.CostUSD > 0 and matches reported cost |
 | Cost tracking | Run task without pricing data | Unconfigured runtime or provider with no reported billing | Result.CostUSD == -1 (unknown, not guessed) |
-| Standalone CLI | End-to-end | `ddx-agent -p "Read main.go"` with config file | Successful completion, session logged |
-| Shared model catalog | Resolve model reference | `ddx-agent -p "hi" --model-ref code-smart` | Concrete model resolved from the agent catalog for the selected surface |
+| Standalone CLI | End-to-end | `fiz -p "Read main.go"` with config file | Successful completion, session logged |
+| Shared model catalog | Resolve model reference | `fiz -p "hi" --model-ref code-smart` | Concrete model resolved from the agent catalog for the selected surface |
 | Harness path | Structured harness invocation | Prompt envelope or harness execution path (CONTRACT-003) | Machine-readable JSON output includes tokens, session ID, and cost semantics |
-| Self-update check | Scripted version check | `ddx-agent update --check-only` | Exit code reflects update availability and output shows current/latest versions |
+| Self-update check | Scripted version check | `fiz update --check-only` | Exit code reflects update availability and output shows current/latest versions |
 
 ## Technical Context
 
@@ -311,15 +311,15 @@ tests, review findings, or execution beads.
 | Local model tool calling unreliable | Medium | High | Test against specific model versions (Qwen 3.5, Llama 3.2); implement retry with cloud fallback |
 | LM Studio API breaks compatibility | Low | Medium | Pin to known-good LM Studio version; test in CI against local instance |
 | openai-go SDK doesn't handle LM Studio edge cases | Medium | Medium | Thin adapter layer that can work around SDK limitations |
-| Harness interface changes during development | Low | Low | DDX Agent defines its own API first; the adapter is a thin shim |
+| Harness interface changes during development | Low | Low | Fizeau defines its own API first; the adapter is a thin shim |
 | Local model context window too small for large tasks | Medium | Medium | Model routing considers context length; auto-escalate large prompts to cloud |
 
 ## Resolved Decisions
 
-- **Model loading**: Assume models are pre-loaded. DDX Agent does not manage
+- **Model loading**: Assume models are pre-loaded. Fizeau does not manage
   `lms load` / `ollama pull`. Model selection optimization is P2.
 - **Routing**: Callers own cross-harness selection. Within the embedded harness,
-  DDX Agent owns model-first provider routing keyed by requested model or model
+  Fizeau owns model-first provider routing keyed by requested model or model
   ref; legacy backend pools are compatibility-only during migration.
 - **Config**: Library takes a `Config` struct that any embedder provides. The
   standalone CLI has its own config reader. Library has no config file opinions.
@@ -338,9 +338,9 @@ canonical analytics surface per ADR-001.
 
 ## Success Criteria
 
-- DDX Agent library compiles with `go build` and has no CGo dependencies
+- Fizeau library compiles with `go build` and has no CGo dependencies
 - `agent.Run()` can complete a file-read-and-edit task using LM Studio locally
 - `agent.Run()` can complete the same task using Claude API
-- A caller can use DDX Agent as an in-process harness via CONTRACT-003
-- A HELIX build pass can execute a bead using DDX Agent with a local model
+- A caller can use Fizeau as an in-process harness via CONTRACT-003
+- A HELIX build pass can execute a bead using Fizeau with a local model
 - Token usage and timing are accurately reported for both local and cloud

@@ -1,25 +1,25 @@
-# CONTRACT-003: DdxAgent Service Interface
+# CONTRACT-003: FizeauService Service Interface
 
 **Status:** Draft
-**Owner:** DDX Agent maintainers
+**Owner:** Fizeau maintainers
 **Replaces:** CONTRACT-002-ddx-harness-interface (deleted; entanglement-era contract)
 
 ## Purpose
 
-This contract defines the public Go surface of the `ddx-agent` module. The
-service surface is the `DdxAgent` interface plus the input/output struct types
+This contract defines the public Go surface of the `fiz` module. The
+service surface is the `FizeauService` interface plus the input/output struct types
 referenced by its methods. The only public CLI embedding surface is the
 `agentcli` mountable command tree described below. Anything else is internal
 and may change without notice.
 
-Consumers (DDx CLI, future HELIX/Dun integrations, the standalone `ddx-agent`
+Consumers (DDx CLI, future HELIX/Dun integrations, the standalone `fiz`
 binary, anything else) interact only through this surface. **They do not import
 agent internal packages.** When new behavior is needed, consumers file an issue or
 PR against this contract; agent maintainers decide whether the surface grows.
 
 ## Module value proposition
 
-`ddx-agent` is the one stop shop for automatically routed one-shot
+`fiz` is the one stop shop for automatically routed one-shot
 noninteractive agentic prompts. Two roles:
 
 1. **Direct first-class agent** over native model providers (LM Studio, OpenRouter,
@@ -46,8 +46,8 @@ import (
     "encoding/json"
 )
 
-// DdxAgent is the entire public Go surface of the ddx-agent module.
-type DdxAgent interface {
+// FizeauService is the entire public Go surface of the fiz module.
+type FizeauService interface {
     // Execute runs an agent task in-process; emits Events on the channel until
     // the task terminates (channel closes). The final event (type=final) carries
     // status, normalized final_text, usage, cost, session log path, optional
@@ -110,7 +110,7 @@ type DdxAgent interface {
 
     // UsageReport aggregates token, cost, and reliability totals across the
     // service-owned session-log directory. CLI subcommands such as
-    // `ddx-agent usage` consume this projection rather than re-reading
+    // `fiz usage` consume this projection rather than re-reading
     // session-log JSONL records.
     UsageReport(ctx context.Context, opts UsageReportOptions) (*UsageReport, error)
 
@@ -125,7 +125,7 @@ type DdxAgent interface {
     WriteSessionLog(ctx context.Context, sessionID string, w io.Writer) error
 
     // ReplaySession renders a human-readable conversation transcript for the
-    // named session log onto w. Used by `ddx-agent replay <id>`.
+    // named session log onto w. Used by `fiz replay <id>`.
     ReplaySession(ctx context.Context, sessionID string, w io.Writer) error
 }
 
@@ -134,8 +134,8 @@ type DdxAgent interface {
 // exit-code 2 before invoking the service.
 func ValidateUsageSince(spec string) error
 
-// New constructs a DdxAgent. Options is intentionally minimal.
-func New(opts Options) (DdxAgent, error)
+// New constructs a FizeauService. Options is intentionally minimal.
+func New(opts Options) (FizeauService, error)
 ```
 
 **Sixteen methods total.** `Execute` is the primary verb; `TailSessionLog`,
@@ -144,11 +144,11 @@ legacy `ResolveProfile`, legacy `ProfileAliases`, `HealthCheck`,
 `ResolveRoute`, `RecordRouteAttempt`, and `RouteStatus` are the supporting
 routing/status surface; `UsageReport`, `ListSessionLogs`, `WriteSessionLog`,
 and `ReplaySession` are the historical session-log projection used by
-`ddx-agent log`, `replay`, and `usage`.
+`fiz log`, `replay`, and `usage`.
 
 ## Mountable CLI Surface
 
-The standalone `ddx-agent` binary and embedding callers use the same public
+The standalone `fiz` binary and embedding callers use the same public
 Cobra command tree from package `agentcli`:
 
 ```go
@@ -175,7 +175,7 @@ func Run(opts Options) int
 Implementation references: `agentcli/mount.go` defines `MountCLI`, mount
 options, `ExitError`, and `ExitCode`; `agentcli/run.go` defines the non-exiting
 `Run` runner; `cmd/agent/main.go` mounts the command and is the only
-`ddx-agent` command path that converts returned errors into `os.Exit`.
+`fiz` command path that converts returned errors into `os.Exit`.
 
 Contract guarantees for embedders:
 
@@ -217,13 +217,13 @@ surface:
 
 ```go
 type Options struct {
-    ConfigPath string    // optional override; default $XDG_CONFIG_HOME/ddx-agent/config.yaml
+    ConfigPath string    // optional override; default $XDG_CONFIG_HOME/fizeau/config.yaml
     Logger     io.Writer // optional; agent writes structured session logs internally regardless
 
     // SessionLogDir overrides the directory used by the historical session-log
     // projections (UsageReport, ListSessionLogs, WriteSessionLog,
     // ReplaySession). Empty falls back to ServiceConfig.WorkDir() +
-    // "/.agent/sessions". Per-Execute requests still set their own
+    // "/.fizeau/sessions". Per-Execute requests still set their own
     // ExecuteRequest.SessionLogDir.
     SessionLogDir string
 
@@ -927,7 +927,7 @@ continues listing other endpoints/providers. Missing credentials for cloud
 providers surface through the same empty-result behavior here and through
 `ListProviders`/`HealthCheck` status for diagnostics.
 
-The CLI projection for this service method is `ddx-agent --list-models`. Its
+The CLI projection for this service method is `fiz --list-models`. Its
 JSON output must be a rendering of `ModelInfo`, including planned power-routing
 fields as they land.
 
@@ -947,15 +947,15 @@ directly.
 
 ## CLI Projection Boundary
 
-The standalone `cmd/ddx-agent` binary is a first-party consumer of this service
+The standalone `cmd/fiz` binary is a first-party consumer of this service
 contract. Its job is to translate user input into public service requests and
 render public service results. The CLI boundary is strict:
 
-- execution goes through `DdxAgent.Execute`;
+- execution goes through `FizeauService.Execute`;
 - session replay/follow goes through `TailSessionLog`;
 - output decoding uses `DecodeServiceEvent` or `DrainExecute`, not local copies
   of private payload structs;
-- historical session-log projections (`ddx-agent log`, `replay`, `usage`) go
+- historical session-log projections (`fiz log`, `replay`, `usage`) go
   through `ListSessionLogs`, `WriteSessionLog`, `ReplaySession`, and
   `UsageReport`; CLI subcommands do not parse session-log JSONL records
   directly;
@@ -971,13 +971,13 @@ The CLI must not:
 - rebuild `RouteDecision` candidate lists from config as a substitute for
   calling `ResolveRoute` or passing routing intent to `Execute`.
 
-In practice this means `cmd/ddx-agent` must not depend on
+In practice this means `cmd/fiz` must not depend on
 `internal/core`, `internal/provider/*`, `internal/tool`, `internal/session`,
 `internal/compaction`, `internal/harnesses`, or `internal/routing`.
 
-If a CLI-visible behavior cannot be expressed through `DdxAgent` methods or the
+If a CLI-visible behavior cannot be expressed through `FizeauService` methods or the
 public request/event/result types, the contract must grow first. Internal
-package reach-through from `cmd/ddx-agent` is architecture debt and must not be
+package reach-through from `cmd/fiz` is architecture debt and must not be
 normalized as a permanent compatibility layer.
 
 ## Catalog Power Projection
@@ -1372,7 +1372,7 @@ The catalog is a versioned data artifact published independently of binary
 releases (see
 [`plan-2026-04-10-catalog-distribution-and-refresh.md`](../plan-2026-04-10-catalog-distribution-and-refresh.md)).
 A new sampling bundle reaches existing users when they run
-`ddx-agent catalog update` against the published channel. New code reading an
+`fiz catalog update` against the published channel. New code reading an
 old installed manifest degrades gracefully — the resolver's L1 lookup returns
 nothing, lower layers and server defaults apply, and a single first-use
 warning points at the refresh command. See ADR-007 §7 for the schema-evolution
@@ -1472,7 +1472,7 @@ Harness Golden Masters](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-
 The runnable replay/record workflow is documented in
 [Harness Golden-Master Integration](/Users/erik/Projects/agent/docs/helix/02-design/harness-golden-integration.md).
 
-ADR-002 selects direct PTY ownership inside DDX Agent as the canonical service
+ADR-002 selects direct PTY ownership inside Fizeau as the canonical service
 and cassette transport for live execution, record mode, replay mode,
 cancellation, quota probes, model-list probes, and inspection. tmux is not part
 of the core harness/cassette design, and tmux-only evidence must not promote a

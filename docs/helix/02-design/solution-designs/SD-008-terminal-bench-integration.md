@@ -6,7 +6,7 @@ ddx:
 ---
 # Solution Design: SD-008 — Terminal-Bench / Harbor Integration Path Audit
 
-**Bead**: agent-a8bf4d0b (Audit Terminal-Bench and Harbor integration path for ddx-agent)
+**Bead**: agent-a8bf4d0b (Audit Terminal-Bench and Harbor integration path for fiz)
 **Type**: Spike / design note
 **Status**: Complete — findings checked in, downstream beads should reference this document
 
@@ -15,7 +15,7 @@ ddx:
 ## Summary
 
 This document records findings from an audit of Terminal-Bench v2.0 and the Harbor
-evaluation framework as the target benchmark harness for ddx-agent. It answers
+evaluation framework as the target benchmark harness for fiz. It answers
 the five acceptance-criteria questions and recommends a concrete integration path.
 
 ---
@@ -32,27 +32,27 @@ Harbor supports two agent types:
 | `BaseInstalledAgent` | CLI agent installed inside the task container |
 | `BaseDockerAgent` | Agent running in a sidecar container alongside the task env |
 
-**Recommended path for ddx-agent: `BaseInstalledAgent`.**
+**Recommended path for fiz: `BaseInstalledAgent`.**
 
 The `BaseInstalledAgent` adapter is a small Python class that Harbor uses to:
 1. Install the agent binary into the task container (`install()` hook)
 2. Run the agent with the task instruction (`run()` hook)
 3. Collect the trajectory artifact after execution (`populate_context_post_run()` hook)
 
-For ddx-agent, the `run()` hook would invoke something like:
+For fiz, the `run()` hook would invoke something like:
 ```bash
-/usr/local/bin/ddx-agent --json --preset cheap -p "<task_instruction>"
+/usr/local/bin/fiz --json --preset cheap -p "<task_instruction>"
 ```
 
 The Python adapter file lives in a Harbor-compatible agents repo and is referenced
 by name in job configs:
 ```yaml
 agents:
-  - name: ddx-agent
+  - name: fiz
     version: "1.0"
 ```
 
-**No modification to ddx-agent's current CLI interface is required** to support
+**No modification to fiz's current CLI interface is required** to support
 the installed-agent path. The `--json` + `--preset cheap` + `-p` invocation already
 matches Harbor's expected agent invocation model.
 
@@ -67,10 +67,10 @@ new artifact needed for integration. This is tracked in bead `agent-a3ce467a`.
 - **Architecture**: amd64 — Harbor cloud runtimes (Daytona, Modal, E2B, Runloop) are x86_64. Local Docker evaluation is architecture-native.
 - **Agent binary**: The Go binary must be compiled for `linux/amd64`. The static Go binary produced by `GOARCH=amd64 GOOOS=linux go build` drops directly into the container.
 - **No internet access from task container**: Task environments are isolated. The agent's LLM calls must route to a provider reachable from inside the container (cloud API via HTTPS, or a forwarded local endpoint).
-- **Filesystem**: The task container has a pre-populated workspace directory. File operations are scoped there. ddx-agent's `--work-dir` flag controls the root.
+- **Filesystem**: The task container has a pre-populated workspace directory. File operations are scoped there. fiz's `--work-dir` flag controls the root.
 - **Timeout**: Per-task time limits are enforced by Harbor (typically 10–30 minutes). The agent loop's `max_iterations` provides a secondary guard.
-- **No persistent state between tasks**: Each trial is an isolated container. ddx-agent session logs written to `/logs/agent/` are collected by Harbor.
-- **User context**: Harbor runs agents as an `agent` user (configurable per task.toml). ddx-agent does not require root.
+- **No persistent state between tasks**: Each trial is an isolated container. fiz session logs written to `/logs/agent/` are collected by Harbor.
+- **User context**: Harbor runs agents as an `agent` user (configurable per task.toml). fiz does not require root.
 
 ---
 
@@ -88,7 +88,7 @@ def get_env(self) -> dict:
     }
 ```
 
-**ddx-agent config approach for benchmark runs**: ddx-agent currently reads
+**fiz config approach for benchmark runs**: fiz currently reads
 its provider configuration from a YAML config file (`~/.config/agent/config.yaml`
 or `.agent/config.yaml` in the working dir). For benchmark use, the recommended
 approach is to ship a minimal config file in the adapter's `install()` hook
@@ -104,7 +104,7 @@ providers:
 default_provider: benchmark
 ```
 
-ddx-agent's config loader already supports `${ENV_VAR}` expansion (confirmed
+fiz's config loader already supports `${ENV_VAR}` expansion (confirmed
 in `config/config.go`). No changes needed for credential injection.
 
 **Approved approach**: env-var injection via Harbor's `get_env()` adapter method,
@@ -123,9 +123,9 @@ Harbor expects result artifacts in specific container paths:
 | `/logs/agent/trajectory.json` | Agent trajectory (ATIF v1.4) | ATIF JSON |
 | `/logs/verifier/test_output.log` | Raw pytest output | Plain text |
 
-**ddx-agent's session log** (JSONL format in `.agent/session-logs/`) is NOT
+**fiz's session log** (JSONL format in `.fizeau/sessions/`) is NOT
 the trajectory format Harbor expects. The Python adapter's
-`populate_context_post_run()` hook must convert ddx-agent's JSONL session log
+`populate_context_post_run()` hook must convert fiz's JSONL session log
 to ATIF v1.4 format and write it to `/logs/agent/trajectory.json`.
 
 **ATIF v1.4 minimal schema** (sufficient for Terminal-Bench scoring):
@@ -133,7 +133,7 @@ to ATIF v1.4 format and write it to `/logs/agent/trajectory.json`.
 {
   "schema_version": "1.4",
   "session_id": "<uuid>",
-  "agent": { "name": "ddx-agent", "version": "1.0", "model_name": "<model>" },
+  "agent": { "name": "fiz", "version": "1.0", "model_name": "<model>" },
   "steps": [
     {
       "step_id": 1,
@@ -148,15 +148,15 @@ to ATIF v1.4 format and write it to `/logs/agent/trajectory.json`.
 }
 ```
 
-ddx-agent's `--json` output already includes `session_id`, model name, token
+fiz's `--json` output already includes `session_id`, model name, token
 counts, and a full account of tool calls. The adapter conversion is
 straightforward mapping.
 
 **Reward determination**: Terminal-Bench tasks ship their own test scripts.
 The Harbor verifier runs `pytest --ctrf /logs/verifier/ctrf.json tests/test_outputs.py`
-against the modified workspace after the agent exits. ddx-agent does not need
+against the modified workspace after the agent exits. fiz does not need
 to produce the reward — it just needs to complete the task and exit cleanly.
-A non-zero exit code from ddx-agent is treated as a trial failure.
+A non-zero exit code from fiz is treated as a trial failure.
 
 ---
 
@@ -165,20 +165,20 @@ A non-zero exit code from ddx-agent is treated as a trial failure.
 **Local Docker smoke run** (before cloud evaluation):
 
 ```bash
-# Step 1: Build ddx-agent for Linux amd64
-GOOS=linux GOARCH=amd64 go build -o dist/ddx-agent-linux-amd64 ./cmd/ddx-agent
+# Step 1: Build fiz for Linux amd64
+GOOS=linux GOARCH=amd64 go build -o dist/fiz-linux-amd64 ./cmd/fiz
 
 # Step 2: Install Harbor and Terminal-Bench dataset
 pip install harbor-framework
 harbor dataset pull terminal-bench/terminal-bench-2
 
-# Step 3: Register the ddx-agent adapter
+# Step 3: Register the fiz adapter
 # (adapter lives at scripts/benchmark/harbor_agent.py — tracked in agent-a3ce467a)
 
 # Step 4: Smoke run against a single task
 harbor run \
   --dataset terminal-bench/terminal-bench-2 \
-  --agent ddx-agent \
+  --agent fiz \
   --task-filter "hello-world" \
   --runtime docker
 
@@ -198,18 +198,18 @@ cat ~/.harbor/jobs/<job-id>/trials/*/verifier/reward.txt
 | Question | Finding | Decision |
 |----------|---------|----------|
 | Integration type | `BaseInstalledAgent` is the right path | Use installed-agent adapter |
-| ddx-agent interface changes needed | None — existing CLI flags sufficient | No changes for basic integration |
+| fiz interface changes needed | None — existing CLI flags sufficient | No changes for basic integration |
 | Credential injection | Harbor env-var passthrough + bootstrapped config file | Env-var expansion in config (already supported) |
-| Trajectory format | ddx-agent JSONL != ATIF v1.4; conversion needed | Adapter handles conversion in `populate_context_post_run()` |
+| Trajectory format | fiz JSONL != ATIF v1.4; conversion needed | Adapter handles conversion in `populate_context_post_run()` |
 | Binary portability | Static Go binary for `linux/amd64` | `GOOS=linux GOARCH=amd64` in build step |
-| Smoke run | `harbor run --dataset terminal-bench/terminal-bench-2 --agent ddx-agent -n 1` | Defined in scripts/benchmark/ |
+| Smoke run | `harbor run --dataset terminal-bench/terminal-bench-2 --agent fiz -n 1` | Defined in scripts/benchmark/ |
 
 ---
 
 ## 6. Multi-Harness Extension
 
-Sections 1–5 cover the ddx-agent integration via Harbor's `BaseInstalledAgent`.
-This section extends the integration model to **non-ddx-agent harnesses**
+Sections 1–5 cover the fiz integration via Harbor's `BaseInstalledAgent`.
+This section extends the integration model to **non-fiz harnesses**
 (third-party CLI agents we want to benchmark side-by-side, e.g. `pi`, Claude
 Code, Codex, etc.) so that comparisons run on the same Terminal-Bench task set
 under the same scoring rules.
@@ -258,7 +258,7 @@ Each harness gets its own Python adapter file under:
 
 ```
 scripts/benchmark/harness_adapters/
-  ddx_agent.py        # the BaseInstalledAgent adapter from §1 / agent-a3ce467a
+  fiz.py        # the BaseInstalledAgent adapter from §1 / agent-a3ce467a
   pi.py               # adapter for the `pi` CLI
   claude_code.py      # adapter for Claude Code CLI
   codex.py            # adapter for Codex CLI

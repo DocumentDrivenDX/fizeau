@@ -1,4 +1,4 @@
-# Project Concerns — DDX Agent
+# Project Concerns — Fizeau
 
 ## Area Labels
 
@@ -17,7 +17,7 @@
 
 ### go-std
 
-- **CLI framework**: None. DDX Agent CLI is minimal enough for `flag` stdlib. Cobra
+- **CLI framework**: None. Fizeau CLI is minimal enough for `flag` stdlib. Cobra
   is not needed.
 - **Test framework**: Use `testing` stdlib + `testify/assert` for assertions.
   No external test runner.
@@ -41,7 +41,7 @@
   reported separately from provider HTTP tests and full E2E workflows.
 - **Harness integration evidence**: A harness capability is not considered
   supported by tests unless real-binary integration evidence invokes the
-  installed harness through each advertised public surface (`DdxAgent.Execute`
+  installed harness through each advertised public surface (`FizeauService.Execute`
   and/or the standalone CLI path, tracked separately). Parser tests, fixture
   replay, and fake binaries are unit/contract evidence only; they must not be
   described as proving Claude Code, OpenAI Codex, Pi, OpenCode, or any other
@@ -107,7 +107,7 @@
   operational inspectability, and implementation cost. Tests for the selected
   transport must prove attachability, pane capture, cancellation, subprocess
   cleanup, and session-log consistency. If the cassette recorder or player
-  becomes a generic PTY record/replay tool rather than DDX Agent-specific
+  becomes a generic PTY record/replay tool rather than Fizeau-specific
   harness evidence plumbing, it should be split into its own project with an
   explicit API and versioned cassette format.
 - **Quota tests**: Claude Code and OpenAI Codex quota monitoring requires

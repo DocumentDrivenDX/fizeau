@@ -50,11 +50,11 @@ have especially small windows (8K-32K) making this a practical blocker.
 - **Ghost snapshots**: Preserves undo/redo state snapshots across compaction by
   copying them into the replacement history
 
-## Design: DDX Agent Compaction
+## Design: Fizeau Compaction
 
 ### Strategy
 
-DDX Agent follows pi's structured approach (richer summaries, file tracking) with
+Fizeau follows pi's structured approach (richer summaries, file tracking) with
 Codex's pragmatism (mid-turn compaction, configurable thresholds, graceful
 fallback). The compaction is a library feature — not just CLI — so embedders
 can control it.
@@ -121,7 +121,7 @@ type Request struct {
 
 ### CLI Context Window Resolution
 
-The production CLI (`cmd/ddx-agent/main.go`) resolves `ContextWindow` and
+The production CLI (`cmd/fiz/main.go`) resolves `ContextWindow` and
 `ReserveTokens` before constructing the `CompactionConfig`. This wiring was
 previously undocumented.
 
@@ -465,7 +465,7 @@ last real user message (following Codex's
 3. **Invalidate provider-side cache after compaction.** The conversation
    prefix has fundamentally changed. If the provider uses sticky sessions
    or incremental request tracking, signal that the window changed.
-   DDX Agent exposes this via `EventCompactionEnd` — providers that maintain
+   Fizeau exposes this via `EventCompactionEnd` — providers that maintain
    session state should listen for it.
 
 ### Token Counting — Cache-Aware
@@ -475,7 +475,7 @@ Pi counts `cacheRead` and `cacheWrite` tokens in its usage calculation:
 totalTokens = input + output + cacheRead + cacheWrite
 ```
 
-DDX Agent should do the same. The `TokenUsage` type already has `Input` and
+Fizeau should do the same. The `TokenUsage` type already has `Input` and
 `Output` — add `CacheRead` and `CacheWrite` fields so compaction triggers
 account for the full context footprint, not just the billed tokens.
 

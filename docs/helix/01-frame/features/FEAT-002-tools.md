@@ -9,11 +9,11 @@ ddx:
 **Feature ID**: FEAT-002
 **Status**: Draft
 **Priority**: P0
-**Owner**: DDX Agent Team
+**Owner**: Fizeau Team
 
 ## Overview
 
-DDX Agent provides a structured tool surface for filesystem and shell work:
+Fizeau provides a structured tool surface for filesystem and shell work:
 read, write, edit, bash, find, grep, ls, patch, and task. The LLM uses these
 tools to interact with the workspace, discover files, make precise changes,
 and track work. Tools are the agent's hands. This implements PRD P0
@@ -24,12 +24,12 @@ capabilities already shipped.
 
 - **Current situation**: Each agent CLI implements its own tools with different
   semantics (Claude Code has ~20 tools, pi has 4-7, codex has its own set).
-  DDX Agent now ships a broader, benchmark-informed surface than the original
+  Fizeau now ships a broader, benchmark-informed surface than the original
   four-tool minimum.
 - **Pain points**: Tool behavior varies across agents. DDx can't predict what
   file operations an agent will perform or constrain them.
 - **Desired outcome**: A small, well-defined tool set with consistent behavior
-  that DDX Agent controls and DDx can audit.
+  that Fizeau controls and DDx can audit.
 
 ## Requirements
 
@@ -76,7 +76,7 @@ capabilities already shipped.
 
 ### Non-Functional Requirements
 
-- **Security**: DDX Agent assumes it runs in a sandbox. File paths outside the
+- **Security**: Fizeau assumes it runs in a sandbox. File paths outside the
   working directory are allowed but logged. No path validation boundary.
 - **Performance**: File operations complete in <10ms for files under 1MB.
   Bash tool adds <5ms overhead beyond the command's own execution time.

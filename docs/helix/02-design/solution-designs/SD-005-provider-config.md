@@ -11,7 +11,7 @@ ddx:
 
 ## Problem
 
-DDX Agent started with a single flat provider config (`provider`, `base_url`,
+Fizeau started with a single flat provider config (`provider`, `base_url`,
 `api_key`, `model`). That shape is sufficient for one local inference server,
 but real use has separate concerns:
 
@@ -28,7 +28,7 @@ Prompt presets remain a separate concern for system prompt behavior only.
 
 ## Design
 
-DDX Agent keeps two layers above the runtime boundary:
+Fizeau keeps two layers above the runtime boundary:
 
 - **Provider sources and endpoints** declare transport/auth locations. Endpoint
   labels may exist for diagnostics, host display, and explicit endpoint
@@ -61,7 +61,7 @@ Caller boundary (see CONTRACT-003):
   automatic selection. If a hard pin cannot be satisfied, routing fails with
   detailed no-candidate evidence and never substitutes a broader model, source,
   endpoint, or harness.
-- Embedded `ddx-agent` chooses the concrete provider candidate, constructs the
+- Embedded `fiz` chooses the concrete provider candidate, constructs the
   adapter, dispatches exactly one candidate, and reports the attempted route
   outcome.
 - Callers receive attribution facts from the embedded run: selected candidate,
@@ -78,7 +78,7 @@ does not encode route order, model-strength policy, or fallback chains.
 ```yaml
 # .agent/config.yaml
 model_catalog:
-  manifest: ~/.config/ddx-agent/models.yaml   # optional local override
+  manifest: ~/.config/fiz/models.yaml   # optional local override
 
 provider_sources:
   - type: lmstudio
@@ -106,7 +106,7 @@ provider_sources:
         api_key: ${OPENROUTER_API_KEY}
         headers:
           HTTP-Referer: https://github.com/DocumentDrivenDX/agent
-          X-Title: DDX Agent
+          X-Title: Fizeau
 
   - type: anthropic
     endpoints:
@@ -118,7 +118,7 @@ routing:
 
 preset: default
 max_iterations: 20
-session_log_dir: .agent/sessions
+session_log_dir: .fizeau/sessions
 ```
 
 Current implementation may still load older `providers:` entries during the
@@ -304,7 +304,7 @@ Per request, the service:
 
 The full ranked candidate trace and per-candidate score components are emitted
 as part of the routing-decision event (CONTRACT-003). Operators explain a
-decision through `route-status` and `ddx-agent --list-models`, not by reading
+decision through `route-status` and `fiz --list-models`, not by reading
 route order in config.
 
 ## Failure Evidence and Retry Boundary
@@ -334,8 +334,8 @@ provider sources/endpoints rather than recommending an unrelated model.
 
 ## Available Model Inventory
 
-The service exposes the joined inventory through `DdxAgent.ListModels`. The CLI
-exposes the operator-facing equivalent as `ddx-agent --list-models`; JSON
+The service exposes the joined inventory through `FizeauService.ListModels`. The CLI
+exposes the operator-facing equivalent as `fiz --list-models`; JSON
 output is the contract and text output is a rendering.
 
 Each row contains:
@@ -352,7 +352,7 @@ Each row contains:
 - routing: power filter reasons and score components for supplied power bounds
 
 This surface is the debugging contract for routing. If `route-status` says a
-candidate lost, `ddx-agent --list-models --min-power <n> --json` must show the
+candidate lost, `fiz --list-models --min-power <n> --json` must show the
 raw facts that caused the loss.
 
 ## Key Design Decisions
@@ -482,7 +482,7 @@ budgets, but those names are not preferred public controls. Unsupported
 auto/default controls may be dropped; explicit unsupported or over-limit
 values fail clearly.
 
-**D16: Provider model listing is public and endpoint-aware.** `DdxAgent.ListModels`
+**D16: Provider model listing is public and endpoint-aware.** `FizeauService.ListModels`
 is the public service surface consumers use to list configured
 provider-backed models. For OpenRouter, LM Studio, and oMLX, the service
 queries each configured endpoint's `<base_url>/models` endpoint and returns one
@@ -502,12 +502,12 @@ Built-in preset details are defined by SD-003 and implemented in
 ### Direct Source / Model Selection
 
 ```bash
-ddx-agent run --provider lmstudio "prompt"
-ddx-agent run --provider anthropic --model opus-4.7 "prompt"
-ddx-agent run --model-ref code-high "prompt"
-ddx-agent run --model-ref code-high --reasoning max "prompt"
-ddx-agent run --model qwen-3.6-27b "prompt"
-ddx-agent run --provider lmstudio --reasoning 8192 "prompt"
+fiz run --provider lmstudio "prompt"
+fiz run --provider anthropic --model opus-4.7 "prompt"
+fiz run --model-ref code-high "prompt"
+fiz run --model-ref code-high --reasoning max "prompt"
+fiz run --model qwen-3.6-27b "prompt"
+fiz run --provider lmstudio --reasoning 8192 "prompt"
 ```
 
 The public CLI flag is `--reasoning <value>`. Do not introduce alternate public
@@ -516,17 +516,17 @@ reasoning flags.
 ### Power-Routed Selection
 
 ```bash
-ddx-agent run --model qwen3.5-27b "prompt"  # pin a concrete model
-ddx-agent run --min-power 5 "prompt"        # request stronger automatic candidates
-ddx-agent run --min-power 8 "prompt"        # retry with a stronger floor
-ddx-agent run "prompt"                      # automatic routing over eligible candidates
-ddx-agent --list-models --json              # inspect joined inventory
+fiz run --model qwen3.5-27b "prompt"  # pin a concrete model
+fiz run --min-power 5 "prompt"        # request stronger automatic candidates
+fiz run --min-power 8 "prompt"        # retry with a stronger floor
+fiz run "prompt"                      # automatic routing over eligible candidates
+fiz --list-models --json              # inspect joined inventory
 ```
 
 Compatibility:
 
 ```bash
-ddx-agent -p "prompt" --backend code-work-local
+fiz -p "prompt" --backend code-work-local
 ```
 
 The compatibility flag remains temporarily, but it is not the preferred UX.
@@ -545,7 +545,7 @@ package split:
 - `internal/reasoning/` — shared leaf package for the Reasoning scalar,
   parser, normalization, constants, `ReasoningTokens(n)`, and resolved policy
   representation
-- `cmd/ddx-agent/` — resolve hard pins and power bounds into one concrete
+- `cmd/fiz/` — resolve hard pins and power bounds into one concrete
   provider/model/reasoning policy
 
 ## Traceability
@@ -565,4 +565,4 @@ package split:
 - D15 (reasoning contract) is implemented through `reasoning`,
   `reasoning_default`, and CLI `--reasoning`.
 - D16 (endpoint-aware provider model listing) is implemented through
-  `DdxAgent.ListModels` and the exported `ModelInfo` provider/endpoint fields.
+  `FizeauService.ListModels` and the exported `ModelInfo` provider/endpoint fields.

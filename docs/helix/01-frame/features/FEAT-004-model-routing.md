@@ -10,11 +10,11 @@ ddx:
 **Feature ID**: FEAT-004
 **Status**: Draft
 **Priority**: P0 (provider sources/endpoints), P1 (shared catalog), P1 (power-based routing)
-**Owner**: DDX Agent Team
+**Owner**: Fizeau Team
 
 ## Overview
 
-DDX Agent keeps the runtime boundary deliberately simple: `agent.Run()` receives
+Fizeau keeps the runtime boundary deliberately simple: `agent.Run()` receives
 one resolved `Provider`. Configuration declares provider sources and endpoints;
 it does not contain complicated route rules. The agent discovers what models
 those sources can serve, joins that inventory with catalog power/cost/speed
@@ -69,14 +69,14 @@ prompt behavior and must not be reused for model policy or routing.
 
 ## Problem Statement
 
-- **Current situation**: DDX Agent can select configured transport endpoints
+- **Current situation**: Fizeau can select configured transport endpoints
   directly, while callers and orchestrators still carry duplicated or
   mismatched routing assumptions above it.
 - **Pain points**: Prompt presets already occupy the `preset` naming surface,
   provider configs currently mix transport and model concerns, and route tables
   force operators to encode policy that the agent can derive from live model
   inventory and the catalog.
-- **Desired outcome**: DDX Agent becomes the reusable source of truth for model
+- **Desired outcome**: Fizeau becomes the reusable source of truth for model
   aliases, numeric power, deprecations, deployment-class-aware model metadata,
   and embedded provider selection, while callers keep retry/escalation policy
   and HELIX keeps stage intent only.
@@ -110,7 +110,7 @@ prompt behavior and must not be reused for model policy or routing.
 
 #### Phase 1B (P1): Shared Model Catalog and Manifest
 
-7. DDX Agent owns a reusable shared model catalog separate from provider configs
+7. Fizeau owns a reusable shared model catalog separate from provider configs
    and prompt presets.
 8. The catalog represents:
    - model families
@@ -133,15 +133,15 @@ prompt behavior and must not be reused for model policy or routing.
      derive safe limits from live metadata
 9. Catalog data is stored in a structured manifest maintained separately from
    Go logic inside the agent repo.
-10. DDX Agent ships an embedded snapshot of that manifest and may also load an
+10. Fizeau ships an embedded snapshot of that manifest and may also load an
     external manifest override so policy/data can update independently of code
     releases where practical.
-11. DDX Agent publishes versioned catalog manifests outside normal binary
+11. Fizeau publishes versioned catalog manifests outside normal binary
     releases and exposes a stable machine-readable channel pointer so operators
     and callers can refresh policy more quickly than the binary release cadence.
 12. Catalog refresh is explicit. Ordinary request execution must not fetch
     remote manifest data.
-13. The DDX Agent CLI and any caller can resolve a model reference through the catalog to a
+13. The Fizeau CLI and any caller can resolve a model reference through the catalog to a
     concrete model string appropriate for the chosen consumer surface.
 14. Explicit concrete model pins remain supported as hard constraints. If the
     requested model is unavailable, routing fails with detailed evidence rather
@@ -183,10 +183,10 @@ prompt behavior and must not be reused for model policy or routing.
 
 #### Phase 2A (P1): Candidate Inventory and Power-Based Routing
 
-23. DDX Agent builds the candidate set by enumerating available harnesses,
+23. Fizeau builds the candidate set by enumerating available harnesses,
     provider sources, endpoints, and discovered model IDs, then joining that
     live inventory with catalog metadata.
-24. The CLI exposes the joined inventory through `ddx-agent --list-models`,
+24. The CLI exposes the joined inventory through `fiz --list-models`,
     with JSON support. Rows include model, harness, provider, endpoint/host,
     power, provider/deployment class, cost, speed/perf signal, context,
     availability, catalog reference, auto-routable status, and exact-pin-only
@@ -223,7 +223,7 @@ prompt behavior and must not be reused for model policy or routing.
 
 #### Phase 2B (P1): Availability Feedback Without Agent Retry
 
-34. DDX Agent may track recent provider/endpoint/model availability failures
+34. Fizeau may track recent provider/endpoint/model availability failures
     and temporarily back off unhealthy candidates using a bounded cooldown
     window.
 35. Availability feedback is keyed at least by `(harness, provider source,
@@ -298,7 +298,7 @@ prompt behavior and must not be reused for model policy or routing.
   primitive.
 - Callers can consume agent-owned catalog data without maintaining duplicate alias
   and power tables.
-- Operators can run `ddx-agent --list-models` to inspect the same joined model
+- Operators can run `fiz --list-models` to inspect the same joined model
   inventory the router scores.
 - Prompt preset docs and model-policy docs stay terminology-safe and do not
   overload `preset`.
@@ -309,16 +309,16 @@ prompt behavior and must not be reused for model policy or routing.
 
 | ID | Criterion | Suggested Verification |
 |----|-----------|------------------------|
-| AC-FEAT-004-01 | Provider source/endpoint resolution selects the configured transport before the run starts, and unknown provider source or endpoint selectors fail during config/CLI resolution rather than inside `agent.Run()`. | `go test ./internal/config ./cmd/ddx-agent ./...` |
-| AC-FEAT-004-02 | Model references resolve through the embedded or external manifest to the correct consumer-surface model string and per-surface reasoning metadata, and missing references/surfaces fail deterministically before the run. | `go test ./internal/modelcatalog ./internal/config ./cmd/ddx-agent ./...` |
-| AC-FEAT-004-03 | Deprecated or stale model references are rejected by default, surface replacement metadata, and can be explicitly allowed only when the caller opts in. | `go test ./internal/modelcatalog ./internal/config ./cmd/ddx-agent ./...` |
-| AC-FEAT-004-04 | An explicit concrete `--model`, provider-source/endpoint constraint, or `--harness` is a hard constraint. If it cannot be satisfied, routing returns detailed no-candidate evidence and never substitutes a different model/source/endpoint/harness. | `go test ./internal/routing ./cmd/ddx-agent ./...` |
-| AC-FEAT-004-05 | `ddx-agent --list-models` exposes the joined available-model inventory with model, harness, provider, endpoint/host, power, provider/deployment class, cost, speed/perf, context, availability, catalog reference, auto-routable, and exact-pin-only fields. | `go test ./cmd/ddx-agent ./... -run 'ListModels|Models'` |
+| AC-FEAT-004-01 | Provider source/endpoint resolution selects the configured transport before the run starts, and unknown provider source or endpoint selectors fail during config/CLI resolution rather than inside `agent.Run()`. | `go test ./internal/config ./cmd/fiz ./...` |
+| AC-FEAT-004-02 | Model references resolve through the embedded or external manifest to the correct consumer-surface model string and per-surface reasoning metadata, and missing references/surfaces fail deterministically before the run. | `go test ./internal/modelcatalog ./internal/config ./cmd/fiz ./...` |
+| AC-FEAT-004-03 | Deprecated or stale model references are rejected by default, surface replacement metadata, and can be explicitly allowed only when the caller opts in. | `go test ./internal/modelcatalog ./internal/config ./cmd/fiz ./...` |
+| AC-FEAT-004-04 | An explicit concrete `--model`, provider-source/endpoint constraint, or `--harness` is a hard constraint. If it cannot be satisfied, routing returns detailed no-candidate evidence and never substitutes a different model/source/endpoint/harness. | `go test ./internal/routing ./cmd/fiz ./...` |
+| AC-FEAT-004-05 | `fiz --list-models` exposes the joined available-model inventory with model, harness, provider, endpoint/host, power, provider/deployment class, cost, speed/perf, context, availability, catalog reference, auto-routable, and exact-pin-only fields. | `go test ./cmd/fiz ./... -run 'ListModels|Models'` |
 | AC-FEAT-004-06 | Automatic routing excludes unknown-power and exact-pin-only models, honors `MinPower`/`MaxPower`, and uses only models with catalog power unless the caller made an exact model pin. | `go test ./internal/modelcatalog ./internal/routing ./...` |
-| AC-FEAT-004-07 | The selected harness, provider, endpoint, requested model input, resolved model reference, resolved concrete model, power, and score components are recorded in run result and session artifacts so callers and downstream analytics can attribute the actual embedded-provider choice without reproducing route logic. | `go test ./cmd/ddx-agent ./internal/session ./...` |
-| AC-FEAT-004-08 | Deprecated `backends`, `default_backend`, `--backend`, and user-authored route-table inputs still resolve during the migration window if supported, emit a deprecation warning, and do not define the target architecture. | `go test ./internal/config ./cmd/ddx-agent ./...` |
-| AC-FEAT-004-09 | Catalog publication produces an immutable versioned manifest bundle plus a stable channel pointer, and ordinary request execution never fetches remote manifest data implicitly. | `go test ./internal/modelcatalog ./cmd/ddx-agent ./...` |
-| AC-FEAT-004-10 | The starter shared catalog publishes concrete model entries with 1..10 power, provider/deployment class, power provenance, costs, context, benchmark inputs, and surface projections. Named routing personas or named power bands are not part of the target contract. | `go test ./internal/modelcatalog ./internal/config ./cmd/ddx-agent ./...` |
+| AC-FEAT-004-07 | The selected harness, provider, endpoint, requested model input, resolved model reference, resolved concrete model, power, and score components are recorded in run result and session artifacts so callers and downstream analytics can attribute the actual embedded-provider choice without reproducing route logic. | `go test ./cmd/fiz ./internal/session ./...` |
+| AC-FEAT-004-08 | Deprecated `backends`, `default_backend`, `--backend`, and user-authored route-table inputs still resolve during the migration window if supported, emit a deprecation warning, and do not define the target architecture. | `go test ./internal/config ./cmd/fiz ./...` |
+| AC-FEAT-004-09 | Catalog publication produces an immutable versioned manifest bundle plus a stable channel pointer, and ordinary request execution never fetches remote manifest data implicitly. | `go test ./internal/modelcatalog ./cmd/fiz ./...` |
+| AC-FEAT-004-10 | The starter shared catalog publishes concrete model entries with 1..10 power, provider/deployment class, power provenance, costs, context, benchmark inputs, and surface projections. Named routing personas or named power bands are not part of the target contract. | `go test ./internal/modelcatalog ./internal/config ./cmd/fiz ./...` |
 | AC-FEAT-004-11 | Manifest schema uses top-level concrete `models` entries and target-level ordered `candidates`; pricing, OpenRouter refresh, context windows, benchmarks, power, and deployment-class provenance are model-scoped while target entries remain policy. Older manifests load through a compatibility upgrade path. | `go test ./internal/modelcatalog ./...` |
 | AC-FEAT-004-12 | Routing policy has statement-backed tests for: local/free preference when constraints are satisfied; hard pins overriding local preference; power bounds overriding local preference; unknown-power exact-pin-only behavior; provider/deployment-class power separation; and no retry of candidate 2 after dispatch failure. | `go test ./internal/routing ./... -run 'Policy|Invariant|Routing'` |
 

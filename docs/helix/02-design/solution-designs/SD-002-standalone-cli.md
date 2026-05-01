@@ -11,8 +11,8 @@ ddx:
 
 ## Scope
 
-Feature-level design for the `ddx-agent` CLI binary — the thin porcelain that
-proves the DDX Agent library works end-to-end. The CLI is not the product; the
+Feature-level design for the `fiz` CLI binary — the thin porcelain that
+proves the Fizeau library works end-to-end. The CLI is not the product; the
 library is. This design covers the binary, config loading, and session
 subcommands.
 
@@ -22,12 +22,12 @@ subcommands.
 
 | Requirement | Technical Capability | Component | Priority |
 |-------------|---------------------|-----------|----------|
-| Non-interactive mode (FEAT-006 FR-1..4) | `ddx-agent run "prompt"`, `-p`, stdin | `cmd/ddx-agent` | P0 |
-| Exit codes (FEAT-006 FR-4) | 0/1/2 mapping | `cmd/ddx-agent` | P0 |
-| Output modes (FEAT-006 FR-5..6) | stdout text, --json, stderr progress | `cmd/ddx-agent` | P0 |
-| Config file (FEAT-006 FR-7..10) | YAML config + env + flags | `cmd/ddx-agent` | P0 |
-| Session commands (FEAT-006 FR-11..14) | log, replay, usage subcommands | `cmd/ddx-agent` | P1 |
-| Harness mode (FEAT-006 FR-15..16) | stdin prompt, JSON output | `cmd/ddx-agent` | P0 |
+| Non-interactive mode (FEAT-006 FR-1..4) | `fiz run "prompt"`, `-p`, stdin | `cmd/fiz` | P0 |
+| Exit codes (FEAT-006 FR-4) | 0/1/2 mapping | `cmd/fiz` | P0 |
+| Output modes (FEAT-006 FR-5..6) | stdout text, --json, stderr progress | `cmd/fiz` | P0 |
+| Config file (FEAT-006 FR-7..10) | YAML config + env + flags | `cmd/fiz` | P0 |
+| Session commands (FEAT-006 FR-11..14) | log, replay, usage subcommands | `cmd/fiz` | P1 |
+| Harness mode (FEAT-006 FR-15..16) | stdin prompt, JSON output | `cmd/fiz` | P0 |
 
 ### NFR Impact
 
@@ -39,31 +39,31 @@ subcommands.
 
 ## Solution Approach
 
-The CLI is a single `cmd/ddx-agent/main.go` entry point using Go's `flag` stdlib
+The CLI is a single `cmd/fiz/main.go` entry point using Go's `flag` stdlib
 package (per project concern override — no Cobra). Subcommands are dispatched
 by the first positional argument. `run` is the preferred explicit execution
 verb; the existing bare `-p` path remains as a compatibility shim.
 
-The CLI is porcelain over the `DdxAgent` service contract from
+The CLI is porcelain over the `FizeauService` service contract from
 CONTRACT-003. It parses flags, resolves prompt input, constructs a public
-`ServiceExecuteRequest`, calls `DdxAgent.Execute`, and renders the typed event
+`ServiceExecuteRequest`, calls `FizeauService.Execute`, and renders the typed event
 stream. It does not construct providers, call `agent.Run()`, own failover, or
 write session lifecycle records itself.
 
 ### Command Structure
 
 ```
-ddx-agent run "prompt"             # preferred run path
-ddx-agent run @file.md             # prompt from file
-echo "prompt" | ddx-agent run      # prompt from stdin
-ddx-agent --json run "prompt"      # JSON output
-ddx-agent -p "prompt"              # legacy compatibility
+fiz run "prompt"             # preferred run path
+fiz run @file.md             # prompt from file
+echo "prompt" | fiz run      # prompt from stdin
+fiz --json run "prompt"      # JSON output
+fiz -p "prompt"              # legacy compatibility
 
-ddx-agent log                      # list recent sessions
-ddx-agent log <session-id>         # show session detail
-ddx-agent replay <session-id>      # human-readable replay
-ddx-agent usage                    # cost/token summary
-ddx-agent usage --since=7d         # with time window
+fiz log                      # list recent sessions
+fiz log <session-id>         # show session detail
+fiz replay <session-id>      # human-readable replay
+fiz usage                    # cost/token summary
+fiz usage --since=7d         # with time window
 ```
 
 ### Config Resolution Order
@@ -86,7 +86,7 @@ base_url: http://localhost:1234/v1
 api_key: ""
 model: qwen3.5-7b
 max_iterations: 20
-session_log_dir: .agent/sessions
+session_log_dir: .fizeau/sessions
 ```
 
 ### Exit Codes
@@ -99,12 +99,12 @@ session_log_dir: .agent/sessions
 
 ## System Decomposition
 
-### `cmd/ddx-agent/main.go`
+### `cmd/fiz/main.go`
 
 - Parse flags and subcommand
 - Load config (file → env → flags)
 - Resolve prompt input and CLI defaults into a public `ServiceExecuteRequest`
-- Call `DdxAgent.Execute` / `TailSessionLog` / `List*` methods
+- Call `FizeauService.Execute` / `TailSessionLog` / `List*` methods
 - Decode events with `DecodeServiceEvent` or `DrainExecute`
 - Print result, set exit code
 
@@ -123,13 +123,13 @@ session_log_dir: .agent/sessions
 
 ### Boundary Rules
 
-- `cmd/ddx-agent` is a consumer of `DdxAgent`, not a peer of the core loop.
+- `cmd/fiz` is a consumer of `FizeauService`, not a peer of the core loop.
 - Routing intent belongs in public request fields (`Provider`, `Model`,
   `ModelRef`, `Profile`, `Harness`) or an explicit `ResolveRoute` ->
   `PreResolved` flow.
 - Native provider construction, route failover, and session-log persistence are
   service responsibilities.
-- Boundary tests must prevent `cmd/ddx-agent` from importing or invoking core
+- Boundary tests must prevent `cmd/fiz` from importing or invoking core
   execution internals directly.
 
 ## Technology Rationale

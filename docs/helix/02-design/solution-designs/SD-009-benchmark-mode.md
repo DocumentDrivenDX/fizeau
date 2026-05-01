@@ -16,9 +16,9 @@ ddx:
   - Key approach: search-and-replace with exact match, line-ending normalization,
     multiple operation types (replace, prepend, append, swap), snapshot coordination.
   - Clone locally: `git clone https://github.com/antinomyhq/forgecode`
-# Solution Design: SD-009 — DDX Agent Benchmark Mode and Terminal-Bench Evaluation Plan
+# Solution Design: SD-009 — Fizeau Benchmark Mode and Terminal-Bench Evaluation Plan
 
-**Bead**: agent-82042311 (Specify ddx-agent benchmark mode and Terminal-Bench evaluation plan)
+**Bead**: agent-82042311 (Specify fiz benchmark mode and Terminal-Bench evaluation plan)
 **Type**: Design spec
 **Status**: Complete — grounded in SD-008 (interface audit) and the 2026-04-08 baseline
 
@@ -26,25 +26,25 @@ ddx:
 
 ## Summary
 
-This document specifies how ddx-agent is evaluated under Terminal-Bench/Harbor,
+This document specifies how fiz is evaluated under Terminal-Bench/Harbor,
 defines the benchmark-mode runtime/preset, commits a fixed benchmark task subset,
 defines a smoke-task workflow, and sets measurable metrics with thresholds grounded
 in the baseline characterization captured in `benchmark-baseline-2026-04-08.md`.
 
 ---
 
-## 1. Terminal-Bench / Harbor Integration Path for DDX Agent
+## 1. Terminal-Bench / Harbor Integration Path for Fizeau
 
 See SD-008 for the full audit. Summary for this spec:
 
-**Integration type**: `BaseInstalledAgent` — ddx-agent is installed as a static
+**Integration type**: `BaseInstalledAgent` — fiz is installed as a static
 `linux/amd64` binary inside each Terminal-Bench task container. A Python adapter
 (tracked in bead `agent-a3ce467a`) handles install, invocation, and ATIF trajectory
 conversion.
 
 **Invocation in container**:
 ```bash
-ddx-agent --json --preset benchmark -p "<task_instruction>"
+fiz --json --preset benchmark -p "<task_instruction>"
 ```
 
 **Exit contract**:
@@ -52,7 +52,7 @@ ddx-agent --json --preset benchmark -p "<task_instruction>"
 - Exit code non-zero = trial failure (Harbor marks task as failed)
 - Terminal-Bench verifier runs `pytest` against the modified workspace after exit
 
-**No interface changes needed to the ddx-agent CLI** for the basic installed-agent path.
+**No interface changes needed to the fiz CLI** for the basic installed-agent path.
 The `--preset benchmark` preset is a new addition (bead `agent-5f35fdeb`) that suppresses
 interactive behavior and reduces shell anti-patterns.
 
@@ -103,7 +103,7 @@ or manually, but representative enough to detect regressions.
 
 ```yaml
 # scripts/benchmark/task-subset-v1.yaml
-# Fixed benchmark subset for ddx-agent — v1 (2026-04-08)
+# Fixed benchmark subset for fiz — v1 (2026-04-08)
 # Do not modify without updating the version and filing a bead.
 version: "1"
 captured: "2026-04-08"
@@ -191,19 +191,19 @@ artifact from the initial benchmark plan.
 
 ## 4. Smoke-Task Workflow
 
-The smoke workflow validates that the ddx-agent adapter runs to completion on a single
+The smoke workflow validates that the fiz adapter runs to completion on a single
 task before a full benchmark run. It should take under 2 minutes.
 
 ### Smoke-Run Steps
 
 ```bash
 # Step 1: Build linux/amd64 binary
-GOOS=linux GOARCH=amd64 go build -o dist/ddx-agent-linux-amd64 ./cmd/ddx-agent
+GOOS=linux GOARCH=amd64 go build -o dist/fiz-linux-amd64 ./cmd/fiz
 
 # Step 2: Run one task from the fixed subset
 harbor run \
   --dataset terminal-bench/terminal-bench-2 \
-  --agent ddx-agent \
+  --agent fiz \
   --task-id tb2-read-and-describe \
   --runtime docker \
   --env ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"
@@ -216,7 +216,7 @@ echo "Smoke run complete"
 ```
 
 **Passing criterion for smoke run**:
-- ddx-agent exits with code 0 (no harness crash)
+- fiz exits with code 0 (no harness crash)
 - `trajectory.json` is valid JSON with at least 1 step
 - `reward.txt` exists (contains `0` or `1`)
 
@@ -252,12 +252,12 @@ scripts/benchmark/
 ### Thresholds (Grounded in Baseline)
 
 **Scope of thresholds.** The floor and target values in the table below
-apply **only to ddx-agent's own runs** under one fixed harness, runtime,
+apply **only to fiz's own runs** under one fixed harness, runtime,
 profile, and dataset. They were calibrated against a single-arm baseline
-(ddx-agent on `claude-haiku-4-5` via OpenRouter, 2026-04-08) and are not
+(fiz on `claude-haiku-4-5` via OpenRouter, 2026-04-08) and are not
 valid as pass/fail gates for any other harness.
 
-For **cross-harness cells** (e.g. ddx-agent vs. pi vs. opencode under the
+For **cross-harness cells** (e.g. fiz vs. pi vs. opencode under the
 matrix benchmark in SD-010), reporting uses **mean reward + SD over reps
 (minimum 3 reps per cell)**, not the floor/target. Reusing a single-arm
 floor as a multi-arm pass criterion is an apples-to-oranges error: each
@@ -269,7 +269,7 @@ The 2026-04-08 baseline on 6 tasks with `claude-haiku-4-5` via OpenRouter:
 
 | Metric | Baseline (6-task pilot) | v1 Regression Floor | Aspirational Target |
 |--------|------------------------|--------------------|--------------------|
-| Resolved-task rate (ddx-agent only) | 100% (6/6 simple tasks) | ≥ 55% on v1 subset | ≥ 70% |
+| Resolved-task rate (fiz only) | 100% (6/6 simple tasks) | ≥ 55% on v1 subset | ≥ 70% |
 | Clarification-question rate | 0% | < 10% | < 5% |
 | Shell anti-pattern rate | 50% of bash calls (T6 only) | < 30% of bash calls | < 10% |
 | Structured-edit success rate | 75% (3/4 attempts) | ≥ 70% | ≥ 90% |
@@ -320,14 +320,14 @@ to avoid live model costs.
 
 The original SD-009 deliverables established the benchmark harness, fixed subset
 shape, baseline characterization, and benchmark-critical tools. A credible claim
-that ForgeCode-inspired changes improved ddx-agent's Terminal-Bench standing
+that ForgeCode-inspired changes improved fiz's Terminal-Bench standing
 requires a stricter comparative protocol than the original pilot baseline.
 
 ### Comparative claim
 
 The claim under test is:
 
-> ForgeCode-inspired harness and tooling changes improved ddx-agent's measured
+> ForgeCode-inspired harness and tooling changes improved fiz's measured
 > performance on a fixed Terminal-Bench subset under one fixed harness and one
 > fixed runtime/model configuration.
 
@@ -353,7 +353,7 @@ Any before/after comparison MUST satisfy all of the following:
 
 1. Create a real-ID benchmark subset manifest (`task-subset-v2.yaml`) and record
    the task selection rule.
-2. Upgrade the benchmark harness so one runner can execute arbitrary ddx-agent
+2. Upgrade the benchmark harness so one runner can execute arbitrary fiz
    binaries from different SHAs while preserving identical reporting and scoring.
 3. Extend the report and scoring pipeline to capture actual runtime metadata and
    compute the declared comparison metrics.
@@ -389,8 +389,8 @@ They are not left to memo-time interpretation.
 ### 7.1 Multi-harness extension (cross-reference SD-010)
 
 The protocol above governs **single-harness** before/after claims about
-ddx-agent. The multi-harness × model matrix benchmark — comparing
-ddx-agent to other CLIs (pi, opencode, claude-code, codex) on the same
+fiz. The multi-harness × model matrix benchmark — comparing
+fiz to other CLIs (pi, opencode, claude-code, codex) on the same
 model and subset — is specified in
 `docs/helix/02-design/solution-designs/SD-010-harness-matrix-benchmark.md`.
 SD-010 is normative for any cell that involves more than one harness;
@@ -433,7 +433,7 @@ state machine in §9 below (lifted from SD-010). A cell whose
 from mean reward**; the memo states `n_reported` per cell so the reader
 can see how many reps actually scored.
 
-**Pointer for the running runner.** The `ddx-agent-bench matrix`
+**Pointer for the running runner.** The `fiz-bench matrix`
 subcommand specified in SD-010 is the only graded multi-harness path.
 The legacy `cmd/bench --external=termbench` path remains as a
 single-harness smoke (SD-010 D3) and MUST NOT be used to produce

@@ -152,7 +152,7 @@ Matching pi exactly:
 
 ## Presets
 
-DDX Agent ships with built-in system prompt presets that describe prompt intent:
+Fizeau ships with built-in system prompt presets that describe prompt intent:
 
 | Preset | Description |
 |--------|-------------|
