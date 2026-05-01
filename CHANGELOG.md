@@ -3,6 +3,15 @@
 All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
+## [v0.9.28] — 2026-05-01
+
+### Fixed
+
+- `go install github.com/DocumentDrivenDX/fizeau/cmd/fiz@<version>` builds now
+  report the module version from Go build metadata when release ldflags are not
+  present. This keeps the documented `go install` path compatible with
+  `fiz version` and `fiz update`.
+
 ## [v0.9.27] — 2026-05-01
 
 ### Fixed
