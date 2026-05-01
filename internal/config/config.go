@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -437,6 +438,44 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("FIZEAU_MODEL"); v != "" {
 		p.Model = v
 		changed = true
+	}
+
+	// Sampling overrides forwarded by the benchmark matrix adapter.
+	if v := os.Getenv("FIZEAU_TEMPERATURE"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			if p.Sampling == nil {
+				p.Sampling = &SamplingProfile{}
+			}
+			p.Sampling.Temperature = &f
+			changed = true
+		}
+	}
+	if v := os.Getenv("FIZEAU_TOP_P"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			if p.Sampling == nil {
+				p.Sampling = &SamplingProfile{}
+			}
+			p.Sampling.TopP = &f
+			changed = true
+		}
+	}
+	if v := os.Getenv("FIZEAU_TOP_K"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if p.Sampling == nil {
+				p.Sampling = &SamplingProfile{}
+			}
+			p.Sampling.TopK = &n
+			changed = true
+		}
+	}
+	if v := os.Getenv("FIZEAU_MIN_P"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			if p.Sampling == nil {
+				p.Sampling = &SamplingProfile{}
+			}
+			p.Sampling.MinP = &f
+			changed = true
+		}
 	}
 
 	if changed {

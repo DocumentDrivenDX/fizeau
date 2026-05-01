@@ -1,0 +1,26 @@
+# Qwen3.6-27B-MLX-8bit via vidar omlx (local, port 1235). Free/local tier.
+# No API key required — omlx serves OpenAI-compat without auth.
+# Qwen3 thinking-mode recommended sampling: T=0.6, top_p=0.95, top_k=20.
+id: vidar-qwen3-6-27b
+provider:
+  type: openai-compat
+  model: Qwen3.6-27B-MLX-8bit
+  base_url: http://vidar:1235/v1
+  api_key_env: OMLX_API_KEY
+pricing:
+  input_usd_per_mtok: 0.0
+  output_usd_per_mtok: 0.0
+  cached_input_usd_per_mtok: 0.0
+limits:
+  max_output_tokens: 32768
+  context_tokens: 128000
+  rate_limit_rpm: 60
+  rate_limit_tpm: 100000
+sampling:
+  temperature: 0.6
+  reasoning: medium
+  top_p: 0.95
+  top_k: 20
+versioning:
+  resolved_at: "2026-04-30"
+  snapshot: "Qwen3.6-27B-MLX-8bit"

@@ -60,10 +60,24 @@ type Limits struct {
 
 // Sampling is opaque to the runner; passed verbatim to the adapter's
 // apply_profile step. Reasoning is a free-form string ("low" | "medium" |
-// "high" | "" depending on the family).
+// "high" | "" depending on the family). Pointer fields are omitted when
+// nil so server defaults apply.
 type Sampling struct {
-	Temperature float64 `yaml:"temperature"`
-	Reasoning   string  `yaml:"reasoning,omitempty"`
+	Temperature float64  `yaml:"temperature"`
+	Reasoning   string   `yaml:"reasoning,omitempty"`
+	TopP        *float64 `yaml:"top_p,omitempty"`
+	TopK        *int     `yaml:"top_k,omitempty"`
+	MinP        *float64 `yaml:"min_p,omitempty"`
+}
+
+// ModelServerInfo is populated at run time by querying the local model server
+// (e.g. lmstudio /api/v0/models/<id>). Fields are empty/zero when the server
+// does not expose them.
+type ModelServerInfo struct {
+	Quantization        string `json:"quantization,omitempty"`
+	LoadedContextLength int    `json:"loaded_context_length,omitempty"`
+	MaxContextLength    int    `json:"max_context_length,omitempty"`
+	Source              string `json:"source,omitempty"` // URL queried
 }
 
 // Versioning records when the profile was authored and which provider

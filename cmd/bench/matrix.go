@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,38 +29,40 @@ const (
 )
 
 type matrixRunReport struct {
-	Harness                 string    `json:"harness"`
-	ProfileID               string    `json:"profile_id"`
-	ProfilePath             string    `json:"profile_path"`
-	ProfileSnapshot         string    `json:"profile_snapshot,omitempty"`
-	AdapterModule           string    `json:"adapter_module"`
-	HarborAgent             string    `json:"harbor_agent"`
-	Rep                     int       `json:"rep"`
-	TaskID                  string    `json:"task_id"`
-	Category                string    `json:"category,omitempty"`
-	Difficulty              string    `json:"difficulty,omitempty"`
-	OutputDir               string    `json:"output_dir"`
-	ProcessOutcome          string    `json:"process_outcome"`
-	GradingOutcome          string    `json:"grading_outcome"`
-	Reward                  *int      `json:"reward"`
-	FinalStatus             string    `json:"final_status"`
-	Retriable               bool      `json:"retriable,omitempty"`
-	Turns                   *int      `json:"turns"`
-	ToolCalls               *int      `json:"tool_calls"`
-	ToolCallErrors          *int      `json:"tool_call_errors"`
-	InputTokens             *int      `json:"input_tokens"`
-	OutputTokens            *int      `json:"output_tokens"`
-	CachedInputTokens       *int      `json:"cached_input_tokens"`
-	RetriedInputTokens      *int      `json:"retried_input_tokens"`
-	WallSeconds             *float64  `json:"wall_seconds"`
-	CostUSD                 float64   `json:"cost_usd"`
-	PricingSource           string    `json:"pricing_source"`
-	AdapterTranslationNotes []string  `json:"adapter_translation_notes,omitempty"`
-	Command                 []string  `json:"command,omitempty"`
-	ExitCode                int       `json:"exit_code"`
-	Error                   string    `json:"error,omitempty"`
-	StartedAt               time.Time `json:"started_at"`
-	FinishedAt              time.Time `json:"finished_at"`
+	Harness                 string                   `json:"harness"`
+	ProfileID               string                   `json:"profile_id"`
+	ProfilePath             string                   `json:"profile_path"`
+	ProfileSnapshot         string                   `json:"profile_snapshot,omitempty"`
+	AdapterModule           string                   `json:"adapter_module"`
+	HarborAgent             string                   `json:"harbor_agent"`
+	Rep                     int                      `json:"rep"`
+	TaskID                  string                   `json:"task_id"`
+	Category                string                   `json:"category,omitempty"`
+	Difficulty              string                   `json:"difficulty,omitempty"`
+	OutputDir               string                   `json:"output_dir"`
+	ProcessOutcome          string                   `json:"process_outcome"`
+	GradingOutcome          string                   `json:"grading_outcome"`
+	Reward                  *int                     `json:"reward"`
+	FinalStatus             string                   `json:"final_status"`
+	Retriable               bool                     `json:"retriable,omitempty"`
+	Turns                   *int                     `json:"turns"`
+	ToolCalls               *int                     `json:"tool_calls"`
+	ToolCallErrors          *int                     `json:"tool_call_errors"`
+	InputTokens             *int                     `json:"input_tokens"`
+	OutputTokens            *int                     `json:"output_tokens"`
+	CachedInputTokens       *int                     `json:"cached_input_tokens"`
+	RetriedInputTokens      *int                     `json:"retried_input_tokens"`
+	WallSeconds             *float64                 `json:"wall_seconds"`
+	CostUSD                 float64                  `json:"cost_usd"`
+	PricingSource           string                   `json:"pricing_source"`
+	AdapterTranslationNotes []string                 `json:"adapter_translation_notes,omitempty"`
+	Command                 []string                 `json:"command,omitempty"`
+	ExitCode                int                      `json:"exit_code"`
+	Error                   string                   `json:"error,omitempty"`
+	SamplingUsed            map[string]any           `json:"sampling_used,omitempty"`
+	ModelServerInfo         *profile.ModelServerInfo `json:"model_server_info,omitempty"`
+	StartedAt               time.Time                `json:"started_at"`
+	FinishedAt              time.Time                `json:"finished_at"`
 }
 
 type matrixOutput struct {
@@ -303,6 +306,8 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 		OutputDir:       cellDir,
 		StartedAt:       started,
 		PricingSource:   profilePricingSource(opts.profile),
+		SamplingUsed:    samplingUsedFromProfile(opts.profile),
+		ModelServerInfo: queryModelServerInfo(opts.profile),
 	}
 
 	if opts.budgetUSD > 0 && opts.accumulatedCost >= opts.budgetUSD {
@@ -460,6 +465,10 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	)
 	if apiKeyVal != "" {
 		args = append(args, "--ae", "FIZEAU_API_KEY="+apiKeyVal)
+	}
+	// Forward sampling params so fiz reads them via FIZEAU_* env overrides.
+	for _, kv := range samplingEnvPairs(opts.profile) {
+		args = append(args, "--ae", kv)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
@@ -782,10 +791,7 @@ func adapterProfileMapping(p *profile.Profile) map[string]any {
 			"base_url":    p.Provider.BaseURL,
 			"api_key_env": p.Provider.APIKeyEnv,
 		},
-		"sampling": map[string]any{
-			"temperature": p.Sampling.Temperature,
-			"reasoning":   p.Sampling.Reasoning,
-		},
+		"sampling": samplingUsedFromProfile(p),
 		"limits": map[string]any{
 			"max_output_tokens": p.Limits.MaxOutputTokens,
 			"context_tokens":    p.Limits.ContextTokens,
@@ -979,4 +985,82 @@ func profilePricingSource(p *profile.Profile) string {
 	}
 	sum := sha256.Sum256(data)
 	return p.Path + "#sha256=" + hex.EncodeToString(sum[:])
+}
+
+// samplingUsedFromProfile builds the sampling map stored in the run report
+// and passed to the Python adapter. Nil pointer fields are omitted so the
+// server's own defaults apply for unset params.
+func samplingUsedFromProfile(p *profile.Profile) map[string]any {
+	m := map[string]any{
+		"temperature": p.Sampling.Temperature,
+		"reasoning":   p.Sampling.Reasoning,
+	}
+	if p.Sampling.TopP != nil {
+		m["top_p"] = *p.Sampling.TopP
+	}
+	if p.Sampling.TopK != nil {
+		m["top_k"] = *p.Sampling.TopK
+	}
+	if p.Sampling.MinP != nil {
+		m["min_p"] = *p.Sampling.MinP
+	}
+	return m
+}
+
+// samplingEnvPairs returns "FIZEAU_X=value" strings for each non-nil sampling
+// field in the profile, for forwarding via harbor --ae flags.
+func samplingEnvPairs(p *profile.Profile) []string {
+	var pairs []string
+	pairs = append(pairs, fmt.Sprintf("FIZEAU_TEMPERATURE=%g", p.Sampling.Temperature))
+	if p.Sampling.TopP != nil {
+		pairs = append(pairs, fmt.Sprintf("FIZEAU_TOP_P=%g", *p.Sampling.TopP))
+	}
+	if p.Sampling.TopK != nil {
+		pairs = append(pairs, fmt.Sprintf("FIZEAU_TOP_K=%d", *p.Sampling.TopK))
+	}
+	if p.Sampling.MinP != nil {
+		pairs = append(pairs, fmt.Sprintf("FIZEAU_MIN_P=%g", *p.Sampling.MinP))
+	}
+	return pairs
+}
+
+// queryModelServerInfo attempts to fetch model metadata from a lmstudio
+// /api/v0/models/<id> endpoint. Returns nil if the server is not lmstudio
+// or the request fails.
+func queryModelServerInfo(p *profile.Profile) *profile.ModelServerInfo {
+	base := strings.TrimRight(p.Provider.BaseURL, "/")
+	// Only try lmstudio-style endpoints (port 1234 conventional, or path /api/v0 present).
+	if !strings.Contains(base, ":1234") && !strings.Contains(base, "/api/v0") {
+		return nil
+	}
+	// Strip trailing /v1 to get the base server URL.
+	apiBase := strings.TrimSuffix(base, "/v1")
+	modelID := p.Provider.Model
+	url := apiBase + "/api/v0/models/" + modelID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	defer resp.Body.Close()
+	var info struct {
+		Quantization        string `json:"quantization"`
+		LoadedContextLength int    `json:"loaded_context_length"`
+		MaxContextLength    int    `json:"max_context_length"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil
+	}
+	return &profile.ModelServerInfo{
+		Quantization:        info.Quantization,
+		LoadedContextLength: info.LoadedContextLength,
+		MaxContextLength:    info.MaxContextLength,
+		Source:              url,
+	}
 }

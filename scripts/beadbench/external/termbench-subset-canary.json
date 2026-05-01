@@ -13,7 +13,7 @@
   "dataset_commit": "53ff2b87d621bdb97b455671f2bd9728b7d86c11",
   "selection_rule": "Three-task canary for the harness matrix: one smoke + two medium tasks across two categories. See _exclusion_rules for what is deliberately omitted. Bumping version requires re-deriving the per-run cost cap (Step 5) on the new task set.",
   "tasks": [
-    {"id": "hello-world",              "category": "smoke",               "difficulty": "easy",   "rationale": "Canonical TB hello-world; smoke that the adapter is wired end-to-end before spending model tokens on the medium tasks."},
+    {"id": "fix-git",                  "category": "software-engineering","difficulty": "easy",   "rationale": "Easy git task; smoke that the adapter is wired end-to-end. Replaces hello-world which is not present in terminal-bench-2."},
     {"id": "log-summary-date-ranges",  "category": "data-processing",     "difficulty": "medium", "rationale": "File edits + reasoning over a date-windowed log; exercises read-edit-run loops on a non-trivial text-processing problem."},
     {"id": "git-leak-recovery",        "category": "software-engineering","difficulty": "medium", "rationale": "Multi-step shell + git remediation; the highest expected token burn in the canary, used as the cost-cap calibration task in Step 5 of the matrix plan."}
   ]

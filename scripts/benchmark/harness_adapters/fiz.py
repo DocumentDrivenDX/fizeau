@@ -33,6 +33,17 @@ class Agent(BaseAdapter):
             env["FIZEAU_PROVIDER"] = "openrouter"
         elif profile.provider.type not in ("openai-compat",):
             env["FIZEAU_PROVIDER"] = profile.provider.type
+        # Forward sampling params so fiz reads them via FIZEAU_* env overrides.
+        sampling = getattr(profile, "sampling", None) or {}
+        if isinstance(sampling, dict):
+            if (t := sampling.get("temperature")) is not None:
+                env["FIZEAU_TEMPERATURE"] = str(t)
+            if (v := sampling.get("top_p")) is not None:
+                env["FIZEAU_TOP_P"] = str(v)
+            if (v := sampling.get("top_k")) is not None:
+                env["FIZEAU_TOP_K"] = str(int(v))
+            if (v := sampling.get("min_p")) is not None:
+                env["FIZEAU_MIN_P"] = str(v)
         return CommandSpec(argv=[], env=env, stdin=None)
 
     def command(self, profile: BenchmarkProfile, prompt: str, workdir: str | None = None) -> CommandSpec:
