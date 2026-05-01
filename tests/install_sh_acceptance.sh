@@ -51,10 +51,10 @@ write_fake_binary() {
   cat >"${path}" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "--version" ]]; then
-  echo "ddx-agent test-binary"
+  echo "fiz test-binary"
   exit 0
 fi
-echo "ddx-agent test binary"
+echo "fiz test binary"
 EOF
   chmod +x "${path}"
 }
@@ -119,7 +119,7 @@ run_shell_case() {
   tmp="$(mktemp -d)"
   home="${tmp}/home"
   mock_bin="${tmp}/mock-bin"
-  payload="${tmp}/fake-ddx-agent"
+  payload="${tmp}/fake-fiz"
   url_log="${tmp}/urls.log"
   out="${tmp}/install-output.log"
   install_dir="${home}/custom-bin"
@@ -141,8 +141,8 @@ run_shell_case() {
     bash "${INSTALL_SCRIPT}" >"${out}" 2>&1
   )
 
-  assert_file_exists "${install_dir}/ddx-agent"
-  assert_executable "${install_dir}/ddx-agent"
+  assert_file_exists "${install_dir}/fiz"
+  assert_executable "${install_dir}/fiz"
   local expected_rc_line
   if [[ "${rc_mode}" == "fish" ]]; then
     expected_rc_line="fish_add_path ${install_dir}"
@@ -155,7 +155,7 @@ run_shell_case() {
 
   local suffix
   suffix="$(platform_suffix)"
-  assert_contains "${url_log}" "releases/download/v9.9.9/ddx-agent-${suffix}"
+  assert_contains "${url_log}" "releases/download/v9.9.9/fiz-${suffix}"
 
   (
     export HOME="${home}"

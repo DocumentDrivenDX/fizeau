@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# DDX Agent installer — downloads the latest release binary for your platform.
-# Usage: curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/agent/master/install.sh | bash
+# Fizeau installer — downloads the latest release binary for your platform.
+# Usage: curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/fizeau/master/install.sh | bash
 
 set -euo pipefail
 
@@ -12,8 +12,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="DocumentDrivenDX/agent"
-BINARY_NAME="${BINARY_NAME:-ddx-agent}"
+REPO="DocumentDrivenDX/fizeau"
+BINARY_NAME="${BINARY_NAME:-fiz}"
 INSTALL_DIR="${FIZEAU_INSTALL_DIR:-$HOME/.local/bin}"
 SHELL_NAME=""
 RC_FILE=""
@@ -152,7 +152,7 @@ configure_path() {
         # Check if already added
         if ! grep -q "${INSTALL_DIR}" "$RC_FILE" 2>/dev/null; then
             echo "" >> "$RC_FILE"
-            echo "# DDX Agent CLI PATH" >> "$RC_FILE"
+            echo "# Fizeau CLI PATH" >> "$RC_FILE"
             
             case "$SHELL_NAME" in
                 fish)
@@ -165,7 +165,7 @@ configure_path() {
             
             success "Added ${BINARY_NAME} to PATH in $RC_FILE"
         else
-            success "DDX Agent is already configured in $RC_FILE"
+            success "Fizeau is already configured in $RC_FILE"
         fi
     else
         warn "Could not find shell config file. Please add ${INSTALL_DIR} to your PATH manually."
@@ -193,7 +193,7 @@ verify_installation() {
 
     # Test binary execution
     if ! "${INSTALL_DIR}/${BINARY_NAME}" --version &>/dev/null; then
-        warn "DDX Agent binary installed but '${BINARY_NAME} --version' command failed."
+        warn "Fizeau binary installed but '${BINARY_NAME} --version' command failed."
         warn "This may be normal if PATH is not yet configured."
     else
         success "Installation verification passed"
@@ -203,7 +203,7 @@ verify_installation() {
 # Show getting started information
 show_getting_started() {
     echo ""
-    echo -e "${GREEN}🎉 DDX Agent installed successfully!${NC}"
+    echo -e "${GREEN}🎉 Fizeau installed successfully!${NC}"
     echo ""
     echo -e "${BLUE}📚 Next Steps:${NC}"
     echo "   ${BINARY_NAME} version     Check your installation"
@@ -223,7 +223,7 @@ show_getting_started() {
     echo ""
     
     if command -v "${BINARY_NAME}" &>/dev/null; then
-        success "DDX Agent is ready to use! Run '${BINARY_NAME} --version' to verify."
+        success "Fizeau is ready to use! Run '${BINARY_NAME} --version' to verify."
     else
         warn "Please restart your shell or run the following to use ${BINARY_NAME} immediately:"
         echo ""
@@ -240,7 +240,7 @@ show_getting_started() {
 
 # Main installation flow
 main() {
-    echo -e "${BLUE}🚀 Installing DDX Agent — Embeddable Go Agent Runtime${NC}"
+    echo -e "${BLUE}🚀 Installing Fizeau — Embeddable Go Agent Runtime${NC}"
     echo ""
     
     check_prerequisites
