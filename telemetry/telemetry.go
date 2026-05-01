@@ -7,18 +7,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const (
-	// InstrumentationName identifies this package in OTel tracer/meter setup.
-	InstrumentationName = "github.com/DocumentDrivenDX/fizeau/telemetry"
+var (
+	// ProductName is the human-readable product identity used in telemetry.
+	ProductName = productinfo.Name
+	// ServiceName is the machine-readable service identity used in telemetry.
+	ServiceName = productinfo.ConfigDir
+	// InstrumentationName identifies this product in OTel tracer/meter setup.
+	InstrumentationName = productinfo.ConfigDir
+)
 
+const (
 	operationInvokeAgent = "invoke_agent"
 	operationChat        = "chat"
 	operationExecuteTool = "execute_tool"
+
+	// Standard OTel service key.
+	KeyServiceName = "service.name"
 
 	// DDX identity keys.
 	KeyHarnessName           = "ddx.harness.name"
@@ -399,6 +409,7 @@ func stateFromContext(ctx context.Context) runState {
 
 func runAttributes(attrs InvokeAgentSpan) []attribute.KeyValue {
 	out := []attribute.KeyValue{
+		attribute.String(KeyServiceName, ServiceName),
 		attribute.String(KeyOperationName, operationInvokeAgent),
 	}
 	out = appendString(out, KeyHarnessName, attrs.HarnessName)
@@ -414,6 +425,7 @@ func runAttributes(attrs InvokeAgentSpan) []attribute.KeyValue {
 
 func chatAttributes(attrs ChatSpan) []attribute.KeyValue {
 	out := []attribute.KeyValue{
+		attribute.String(KeyServiceName, ServiceName),
 		attribute.String(KeyOperationName, operationChat),
 	}
 	out = appendString(out, KeyHarnessName, attrs.HarnessName)
@@ -436,6 +448,7 @@ func chatAttributes(attrs ChatSpan) []attribute.KeyValue {
 
 func chatMetricAttributes(attrs ChatSpan, metrics ChatMetrics) []attribute.KeyValue {
 	out := []attribute.KeyValue{
+		attribute.String(KeyServiceName, ServiceName),
 		attribute.String(KeyOperationName, operationChat),
 	}
 	out = appendString(out, KeyProviderName, attrs.ProviderName)
@@ -460,6 +473,7 @@ func tokenMetricAttributes(base []attribute.KeyValue, tokenType string) []attrib
 
 func toolAttributes(attrs ExecuteToolSpan) []attribute.KeyValue {
 	out := []attribute.KeyValue{
+		attribute.String(KeyServiceName, ServiceName),
 		attribute.String(KeyOperationName, operationExecuteTool),
 	}
 	out = appendString(out, KeyHarnessName, attrs.HarnessName)

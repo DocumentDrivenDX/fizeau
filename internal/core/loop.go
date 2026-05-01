@@ -45,9 +45,10 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	}
 	defer runtimeTelemetry.Shutdown(context.Background())
 	rootCtx, rootSpan := runtimeTelemetry.StartInvokeAgent(ctx, telemetry.InvokeAgentSpan{
-		HarnessName:    "agent",
+		HarnessName:    telemetry.ServiceName,
 		SessionID:      sessionID,
 		ConversationID: sessionID,
+		AgentName:      telemetry.ProductName,
 	})
 	ctx = rootCtx
 	chatMetricsRecorder, _ := runtimeTelemetry.(telemetry.ChatMetricsRecorder)
@@ -259,7 +260,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		for attempt := 1; attempt <= maxProviderAttempts; attempt++ {
 			chatStart := time.Now()
 			chatAttrs := telemetry.ChatSpan{
-				HarnessName:    "agent",
+				HarnessName:    telemetry.ServiceName,
 				SessionID:      sessionID,
 				ConversationID: sessionID,
 				TurnIndex:      iteration + 1,
@@ -589,7 +590,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				go func() {
 					defer wg.Done()
 					toolCtx, toolSpan := runtimeTelemetry.StartExecuteTool(ctx, telemetry.ExecuteToolSpan{
-						HarnessName:        "agent",
+						HarnessName:        telemetry.ServiceName,
 						SessionID:          sessionID,
 						ConversationID:     sessionID,
 						TurnIndex:          iteration + 1,
@@ -627,7 +628,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			// Execute each tool call sequentially.
 			for toolExecutionIndex, tc := range resp.ToolCalls {
 				toolCtx, toolSpan := runtimeTelemetry.StartExecuteTool(ctx, telemetry.ExecuteToolSpan{
-					HarnessName:        "agent",
+					HarnessName:        telemetry.ServiceName,
 					SessionID:          sessionID,
 					ConversationID:     sessionID,
 					TurnIndex:          iteration + 1,

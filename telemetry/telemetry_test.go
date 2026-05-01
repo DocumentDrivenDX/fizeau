@@ -50,6 +50,14 @@ func TestNewNoop(t *testing.T) {
 	tel.Shutdown(context.Background())
 }
 
+func TestGenAIAgentKeysRemainStandard(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "gen_ai.agent.name", KeyAgentName)
+	assert.Equal(t, "gen_ai.agent.version", KeyAgentVersion)
+	assert.Equal(t, "gen_ai.agent.id", KeyAgentID)
+}
+
 func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	t.Parallel()
 
@@ -97,6 +105,8 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	require.Len(t, ended, 3)
 
 	root := findSpan(t, ended, "invoke_agent agent")
+	require.Equal(t, "fizeau", root.InstrumentationScope().Name)
+	require.Equal(t, "fizeau", attrString(t, root.Attributes(), KeyServiceName))
 	require.Equal(t, "invoke_agent", attrString(t, root.Attributes(), KeyOperationName))
 	require.Equal(t, "agent", attrString(t, root.Attributes(), KeyHarnessName))
 	require.Equal(t, "1.0.0", attrString(t, root.Attributes(), KeyHarnessVersion))
@@ -108,8 +118,10 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	require.Equal(t, "a-1", attrString(t, root.Attributes(), KeyAgentID))
 
 	chat := findSpan(t, ended, "chat gpt-4.1")
+	require.Equal(t, "fizeau", chat.InstrumentationScope().Name)
 	require.Equal(t, root.SpanContext().TraceID(), chat.SpanContext().TraceID())
 	require.Equal(t, root.SpanContext().SpanID(), chat.Parent().SpanID())
+	require.Equal(t, "fizeau", attrString(t, chat.Attributes(), KeyServiceName))
 	require.Equal(t, "chat", attrString(t, chat.Attributes(), KeyOperationName))
 	require.Equal(t, "agent", attrString(t, chat.Attributes(), KeyHarnessName))
 	require.Equal(t, "s-1", attrString(t, chat.Attributes(), KeySessionID))
@@ -126,8 +138,10 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	require.Equal(t, int64(443), attrInt(t, chat.Attributes(), KeyServerPort))
 
 	tool := findSpan(t, ended, "execute_tool read")
+	require.Equal(t, "fizeau", tool.InstrumentationScope().Name)
 	require.Equal(t, root.SpanContext().TraceID(), tool.SpanContext().TraceID())
 	require.Equal(t, chat.SpanContext().SpanID(), tool.Parent().SpanID())
+	require.Equal(t, "fizeau", attrString(t, tool.Attributes(), KeyServiceName))
 	require.Equal(t, "execute_tool", attrString(t, tool.Attributes(), KeyOperationName))
 	require.Equal(t, "agent", attrString(t, tool.Attributes(), KeyHarnessName))
 	require.Equal(t, "s-1", attrString(t, tool.Attributes(), KeySessionID))
@@ -190,12 +204,15 @@ func TestRecordChatMetrics(t *testing.T) {
 
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(context.Background(), &rm))
+	require.NotEmpty(t, rm.ScopeMetrics)
+	assert.Equal(t, "fizeau", rm.ScopeMetrics[0].Scope.Name)
 
 	durationMetric := findMetric(t, rm, "gen_ai.client.operation.duration")
 	durationPoints := histogramFloatPoints(t, durationMetric)
 	require.Len(t, durationPoints, 1)
 	assert.Equal(t, uint64(1), durationPoints[0].Count)
 	assert.InDelta(t, 0.25, durationPoints[0].Sum, 1e-9)
+	assert.Equal(t, "fizeau", metricAttrString(t, durationPoints[0].Attributes, KeyServiceName))
 	assert.Equal(t, "lmstudio", metricAttrString(t, durationPoints[0].Attributes, KeyProviderName))
 	assert.Equal(t, "openai", metricAttrString(t, durationPoints[0].Attributes, KeyProviderSystem))
 	assert.Equal(t, "gpt-4o", metricAttrString(t, durationPoints[0].Attributes, KeyRequestModel))

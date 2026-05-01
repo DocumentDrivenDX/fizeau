@@ -1080,7 +1080,7 @@ func TestRun_EmitsCostAttributesOnChatAndRootSpans(t *testing.T) {
 
 		ended := recorder.Ended()
 		require.Len(t, ended, 2)
-		root := spanByName(t, ended, "invoke_agent agent")
+		root := spanByName(t, ended, "invoke_agent fizeau")
 		chat := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
 
 		assert.Equal(t, string(CostSourceConfigured), attrString(t, chat.Attributes(), telemetry.KeyCostSource))
@@ -1165,7 +1165,7 @@ func TestRun_EmitsCostAttributesOnChatAndRootSpans(t *testing.T) {
 
 		ended := recorder.Ended()
 		require.Len(t, ended, 4)
-		root := spanByName(t, ended, "invoke_agent agent")
+		root := spanByName(t, ended, "invoke_agent fizeau")
 		chatOne := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
 		chatTwo := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 2, telemetry.KeyAttemptIndex, 1)
 
@@ -1216,7 +1216,7 @@ func TestRun_EmitsCostAttributesOnChatAndRootSpans(t *testing.T) {
 
 		ended := recorder.Ended()
 		require.Len(t, ended, 2)
-		root := spanByName(t, ended, "invoke_agent agent")
+		root := spanByName(t, ended, "invoke_agent fizeau")
 		chat := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
 
 		assert.Equal(t, string(CostSourceUnknown), attrString(t, chat.Attributes(), telemetry.KeyCostSource))
@@ -1291,7 +1291,7 @@ func TestRun_EmitsTraceSpansWithTurnAndAttemptIdentity(t *testing.T) {
 	ended := recorder.Ended()
 	require.Len(t, ended, 4)
 
-	root := spanByName(t, ended, "invoke_agent agent")
+	root := spanByName(t, ended, "invoke_agent fizeau")
 	chatOne := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
 	chatTwo := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 2, telemetry.KeyAttemptIndex, 1)
 	toolSpan := spanByToolExec(t, ended, 1, 1, "read")
@@ -1350,7 +1350,7 @@ func TestRun_RoutingReportUpdatesResultAndRootSpan(t *testing.T) {
 	assert.Equal(t, []string{"bragi", "openrouter"}, result.AttemptedProviders)
 	assert.Equal(t, 1, result.FailoverCount)
 
-	root := spanByName(t, recorder.Ended(), "invoke_agent agent")
+	root := spanByName(t, recorder.Ended(), "invoke_agent fizeau")
 	assert.Equal(t, "openrouter", attrString(t, root.Attributes(), telemetry.KeyProviderName))
 	assert.Equal(t, "qwen3.5-27b", attrString(t, root.Attributes(), telemetry.KeyProviderRoute))
 	assert.Equal(t, "qwen3.5-27b", attrString(t, root.Attributes(), telemetry.KeyRequestModel))

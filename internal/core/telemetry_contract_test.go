@@ -111,7 +111,7 @@ func TestRun_CONTRACT001SpanConformance(t *testing.T) {
 	ended := recorder.Ended()
 	require.Len(t, ended, 4)
 
-	root := spanByName(t, ended, "invoke_agent agent")
+	root := spanByName(t, ended, "invoke_agent fizeau")
 	chatOne := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 1, telemetry.KeyAttemptIndex, 1)
 	chatTwo := spanByAttrInt(t, ended, telemetry.KeyTurnIndex, 2, telemetry.KeyAttemptIndex, 1)
 	toolSpan := spanByToolExec(t, ended, 1, 1, "read")
@@ -138,6 +138,9 @@ func TestRun_CONTRACT001SpanConformance(t *testing.T) {
 	assert.Equal(t, result.SessionID, attrString(t, toolSpan.Attributes(), telemetry.KeyConversationID))
 
 	assert.Equal(t, "invoke_agent", attrString(t, root.Attributes(), telemetry.KeyOperationName))
+	assert.Equal(t, "fizeau", attrString(t, root.Attributes(), telemetry.KeyServiceName))
+	assert.Equal(t, "fizeau", attrString(t, root.Attributes(), telemetry.KeyHarnessName))
+	assert.Equal(t, "Fizeau", attrString(t, root.Attributes(), telemetry.KeyAgentName))
 	assert.Equal(t, "chat", attrString(t, chatOne.Attributes(), telemetry.KeyOperationName))
 	assert.Equal(t, "chat", attrString(t, chatTwo.Attributes(), telemetry.KeyOperationName))
 	assert.Equal(t, "execute_tool", attrString(t, toolSpan.Attributes(), telemetry.KeyOperationName))
@@ -308,7 +311,7 @@ func TestRun_CONTRACT001MixedKnownCostProvenance(t *testing.T) {
 
 	ended := recorder.Ended()
 	require.Len(t, ended, 4)
-	root := spanByName(t, ended, "invoke_agent agent")
+	root := spanByName(t, ended, "invoke_agent fizeau")
 
 	assert.InDelta(t, 0.03, attrFloat(t, root.Attributes(), telemetry.KeyCostAmount), 1e-9)
 	assert.False(t, hasAttr(root.Attributes(), telemetry.KeyCostSource))
