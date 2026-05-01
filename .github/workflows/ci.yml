@@ -39,6 +39,9 @@ jobs:
       - name: Format check
         run: make fmt-check
 
+      - name: Rename noise check
+        run: make rename-noise-check
+
       - name: Test
         run: make test-no-race
 

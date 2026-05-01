@@ -1,6 +1,6 @@
 package agentcli
 
-// route_status.go implements `ddx-agent route-status --overrides`
+// route_status.go implements `fiz route-status --overrides`
 // (ADR-006 §5). The base `route-status` command lives in routing_smart.go
 // and dispatches into this file when --overrides is set.
 //

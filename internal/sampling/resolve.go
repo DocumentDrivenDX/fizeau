@@ -51,7 +51,7 @@ type ResolveResult struct {
 	// MissingProfile is true when the caller asked for a named catalog
 	// profile (profileName != "") but the catalog did not declare it. The
 	// CLI uses this to emit a single first-use nudge pointing at
-	// "ddx-agent catalog update". MissingProfile is false when
+	// "fiz catalog update". MissingProfile is false when
 	// profileName is empty (no L1 lookup was attempted) or when the
 	// resolver short-circuited via harness_pinned (deliberate skip, not
 	// a missing-data condition).

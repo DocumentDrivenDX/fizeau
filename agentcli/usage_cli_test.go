@@ -220,12 +220,12 @@ func buildAgentCLI(t *testing.T) string {
 	t.Helper()
 
 	buildCLIOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "ddx-agent-cli-*")
+		dir, err := os.MkdirTemp("", "fiz-cli-*")
 		if err != nil {
 			buildCLIErr = err
 			return
 		}
-		exe := filepath.Join(dir, "ddx-agent")
+		exe := filepath.Join(dir, "fiz")
 		wd, err := os.Getwd()
 		if err != nil {
 			buildCLIErr = err
@@ -236,7 +236,7 @@ func buildAgentCLI(t *testing.T) string {
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			buildCLIErr = fmt.Errorf("build ddx-agent CLI: %w\n%s", err, strings.TrimSpace(string(out)))
+			buildCLIErr = fmt.Errorf("build fiz CLI: %w\n%s", err, strings.TrimSpace(string(out)))
 			return
 		}
 		buildCLIPath = exe

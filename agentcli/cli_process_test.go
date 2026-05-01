@@ -345,7 +345,7 @@ providers:
     model: qwen/qwen3-coder-next
     headers:
       HTTP-Referer: https://example.com
-      X-Title: DDX Agent
+      X-Title: Fizeau
 default: openrouter
 `)
 

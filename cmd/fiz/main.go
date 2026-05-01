@@ -1,4 +1,4 @@
-// Command ddx-agent is a standalone CLI that wraps the agent library.
+// Command fiz is a standalone CLI that wraps the fizeau library.
 package main
 
 import (

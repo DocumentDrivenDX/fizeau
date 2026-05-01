@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// MountOption customizes a mounted ddx-agent command tree.
+// MountOption customizes a mounted fiz command tree.
 type MountOption func(*mountConfig)
 
 type mountConfig struct {

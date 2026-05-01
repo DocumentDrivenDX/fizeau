@@ -1,5 +1,5 @@
 // Package comparison provides cross-harness comparison, benchmarking, and
-// quorum primitives for the ddx-agent integration suite.
+// quorum primitives for the fizeau integration suite.
 package comparison
 
 import "time"

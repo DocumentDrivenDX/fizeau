@@ -517,7 +517,7 @@ func (c *Config) BuildProvider(name string) (agent.Provider, error) {
 
 // BuildTelemetry constructs the telemetry runtime from config.
 // Pricing entries from the model catalog are seeded into RuntimePricing as
-// fallback defaults; user-configured entries in ddx-agent.yaml take precedence.
+// fallback defaults; user-configured entries in fizeau.yaml take precedence.
 func (c *Config) BuildTelemetry() telemetry.Telemetry {
 	pricing := c.buildRuntimePricing()
 	return telemetry.New(telemetry.Config{

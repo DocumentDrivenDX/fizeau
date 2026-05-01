@@ -69,6 +69,10 @@ var skippedFiles = map[string]bool{
 	"service_providers_test.go":          true,
 	"service_route_attempts_test.go":     true,
 	"service_status_test.go":             true,
+	// Guard test that embeds "ddx-agent-" as a sentinel to assert its absence
+	// from the release workflow. The rename-noise gate enforces the same
+	// constraint globally; the literal in the test is the checked value, not usage.
+	"release_artifact_names_test.go": true,
 }
 
 func Scan(opts Options) ([]Finding, error) {

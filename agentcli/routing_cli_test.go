@@ -585,7 +585,7 @@ providers:
 }
 
 // TestRouteStatus_ShowsEligibleCandidatesPerIntent asserts that
-// `ddx-agent route-status --profile <p>` calls service.ResolveRoute and
+// `fiz route-status --profile <p>` calls service.ResolveRoute and
 // renders the engine's full candidate trace — every catalog candidate that
 // matches the profile's tier+capability filter, with score components and a
 // filter_reason for ineligible ones. Per ADR-005 §5.

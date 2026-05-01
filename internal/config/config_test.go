@@ -363,7 +363,7 @@ func TestBuildProvider_WithHeaders(t *testing.T) {
 				Model:   "test",
 				Headers: map[string]string{
 					"HTTP-Referer": "https://example.com",
-					"X-Title":      "DDX Agent",
+					"X-Title":      "Fizeau",
 				},
 			},
 		},

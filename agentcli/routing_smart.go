@@ -1,7 +1,7 @@
 package agentcli
 
 // routing_smart.go implements the legacy per-route smart routing used by the
-// standalone `ddx-agent` CLI to rank providers within an explicit route key.
+// standalone `fiz` CLI to rank providers within an explicit route key.
 //
 // As of agent-1a486c2e, the canonical cross-harness routing engine lives in
 // `internal/routing` and is reachable via `fizeau.FizeauService.ResolveRoute`. The

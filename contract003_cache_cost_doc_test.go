@@ -12,7 +12,7 @@ import (
 // explicit zero on CacheReadAmount/CacheWriteAmount means the caller opted
 // out via CachePolicy=off; nil means the harness or provider did not report.
 func TestContract003_CacheCostProseExists(t *testing.T) {
-	const path = "docs/helix/02-design/contracts/CONTRACT-003-ddx-agent-service.md"
+	const path = "docs/helix/02-design/contracts/CONTRACT-003-fizeau-service.md"
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)

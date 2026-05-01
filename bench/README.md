@@ -1,14 +1,14 @@
-# ddx-agent-bench
+# bench
 
 This directory contains the benchmark corpus and (gitignored) results for
-`ddx-agent-bench`.
+`bench`.
 
 ## Layout
 
 ```
 bench/
   corpus/          # versioned task definitions (YAML/JSON)
-  results/         # gitignored; populated by `ddx-agent-bench run`
+  results/         # gitignored; populated by `bench run`
 ```
 
 ## Corpus format
@@ -33,17 +33,17 @@ tags:
 
 ```sh
 # List discovered candidates
-ddx-agent-bench discover
+bench discover
 
 # Run corpus against all candidates
-ddx-agent-bench run
+bench run
 
 # Run against a specific harness only
-ddx-agent-bench run --harness=claude
+bench run --harness=claude
 
 # Render the most recent result
-ddx-agent-bench report
-ddx-agent-bench report --format=markdown
+bench report
+bench report --format=markdown
 ```
 
 Results are written to `bench/results/` and are **not tracked by git**.

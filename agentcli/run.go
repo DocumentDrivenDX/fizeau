@@ -71,7 +71,7 @@ var (
 	GitCommit = ""
 )
 
-// Run executes the ddx-agent CLI and returns its process exit code. It never
+// Run executes the fiz CLI and returns its process exit code. It never
 // calls os.Exit, which lets parent CLIs mount or test the command safely.
 func Run(opts Options) int {
 	if opts.Stdin == nil {

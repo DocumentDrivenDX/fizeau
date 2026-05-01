@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// runAgentCLI runs the ddx-agent CLI from the project root.
+// runAgentCLI runs the fiz CLI from the project root.
 func runAgentCLI(t *testing.T, args ...string) ([]byte, error) {
 	t.Helper()
 	wd, err := os.Getwd()

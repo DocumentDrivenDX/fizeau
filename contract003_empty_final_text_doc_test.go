@@ -11,7 +11,7 @@ import (
 // know not to retry on empty text alone. The test grep-asserts the prose so
 // future edits cannot silently drop the convention without failing CI.
 func TestContract003_EmptyFinalTextProseExists(t *testing.T) {
-	const path = "docs/helix/02-design/contracts/CONTRACT-003-ddx-agent-service.md"
+	const path = "docs/helix/02-design/contracts/CONTRACT-003-fizeau-service.md"
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)

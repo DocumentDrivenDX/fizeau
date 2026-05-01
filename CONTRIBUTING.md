@@ -1,4 +1,4 @@
-# Contributing to DDX Agent
+# Contributing to Fizeau
 
 ## Development Setup
 

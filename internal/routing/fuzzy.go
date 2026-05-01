@@ -1,4 +1,4 @@
-// Package routing implements the unified routing engine for ddx-agent.
+// Package routing implements the unified routing engine for fizeau.
 // It ranks (harness, provider, model) candidates uniformly per CONTRACT-003.
 //
 // The engine consolidates DDx-side harness-tier routing and agent-side

@@ -17,7 +17,7 @@ catalog-dist:
 		--min-agent-version "$${MIN_AGENT_VERSION:-$$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo dev)}"
 
 rename-noise-check:
-	go run ./cmd/renamecheck --repo .
+	go run ./cmd/renamecheck --repo . --fail
 
 build-ci:
 	go build ./...
@@ -68,7 +68,7 @@ gosec:
 govulncheck:
 	govulncheck ./...
 
-ci-checks: build-ci vet lint gosec govulncheck fmt-check test-no-race test-race
+ci-checks: build-ci vet lint gosec govulncheck fmt-check rename-noise-check test-no-race test-race
 	@echo "All CI checks passed."
 
 check: fmt vet lint test coverage-ratchet

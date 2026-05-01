@@ -15,7 +15,7 @@ import (
 	sessionusage "github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
-// FizeauService is the entire public Go surface of the ddx-agent module.
+// FizeauService is the entire public Go surface of the fizeau module.
 // See CONTRACT-003 for the full specification.
 type FizeauService interface {
 	Execute(ctx context.Context, req ServiceExecuteRequest) (<-chan ServiceEvent, error)
@@ -105,7 +105,7 @@ type ServiceProviderEndpoint struct {
 type ServiceOptions struct {
 	seamOptions
 
-	ConfigPath string    // optional override; default $XDG_CONFIG_HOME/ddx-agent/config.yaml
+	ConfigPath string    // optional override; default $XDG_CONFIG_HOME/fizeau/config.yaml
 	Logger     io.Writer // optional; agent writes structured session logs internally regardless
 
 	// ServiceConfig, when non-nil, supplies provider and routing data for
@@ -571,7 +571,7 @@ type RouteCandidateStatus struct {
 type ServiceEvent = harnesses.Event
 
 // ServiceExecuteRequest is the public ExecuteRequest type per CONTRACT-003.
-// See docs/helix/02-design/contracts/CONTRACT-003-ddx-agent-service.md
+// See docs/helix/02-design/contracts/CONTRACT-003-fizeau-service.md
 // (§"Public types") for the canonical shape; this struct is its in-process
 // twin under the agent module.
 type ServiceExecuteRequest struct {

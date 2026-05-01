@@ -2022,7 +2022,7 @@ func TestRun_OverflowCompactionNoFitReturnsError(t *testing.T) {
 
 // TestRun_NoOpCompactionEmitsNoEvents verifies that when the compactor
 // returns the no-op signal (msgs, nil, nil), neither EventCompactionStart
-// nor EventCompactionEnd is emitted. Per CONTRACT-003-ddx-agent-service:
+// nor EventCompactionEnd is emitted. Per CONTRACT-003-fizeau-service:
 // "type=compaction events fire ONLY when actual work was performed.
 // No-op compactions emit nothing."
 //
@@ -2060,7 +2060,7 @@ func TestRun_NoOpCompactionEmitsNoEvents(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.GreaterOrEqual(t, compactionCalls, 1, "compactor should have been invoked at least once (pre-iteration check)")
-	assert.Empty(t, compactionEvents, "no-op compactions must emit zero events at default verbosity (per CONTRACT-003-ddx-agent-service)")
+	assert.Empty(t, compactionEvents, "no-op compactions must emit zero events at default verbosity (per CONTRACT-003-fizeau-service)")
 }
 
 func TestRun_OverflowCompactionSuccessRetryStillOverflowsReturnsError(t *testing.T) {
