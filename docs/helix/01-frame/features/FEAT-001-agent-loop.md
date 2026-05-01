@@ -9,11 +9,11 @@ ddx:
 **Feature ID**: FEAT-001
 **Status**: Draft
 **Priority**: P0
-**Owner**: DDX Agent Team
+**Owner**: Fizeau Team
 
 ## Overview
 
-The agent loop is DDX Agent's core — a tool-calling LLM conversation loop that
+The agent loop is Fizeau's core — a tool-calling LLM conversation loop that
 sends a prompt, executes tool calls from the model's response, feeds results
 back, and repeats until the model produces a final text response or limits are
 reached. This implements PRD P0 requirements 1, 8, 10, and 11.
@@ -94,7 +94,7 @@ reached. This implements PRD P0 requirements 1, 8, 10, and 11.
 
 ## Constraints and Assumptions
 
-- The caller provides a fully configured provider — DDX Agent does not manage API
+- The caller provides a fully configured provider — Fizeau does not manage API
   keys or provider selection (that's model routing, FEAT-004)
 - Tool set is fixed at compile time for P0; extensible tool registration is P2
 

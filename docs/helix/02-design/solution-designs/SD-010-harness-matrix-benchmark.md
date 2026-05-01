@@ -5,7 +5,7 @@ ddx:
   created: 2026-04-29
   depends_on:
     - SD-008   # Terminal-Bench / Harbor integration audit
-    - SD-009   # ddx-agent Benchmark Mode
+    - SD-009   # fiz Benchmark Mode
     - harness-matrix-plan-2026-04-29   # plan v7 (codex peer review v6)
 ---
 
@@ -20,7 +20,7 @@ ddx:
 ## 1. Summary
 
 This spec governs the **multi-harness × model matrix benchmark**: TerminalBench-2
-runs that compare ddx-agent against other CLI agent harnesses (initial tranche:
+runs that compare fiz against other CLI agent harnesses (initial tranche:
 `pi`, `opencode`) on a shared anchor model and a shared task subset, and that
 extend in later tranches to a second model and to frontier-reference cells
 (`codex`, `claude-code`).
@@ -32,9 +32,9 @@ extend in later tranches to a second model and to frontier-reference cells
   ("Multi-Harness Extension") and reuses the in-container layout for every
   harness in the matrix. Harnesses that cannot be installed in-container are
   documented and dropped — never run host-side.
-- **SD-009** (ddx-agent Benchmark Mode) governs single-harness ddx-agent
+- **SD-009** (fiz Benchmark Mode) governs single-harness fiz
   evaluation. Its §5 thresholds (resolved-task floor 0.55, target 0.7) are
-  **scoped to ddx-agent's own runs only**. Cross-harness cells use **mean reward
+  **scoped to fiz's own runs only**. Cross-harness cells use **mean reward
   ± SD over reps (minimum 3 reps per cell)** and are not gated by those
   thresholds. SD-009 §7.1 cross-references SD-010 for the multi-harness
   publication policy and §9 lifts the resumability / failure taxonomy normatively.
@@ -69,17 +69,17 @@ and in-container layouts contaminates the comparison. Harnesses that can't be
 installed in-container are dropped from the matrix (documented in the OSS
 harness install spike), not run host-side.
 
-### D2. Single CLI entry: `ddx-agent-bench matrix`
+### D2. Single CLI entry: `fiz-bench matrix`
 
 A Go subcommand replaces the parallel-shell-scripts approach. It reuses the
 existing TB subset loader and harness registry; it shells out to `harbor run`
 once per run.
 
 ```
-ddx-agent-bench matrix \
+fiz-bench matrix \
   --subset=scripts/beadbench/external/termbench-subset-canary.json \
   --profiles=gpt-5-3-mini \
-  --harnesses=ddx-agent,pi,opencode \
+  --harnesses=fiz,pi,opencode \
   --reps=3 \
   --budget-usd=15 \
   --out=benchmark-results/matrix-<ts>/ \
@@ -92,7 +92,7 @@ No `--concurrency` flag in v1 — see D6.
 
 The existing `cmd/bench --external=termbench` path **survives** as
 `--mode=smoke` — fast, ungraded, host tempdir, useful while iterating on
-ddx-agent code. The matrix subcommand is the **only** graded multi-harness
+fiz code. The matrix subcommand is the **only** graded multi-harness
 path. The smoke path MUST NOT be used to produce cross-harness comparison
 memos.
 
@@ -219,7 +219,7 @@ invocation passes the adapter module path explicitly to Harbor:
 
 ```
 harbor run \
-  --agent scripts/benchmark/harness_adapters/ddx_agent.py:Agent \
+  --agent scripts/benchmark/harness_adapters/fiz.py:Agent \
   --task <task-dir> \
   --output <cell-out>/<task-id>/ \
   --env DDX_BENCH_PROFILE_PATH=<profile.yaml>
@@ -340,7 +340,7 @@ See §2 D5. Restated normatively:
 
 ## 6. Aggregator Output Format (Normative)
 
-`ddx-agent-bench matrix-aggregate <out>/` produces three files in the matrix
+`fiz-bench matrix-aggregate <out>/` produces three files in the matrix
 output directory.
 
 ### 6.1 `matrix.json`
@@ -367,14 +367,14 @@ Human-readable summary in this exact shape:
 
 | Harness     | gpt-5-mini      | claude-code-anchor |
 |-------------|-----------------|--------------------|
-| ddx-agent   | 0.67 ± 0.33     | —                  |
+| fiz   | 0.67 ± 0.33     | —                  |
 | pi          | 0.33 ± 0.47     | —                  |
 | opencode    | 0.50 ± 0.41     | —                  |
 | claude-code | —               | 0.83 ± 0.24        |
 
 ## Per-task pass count (out of N reps)
 
-| Task                       | ddx-agent / gpt-5-mini | pi / gpt-5-mini | opencode / gpt-5-mini |
+| Task                       | fiz / gpt-5-mini | pi / gpt-5-mini | opencode / gpt-5-mini |
 |----------------------------|------------------------|-----------------|------------------------|
 | hello-world                | 3/3                    | 3/3             | 3/3                    |
 | log-summary-date-ranges    | 2/3                    | 0/3             | 1/3                    |
@@ -384,7 +384,7 @@ Human-readable summary in this exact shape:
 
 | Cell                       | Input tok | Output tok | Cached tok | Cost ($) |
 |----------------------------|-----------|------------|------------|----------|
-| ddx-agent / gpt-5-mini     | 1.2M      | 0.4M       | 0.3M       | 1.42     |
+| fiz / gpt-5-mini     | 1.2M      | 0.4M       | 0.3M       | 1.42     |
 
 ## Non-graded runs
 
@@ -404,7 +404,7 @@ Per-cell breakdown:
 {
   "cells": [
     {
-      "harness": "ddx-agent",
+      "harness": "fiz",
       "profile_id": "gpt-5-mini",
       "input_tokens": 1234567,
       "output_tokens": 456789,
@@ -507,7 +507,7 @@ The review record is checked into `docs/research/` alongside the memo.
 
 Public memos that cite frontier-reference cells use the vendor-canonical
 product name and version (e.g. "Claude Code 1.x", "Codex CLI N.y") and link
-the harness's release notes. ddx-agent's own results are not branded as
+the harness's release notes. fiz's own results are not branded as
 "beating Claude Code" or similar; the central caveat (§1, §7.1) makes that
 framing invalid.
 
@@ -515,7 +515,7 @@ framing invalid.
 
 The frontier-reference adapter implementation work is intentionally **moved
 to a follow-up tranche** (per the plan v7 codex-v6 cut). The initial tranche
-under this spec covers ddx-agent + pi + opencode only. ToS approval for
+under this spec covers fiz + pi + opencode only. ToS approval for
 public memos is gated to the follow-up tranche where the adapters land; it
 does not block the initial epic.
 

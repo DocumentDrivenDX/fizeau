@@ -9,24 +9,24 @@ ddx:
 ## Problem
 
 Users of pi and opencode have already configured their LLM providers — API
-keys, LM Studio endpoints, custom model definitions. DDX Agent shouldn't require
+keys, LM Studio endpoints, custom model definitions. Fizeau shouldn't require
 them to duplicate this work. But runtime coupling to other tools' config
 formats creates fragile dependencies and maintenance burden.
 
 ## Design: Import-Time Translation
 
-DDX Agent reads other tools' configs at **import time** (explicit user action),
+Fizeau reads other tools' configs at **import time** (explicit user action),
 translates them to agent-native `.agent/config.yaml` (per SD-005 schema),
 and records the import source so it can detect drift later.
 
 ### CLI Commands
 
 ```
-ddx-agent import pi              # import from ~/.pi/agent/{auth,settings,models}.json
-ddx-agent import opencode         # import from ~/.local/share/opencode/auth.json + opencode.json
-ddx-agent import pi --diff        # show what pi has that agent doesn't (dry run)
-ddx-agent import opencode --diff  # same for opencode
-ddx-agent import pi --merge       # merge new providers without overwriting existing
+fiz import pi              # import from ~/.pi/agent/{auth,settings,models}.json
+fiz import opencode         # import from ~/.local/share/opencode/auth.json + opencode.json
+fiz import pi --diff        # show what pi has that agent doesn't (dry run)
+fiz import opencode --diff  # same for opencode
+fiz import pi --merge       # merge new providers without overwriting existing
 ```
 
 ### Zero-Config Discovery
@@ -36,15 +36,15 @@ When agent starts with no providers configured (no `.agent/config.yaml`, no
 vars), it checks for importable configs and shows a notice:
 
 ```
-agent: no providers configured. Found pi config at ~/.pi/agent/ — run 'ddx-agent import pi' to import.
+agent: no providers configured. Found pi config at ~/.pi/agent/ — run 'fiz import pi' to import.
 ```
 
-This is a one-line stderr notice, not an error. DDX Agent still runs if env vars
+This is a one-line stderr notice, not an error. Fizeau still runs if env vars
 provide a usable provider.
 
 ### Import Sources
 
-#### Pi (`ddx-agent import pi`)
+#### Pi (`fiz import pi`)
 
 **Reads:**
 - `~/.pi/agent/auth.json` — OAuth tokens and API keys per provider
@@ -61,14 +61,14 @@ The import merges them:
    credentials. If models.json has its own `apiKey`, use that (local providers
    like LM Studio use placeholder keys like `"lmstudio"`)
 3. For auth.json entries with NO matching models.json provider (e.g.,
-   `anthropic`, `openai-codex`, `openrouter`), create ddx-agent providers using
+   `anthropic`, `openai-codex`, `openrouter`), create fiz providers using
    well-known defaults (built-in URL, type mapping)
 4. Apply settings.json `defaultProvider` + `defaultModel` for the `default:`
    field, mapping pi provider names to the agent provider name
 
 **Pi provider name → agent provider mapping:**
 
-| Pi auth name | DDX Agent name | Type | Default URL | Notes |
+| Pi auth name | Fizeau name | Type | Default URL | Notes |
 |-------------|------------|------|-------------|-------|
 | `anthropic` | `anthropic` | `anthropic` | (SDK default) | OAuth access token as API key |
 | `openai-codex` | `openai` | `openai-compat` | `https://api.openai.com/v1` | OAuth access token as bearer |
@@ -109,7 +109,7 @@ the provider's `/v1/models` endpoint to discover available models. If
 unreachable, omits the `model` field (agent will use whatever the provider
 defaults to).
 
-#### OpenCode (`ddx-agent import opencode`)
+#### OpenCode (`fiz import opencode`)
 
 **Reads:**
 - `~/.local/share/opencode/auth.json` — `{type: "api", key: "..."}`
@@ -161,10 +161,10 @@ because the hash is one-way and truncated — it detects "something changed"
 without revealing what.
 
 **Check logic:**
-- On `ddx-agent providers` or `ddx-agent -p`, if `imported_from` exists and source
+- On `fiz providers` or `fiz -p`, if `imported_from` exists and source
   files have a different hash, emit once per day:
   ```
-  agent: pi config changed since import — run 'ddx-agent import pi --diff' to review
+  agent: pi config changed since import — run 'fiz import pi --diff' to review
   ```
 - Debounced by checking mtime of `~/.config/agent/.import-check-{source}`
 - Per-source, so pi and opencode drift are tracked independently
@@ -179,13 +179,13 @@ or the user may want the endpoint config without the token).
 
 ### Merge Mode
 
-`ddx-agent import pi --merge`:
+`fiz import pi --merge`:
 - Adds new providers that don't exist in agent config
 - For existing providers: updates `api_key` only (credentials refresh)
 - Never overwrites `base_url`, `model`, `headers` (user may have customized)
 - Reports what was added, what was updated, what was skipped
 
-`ddx-agent import pi` (no `--merge`):
+`fiz import pi` (no `--merge`):
 - Replaces the entire `providers:` section
 - Preserves non-provider config (`max_iterations`, `session_log_dir`, `preset`)
 - Preserves `imported_from` metadata
@@ -236,7 +236,7 @@ The config loader ignores `imported_from` — it's metadata, not provider config
 | 2 | Pi models.json reader (picompat/models.go) | — |
 | 3 | Pi settings.json reader + translate to agent config | 1, 2 |
 | 4 | OpenCode auth + config reader (occompat/) | — |
-| 5 | `ddx-agent import` CLI command with diff/merge/redaction | 3, 4 |
+| 5 | `fiz import` CLI command with diff/merge/redaction | 3, 4 |
 | 6 | Zero-config discovery notice in CLI startup | 5 |
 | 7 | Drift detection (hash check + daily debounce) | 5 |
 | 8 | Standard env var fallback in config.Load() | — |

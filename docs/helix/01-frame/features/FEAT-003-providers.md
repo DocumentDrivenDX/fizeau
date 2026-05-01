@@ -9,11 +9,11 @@ ddx:
 **Feature ID**: FEAT-003
 **Status**: Draft
 **Priority**: P0
-**Owner**: DDX Agent Team
+**Owner**: Fizeau Team
 
 ## Overview
 
-DDX Agent supports multiple LLM backends through a common interface, with two
+Fizeau supports multiple LLM backends through a common interface, with two
 built-in groups: a set of concrete OpenAI-compatible providers (LM Studio,
 omlx, Ollama, OpenAI, OpenRouter) and an Anthropic provider (Claude). This
 implements PRD P0 requirements 3-4.
@@ -201,7 +201,7 @@ type AttemptMetadata struct {
      and is the failure mode catalog-driven sampling exists to prevent.
 22d. Sampling profiles ship through the catalog distribution channel
      (see plan-2026-04-10-catalog-distribution-and-refresh) and reach users
-     via `ddx-agent catalog update`, not via binary upgrades. Existing
+     via `fiz catalog update`, not via binary upgrades. Existing
      installations on stale manifests degrade gracefully — server defaults
      apply, and the agent emits a single first-use nudge pointing at the
      refresh command. ADR-007 §7 covers the schema-evolution rules.
@@ -222,7 +222,7 @@ type AttemptMetadata struct {
 
 #### Public Model Listing
 
-26. `DdxAgent.ListModels` is the public interface for listing configured
+26. `FizeauService.ListModels` is the public interface for listing configured
     provider models. It must list OpenRouter, LM Studio, and oMLX models by
     querying each configured endpoint's OpenAI-compatible models endpoint
     (`<base_url>/models`, typically `/v1/models`).
@@ -319,14 +319,14 @@ type AttemptMetadata struct {
 | AC-FEAT-003-08 | When `model` is empty, auto-discovery selects the highest-ranked available model according to the three-tier ranking (catalog → pattern → uncategorized) and the selection is deterministic across repeated calls with the same model list. | `go test ./provider/... ./...` |
 | AC-FEAT-003-09 | Provider config rejects `type: openai-compat` and `flavor` at config load; concrete provider types are accepted; `base_url` is expanded to a single endpoint for cloud providers. | `go test ./provider/... ./...` |
 | AC-FEAT-003-10 | No code emits `openai-compat` as a provider name or telemetry label; `ProviderType` (e.g. `lmstudio`, `openrouter`) is used instead for cost attribution and routing keys. | `go test ./provider/... ./...` |
-| AC-FEAT-003-11 | `DdxAgent.ListModels` lists models from OpenRouter, LM Studio, and oMLX through the public service API, includes provider type and endpoint identity in each `ModelInfo`, and continues listing healthy endpoints when another endpoint in the same pool fails. | `go test ./... -run TestListModels` |
+| AC-FEAT-003-11 | `FizeauService.ListModels` lists models from OpenRouter, LM Studio, and oMLX through the public service API, includes provider type and endpoint identity in each `ModelInfo`, and continues listing healthy endpoints when another endpoint in the same pool fails. | `go test ./... -run TestListModels` |
 
 ## Constraints and Assumptions
 
 - LM Studio and Ollama both speak OpenAI-compatible API well enough for a
   single shared SDK. Edge cases handled by provider wrappers if needed.
 - Anthropic needs its own provider due to fundamentally different wire format.
-- Models are pre-loaded in LM Studio/Ollama — DDX Agent does not manage model
+- Models are pre-loaded in LM Studio/Ollama — Fizeau does not manage model
   lifecycle.
 
 ## Dependencies

@@ -1,7 +1,7 @@
 # CONTRACT-001: OTel GenAI Telemetry Capture Contract
 
 **Status:** Draft  
-**Owner:** DDX Agent maintainers  
+**Owner:** Fizeau maintainers  
 **Related:** [ADR-001](../adr/ADR-001-observability-surfaces-and-cost-attribution.md), [FEAT-005](../../01-frame/features/FEAT-005-logging-and-cost.md), [SD-001](../solution-designs/SD-001-agent-core.md)
 
 ## Purpose
@@ -15,7 +15,7 @@ This is a telemetry contract, not a replay contract.
 - **Telemetry contract**: standard analytics surface for traces and metrics
 - **Replay artifact**: harness-specific local transcript or session log
 
-For DDX Agent, JSONL session logs remain the replay artifact and this contract
+For Fizeau, JSONL session logs remain the replay artifact and this contract
 defines the analytics surface emitted alongside them.
 
 ## Scope Boundary
@@ -108,7 +108,7 @@ required child spans unless stated otherwise.
 
 | Attribute | Type | Requirement | Meaning |
 |---|---|---|---|
-| `ddx.harness.name` | string | Required | Logical harness name such as `ddx-agent`, `claude-code`, `codex-cli` |
+| `ddx.harness.name` | string | Required | Logical harness name such as `fiz`, `claude-code`, `codex-cli` |
 | `ddx.harness.version` | string | Recommended | Harness version or build identifier |
 | `ddx.session.id` | string | Required | Run-local session identifier for the current harness run |
 | `ddx.parent.session.id` | string | Optional | Parent run/session when this run continues or forks from another run |

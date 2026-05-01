@@ -9,11 +9,11 @@ ddx:
 **Feature ID**: FEAT-007  
 **Status**: Draft  
 **Priority**: P1  
-**Owner**: DDX Agent Team
+**Owner**: Fizeau Team
 
 ## Overview
 
-DDX Agent provides a robust installation experience with automatic update checking,
+Fizeau provides a robust installation experience with automatic update checking,
 safe binary replacement, and enhanced installer UX. This implements the ghostty
 pattern — great library proven by a usable CLI app.
 

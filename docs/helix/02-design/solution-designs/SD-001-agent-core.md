@@ -8,14 +8,14 @@ ddx:
     - FEAT-004
     - FEAT-005
 ---
-# Solution Design: SD-001 — DDX Agent Core Library
+# Solution Design: SD-001 — Fizeau Core Library
 
 **Features**: FEAT-001 (Agent Loop), FEAT-002 (Tools), FEAT-003 (Providers),
 FEAT-004 (Provider Config), FEAT-005 (Logging & Cost)
 
 ## Scope
 
-Feature-level design for the DDX Agent Go library — everything except the
+Feature-level design for the Fizeau Go library — everything except the
 standalone CLI binary (SD-002). Covers the agent loop, tool set, provider
 interface, session logging, and cost tracking.
 
@@ -25,14 +25,14 @@ interface, session logging, and cost tracking.
 
 | Requirement | Technical Capability | Package | Priority |
 |-------------|---------------------|---------|----------|
-| Agent loop (PRD P0-1) | `agent.Run()` tool-calling loop | `ddx-agent` | P0 |
+| Agent loop (PRD P0-1) | `agent.Run()` tool-calling loop | `fiz` | P0 |
 | Tool set (PRD P0-2) | read/write/edit/bash tools | `agent/tool` | P0 |
 | OpenAI-compat provider (PRD P0-3) | Chat completion via openai-go | `agent/provider/openai` | P0 |
 | Anthropic provider (PRD P0-4) | Chat completion via anthropic-sdk-go | `agent/provider/anthropic` | P0 |
-| Structured I/O (PRD P0-5) | Request/Result types | `ddx-agent` | P0 |
-| Go library API (PRD P0-6) | `agent.Run(ctx, Request) (Result, error)` | `ddx-agent` | P0 |
-| Token tracking (PRD P0-7) | Accumulate per-iteration token counts | `ddx-agent` | P0 |
-| Iteration limit (PRD P0-8) | Configurable max iterations | `ddx-agent` | P0 |
+| Structured I/O (PRD P0-5) | Request/Result types | `fiz` | P0 |
+| Go library API (PRD P0-6) | `agent.Run(ctx, Request) (Result, error)` | `fiz` | P0 |
+| Token tracking (PRD P0-7) | Accumulate per-iteration token counts | `fiz` | P0 |
+| Iteration limit (PRD P0-8) | Configurable max iterations | `fiz` | P0 |
 | Working directory (PRD P0-9) | File ops scoped to root | `agent/tool` | P0 |
 | Session logging (PRD P0-10) | JSONL event log | `agent/session` | P0 |
 | Cost tracking (PRD P0-11) | Known-cost preservation + runtime-specific pricing policy | `agent/session` | P0 |
@@ -44,14 +44,14 @@ interface, session logging, and cost tracking.
 | Performance | <1ms loop overhead per iteration | No reflection, no allocs in hot path | Direct struct passing, no interface boxing in loop |
 | Concurrency | Multiple concurrent `Run` calls | No global state | All state in Request/session structs |
 | Embeddability | No global state, no init() | Config via explicit parameters | Config struct, no package-level vars |
-| Testability | Mockable providers | Provider as interface | `Provider` interface in consuming `ddx-agent` package |
+| Testability | Mockable providers | Provider as interface | `Provider` interface in consuming `fiz` package |
 | No CGo | Pure Go cross-compilation | No C dependencies | stdlib + provider SDKs only |
 
 ## Solution Approaches
 
 ### Approach 1: Monolithic Package
 
-All code in a single `ddx-agent` package. Simple, but grows unwieldy as
+All code in a single `fiz` package. Simple, but grows unwieldy as
 providers and tools accumulate.
 
 **Pros**: Simple imports, no internal dependency management.
@@ -60,7 +60,7 @@ providers and tools accumulate.
 
 ### Approach 2: Layered Packages with Internal
 
-Standard Go layout: public API in `ddx-agent`, implementation in `internal/`
+Standard Go layout: public API in `fiz`, implementation in `internal/`
 sub-packages, provider SDKs isolated in their own packages.
 
 **Pros**: Clean API surface, testable in isolation, providers are swappable.
@@ -68,7 +68,7 @@ sub-packages, provider SDKs isolated in their own packages.
 **Evaluation**: **Selected** — idiomatic Go, clean dependency graph, each
 package is independently testable.
 
-**Selected Approach**: Layered packages. The `ddx-agent` package defines the public
+**Selected Approach**: Layered packages. The `fiz` package defines the public
 API (`Run`, `Request`, `Result`, `Provider`, `Tool`). Internal packages
 implement specific concerns. Provider packages are siblings under `provider/`.
 
@@ -151,7 +151,7 @@ EventCallback func(Event)     // optional real-time event sink
 
 ## System Decomposition
 
-### Package: `ddx-agent` (root)
+### Package: `fiz` (root)
 
 - **Purpose**: Public API surface — `Run()`, `Request`, `Result`, interfaces
 - **Responsibilities**: Orchestrate the agent loop, accumulate tokens and
@@ -254,9 +254,9 @@ different needs. JSONL preserves exact turn order and bodies for reconstruction
 without an external collector; OTel gives a standard shape for token, timing,
 tool, and provider data.
 
-### D3: Provider interface defined in `ddx-agent` package
+### D3: Provider interface defined in `fiz` package
 
-The `Provider` interface lives in the consuming `ddx-agent` package, not in a
+The `Provider` interface lives in the consuming `fiz` package, not in a
 `provider` package. This follows the Go idiom: "accept interfaces, return
 structs." Provider implementations are in `agent/provider/openai` and
 `agent/provider/anthropic`.
@@ -278,7 +278,7 @@ use it for progress reporting. This avoids coupling the loop to the logger.
 ### D6: Preserve known cost, never guess unknown cost
 
 When a provider or gateway reports billed cost, that value wins and is
-preserved in telemetry and session logs. If no reported cost exists, DDX Agent
+preserved in telemetry and session logs. If no reported cost exists, Fizeau
 may use explicit runtime-specific pricing configuration keyed by provider
 system and resolved model. If neither exists, cost remains unknown. Generic
 stale pricing tables must not be used as a fallback.
@@ -330,7 +330,7 @@ LLM turn has unknown cost.
 
 ## Security
 
-- **Sandbox assumption**: DDX Agent assumes it runs in a sandboxed environment.
+- **Sandbox assumption**: Fizeau assumes it runs in a sandboxed environment.
   File paths outside working directory are allowed but logged.
 - **No secrets in logs**: API keys are never logged. Session logs contain
   prompts and responses — callers must not put secrets in prompts.
@@ -354,14 +354,14 @@ LLM turn has unknown cost.
 
 | Requirement ID | Package | Design Element | Test Strategy |
 |----------------|---------|----------------|---------------|
-| FEAT-001 FR-1..11 | `ddx-agent` | Run() loop engine | Unit: mock provider loop tests |
+| FEAT-001 FR-1..11 | `fiz` | Run() loop engine | Unit: mock provider loop tests |
 | FEAT-002 read | `agent/tool` | ReadTool | Unit: temp file reads |
 | FEAT-002 write | `agent/tool` | WriteTool | Unit: temp file writes |
 | FEAT-002 edit | `agent/tool` | EditTool | Unit: find-replace tests |
 | FEAT-002 bash | `agent/tool` | BashTool | Unit: command execution, timeout |
 | FEAT-003 openai | `agent/provider/openai` | OpenAIProvider | Integration: LM Studio |
 | FEAT-003 anthropic | `agent/provider/anthropic` | AnthropicProvider | E2E: Claude API |
-| FEAT-004 P0 | `ddx-agent` | Request.Provider field | Unit: provider selection |
+| FEAT-004 P0 | `fiz` | Request.Provider field | Unit: provider selection |
 | FEAT-005 logging | `agent/session` | Logger, Event types | Unit: write + replay |
 | FEAT-005 cost | `agent/session` | Cost attribution policy, telemetry cost fields | Unit: attribution tests |
 

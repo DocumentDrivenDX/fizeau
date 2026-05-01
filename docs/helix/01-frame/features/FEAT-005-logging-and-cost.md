@@ -11,11 +11,11 @@ ddx:
 **Feature ID**: FEAT-005
 **Status**: Draft
 **Priority**: P0
-**Owner**: DDX Agent Team
+**Owner**: Fizeau Team
 
 ## Overview
 
-Every LLM interaction and tool call in DDX Agent is logged to a structured
+Every LLM interaction and tool call in Fizeau is logged to a structured
 session log. Sessions can be replayed to understand exactly what happened.
 Analytics and cross-tool observability are emitted through OpenTelemetry.
 Cost is preserved when a provider, gateway, or explicitly configured runtime
@@ -24,7 +24,7 @@ knows it; otherwise it remains unknown. This implements PRD P0 requirements
 
 Patterned on DDx's agent session logging (`SessionEntry` JSONL and
 `ddx agent usage` reporting) but with deeper granularity — DDx logs
-one entry per subprocess invocation; DDX Agent logs every turn within the
+one entry per subprocess invocation; Fizeau logs every turn within the
 conversation loop.
 
 ## Problem Statement
@@ -63,13 +63,13 @@ conversation loop.
    `timestamp`, and type-specific fields
 5. Full prompt and response bodies are stored in the event (not external
    files, at least for P0)
-6. Log directory is configurable. Default: `.agent/sessions/`
+6. Log directory is configurable. Default: `.fizeau/sessions/`
 7. The caller can provide correlation metadata (bead_id, workflow, etc.)
    that is stored on `session.start` and `session.end` events
 
 #### Replay
 
-8. Given a session log file, DDX Agent can reconstruct and display the full
+8. Given a session log file, Fizeau can reconstruct and display the full
    conversation: system prompt, each user/assistant turn, each tool call
    with inputs and outputs, token counts per turn, cost per turn
 9. Replay is a read-only operation on the log file
@@ -78,7 +78,7 @@ conversation loop.
 
 #### Telemetry and Analytics
 
-11. DDX Agent emits OpenTelemetry spans and metrics alongside JSONL logs for
+11. Fizeau emits OpenTelemetry spans and metrics alongside JSONL logs for
     analytics and cross-tool observability
 12. OTel instrumentation uses OpenTelemetry GenAI semantic conventions for
     token usage, conversation correlation, model calls, and tool execution
@@ -96,7 +96,7 @@ conversation loop.
     derived only when the matching timing window exists; missing timing data is
     omitted rather than inferred
 17. Project-specific telemetry fields not covered by standard OTel GenAI
-    conventions use a DDX Agent namespace (for example `ddx.cost.*` and
+    conventions use a Fizeau namespace (for example `ddx.cost.*` and
     `ddx.provider.*`)
 
 #### Cost Tracking
@@ -109,12 +109,12 @@ conversation loop.
     the cost-bearing axes; any one may be zero but none may be folded into
     another (e.g. cached input is not added to input). This matches the
     telemetry schema lifted from SD-010 (see SD-009 §9.2 / SD-010 D4).
-20. If no reported cost exists, DDX Agent may compute cost only from explicit
+20. If no reported cost exists, Fizeau may compute cost only from explicit
     pricing configuration for the exact runtime/provider system and resolved
     model. The authoritative `$-per-Mtok` numbers (input, output,
     cached-input, retried-input) come from the **profile pricing schema**
     defined in SD-010 (`scripts/benchmark/profiles/<id>.yaml`, loaded by
-    `internal/benchmark/profile/`). DDX Agent does not maintain a separate
+    `internal/benchmark/profile/`). Fizeau does not maintain a separate
     pricing table.
 21. If neither reported cost nor a matching profile pricing entry exists,
     cost remains unknown and is never guessed from generic pricing tables
@@ -130,7 +130,7 @@ conversation loop.
 #### Cost-Cap Enforcement
 
 26. The caller may configure a **per-run cost cap** (USD). When the running
-    session total reaches or exceeds the cap, DDX Agent halts the loop
+    session total reaches or exceeds the cap, Fizeau halts the loop
     deterministically before issuing the next `llm.request`, writes a
     `session.end` event with `process_outcome=budget_halted`, and returns a
     `Result` whose status reflects the halt.
@@ -142,14 +142,14 @@ conversation loop.
     report or profile pricing). If cost is unknown, the cap cannot fire and
     the run proceeds; this matches §22 — unknown is never coerced to a
     number.
-29. Cost-cap enforcement is a feature requirement of DDX Agent itself, not
+29. Cost-cap enforcement is a feature requirement of Fizeau itself, not
     solely a property of the benchmark harness. The benchmark runner relies
-    on this contract, but standalone `ddx-agent run` invocations honor the
+    on this contract, but standalone `fiz run` invocations honor the
     same cap when one is configured.
 
 #### Usage Reporting (P1 — Standalone CLI)
 
-30. `ddx-agent usage` aggregates session logs and telemetry: per-provider/model
+30. `fiz usage` aggregates session logs and telemetry: per-provider/model
     token counts (broken out by the four streams in §19), known cost, and
     throughput summaries, with time-window filtering (today, 7d, 30d, date
     range)
@@ -184,7 +184,7 @@ conversation loop.
 ## Success Metrics
 
 - Every completed session has a log with all events
-- `ddx-agent replay <id>` reproduces the conversation accurately
+- `fiz replay <id>` reproduces the conversation accurately
 - Provider- or runtime-reported costs are preserved exactly when available
 - Unknown-cost sessions are surfaced explicitly rather than assigned guessed values
 - Log files are valid JSONL readable by `jq`
@@ -200,7 +200,7 @@ conversation loop.
 | AC-FEAT-005-03 | Provider-reported cost wins over configured pricing, configured runtime pricing applies only on exact runtime/model matches, and mixed or unknown constituent costs force the session total to remain unknown rather than guessed. The four token streams (input, output, cached-input, retried-input) are tracked separately per turn and per session and never folded into one another. Profile pricing is sourced from the SD-010 profile schema. | `go test ./session ./telemetry ./...` |
 | AC-FEAT-005-07 | A configured per-run cost cap halts the loop before the next `llm.request` once the known running total meets or exceeds the cap, the `session.end` event records `process_outcome=budget_halted`, and `Result` surfaces the halt; if cost is unknown the cap does not fire and the run proceeds. | `go test ./session ./...` |
 | AC-FEAT-005-04 | OTel export conforms to `CONTRACT-001`, including span taxonomy, identity fields, cost/timing attributes, tool error semantics, and throughput formulas derived only from valid timing windows. | `go test ./telemetry ./...` |
-| AC-FEAT-005-05 | `ddx-agent usage` preserves known-cost and unknown-cost session semantics across time-window filtering and supports the documented table, JSON, and CSV output modes. | `go test ./cmd/ddx-agent ./session ./...` |
+| AC-FEAT-005-05 | `fiz usage` preserves known-cost and unknown-cost session semantics across time-window filtering and supports the documented table, JSON, and CSV output modes. | `go test ./cmd/fiz ./session ./...` |
 | AC-FEAT-005-06 | Unwritable log directories and telemetry-export failures are best-effort failures: the run still completes, operators receive a warning, and whatever partial log/telemetry data exists remains readable. | `go test ./session ./telemetry ./...` |
 
 ## Constraints and Assumptions
@@ -208,14 +208,14 @@ conversation loop.
 - JSONL remains the replay and forensic artifact
 - OTel is the canonical analytics surface for cross-tool comparison and usage
   reporting
-- Standard OTel GenAI fields are preferred; DDX Agent uses `ddx.*` fields only
+- Standard OTel GenAI fields are preferred; Fizeau uses `ddx.*` fields only
   for gaps such as cost source and runtime-specific timing
 - `CONTRACT-001` is authoritative for telemetry field names, formulas, and
   capture semantics
 - SD-010's profile pricing schema is authoritative for `$-per-Mtok` rates
   across the four token streams; FEAT-005 consumes those rates and does not
   define a parallel pricing source
-- Log format is DDX Agent-specific but designed to be consumable by DDx's
+- Log format is Fizeau-specific but designed to be consumable by DDx's
   session inspection tooling with a thin adapter
 - No log rotation or retention policy in P0
 
