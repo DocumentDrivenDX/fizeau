@@ -24,68 +24,12 @@ from harbor.models.agent.context import AgentContext
 _INSTALL_ROOT = "/installed-agent"
 _BINARY_TARGET = f"{_INSTALL_ROOT}/fiz"
 _HOME_DIR = f"{_INSTALL_ROOT}/home"
-_CONFIG_TARGET = f"{_HOME_DIR}/.config/fizeau/config.yaml"
 _SESSION_LOG_DIR = "/logs/agent/sessions"
 _OUTPUT_LOG = "/logs/agent/fiz.txt"
 
 
 def _bench_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
-
-
-def _provider_headers_yaml() -> str:
-    raw = _bench_env("DDX_BENCH_PROVIDER_HEADERS_JSON", "")
-    if not raw:
-        return ""
-    headers = json.loads(raw)
-    if not isinstance(headers, dict):
-        raise ValueError("DDX_BENCH_PROVIDER_HEADERS_JSON must decode to an object")
-    lines = ["    headers:"]
-    for key, value in headers.items():
-        lines.append(f"      {key}: {json.dumps(str(value))}")
-    return "\n".join(lines) + "\n"
-
-
-def _render_provider_config() -> str:
-    provider_name = _bench_env("DDX_BENCH_PROVIDER_NAME", "benchmark")
-    provider_type = _bench_env("DDX_BENCH_PROVIDER_TYPE", "anthropic")
-    provider_model = _bench_env(
-        "DDX_BENCH_PROVIDER_MODEL", "claude-haiku-4-5-20251001"
-    )
-    api_key_env = _bench_env("DDX_BENCH_PROVIDER_API_KEY_ENV", "ANTHROPIC_API_KEY")
-    base_url = _bench_env("DDX_BENCH_PROVIDER_BASE_URL", "")
-
-    provider_reasoning = _bench_env("DDX_BENCH_PROVIDER_REASONING", "")
-
-    lines = [
-        "providers:",
-        f"  {provider_name}:",
-        f"    type: {provider_type}",
-        f'    api_key: "${{{api_key_env}}}"',
-        f"    model: {provider_model}",
-    ]
-    if base_url:
-        lines.append(f"    base_url: {base_url}")
-    if provider_reasoning:
-        lines.append(f"    reasoning: {provider_reasoning}")
-    headers_yaml = _provider_headers_yaml().rstrip()
-    if headers_yaml:
-        lines.append(headers_yaml)
-    lines.extend(
-        [
-            f"default_provider: {provider_name}",
-            f"session_log_dir: {_SESSION_LOG_DIR}",
-        ]
-    )
-    return "\n".join(lines) + "\n"
-
-
-def _agent_flags() -> list[str]:
-    flags = ["--json", "--preset", _bench_env("DDX_BENCH_PRESET", "benchmark")]
-    system_append = _bench_env("DDX_BENCH_SYSTEM_APPEND", "")
-    if system_append:
-        flags.extend(["--system", system_append])
-    return flags
 
 
 class DDXAgent(BaseInstalledAgent):
@@ -112,7 +56,7 @@ class DDXAgent(BaseInstalledAgent):
         await self.exec_as_root(
             environment,
             command=(
-                f"mkdir -p {_INSTALL_ROOT} {_HOME_DIR}/.config/fizeau /logs/agent "
+                f"mkdir -p {_INSTALL_ROOT} {_HOME_DIR} /logs/agent "
                 f"&& chmod 755 {_INSTALL_ROOT}"
             ),
         )
@@ -122,21 +66,17 @@ class DDXAgent(BaseInstalledAgent):
             environment, command=f"chmod 755 {_BINARY_TARGET}"
         )
 
-        local_config = self.logs_dir / "config.yaml"
-        local_config.write_text(_render_provider_config(), encoding="utf-8")
-        await environment.upload_file(local_config, _CONFIG_TARGET)
-        await self.exec_as_root(
-            environment,
-            command=f"chmod 600 {_CONFIG_TARGET} && chown -R $(id -u):$(id -g) {_HOME_DIR}",
-        )
-
     def _run_env(self, instruction: str) -> dict[str, str]:
-        env = {
+        env: dict[str, str] = {
             "HARBOR_INSTRUCTION": instruction,
             "HOME": _HOME_DIR,
-            "XDG_CONFIG_HOME": f"{_HOME_DIR}/.config",
         }
-        api_key_env = _bench_env("DDX_BENCH_PROVIDER_API_KEY_ENV", "")
+        # Forward FIZEAU_* env vars injected by the matrix runner via --ae.
+        for key, val in os.environ.items():
+            if key.startswith("FIZEAU_"):
+                env[key] = val
+        # Forward the API key env var by name (e.g. OPENROUTER_API_KEY).
+        api_key_env = _bench_env("FIZEAU_API_KEY_ENV", "")
         if api_key_env:
             value = os.environ.get(api_key_env, "")
             if value:
@@ -152,11 +92,10 @@ class DDXAgent(BaseInstalledAgent):
     ) -> None:
         del context
 
-        ddx_flags = " ".join(shlex.quote(flag) for flag in _agent_flags())
         command = (
             "set -euo pipefail; "
             "cd /testbed 2>/dev/null || cd /workspace 2>/dev/null || true; "
-            f"{_BINARY_TARGET} {ddx_flags} "
+            f"{_BINARY_TARGET} --json --preset benchmark "
             '--work-dir "$(pwd)" '
             '-p "$HARBOR_INSTRUCTION" '
             f'2>&1 | stdbuf -oL tee {_OUTPUT_LOG}'

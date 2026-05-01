@@ -124,6 +124,7 @@ func cmdMatrix(args []string) int {
 	forceRerun := fs.Bool("force-rerun", false, "Rerun every tuple even when a terminal report exists")
 	retryBudgetHalted := fs.Bool("retry-budget-halted", false, "Rerun budget_halted reports while resuming")
 	perRunBudgetUSD := fs.Float64("per-run-budget-usd", 0, "Per-run budget cap in USD (0 = no per-run cap)")
+	tasksDir := fs.String("tasks-dir", "", "Path to TB-2 tasks directory; when set, harbor run is used for grading")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -176,6 +177,21 @@ func cmdMatrix(args []string) int {
 		return 1
 	}
 
+	// Resolve harbor binary if tasks-dir is set (enables graded runs via Docker).
+	resolvedTasksDir := *tasksDir
+	if resolvedTasksDir != "" && !filepath.IsAbs(resolvedTasksDir) {
+		resolvedTasksDir = filepath.Join(wd, resolvedTasksDir)
+	}
+	harborBin := ""
+	if resolvedTasksDir != "" {
+		if bin, err := exec.LookPath("harbor"); err == nil {
+			harborBin = bin
+		} else {
+			fmt.Fprintf(os.Stderr, "%s matrix: --tasks-dir set but harbor not found on PATH\n", benchCommandName())
+			return 1
+		}
+	}
+
 	var runs []matrixRunReport
 	accumulatedCost := 0.0
 	for _, harness := range harnesses {
@@ -195,6 +211,8 @@ func cmdMatrix(args []string) int {
 						resume:            *resume,
 						forceRerun:        *forceRerun,
 						retryBudgetHalted: *retryBudgetHalted,
+						tasksDir:          resolvedTasksDir,
+						harborBin:         harborBin,
 					})
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "%s matrix: %v\n", benchCommandName(), err)
@@ -249,6 +267,8 @@ type matrixTupleOptions struct {
 	resume            bool
 	forceRerun        bool
 	retryBudgetHalted bool
+	tasksDir          string // when set, use harbor run for grading
+	harborBin         string // path to harbor binary
 }
 
 func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
@@ -300,24 +320,65 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 	if err := os.MkdirAll(workDir, 0o750); err != nil {
 		return matrixRunReport{}, false, fmt.Errorf("create tuple workdir: %w", err)
 	}
-	result, err := runMatrixAdapter(opts.workDir, report.AdapterModule, opts.profile, matrixPrompt(opts.task), opts.task.ID, workDir)
-	if err != nil {
-		report.ProcessOutcome = "harness_crash"
-		report.GradingOutcome = "ungraded"
-		report.Error = err.Error()
-	} else {
-		report.Command = result.Command.Argv
-		report.AdapterTranslationNotes = append(report.AdapterTranslationNotes, result.Apply.Notes...)
-		report.AdapterTranslationNotes = append(report.AdapterTranslationNotes, result.Command.Notes...)
-		report.ExitCode = result.ExitCode
-		if result.ExitCode != 0 {
-			report.ProcessOutcome = "harness_crash"
-			report.Error = strings.TrimSpace(result.Stderr)
+
+	if opts.harborBin != "" {
+		taskPath := filepath.Join(opts.tasksDir, opts.task.ID)
+		if _, err := os.Stat(taskPath); err != nil {
+			report.ProcessOutcome = "install_fail_permanent"
+			report.GradingOutcome = "ungraded"
+			report.Error = fmt.Sprintf("task directory not found: %s", taskPath)
+		} else {
+			harborResult, err := runMatrixHarbor(harborRunOpts{
+				harborBin: opts.harborBin,
+				taskPath:  taskPath,
+				harness:   opts.harness,
+				profile:   opts.profile,
+				jobsDir:   cellDir,
+				jobName:   fmt.Sprintf("%s-%s-rep%d", opts.harness, opts.task.ID, opts.rep),
+				repoRoot:  opts.workDir,
+			})
+			if err != nil {
+				report.ProcessOutcome = "harness_crash"
+				report.GradingOutcome = "ungraded"
+				report.Error = err.Error()
+			} else {
+				report.ExitCode = harborResult.exitCode
+				report.Error = harborResult.errText
+				seconds := harborResult.wallSeconds
+				report.WallSeconds = &seconds
+				if harborResult.reward != nil {
+					report.Reward = harborResult.reward
+					report.GradingOutcome = "graded"
+					report.ProcessOutcome = "completed"
+				} else if harborResult.exitCode != 0 {
+					report.ProcessOutcome = "harness_crash"
+					report.GradingOutcome = "ungraded"
+				} else {
+					report.ProcessOutcome = "completed"
+					report.GradingOutcome = "ungraded"
+				}
+			}
 		}
-		applyTelemetry(&report, result.Telemetry)
-		if report.WallSeconds == nil && result.Duration >= 0 {
-			seconds := float64(result.Duration) / 1000
-			report.WallSeconds = &seconds
+	} else {
+		result, err := runMatrixAdapter(opts.workDir, report.AdapterModule, opts.profile, matrixPrompt(opts.task), opts.task.ID, workDir)
+		if err != nil {
+			report.ProcessOutcome = "harness_crash"
+			report.GradingOutcome = "ungraded"
+			report.Error = err.Error()
+		} else {
+			report.Command = result.Command.Argv
+			report.AdapterTranslationNotes = append(report.AdapterTranslationNotes, result.Apply.Notes...)
+			report.AdapterTranslationNotes = append(report.AdapterTranslationNotes, result.Command.Notes...)
+			report.ExitCode = result.ExitCode
+			if result.ExitCode != 0 {
+				report.ProcessOutcome = "harness_crash"
+				report.Error = strings.TrimSpace(result.Stderr)
+			}
+			applyTelemetry(&report, result.Telemetry)
+			if report.WallSeconds == nil && result.Duration >= 0 {
+				seconds := float64(result.Duration) / 1000
+				report.WallSeconds = &seconds
+			}
 		}
 	}
 	if report.ProcessOutcome == "" {
@@ -342,6 +403,130 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 		return matrixRunReport{}, false, err
 	}
 	return report, false, nil
+}
+
+type harborRunOpts struct {
+	harborBin string
+	taskPath  string
+	harness   string
+	profile   *profile.Profile
+	jobsDir   string
+	jobName   string
+	repoRoot  string
+}
+
+type harborRunResult struct {
+	reward      *int
+	exitCode    int
+	wallSeconds float64
+	errText     string
+}
+
+// harborAgentArgs returns the agent selection args for harbor run.
+// opencode uses the built-in harbor agent; pi and ddx-agent use custom adapters.
+func harborAgentArgs(harness string) []string {
+	switch harness {
+	case "opencode":
+		// Harbor ships a built-in opencode agent.
+		return []string{"--agent", "opencode"}
+	case "pi":
+		return []string{"--agent-import-path", "scripts.benchmark.harbor_adapters.pi:PiAgent"}
+	default: // ddx-agent
+		return []string{"--agent-import-path", "scripts.benchmark.harbor_agent:DDXAgent"}
+	}
+}
+
+func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
+	started := time.Now()
+
+	apiKeyEnv := opts.profile.Provider.APIKeyEnv
+	apiKeyVal := os.Getenv(apiKeyEnv)
+
+	args := []string{"run", "--yes", "--path", opts.taskPath}
+	args = append(args, harborAgentArgs(opts.harness)...)
+	args = append(args,
+		"--model", opts.profile.Provider.Model,
+		"--jobs-dir", opts.jobsDir,
+		"--job-name", opts.jobName,
+	)
+	if apiKeyVal != "" {
+		args = append(args, "--ae", apiKeyEnv+"="+apiKeyVal)
+	}
+	// Pass provider config so Harbor agents can configure the model endpoint.
+	args = append(args,
+		"--ae", "FIZEAU_BASE_URL="+opts.profile.Provider.BaseURL,
+		"--ae", "FIZEAU_MODEL="+opts.profile.Provider.Model,
+		"--ae", "FIZEAU_PROVIDER="+string(opts.profile.Provider.Type),
+	)
+	if apiKeyVal != "" {
+		args = append(args, "--ae", "FIZEAU_API_KEY="+apiKeyVal)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, opts.harborBin, args...)
+	// Add repo root to PYTHONPATH so harbor_adapters modules resolve.
+	env := os.Environ()
+	pythonPath := opts.repoRoot
+	for i, e := range env {
+		if strings.HasPrefix(e, "PYTHONPATH=") {
+			pythonPath = opts.repoRoot + string(os.PathListSeparator) + e[len("PYTHONPATH="):]
+			env[i] = "PYTHONPATH=" + pythonPath
+			pythonPath = ""
+			break
+		}
+	}
+	if pythonPath != "" {
+		env = append(env, "PYTHONPATH="+pythonPath)
+	}
+	cmd.Env = env
+	cmd.Dir = opts.repoRoot
+
+	var combined bytes.Buffer
+	cmd.Stdout = &combined
+	cmd.Stderr = &combined
+	runErr := cmd.Run()
+	wall := time.Since(started).Seconds()
+
+	exitCode := 0
+	if runErr != nil {
+		var ee *exec.ExitError
+		if errors.As(runErr, &ee) {
+			exitCode = ee.ExitCode()
+		} else {
+			return harborRunResult{}, runErr
+		}
+	}
+
+	// Find reward.txt written by the Harbor verifier.
+	var reward *int
+	jobOutDir := filepath.Join(opts.jobsDir, opts.jobName)
+	entries, _ := os.ReadDir(jobOutDir)
+	for _, e := range entries {
+		rewardFile := filepath.Join(jobOutDir, e.Name(), "verifier", "reward.txt")
+		data, err := os.ReadFile(rewardFile)
+		if err == nil {
+			val, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err == nil {
+				reward = &val
+			}
+			break
+		}
+	}
+
+	errText := ""
+	if exitCode != 0 || reward == nil {
+		errText = strings.TrimSpace(combined.String())
+		if len(errText) > 2000 {
+			errText = errText[:2000]
+		}
+	}
+	return harborRunResult{
+		reward:      reward,
+		exitCode:    exitCode,
+		wallSeconds: wall,
+		errText:     errText,
+	}, nil
 }
 
 func runMatrixAdapter(repoRoot, module string, prof *profile.Profile, prompt, taskID, workDir string) (matrixAdapterResult, error) {
