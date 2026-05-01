@@ -15,7 +15,7 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
-const codexSessionsRootEnv = "DDX_AGENT_CODEX_SESSIONS_DIR"
+const codexSessionsRootEnv = "FIZEAU_CODEX_SESSIONS_DIR"
 
 const (
 	defaultCodexSessionMaxFiles        = 128
@@ -52,7 +52,7 @@ func WithCodexSessionTokenCountLimits(maxFiles int, maxBytesPerFile int64, maxLi
 }
 
 // CodexSessionsRoot returns the Codex session JSONL root. Tests may override
-// this with DDX_AGENT_CODEX_SESSIONS_DIR; normal operation follows CODEX_HOME.
+// this with FIZEAU_CODEX_SESSIONS_DIR; normal operation follows CODEX_HOME.
 func CodexSessionsRoot() (string, error) {
 	if root := strings.TrimSpace(os.Getenv(codexSessionsRootEnv)); root != "" {
 		return root, nil

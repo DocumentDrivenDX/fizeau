@@ -30,7 +30,7 @@ type GeminiQuotaSnapshot struct {
 
 const DefaultGeminiQuotaStaleAfter = 15 * time.Minute
 
-const geminiQuotaCacheEnv = "DDX_AGENT_GEMINI_QUOTA_CACHE"
+const geminiQuotaCacheEnv = "FIZEAU_GEMINI_QUOTA_CACHE"
 
 // GeminiQuotaCachePath returns the durable Gemini quota cache path.
 func GeminiQuotaCachePath() (string, error) {

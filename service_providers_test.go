@@ -476,7 +476,7 @@ func TestServiceRouteStateKey(t *testing.T) {
 func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "claude-quota.json")
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", cachePath)
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
 
 	// Write a snapshot older than the 15m debounce.
 	staleSnap := claudeharness.ClaudeQuotaSnapshot{
@@ -530,7 +530,7 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "claude-quota.json")
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", cachePath)
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
 
 	// Write a snapshot that is only 30s old (fresh).
 	freshSnap := claudeharness.ClaudeQuotaSnapshot{
@@ -594,7 +594,7 @@ func TestHealthCheck_GeminiDoesNotInvokeQuotaProbe(t *testing.T) {
 func TestHealthCheck_CodexRefreshesQuotaWhenStale(t *testing.T) {
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "codex-quota.json")
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", cachePath)
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", cachePath)
 	disableCodexSessionQuotaReaderForTest(t)
 
 	staleSnap := codexharness.CodexQuotaSnapshot{
@@ -631,9 +631,9 @@ func TestHealthCheck_CodexUsesFreshSessionQuotaBeforePTY(t *testing.T) {
 	dir := t.TempDir()
 	cachePath := filepath.Join(dir, "codex-quota.json")
 	sessionRoot := filepath.Join(dir, "sessions")
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", cachePath)
-	t.Setenv("DDX_AGENT_CODEX_SESSIONS_DIR", sessionRoot)
-	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-auth.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", cachePath)
+	t.Setenv("FIZEAU_CODEX_SESSIONS_DIR", sessionRoot)
+	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-auth.json"))
 
 	staleSnap := codexharness.CodexQuotaSnapshot{
 		CapturedAt: time.Now().UTC().Add(-20 * time.Minute),
@@ -690,9 +690,9 @@ func TestHealthCheck_CodexFallsBackToPTYForStaleOrNonSubsidizedSessionQuota(t *t
 			dir := t.TempDir()
 			cachePath := filepath.Join(dir, "codex-quota.json")
 			sessionRoot := filepath.Join(dir, "sessions")
-			t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", cachePath)
-			t.Setenv("DDX_AGENT_CODEX_SESSIONS_DIR", sessionRoot)
-			t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-auth.json"))
+			t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", cachePath)
+			t.Setenv("FIZEAU_CODEX_SESSIONS_DIR", sessionRoot)
+			t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-auth.json"))
 			if err := codexharness.WriteCodexQuota(cachePath, codexharness.CodexQuotaSnapshot{
 				CapturedAt: time.Now().UTC().Add(-20 * time.Minute),
 				Source:     "pty",
@@ -727,9 +727,9 @@ func TestHealthCheck_CodexFallsBackToPTYForStaleOrNonSubsidizedSessionQuota(t *t
 
 func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
+	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
 	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
@@ -773,9 +773,9 @@ func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 
 func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
+	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
 	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
@@ -803,9 +803,9 @@ func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 
 func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
+	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
 	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
@@ -847,9 +847,9 @@ func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 
 func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
-	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
+	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
 	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
@@ -901,9 +901,9 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 	t.Setenv("CLOUD_SHELL", "")
 	claudeQuotaPath := filepath.Join(dir, "missing-claude-quota.json")
 	codexQuotaPath := filepath.Join(dir, "missing-codex-quota.json")
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", claudeQuotaPath)
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", codexQuotaPath)
-	t.Setenv("DDX_AGENT_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudeQuotaPath)
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", codexQuotaPath)
+	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
 	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 

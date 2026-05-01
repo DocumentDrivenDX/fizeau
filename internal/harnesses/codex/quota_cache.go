@@ -23,7 +23,7 @@ type CodexQuotaSnapshot struct {
 
 const DefaultCodexQuotaStaleAfter = 15 * time.Minute
 
-const codexQuotaCacheEnv = "DDX_AGENT_CODEX_QUOTA_CACHE"
+const codexQuotaCacheEnv = "FIZEAU_CODEX_QUOTA_CACHE"
 
 // CodexQuotaCachePath returns the durable location for the Codex quota cache.
 func CodexQuotaCachePath() (string, error) {

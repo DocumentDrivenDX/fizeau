@@ -35,7 +35,7 @@ type ClaudeQuotaSnapshot struct {
 const DefaultClaudeQuotaStaleAfter = 15 * time.Minute
 
 // claudeQuotaCacheEnv lets tests override the cache file path.
-const claudeQuotaCacheEnv = "DDX_AGENT_CLAUDE_QUOTA_CACHE"
+const claudeQuotaCacheEnv = "FIZEAU_CLAUDE_QUOTA_CACHE"
 
 // claudeQuotaCacheEnvLegacy is the old DDx env var, read during the
 // one-minor-version back-compat window. Removed at v0.5.0.
@@ -44,7 +44,7 @@ const claudeQuotaCacheEnvLegacy = "DDX_CLAUDE_QUOTA_CACHE"
 // ClaudeQuotaCachePath returns the durable location for the Claude quota
 // cache. It resolves to $XDG_STATE_HOME/<config-dir>/claude-quota.json, or
 // ~/.local/state/<config-dir>/claude-quota.json when XDG_STATE_HOME is unset.
-// The DDX_AGENT_CLAUDE_QUOTA_CACHE env var takes precedence (primarily for
+// The FIZEAU_CLAUDE_QUOTA_CACHE env var takes precedence (primarily for
 // tests).
 func ClaudeQuotaCachePath() (string, error) {
 	if path := os.Getenv(claudeQuotaCacheEnv); path != "" {

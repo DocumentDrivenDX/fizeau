@@ -19,8 +19,8 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 	dir := t.TempDir()
 	claudePath := filepath.Join(dir, "claude-quota.json")
 	codexPath := filepath.Join(dir, "codex-quota.json")
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", claudePath)
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", codexPath)
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudePath)
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", codexPath)
 
 	capturedAt := time.Now().UTC().Add(-time.Minute)
 	if err := claudeharness.WriteClaudeQuota(claudePath, claudeharness.ClaudeQuotaSnapshot{
@@ -74,8 +74,8 @@ func TestListHarnesses_CodexUsageWindowsFromDDXSessionLogs(t *testing.T) {
 	dir := t.TempDir()
 	logDir := filepath.Join(dir, ".fizeau", "sessions")
 	t.Setenv("CODEX_HOME", filepath.Join(dir, "private-codex"))
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
 	disableCodexSessionQuotaReaderForTest(t)
 	if err := os.MkdirAll(filepath.Join(dir, "private-codex", "sessions"), 0o755); err != nil {
 		t.Fatal(err)
@@ -158,9 +158,9 @@ func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "")
 	t.Setenv("CLOUD_SHELL", "")
 	t.Setenv("GEMINI_CLI_USE_COMPUTE_ADC", "")
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
-	t.Setenv("DDX_AGENT_GEMINI_QUOTA_CACHE", filepath.Join(dir, "missing-gemini-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	t.Setenv("FIZEAU_GEMINI_QUOTA_CACHE", filepath.Join(dir, "missing-gemini-quota.json"))
 
 	// Anchor "now" at midday UTC so the "today" window deterministically
 	// contains start (= now - 1h) regardless of wall-clock time-of-day.
@@ -233,8 +233,8 @@ func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 func TestBuildRoutingInputs_IgnoresCodexUsageWindows(t *testing.T) {
 	dir := t.TempDir()
 	logDir := filepath.Join(dir, ".fizeau", "sessions")
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
 	writeServiceUsageSession(t, logDir, "codex-usage", time.Now().UTC().Add(-time.Hour), sessionlog.SessionStartData{
 		Provider: "codex",
 		Model:    "gpt-5.4",

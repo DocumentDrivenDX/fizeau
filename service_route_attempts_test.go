@@ -215,8 +215,8 @@ func TestRouteAttempts_ProviderModelKeying(t *testing.T) {
 func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
 	dir := t.TempDir()
 	codexQuotaPath := filepath.Join(dir, "codex-quota.json")
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", codexQuotaPath)
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", codexQuotaPath)
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
 	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Source:     "pty",
@@ -245,7 +245,7 @@ func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
 func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	dir := t.TempDir()
 	codexQuotaPath := filepath.Join(dir, "codex-quota.json")
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", codexQuotaPath)
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", codexQuotaPath)
 	registry := harnesses.NewRegistry()
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 
@@ -277,9 +277,9 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 func TestBuildRoutingInputs_GeminiQuotaGatesAutoRouting(t *testing.T) {
 	dir := t.TempDir()
 	quotaPath := filepath.Join(dir, "gemini-quota.json")
-	t.Setenv("DDX_AGENT_GEMINI_QUOTA_CACHE", quotaPath)
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
+	t.Setenv("FIZEAU_GEMINI_QUOTA_CACHE", quotaPath)
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
 
 	registry := harnesses.NewRegistry()
 	svc := &service{opts: ServiceOptions{}, registry: registry}
@@ -382,7 +382,7 @@ func TestResolveRoute_GeminiProfilesUseCatalogModels(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "redacted")
 	dir := t.TempDir()
 	quotaPath := filepath.Join(dir, "gemini-quota.json")
-	t.Setenv("DDX_AGENT_GEMINI_QUOTA_CACHE", quotaPath)
+	t.Setenv("FIZEAU_GEMINI_QUOTA_CACHE", quotaPath)
 	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Source:     "pty",

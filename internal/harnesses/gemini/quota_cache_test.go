@@ -98,7 +98,7 @@ func TestDecideGeminiQuotaRouting_NoSnapshot(t *testing.T) {
 func TestWriteReadGeminiQuotaRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gemini-quota.json")
-	t.Setenv("DDX_AGENT_GEMINI_QUOTA_CACHE", path)
+	t.Setenv("FIZEAU_GEMINI_QUOTA_CACHE", path)
 
 	writeTestQuota(t, path, GeminiQuotaSnapshot{
 		Source: "pty",

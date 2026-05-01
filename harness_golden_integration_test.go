@@ -69,8 +69,8 @@ EOF
 	stateDir := t.TempDir()
 	claudeCache := filepath.Join(stateDir, "claude-quota.json")
 	codexCache := filepath.Join(stateDir, "codex-quota.json")
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", claudeCache)
-	t.Setenv("DDX_AGENT_CODEX_QUOTA_CACHE", codexCache)
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudeCache)
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", codexCache)
 	writeGoldenQuotaCaches(t, claudeCache, codexCache)
 
 	svc, err := New(ServiceOptions{})

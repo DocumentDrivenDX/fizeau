@@ -50,9 +50,6 @@ var skippedDirs = map[string]bool{
 	"docs/helix":           true,
 	"docs/research":        true,
 	"internal/renamecheck": true,
-	// DDX_AGENT_* harness env vars are not yet renamed; allowlisted until a
-	// dedicated harness-rename bead updates them.
-	"internal/harnesses": true,
 }
 
 var skippedFiles = map[string]bool{
@@ -62,13 +59,6 @@ var skippedFiles = map[string]bool{
 	// Its header comment preserves the original creation date and old product name as
 	// historical evidence; no active code generates or consumes the product-name string.
 	"scripts/benchmark/task-subset-v1.yaml": true,
-	// Root-level service test files that reference DDX_AGENT_* harness env vars
-	// which have not yet been renamed. Allowlisted until the harness-rename bead
-	// is complete.
-	"harness_golden_integration_test.go": true,
-	"service_providers_test.go":          true,
-	"service_route_attempts_test.go":     true,
-	"service_status_test.go":             true,
 	// Guard test that embeds "ddx-agent-" as a sentinel to assert its absence
 	// from the release workflow. The rename-noise gate enforces the same
 	// constraint globally; the literal in the test is the checked value, not usage.

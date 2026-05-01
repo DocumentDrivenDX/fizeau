@@ -11,7 +11,7 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 )
 
-const codexAuthPathEnv = "DDX_AGENT_CODEX_AUTH"
+const codexAuthPathEnv = "FIZEAU_CODEX_AUTH"
 
 const codexAuthNamespace = "https://api.openai.com/auth"
 
