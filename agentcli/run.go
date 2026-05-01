@@ -44,13 +44,13 @@ var (
 // inference servers do NOT auto-load generation_config.json. Without a
 // catalog profile these decode greedy (or worse) — e.g., the Qwen3.x
 // tool-loop bug on omlx that ADR-007 was built to fix.
-const samplingProfileNudgeMessage = "warning: model catalog does not declare sampling_profiles.code; samplers will use server defaults. Run 'ddx-agent catalog update' to fetch the latest profiles (see ADR-007)."
+const samplingProfileNudgeMessage = "warning: model catalog does not declare sampling_profiles.code; samplers will use server defaults. Run 'fiz catalog update' to fetch the latest profiles (see ADR-007)."
 
 // samplingProfileNudgeMessageImplicit is the soft variant for providers
 // that DO auto-load model-card defaults (vLLM). The user is not in the
 // loop-bug regime — the model creator's recommended bundle is in effect —
 // but a catalog profile would still take precedence if installed.
-const samplingProfileNudgeMessageImplicit = "note: model catalog does not declare sampling_profiles.code; the inference server is applying the model's generation_config.json. Run 'ddx-agent catalog update' to install the agent's curated profile (see ADR-007)."
+const samplingProfileNudgeMessageImplicit = "note: model catalog does not declare sampling_profiles.code; the inference server is applying the model's generation_config.json. Run 'fiz catalog update' to install the agent's curated profile (see ADR-007)."
 
 // Options controls a single CLI invocation.
 type Options struct {
@@ -1564,7 +1564,7 @@ func cmdLog(workDir string, args []string) int {
 
 func cmdReplay(workDir string, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ddx-agent replay <session-id>")
+		fmt.Fprintln(os.Stderr, "usage: fiz replay <session-id>")
 		return 2
 	}
 	cfg, err := agentConfig.Load(workDir)
@@ -1782,7 +1782,7 @@ func checkProviderStatus(pc agentConfig.ProviderConfig) string {
 
 func cmdImport(workDir string, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: ddx-agent import <pi|opencode> [--diff] [--merge] [--project]")
+		fmt.Fprintln(os.Stderr, "usage: fiz import <pi|opencode> [--diff] [--merge] [--project]")
 		return 2
 	}
 
@@ -2194,7 +2194,7 @@ func cmdVersion(args []string) int {
 	if err != nil {
 		return 0 // Can't determine home dir, skip update check
 	}
-	cacheFile := filepath.Join(home, ".cache", "agent", "latest-version.json")
+	cacheFile := filepath.Join(home, ".cache", "fizeau", "latest-version.json")
 
 	release, err := GetLatestRelease(githubRepo, cacheFile)
 	if err != nil {
@@ -2246,7 +2246,7 @@ func cmdUpdate(args []string) int {
 		fmt.Fprintf(os.Stderr, "error: cannot determine home directory: %v\n", err)
 		return 1
 	}
-	cacheFile := filepath.Join(home, ".cache", "agent", "latest-version.json")
+	cacheFile := filepath.Join(home, ".cache", "fizeau", "latest-version.json")
 
 	// Get latest release
 	release, err := GetLatestRelease(githubRepo, cacheFile)
@@ -2276,7 +2276,7 @@ func cmdUpdate(args []string) int {
 	}
 
 	if checkOnly {
-		fmt.Println("\nUpdate available. Run 'ddx-agent update' to upgrade.")
+		fmt.Println("\nUpdate available. Run 'fiz update' to upgrade.")
 		return 1 // Exit code 1 indicates outdated
 	}
 
@@ -2304,7 +2304,7 @@ func cmdUpdate(args []string) int {
 
 		response := strings.ToLower(strings.TrimSpace(string(buf)))
 		if response != "y" && response != "yes" {
-			fmt.Println("Cancelled. Run 'ddx-agent update --force' to skip prompt.")
+			fmt.Println("Cancelled. Run 'fiz update --force' to skip prompt.")
 			return 0
 		}
 	}

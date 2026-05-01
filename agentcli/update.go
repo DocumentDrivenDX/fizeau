@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	defaultGitHubRepo = "DocumentDrivenDX/agent"
+	defaultGitHubRepo = "DocumentDrivenDX/fizeau"
 	defaultGitHubAPI  = "https://api.github.com"
 	version           = "v0.0.8"  // Updated by release script
 	updateCheckTTL    = time.Hour // Cache version check for 1 hour
@@ -329,6 +329,6 @@ func ReplaceBinary(oldPath, newPath string, w io.Writer) error {
 		return fmt.Errorf("restoring original permissions: %w", err)
 	}
 
-	fmt.Fprintf(w, "Successfully updated ddx-agent\n")
+	fmt.Fprintf(w, "Successfully updated %s\n", productinfo.BinaryName)
 	return nil
 }

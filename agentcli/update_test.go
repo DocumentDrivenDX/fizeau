@@ -237,7 +237,7 @@ func TestFindBinaryPath(t *testing.T) {
 	path, err := FindBinaryPath()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, path)
-	assert.True(t, strings.HasSuffix(path, "/ddx-agent") || strings.Contains(path, "ddx-agent") || strings.Contains(path, "go-build"))
+	assert.True(t, strings.HasSuffix(path, "/fiz") || strings.Contains(path, "fiz") || strings.Contains(path, "go-build"))
 }
 
 func TestDownloadBinary_Mock(t *testing.T) {
@@ -395,6 +395,7 @@ func TestCmdUpdate_CheckOnly_OutdatedReturnsOne(t *testing.T) {
 	assert.Contains(t, stdout, "Current: v0.0.8")
 	assert.Contains(t, stdout, "Latest:  v0.0.9")
 	assert.Contains(t, stdout, "Update available")
+	assert.Contains(t, stdout, "fiz update")
 }
 
 func TestCmdUpdate_CheckOnly_UpToDateReturnsZero(t *testing.T) {
@@ -431,8 +432,8 @@ func TestCmdUpdate_CheckOnly_UpToDateReturnsZero(t *testing.T) {
 
 func TestReplaceBinary_PreservesOriginalPermissions(t *testing.T) {
 	dir := t.TempDir()
-	oldPath := filepath.Join(dir, "ddx-agent")
-	newPath := filepath.Join(dir, "ddx-agent.new")
+	oldPath := filepath.Join(dir, "fiz")
+	newPath := filepath.Join(dir, "fiz.new")
 
 	require.NoError(t, os.WriteFile(oldPath, []byte("old"), 0o700))
 	require.NoError(t, os.WriteFile(newPath, []byte("new"), 0o755))
@@ -450,6 +451,8 @@ func TestReplaceBinary_PreservesOriginalPermissions(t *testing.T) {
 
 	_, err = os.Stat(newPath)
 	assert.Error(t, err, "new temporary binary path should be consumed")
+
+	assert.Contains(t, out.String(), "Successfully updated fiz")
 }
 
 func TestDownloadBinary_RemovesTempFileOnSmallDownload(t *testing.T) {
@@ -477,7 +480,7 @@ func TestDownloadBinary_RemovesTempFileOnSmallDownload(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "too small")
 
-	matches, globErr := filepath.Glob(filepath.Join(tmp, "ddx-agent-update-*"))
+	matches, globErr := filepath.Glob(filepath.Join(tmp, "fiz-update-*"))
 	require.NoError(t, globErr)
 	assert.Len(t, matches, 0, "temporary update artifacts should be cleaned up")
 }
