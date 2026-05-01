@@ -57,6 +57,11 @@ var skippedDirs = map[string]bool{
 
 var skippedFiles = map[string]bool{
 	"CHANGELOG.md": true,
+	// Historical benchmark subset v1 is a documented placeholder artifact retained
+	// per CL-004.09 / docs/research/scripts-fixtures-assets-cleanup-inventory-2026-04-30.md.
+	// Its header comment preserves the original creation date and old product name as
+	// historical evidence; no active code generates or consumes the product-name string.
+	"scripts/benchmark/task-subset-v1.yaml": true,
 	// Root-level service test files that reference DDX_AGENT_* harness env vars
 	// which have not yet been renamed. Allowlisted until the harness-rename bead
 	// is complete.

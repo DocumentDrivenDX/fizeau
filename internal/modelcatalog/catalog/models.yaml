@@ -1,8 +1,8 @@
 version: 4
 generated_at: 2026-04-27T00:00:00Z
 # catalog_version is the user-facing pull signal driven by
-# `ddx-agent catalog check`. Bump it on any change that requires
-# `ddx-agent catalog update` to reach existing installations — including
+# `fiz catalog check`. Bump it on any change that requires
+# `fiz catalog update` to reach existing installations — including
 # additive schema extensions per ADR-007 §7. Format: YYYY-MM-DD.N
 # (calendar date, increment N for same-day changes).
 catalog_version: 2026-04-30.1

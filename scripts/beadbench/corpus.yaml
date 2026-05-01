@@ -4,8 +4,8 @@
 # docs/helix/02-design/benchmark-corpus.md for the curation rules and
 # scripts/beadbench/corpus/<bead-id>.yaml for per-bead detail.
 #
-# Validate this file with: ddx-agent corpus validate
-# Promote a new bead with:  ddx-agent corpus promote <bead-id> ...
+# Validate this file with: fiz corpus validate
+# Promote a new bead with:  fiz corpus promote <bead-id> ...
 version: 1
 beads:
   - id: agent-39f79181

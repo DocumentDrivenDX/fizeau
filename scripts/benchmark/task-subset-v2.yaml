@@ -1,4 +1,4 @@
-# Fixed benchmark subset for ddx-agent — v2 (2026-04-10)
+# Fixed benchmark subset for fizeau — v2 (2026-04-10)
 # Evidence-grade comparison subset with real Terminal-Bench 2.0 task IDs.
 #
 # Preserve task-subset-v1.yaml as the historical placeholder artifact from the
@@ -16,7 +16,7 @@
 #    - metadata.expert_time_estimate_min <= 180
 #    - no "no-verified-solution" tag
 # 3. Stratify by category using a fixed quota chosen before execution to bias
-#    toward ddx-agent-relevant coding workflows while still covering shell,
+#    toward fizeau-relevant coding workflows while still covering shell,
 #    security, debugging, and file-heavy tasks:
 #    - software-engineering: 5
 #    - security: 3

@@ -1,4 +1,4 @@
-# Navigation micro-eval fixtures for ddx-agent
+# Navigation micro-eval fixtures for fizeau
 # See docs/helix/02-design/solution-designs/SD-009-benchmark-mode.md §6
 #
 # These fixtures define the committed task/fixture set and scoring rules
