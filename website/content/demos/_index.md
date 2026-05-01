@@ -59,4 +59,4 @@ Package Structure:
 </noscript>
 
 All demos run against [qwen3-coder-next](https://huggingface.co/Qwen) via LM Studio.
-Demo scripts are in [`demos/scripts/`](https://github.com/DocumentDrivenDX/fizeau/tree/master/demos/scripts) and can be re-recorded with `demos/record.sh`.
+Demo scripts are in [`demos/scripts/`](https://github.com/DocumentDrivenDX/fizeau/tree/main/demos/scripts) and can be re-recorded with `demos/record.sh`.
