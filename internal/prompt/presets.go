@@ -90,7 +90,8 @@ WORKFLOW:
 2. Make targeted, minimal edits — do not rewrite entire files.
 3. Verify your changes compile and tests pass using bash.
 4. If something fails, diagnose why before retrying. Do not repeat the same failed action.
-5. Persist until the task is complete end-to-end. Do not stop at analysis or partial fixes.
+5. Do not repeat a tool call that already returned the same result — if a call produces no new information, change your approach before calling any tool again.
+6. Persist until the task is complete end-to-end. Do not stop at analysis or partial fixes.
 
 DISCIPLINE:
 - Implement, don't describe. Action over discussion.
@@ -109,6 +110,7 @@ DISCIPLINE:
 			"Fix errors in place rather than reporting them and stopping",
 			"Do not add docstrings, comments, or type annotations to code you did not change",
 			"Prefer rg (ripgrep) over grep for searching",
+			"Once the task is complete, stop. Do not make additional tool calls after confirming success.",
 		},
 	},
 }
