@@ -524,6 +524,7 @@ type serviceExecuteRequestParams struct {
 	Metadata                map[string]string
 	Tools                   []fizeau.Tool
 	ToolPreset              string
+	Permissions             string
 	SelectedProvider        string
 	SelectedRoute           string
 	RequestedModel          string
@@ -595,6 +596,10 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 	if params.SelectedProvider != "" {
 		harness = "agent"
 	}
+	permissions := params.Permissions
+	if permissions == "" {
+		permissions = "unrestricted"
+	}
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:                  params.Prompt,
 		SystemPrompt:            params.SystemPrompt,
@@ -610,6 +615,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 		Metadata:                params.Metadata,
 		Tools:                   params.Tools,
 		ToolPreset:              params.ToolPreset,
+		Permissions:             permissions,
 		MaxIterations:           params.MaxIterations,
 		MaxTokens:               params.MaxTokens,
 		ReasoningByteLimit:      params.ReasoningByteLimit,
