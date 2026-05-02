@@ -53,7 +53,7 @@ class Agent(BaseAdapter):
             binary,
             "--json",
             "--preset",
-            "benchmark",
+            "default",
             "--work-dir",
             workdir or ".",
             "-p",

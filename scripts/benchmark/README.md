@@ -71,9 +71,9 @@ Use dry-run mode to validate the staged binary/config and recorded metadata
 without invoking Harbor:
 
 ```bash
-DDX_BENCH_DRY_RUN=1 \
+FIZEAU_BENCH_DRY_RUN=1 \
 FIZEAU_BENCH_BINARY=/path/to/fiz-linux-amd64 \
-DDX_BENCH_PROVIDER_MODEL=qwen/qwen3.6-plus \
+FIZEAU_MODEL=qwen/qwen3.6-plus \
 ./scripts/benchmark/run_benchmark.sh
 ```
 
@@ -110,7 +110,7 @@ window plus the shared dataset, subset, runtime, preset, and provider/model rout
 The only per-run inputs that should change are:
 
 - `FIZEAU_BENCH_BINARY`
-- `FIZEAU_BENCH_SHA` (set to either `DDX_BENCH_BEFORE_SHA` or `DDX_BENCH_AFTER_SHA`)
+- `FIZEAU_BENCH_SHA` (set to either `FIZEAU_BENCH_BEFORE_SHA` or `FIZEAU_BENCH_AFTER_SHA`)
 
 ---
 
@@ -126,14 +126,14 @@ to install and run fiz inside each task container. It handles:
 The adapter's provider and prompt behavior are controlled by benchmark env vars
 supplied by the runner, including:
 
-- `DDX_BENCH_PROVIDER_NAME`
-- `DDX_BENCH_PROVIDER_TYPE`
-- `DDX_BENCH_PROVIDER_MODEL`
-- `DDX_BENCH_PROVIDER_BASE_URL`
-- `DDX_BENCH_PROVIDER_API_KEY_ENV`
-- `DDX_BENCH_PROVIDER_HEADERS_JSON`
-- `DDX_BENCH_PRESET`
-- `DDX_BENCH_SYSTEM_APPEND`
+- `FIZEAU_PROVIDER_NAME`
+- `FIZEAU_PROVIDER`
+- `FIZEAU_MODEL`
+- `FIZEAU_BASE_URL`
+- `FIZEAU_API_KEY_ENV`
+- `FIZEAU_HEADERS_JSON`
+- `FIZEAU_BENCH_PRESET`
+- `FIZEAU_BENCH_SYSTEM_APPEND`
 
 **Build the linux/amd64 binary before running**:
 

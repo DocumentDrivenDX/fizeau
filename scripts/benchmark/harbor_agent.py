@@ -76,16 +76,18 @@ class DDXAgent(BaseInstalledAgent):
             "HARBOR_INSTRUCTION": instruction,
             "HOME": _HOME_DIR,
         }
-        # Forward FIZEAU_* env vars injected by the matrix runner via --ae.
+        # Forward all FIZEAU_* vars from the process env into the container.
+        # FIZEAU_BASE_URL, FIZEAU_MODEL, FIZEAU_PROVIDER, FIZEAU_API_KEY_ENV,
+        # FIZEAU_HEADERS_JSON, FIZEAU_REASONING etc. are set by the runner scripts.
         for key, val in os.environ.items():
             if key.startswith("FIZEAU_"):
                 env[key] = val
-        # Forward the API key env var by name (e.g. OPENROUTER_API_KEY).
-        api_key_env = _bench_env("FIZEAU_API_KEY_ENV", "")
-        if api_key_env:
-            value = os.environ.get(api_key_env, "")
-            if value:
-                env[api_key_env] = value
+        # Resolve FIZEAU_API_KEY from FIZEAU_API_KEY_ENV if not already set.
+        api_key_env = env.get("FIZEAU_API_KEY_ENV", "")
+        if api_key_env and "FIZEAU_API_KEY" not in env:
+            api_key_val = os.environ.get(api_key_env, "")
+            if api_key_val:
+                env["FIZEAU_API_KEY"] = api_key_val
         return env
 
     @with_prompt_template

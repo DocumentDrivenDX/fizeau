@@ -30,10 +30,9 @@ class BaseCalibrationAdapterTest(unittest.TestCase):
     def test_fiz_command_maps_profile_to_env(self) -> None:
         agent = Fiz()
         spec = agent.command(self.profile, "solve", "/tmp/task")
-        self.assertEqual(spec.argv[:4], ["/installed-agent/fiz", "--json", "--preset", "benchmark"])
-        self.assertEqual(spec.env["DDX_BENCH_PROVIDER_TYPE"], "openai-compat")
-        self.assertEqual(spec.env["DDX_BENCH_PROVIDER_MODEL"], "qwen/qwen3.6-plus")
-        self.assertEqual(spec.env["DDX_BENCH_PROVIDER_API_KEY_ENV"], "FAKE_PROVIDER_API_KEY")
+        self.assertEqual(spec.argv[:4], ["/installed-agent/fiz", "--json", "--preset", "default"])
+        self.assertIn("FIZEAU_MODEL", spec.env)
+        self.assertEqual(spec.env["FIZEAU_MODEL"], "qwen/qwen3.6-plus")
         self.assertEqual(spec.stdin, "")
 
     def test_fiz_telemetry_reads_session_end_usage(self) -> None:
