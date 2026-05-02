@@ -1,3 +1,9 @@
+---
+ddx:
+  id: CONTRACT-003
+  depends_on:
+    - helix.prd
+---
 # CONTRACT-003: FizeauService Service Interface
 
 **Status:** Draft
@@ -439,6 +445,59 @@ the precedence chain documents the new dependency. Today they are echoed into
 the `routing_decision` and final-event `Metadata`, the session-log header, and
 nothing else routing-relevant.
 
+### Role and CorrelationID normalization
+
+`Role` and `CorrelationID` are observational fields shared by
+`ServiceExecuteRequest` and `RouteRequest`. The service validates them
+pre-dispatch (before any session state is opened or any provider is
+called) and rejects invalid values with typed errors. Validation is
+identity-or-reject: the service does not silently rewrite caller input.
+
+**Role rules.** Empty means unset. When non-empty, `Role` must be:
+
+- lowercase ASCII letters (`a`–`z`), digits (`0`–`9`), or hyphen (`-`)
+- 1 to 64 bytes inclusive
+
+Any other byte (uppercase, whitespace, punctuation other than `-`,
+non-ASCII) is rejected. Length over 64 bytes is rejected.
+
+**CorrelationID rules.** Empty means unset. When non-empty,
+`CorrelationID` must be:
+
+- printable ASCII only (bytes `0x21`–`0x7E`); control characters
+  (including `\t`, `\n`, `\r`) and the space byte (`0x20`) are rejected
+- 1 to 256 bytes inclusive
+
+Hyphen (`-`), colon (`:`), and underscore (`_`) are inside the printable
+range and are therefore allowed. Non-ASCII bytes are rejected.
+
+**Typed errors.** Validation failures return one of two exported error
+types so callers can branch on cause without string matching:
+
+- `*RoleNormalizationError{Role, Reason}` — returned when `Role` fails.
+  `Error()` returns `invalid Role <quoted>: <reason>`.
+- `*CorrelationIDNormalizationError{CorrelationID, Reason}` — returned
+  when `CorrelationID` fails. `Error()` returns
+  `invalid CorrelationID <quoted>: <reason>`.
+
+`Reason` is a short human-readable phrase (for example
+`"length 80 exceeds max 64"` or
+`"character \"_\" at offset 3 is not lowercase alphanumeric or hyphen"`).
+The error type, not the `Reason` string, is the stable contract.
+
+**Where validation runs.** `Execute`, the streaming variant, and
+`ResolveRoute` all validate `Role` and `CorrelationID` before dispatch.
+The same rules apply to both request types so that `ResolveRoute` parity
+holds (a request that `ResolveRoute` accepts is accepted by `Execute`,
+and vice versa, with respect to these two fields).
+
+**Validation surface.** The contract guarantees the typed error types
+named above. Helper functions `ValidateRole(role string) error` and
+`ValidateCorrelationID(id string) error` return `nil` for empty input
+and otherwise return the corresponding typed error. They are exported
+so DDx-side callers can validate user input early without round-tripping
+through the service.
+
 ### Prompt-caching opt-out (`CachePolicy`)
 
 `ServiceExecuteRequest.CachePolicy` (and the mirrored `RouteRequest.CachePolicy`)
@@ -526,8 +585,10 @@ type RouteRequest struct {
 type RouteDecision struct {
     Harness    string
     Provider   string  // provider source or endpoint selector; empty when not applicable
+    Endpoint   string  // selected named endpoint when applicable
     Model      string
     Reason     string  // human-readable explanation
+    Power      int     // catalog-projected power of the selected Model; 0 = unknown / exact-pin-only
     Candidates []Candidate  // full ranking, including rejected candidates
 }
 
