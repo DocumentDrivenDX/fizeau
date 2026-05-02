@@ -22,12 +22,17 @@ const (
 	ProviderAnthropic    ProviderType = "anthropic"
 	ProviderOpenAI       ProviderType = "openai"
 	ProviderOpenAICompat ProviderType = "openai-compat"
+	ProviderOpenRouter   ProviderType = "openrouter"
+	ProviderOMLX         ProviderType = "omlx"
+	ProviderLMStudio     ProviderType = "lmstudio"
+	ProviderOllama       ProviderType = "ollama"
 	ProviderGoogle       ProviderType = "google"
 )
 
 func (p ProviderType) valid() bool {
 	switch p {
-	case ProviderAnthropic, ProviderOpenAI, ProviderOpenAICompat, ProviderGoogle:
+	case ProviderAnthropic, ProviderOpenAI, ProviderOpenAICompat, ProviderOpenRouter,
+		ProviderOMLX, ProviderLMStudio, ProviderOllama, ProviderGoogle:
 		return true
 	}
 	return false
@@ -154,7 +159,7 @@ func (p *Profile) Validate() error {
 		return fmt.Errorf("id is required")
 	}
 	if !p.Provider.Type.valid() {
-		return fmt.Errorf("provider.type %q is not one of anthropic|openai|openai-compat|google", p.Provider.Type)
+		return fmt.Errorf("provider.type %q is not one of anthropic|openai|openrouter|omlx|lmstudio|ollama|google", p.Provider.Type)
 	}
 	if strings.TrimSpace(p.Provider.Model) == "" {
 		return fmt.Errorf("provider.model is required")

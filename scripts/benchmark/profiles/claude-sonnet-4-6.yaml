@@ -2,7 +2,7 @@
 # Pricing from OpenRouter 2026-04-30.
 id: claude-sonnet-4-6
 provider:
-  type: openai-compat
+  type: openrouter
   model: anthropic/claude-sonnet-4.6
   base_url: https://openrouter.ai/api/v1
   api_key_env: OPENROUTER_API_KEY

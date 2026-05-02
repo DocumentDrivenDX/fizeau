@@ -515,15 +515,11 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 		args = append(args, "--ae", apiKeyEnv+"="+apiKeyVal)
 	}
 	// Pass provider config so Harbor agents can configure the model endpoint.
-	// FIZEAU_PROVIDER is omitted for openai-compat profiles: fiz infers the
-	// concrete type (omlx, lmstudio, openrouter, ...) from the base URL.
 	args = append(args,
 		"--ae", "FIZEAU_BASE_URL="+opts.profile.Provider.BaseURL,
 		"--ae", "FIZEAU_MODEL="+opts.profile.Provider.Model,
+		"--ae", "FIZEAU_PROVIDER="+string(opts.profile.Provider.Type),
 	)
-	if opts.profile.Provider.Type != "openai-compat" {
-		args = append(args, "--ae", "FIZEAU_PROVIDER="+string(opts.profile.Provider.Type))
-	}
 	if apiKeyVal != "" {
 		args = append(args, "--ae", "FIZEAU_API_KEY="+apiKeyVal)
 	}

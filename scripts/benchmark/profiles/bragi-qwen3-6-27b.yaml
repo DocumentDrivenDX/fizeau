@@ -3,7 +3,7 @@
 # Qwen3 thinking-mode recommended sampling: T=0.6, top_p=0.95, top_k=20.
 id: bragi-qwen3-6-27b
 provider:
-  type: openai-compat
+  type: lmstudio
   model: qwen/qwen3.6-27b
   base_url: http://bragi:1234/v1
   api_key_env: LMSTUDIO_API_KEY
