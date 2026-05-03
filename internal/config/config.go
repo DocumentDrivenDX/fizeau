@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
