@@ -308,6 +308,11 @@ type Request struct {
 	// allowed before the stream is aborted. Zero means unlimited (no limit).
 	ReasoningByteLimit int
 
+	// ReasoningStallTimeout overrides the stall deadline for this request.
+	// Zero means use DefaultReasoningStallTimeout. Not exposed through config
+	// or the service layer — use programmatically or in tests only.
+	ReasoningStallTimeout time.Duration
+
 	// WorkDir is the working directory for file operations and bash commands.
 	WorkDir string
 

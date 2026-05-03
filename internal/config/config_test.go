@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"

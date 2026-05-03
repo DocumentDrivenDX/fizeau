@@ -384,9 +384,13 @@ func Run(ctx context.Context, req Request) (Result, error) {
 						budgetTokens = b
 					}
 				}
+				stallTimeout := req.ReasoningStallTimeout
+				if stallTimeout == 0 {
+					stallTimeout = DefaultReasoningStallTimeout
+				}
 				resp, err = consumeStream(chatCtx, sp, providerMessages, toolDefs, opts, req.Callback, sessionID, chatStart, &seq, streamThresholds{
 					reasoningByteLimit:    req.ReasoningByteLimit,
-					reasoningStallTimeout: DefaultReasoningStallTimeout,
+					reasoningStallTimeout: stallTimeout,
 					reasoningBudgetTokens: budgetTokens,
 					modelName:             sessionModel,
 					promptID:              fmt.Sprintf("%s/i%d/a%d", sessionID, iteration+1, attempt),
