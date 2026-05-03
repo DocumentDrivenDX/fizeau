@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1025,5 +1026,129 @@ func TestExecute_OSCancelDuringStreaming(t *testing.T) {
 	got := finalStatus(t, final)
 	if got != "cancelled" && got != "failed" {
 		t.Errorf("status: want cancelled/failed, got %q", got)
+	}
+}
+
+// runNativePlanningCase drives Execute with a Dynamic FakeProvider that
+// captures every Provider.Chat invocation. Returns the captured calls and
+// the drained events so individual planning-wiring tests can assert
+// pre-loop planning behavior without duplicating scaffolding.
+func runNativePlanningCase(t *testing.T, req fizeau.ServiceExecuteRequest) ([]fizeau.FakeRequest, []fizeau.ServiceEvent) {
+	t.Helper()
+	var (
+		mu    sync.Mutex
+		calls []fizeau.FakeRequest
+	)
+	fp := &fizeau.FakeProvider{
+		Dynamic: func(fr fizeau.FakeRequest) (fizeau.FakeResponse, error) {
+			mu.Lock()
+			calls = append(calls, fr)
+			idx := len(calls)
+			mu.Unlock()
+			if idx == 1 {
+				return fizeau.FakeResponse{Text: "plan-or-final-1", Usage: fizeau.TokenUsage{Input: 3, Output: 2, Total: 5}}, nil
+			}
+			return fizeau.FakeResponse{Text: "main-loop-final", Usage: fizeau.TokenUsage{Input: 4, Output: 1, Total: 5}}, nil
+		},
+	}
+	opts := fizeau.ServiceOptions{}
+	opts.FakeProvider = fp
+	svc, err := fizeau.New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ch, err := svc.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	events := drainEvents(t, ch, 5*time.Second)
+	mu.Lock()
+	defer mu.Unlock()
+	out := append([]fizeau.FakeRequest(nil), calls...)
+	return out, events
+}
+
+// firstUserMessageContent returns the first RoleUser message content from
+// the captured FakeRequest, or "" when none exist.
+func firstUserMessageContent(fr fizeau.FakeRequest) string {
+	for _, m := range fr.Messages {
+		if string(m.Role) == "user" {
+			return m.Content
+		}
+	}
+	return ""
+}
+
+// TestRunNative_BenchmarkPresetEnablesPlanning asserts that ToolPreset="benchmark"
+// auto-enables the planning turn even when ServiceExecuteRequest.PlanningMode
+// is false. The first Provider.Chat call must carry no tools and the planning
+// prompt; the second call (the main loop turn) must carry the configured tool set.
+func TestRunNative_BenchmarkPresetEnablesPlanning(t *testing.T) {
+	calls, _ := runNativePlanningCase(t, fizeau.ServiceExecuteRequest{
+		Prompt:       "implement feature X",
+		Harness:      "agent",
+		Model:        "fake-model",
+		Provider:     "fake",
+		ToolPreset:   "benchmark",
+		PlanningMode: false,
+	})
+	if len(calls) < 2 {
+		t.Fatalf("expected >=2 provider calls (planning + main loop), got %d", len(calls))
+	}
+	if got := len(calls[0].Tools); got != 0 {
+		t.Errorf("planning call: want 0 tools, got %d (%v)", got, calls[0].Tools)
+	}
+	if msg := firstUserMessageContent(calls[0]); !strings.Contains(msg, "concise plan") {
+		t.Errorf("planning call: user message missing planning prompt; got %q", msg)
+	}
+	if got := len(calls[1].Tools); got == 0 {
+		t.Errorf("main-loop call: expected non-empty tool set, got 0 tools")
+	}
+}
+
+// TestRunNative_PlanningModeFlag asserts that ServiceExecuteRequest.PlanningMode=true
+// enables planning independent of the tool preset (here: default preset).
+func TestRunNative_PlanningModeFlag(t *testing.T) {
+	calls, _ := runNativePlanningCase(t, fizeau.ServiceExecuteRequest{
+		Prompt:       "implement feature Y",
+		Harness:      "agent",
+		Model:        "fake-model",
+		Provider:     "fake",
+		ToolPreset:   "default",
+		PlanningMode: true,
+	})
+	if len(calls) < 2 {
+		t.Fatalf("expected >=2 provider calls (planning + main loop), got %d", len(calls))
+	}
+	if got := len(calls[0].Tools); got != 0 {
+		t.Errorf("planning call: want 0 tools, got %d (%v)", got, calls[0].Tools)
+	}
+	if msg := firstUserMessageContent(calls[0]); !strings.Contains(msg, "concise plan") {
+		t.Errorf("planning call: user message missing planning prompt; got %q", msg)
+	}
+	if got := len(calls[1].Tools); got == 0 {
+		t.Errorf("main-loop call: expected non-empty tool set, got 0 tools")
+	}
+}
+
+// TestRunNative_NoPlanningByDefault sanity-checks that without PlanningMode and
+// without the benchmark preset, the first provider call is the main-loop turn
+// (carries the tool set and not the planning prompt).
+func TestRunNative_NoPlanningByDefault(t *testing.T) {
+	calls, _ := runNativePlanningCase(t, fizeau.ServiceExecuteRequest{
+		Prompt:     "implement feature Z",
+		Harness:    "agent",
+		Model:      "fake-model",
+		Provider:   "fake",
+		ToolPreset: "default",
+	})
+	if len(calls) < 1 {
+		t.Fatalf("expected >=1 provider call, got 0")
+	}
+	if got := len(calls[0].Tools); got == 0 {
+		t.Errorf("first call: expected main-loop tool set, got 0 tools (planning may have leaked on)")
+	}
+	if msg := firstUserMessageContent(calls[0]); strings.Contains(msg, "concise plan") {
+		t.Errorf("first call: unexpected planning prompt in default-preset run; got %q", msg)
 	}
 }

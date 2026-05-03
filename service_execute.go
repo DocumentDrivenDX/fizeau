@@ -871,6 +871,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		ReasoningStallTimeout: req.ReasoningStallTimeout,
 		Compactor:             compactor,
 		CachePolicy:           req.CachePolicy,
+		PlanningMode:          req.PlanningMode || req.ToolPreset == "benchmark",
 	}
 	result, runErr := agentcore.Run(cancelCtx, loopReq)
 	if shouldRetryNativeNoStream(req.NoStream, result, runErr) {

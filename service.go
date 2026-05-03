@@ -623,6 +623,14 @@ type ServiceExecuteRequest struct {
 	// Empty uses the default tool set.
 	ToolPreset string
 
+	// PlanningMode, when true, performs one no-tool LLM "planning" call
+	// before the main native agent loop and injects the response as an
+	// assistant message wrapped in <plan> tags. The benchmark tool preset
+	// auto-enables planning; this flag is the per-request opt-in for other
+	// callers (e.g. the CLI --plan flag). Only honored when Harness=="agent"
+	// (the native loop). See internal/core.Request.PlanningMode.
+	PlanningMode bool
+
 	// EstimatedPromptTokens, when > 0, drives auto-selection's
 	// context-window gate (filter out candidates whose context window is
 	// too small for the prompt + safety margin).
