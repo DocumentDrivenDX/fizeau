@@ -6,9 +6,11 @@ package openaicompat
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"time"
 
 	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
 	oai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
@@ -20,6 +22,16 @@ type Config struct {
 	BaseURL string
 	APIKey  string
 	Headers map[string]string
+	// QuotaHeaderParser, when set, is called on every response to convert
+	// the response Header into a quotaheaders.Signal. The signal is then
+	// forwarded to QuotaSignalObserver. Different providers (OpenAI vs
+	// OpenRouter) use different parsers, so the protocol layer takes the
+	// parser as a function and stays provider-agnostic.
+	QuotaHeaderParser func(http.Header, time.Time) quotaheaders.Signal
+	// QuotaSignalObserver, when set together with QuotaHeaderParser, receives
+	// the parsed signal on every response. The service layer wires this to
+	// the provider quota state machine.
+	QuotaSignalObserver func(quotaheaders.Signal)
 }
 
 // Client wraps openai-go with agent-native request and response conversion.
@@ -48,9 +60,31 @@ func NewClient(cfg Config) *Client {
 	if s := ResolveDebugSink(); s != nil {
 		opts = append(opts, option.WithMiddleware(DebugMiddleware(s)))
 	}
+	if cfg.QuotaHeaderParser != nil && cfg.QuotaSignalObserver != nil {
+		opts = append(opts, option.WithMiddleware(quotaHeaderMiddleware(cfg.QuotaHeaderParser, cfg.QuotaSignalObserver)))
+	}
 
 	client := oai.NewClient(opts...)
 	return &Client{client: &client}
+}
+
+// quotaHeaderMiddleware returns a middleware that runs `parser` on every
+// response Header and forwards the resulting Signal to `observer`. The
+// middleware is a no-op when the upstream call returns an error before a
+// Response is produced, and runs *after* the response has been received but
+// *before* the SDK consumes its body — both branches still surface the same
+// (resp, err) tuple to the caller.
+func quotaHeaderMiddleware(parser func(http.Header, time.Time) quotaheaders.Signal, observer func(quotaheaders.Signal)) option.Middleware {
+	return func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		resp, err := next(req)
+		if resp != nil {
+			signal := parser(resp.Header, time.Now())
+			if signal.Present {
+				observer(signal)
+			}
+		}
+		return resp, err
+	}
 }
 
 // RequestOptions are request controls that map directly to the compatible Chat

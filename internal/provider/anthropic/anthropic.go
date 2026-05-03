@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
 	ant "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -21,9 +23,10 @@ func init() {
 		Type: "anthropic",
 		Factory: func(in registry.Inputs) agent.Provider {
 			return New(Config{
-				BaseURL: in.BaseURL,
-				APIKey:  in.APIKey,
-				Model:   in.Model,
+				BaseURL:             in.BaseURL,
+				APIKey:              in.APIKey,
+				Model:               in.Model,
+				QuotaSignalObserver: in.QuotaSignalObserver,
 			})
 		},
 		// Anthropic uses api.anthropic.com — no LAN-port inference,
@@ -46,6 +49,11 @@ type Config struct {
 	APIKey  string
 	Model   string // e.g., "claude-sonnet-4-20250514"
 	BaseURL string
+	// QuotaSignalObserver, when set, receives a parsed Anthropic rate-limit
+	// signal on every HTTP response. The service layer wires this to the
+	// provider quota state machine so subscription/daily exhaustion routes
+	// dispatch around the provider until its reset window elapses.
+	QuotaSignalObserver func(quotaheaders.Signal)
 }
 
 // New creates a new Anthropic provider.
@@ -56,6 +64,19 @@ func New(cfg Config) *Provider {
 	}
 	if cfg.APIKey != "" {
 		opts = append(opts, option.WithAPIKey(cfg.APIKey))
+	}
+	if cfg.QuotaSignalObserver != nil {
+		observer := cfg.QuotaSignalObserver
+		opts = append(opts, option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+			resp, err := next(req)
+			if resp != nil {
+				signal := quotaheaders.ParseAnthropic(resp.Header, time.Now())
+				if signal.Present {
+					observer(signal)
+				}
+			}
+			return resp, err
+		}))
 	}
 	client := ant.NewClient(opts...)
 	serverAddress, serverPort := anthropicIdentity(cfg.BaseURL)

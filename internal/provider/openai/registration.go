@@ -17,16 +17,17 @@ func init() {
 			Type: t,
 			Factory: func(in registry.Inputs) agent.Provider {
 				return New(Config{
-					BaseURL:            in.BaseURL,
-					APIKey:             in.APIKey,
-					Model:              in.Model,
-					ProviderName:       in.ProviderName,
-					ProviderSystem:     t,
-					ModelPattern:       in.ModelPattern,
-					KnownModels:        in.KnownModels,
-					Headers:            in.Headers,
-					Reasoning:          in.Reasoning,
-					ModelReasoningWire: in.ModelReasoningWire,
+					BaseURL:             in.BaseURL,
+					APIKey:              in.APIKey,
+					Model:               in.Model,
+					ProviderName:        in.ProviderName,
+					ProviderSystem:      t,
+					ModelPattern:        in.ModelPattern,
+					KnownModels:         in.KnownModels,
+					Headers:             in.Headers,
+					Reasoning:           in.Reasoning,
+					ModelReasoningWire:  in.ModelReasoningWire,
+					QuotaSignalObserver: in.QuotaSignalObserver,
 				})
 			},
 			// Built-in BaseURL only for "openai" (api.openai.com); the

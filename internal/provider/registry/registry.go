@@ -26,6 +26,7 @@ import (
 	"sync"
 
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 )
 
@@ -66,6 +67,14 @@ type Inputs struct {
 	// from the catalog. Today only openrouter and openai-compat
 	// providers consume it; others ignore it.
 	ModelReasoningWire map[string]string
+
+	// QuotaSignalObserver, when set, is forwarded to provider factories
+	// that support per-response rate-limit-header parsing (anthropic,
+	// openai, openrouter). The service layer wires this to the provider
+	// quota state machine so dispatch can route around providers whose
+	// subscription/daily cap is hit. Providers that do not parse rate-limit
+	// headers ignore this field.
+	QuotaSignalObserver func(quotaheaders.Signal)
 }
 
 // Factory builds a provider from canonical inputs.

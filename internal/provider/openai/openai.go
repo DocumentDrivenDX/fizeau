@@ -5,12 +5,15 @@ package openai
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
 	reasoningpolicy "github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 	"github.com/DocumentDrivenDX/fizeau/internal/sdk/openaicompat"
 	"github.com/openai/openai-go/option"
@@ -69,6 +72,16 @@ type Config struct {
 	// surface — reject explicit non-off requests pre-flight). Models not
 	// listed default to "provider", preserving existing behavior.
 	ModelReasoningWire map[string]string
+	// QuotaHeaderParser, when set, overrides the default OpenAI rate-limit
+	// header parser. OpenRouter uses this to install
+	// quotaheaders.ParseOpenRouter even though it goes through this
+	// OpenAI-compatible provider implementation.
+	QuotaHeaderParser func(http.Header, time.Time) quotaheaders.Signal
+	// QuotaSignalObserver receives parsed rate-limit signals on every
+	// response. The service layer wires this to the provider quota state
+	// machine. Both QuotaHeaderParser and QuotaSignalObserver must be set
+	// for header-driven exhaustion tracking to activate.
+	QuotaSignalObserver func(quotaheaders.Signal)
 }
 
 // New creates a new OpenAI-compatible provider.
@@ -82,11 +95,19 @@ func New(cfg Config) *Provider {
 	if providerName == "" {
 		providerName = providerSystem
 	}
+	parser := cfg.QuotaHeaderParser
+	if parser == nil && cfg.QuotaSignalObserver != nil {
+		// Default to OpenAI-shaped header parsing when no explicit parser is
+		// supplied. OpenRouter overrides this via Config.QuotaHeaderParser.
+		parser = quotaheaders.ParseOpenAI
+	}
 	return &Provider{
 		client: openaicompat.NewClient(openaicompat.Config{
-			BaseURL: cfg.BaseURL,
-			APIKey:  cfg.APIKey,
-			Headers: cfg.Headers,
+			BaseURL:             cfg.BaseURL,
+			APIKey:              cfg.APIKey,
+			Headers:             cfg.Headers,
+			QuotaHeaderParser:   parser,
+			QuotaSignalObserver: cfg.QuotaSignalObserver,
 		}),
 		model:              cfg.Model,
 		modelPattern:       cfg.ModelPattern,

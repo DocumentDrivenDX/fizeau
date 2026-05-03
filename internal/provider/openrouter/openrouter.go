@@ -12,6 +12,7 @@ import (
 	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/limits"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 )
@@ -23,14 +24,15 @@ func init() {
 		Type: "openrouter",
 		Factory: func(in registry.Inputs) agent.Provider {
 			return New(Config{
-				BaseURL:            in.BaseURL,
-				APIKey:             in.APIKey,
-				Model:              in.Model,
-				ModelPattern:       in.ModelPattern,
-				KnownModels:        in.KnownModels,
-				Headers:            in.Headers,
-				Reasoning:          in.Reasoning,
-				ModelReasoningWire: in.ModelReasoningWire,
+				BaseURL:             in.BaseURL,
+				APIKey:              in.APIKey,
+				Model:               in.Model,
+				ModelPattern:        in.ModelPattern,
+				KnownModels:         in.KnownModels,
+				Headers:             in.Headers,
+				Reasoning:           in.Reasoning,
+				ModelReasoningWire:  in.ModelReasoningWire,
+				QuotaSignalObserver: in.QuotaSignalObserver,
 			})
 		},
 		DefaultBaseURL: DefaultBaseURL,
@@ -46,14 +48,15 @@ var ProtocolCapabilities = openai.ProtocolCapabilities{
 }
 
 type Config struct {
-	BaseURL            string
-	APIKey             string
-	Model              string
-	ModelPattern       string
-	KnownModels        map[string]string
-	Headers            map[string]string
-	Reasoning          reasoning.Reasoning
-	ModelReasoningWire map[string]string
+	BaseURL             string
+	APIKey              string
+	Model               string
+	ModelPattern        string
+	KnownModels         map[string]string
+	Headers             map[string]string
+	Reasoning           reasoning.Reasoning
+	ModelReasoningWire  map[string]string
+	QuotaSignalObserver func(quotaheaders.Signal)
 }
 
 func New(cfg Config) *openai.Provider {
@@ -74,6 +77,8 @@ func New(cfg Config) *openai.Provider {
 		Capabilities:         &ProtocolCapabilities,
 		UsageCostAttribution: UsageCostAttribution,
 		ModelReasoningWire:   cfg.ModelReasoningWire,
+		QuotaHeaderParser:    quotaheaders.ParseOpenRouter,
+		QuotaSignalObserver:  cfg.QuotaSignalObserver,
 	})
 }
 

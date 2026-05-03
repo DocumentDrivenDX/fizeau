@@ -3,9 +3,11 @@ package fizeau
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
 	// Provider packages are imported for their init() side-effects so
 	// they self-register into the registry. The factory below uses
 	// registry.Lookup; the per-package import paths used to live in
@@ -40,7 +42,7 @@ func (s *service) resolveConfiguredNativeProvider(req ServiceExecuteRequest) nat
 	if req.Model != "" {
 		entry.Model = req.Model
 	}
-	provider := buildNativeProvider(name, entry)
+	provider := s.buildNativeProvider(name, entry)
 	if provider == nil {
 		return nativeProviderResolution{Name: name, Entry: entry}
 	}
@@ -172,18 +174,45 @@ func (s *service) availableProviderTypes() string {
 // BuildProvider go through registry.Lookup. Adding a new provider type
 // is one Register() call in the new package; no edits to this file
 // or internal/config/config.go's factory.
-func buildNativeProvider(name string, entry ServiceProviderEntry) agentcore.Provider {
+func (s *service) buildNativeProvider(name string, entry ServiceProviderEntry) agentcore.Provider {
 	typ := normalizeServiceProviderType(entry.Type)
 	if d, ok := registry.Lookup(typ); ok {
 		return d.Factory(registry.Inputs{
-			ProviderName:       name,
-			BaseURL:            entry.BaseURL,
-			APIKey:             entry.APIKey,
-			Model:              entry.Model,
-			ModelReasoningWire: nativeModelReasoningWireMap(),
+			ProviderName:        name,
+			BaseURL:             entry.BaseURL,
+			APIKey:              entry.APIKey,
+			Model:               entry.Model,
+			ModelReasoningWire:  nativeModelReasoningWireMap(),
+			QuotaSignalObserver: s.quotaSignalObserver(name),
 		})
 	}
 	return nil
+}
+
+// quotaSignalObserver returns a callback that updates the provider quota
+// state machine when a parsed rate-limit signal indicates the provider's
+// subscription/daily cap has been hit (or imminently will be). Returns nil
+// when the service has no quota store, which makes the provider middleware
+// a no-op.
+func (s *service) quotaSignalObserver(providerName string) func(quotaheaders.Signal) {
+	if s == nil || s.providerQuota == nil || providerName == "" {
+		return nil
+	}
+	store := s.providerQuota
+	return func(signal quotaheaders.Signal) {
+		now := time.Now()
+		exhausted, retryAt := signal.IsExhausted(now)
+		if !exhausted {
+			return
+		}
+		if retryAt.IsZero() {
+			// Provider said "exhausted" but gave us no reset window. Fall
+			// back to a short cooldown so we don't peg the provider in the
+			// excluded set forever; the next response will refresh us.
+			retryAt = now.Add(time.Minute)
+		}
+		store.MarkQuotaExhausted(providerName, retryAt)
+	}
 }
 
 // nativeModelReasoningWireMap returns the catalog reasoning_wire map for use
