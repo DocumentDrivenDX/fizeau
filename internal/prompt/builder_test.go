@@ -6,8 +6,34 @@ import (
 	"testing"
 
 	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/skill"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestBuilder_WithSkillCatalog(t *testing.T) {
+	cat := skill.NewCatalog([]skill.Skill{
+		{Path: "/x/zeta/SKILL.md", Frontmatter: skill.Frontmatter{Name: "zeta", Description: "Zeta skill"}},
+		{Path: "/x/alpha/SKILL.md", Frontmatter: skill.Frontmatter{Name: "alpha", Description: "Alpha skill"}},
+	})
+	result := New("Base.").WithSkillCatalog(cat).WithDate("2026-04-06").Build()
+
+	assert.Contains(t, result, "# Available Skills")
+	assert.Contains(t, result, "- alpha: Alpha skill")
+	assert.Contains(t, result, "- zeta: Zeta skill")
+	assert.Contains(t, result, "load_skill")
+	// Sorted: alpha before zeta
+	assert.Less(t, indexOf(result, "alpha"), indexOf(result, "zeta"))
+}
+
+func TestBuilder_WithSkillCatalog_NilOmitsSection(t *testing.T) {
+	result := New("Base.").WithSkillCatalog(nil).WithDate("2026-04-06").Build()
+	assert.NotContains(t, result, "# Available Skills")
+}
+
+func TestBuilder_WithSkillCatalog_EmptyOmitsSection(t *testing.T) {
+	result := New("Base.").WithSkillCatalog(skill.NewCatalog(nil)).WithDate("2026-04-06").Build()
+	assert.NotContains(t, result, "# Available Skills")
+}
 
 type stubTool struct {
 	name string

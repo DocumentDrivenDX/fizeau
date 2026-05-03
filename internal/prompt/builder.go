@@ -10,6 +10,7 @@ import (
 	"time"
 
 	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/skill"
 )
 
 // ContextFile is a project instruction file (AGENTS.md, CLAUDE.md, etc.).
@@ -25,6 +26,7 @@ type Builder struct {
 	guidelines   []string
 	sections     []namedSection
 	contextFiles []ContextFile
+	skills       *skill.Catalog
 	appendText   string
 	date         string
 	workDir      string
@@ -60,6 +62,14 @@ func (b *Builder) WithGuidelines(guidelines ...string) *Builder {
 // WithContextFiles adds project context files (AGENTS.md, etc.).
 func (b *Builder) WithContextFiles(files []ContextFile) *Builder {
 	b.contextFiles = files
+	return b
+}
+
+// WithSkillCatalog injects an "# Available Skills" section listing each
+// discovered skill's name and description. A nil or empty catalog is a
+// no-op so callers can wire it unconditionally.
+func (b *Builder) WithSkillCatalog(cat *skill.Catalog) *Builder {
+	b.skills = cat
 	return b
 }
 
@@ -112,6 +122,17 @@ func (b *Builder) Build() string {
 			toolLines = append(toolLines, fmt.Sprintf("- %s: %s", t.Name(), t.Description()))
 		}
 		sections = append(sections, "# Tools\n"+strings.Join(toolLines, "\n"))
+	}
+
+	// 2b. Available skills (catalog already iterates in sorted order).
+	if b.skills != nil && b.skills.Len() > 0 {
+		var lines []string
+		lines = append(lines, "# Available Skills", "")
+		for _, s := range b.skills.Skills() {
+			lines = append(lines, fmt.Sprintf("- %s: %s", s.Name(), s.Description()))
+		}
+		lines = append(lines, "", "Call the load_skill tool with a skill name to load its full instructions.")
+		sections = append(sections, strings.Join(lines, "\n"))
 	}
 
 	// 3. Guidelines

@@ -268,6 +268,7 @@ func runWithOptions(opts Options) int {
 	// env var → cfg.Skills.Dir → ".fizeau/skills" under the work dir.
 	// A literal "-" (in either env or config) disables discovery even
 	// when the directory exists.
+	var skillCatalog *fizeau.SkillCatalog
 	if skillsDir := resolveSkillsDir(cfg, wd); skillsDir != "" {
 		if cat, warnings, err := fizeau.ScanSkillsDir(skillsDir); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: skill discovery failed for %s: %v\n", skillsDir, err)
@@ -277,6 +278,7 @@ func runWithOptions(opts Options) int {
 			}
 			if loader := fizeau.NewLoadSkillTool(cat); loader != nil {
 				tools = append(tools, loader)
+				skillCatalog = cat
 			}
 		}
 	}
@@ -284,6 +286,7 @@ func runWithOptions(opts Options) int {
 	// Build system prompt
 	sysPrompt := prompt.NewFromPreset(preset).
 		WithTools(tools).
+		WithSkillCatalog(skillCatalog).
 		WithContextFiles(prompt.LoadContextFiles(wd)).
 		WithWorkDir(wd)
 
