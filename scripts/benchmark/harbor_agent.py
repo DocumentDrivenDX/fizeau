@@ -62,6 +62,34 @@ class DDXAgent(BaseInstalledAgent):
             ),
         )
 
+        # Some TB-2 task images (e.g. minimal LaTeX containers) ship without
+        # root CA certificates, which makes fiz's TLS handshake to OpenRouter
+        # fail with `x509: certificate signed by unknown authority` and burn a
+        # task with 0 tokens consumed. Probe for a CA bundle and install one if
+        # missing, across Debian/Ubuntu, Alpine, and RHEL-family images. All
+        # steps are best-effort so offline images do not block the run.
+        await self.exec_as_root(
+            environment,
+            command=(
+                "set +e; "
+                "if [ -s /etc/ssl/certs/ca-certificates.crt ] "
+                "|| [ -s /etc/pki/tls/certs/ca-bundle.crt ] "
+                "|| [ -s /etc/ssl/cert.pem ]; then exit 0; fi; "
+                "if command -v apt-get >/dev/null 2>&1; then "
+                "  DEBIAN_FRONTEND=noninteractive apt-get update -qq "
+                "  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates "
+                "  && update-ca-certificates; "
+                "elif command -v apk >/dev/null 2>&1; then "
+                "  apk add --no-cache ca-certificates && update-ca-certificates; "
+                "elif command -v dnf >/dev/null 2>&1; then "
+                "  dnf install -y ca-certificates && update-ca-trust; "
+                "elif command -v yum >/dev/null 2>&1; then "
+                "  yum install -y ca-certificates && update-ca-trust; "
+                "fi; "
+                "exit 0"
+            ),
+        )
+
         await environment.upload_file(binary_src, _BINARY_TARGET)
         await self.exec_as_root(
             environment, command=f"chmod 755 {_BINARY_TARGET}"
