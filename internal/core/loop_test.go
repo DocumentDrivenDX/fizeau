@@ -2330,3 +2330,155 @@ func TestRun_MidTurnOverflowRetry(t *testing.T) {
 	// At least one compaction end event should have been emitted.
 	require.NotEmpty(t, compactionEndEvents, "at least one compaction end event should have been emitted")
 }
+
+// planningRecorder records every Chat call (including those with nil tools)
+// so planning-mode tests can assert tool-arg shape and call ordering.
+type planningRecorder struct {
+	responses []Response
+	errs      []error
+	callCount int
+	calls     []struct {
+		messages []Message
+		tools    []ToolDef
+		toolsNil bool
+	}
+}
+
+func (p *planningRecorder) Chat(ctx context.Context, messages []Message, tools []ToolDef, opts Options) (Response, error) {
+	if ctx.Err() != nil {
+		return Response{}, ctx.Err()
+	}
+	p.calls = append(p.calls, struct {
+		messages []Message
+		tools    []ToolDef
+		toolsNil bool
+	}{
+		messages: append([]Message(nil), messages...),
+		tools:    append([]ToolDef(nil), tools...),
+		toolsNil: tools == nil,
+	})
+	idx := p.callCount
+	p.callCount++
+	var err error
+	if idx < len(p.errs) {
+		err = p.errs[idx]
+	}
+	if idx < len(p.responses) {
+		return p.responses[idx], err
+	}
+	return Response{}, err
+}
+
+func TestPlanningMode(t *testing.T) {
+	prov := &planningRecorder{
+		responses: []Response{
+			{Content: "PLAN BODY", Usage: TokenUsage{Input: 5, Output: 7, Total: 12}, Model: "plan-model"},
+			{Content: "final answer", Usage: TokenUsage{Input: 3, Output: 4, Total: 7}, Model: "main-model"},
+		},
+	}
+
+	var events []Event
+	cb := func(e Event) { events = append(events, e) }
+
+	result, err := Run(context.Background(), Request{
+		Prompt:       "do the thing",
+		SystemPrompt: "be helpful",
+		Provider:     prov,
+		PlanningMode: true,
+		Callback:     cb,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "final answer", result.Output)
+
+	require.Equal(t, 2, prov.callCount, "expected planning + main provider calls")
+
+	planCall := prov.calls[0]
+	assert.True(t, planCall.toolsNil, "planning call must pass nil tools")
+	require.Len(t, planCall.messages, 2)
+	assert.Equal(t, RoleSystem, planCall.messages[0].Role)
+	assert.Equal(t, "be helpful", planCall.messages[0].Content)
+	assert.Equal(t, RoleUser, planCall.messages[1].Role)
+	assert.Contains(t, planCall.messages[1].Content, "do the thing")
+	assert.Contains(t, planCall.messages[1].Content, "concise plan")
+
+	mainCall := prov.calls[1]
+	assert.False(t, mainCall.toolsNil, "main call must pass non-nil tools slice")
+	// Main call carries: system + user prompt + injected <plan> assistant msg.
+	require.GreaterOrEqual(t, len(mainCall.messages), 3)
+	planAssistant := mainCall.messages[len(mainCall.messages)-1]
+	assert.Equal(t, RoleAssistant, planAssistant.Role)
+	assert.Equal(t, "<plan>\nPLAN BODY\n</plan>", planAssistant.Content)
+
+	// Token accumulation: 12 (planning) + 7 (main) = 19 total.
+	assert.Equal(t, 19, result.Tokens.Total, "tokens from planning call must accumulate")
+	assert.Equal(t, 8, result.Tokens.Input)
+	assert.Equal(t, 11, result.Tokens.Output)
+
+	// Event ordering: session.start, llm.request(plan), llm.response(plan),
+	// planning.turn, llm.request(main), llm.response(main), session.end.
+	var firstPlanningTurn, firstMainRequest int = -1, -1
+	for i, e := range events {
+		if e.Type == EventPlanningTurn && firstPlanningTurn == -1 {
+			firstPlanningTurn = i
+		}
+		if e.Type == EventLLMRequest && firstPlanningTurn != -1 && i > firstPlanningTurn && firstMainRequest == -1 {
+			firstMainRequest = i
+		}
+	}
+	require.NotEqual(t, -1, firstPlanningTurn, "planning.turn event must be emitted")
+	require.NotEqual(t, -1, firstMainRequest, "main loop llm.request must be emitted after planning.turn")
+	assert.Less(t, firstPlanningTurn, firstMainRequest, "planning.turn must precede main loop llm.request")
+
+	// EventLLMResponse for the planning call must precede EventPlanningTurn.
+	planningRespBeforeTurn := false
+	for i := 0; i < firstPlanningTurn; i++ {
+		if events[i].Type == EventLLMResponse {
+			planningRespBeforeTurn = true
+		}
+	}
+	assert.True(t, planningRespBeforeTurn, "EventLLMResponse must be emitted before EventPlanningTurn")
+
+	// EventPlanningTurn payload includes plan/usage/model.
+	var turnPayload map[string]any
+	require.NoError(t, json.Unmarshal(events[firstPlanningTurn].Data, &turnPayload))
+	assert.Equal(t, "PLAN BODY", turnPayload["plan"])
+	assert.Equal(t, "plan-model", turnPayload["model"])
+	require.NotNil(t, turnPayload["usage"])
+}
+
+func TestPlanningModeFailure(t *testing.T) {
+	prov := &planningRecorder{
+		responses: []Response{
+			{}, // unused — first call errors
+			{Content: "final answer despite plan failure", Usage: TokenUsage{Total: 4}},
+		},
+		errs: []error{errors.New("planner kaboom"), nil},
+	}
+
+	var events []Event
+	cb := func(e Event) { events = append(events, e) }
+
+	result, err := Run(context.Background(), Request{
+		Prompt:       "task",
+		Provider:     prov,
+		PlanningMode: true,
+		Callback:     cb,
+	})
+	require.NoError(t, err, "planning failure must be non-fatal")
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "final answer despite plan failure", result.Output)
+
+	// No EventPlanningTurn emitted, no plan injected.
+	for _, e := range events {
+		assert.NotEqual(t, EventPlanningTurn, e.Type, "no planning.turn event when planning fails")
+	}
+
+	require.Equal(t, 2, prov.callCount, "main loop must still run after planning failure")
+	mainCall := prov.calls[1]
+	for _, m := range mainCall.messages {
+		if m.Role == RoleAssistant {
+			assert.NotContains(t, m.Content, "<plan>", "no <plan> assistant message when planning fails")
+		}
+	}
+}

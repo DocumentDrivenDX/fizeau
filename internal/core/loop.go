@@ -137,6 +137,82 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		compactionCtx = compactionctx.WithPrefixTokens(compactionCtx, estimateCompactionPrefixTokens(req.SystemPrompt))
 	}
 
+	// Planning turn: one no-tool LLM call before the main loop. Failure is
+	// non-fatal — the run continues without a plan.
+	if req.PlanningMode {
+		planMessages := make([]Message, 0, 2)
+		if req.SystemPrompt != "" {
+			planMessages = append(planMessages, Message{Role: RoleSystem, Content: req.SystemPrompt})
+		}
+		planMessages = append(planMessages, Message{Role: RoleUser, Content: planningPromptFor(req.Prompt)})
+
+		emitCallback(req.Callback, Event{
+			SessionID: sessionID,
+			Seq:       seq,
+			Type:      EventLLMRequest,
+			Timestamp: time.Now().UTC(),
+			Data: mustMarshal(map[string]any{
+				"planning":           true,
+				"messages":           planMessages,
+				"tools":              nil,
+				"model":              opts.Model,
+				"temperature":        opts.Temperature,
+				"top_p":              opts.TopP,
+				"top_k":              opts.TopK,
+				"min_p":              opts.MinP,
+				"repetition_penalty": opts.RepetitionPenalty,
+				"max_tokens":         opts.MaxTokens,
+				"seed":               opts.Seed,
+				"sampling_source":    opts.SamplingSource,
+				"stop":               opts.Stop,
+				"reasoning":          opts.Reasoning,
+				"cache_policy":       opts.CachePolicy,
+			}),
+		})
+		seq++
+
+		planStart := time.Now()
+		planResp, planErr := req.Provider.Chat(ctx, planMessages, nil, opts)
+		planDuration := time.Since(planStart)
+
+		if planErr != nil {
+			slog.Warn("planning call failed, continuing without plan", "error", planErr)
+		} else {
+			result.Tokens.Add(planResp.Usage)
+			emitCallback(req.Callback, Event{
+				SessionID: sessionID,
+				Seq:       seq,
+				Type:      EventLLMResponse,
+				Timestamp: time.Now().UTC(),
+				Data: mustMarshal(map[string]any{
+					"planning":      true,
+					"content":       planResp.Content,
+					"usage":         planResp.Usage,
+					"latency_ms":    planDuration.Milliseconds(),
+					"model":         planResp.Model,
+					"finish_reason": planResp.FinishReason,
+				}),
+			})
+			seq++
+			emitCallback(req.Callback, Event{
+				SessionID: sessionID,
+				Seq:       seq,
+				Type:      EventPlanningTurn,
+				Timestamp: time.Now().UTC(),
+				Data: mustMarshal(map[string]any{
+					"plan":  planResp.Content,
+					"usage": planResp.Usage,
+					"model": planResp.Model,
+				}),
+			})
+			seq++
+			messages = append(messages, Message{
+				Role:    RoleAssistant,
+				Content: "<plan>\n" + planResp.Content + "\n</plan>",
+			})
+		}
+	}
+
 	// runCompaction handles the compaction logic and event emission.
 	// midTurn should be true when called after tool results within a turn (as
 	// opposed to pre-turn or overflow-triggered compaction), so event consumers
@@ -743,6 +819,17 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			return result, ErrToolCallLoop
 		}
 	}
+}
+
+func planningPromptFor(prompt string) string {
+	return "You are about to begin a coding task. Before using any tools, produce a concise plan.\n\n" +
+		"Task:\n" + prompt + "\n\n" +
+		"Think through:\n" +
+		"(a) Which files or directories you need to read to understand the current state.\n" +
+		"(b) What changes are required, and in which files.\n" +
+		"(c) What could go wrong, and how you will recover.\n" +
+		"(d) How you will verify that your changes are correct.\n\n" +
+		"Be concise — 150 words maximum. Do not ask questions. Do not start implementing yet."
 }
 
 func min(a, b int) int {

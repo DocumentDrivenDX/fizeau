@@ -189,6 +189,10 @@ const (
 	// reasoning_tail, and prompt_id so harnesses and dashboards can count
 	// stall rate and debug what the model was reasoning about at the time.
 	EventReasoningStall EventType = "reasoning.stall"
+	// EventPlanningTurn fires after the planning LLM call completes when
+	// Request.PlanningMode is enabled. Data: "plan" (string), "usage"
+	// (TokenUsage), "model" (string).
+	EventPlanningTurn EventType = "planning.turn"
 )
 
 // Event is a structured event emitted during a internal agent loop.
@@ -375,6 +379,12 @@ type Request struct {
 	// Telemetry carries the runtime telemetry implementation. If nil, the
 	// agent loop falls back to a no-op runtime.
 	Telemetry telemetry.Telemetry
+
+	// PlanningMode, when true, performs one no-tool LLM call before the main
+	// tool loop. The plan response is injected as an assistant message wrapped
+	// in <plan> tags so the subsequent tool loop has it as context. Failure of
+	// the planning call is non-fatal: the run continues without a plan.
+	PlanningMode bool
 
 	// Compactor is called before each agent loop iteration (and after tool
 	// results). If non-nil, it may compact the message history to fit within
