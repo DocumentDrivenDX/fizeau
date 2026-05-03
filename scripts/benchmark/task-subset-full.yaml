@@ -1,0 +1,98 @@
+# Full cached task list for fizeau benchmark — all terminal-bench@2.0 tasks
+# pulled via harbor dataset. Used for comprehensive coverage runs.
+# Generated 2026-05-02 from harbor cache.
+version: "full-1"
+captured: "2026-05-02"
+dataset: terminal-bench@2.0
+
+tasks:
+  - id: break-filter-js-from-html
+    category: security
+    difficulty: medium
+  - id: build-cython-ext
+    category: debugging
+    difficulty: medium
+  - id: build-pmars
+    category: software-engineering
+    difficulty: medium
+  - id: cancel-async-tasks
+    category: software-engineering
+    difficulty: hard
+  - id: cobol-modernization
+    category: software-engineering
+    difficulty: hard
+  - id: code-from-image
+    category: software-engineering
+    difficulty: medium
+  - id: configure-git-webserver
+    category: system-administration
+    difficulty: hard
+  - id: count-dataset-tokens
+    category: data-processing
+    difficulty: easy
+  - id: db-wal-recovery
+    category: file-operations
+    difficulty: medium
+  - id: distribution-search
+    category: data-processing
+    difficulty: medium
+  - id: extract-elf
+    category: file-operations
+    difficulty: medium
+  - id: fix-code-vulnerability
+    category: security
+    difficulty: hard
+  - id: fix-git
+    category: system-administration
+    difficulty: medium
+  - id: git-leak-recovery
+    category: software-engineering
+    difficulty: medium
+  - id: git-multibranch
+    category: system-administration
+    difficulty: medium
+  - id: headless-terminal
+    category: software-engineering
+    difficulty: medium
+  - id: largest-eigenval
+    category: data-processing
+    difficulty: medium
+  - id: log-summary-date-ranges
+    category: data-processing
+    difficulty: medium
+  - id: multi-source-data-merger
+    category: data-processing
+    difficulty: medium
+  - id: nginx-request-logging
+    category: system-administration
+    difficulty: medium
+  - id: openssl-selfsigned-cert
+    category: security
+    difficulty: easy
+  - id: overfull-hbox
+    category: software-engineering
+    difficulty: medium
+  - id: password-recovery
+    category: security
+    difficulty: hard
+  - id: portfolio-optimization
+    category: data-processing
+    difficulty: hard
+  - id: prove-plus-comm
+    category: software-engineering
+    difficulty: hard
+  - id: regex-log
+    category: software-engineering
+    difficulty: medium
+  - id: sanitize-git-repo
+    category: security
+    difficulty: medium
+  - id: schemelike-metacircular-eval
+    category: software-engineering
+    difficulty: hard
+  - id: sqlite-db-truncate
+    category: file-operations
+    difficulty: medium
+  - id: vulnerable-secret
+    category: security
+    difficulty: medium
