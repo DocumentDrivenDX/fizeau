@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import socket
 import uuid
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,40 @@ _OUTPUT_LOG = "/logs/agent/fiz.txt"
 
 def _bench_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
+
+
+def _resolve_hosts_for_url(base_url: str) -> dict[str, str]:
+    """Resolve the hostname in base_url on the host and return {hostname: ip}.
+
+    Returns an empty dict if base_url is empty, uses an IP address directly,
+    or if DNS resolution fails. Only non-loopback, non-link-local results are
+    returned (local inference servers like vidar/bragi have routable IPs).
+    """
+    if not base_url:
+        return {}
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(base_url)
+        host = parsed.hostname or ""
+        if not host or host in ("localhost", "127.0.0.1", "::1"):
+            return {}
+        # Skip if already an IP address
+        try:
+            socket.inet_pton(socket.AF_INET, host)
+            return {}
+        except OSError:
+            pass
+        try:
+            socket.inet_pton(socket.AF_INET6, host)
+            return {}
+        except OSError:
+            pass
+        ip = socket.gethostbyname(host)
+        if ip.startswith("127.") or ip.startswith("169.254."):
+            return {}
+        return {host: ip}
+    except Exception:
+        return {}
 
 
 class FizeauAgent(BaseInstalledAgent):
@@ -124,6 +159,20 @@ class FizeauAgent(BaseInstalledAgent):
         agents_md_src = Path(__file__).parent / "AGENTS.md"
         if agents_md_src.exists():
             await environment.upload_file(agents_md_src, _AGENTS_MD_TARGET)
+
+        # Harbor task Docker Compose networks use isolated DNS that doesn't
+        # inherit the host's Tailscale DNS. Resolve any FIZEAU_BASE_URL
+        # hostname on the host side and inject it into /etc/hosts so that
+        # fiz inside the container can reach local inference servers (vidar,
+        # bragi, etc.) by their Tailscale hostnames.
+        base_url = os.environ.get("FIZEAU_BASE_URL", "")
+        hosts_entries = _resolve_hosts_for_url(base_url)
+        if hosts_entries:
+            entries_cmd = "; ".join(
+                f"echo '{ip} {host}' >> /etc/hosts"
+                for host, ip in hosts_entries.items()
+            )
+            await self.exec_as_root(environment, command=entries_cmd)
 
     @staticmethod
     def _find_host_ca_bundle() -> Path | None:
