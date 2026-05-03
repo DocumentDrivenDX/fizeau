@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 var (
-	errHarnessModelIncompatible = errors.New("routing: harness model incompatible")
-	errProfilePinConflict       = errors.New("routing: profile pin conflict")
-	errNoProfileCandidate       = errors.New("routing: no profile candidate")
+	errHarnessModelIncompatible   = errors.New("routing: harness model incompatible")
+	errProfilePinConflict         = errors.New("routing: profile pin conflict")
+	errNoProfileCandidate         = errors.New("routing: no profile candidate")
+	errAllProvidersQuotaExhausted = errors.New("routing: all providers quota exhausted")
 )
 
 // ErrHarnessModelIncompatible reports an explicit Harness+Model pin that the
@@ -93,4 +95,34 @@ func (e ErrNoProfileCandidate) Is(target error) bool {
 
 func (e ErrNoProfileCandidate) Unwrap() error {
 	return errNoProfileCandidate
+}
+
+// ErrAllProvidersQuotaExhausted reports that every routing candidate that
+// would have been eligible for the request was filtered out solely because
+// its provider is currently in quota_exhausted state. RetryAfter is the
+// earliest expected provider-recovery time across the exhausted set.
+type ErrAllProvidersQuotaExhausted struct {
+	RetryAfter         time.Time
+	ExhaustedProviders []string
+}
+
+func (e ErrAllProvidersQuotaExhausted) Error() string {
+	if len(e.ExhaustedProviders) == 0 {
+		return "all eligible providers are quota-exhausted"
+	}
+	return fmt.Sprintf("all eligible providers are quota-exhausted: %s (retry after %s)",
+		strings.Join(e.ExhaustedProviders, ", "), e.RetryAfter.Format(time.RFC3339))
+}
+
+func (e ErrAllProvidersQuotaExhausted) Is(target error) bool {
+	switch target.(type) {
+	case ErrAllProvidersQuotaExhausted, *ErrAllProvidersQuotaExhausted:
+		return true
+	default:
+		return errors.Is(errAllProvidersQuotaExhausted, target)
+	}
+}
+
+func (e ErrAllProvidersQuotaExhausted) Unwrap() error {
+	return errAllProvidersQuotaExhausted
 }

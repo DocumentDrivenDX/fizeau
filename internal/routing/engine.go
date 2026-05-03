@@ -220,6 +220,10 @@ const (
 	// model inactive, deprecated, stale, or otherwise excluded from
 	// automatic routing.
 	FilterReasonNotAutoRoutable FilterReason = "not_auto_routable"
+	// FilterReasonQuotaExhausted: provider is in the quota_exhausted state
+	// with retry_after in the future. The candidate would have been eligible
+	// otherwise.
+	FilterReasonQuotaExhausted FilterReason = "quota_exhausted"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -291,9 +295,16 @@ type Inputs struct {
 	ObservedLatencyMS   map[string]float64   // by ProviderModelKey(provider, endpoint, model)
 	ProviderCooldowns   map[string]time.Time // by provider name
 	CooldownDuration    time.Duration        // 0 = no cooldown enforcement
-	Now                 time.Time            // injected for deterministic testing; default time.Now()
-	CatalogResolver     func(ref, surface string) (concreteModel string, ok bool)
-	ModelEligibility    func(model string) (ModelEligibility, bool)
+
+	// ProviderQuotaExhaustedUntil maps provider name → retry_after time.
+	// A provider with retry_after > Now is treated as quota_exhausted and
+	// disqualified from candidate selection. The service maintains the
+	// per-provider quota state machine and projects it into this map for
+	// each routing call.
+	ProviderQuotaExhaustedUntil map[string]time.Time
+	Now                         time.Time // injected for deterministic testing; default time.Now()
+	CatalogResolver             func(ref, surface string) (concreteModel string, ok bool)
+	ModelEligibility            func(model string) (ModelEligibility, bool)
 
 	// ReasoningResolver returns the catalog's surface_policy reasoning_default
 	// for a (profile, surface) pair. When set, buildHarnessCandidates uses it
@@ -450,6 +461,9 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 			}, nil
 		}
 	}
+	if quotaErr := allProvidersQuotaExhaustedError(ranked); quotaErr != nil {
+		return &Decision{Candidates: out}, quotaErr
+	}
 	if requested := requestedModelIntent(req); requested != "" && req.Provider == "" && canonicalHarness == "" && hasLiveDiscoveryCandidates(ranked) {
 		return &Decision{Candidates: out}, fmt.Errorf("no live endpoint offers a match for %s", requested)
 	}
@@ -461,6 +475,43 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		}
 	}
 	return &Decision{Candidates: out}, noViableCandidateError(req, len(out))
+}
+
+// allProvidersQuotaExhaustedError returns ErrAllProvidersQuotaExhausted when
+// at least one routing candidate was rejected solely because its provider is
+// in the quota_exhausted state and no other candidate was eligible. The set
+// of otherwise-eligible candidates collapses to those flagged with
+// quotaExhaustedRetryAfter (the engine sets this only when the candidate
+// passed every other gate). When that set is empty the existing
+// no-viable / no-profile-candidate / live-discovery errors describe the
+// failure more precisely.
+func allProvidersQuotaExhaustedError(ranked []rankedCandidate) error {
+	var exhausted []string
+	seen := make(map[string]struct{})
+	var earliest time.Time
+	for _, c := range ranked {
+		if c.quotaExhaustedRetryAfter.IsZero() {
+			continue
+		}
+		name := c.out.Provider
+		if name == "" {
+			name = c.out.Harness
+		}
+		if _, dup := seen[name]; !dup {
+			seen[name] = struct{}{}
+			exhausted = append(exhausted, name)
+		}
+		if earliest.IsZero() || c.quotaExhaustedRetryAfter.Before(earliest) {
+			earliest = c.quotaExhaustedRetryAfter
+		}
+	}
+	if len(exhausted) == 0 {
+		return nil
+	}
+	return &ErrAllProvidersQuotaExhausted{
+		RetryAfter:         earliest,
+		ExhaustedProviders: exhausted,
+	}
 }
 
 func noViableCandidateError(req Request, rejected int) *NoViableCandidateError {
@@ -653,6 +704,11 @@ func hasLiveDiscoveryCandidates(candidates []rankedCandidate) bool {
 type rankedCandidate struct {
 	out      Candidate
 	internal candidateInternal
+	// quotaExhaustedRetryAfter is non-zero when this candidate would have been
+	// eligible save for its provider being in the quota_exhausted state.
+	// Resolve uses this to detect the "all eligible providers quota-exhausted"
+	// case and surface ErrAllProvidersQuotaExhausted.
+	quotaExhaustedRetryAfter time.Time
 }
 
 // buildHarnessCandidates expands one HarnessEntry into 1..N candidates, one
@@ -792,6 +848,24 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			}
 		}
 
+		// Provider quota-exhausted gate. The state machine lives in the
+		// service layer; the engine consumes the projected map of
+		// provider-name → retry_after. Apply only when the candidate would
+		// otherwise have been eligible — disqualifying an already-rejected
+		// candidate with a different reason would lose the original signal.
+		var quotaExhaustedRetryAfter time.Time
+		if eligible {
+			providerKey := candidateProviderIdentity(h, p)
+			if providerKey != "" && len(in.ProviderQuotaExhaustedUntil) > 0 {
+				if retryAfter, ok := in.ProviderQuotaExhaustedUntil[providerKey]; ok && retryAfter.After(in.Now) {
+					eligible = false
+					reason = fmt.Sprintf("provider %s quota exhausted until %s", providerKey, retryAfter.Format(time.RFC3339))
+					filterReason = FilterReasonQuotaExhausted
+					quotaExhaustedRetryAfter = retryAfter
+				}
+			}
+		}
+
 		ci := candidateInternal{
 			Harness:               h.Name,
 			Provider:              p.Name,
@@ -835,7 +909,8 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				QuotaPercentUsed:   h.QuotaPercentUsed,
 				QuotaTrend:         h.QuotaTrend,
 			},
-			internal: ci,
+			internal:                 ci,
+			quotaExhaustedRetryAfter: quotaExhaustedRetryAfter,
 		})
 	}
 	return out

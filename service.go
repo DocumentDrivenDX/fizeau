@@ -736,6 +736,11 @@ type service struct {
 	// UsageReport.
 	routingQuality *routingQualityStore
 
+	// providerQuota is the per-provider quota state machine. Routing reads
+	// the projected exhausted set on every Resolve so quota_exhausted
+	// providers are excluded from candidate selection.
+	providerQuota *ProviderQuotaStateStore
+
 	// nowFn returns the reference time for usage-window aggregation. Tests
 	// inject a deterministic clock so windows like "today" don't depend on
 	// wall-clock UTC time-of-day.
@@ -817,6 +822,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		catalog:        newCatalogCache(catalogCacheOptions{}),
 		routeMetrics:   make(map[routeAttemptKey]routeMetricRecord),
 		routingQuality: newRoutingQualityStore(),
+		providerQuota:  NewProviderQuotaStateStore(),
 	}
 	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()

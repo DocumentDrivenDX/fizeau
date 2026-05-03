@@ -127,6 +127,15 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	// Resolve the route.
 	decision, err := s.resolveExecuteRoute(req)
 	if err != nil {
+		// NoViableProviderForNow is a transient quota signal — DDx
+		// callers pause their drain loop on RetryAfter and resume.
+		// Surface it directly (not via the fatal-final channel) so the
+		// typed error reaches errors.As without log scraping.
+		var quotaErr *NoViableProviderForNow
+		if errors.As(err, &quotaErr) {
+			s.hub.closeSession(sessionID, ServiceEvent{})
+			return nil, err
+		}
 		if isExplicitPinError(err) {
 			// Emit a rejected_override event (no outcome) when the pin
 			// fails pre-dispatch. Surface the typed error wrapped with

@@ -254,6 +254,13 @@ func publicRoutingError(err error, candidates []RouteCandidate) error {
 			StartingTier:  noLiveErr.StartingTier,
 		}, candidates)
 	}
+	var quotaErr *routing.ErrAllProvidersQuotaExhausted
+	if errors.As(err, &quotaErr) {
+		return withRouteCandidates(&NoViableProviderForNow{
+			RetryAfter:         quotaErr.RetryAfter,
+			ExhaustedProviders: append([]string(nil), quotaErr.ExhaustedProviders...),
+		}, candidates)
+	}
 	return withRouteCandidates(err, candidates)
 }
 
@@ -487,13 +494,35 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	}
 	successRate, latencyMS := s.routeMetricSignals(time.Now(), s.routeAttemptTTL())
 	return routing.Inputs{
-		Harnesses:           entries,
-		ProviderSuccessRate: successRate,
-		ObservedLatencyMS:   latencyMS,
-		CatalogResolver:     serviceRoutingCatalogResolver(cat),
-		ModelEligibility:    serviceRoutingModelEligibility(cat),
-		ReasoningResolver:   serviceRoutingReasoningResolver(cat),
+		Harnesses:                   entries,
+		ProviderSuccessRate:         successRate,
+		ObservedLatencyMS:           latencyMS,
+		ProviderQuotaExhaustedUntil: s.providerQuotaExhaustedUntil(time.Now()),
+		CatalogResolver:             serviceRoutingCatalogResolver(cat),
+		ModelEligibility:            serviceRoutingModelEligibility(cat),
+		ReasoningResolver:           serviceRoutingReasoningResolver(cat),
 	}
+}
+
+// providerQuotaExhaustedUntil snapshots the per-provider quota state machine
+// at the given instant for the routing engine. Returns nil when no provider
+// is currently in quota_exhausted state, which keeps the routing path
+// allocation-free in the common case.
+func (s *service) providerQuotaExhaustedUntil(now time.Time) map[string]time.Time {
+	if s == nil || s.providerQuota == nil {
+		return nil
+	}
+	return s.providerQuota.ExhaustedAt(now)
+}
+
+// ProviderQuotaState returns the per-provider quota state machine for this
+// service. Callers (notably the quota-signal ingest path defined in sibling
+// beads) drive transitions via MarkQuotaExhausted / MarkAvailable.
+func (s *service) ProviderQuotaState() *ProviderQuotaStateStore {
+	if s == nil {
+		return nil
+	}
+	return s.providerQuota
 }
 
 func serviceRoutingCatalog() *modelcatalog.Catalog {

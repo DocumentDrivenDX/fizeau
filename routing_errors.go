@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 var (
@@ -13,6 +14,7 @@ var (
 	errUnknownProfile           = errors.New("agent: unknown profile")
 	errNoLiveProvider           = errors.New("agent: no live provider")
 	errUnknownProvider          = errors.New("agent: unknown provider")
+	errNoViableProviderForNow   = errors.New("agent: no viable provider for now")
 )
 
 // ErrUnknownProvider reports an explicit Provider pin that is not present in
@@ -215,4 +217,44 @@ func (e ErrNoLiveProvider) Is(target error) bool {
 
 func (e ErrNoLiveProvider) Unwrap() error {
 	return errNoLiveProvider
+}
+
+// NoViableProviderForNow reports that every otherwise-eligible routing
+// candidate was disqualified solely because its provider is currently in the
+// quota_exhausted state. This is a transient condition: callers (notably DDx)
+// should pause work and resume on or after RetryAfter rather than treating
+// the request as a permanent failure.
+//
+// Distinct from ErrNoLiveProvider (entire ladder lacks any live provider) and
+// from configuration errors (ErrUnknownProvider, ErrUnknownProfile,
+// ErrHarnessModelIncompatible) which represent operator mistakes that won't
+// resolve themselves over time.
+type NoViableProviderForNow struct {
+	// RetryAfter is the earliest expected provider-recovery time across the
+	// exhausted set. Callers should not retry before this instant.
+	RetryAfter time.Time
+	// ExhaustedProviders is the set of provider names currently in the
+	// quota_exhausted state that would otherwise have served the request.
+	ExhaustedProviders []string
+}
+
+func (e *NoViableProviderForNow) Error() string {
+	if len(e.ExhaustedProviders) == 0 {
+		return "no viable provider right now: all eligible providers are quota-exhausted"
+	}
+	return fmt.Sprintf("no viable provider right now: %s quota-exhausted (retry after %s)",
+		strings.Join(e.ExhaustedProviders, ", "), e.RetryAfter.Format(time.RFC3339))
+}
+
+func (e *NoViableProviderForNow) Is(target error) bool {
+	switch target.(type) {
+	case *NoViableProviderForNow:
+		return true
+	default:
+		return errors.Is(errNoViableProviderForNow, target)
+	}
+}
+
+func (e *NoViableProviderForNow) Unwrap() error {
+	return errNoViableProviderForNow
 }
