@@ -1551,6 +1551,139 @@ Failure classes control what gets penalized:
   mark a provider unusable until configuration changes, but they are not proof
   that the model itself is weak.
 
+## Provider Quota State
+
+The agent owns a per-provider **quota state machine** that is distinct from the
+per-request route-attempt feedback above. Route-attempt feedback demotes one
+`(Harness, ProviderSource, Endpoint, Model)` candidate inside a process-local
+TTL window. Quota state operates one level up — at the **provider** granularity
+— and is the basis for telling the caller "this provider is offline until
+`retry_after`, do not bother retrying sooner."
+
+### States and transitions
+
+Each configured provider is in exactly one of two states at any instant:
+
+- `available` — the provider has no known quota signal that would prevent it
+  from serving a routing decision. This is the initial state.
+- `quota_exhausted` — the provider has reported (or is predicted to report) a
+  daily / monthly / window quota signal and carries a `retry_after` instant.
+  The provider is filtered out of every `ResolveRoute` and `Execute` candidate
+  set until the state machine returns it to `available`.
+
+Allowed transitions:
+
+```
+available        --MarkQuotaExhausted(retry_after)-->  quota_exhausted
+quota_exhausted  --MarkAvailable-->                    available
+quota_exhausted  --(now >= retry_after, observed)-->   available  (auto-decay)
+```
+
+`MarkQuotaExhausted` is called from three independent triggers; whichever
+fires first wins:
+
+1. **Upstream rate-limit headers.** Provider response-header parsers
+   (`internal/provider/quotaheaders`) extract a structured signal —
+   `RemainingTokens`, `RemainingRequests`, `ResetTime`, `RetryAfter` — from
+   Anthropic, OpenAI, and OpenRouter responses. When `remaining_tokens == 0`,
+   `remaining_requests == 0`, or `Retry-After` is set, the originating provider
+   is moved to `quota_exhausted` with `retry_after` taken from the parsed
+   `ResetTime` / `RetryAfter`. Header parsers are tolerant of missing fields.
+2. **Local burn-rate prediction.** When `providers.<name>.daily_token_budget`
+   is set, `ProviderBurnRateTracker` maintains a UTC-daily rolling window of
+   recorded request+response token usage. If the projected end-of-window usage
+   exceeds the configured budget, the provider is preemptively transitioned to
+   `quota_exhausted` with `retry_after` set to the next UTC midnight, before
+   the upstream signal arrives.
+3. **Recovery probe.** A periodic background loop sweeps the
+   `quota_exhausted` set; on a successful re-probe the provider returns to
+   `available`, and on continued failure `retry_after` is extended with bounded
+   exponential backoff (initial 5m, cap 1h).
+
+The state machine is process-local. It is not persisted across service
+restarts; the upstream signal and burn-rate tracker re-establish state on next
+use.
+
+### NoViableProviderForNow
+
+When every otherwise-eligible routing candidate is excluded **solely** because
+its provider is in `quota_exhausted`, `ResolveRoute` and `Execute` return a
+typed `*NoViableProviderForNow` error:
+
+```go
+type NoViableProviderForNow struct {
+    // RetryAfter is the earliest expected provider-recovery time across the
+    // exhausted set. Callers should not retry before this instant.
+    RetryAfter time.Time
+    // ExhaustedProviders is the set of provider names currently in the
+    // quota_exhausted state that would otherwise have served the request.
+    ExhaustedProviders []string
+}
+```
+
+Semantics:
+
+- **Distinct from `ErrNoLiveProvider`**, which means the entire ladder lacks
+  any live provider regardless of quota — typically a configuration or
+  connectivity problem that will not resolve itself.
+- **Distinct from configuration errors** (`ErrUnknownProvider`,
+  `ErrUnknownProfile`, `ErrHarnessModelIncompatible`), which are operator
+  mistakes.
+- **Transient.** Callers should pause and resume on or after `RetryAfter`
+  rather than treating the request as a permanent failure.
+- `errors.Is(err, &NoViableProviderForNow{})` is the supported discrimination.
+
+DDx is the canonical downstream consumer: when its drain loop receives
+`*NoViableProviderForNow` from `Execute`, it pauses the queue, sleeps until
+`RetryAfter`, and resumes — rather than counting the bead as failed and
+escalating power. `ExhaustedProviders` is informational evidence for the
+operator-facing log; it does not affect the pause duration.
+
+### Operator config knobs
+
+- **`providers.<name>.daily_token_budget`** *(int, optional)*. Maximum total
+  tokens (request + response) the provider may consume per UTC daily window.
+  Zero or absent disables predictive exhaustion for this provider; the
+  upstream quota signal is still respected.
+
+  ```yaml
+  providers:
+    anthropic:
+      type: anthropic
+      api_key: ${ANTHROPIC_API_KEY}
+      daily_token_budget: 5_000_000   # preempt exhaustion at 5M tokens/day
+    openrouter:
+      type: openrouter
+      api_key: ${OPENROUTER_API_KEY}
+      # no budget → upstream signal is the only exhaustion trigger
+  ```
+
+- **Recovery probe interval.** The recovery probe loop is enabled by setting
+  `ServiceOptions.QuotaRefreshContext` (when `nil` the loop does not start).
+  Cadence is self-pacing: each pass sleeps until the soonest known
+  `retry_after`, bounded above by a 5-minute fallback. After a probe failure,
+  that provider's `retry_after` is extended with bounded exponential backoff
+  starting at 5 minutes and capping at 1 hour. There is no separate
+  user-facing interval knob; operators tune cadence by choosing whether to
+  enable the loop at all.
+
+### Out of scope: per-request rate limiting
+
+Sub-daily rate limiting — HTTP `429 Too Many Requests` with `Retry-After` on
+the order of seconds or minutes — is **not** part of the quota state machine.
+Those signals stay in the per-request feedback path: the failing dispatch is
+reported on the final event with the attempted route, route-attempt feedback
+demotes the offending candidate inside its TTL window, and the caller decides
+whether to retry. Promoting a provider to `quota_exhausted` for a brief 429 is
+explicitly avoided because it would block routing across all models served by
+that provider for the duration of `retry_after`.
+
+The boundary is qualitative: signals indicating the operator's daily / monthly
+/ subscription window is spent (zero remaining tokens, zero remaining
+requests, or a `Retry-After` long enough that recovery probing is the right
+strategy) flow through the quota state machine; signals indicating short-term
+throttling flow through the per-request path.
+
 ## Routing Policy Test Contract
 
 Routing tests must be statement-backed: each policy-invariant case includes a
