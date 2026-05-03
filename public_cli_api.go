@@ -14,8 +14,30 @@ import (
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 	oaiProvider "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
 	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	"github.com/DocumentDrivenDX/fizeau/internal/skill"
 	"github.com/DocumentDrivenDX/fizeau/internal/tool"
 )
+
+// Skill discovery and the load_skill tool.
+
+type SkillCatalog = skill.Catalog
+
+// ScanSkillsDir walks dir for SKILL.md files and returns the discovered
+// catalog. A non-existent directory returns an empty catalog with no
+// error so callers can opt in to skill discovery without branching.
+func ScanSkillsDir(dir string) (*SkillCatalog, []string, error) {
+	return skill.ScanDir(dir)
+}
+
+// NewLoadSkillTool returns a Tool exposing the catalog as the
+// `load_skill` tool. Returns nil when the catalog is nil or empty so
+// callers can append unconditionally.
+func NewLoadSkillTool(cat *SkillCatalog) Tool {
+	if cat == nil || cat.Len() == 0 {
+		return nil
+	}
+	return &skill.LoadSkillTool{Catalog: cat}
+}
 
 // Compaction.
 

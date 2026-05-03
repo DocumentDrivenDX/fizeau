@@ -263,6 +263,24 @@ func runWithOptions(opts Options) int {
 	// Build tools
 	tools := buildToolsForPreset(wd, preset, bashOutputFilterConfig(cfg.Tools.Bash.OutputFilter))
 
+	// Discover SKILL.md skills and append the load_skill tool when the
+	// catalog is non-empty. Resolution precedence: FIZEAU_SKILLS_DIR
+	// env var → cfg.Skills.Dir → ".fizeau/skills" under the work dir.
+	// A literal "-" (in either env or config) disables discovery even
+	// when the directory exists.
+	if skillsDir := resolveSkillsDir(cfg, wd); skillsDir != "" {
+		if cat, warnings, err := fizeau.ScanSkillsDir(skillsDir); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: skill discovery failed for %s: %v\n", skillsDir, err)
+		} else {
+			for _, w := range warnings {
+				fmt.Fprintf(os.Stderr, "warning: skill: %s\n", w)
+			}
+			if loader := fizeau.NewLoadSkillTool(cat); loader != nil {
+				tools = append(tools, loader)
+			}
+		}
+	}
+
 	// Build system prompt
 	sysPrompt := prompt.NewFromPreset(preset).
 		WithTools(tools).
@@ -997,6 +1015,35 @@ func resolvePreset(flagValue string, cfg *agentConfig.Config) (string, error) {
 		preset = cfg.Preset
 	}
 	return prompt.ResolvePresetName(preset)
+}
+
+// resolveSkillsDir returns the directory in which to discover SKILL.md
+// files for this run, or "" to skip discovery entirely. Precedence:
+//
+//  1. FIZEAU_SKILLS_DIR env var (when non-empty)
+//  2. cfg.Skills.Dir (when non-empty)
+//  3. ".fizeau/skills" relative to workDir
+//
+// A literal "-" at any layer disables discovery — useful for tests or
+// for opting out of an inherited project default. The default
+// (".fizeau/skills") is silently absent: if it does not exist the
+// caller's ScanDir returns an empty catalog with no error.
+func resolveSkillsDir(cfg *agentConfig.Config, workDir string) string {
+	if env := strings.TrimSpace(os.Getenv("FIZEAU_SKILLS_DIR")); env != "" {
+		if env == "-" {
+			return ""
+		}
+		return env
+	}
+	if cfg != nil {
+		if dir := strings.TrimSpace(cfg.Skills.Dir); dir != "" {
+			if dir == "-" {
+				return ""
+			}
+			return dir
+		}
+	}
+	return filepath.Join(workDir, ".fizeau", "skills")
 }
 
 func buildToolsForPreset(workDir, preset string, bashFilter ...fizeau.BashOutputFilterConfig) []fizeau.Tool {

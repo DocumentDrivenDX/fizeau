@@ -110,6 +110,16 @@ type ToolsConfig struct {
 	Bash BashToolConfig `yaml:"bash,omitempty"`
 }
 
+// SkillsConfig configures discovery of SKILL.md progressive-disclosure
+// skills.
+type SkillsConfig struct {
+	// Dir is the skills directory. Empty defaults to ".fizeau/skills"
+	// relative to the work directory; "-" disables skill discovery
+	// even when a directory exists. The FIZEAU_SKILLS_DIR environment
+	// variable overrides this value when set.
+	Dir string `yaml:"dir,omitempty"`
+}
+
 type BashToolConfig struct {
 	OutputFilter BashOutputFilterConfig `yaml:"output_filter,omitempty"`
 }
@@ -264,6 +274,9 @@ type Config struct {
 	ModelCatalog ModelCatalogConfig `yaml:"model_catalog,omitempty"`
 
 	Tools ToolsConfig `yaml:"tools,omitempty"`
+
+	// Skills configures progressive-disclosure SKILL.md discovery.
+	Skills SkillsConfig `yaml:"skills,omitempty"`
 
 	// Telemetry configures OTel export enablement and runtime-specific
 	// pricing keyed by provider system and resolved model.
