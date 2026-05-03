@@ -956,8 +956,32 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	if final.Status == "failed" && final.Error != "" && final.RoutingActual != nil {
 		final.RoutingActual.FailureClass = classifyDispatchFailure(final.Error)
 	}
+	if final.RoutingActual != nil && final.Usage != nil {
+		s.observeTokenUsage(final.RoutingActual.Provider, finalUsageTotalTokens(final.Usage), time.Now())
+	}
 
 	finalizeAndEmit(out, seq, meta, req, sl, final)
+}
+
+// finalUsageTotalTokens returns input+output tokens from a FinalUsage
+// (request + response, per fizeau-f2661619 AC2). When a TotalTokens pointer
+// is present it is preferred since some providers report a total that is
+// not the simple sum (e.g. cache-aware billing).
+func finalUsageTotalTokens(u *harnesses.FinalUsage) int {
+	if u == nil {
+		return 0
+	}
+	if u.TotalTokens != nil && *u.TotalTokens > 0 {
+		return *u.TotalTokens
+	}
+	var total int
+	if u.InputTokens != nil {
+		total += *u.InputTokens
+	}
+	if u.OutputTokens != nil {
+		total += *u.OutputTokens
+	}
+	return total
 }
 
 func (s *service) nativeExecutionProvider(req ServiceExecuteRequest, decision RouteDecision) agentcore.Provider {

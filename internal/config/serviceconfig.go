@@ -61,11 +61,12 @@ func (c *configServiceConfig) Provider(name string) (fizeau.ServiceProviderEntry
 		})
 	}
 	return fizeau.ServiceProviderEntry{
-		Type:      pc.Type,
-		BaseURL:   pc.BaseURL,
-		Endpoints: endpoints,
-		APIKey:    pc.APIKey,
-		Model:     pc.Model,
+		Type:             pc.Type,
+		BaseURL:          pc.BaseURL,
+		Endpoints:        endpoints,
+		APIKey:           pc.APIKey,
+		Model:            pc.Model,
+		DailyTokenBudget: pc.DailyTokenBudget,
 	}, true
 }
 

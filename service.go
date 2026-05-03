@@ -87,6 +87,10 @@ type ServiceProviderEntry struct {
 	Endpoints []ServiceProviderEndpoint
 	APIKey    string
 	Model     string // configured default model (may be empty)
+	// DailyTokenBudget is the operator-configured per-UTC-day token budget
+	// (request + response) for this provider. Zero means no local burn-rate
+	// prediction; the provider's own quota signal still applies.
+	DailyTokenBudget int
 }
 
 // ServiceProviderEndpoint is one configured provider serving endpoint.
@@ -741,6 +745,12 @@ type service struct {
 	// providers are excluded from candidate selection.
 	providerQuota *ProviderQuotaStateStore
 
+	// providerBurnRate observes per-provider token consumption against the
+	// operator-configured daily_token_budget and pre-emptively transitions
+	// providers into quota_exhausted when local burn-rate predicts the
+	// budget will be exceeded before the next UTC daily reset.
+	providerBurnRate *ProviderBurnRateTracker
+
 	// nowFn returns the reference time for usage-window aggregation. Tests
 	// inject a deterministic clock so windows like "today" don't depend on
 	// wall-clock UTC time-of-day.
@@ -816,13 +826,28 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		opts.ServiceConfig = sc
 	}
 	svc := &service{
-		opts:           opts,
-		registry:       harnesses.NewRegistry(),
-		hub:            newSessionHub(),
-		catalog:        newCatalogCache(catalogCacheOptions{}),
-		routeMetrics:   make(map[routeAttemptKey]routeMetricRecord),
-		routingQuality: newRoutingQualityStore(),
-		providerQuota:  NewProviderQuotaStateStore(),
+		opts:             opts,
+		registry:         harnesses.NewRegistry(),
+		hub:              newSessionHub(),
+		catalog:          newCatalogCache(catalogCacheOptions{}),
+		routeMetrics:     make(map[routeAttemptKey]routeMetricRecord),
+		routingQuality:   newRoutingQualityStore(),
+		providerQuota:    NewProviderQuotaStateStore(),
+		providerBurnRate: NewProviderBurnRateTracker(),
+	}
+	// Hydrate per-provider daily_token_budget from ServiceConfig so the
+	// burn-rate tracker can predict exhaustion before the upstream quota
+	// signal arrives.
+	if opts.ServiceConfig != nil {
+		for _, name := range opts.ServiceConfig.ProviderNames() {
+			entry, ok := opts.ServiceConfig.Provider(name)
+			if !ok {
+				continue
+			}
+			if entry.DailyTokenBudget > 0 {
+				svc.providerBurnRate.SetBudget(name, entry.DailyTokenBudget)
+			}
+		}
 	}
 	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()

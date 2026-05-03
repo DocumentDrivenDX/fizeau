@@ -57,6 +57,11 @@ type ProviderConfig struct {
 	// Sampling overrides the harness defaults for sampling parameters.
 	// Any nil/unset field falls through to harness/server defaults.
 	Sampling *SamplingProfile `yaml:"sampling,omitempty"`
+	// DailyTokenBudget caps total tokens (request + response) the provider
+	// may consume per UTC daily window. Zero/absent disables predictive
+	// exhaustion for this provider; the actual quota signal from the
+	// upstream API is still respected. See fizeau-f2661619.
+	DailyTokenBudget int `yaml:"daily_token_budget,omitempty"`
 }
 
 // SamplingProfile is the canonical sampling-overrides bundle. The type
