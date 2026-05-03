@@ -1,0 +1,50 @@
+Bead fizeau-aedbd35d — no code changes, investigation findings only.
+
+(a) What is done
+- Confirmed the bead's hypothesis against both run logs.
+  - PASS run: smoke-cobol-modernization-20260502T202221Z (Sonnet 4.6, reward 1.0,
+    413808 in / 13295 out tokens, ~4:30 wall).
+  - FAIL run: smoke-cobol-modernization-20260502T202731Z (Qwen3.5-27B-4bit on
+    omlx, status=failed, 109409 in / 2334 out tokens, ~4:23 wall, error
+    "agent: identical tool calls repeated, aborting loop").
+- Traced the abort to internal/core/loop.go:736-744 (consecutiveToolCallCount
+  >= toolCallLoopLimit branch), with the per-turn fingerprint computed by
+  toolCallFingerprint at internal/core/loop.go:911-917 and the limit constant
+  at internal/core/loop.go:131. Error type: internal/core/errors.go:69-71.
+- Documented the three contributing factors: 109k input context (outside
+  reliable regime for 4-bit quant 27B), thin output (2334 tokens / ~4 min →
+  re-emitting short identical calls), and the existing hard-abort policy in
+  the loop detector.
+- Cross-referenced docs/research/tool-call-loop-pivot-2026-05-01.md as the
+  already-designed remediation (PIVOT-1 epic). This bead is exactly the
+  failure mode that doc was written to address.
+- Findings written to .ddx/executions/20260502T235712-91e27c92/findings.md
+  with file:line citations and four scoped follow-up recommendations.
+
+(b) What is blocking code changes in this bead
+- The bead is labeled kind:investigation and asks for hypothesis validation
+  plus an evidence trail, not for a fix. The fix is a separate, larger piece
+  of work (the PIVOT-1 epic) which has its own design doc. Folding that into
+  this bead would scope-creep an investigation into a multi-file behavior
+  change in core/loop.go without the request to do so.
+- The fiz.txt log only captures the abort warning line and the final JSON;
+  the in-process message snapshot (which would identify which exact tool
+  call was repeated) is not persisted to disk by the benchmark harness.
+  That makes a code-level "what was the model trying to do" answer
+  impossible from this run alone — it would need a re-run with a richer
+  trajectory dump, which is one of the listed follow-ups.
+
+(c) What a follow-up attempt would need
+- File the PIVOT-1 epic as a child bead (or pick up the existing design doc
+  and turn it into beads): add Request.ToolCallLoopPivotLimit /
+  ToolCallLoopPivotMessage, EventToolCallLoopPivot, and the message-injection
+  branch in core/loop.go that runs before the hard-abort.
+- Re-run cobol-modernization on Vidar with a non-zero pivot limit (start at
+  2) and compare reward + step count against the Sonnet baseline.
+- While there, surface the looping fingerprint (or the last tool name +
+  truncated arguments) in the slog.Warn at loop.go:737 so future loop-abort
+  investigations can root-cause from fiz.txt alone instead of needing to
+  inspect process-internal state.
+- Audit the harbor → fiz trajectory plumbing: both runs wrote total_steps=0
+  to agent/trajectory.json, so per-step events from fiz are not reaching
+  the benchmark trajectory recorder.
