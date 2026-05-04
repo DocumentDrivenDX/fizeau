@@ -59,6 +59,7 @@ const (
 	EventTypeToolCall        EventType = "tool_call"
 	EventTypeToolResult      EventType = "tool_result"
 	EventTypeCompaction      EventType = "compaction"
+	EventTypeProgress        EventType = "progress"
 	EventTypeRoutingDecision EventType = "routing_decision"
 	EventTypeStall           EventType = "stall"
 	EventTypeFinal           EventType = "final"
