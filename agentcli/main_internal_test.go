@@ -8,6 +8,7 @@ import (
 
 	"github.com/DocumentDrivenDX/fizeau"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	"github.com/DocumentDrivenDX/fizeau/internal/prompt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -136,6 +137,34 @@ func TestBuildToolsForPresetWithAnchors_DisabledKeepsLegacyReadAndNoAnchorEdit(t
 	require.NotNil(t, read)
 	assert.Nil(t, read.AnchorStore)
 	assert.NotContains(t, names, "anchor_edit")
+}
+
+func TestBuildSystemPromptForRun_WithAnchorsAddsAnchorModeAddendum(t *testing.T) {
+	workDir := t.TempDir()
+	tools := buildToolsForPresetWithAnchors(workDir, "default", true)
+
+	systemPrompt := buildSystemPromptForRun("default", tools, nil, nil, workDir, true, "")
+
+	assert.Contains(t, systemPrompt, "# Anchor Mode")
+	assert.Contains(t, systemPrompt, "File read output prefixes each line with anchor words.")
+	assert.Contains(t, systemPrompt, "use anchor_edit instead of edit or write")
+	assert.Contains(t, systemPrompt, "Do not mix edit/write with anchor_edit on the same file.")
+	assert.Contains(t, systemPrompt, "re-read the file before using anchor_edit so you have fresh anchors")
+}
+
+func TestBuildSystemPromptForRun_WithoutAnchorsOmitsAnchorModeAddendum(t *testing.T) {
+	workDir := t.TempDir()
+	tools := buildToolsForPresetWithAnchors(workDir, "default", false)
+
+	systemPrompt := buildSystemPromptForRun("default", tools, nil, []prompt.ContextFile{
+		{Path: "AGENTS.md", Content: "Project rules."},
+	}, workDir, false, "Extra caller instructions.")
+
+	assert.NotContains(t, systemPrompt, "# Anchor Mode")
+	assert.NotContains(t, systemPrompt, "File read output prefixes each line with anchor words.")
+	assert.NotContains(t, systemPrompt, "use anchor_edit instead of edit or write")
+	assert.Contains(t, systemPrompt, "Extra caller instructions.")
+	assert.Contains(t, systemPrompt, "Project rules.")
 }
 
 func TestRun_AcceptsAnchorsFlag(t *testing.T) {

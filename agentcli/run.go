@@ -52,6 +52,13 @@ const samplingProfileNudgeMessage = "warning: model catalog does not declare sam
 // but a catalog profile would still take precedence if installed.
 const samplingProfileNudgeMessageImplicit = "note: model catalog does not declare sampling_profiles.code; the inference server is applying the model's generation_config.json. Run 'fiz catalog update' to install the agent's curated profile (see ADR-007)."
 
+const anchorModeSystemPromptAddendum = `Anchor mode is active.
+
+- File read output prefixes each line with anchor words.
+- For files you have read, use anchor_edit instead of edit or write.
+- Do not mix edit/write with anchor_edit on the same file.
+- After any non-anchor file change, re-read the file before using anchor_edit so you have fresh anchors.`
+
 // Options controls a single CLI invocation.
 type Options struct {
 	Args      []string
@@ -261,8 +268,10 @@ func runWithOptions(opts Options) int {
 		iterations = *maxIter
 	}
 
+	anchorsEnabled := cfg.Anchors || *anchorsFlag
+
 	// Build tools
-	tools := buildToolsForPresetWithAnchors(wd, preset, cfg.Anchors || *anchorsFlag, bashOutputFilterConfig(cfg.Tools.Bash.OutputFilter))
+	tools := buildToolsForPresetWithAnchors(wd, preset, anchorsEnabled, bashOutputFilterConfig(cfg.Tools.Bash.OutputFilter))
 
 	// Discover SKILL.md skills and append the load_skill tool when the
 	// catalog is non-empty. Resolution precedence: FIZEAU_SKILLS_DIR
@@ -284,16 +293,7 @@ func runWithOptions(opts Options) int {
 		}
 	}
 
-	// Build system prompt
-	sysPrompt := prompt.NewFromPreset(preset).
-		WithTools(tools).
-		WithSkillCatalog(skillCatalog).
-		WithContextFiles(prompt.LoadContextFiles(wd)).
-		WithWorkDir(wd)
-
-	if *sysPromptFlag != "" {
-		sysPrompt.WithAppend(*sysPromptFlag)
-	}
+	sysPrompt := buildSystemPromptForRun(preset, tools, skillCatalog, prompt.LoadContextFiles(wd), wd, anchorsEnabled, *sysPromptFlag)
 
 	// Signal context is created early so discovery can be cancelled on interrupt.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -380,7 +380,7 @@ func runWithOptions(opts Options) int {
 	}
 	req := buildServiceExecuteRequest(serviceExecuteRequestParams{
 		Prompt:                  promptText,
-		SystemPrompt:            sysPrompt.Build(),
+		SystemPrompt:            sysPrompt,
 		WorkDir:                 wd,
 		Metadata:                promptMetadata,
 		Tools:                   tools,
@@ -1043,6 +1043,22 @@ func buildToolsForPresetWithAnchors(workDir, preset string, anchors bool, bashFi
 		anchored = append(anchored, tool)
 	}
 	return anchored
+}
+
+func buildSystemPromptForRun(preset string, tools []fizeau.Tool, skillCatalog *fizeau.SkillCatalog, contextFiles []prompt.ContextFile, workDir string, anchors bool, appendText string) string {
+	sysPrompt := prompt.NewFromPreset(preset).
+		WithTools(tools).
+		WithSkillCatalog(skillCatalog).
+		WithContextFiles(contextFiles).
+		WithWorkDir(workDir)
+
+	if anchors {
+		sysPrompt.WithSection("Anchor Mode", anchorModeSystemPromptAddendum)
+	}
+	if appendText != "" {
+		sysPrompt.WithAppend(appendText)
+	}
+	return sysPrompt.Build()
 }
 
 func bashOutputFilterConfig(cfg agentConfig.BashOutputFilterConfig) fizeau.BashOutputFilterConfig {
