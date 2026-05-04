@@ -1,0 +1,5 @@
+version: "overfull-hbox-ca-cert-evidence"
+captured: "2026-05-04"
+dataset: terminal-bench@2.0
+tasks:
+  - id: overfull-hbox
