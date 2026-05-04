@@ -13,6 +13,7 @@ const (
 	ServiceEventTypeToolCall         = "tool_call"
 	ServiceEventTypeToolResult       = "tool_result"
 	ServiceEventTypeCompaction       = "compaction"
+	ServiceEventTypeProgress         = "progress"
 	ServiceEventTypeRoutingDecision  = "routing_decision"
 	ServiceEventTypeStall            = "stall"
 	ServiceEventTypeFinal            = "final"
@@ -103,6 +104,26 @@ type ServiceCompactionData struct {
 	MessagesBefore int `json:"messages_before"`
 	MessagesAfter  int `json:"messages_after"`
 	TokensFreed    int `json:"tokens_freed"`
+}
+
+// ServiceProgressData is the bounded progress payload emitted alongside the
+// public service event stream and persisted into the session log. The fields
+// are intentionally compact so operators get useful turn state without
+// leaking full prompts or raw tool output.
+type ServiceProgressData struct {
+	Phase                 string `json:"phase"`
+	State                 string `json:"state"`
+	Message               string `json:"message,omitempty"`
+	TurnIndex             int    `json:"turn_index,omitempty"`
+	ToolName              string `json:"tool_name,omitempty"`
+	Command               string `json:"command,omitempty"`
+	DurationMS            int64  `json:"duration_ms,omitempty"`
+	InputTokens           *int   `json:"input_tokens,omitempty"`
+	OutputTokens          *int   `json:"output_tokens,omitempty"`
+	TotalTokens           *int   `json:"total_tokens,omitempty"`
+	ContextMessages       int    `json:"context_messages,omitempty"`
+	ContextTokensEstimate int    `json:"context_tokens_estimate,omitempty"`
+	SessionSummary        string `json:"session_summary,omitempty"`
 }
 
 func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisionCandidate {
@@ -279,6 +300,7 @@ type ServiceDecodedEvent struct {
 	ToolCall         *ServiceToolCallData
 	ToolResult       *ServiceToolResultData
 	Compaction       *ServiceCompactionData
+	Progress         *ServiceProgressData
 	RoutingDecision  *ServiceRoutingDecisionData
 	Stall            *ServiceStallData
 	Final            *ServiceFinalData
@@ -318,6 +340,12 @@ func DecodeServiceEvent(ev ServiceEvent) (ServiceDecodedEvent, error) {
 			return decoded, err
 		}
 		decoded.Compaction = &payload
+	case ServiceEventTypeProgress:
+		var payload ServiceProgressData
+		if err := decodeServicePayload(ev, &payload); err != nil {
+			return decoded, err
+		}
+		decoded.Progress = &payload
 	case ServiceEventTypeRoutingDecision:
 		var payload ServiceRoutingDecisionData
 		if err := decodeServicePayload(ev, &payload); err != nil {
@@ -371,6 +399,7 @@ type DrainExecuteResult struct {
 	ToolCalls        []ServiceToolCallData
 	ToolResults      []ServiceToolResultData
 	Compactions      []ServiceCompactionData
+	Progresses       []ServiceProgressData
 	Stalls           []ServiceStallData
 	RoutingDecision  *ServiceRoutingDecisionData
 	Override         *ServiceOverrideData
@@ -420,6 +449,8 @@ func (r *DrainExecuteResult) append(ev ServiceDecodedEvent) {
 		r.ToolResults = append(r.ToolResults, *ev.ToolResult)
 	case ev.Compaction != nil:
 		r.Compactions = append(r.Compactions, *ev.Compaction)
+	case ev.Progress != nil:
+		r.Progresses = append(r.Progresses, *ev.Progress)
 	case ev.RoutingDecision != nil:
 		r.RoutingDecision = ev.RoutingDecision
 	case ev.Override != nil:

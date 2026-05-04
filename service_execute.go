@@ -442,7 +442,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	// paths instantiate the matching internal/harnesses/<name>.Runner.
 	switch decision.Harness {
 	case "agent", "":
-		s.runNative(runCtx, req, decision, meta, out, &seq, start, sl)
+		s.runNative(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
 	case "claude":
 		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &claudeharness.Runner{})
 	case "codex":
@@ -459,7 +459,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 		s.runScript(runCtx, req, decision, meta, out, &seq, start, sl)
 	default:
 		if cfg, ok := s.registry.Get(decision.Harness); ok && cfg.IsHTTPProvider {
-			s.runNative(runCtx, req, decision, meta, out, &seq, start, sl)
+			s.runNative(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
 			return
 		}
 		// Unknown / unimplemented subprocess harnesses fail with an explicit
@@ -669,7 +669,7 @@ func toolNames(tools []agentcore.Tool) []string {
 // runNative drives the in-process agent loop (loop.go's Run). The provider
 // is wrapped so per-HTTP timeouts fire independently of the request wall-clock
 // cap.
-func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog) {
+func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string) {
 	provider := s.nativeExecutionProvider(req, decision)
 	actualHarness := decision.Harness
 	if actualHarness == "" {
@@ -741,6 +741,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		stallReason    atomic.Value // string
 		stallCount     atomic.Int64
 	)
+	progress := &nativeProgressState{}
 	cancelCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -753,15 +754,27 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	cb := func(ev agentcore.Event) {
 		sl.writeEvent(ev)
 		switch ev.Type {
+		case agentcore.EventLLMRequest:
+			var payload nativeLLMRequestPayload
+			if err := json.Unmarshal(ev.Data, &payload); err == nil {
+				emitProgress(out, seq, sl, sessionID, meta, progress.noteRequest(payload))
+			}
+		case agentcore.EventLLMResponse:
+			var payload nativeLLMResponsePayload
+			if err := json.Unmarshal(ev.Data, &payload); err == nil {
+				emitProgress(out, seq, sl, sessionID, meta, progress.noteResponse(payload))
+			}
 		case agentcore.EventToolCall:
 			// Map tool.call → tool_call + tool_result. The loop emits a
 			// single combined event with input + output; we split.
-			var payload map[string]any
+			var payload nativeToolCallPayload
 			_ = json.Unmarshal(ev.Data, &payload)
-			toolName, _ := payload["tool"].(string)
-			input, _ := payload["input"].(json.RawMessage)
+			startProgress, completeProgress := progress.noteToolCall(payload)
+			emitProgress(out, seq, sl, sessionID, meta, startProgress)
+			toolName := payload.Tool
+			input := payload.Input
 			if input == nil {
-				if rawIn, err := json.Marshal(payload["input"]); err == nil {
+				if rawIn, err := json.Marshal(map[string]any{"tool": toolName}); err == nil {
 					input = rawIn
 				}
 			}
@@ -771,15 +784,16 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 				Name:  toolName,
 				Input: input,
 			})
-			outputStr, _ := payload["output"].(string)
-			errStr, _ := payload["error"].(string)
-			durMS, _ := payload["duration_ms"].(float64)
+			outputStr := payload.Output
+			errStr := payload.Error
+			durMS := float64(payload.DurationMS)
 			emitJSONRaw(out, seq, harnesses.EventTypeToolResult, meta, harnesses.ToolResultData{
 				ID:         callID,
 				Output:     outputStr,
 				Error:      errStr,
 				DurationMS: int64(durMS),
 			})
+			emitProgress(out, seq, sl, sessionID, meta, completeProgress)
 			// Stall accounting: no-progress tool runs increment the streak;
 			// tool calls that plausibly mutate durable workspace state reset it.
 			if !toolLikelyMakesProgress(toolName, payload) {
@@ -797,21 +811,19 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 			// We only emit compaction events for *real* compaction work.
 			// loop.go runCompaction already suppresses no-op start/end pairs;
 			// the event we get here represents an actually-performed compaction.
-			var payload map[string]any
+			var payload nativeCompactionPayload
 			_ = json.Unmarshal(ev.Data, &payload)
-			before, _ := payload["messages_before"].(float64)
-			after, _ := payload["messages_after"].(float64)
-			tokensBefore, _ := payload["tokens_before"].(float64)
-			tokensAfter, _ := payload["tokens_after"].(float64)
-			tokensFreed := int(tokensBefore - tokensAfter)
 			emitJSONRaw(out, seq, harnesses.EventTypeCompaction, meta, map[string]any{
-				"messages_before": int(before),
-				"messages_after":  int(after),
-				"tokens_freed":    tokensFreed,
+				"messages_before": payload.MessagesBefore,
+				"messages_after":  payload.MessagesAfter,
+				"tokens_freed":    payload.TokensBefore - payload.TokensAfter,
 			})
+			compactionProgress, contextProgress := progress.noteCompaction(payload)
+			emitProgress(out, seq, sl, sessionID, meta, compactionProgress)
+			emitProgress(out, seq, sl, sessionID, meta, contextProgress)
 			// Compaction assertion hook (testseam) fires on real compactions only.
 			if hook := s.compactionAssertionHook(); hook != nil {
-				hook(int(before), int(after), tokensFreed)
+				hook(payload.MessagesBefore, payload.MessagesAfter, payload.TokensBefore-payload.TokensAfter)
 			}
 		}
 	}
@@ -924,6 +936,9 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	}
 	if result.Output != "" {
 		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: result.Output})
+	}
+	if progressFinal := progress.noteFinal(final); progressFinal != nil {
+		emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
 	}
 	switch {
 	case stalled.Load():
@@ -1062,15 +1077,21 @@ func (p *serviceRouteProvider) RoutingReport() agentcore.RoutingReport {
 	}
 }
 
-func toolLikelyMakesProgress(toolName string, payload map[string]any) bool {
-	if errText, _ := payload["error"].(string); strings.TrimSpace(errText) != "" {
+func toolLikelyMakesProgress(toolName string, payload nativeToolCallPayload) bool {
+	if strings.TrimSpace(payload.Error) != "" {
 		return false
 	}
 	if readOnlyTools[toolName] {
 		return false
 	}
 	if toolName == "bash" {
-		return bashCommandLikelyMutates(extractBashCommand(payload["input"]))
+		var input any
+		if len(payload.Input) > 0 {
+			if err := json.Unmarshal(payload.Input, &input); err == nil {
+				return bashCommandLikelyMutates(extractBashCommand(input))
+			}
+		}
+		return false
 	}
 	return true
 }
