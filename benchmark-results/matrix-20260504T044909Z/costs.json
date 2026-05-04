@@ -1,0 +1,38 @@
+{
+  "cells": [
+    {
+      "harness": "ddx-agent",
+      "profile_id": "gpt-5-mini",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "retried_input_tokens": 0,
+      "cost_usd": 0,
+      "pricing_source": "/tmp/ddx-exec-wt/.execute-bead-wt-agent-5b6f5872-20260504T044505-f74b7e58/scripts/benchmark/profiles/gpt-5-mini.yaml#sha256=e53a2c3d627730eaf80e1d7173a14027395109a03f31ee90e564edcfd6112421"
+    },
+    {
+      "harness": "opencode",
+      "profile_id": "gpt-5-mini",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "retried_input_tokens": 0,
+      "cost_usd": 0,
+      "pricing_source": "/tmp/ddx-exec-wt/.execute-bead-wt-agent-5b6f5872-20260504T044505-f74b7e58/scripts/benchmark/profiles/gpt-5-mini.yaml#sha256=e53a2c3d627730eaf80e1d7173a14027395109a03f31ee90e564edcfd6112421"
+    },
+    {
+      "harness": "pi",
+      "profile_id": "gpt-5-mini",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_input_tokens": 0,
+      "retried_input_tokens": 0,
+      "cost_usd": 0,
+      "pricing_source": "/tmp/ddx-exec-wt/.execute-bead-wt-agent-5b6f5872-20260504T044505-f74b7e58/scripts/benchmark/profiles/gpt-5-mini.yaml#sha256=e53a2c3d627730eaf80e1d7173a14027395109a03f31ee90e564edcfd6112421"
+    }
+  ],
+  "matrix_total_usd": 0,
+  "per_run_cap_usd": 1,
+  "per_matrix_cap_usd": 32.4,
+  "cap_derivation": "operator-supplied caps; observation-derived values are recorded by scripts/benchmark/cost-guards when available"
+}
