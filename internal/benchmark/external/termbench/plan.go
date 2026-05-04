@@ -36,6 +36,12 @@ type PlanOptions struct {
 	// Model is the provider model ID (e.g. "openrouter/qwen/qwen3.6-plus").
 	Model string
 
+	// Provider, if non-empty, pins the named provider (e.g. "vidar",
+	// "bragi"). Useful when the same model id is ambiguous across
+	// providers, or when a pin-only catalog entry needs an explicit
+	// provider hop.
+	Provider string
+
 	// WorkDir is the directory the agent operates in. For a real Harbor
 	// trial this is /app inside the container; for a Go-side dry-run it
 	// can be a tempdir seeded with the task workspace.
@@ -78,6 +84,7 @@ func BuildPlan(task *Task, opts PlanOptions) *ExecutionPlan {
 	}
 	req := fizeau.ServiceExecuteRequest{
 		Harness:     opts.Harness,
+		Provider:    opts.Provider,
 		Model:       opts.Model,
 		Prompt:      task.Instruction,
 		WorkDir:     opts.WorkDir,

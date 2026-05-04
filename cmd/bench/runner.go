@@ -181,6 +181,7 @@ func cmdRun(args []string) int {
 	externalSubset := fs.String("external-subset", "", "Path to external benchmark subset manifest (default: scripts/beadbench/external/<adapter>-subset.json)")
 	externalTasks := fs.String("external-tasks-dir", "", "Path to external benchmark tasks directory (default: scripts/benchmark/external/terminal-bench/tasks)")
 	externalHarness := fs.String("external-harness", "fiz", "Harness label for external benchmark runs")
+	externalProvider := fs.String("external-provider", "", "Provider name for external benchmark runs (e.g. vidar, bragi)")
 	externalModel := fs.String("external-model", "", "Model ID for external benchmark runs")
 	externalPerms := fs.String("external-permissions", "", "Permissions preset override for external runs (default: trusted)")
 	externalMax := fs.Int("external-max-tasks", 0, "Cap external benchmark to first N tasks (0 = no cap)")
@@ -198,6 +199,7 @@ func cmdRun(args []string) int {
 				subsetPath:  *externalSubset,
 				tasksDir:    *externalTasks,
 				harness:     *externalHarness,
+				provider:    *externalProvider,
 				model:       *externalModel,
 				permissions: *externalPerms,
 				maxTasks:    *externalMax,

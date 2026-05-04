@@ -192,6 +192,7 @@ func runExternalTermbench(opts externalRunOptions) int {
 
 		plan := termbench.BuildPlan(task, termbench.PlanOptions{
 			Harness:     opts.harness,
+			Provider:    opts.provider,
 			Model:       opts.model,
 			WorkDir:     workDir,
 			Permissions: opts.permissions,
@@ -277,6 +278,7 @@ type externalRunOptions struct {
 	subsetPath  string
 	tasksDir    string
 	harness     string
+	provider    string
 	model       string
 	permissions string
 	maxTasks    int
