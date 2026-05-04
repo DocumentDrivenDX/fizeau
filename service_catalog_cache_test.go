@@ -121,6 +121,67 @@ func TestCatalogCache_StaleServesCachedAndAsyncRefreshes(t *testing.T) {
 	assert.True(t, r2.FromCache, "still within FreshTTL of the refresh")
 }
 
+func TestCatalogCache_AsyncRefreshUsesConfiguredDeadline(t *testing.T) {
+	clock := newStubClock()
+	cache := newCatalogCache(catalogCacheOptions{
+		FreshTTL:            10 * time.Second,
+		StaleTTL:            60 * time.Second,
+		UnreachableCooldown: 5 * time.Second,
+		UnreachableJitter:   0,
+		AsyncRefreshTimeout: 40 * time.Millisecond,
+		Now:                 clock.Now,
+		RandInt63n:          func(n int64) int64 { return 0 },
+	})
+	key := testKey("http://host/v1")
+
+	var callCount atomic.Int32
+	deadlineCh := make(chan time.Duration, 1)
+	doneCh := make(chan error, 1)
+	probe := func(ctx context.Context) ([]string, error) {
+		callCount.Add(1)
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			deadlineCh <- -1
+			doneCh <- context.Canceled
+			return nil, context.Canceled
+		}
+		deadlineCh <- time.Until(deadline)
+		<-ctx.Done()
+		err := ctx.Err()
+		doneCh <- err
+		return nil, err
+	}
+
+	// Seed the cache so the next call is stale and triggers async refresh.
+	_, err := cache.Get(context.Background(), key, func(context.Context) ([]string, error) {
+		return []string{"seed-model"}, nil
+	})
+	require.NoError(t, err)
+	clock.advance(20 * time.Second)
+
+	r, err := cache.Get(context.Background(), key, probe)
+	require.NoError(t, err)
+	assert.True(t, r.Stale)
+	assert.True(t, r.FromCache)
+
+	select {
+	case remaining := <-deadlineCh:
+		assert.Greater(t, remaining, time.Duration(0), "refresh context must have a live deadline")
+		assert.LessOrEqual(t, remaining, 40*time.Millisecond, "refresh deadline must respect the configured timeout")
+	case <-time.After(1 * time.Second):
+		t.Fatal("async refresh probe did not start")
+	}
+
+	select {
+	case err := <-doneCh:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(1 * time.Second):
+		t.Fatal("async refresh probe did not observe cancellation")
+	}
+
+	assert.EqualValues(t, 1, callCount.Load(), "one async refresh probe should run under the configured deadline")
+}
+
 func TestCatalogCache_ColdMissCoalesces(t *testing.T) {
 	clock := newStubClock()
 	cache := testCache(clock)

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -310,6 +312,82 @@ func TestDrainExecute_NativeServiceExecuteWithFakeProvider(t *testing.T) {
 	if result.RoutingActual == nil || result.RoutingActual.Harness != "agent" {
 		t.Fatalf("RoutingActual: got %#v", result.RoutingActual)
 	}
+}
+
+func TestRequestExecutionDoesNotFetchRemoteManifest(t *testing.T) {
+	t.Run("Execute", func(t *testing.T) {
+		var hits atomic.Int32
+		blocker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			http.Error(w, "unexpected remote fetch", http.StatusInternalServerError)
+		}))
+		defer blocker.Close()
+
+		svc, err := fizeau.New(fizeau.ServiceOptions{
+			ServiceConfig: &fakeServiceConfig{
+				providers: map[string]fizeau.ServiceProviderEntry{
+					"anthropic": {Type: "anthropic", BaseURL: blocker.URL + "/v1", Model: "unused"},
+				},
+				names:       []string{"anthropic"},
+				defaultName: "anthropic",
+			},
+			FakeProvider: &fizeau.FakeProvider{
+				Static: []fizeau.FakeResponse{{Text: "ok", Usage: fizeau.TokenUsage{Input: 1, Output: 1, Total: 2}}},
+			},
+		})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
+			Prompt:   "ping",
+			Harness:  "agent",
+			Provider: "fake",
+			Model:    "fake-model",
+		})
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		result, err := fizeau.DrainExecute(context.Background(), ch)
+		if err != nil {
+			t.Fatalf("DrainExecute: %v", err)
+		}
+		if result.FinalStatus != "success" {
+			t.Fatalf("FinalStatus = %q, want success", result.FinalStatus)
+		}
+		if got := hits.Load(); got != 0 {
+			t.Fatalf("remote fetch hits = %d, want 0", got)
+		}
+	})
+
+	t.Run("ResolveRoute", func(t *testing.T) {
+		var hits atomic.Int32
+		blocker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			http.Error(w, "unexpected remote fetch", http.StatusInternalServerError)
+		}))
+		defer blocker.Close()
+
+		svc, err := fizeau.New(fizeau.ServiceOptions{
+			ServiceConfig: &fakeServiceConfig{
+				providers: map[string]fizeau.ServiceProviderEntry{
+					"anthropic": {Type: "anthropic", BaseURL: blocker.URL + "/v1", Model: "unused"},
+				},
+				names:       []string{"anthropic"},
+				defaultName: "anthropic",
+			},
+		})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		_, _ = svc.ResolveRoute(context.Background(), fizeau.RouteRequest{
+			Harness: "agent",
+		})
+		if got := hits.Load(); got != 0 {
+			t.Fatalf("remote fetch hits = %d, want 0", got)
+		}
+	})
 }
 
 func TestExecute_NativeReasoningForwarded(t *testing.T) {

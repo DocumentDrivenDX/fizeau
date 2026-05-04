@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
@@ -152,6 +154,71 @@ func TestResolveRouteErrorIncludesCandidatesAndTraceError(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "no viable routing candidate") {
 		t.Fatalf("error=%q, want no viable routing candidate detail", err.Error())
+	}
+}
+
+func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {
+	var hits atomic.Int32
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"live": {Type: "openai", BaseURL: "http://probe.invalid/v1", Model: "unused"},
+		},
+		names:       []string{"live"},
+		defaultName: "live",
+	}
+	original := probeOpenAIModelsForDiscovery
+	defer func() { probeOpenAIModelsForDiscovery = original }()
+	deadlineCh := make(chan time.Duration, 1)
+	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+		hits.Add(1)
+		if deadline, ok := ctx.Deadline(); ok {
+			deadlineCh <- time.Until(deadline)
+		} else {
+			deadlineCh <- -1
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	svc, err := New(ServiceOptions{
+		ServiceConfig:         sc,
+		CatalogProbeTimeout:   40 * time.Millisecond,
+		CatalogRefreshTimeout: 80 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	done := make(chan struct{})
+	var routeErr error
+	go func() {
+		_, routeErr = svc.ResolveRoute(context.Background(), RouteRequest{
+			Harness: "agent",
+		})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("ResolveRoute did not return after bounded probe timeout")
+	}
+	if routeErr != nil {
+		t.Logf("ResolveRoute returned error: %v", routeErr)
+	}
+
+	select {
+	case remaining := <-deadlineCh:
+		if remaining <= 0 {
+			t.Fatalf("probe deadline remaining = %s, want a live deadline", remaining)
+		}
+		if remaining > 40*time.Millisecond {
+			t.Fatalf("probe deadline remaining = %s, want at most the configured timeout", remaining)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("blocking probe did not observe a deadline")
+	}
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("probe hits = %d, want 1", got)
 	}
 }
 

@@ -34,6 +34,7 @@ const (
 	defaultCatalogStaleTTL            = 10 * time.Minute
 	defaultCatalogUnreachableCooldown = 30 * time.Second
 	defaultCatalogUnreachableJitter   = 5 * time.Second
+	defaultCatalogAsyncRefreshTimeout = 30 * time.Second
 )
 
 // catalogCacheKey identifies the cache entry. Uses fingerprinted auth so
@@ -98,6 +99,7 @@ type catalogCacheOptions struct {
 	StaleTTL            time.Duration
 	UnreachableCooldown time.Duration
 	UnreachableJitter   time.Duration
+	AsyncRefreshTimeout time.Duration
 	Now                 func() time.Time // injectable for tests
 	RandInt63n          func(n int64) int64
 }
@@ -113,6 +115,9 @@ func (o catalogCacheOptions) withDefaults() catalogCacheOptions {
 		o.UnreachableCooldown = defaultCatalogUnreachableCooldown
 	}
 	// UnreachableJitter may legitimately be 0 (tests); don't override.
+	if o.AsyncRefreshTimeout <= 0 {
+		o.AsyncRefreshTimeout = defaultCatalogAsyncRefreshTimeout
+	}
 	if o.Now == nil {
 		o.Now = time.Now
 	}
@@ -240,7 +245,7 @@ func (c *catalogCache) Get(ctx context.Context, key catalogCacheKey, probe Catal
 			// Kick async refresh — singleflight coalesces parallel callers.
 			parentCtx := context.WithoutCancel(ctx)
 			go func() {
-				ctx, cancel := context.WithTimeout(parentCtx, 30*time.Second)
+				ctx, cancel := context.WithTimeout(parentCtx, c.opts.AsyncRefreshTimeout)
 				defer cancel()
 				_, _, _ = c.sf.Do(key.String(), func() (interface{}, error) {
 					return c.probe(ctx, key, probe)

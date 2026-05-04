@@ -131,6 +131,13 @@ type ServiceOptions struct {
 	// When nil, the worker uses context.Background().
 	QuotaRefreshContext context.Context
 
+	// CatalogProbeTimeout bounds live /v1/models discovery during routing.
+	// Zero uses the service default of 2s.
+	CatalogProbeTimeout time.Duration
+	// CatalogRefreshTimeout bounds stale-while-revalidate catalog refreshes.
+	// Zero uses the service default of 30s.
+	CatalogRefreshTimeout time.Duration
+
 	// LocalCostUSDPer1kTokens is the operator-supplied electricity/operations
 	// estimate for local endpoint providers under the embedded agent harness.
 	// Zero means local endpoint cost is unknown.
@@ -764,6 +771,25 @@ type service struct {
 	nowFn func() time.Time
 }
 
+const (
+	defaultCatalogProbeTimeout   = 2 * time.Second
+	defaultCatalogRefreshTimeout = 30 * time.Second
+)
+
+func (o ServiceOptions) catalogProbeTimeout() time.Duration {
+	if o.CatalogProbeTimeout > 0 {
+		return o.CatalogProbeTimeout
+	}
+	return defaultCatalogProbeTimeout
+}
+
+func (o ServiceOptions) catalogRefreshTimeout() time.Duration {
+	if o.CatalogRefreshTimeout > 0 {
+		return o.CatalogRefreshTimeout
+	}
+	return defaultCatalogRefreshTimeout
+}
+
 func (s *service) now() time.Time {
 	if s.nowFn != nil {
 		return s.nowFn().UTC()
@@ -836,7 +862,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		opts:             opts,
 		registry:         harnesses.NewRegistry(),
 		hub:              newSessionHub(),
-		catalog:          newCatalogCache(catalogCacheOptions{}),
+		catalog:          newCatalogCache(catalogCacheOptions{AsyncRefreshTimeout: opts.catalogRefreshTimeout()}),
 		routeMetrics:     make(map[routeAttemptKey]routeMetricRecord),
 		routingQuality:   newRoutingQualityStore(),
 		providerQuota:    NewProviderQuotaStateStore(),

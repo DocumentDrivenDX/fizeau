@@ -949,6 +949,8 @@ func subscriptionEffectiveCostUSDPer1kTokens(baseCost float64, quotaPercentUsed 
 	}
 }
 
+var probeOpenAIModelsForDiscovery = probeOpenAIModels
+
 // probeEndpointDiscoveredIDs returns the foreground /v1/models catalog for one
 // endpoint. Dispatch routing must not use stale cache hits: a recently dead
 // endpoint has to be skipped before any chat request is attempted.
@@ -956,9 +958,9 @@ func (s *service) probeEndpointDiscoveredIDs(ctx context.Context, pcfg ServicePr
 	if baseURL == "" {
 		return nil, false
 	}
-	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	probeCtx, cancel := context.WithTimeout(ctx, s.opts.catalogProbeTimeout())
 	defer cancel()
-	ids, err := probeOpenAIModels(probeCtx, baseURL, pcfg.APIKey)
+	ids, err := probeOpenAIModelsForDiscovery(probeCtx, baseURL, pcfg.APIKey)
 	if err != nil || len(ids) == 0 {
 		return nil, false
 	}
