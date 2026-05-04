@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
 )
 
 func TestMatrixNoopDumbScriptProducesValidMatrix(t *testing.T) {
@@ -179,6 +181,18 @@ func TestMatrixOverBudgetRunBecomesBudgetHaltedAndContinues(t *testing.T) {
 		if run.CostUSD <= 0 {
 			t.Fatalf("run %s/%d cost = %f, want > 0", run.TaskID, run.Rep, run.CostUSD)
 		}
+	}
+}
+
+func TestFizeauProviderEnvMapsOpenRouterCompatProfile(t *testing.T) {
+	got := fizeauProviderEnv(&profile.Profile{
+		Provider: profile.Provider{
+			Type:    profile.ProviderOpenAICompat,
+			BaseURL: "https://openrouter.ai/api/v1",
+		},
+	})
+	if got != string(profile.ProviderOpenRouter) {
+		t.Fatalf("provider env = %q, want %q", got, profile.ProviderOpenRouter)
 	}
 }
 

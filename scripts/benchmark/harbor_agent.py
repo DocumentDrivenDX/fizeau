@@ -83,10 +83,11 @@ class FizeauAgent(BaseInstalledAgent):
         return "fiz"
 
     async def install(self, environment: BaseEnvironment) -> None:
-        binary_src = Path(os.environ.get("HARBOR_AGENT_ARTIFACT", ""))
-        if not binary_src.exists():
+        binary_artifact = os.environ.get("HARBOR_AGENT_ARTIFACT", "")
+        binary_src = Path(binary_artifact) if binary_artifact else Path()
+        if not binary_artifact or not binary_src.is_file():
             binary_src = Path(__file__).parent / "fiz-linux-amd64"
-        if not binary_src.exists():
+        if not binary_src.is_file():
             raise FileNotFoundError(
                 f"fiz binary not found. Expected {binary_src} or set "
                 "HARBOR_AGENT_ARTIFACT to the host binary path."
@@ -213,6 +214,11 @@ class FizeauAgent(BaseInstalledAgent):
         for key, val in os.environ.items():
             if key.startswith("FIZEAU_"):
                 env[key] = val
+        if (
+            env.get("FIZEAU_PROVIDER") == "openai-compat"
+            and "openrouter" in env.get("FIZEAU_BASE_URL", "")
+        ):
+            env["FIZEAU_PROVIDER"] = "openrouter"
         # Resolve FIZEAU_API_KEY from FIZEAU_API_KEY_ENV if not already set.
         api_key_env = env.get("FIZEAU_API_KEY_ENV", "")
         if api_key_env and "FIZEAU_API_KEY" not in env:

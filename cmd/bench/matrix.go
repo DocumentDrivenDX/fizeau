@@ -518,7 +518,7 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	args = append(args,
 		"--ae", "FIZEAU_BASE_URL="+opts.profile.Provider.BaseURL,
 		"--ae", "FIZEAU_MODEL="+opts.profile.Provider.Model,
-		"--ae", "FIZEAU_PROVIDER="+string(opts.profile.Provider.Type),
+		"--ae", "FIZEAU_PROVIDER="+fizeauProviderEnv(opts.profile),
 	)
 	if apiKeyVal != "" {
 		args = append(args, "--ae", "FIZEAU_API_KEY="+apiKeyVal)
@@ -1079,6 +1079,13 @@ func samplingEnvPairs(p *profile.Profile) []string {
 		pairs = append(pairs, fmt.Sprintf("FIZEAU_MIN_P=%g", *p.Sampling.MinP))
 	}
 	return pairs
+}
+
+func fizeauProviderEnv(p *profile.Profile) string {
+	if p.Provider.Type == profile.ProviderOpenAICompat && strings.Contains(p.Provider.BaseURL, "openrouter") {
+		return string(profile.ProviderOpenRouter)
+	}
+	return string(p.Provider.Type)
 }
 
 // queryModelServerInfo attempts to fetch model metadata from a lmstudio
