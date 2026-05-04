@@ -10,7 +10,12 @@ import (
 
 func TestScanReportsForbiddenActiveHits(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "README.md", "Run ddx-agent with DDX_AGENT_DEBUG=1.\n")
+	writeFile(t, root, "README.md", strings.Join([]string{
+		"github.com/DocumentDrivenDX/agent",
+		"Run ddx-agent with AGENT_DEBUG=1 and DDX_AGENT_DEBUG=1.",
+		"DDX Agent and DDx Agent",
+		"path: .agent/session.jsonl",
+	}, "\n")+"\n")
 	writeFile(t, root, "agent.go", "package agent\n")
 	writeFile(t, root, "internal/provider/provider.go", "package provider\n")
 
@@ -19,7 +24,10 @@ func TestScanReportsForbiddenActiveHits(t *testing.T) {
 		t.Fatalf("Scan() error = %v", err)
 	}
 
+	assertFinding(t, findings, "README.md", "github.com/DocumentDrivenDX/agent")
 	assertFinding(t, findings, "README.md", "ddx-agent")
+	assertFinding(t, findings, "README.md", "DDX Agent/DDx Agent")
+	assertFinding(t, findings, "README.md", ".agent")
 	assertFinding(t, findings, "README.md", "AGENT_*/DDX_AGENT_*")
 	assertFinding(t, findings, "agent.go", "root package agent")
 	if got := findSurface(findings, "internal/provider/provider.go", "root package agent"); got {
