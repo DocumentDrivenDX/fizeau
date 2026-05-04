@@ -3,7 +3,7 @@
 Embeddable Go agent runtime - local-model-first via LM Studio.
 
 [![CI](https://github.com/DocumentDrivenDX/fizeau/actions/workflows/ci.yml/badge.svg)](https://github.com/DocumentDrivenDX/fizeau/actions/workflows/ci.yml)
-[![Release](https://github.com/DocumentDrivenDX/fizeau/releases/latest/badge.svg)](https://github.com/DocumentDrivenDX/fizeau/releases/latest)
+[![Release](https://img.shields.io/github/v/release/DocumentDrivenDX/fizeau)](https://github.com/DocumentDrivenDX/fizeau/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Fizeau is a Go library that implements a coding agent runtime - a tool-calling
