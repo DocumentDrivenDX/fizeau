@@ -16,6 +16,7 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/session"
 	"github.com/DocumentDrivenDX/fizeau/internal/skill"
 	"github.com/DocumentDrivenDX/fizeau/internal/tool"
+	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorstore"
 )
 
 // Skill discovery and the load_skill tool.
@@ -48,9 +49,23 @@ func DefaultCompactionConfig() CompactionConfig { return compaction.DefaultConfi
 // Built-in tool wiring.
 
 type BashOutputFilterConfig = tool.BashOutputFilterConfig
+type AnchorStore = anchorstore.AnchorStore
+type ReadTool = tool.ReadTool
 
 func BuiltinToolsForPreset(workDir, preset string, bashFilter BashOutputFilterConfig) []Tool {
 	return tool.BuiltinToolsForPreset(workDir, preset, bashFilter)
+}
+
+func NewAnchorStore() *AnchorStore {
+	return anchorstore.New()
+}
+
+func NewReadTool(workDir string, anchors *AnchorStore) Tool {
+	return &tool.ReadTool{WorkDir: workDir, AnchorStore: anchors}
+}
+
+func NewAnchorEditTool(workDir string, anchors *AnchorStore) Tool {
+	return &tool.AnchorEditTool{WorkDir: workDir, AnchorStore: anchors}
 }
 
 // OpenAI-shaped model discovery and ranking.

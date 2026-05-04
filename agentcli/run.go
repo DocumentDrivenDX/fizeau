@@ -132,6 +132,7 @@ func runWithOptions(opts Options) int {
 	sysPromptFlag := fs.String("system", "", "System prompt (appended to preset)")
 	presetFlag := fs.String("preset", "", "System prompt preset: default, smart, cheap, minimal, benchmark")
 	planFlag := fs.Bool("plan", false, "Run a no-tool planning turn before the main loop (auto-enabled by --preset benchmark)")
+	anchorsFlag := fs.Bool("anchors", false, "Enable anchored read output and the anchor_edit tool")
 
 	if err := fs.Parse(cliArgs); err != nil {
 		return 2
@@ -261,7 +262,7 @@ func runWithOptions(opts Options) int {
 	}
 
 	// Build tools
-	tools := buildToolsForPreset(wd, preset, bashOutputFilterConfig(cfg.Tools.Bash.OutputFilter))
+	tools := buildToolsForPresetWithAnchors(wd, preset, cfg.Anchors || *anchorsFlag, bashOutputFilterConfig(cfg.Tools.Bash.OutputFilter))
 
 	// Discover SKILL.md skills and append the load_skill tool when the
 	// catalog is non-empty. Resolution precedence: FIZEAU_SKILLS_DIR
@@ -1023,6 +1024,25 @@ func buildToolsForPreset(workDir, preset string, bashFilter ...fizeau.BashOutput
 		filter = bashFilter[0]
 	}
 	return fizeau.BuiltinToolsForPreset(workDir, preset, filter)
+}
+
+func buildToolsForPresetWithAnchors(workDir, preset string, anchors bool, bashFilter ...fizeau.BashOutputFilterConfig) []fizeau.Tool {
+	tools := buildToolsForPreset(workDir, preset, bashFilter...)
+	if !anchors {
+		return tools
+	}
+
+	store := fizeau.NewAnchorStore()
+	anchored := make([]fizeau.Tool, 0, len(tools)+1)
+	for _, tool := range tools {
+		if tool != nil && tool.Name() == "read" {
+			anchored = append(anchored, fizeau.NewReadTool(workDir, store))
+			anchored = append(anchored, fizeau.NewAnchorEditTool(workDir, store))
+			continue
+		}
+		anchored = append(anchored, tool)
+	}
+	return anchored
 }
 
 func bashOutputFilterConfig(cfg agentConfig.BashOutputFilterConfig) fizeau.BashOutputFilterConfig {

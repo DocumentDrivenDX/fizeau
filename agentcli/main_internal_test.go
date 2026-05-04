@@ -3,6 +3,7 @@ package agentcli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DocumentDrivenDX/fizeau"
@@ -88,6 +89,7 @@ func TestBuildToolsForPreset_IncludesTaskTool(t *testing.T) {
 	assert.NotContains(t, names, "glob")
 	assert.Contains(t, names, "grep")
 	assert.Contains(t, names, "ls")
+	assert.NotContains(t, names, "anchor_edit")
 }
 
 func TestBuildToolsForPreset_DefaultIncludesTaskTool(t *testing.T) {
@@ -99,6 +101,54 @@ func TestBuildToolsForPreset_DefaultIncludesTaskTool(t *testing.T) {
 	}
 
 	assert.Contains(t, names, "task")
+}
+
+func TestBuildToolsForPresetWithAnchors_RegistersAnchorEditAndStoreBackedRead(t *testing.T) {
+	workDir := t.TempDir()
+	tools := buildToolsForPresetWithAnchors(workDir, "default", true)
+
+	var read *fizeau.ReadTool
+	var names []string
+	for _, tool := range tools {
+		names = append(names, tool.Name())
+		if rt, ok := tool.(*fizeau.ReadTool); ok {
+			read = rt
+		}
+	}
+
+	require.NotNil(t, read)
+	assert.NotNil(t, read.AnchorStore)
+	assert.Contains(t, names, "anchor_edit")
+}
+
+func TestBuildToolsForPresetWithAnchors_DisabledKeepsLegacyReadAndNoAnchorEdit(t *testing.T) {
+	tools := buildToolsForPresetWithAnchors(t.TempDir(), "default", false)
+
+	var read *fizeau.ReadTool
+	var names []string
+	for _, tool := range tools {
+		names = append(names, tool.Name())
+		if rt, ok := tool.(*fizeau.ReadTool); ok {
+			read = rt
+		}
+	}
+
+	require.NotNil(t, read)
+	assert.Nil(t, read.AnchorStore)
+	assert.NotContains(t, names, "anchor_edit")
+}
+
+func TestRun_AcceptsAnchorsFlag(t *testing.T) {
+	var stdout, stderr strings.Builder
+	code := Run(Options{
+		Args:   []string{"--anchors", "--version"},
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
+
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout.String(), "fiz ")
+	assert.Empty(t, stderr.String())
 }
 
 func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {

@@ -274,6 +274,9 @@ type Config struct {
 
 	Tools ToolsConfig `yaml:"tools,omitempty"`
 
+	// Anchors enables anchored read output and the anchor_edit tool for CLI runs.
+	Anchors bool `yaml:"anchors,omitempty"`
+
 	// Skills configures progressive-disclosure SKILL.md discovery.
 	Skills SkillsConfig `yaml:"skills,omitempty"`
 

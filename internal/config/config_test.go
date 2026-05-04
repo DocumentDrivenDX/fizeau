@@ -60,6 +60,7 @@ providers:
     model: claude-sonnet-4-20250514
 default: local
 max_iterations: 30
+anchors: true
 `), 0o644))
 
 	cfg, err := Load(dir)
@@ -68,6 +69,7 @@ max_iterations: 30
 	assert.Len(t, cfg.Providers, 2)
 	assert.Equal(t, "local", cfg.Default)
 	assert.Equal(t, 30, cfg.MaxIterations)
+	assert.True(t, cfg.Anchors)
 	assert.Equal(t, "/tmp/models.yaml", cfg.ModelCatalog.Manifest)
 	assert.True(t, cfg.Telemetry.Enabled)
 

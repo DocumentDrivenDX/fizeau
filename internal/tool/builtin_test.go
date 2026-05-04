@@ -18,7 +18,7 @@ func TestBuiltinToolsForPreset_IncludesExpectedTools(t *testing.T) {
 	require.NotEmpty(t, names)
 	assert.Contains(t, names, "bash")
 	assert.Contains(t, names, "read")
-	assert.Contains(t, names, "anchor_edit")
+	assert.NotContains(t, names, "anchor_edit")
 	assert.Contains(t, names, "write")
 	assert.Contains(t, names, "edit")
 	assert.Contains(t, names, "find")
