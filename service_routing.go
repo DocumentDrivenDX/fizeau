@@ -401,16 +401,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 			entry.QuotaStale = !dec.Fresh && dec.SnapshotPresent
 			entry.SubscriptionOK = dec.PreferClaude
 			if dec.Snapshot != nil {
-				maxUsed := 0.0
-				if dec.Snapshot.FiveHourLimit > 0 {
-					maxUsed = float64(dec.Snapshot.FiveHourLimit-dec.Snapshot.FiveHourRemaining) / float64(dec.Snapshot.FiveHourLimit) * 100
-				}
-				if dec.Snapshot.WeeklyLimit > 0 {
-					weeklyUsed := float64(dec.Snapshot.WeeklyLimit-dec.Snapshot.WeeklyRemaining) / float64(dec.Snapshot.WeeklyLimit) * 100
-					if weeklyUsed > maxUsed {
-						maxUsed = weeklyUsed
-					}
-				}
+				maxUsed := claudeQuotaMaxUsedPercent(dec.Snapshot)
 				entry.QuotaPercentUsed = int(maxUsed)
 				if maxUsed >= 90 {
 					entry.QuotaTrend = routing.QuotaTrendExhausting
@@ -502,6 +493,28 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ModelEligibility:            serviceRoutingModelEligibility(cat),
 		ReasoningResolver:           serviceRoutingReasoningResolver(cat),
 	}
+}
+
+func claudeQuotaMaxUsedPercent(snap *claudeharness.ClaudeQuotaSnapshot) float64 {
+	if snap == nil {
+		return 0
+	}
+	maxUsed := 0.0
+	if snap.FiveHourLimit > 0 {
+		maxUsed = float64(snap.FiveHourLimit-snap.FiveHourRemaining) / float64(snap.FiveHourLimit) * 100
+	}
+	if snap.WeeklyLimit > 0 {
+		weeklyUsed := float64(snap.WeeklyLimit-snap.WeeklyRemaining) / float64(snap.WeeklyLimit) * 100
+		if weeklyUsed > maxUsed {
+			maxUsed = weeklyUsed
+		}
+	}
+	for _, window := range snap.Windows {
+		if window.UsedPercent > maxUsed {
+			maxUsed = window.UsedPercent
+		}
+	}
+	return maxUsed
 }
 
 // providerQuotaExhaustedUntil snapshots the per-provider quota state machine

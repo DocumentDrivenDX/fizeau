@@ -42,13 +42,13 @@ func quotaStatus(fresh bool, windows []harnesses.QuotaWindow) string {
 	if len(windows) == 0 {
 		return "unknown"
 	}
-	if !fresh {
-		return "stale"
-	}
 	for _, w := range windows {
-		if w.State == "blocked" {
+		if w.State == "blocked" || w.State == "exhausted" || w.UsedPercent >= 95 {
 			return "blocked"
 		}
+	}
+	if !fresh {
+		return "stale"
 	}
 	return "ok"
 }

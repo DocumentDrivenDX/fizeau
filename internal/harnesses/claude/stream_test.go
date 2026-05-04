@@ -443,6 +443,45 @@ func TestRunnerExecute_HappyPath(t *testing.T) {
 	require.NotEmpty(t, entries, "session log dir should contain agent-*.jsonl")
 }
 
+func TestRunnerExecute_QuotaMessageMarksCache(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake claude binary relies on POSIX shell")
+	}
+	tmp := t.TempDir()
+	cachePath := filepath.Join(tmp, "claude-quota.json")
+	t.Setenv(claudeQuotaCacheEnv, cachePath)
+	t.Setenv(claudeQuotaCacheEnvLegacy, "")
+
+	binPath := filepath.Join(tmp, "claude")
+	script := `#!/bin/sh
+cat <<'EOF'
+{"type":"assistant","message":{"id":"m-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"You're out of extra usage · resets May 7, 12am (America/New_York)"}]}}
+EOF
+exit 1
+`
+	require.NoError(t, os.WriteFile(binPath, []byte(script), 0o755))
+
+	r := &Runner{Binary: binPath}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	out, err := r.Execute(ctx, harnesses.ExecuteRequest{Prompt: "hi"})
+	require.NoError(t, err)
+	events := drainEvents(t, ctx, out)
+	require.NotEmpty(t, events)
+
+	var final harnesses.FinalData
+	require.NoError(t, json.Unmarshal(events[len(events)-1].Data, &final))
+	assert.Equal(t, "failed", final.Status)
+	assert.Contains(t, final.Error, "claude quota exhausted")
+
+	snap, ok := ReadClaudeQuotaFrom(cachePath)
+	require.True(t, ok)
+	dec := DecideClaudeQuotaRouting(snap, time.Now().UTC(), DefaultClaudeQuotaStaleAfter)
+	assert.False(t, dec.PreferClaude)
+	assert.Contains(t, dec.Reason, "exhausted")
+}
+
 func TestRunnerBuildArgs_AppliesRequestControls(t *testing.T) {
 	r := &Runner{}
 	args := r.buildArgs([]string{"--print", "-p", "--verbose", "--output-format", "stream-json"}, harnesses.ExecuteRequest{

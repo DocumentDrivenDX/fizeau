@@ -167,10 +167,17 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 		ExitCode:   exitCode,
 		DurationMS: time.Since(start).Milliseconds(),
 	}
+	quotaMessage := claudeQuotaMessage(stderr, runErr, agg)
+	if quotaMessage != "" {
+		MarkClaudeQuotaExhaustedFromMessage(quotaMessage, time.Now())
+	}
 	if runErr != nil && status != "success" {
 		final.Error = runErr.Error()
 	} else if stderr != "" && status != "success" {
 		final.Error = trimErrorBlob(stderr)
+	}
+	if quotaMessage != "" && status != "success" {
+		final.Error = "claude quota exhausted: " + trimErrorBlob(quotaMessage)
 	}
 	if agg != nil {
 		final.FinalText = agg.FinalText
@@ -197,6 +204,29 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 	case <-time.After(time.Second):
 		// Caller has stopped consuming; drop and close.
 	}
+}
+
+func claudeQuotaMessage(stderr string, runErr error, agg *streamAggregate) string {
+	for _, candidate := range []string{
+		stderr,
+		func() string {
+			if agg == nil {
+				return ""
+			}
+			return agg.FinalText
+		}(),
+		func() string {
+			if runErr == nil {
+				return ""
+			}
+			return runErr.Error()
+		}(),
+	} {
+		if IsClaudeQuotaExhaustedMessage(candidate) {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // runStreaming drives the stream-json path: launches claude with the

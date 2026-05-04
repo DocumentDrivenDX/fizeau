@@ -22,15 +22,14 @@ func TestExecuteRouteEvidenceNoRetryAfterSelectedDispatchFailure(t *testing.T) {
 		defaultName: "alpha",
 	}
 	var calls atomic.Int64
-	svc, err := New(ServiceOptions{
-		ServiceConfig: sc,
-		FakeProvider: &FakeProvider{
-			InjectError: func(int) error {
-				calls.Add(1)
-				return errors.New("connection refused")
-			},
+	opts := ServiceOptions{ServiceConfig: sc}
+	opts.FakeProvider = &FakeProvider{
+		InjectError: func(int) error {
+			calls.Add(1)
+			return errors.New("connection unauthorized")
 		},
-	})
+	}
+	svc, err := New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

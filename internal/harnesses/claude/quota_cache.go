@@ -20,13 +20,14 @@ import (
 // QuotaSignal: foreground routing needs concrete numbers to reason about
 // 5-hour / weekly headroom without invoking PTY capture inline.
 type ClaudeQuotaSnapshot struct {
-	CapturedAt        time.Time              `json:"captured_at"`
-	FiveHourRemaining int                    `json:"five_hour_remaining"`
-	FiveHourLimit     int                    `json:"five_hour_limit"`
-	WeeklyRemaining   int                    `json:"weekly_remaining"`
-	WeeklyLimit       int                    `json:"weekly_limit"`
-	Source            string                 `json:"source"` // e.g. "pty", "heuristic"
-	Account           *harnesses.AccountInfo `json:"account,omitempty"`
+	CapturedAt        time.Time               `json:"captured_at"`
+	FiveHourRemaining int                     `json:"five_hour_remaining"`
+	FiveHourLimit     int                     `json:"five_hour_limit"`
+	WeeklyRemaining   int                     `json:"weekly_remaining"`
+	WeeklyLimit       int                     `json:"weekly_limit"`
+	Windows           []harnesses.QuotaWindow `json:"windows,omitempty"`
+	Source            string                  `json:"source"` // e.g. "pty", "heuristic"
+	Account           *harnesses.AccountInfo  `json:"account,omitempty"`
 }
 
 // DefaultClaudeQuotaStaleAfter is the default maximum age before a cached
@@ -232,6 +233,10 @@ func DecideClaudeQuotaRouting(snapshot *ClaudeQuotaSnapshot, now time.Time, stal
 		return decision
 	}
 	decision.Fresh = true
+	if exhausted := exhaustedClaudeQuotaWindow(snapshot.Windows); exhausted != "" {
+		decision.Reason = "fresh snapshot reports exhausted " + exhausted + " window; assume limited"
+		return decision
+	}
 	if snapshot.FiveHourRemaining <= 0 || snapshot.WeeklyRemaining <= 0 {
 		decision.Reason = "fresh snapshot reports exhausted window; assume limited"
 		return decision
@@ -266,6 +271,27 @@ func validateClaudeQuotaSnapshotForRouting(snapshot *ClaudeQuotaSnapshot) error 
 	return nil
 }
 
+func exhaustedClaudeQuotaWindow(windows []harnesses.QuotaWindow) string {
+	for _, window := range windows {
+		if !claudeQuotaWindowExhausted(window) {
+			continue
+		}
+		if strings.TrimSpace(window.LimitID) != "" {
+			return window.LimitID
+		}
+		if strings.TrimSpace(window.Name) != "" {
+			return window.Name
+		}
+		return "unknown"
+	}
+	return ""
+}
+
+func claudeQuotaWindowExhausted(window harnesses.QuotaWindow) bool {
+	state := strings.ToLower(strings.TrimSpace(window.State))
+	return state == "exhausted" || window.UsedPercent >= 100
+}
+
 // ReadClaudeQuotaRoutingDecision is a convenience wrapper that reads the
 // default cache and produces a routing decision in one call. It is the
 // entry point foreground routing should use instead of any inline PTY
@@ -273,6 +299,50 @@ func validateClaudeQuotaSnapshotForRouting(snapshot *ClaudeQuotaSnapshot) error 
 func ReadClaudeQuotaRoutingDecision(now time.Time, staleAfter time.Duration) ClaudeQuotaRoutingDecision {
 	snap, _ := ReadClaudeQuota()
 	return DecideClaudeQuotaRouting(snap, now, staleAfter)
+}
+
+// IsClaudeQuotaExhaustedMessage recognizes Claude CLI quota failures that are
+// emitted as plain text rather than structured quota data. Claude currently
+// reports weekly exhaustion with wording like "out of extra usage", so callers
+// must treat these strings as a hard quota signal.
+func IsClaudeQuotaExhaustedMessage(text string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(text))
+	return strings.Contains(normalized, "out of extra usage") ||
+		strings.Contains(normalized, "usage limit reached") ||
+		strings.Contains(normalized, "quota exhausted") ||
+		strings.Contains(normalized, "weekly quota") ||
+		strings.Contains(normalized, "current week") && strings.Contains(normalized, "exhaust")
+}
+
+// MarkClaudeQuotaExhaustedFromMessage records a runtime Claude quota failure
+// in the durable cache so later automatic routing avoids Claude until a fresh
+// quota probe proves headroom again.
+func MarkClaudeQuotaExhaustedFromMessage(text string, now time.Time) bool {
+	if !IsClaudeQuotaExhaustedMessage(text) {
+		return false
+	}
+	path, err := ClaudeQuotaCachePath()
+	if err != nil {
+		return true
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	snap := ClaudeQuotaSnapshot{
+		CapturedAt:        now.UTC(),
+		FiveHourLimit:     100,
+		FiveHourRemaining: 0,
+		WeeklyLimit:       100,
+		WeeklyRemaining:   0,
+		Windows: []harnesses.QuotaWindow{
+			{Name: "Current week (all models)", LimitID: "weekly-all", WindowMinutes: 10080, UsedPercent: 100, State: "exhausted"},
+			{Name: "Extra usage", LimitID: "extra", UsedPercent: 100, State: "exhausted"},
+		},
+		Source:  "runtime_error",
+		Account: &harnesses.AccountInfo{PlanType: "unknown"},
+	}
+	_ = WriteClaudeQuota(path, snap)
+	return true
 }
 
 // RefreshClaudeQuotaAsync launches a background goroutine that invokes

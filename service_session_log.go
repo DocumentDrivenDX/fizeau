@@ -49,6 +49,9 @@ func (s *service) openSessionLog(req ServiceExecuteRequest, decision RouteDecisi
 		Model:             decision.Model,
 		SelectedProvider:  decision.Provider,
 		SelectedRoute:     req.SelectedRoute,
+		RequestedHarness:  req.Harness,
+		ResolvedHarness:   decision.Harness,
+		HarnessSource:     harnessSource(req),
 		RequestedModel:    req.Model,
 		RequestedModelRef: req.ModelRef,
 		ResolvedModelRef:  req.ResolvedModelRef,
@@ -80,6 +83,9 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 			Tokens:            finalUsageToCoreTokens(final.Usage),
 			DurationMs:        final.DurationMS,
 			SelectedRoute:     req.SelectedRoute,
+			RequestedHarness:  req.Harness,
+			ResolvedHarness:   "",
+			HarnessSource:     harnessSource(req),
 			RequestedModel:    req.Model,
 			RequestedModelRef: req.ModelRef,
 			ResolvedModelRef:  req.ResolvedModelRef,
@@ -92,6 +98,7 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 			end.CostUSD = &cost
 		}
 		if final.RoutingActual != nil {
+			end.ResolvedHarness = final.RoutingActual.Harness
 			end.Model = final.RoutingActual.Model
 			end.SelectedProvider = final.RoutingActual.Provider
 			end.ResolvedModel = final.RoutingActual.Model

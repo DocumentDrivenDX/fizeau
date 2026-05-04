@@ -141,6 +141,7 @@ func claudeQuotaSnapshotFromWindows(windows []harnesses.QuotaWindow, account *ha
 		FiveHourRemaining: remainingPercent(fiveHourUsed),
 		WeeklyLimit:       100,
 		WeeklyRemaining:   remainingPercent(weeklyUsed),
+		Windows:           append([]harnesses.QuotaWindow(nil), windows...),
 		Source:            "pty",
 		Account:           account,
 	}

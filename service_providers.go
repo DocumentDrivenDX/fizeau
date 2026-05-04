@@ -650,6 +650,7 @@ func refreshClaudeQuotaCache(_ context.Context, debounce, timeout time.Duration)
 		CapturedAt: time.Now().UTC(),
 		Source:     "pty",
 		Account:    acct,
+		Windows:    append([]harnesses.QuotaWindow(nil), windows...),
 	}
 	for _, w := range windows {
 		switch w.LimitID {

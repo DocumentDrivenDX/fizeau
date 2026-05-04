@@ -921,6 +921,12 @@ type ServiceToolResultData struct { ID, Output, Error string; DurationMS int64 }
 type ServiceCompactionData struct { MessagesBefore, MessagesAfter, TokensFreed int }
 type ServiceRoutingDecisionData struct {
     Harness, Provider, Model, Reason string
+    // RequestedHarness echoes the caller's hard harness pin, when one was
+    // supplied. Empty means the service routed automatically.
+    RequestedHarness string
+    // HarnessSource is "request_harness" for explicit caller pins and
+    // "auto_route" for service-owned routing.
+    HarnessSource string
     FallbackChain []string
     SessionID string
 }
@@ -1780,7 +1786,9 @@ The agent owns these execution-time behaviors. Callers do not opt in or out.
 
 - **Route-reason attribution.** The start-event `routing_decision` and
   final-event `routing_actual` together capture why each candidate was
-  tried/picked.
+  tried/picked. `routing_decision.requested_harness`,
+  `routing_decision.harness_source`, and the matching session-log lifecycle
+  fields distinguish caller hard pins from service-owned automatic routing.
 
 - **Stall detection.** Per `StallPolicy`. Default policy (when caller passes
   `nil`) uses conservative limits matching today's circuit-breaker thresholds.

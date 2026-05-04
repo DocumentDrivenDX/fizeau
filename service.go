@@ -152,6 +152,10 @@ type ServiceOptions struct {
 	// Per-Execute requests still set their own
 	// ServiceExecuteRequest.SessionLogDir.
 	SessionLogDir string
+
+	// StaleHarnessReaperGrace is the minimum age before a startup reaper may
+	// terminate an owned subprocess record. Zero uses the default grace window.
+	StaleHarnessReaperGrace time.Duration
 }
 
 // SubscriptionCostCurve tunes effective subscription cost by quota utilization.
@@ -882,6 +886,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 			}
 		}
 	}
+	svc.reapStaleHarnessSessions()
 	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()
 	svc.startQuotaRecoveryProbeLoop()
@@ -933,7 +938,9 @@ func claudeQuotaState() *QuotaState {
 		Fresh:      decision.Fresh,
 		Source:     snap.Source,
 	}
-	if snap.FiveHourLimit > 0 {
+	if len(snap.Windows) > 0 {
+		qs.Windows = append(qs.Windows, snap.Windows...)
+	} else if snap.FiveHourLimit > 0 {
 		var used float64
 		if snap.FiveHourLimit > 0 {
 			used = float64(snap.FiveHourLimit-snap.FiveHourRemaining) / float64(snap.FiveHourLimit) * 100
@@ -945,7 +952,7 @@ func claudeQuotaState() *QuotaState {
 			State:         harnesses.QuotaStateFromUsedPercent(int(used)),
 		})
 	}
-	if snap.WeeklyLimit > 0 {
+	if len(snap.Windows) == 0 && snap.WeeklyLimit > 0 {
 		var used float64
 		if snap.WeeklyLimit > 0 {
 			used = float64(snap.WeeklyLimit-snap.WeeklyRemaining) / float64(snap.WeeklyLimit) * 100
@@ -1121,7 +1128,13 @@ func (s *service) harnessUsageWindow(provider, since string) *UsageWindow {
 }
 
 func (s *service) serviceSessionLogDir() string {
-	if s == nil || s.opts.ServiceConfig == nil {
+	if s == nil {
+		return ""
+	}
+	if s.opts.SessionLogDir != "" {
+		return s.opts.SessionLogDir
+	}
+	if s.opts.ServiceConfig == nil {
 		return ""
 	}
 	return s.opts.ServiceConfig.SessionLogDir()

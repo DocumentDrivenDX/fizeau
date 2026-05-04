@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
 func TestServiceSessionLogPersistsReasoningStallEvent(t *testing.T) {
@@ -51,5 +52,48 @@ func TestServiceSessionLogPersistsReasoningStallEvent(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("session log missing %s:\n%s", want, text)
 		}
+	}
+}
+
+func TestServiceSessionLogPersistsHarnessProvenance(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "routing-provenance-session"
+	svc := &service{}
+	req := ServiceExecuteRequest{
+		SessionLogDir: dir,
+		Model:         "sonnet",
+		Prompt:        "test prompt",
+	}
+	sl := svc.openSessionLog(req, RouteDecision{
+		Harness:  "claude",
+		Provider: "claude",
+		Model:    "sonnet",
+	}, sessionID)
+	sl.writeEnd(req, nil, harnesses.FinalData{
+		Status: string(agentcore.StatusSuccess),
+		RoutingActual: &harnesses.RoutingActual{
+			Harness: "claude",
+			Model:   "sonnet",
+		},
+	})
+	sl.close()
+
+	body, err := os.ReadFile(filepath.Join(dir, sessionID+".jsonl"))
+	if err != nil {
+		t.Fatalf("read session log: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		`"type":"session.start"`,
+		`"type":"session.end"`,
+		`"resolved_harness":"claude"`,
+		`"harness_source":"auto_route"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("session log missing %s:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, `"requested_harness"`) {
+		t.Fatalf("session log unexpectedly recorded requested_harness for auto route:\n%s", text)
 	}
 }

@@ -13,6 +13,9 @@ type SessionStartData struct {
 	Model              string            `json:"model"`
 	SelectedProvider   string            `json:"selected_provider,omitempty"`
 	SelectedRoute      string            `json:"selected_route,omitempty"`
+	RequestedHarness   string            `json:"requested_harness,omitempty"`
+	ResolvedHarness    string            `json:"resolved_harness,omitempty"`
+	HarnessSource      string            `json:"harness_source,omitempty"`
 	RequestedModel     string            `json:"requested_model,omitempty"`
 	RequestedModelRef  string            `json:"requested_model_ref,omitempty"`
 	ResolvedModelRef   string            `json:"resolved_model_ref,omitempty"`
@@ -80,6 +83,9 @@ type SessionEndData struct {
 	Model              string            `json:"model,omitempty"`
 	SelectedProvider   string            `json:"selected_provider,omitempty"`
 	SelectedRoute      string            `json:"selected_route,omitempty"`
+	RequestedHarness   string            `json:"requested_harness,omitempty"`
+	ResolvedHarness    string            `json:"resolved_harness,omitempty"`
+	HarnessSource      string            `json:"harness_source,omitempty"`
 	RequestedModel     string            `json:"requested_model,omitempty"`
 	RequestedModelRef  string            `json:"requested_model_ref,omitempty"`
 	ResolvedModelRef   string            `json:"resolved_model_ref,omitempty"`

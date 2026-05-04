@@ -70,6 +70,43 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 	}
 }
 
+func TestListHarnesses_ClaudeQuotaUsesPreservedWindows(t *testing.T) {
+	dir := t.TempDir()
+	claudePath := filepath.Join(dir, "claude-quota.json")
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudePath)
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
+
+	if err := claudeharness.WriteClaudeQuota(claudePath, claudeharness.ClaudeQuotaSnapshot{
+		CapturedAt:        time.Now().UTC(),
+		FiveHourRemaining: 90,
+		FiveHourLimit:     100,
+		WeeklyRemaining:   90,
+		WeeklyLimit:       100,
+		Source:            "runtime_error",
+		Windows: []harnesses.QuotaWindow{
+			{Name: "extra", LimitID: "claude-extra", UsedPercent: 100, State: "exhausted"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteClaudeQuota: %v", err)
+	}
+
+	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	infos, err := svc.ListHarnesses(context.Background())
+	if err != nil {
+		t.Fatalf("ListHarnesses: %v", err)
+	}
+	claudeInfo := findHarnessInfo(infos, "claude")
+	if claudeInfo == nil || claudeInfo.Quota == nil {
+		t.Fatalf("expected claude quota, got %#v", claudeInfo)
+	}
+	if claudeInfo.Quota.Status != "blocked" {
+		t.Fatalf("claude quota status=%q, want blocked: %#v", claudeInfo.Quota.Status, claudeInfo.Quota)
+	}
+	if len(claudeInfo.Quota.Windows) != 1 || claudeInfo.Quota.Windows[0].Name != "extra" || claudeInfo.Quota.Windows[0].State != "exhausted" {
+		t.Fatalf("claude quota windows: %#v", claudeInfo.Quota.Windows)
+	}
+}
+
 func TestListHarnesses_CodexUsageWindowsFromDDXSessionLogs(t *testing.T) {
 	dir := t.TempDir()
 	logDir := filepath.Join(dir, ".fizeau", "sessions")

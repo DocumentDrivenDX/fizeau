@@ -161,13 +161,15 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 }
 
 type ServiceRoutingDecisionData struct {
-	Harness       string   `json:"harness"`
-	Provider      string   `json:"provider,omitempty"`
-	Endpoint      string   `json:"endpoint,omitempty"`
-	Model         string   `json:"model"`
-	Reason        string   `json:"reason"`
-	FallbackChain []string `json:"fallback_chain,omitempty"`
-	SessionID     string   `json:"session_id,omitempty"`
+	Harness          string   `json:"harness"`
+	Provider         string   `json:"provider,omitempty"`
+	Endpoint         string   `json:"endpoint,omitempty"`
+	Model            string   `json:"model"`
+	Reason           string   `json:"reason"`
+	RequestedHarness string   `json:"requested_harness,omitempty"`
+	HarnessSource    string   `json:"harness_source,omitempty"`
+	FallbackChain    []string `json:"fallback_chain,omitempty"`
+	SessionID        string   `json:"session_id,omitempty"`
 
 	// Candidates exposes the full ranked decision trace. Each candidate
 	// carries per-axis component scores (cost / latency / success rate /

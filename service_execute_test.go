@@ -21,6 +21,32 @@ import (
 	fizeau "github.com/DocumentDrivenDX/fizeau"
 )
 
+type testServiceConfig struct {
+	providers   map[string]fizeau.ServiceProviderEntry
+	names       []string
+	defaultName string
+}
+
+func (c *testServiceConfig) ProviderNames() []string { return c.names }
+func (c *testServiceConfig) DefaultProviderName() string {
+	return c.defaultName
+}
+func (c *testServiceConfig) Provider(name string) (fizeau.ServiceProviderEntry, bool) {
+	entry, ok := c.providers[name]
+	return entry, ok
+}
+func (c *testServiceConfig) ModelRouteNames() []string { return nil }
+func (c *testServiceConfig) ModelRouteCandidates(string) []string {
+	return nil
+}
+func (c *testServiceConfig) ModelRouteConfig(string) fizeau.ServiceModelRouteConfig {
+	return fizeau.ServiceModelRouteConfig{}
+}
+func (c *testServiceConfig) HealthCooldown() time.Duration { return 0 }
+func (c *testServiceConfig) WorkDir() string               { return "" }
+func (c *testServiceConfig) SessionLogDir() string         { return "" }
+func (c *testServiceConfig) RouteHealthPath(string) string { return "" }
+
 // drainEvents collects everything from ch until it closes or the deadline
 // fires. The final element (when present) is always EventTypeFinal.
 func drainEvents(t *testing.T, ch <-chan fizeau.ServiceEvent, timeout time.Duration) []fizeau.ServiceEvent {
@@ -323,18 +349,19 @@ func TestRequestExecutionDoesNotFetchRemoteManifest(t *testing.T) {
 		}))
 		defer blocker.Close()
 
-		svc, err := fizeau.New(fizeau.ServiceOptions{
-			ServiceConfig: &fakeServiceConfig{
+		opts := fizeau.ServiceOptions{
+			ServiceConfig: &testServiceConfig{
 				providers: map[string]fizeau.ServiceProviderEntry{
 					"anthropic": {Type: "anthropic", BaseURL: blocker.URL + "/v1", Model: "unused"},
 				},
 				names:       []string{"anthropic"},
 				defaultName: "anthropic",
 			},
-			FakeProvider: &fizeau.FakeProvider{
-				Static: []fizeau.FakeResponse{{Text: "ok", Usage: fizeau.TokenUsage{Input: 1, Output: 1, Total: 2}}},
-			},
-		})
+		}
+		opts.FakeProvider = &fizeau.FakeProvider{
+			Static: []fizeau.FakeResponse{{Text: "ok", Usage: fizeau.TokenUsage{Input: 1, Output: 1, Total: 2}}},
+		}
+		svc, err := fizeau.New(opts)
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -342,7 +369,7 @@ func TestRequestExecutionDoesNotFetchRemoteManifest(t *testing.T) {
 		ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 			Prompt:   "ping",
 			Harness:  "agent",
-			Provider: "fake",
+			Provider: "anthropic",
 			Model:    "fake-model",
 		})
 		if err != nil {
@@ -369,7 +396,7 @@ func TestRequestExecutionDoesNotFetchRemoteManifest(t *testing.T) {
 		defer blocker.Close()
 
 		svc, err := fizeau.New(fizeau.ServiceOptions{
-			ServiceConfig: &fakeServiceConfig{
+			ServiceConfig: &testServiceConfig{
 				providers: map[string]fizeau.ServiceProviderEntry{
 					"anthropic": {Type: "anthropic", BaseURL: blocker.URL + "/v1", Model: "unused"},
 				},
@@ -441,13 +468,15 @@ func TestExecute_NativeSamplingForwarded(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
+	temperature := float32(0.25)
+	seed := int64(98765)
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
 		Harness:     "agent",
 		Provider:    "fake",
 		Model:       "fake-model",
-		Temperature: 0.25,
-		Seed:        98765,
+		Temperature: &temperature,
+		Seed:        &seed,
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)

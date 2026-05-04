@@ -311,6 +311,20 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		Source:            "pty",
 		Account:           testClaudeAccount(),
 	}
+	freshExtraExhausted := &ClaudeQuotaSnapshot{
+		CapturedAt:        now.Add(-1 * time.Minute),
+		FiveHourRemaining: 5000,
+		FiveHourLimit:     10000,
+		WeeklyRemaining:   50000,
+		WeeklyLimit:       70000,
+		Windows: []harnesses.QuotaWindow{
+			{Name: "Current session", LimitID: "session", UsedPercent: 10, State: "ok"},
+			{Name: "Current week (all models)", LimitID: "weekly-all", UsedPercent: 42, State: "ok"},
+			{Name: "Extra usage", LimitID: "extra", UsedPercent: 100, State: "exhausted"},
+		},
+		Source:  "pty",
+		Account: testClaudeAccount(),
+	}
 	stale := &ClaudeQuotaSnapshot{
 		CapturedAt:        now.Add(-20 * time.Minute),
 		FiveHourRemaining: 5000,
@@ -394,6 +408,14 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 			wantReasonSubst: "exhausted",
 		},
 		{
+			name:            "fresh but extra usage exhausted -> fall back",
+			snapshot:        freshExtraExhausted,
+			wantPrefer:      false,
+			wantPresent:     true,
+			wantFresh:       true,
+			wantReasonSubst: "extra",
+		},
+		{
 			name:            "fresh but missing account -> fall back",
 			snapshot:        freshMissingAccount,
 			wantPrefer:      false,
@@ -428,6 +450,24 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 			assert.Contains(t, d.Reason, tc.wantReasonSubst)
 		})
 	}
+}
+
+func TestClaudeQuotaExhaustedMessageMarksCache(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "claude-quota.json")
+	t.Setenv(claudeQuotaCacheEnv, path)
+	t.Setenv(claudeQuotaCacheEnvLegacy, "")
+	now := time.Date(2026, 5, 4, 22, 0, 0, 0, time.UTC)
+
+	ok := MarkClaudeQuotaExhaustedFromMessage("You're out of extra usage · resets May 7, 12am (America/New_York)", now)
+	require.True(t, ok)
+
+	snap, present := ReadClaudeQuotaFrom(path)
+	require.True(t, present)
+	dec := DecideClaudeQuotaRouting(snap, now, DefaultClaudeQuotaStaleAfter)
+	assert.False(t, dec.PreferClaude)
+	assert.True(t, dec.Fresh)
+	assert.Contains(t, dec.Reason, "exhausted")
+	assert.Contains(t, dec.Reason, "weekly-all")
 }
 
 func TestReadClaudeQuotaRoutingDecisionDefaultPath(t *testing.T) {

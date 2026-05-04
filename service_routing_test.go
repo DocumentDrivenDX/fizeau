@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
@@ -155,6 +156,59 @@ func TestResolveRouteErrorIncludesCandidatesAndTraceError(t *testing.T) {
 	if !strings.Contains(err.Error(), "no viable routing candidate") {
 		t.Fatalf("error=%q, want no viable routing candidate detail", err.Error())
 	}
+}
+
+func TestRoutingInputsUseClaudeQuotaWindows(t *testing.T) {
+	dir := t.TempDir()
+	cachePath := filepath.Join(dir, "claude-quota.json")
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
+
+	if err := claudeharness.WriteClaudeQuota(cachePath, claudeharness.ClaudeQuotaSnapshot{
+		CapturedAt:        time.Now().UTC(),
+		FiveHourRemaining: 90,
+		FiveHourLimit:     100,
+		WeeklyRemaining:   90,
+		WeeklyLimit:       100,
+		Source:            "pty",
+		Windows: []harnesses.QuotaWindow{
+			{Name: "extra", LimitID: "claude-extra", UsedPercent: 100, State: "exhausted"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteClaudeQuota: %v", err)
+	}
+
+	registry := harnesses.NewRegistry()
+	registry.LookPath = func(file string) (string, error) {
+		if file == "claude" {
+			return "/usr/bin/claude", nil
+		}
+		return "", os.ErrNotExist
+	}
+	svc := &service{opts: ServiceOptions{}, registry: registry}
+
+	inputs := svc.buildRoutingInputsWithCatalog(context.Background(), nil)
+	claudeEntry, ok := findRoutingHarnessEntry(inputs.Harnesses, "claude")
+	if !ok {
+		t.Fatalf("missing claude entry in %#v", inputs.Harnesses)
+	}
+	if claudeEntry.QuotaOK {
+		t.Fatalf("Claude QuotaOK=true, want false for exhausted window: %#v", claudeEntry)
+	}
+	if claudeEntry.SubscriptionOK {
+		t.Fatalf("Claude SubscriptionOK=true, want false for exhausted window: %#v", claudeEntry)
+	}
+	if claudeEntry.QuotaPercentUsed != 100 || claudeEntry.QuotaTrend != routing.QuotaTrendExhausting {
+		t.Fatalf("Claude quota components=%d/%q, want 100/%q", claudeEntry.QuotaPercentUsed, claudeEntry.QuotaTrend, routing.QuotaTrendExhausting)
+	}
+}
+
+func findRoutingHarnessEntry(entries []routing.HarnessEntry, name string) (routing.HarnessEntry, bool) {
+	for _, entry := range entries {
+		if entry.Name == name {
+			return entry, true
+		}
+	}
+	return routing.HarnessEntry{}, false
 }
 
 func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {

@@ -378,6 +378,13 @@ func validateExplicitHarnessReasoning(name string, cfg harnesses.HarnessConfig, 
 	}
 }
 
+func harnessSource(req ServiceExecuteRequest) string {
+	if strings.TrimSpace(req.Harness) != "" {
+		return "request_harness"
+	}
+	return "auto_route"
+}
+
 // runExecute is the per-Execute goroutine. It owns the channel close path
 // and the final event emit. All termination paths funnel through emitFinal
 // so the channel always sees a final event before close.
@@ -429,13 +436,15 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	// reserved keys).
 	routingMeta := metaWithRoleAndCorrelation(meta, req.Role, req.CorrelationID)
 	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, routingMeta, ServiceRoutingDecisionData{
-		Harness:    decision.Harness,
-		Provider:   decision.Provider,
-		Endpoint:   decision.Endpoint,
-		Model:      decision.Model,
-		Reason:     decision.Reason,
-		SessionID:  sessionID,
-		Candidates: routingDecisionEventCandidates(decision.Candidates),
+		Harness:          decision.Harness,
+		Provider:         decision.Provider,
+		Endpoint:         decision.Endpoint,
+		Model:            decision.Model,
+		Reason:           decision.Reason,
+		RequestedHarness: req.Harness,
+		HarnessSource:    harnessSource(req),
+		SessionID:        sessionID,
+		Candidates:       routingDecisionEventCandidates(decision.Candidates),
 	})
 
 	// Branch: native ("agent") path runs the in-process loop; subprocess
@@ -444,15 +453,15 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	case "agent", "":
 		s.runNative(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
 	case "claude":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &claudeharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &claudeharness.Runner{})
 	case "codex":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &codexharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &codexharness.Runner{})
 	case "gemini":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &geminiharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &geminiharness.Runner{})
 	case "opencode":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &opencodeharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &opencodeharness.Runner{})
 	case "pi":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, &piharness.Runner{})
+		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &piharness.Runner{})
 	case "virtual":
 		s.runVirtual(runCtx, req, decision, meta, out, &seq, start, sl)
 	case "script":
@@ -1226,6 +1235,12 @@ func newServiceCompactor(req ServiceExecuteRequest, model string) agentcore.Comp
 	cfg := compaction.DefaultConfig()
 	if req.CompactionContextWindow > 0 {
 		cfg.ContextWindow = req.CompactionContextWindow
+		if cfg.ReserveTokens >= cfg.ContextWindow {
+			cfg.ReserveTokens = 0
+		}
+		if cfg.KeepRecentTokens > cfg.ContextWindow {
+			cfg.KeepRecentTokens = cfg.ContextWindow / 2
+		}
 	}
 	if req.CompactionReserveTokens > 0 {
 		cfg.ReserveTokens = req.CompactionReserveTokens
@@ -1241,7 +1256,7 @@ func newServiceCompactor(req ServiceExecuteRequest, model string) agentcore.Comp
 // runSubprocess delegates to a Runner under internal/harnesses/<name>. It
 // re-uses the wall-clock-bounded ctx so PTY/orphan reaping is automatic
 // when our ctx (which already carries the request Timeout) cancels.
-func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, runner harnesses.Harness) {
+func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string, runner harnesses.Harness) {
 	// Wrapped harnesses (pi/codex/claude-code) pin samplers internally per
 	// ADR-007 §4. Per CONTRACT-003 our ServiceExecuteRequest carries pointer
 	// types; the harness ExecuteRequest still uses scalars. Dereference here
@@ -1287,9 +1302,13 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 	// Forward events. Stamp metadata onto each (subprocess runners already
 	// echo metadata, but we re-stamp defensively to match the contract's
 	// "every Event carries it" guarantee).
+	progress := newSubprocessProgressState(req)
 	for ev := range in {
 		if ev.Metadata == nil {
 			ev.Metadata = meta
+		}
+		if payload, ok := progress.noteEvent(ev); ok && ev.Type != harnesses.EventTypeProgress {
+			emitProgress(out, seq, sl, sessionID, meta, payload)
 		}
 		if ev.Type == harnesses.EventTypeFinal {
 			ev = stampSubprocessFinalRouting(ev, decision)
@@ -1299,6 +1318,9 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 			var final harnesses.FinalData
 			if err := json.Unmarshal(ev.Data, &final); err == nil {
 				sl.writeEnd(req, meta, final)
+			}
+			if payload, ok := progress.noteFinal(ev); ok {
+				emitProgress(out, seq, sl, sessionID, meta, payload)
 			}
 		}
 		// Re-sequence events so a single Execute presents a monotonically

@@ -307,7 +307,11 @@ func compactMessages(
 	if cutIndex == 0 && len(messages) > 0 {
 		cutIndex = nextValidBoundary(messages, 0)
 	}
-	if lastUserIndex >= 0 && cutIndex > lastUserIndex {
+	if lastUserIndex == 0 && hasToolResultAfter(messages, lastUserIndex) {
+		// A single-user tool-heavy run can still need mid-turn compaction after
+		// large tool output. In that case the initial user message is the only
+		// user boundary, so allow the next valid tool-safe boundary.
+	} else if lastUserIndex >= 0 && cutIndex > lastUserIndex {
 		cutIndex = lastUserIndex
 	}
 	if cutIndex <= 0 || cutIndex > len(messages) {
@@ -364,6 +368,15 @@ func compactMessages(
 		return messages, nil, agent.ErrCompactionNoFit
 	}
 	return bestMessages, bestResult, nil
+}
+
+func hasToolResultAfter(messages []agent.Message, index int) bool {
+	for i := index + 1; i < len(messages); i++ {
+		if messages[i].Role == agent.RoleTool {
+			return true
+		}
+	}
+	return false
 }
 
 func compactAtCutIndex(

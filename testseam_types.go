@@ -9,7 +9,6 @@ import agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 
 type Message = agentcore.Message
 type ToolCall = agentcore.ToolCall
-type TokenUsage = agentcore.TokenUsage
 
 // FakeProvider supports three patterns for intercepting provider Chat calls
 // during tests:
