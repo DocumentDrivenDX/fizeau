@@ -11,6 +11,7 @@ that our benchmark scoring path can consume.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shlex
 import socket
@@ -28,6 +29,8 @@ _AGENTS_MD_TARGET = f"{_INSTALL_ROOT}/AGENTS.md"
 _HOME_DIR = f"{_INSTALL_ROOT}/home"
 _SESSION_LOG_DIR = "/logs/agent/sessions"
 _OUTPUT_LOG = "/logs/agent/fiz.txt"
+
+logger = logging.getLogger(__name__)
 
 
 def _bench_env(name: str, default: str = "") -> str:
@@ -230,20 +233,32 @@ class FizeauAgent(BaseInstalledAgent):
         # fiz writes its session JSONL to <workdir>/.fizeau/sessions/ by
         # default (DefaultSessionLogDir). Harbor downloads /logs/agent into
         # the adapter's logs_dir, so we mirror the JSONL files into
-        # /logs/agent/sessions/ after fiz exits — that's where
-        # populate_context_post_run looks for them. Without this copy,
-        # trajectory.json comes back with 0 steps even on passing runs.
+        # /logs/agent/sessions/ after fiz exits; populate_context_post_run
+        # reads that downloaded directory when building trajectory.json.
         command = (
             "set -uo pipefail; "
             "cd /testbed 2>/dev/null || cd /workspace 2>/dev/null || true; "
+            'work_dir="$(pwd)"; '
             f'cp {_AGENTS_MD_TARGET} "$(pwd)/AGENTS.md" 2>/dev/null || true; '
             f"mkdir -p {_SESSION_LOG_DIR}; "
             f"{_BINARY_TARGET} --json --preset default "
-            '--work-dir "$(pwd)" '
+            '--work-dir "$work_dir" '
             '-p "$HARBOR_INSTRUCTION" '
             f'2>&1 | stdbuf -oL tee {_OUTPUT_LOG}; '
             'fiz_rc=${PIPESTATUS[0]}; '
-            f'cp -f "$(pwd)/.fizeau/sessions/"*.jsonl {_SESSION_LOG_DIR}/ 2>/dev/null || true; '
+            'for session_root in "$work_dir/.fizeau/sessions" "$HOME/.fizeau/sessions"; do '
+            '  if [ -d "$session_root" ]; then '
+            f'    find "$session_root" -type f -name "*.jsonl" -exec cp -f {{}} {_SESSION_LOG_DIR}/ \\; 2>/dev/null || true; '
+            "  fi; "
+            "done; "
+            f'find {_SESSION_LOG_DIR} -type f -name "*.jsonl" -exec chmod 644 {{}} \\; 2>/dev/null || true; '
+            f"chmod 755 {_SESSION_LOG_DIR} 2>/dev/null || true; "
+            f'if ! find {_SESSION_LOG_DIR} -type f -name "*.jsonl" -print -quit | grep -q .; then '
+            f'  {{ echo "warning: no fiz session JSONL found after run; expected $work_dir/.fizeau/sessions or $HOME/.fizeau/sessions, copied into {_SESSION_LOG_DIR}"; '
+            '    echo "warning: /logs/agent contents:"; '
+            '    find /logs/agent -maxdepth 4 -mindepth 1 -print 2>/dev/null || true; '
+            f"  }} >> {_OUTPUT_LOG}; "
+            "fi; "
             'exit "$fiz_rc"'
         )
 
@@ -255,6 +270,8 @@ class FizeauAgent(BaseInstalledAgent):
 
     def populate_context_post_run(self, context: AgentContext) -> None:
         trajectory, totals = self._build_trajectory()
+        if not self._session_files():
+            self._warn_no_session_files()
         trajectory_path = self.logs_dir / "trajectory.json"
         trajectory_path.write_text(json.dumps(trajectory, indent=2), encoding="utf-8")
 
@@ -263,10 +280,7 @@ class FizeauAgent(BaseInstalledAgent):
         context.cost_usd = totals["cost"]
 
     def _build_trajectory(self) -> tuple[dict[str, Any], dict[str, float]]:
-        session_files = sorted(
-            (self.logs_dir / "sessions").glob("*.jsonl"),
-            key=lambda p: p.stat().st_mtime,
-        )
+        session_files = self._session_files()
         if not session_files:
             return self._empty_trajectory(), {"input": 0, "output": 0, "cost": 0.0}
 
@@ -399,6 +413,40 @@ class FizeauAgent(BaseInstalledAgent):
             "output": total_output,
             "cost": total_cost,
         }
+
+    def _session_files(self) -> list[Path]:
+        return sorted(
+            (self.logs_dir / "sessions").rglob("*.jsonl"),
+            key=lambda p: p.stat().st_mtime,
+        )
+
+    def _warn_no_session_files(self) -> None:
+        expected = self.logs_dir / "sessions"
+        contents = self._logs_dir_contents()
+        warning = (
+            "warning: no fiz session JSONL found for trajectory build; "
+            f"expected path: {expected}; actual /logs/agent contents:\n{contents}"
+        )
+        logger.warning(warning)
+        log_path = self.logs_dir / "fiz.txt"
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write("\n" + warning + "\n")
+
+    def _logs_dir_contents(self) -> str:
+        if not self.logs_dir.exists():
+            return f"{self.logs_dir} does not exist"
+        entries: list[str] = []
+        for path in sorted(self.logs_dir.rglob("*")):
+            try:
+                rel = path.relative_to(self.logs_dir)
+            except ValueError:
+                rel = path
+            suffix = "/" if path.is_dir() else ""
+            entries.append(f"/logs/agent/{rel}{suffix}")
+            if len(entries) >= 200:
+                entries.append("... truncated after 200 entries")
+                break
+        return "\n".join(entries) if entries else "(empty)"
 
     def _empty_trajectory(self) -> dict[str, Any]:
         return {
