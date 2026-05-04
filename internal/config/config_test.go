@@ -584,6 +584,37 @@ func TestLoad_EnvOverridesCreateDeterministicDefaultProvider(t *testing.T) {
 	assert.Equal(t, "env-model", p.Model)
 }
 
+func TestLoad_SkillsConfig_ParsedFromYAML(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".fizeau")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+skills:
+  dir: .custom/skills
+providers:
+  local:
+    type: lmstudio
+    base_url: http://localhost:1234/v1
+default: local
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, ".custom/skills", cfg.Skills.Dir)
+
+	data, err := cfg.Save()
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "skills:")
+	assert.Contains(t, string(data), "dir: .custom/skills")
+
+	t.Setenv("FIZEAU_SKILLS_DIR", "/env/skills")
+	cfg, err = Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "/env/skills", cfg.Skills.Dir)
+}
+
 func TestExpandEnvVars(t *testing.T) {
 	t.Setenv("FOO", "bar")
 	assert.Equal(t, "bar", expandEnvVars("${FOO}"))

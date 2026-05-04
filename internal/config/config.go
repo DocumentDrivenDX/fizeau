@@ -411,6 +411,10 @@ func (c *Config) migrateLegacy() {
 
 // applyEnvOverrides applies AGENT_* env vars to the default provider.
 func (c *Config) applyEnvOverrides() {
+	if v := os.Getenv("FIZEAU_SKILLS_DIR"); v != "" {
+		c.Skills.Dir = v
+	}
+
 	if c.Providers == nil {
 		c.Providers = make(map[string]ProviderConfig)
 	}
