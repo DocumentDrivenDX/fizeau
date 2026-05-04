@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -110,9 +111,41 @@ func TestTimeoutCancelCleanupAndEOF(t *testing.T) {
 	require.Equal(t, 0, status.Code)
 }
 
+func TestSessionContextCancelKillsProcessGroup(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s, err := Start(ctx, "sh", []string{"-c", "sleep 300 & echo child:$!; wait"}, "", nil, Size{Rows: 10, Cols: 40})
+	require.NoError(t, err)
+
+	shellPID, sessionPGID, selfPGID := sessionProcessGroupInfo(t, s)
+	require.NotZero(t, shellPID)
+	require.NotZero(t, sessionPGID)
+	require.NotZero(t, selfPGID)
+	require.NotEqual(t, selfPGID, sessionPGID, "PTY session must own a distinct process group")
+
+	childPID := readChildPID(t, s.Output())
+	require.NotZero(t, childPID)
+
+	cancel()
+	status := s.Wait()
+	require.Error(t, status.Err)
+
+	require.Eventually(t, func() bool {
+		return errors.Is(syscall.Kill(shellPID, 0), syscall.ESRCH)
+	}, 2*time.Second, 25*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return errors.Is(syscall.Kill(childPID, 0), syscall.ESRCH)
+	}, 2*time.Second, 25*time.Millisecond)
+}
+
 func TestKillCleansProcessGroup(t *testing.T) {
 	s, err := Start(context.Background(), "sh", []string{"-c", "sleep 300 & echo child:$!; wait"}, "", nil, Size{Rows: 10, Cols: 40})
 	require.NoError(t, err)
+
+	shellPID, sessionPGID, selfPGID := sessionProcessGroupInfo(t, s)
+	require.NotZero(t, shellPID)
+	require.NotZero(t, sessionPGID)
+	require.NotZero(t, selfPGID)
+	require.NotEqual(t, selfPGID, sessionPGID, "PTY session must own a distinct process group")
 
 	childPID := readChildPID(t, s.Output())
 	require.NotZero(t, childPID)
@@ -122,6 +155,9 @@ func TestKillCleansProcessGroup(t *testing.T) {
 	status := s.Wait()
 	require.Error(t, status.Err)
 
+	require.Eventually(t, func() bool {
+		return errors.Is(syscall.Kill(shellPID, 0), syscall.ESRCH)
+	}, 2*time.Second, 25*time.Millisecond)
 	require.Eventually(t, func() bool {
 		return errors.Is(syscall.Kill(childPID, 0), syscall.ESRCH)
 	}, 2*time.Second, 25*time.Millisecond)
@@ -195,4 +231,19 @@ func readChildPID(t *testing.T, out <-chan OutputChunk) int {
 			t.Fatalf("timed out waiting for child PID; output=%q", buf.String())
 		}
 	}
+}
+
+func sessionProcessGroupInfo(t *testing.T, s *Session) (shellPID int, sessionPGID int, selfPGID int) {
+	t.Helper()
+	selfPGID, err := syscall.Getpgid(os.Getpid())
+	require.NoError(t, err)
+
+	u, ok := s.impl.(*unixImpl)
+	require.True(t, ok, "expected unix session implementation")
+	require.NotNil(t, u.cmd.Process)
+
+	shellPID = u.cmd.Process.Pid
+	sessionPGID, err = syscall.Getpgid(shellPID)
+	require.NoError(t, err)
+	return shellPID, sessionPGID, selfPGID
 }

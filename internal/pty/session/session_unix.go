@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 )
@@ -124,9 +125,21 @@ func (u *unixImpl) kill() error {
 	}
 	pgid, err := syscall.Getpgid(u.cmd.Process.Pid)
 	if err == nil {
-		return syscall.Kill(-pgid, syscall.SIGKILL)
+		if killProcessGroup(pgid, syscall.SIGTERM) {
+			time.Sleep(100 * time.Millisecond)
+		}
+		_ = killProcessGroup(pgid, syscall.SIGKILL)
+		return nil
 	}
 	return u.cmd.Process.Kill()
+}
+
+func killProcessGroup(pgid int, sig syscall.Signal) bool {
+	if pgid <= 0 {
+		return false
+	}
+	err := syscall.Kill(-pgid, sig)
+	return err == nil || errors.Is(err, syscall.ESRCH)
 }
 
 func (u *unixImpl) wait() ExitStatus {
