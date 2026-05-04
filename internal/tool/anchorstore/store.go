@@ -18,11 +18,13 @@ type AnchorStore = Store
 
 type fileState struct {
 	anchors map[string]anchorState
+	count   int
 }
 
 type anchorState struct {
 	line      int
 	ambiguous bool
+	choices   []int
 }
 
 // New returns an empty Store.
@@ -41,6 +43,7 @@ func (s *Store) Assign(path string, fileOffset int, lines []string) {
 
 	state := fileState{
 		anchors: make(map[string]anchorState, len(lines)),
+		count:   len(lines),
 	}
 	for i := range lines {
 		line := fileOffset + i
@@ -49,10 +52,11 @@ func (s *Store) Assign(path string, fileOffset int, lines []string) {
 		if ok {
 			current.ambiguous = true
 			current.line = -1
+			current.choices = append(current.choices, line)
 			state.anchors[anchor] = current
 			continue
 		}
-		state.anchors[anchor] = anchorState{line: line}
+		state.anchors[anchor] = anchorState{line: line, choices: []int{line}}
 	}
 	s.files[path] = state
 }
@@ -79,6 +83,24 @@ func (s *Store) Lookup(path string, anchor string) (int, bool) {
 		return -1, true
 	}
 	return found.line, false
+}
+
+// Resolve returns all known candidate lines for anchor on path and the number
+// of lines covered by the current assignment.
+func (s *Store) Resolve(path string, anchor string) ([]int, int, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	state, ok := s.files[path]
+	if !ok {
+		return nil, 0, false
+	}
+	found, ok := state.anchors[anchor]
+	if !ok {
+		return nil, state.count, false
+	}
+	choices := append([]int(nil), found.choices...)
+	return choices, state.count, true
 }
 
 // Invalidate clears path's anchor assignments.
