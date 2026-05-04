@@ -13,6 +13,9 @@ type Store struct {
 	files map[string]fileState
 }
 
+// AnchorStore is the public store type used by anchor-aware tools.
+type AnchorStore = Store
+
 type fileState struct {
 	anchors map[string]anchorState
 }

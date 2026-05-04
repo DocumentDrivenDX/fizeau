@@ -3,12 +3,17 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorstore"
+	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorwords"
 )
 
 func TestReadTool_Execute(t *testing.T) {
@@ -78,6 +83,76 @@ func TestReadTool_Execute(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid params")
 	})
+}
+
+func TestReadTool_ExecuteAnchorMode(t *testing.T) {
+	dir := t.TempDir()
+	store := anchorstore.New()
+	tool := &ReadTool{WorkDir: dir, AnchorStore: store}
+
+	t.Run("prefixes lines and assigns anchors with file offset", func(t *testing.T) {
+		path := filepath.Join(dir, "anchored.txt")
+		require.NoError(t, os.WriteFile(path, []byte("line0\nline1\nline2\nline3"), 0o644))
+
+		result, err := tool.Execute(context.Background(), mustJSON(t, ReadParams{
+			Path:   "anchored.txt",
+			Offset: 1,
+			Limit:  2,
+		}))
+		require.NoError(t, err)
+
+		assert.Equal(t, anchorwords.Anchors[1]+": line1\n"+anchorwords.Anchors[2]+": line2", result)
+
+		line, ambiguous := store.Lookup(path, anchorwords.Anchors[1])
+		require.False(t, ambiguous)
+		assert.Equal(t, 1, line)
+
+		line, ambiguous = store.Lookup(path, anchorwords.Anchors[2])
+		require.False(t, ambiguous)
+		assert.Equal(t, 2, line)
+
+		line, ambiguous = store.Lookup(path, anchorwords.Anchors[0])
+		assert.False(t, ambiguous)
+		assert.Equal(t, -1, line)
+	})
+
+	t.Run("truncation marker uses ellipsis prefix", func(t *testing.T) {
+		path := filepath.Join(dir, "long.txt")
+		lines := make([]string, truncMaxLines+1)
+		for i := range lines {
+			lines[i] = fmt.Sprintf("line%d", i)
+		}
+		require.NoError(t, os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644))
+
+		result, err := tool.Execute(context.Background(), mustJSON(t, ReadParams{Path: "long.txt"}))
+		require.NoError(t, err)
+
+		outLines := strings.Split(result, "\n")
+		require.Len(t, outLines, truncMaxLines+1)
+		assert.Equal(t, anchorwords.Anchors[0]+": line0", outLines[0])
+		assert.Equal(t, "...: [Truncated: 1 lines omitted]", outLines[len(outLines)-1])
+
+		line, ambiguous := store.Lookup(path, "...")
+		assert.False(t, ambiguous)
+		assert.Equal(t, -1, line)
+	})
+}
+
+func TestReadTool_LegacyModeOutput(t *testing.T) {
+	dir := t.TempDir()
+	tool := &ReadTool{WorkDir: dir}
+	path := filepath.Join(dir, "legacy.txt")
+	lines := make([]string, truncMaxLines+1)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("legacy%d", i)
+	}
+	content := strings.Join(lines, "\n")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+
+	result, err := tool.Execute(context.Background(), mustJSON(t, ReadParams{Path: "legacy.txt"}))
+	require.NoError(t, err)
+
+	assert.Equal(t, TruncateHead(content, truncMaxLines, truncMaxBytes), result)
 }
 
 func mustJSON(t *testing.T, v any) json.RawMessage {
