@@ -1,0 +1,12 @@
+verification_command: jq -s -e 'def ids: ["agent-af0bad05","agent-d55fd5e9","agent-e15e3464","agent-259bdcf2","agent-c81bd550","agent-d796f3a7"]; [.[] | select(.parent=="agent-e585feb4") | .id] as $children | (ids - $children | length == 0) and ($children - ids | length == 0)' .ddx/beads.jsonl >/dev/null
+
+status: decomposed
+reason: The bead is an epic-sized implementation spanning anchor vocabulary generation, session anchor state, ReadTool output changes, a new anchor_edit tool with splice safety, CLI/config wiring, prompt changes, and full-suite verification. The named spec already defines these as ANC-1 through ANC-6, and the tracker already contains matching child beads, so this attempt records the decomposition instead of duplicating or partially implementing the epic.
+
+child_beads:
+- agent-af0bad05: Generate anchor word list; create anchorwords package.
+- agent-d55fd5e9: anchorstore package; thread-safe session state.
+- agent-e15e3464: Modify ReadTool to emit anchor-prefixed output.
+- agent-259bdcf2: Implement AnchorEditTool (anchor_edit).
+- agent-c81bd550: --anchors CLI flag, config key, and conditional tool registration.
+- agent-d796f3a7: System prompt addendum for anchor mode.
