@@ -3,10 +3,7 @@ package fizeau
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
-	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -151,7 +148,7 @@ func (s *service) UsageReport(ctx context.Context, opts UsageReportOptions) (*Us
 		report.RoutingQuality = s.routingQualityFromRing(nil)
 		return report, nil
 	}
-	internal, err := session.AggregateUsage(logDir, session.UsageOptions{
+	internal, err := serviceimpl.UsageReport(ctx, logDir, session.UsageOptions{
 		Since: opts.Since,
 		Now:   now,
 	})
@@ -231,27 +228,18 @@ func (s *service) ListSessionLogs(ctx context.Context) ([]SessionLogEntry, error
 		return nil, err
 	}
 	logDir := s.publicSessionLogDir()
-	if logDir == "" {
-		return nil, nil
-	}
-	entries, err := os.ReadDir(logDir)
+	entries, err := serviceimpl.ListSessionLogs(ctx, logDir)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]SessionLogEntry, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
-			continue
-		}
-		id := strings.TrimSuffix(e.Name(), ".jsonl")
-		entry := SessionLogEntry{SessionID: id}
-		if info, err := e.Info(); err == nil && info != nil {
-			entry.ModTime = info.ModTime()
-			entry.Size = info.Size()
-		}
-		out = append(out, entry)
+	for _, entry := range entries {
+		out = append(out, SessionLogEntry{
+			SessionID: entry.SessionID,
+			ModTime:   entry.ModTime,
+			Size:      entry.Size,
+		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].SessionID < out[j].SessionID })
 	return out, nil
 }
 
@@ -266,20 +254,7 @@ func (s *service) WriteSessionLog(ctx context.Context, sessionID string, w io.Wr
 	if err != nil {
 		return err
 	}
-	events, err := session.ReadEvents(path)
-	if err != nil {
-		return err
-	}
-	for _, e := range events {
-		data, err := json.MarshalIndent(e, "", "  ")
-		if err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintln(w, string(data)); err != nil {
-			return err
-		}
-	}
-	return nil
+	return serviceimpl.WriteSessionLog(ctx, path, w)
 }
 
 // ReplaySession renders a human-readable conversation transcript for the named
@@ -292,7 +267,7 @@ func (s *service) ReplaySession(ctx context.Context, sessionID string, w io.Writ
 	if err != nil {
 		return err
 	}
-	return session.Replay(path, w)
+	return serviceimpl.ReplaySession(ctx, path, w)
 }
 
 // publicSessionLogDir resolves the directory used by the public session-log
