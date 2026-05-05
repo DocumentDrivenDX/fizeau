@@ -307,6 +307,39 @@ models:
     surfaces:
       agent.openai: qwen3.5-27b
 
+  qwen3.6-27b:
+    family: qwen
+    display_name: Qwen3.6 27B
+    tier: code-economy
+    status: active
+    provider_system: openai
+    deployment_class: local_free
+    power: 5
+    power_provenance:
+      method: catalog_bootstrap_local_successor
+      benchmarks:
+        swe_bench_verified: 59.0
+      recency: "2026-04-27"
+      cost_input_per_m: 0.10
+      cost_output_per_m: 0.30
+      deployment_class: local_free
+      override_reason: "Local Qwen3.6 27B deployments are treated as the successor to the Qwen3.5 27B local routing tier until a dedicated benchmark lands."
+    cost_input_per_m: 0.10
+    cost_output_per_m: 0.30
+    context_window: 262144
+    swe_bench_verified: 59.0
+    benchmark_as_of: "2026-04-27"
+    reasoning_max_tokens: 32768
+    reasoning_budgets:
+      low: 2048
+      medium: 8192
+      high: 32768
+    reasoning_levels: [high]
+    reasoning_control: fixed
+    reasoning_wire: model_id
+    surfaces:
+      agent.openai: qwen/qwen3.6-27b
+
   qwen3.5-7b:
     family: qwen
     display_name: Qwen3.5 7B
@@ -503,7 +536,7 @@ targets:
     status: active
     context_window_min: 131072
     swe_bench_min: 45.0
-    candidates: [claude-haiku-5.5, lucebox-dflash, qwen3.5-27b, gemini-2.5-flash-lite]
+    candidates: [claude-haiku-5.5, lucebox-dflash, qwen3.6-27b, qwen3.5-27b, gemini-2.5-flash-lite]
     surface_policy:
       agent.anthropic:
         reasoning_default: medium

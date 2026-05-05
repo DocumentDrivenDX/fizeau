@@ -141,8 +141,20 @@ prompt behavior and must not be reused for model policy or routing.
     and callers can refresh policy more quickly than the binary release cadence.
 12. Catalog refresh is explicit. Ordinary request execution must not fetch
     remote manifest data.
-13. The Fizeau CLI and any caller can resolve a model reference through the catalog to a
-    concrete model string appropriate for the chosen consumer surface.
+13. The Fizeau CLI and any caller can resolve a model reference through the
+    catalog to a concrete model string appropriate for the chosen consumer
+    surface.
+13a. When a profile or canonical target has an ordered candidate list,
+     provider-backed routing tests those candidates against the endpoint's
+     live model inventory in order. The router chooses the first candidate the
+     endpoint advertises instead of failing only because the target's primary
+     candidate is absent.
+13b. Provider-native model names may include vendor prefixes, casing,
+     quantization, accelerator, or packaging suffixes such as
+     `Qwen3.6-27B-MLX-8bit`. Catalog metadata lookup must match those names
+     back to the intended catalog model when the canonical identity is
+     unambiguous, so auto-routing sees the catalog power, context window, tool
+     support, and auto-routable status for the selected provider-native ID.
 14. Explicit concrete model pins remain supported as hard constraints. If the
     requested model is unavailable, routing fails with detailed evidence rather
     than substituting another model.
@@ -186,6 +198,10 @@ prompt behavior and must not be reused for model policy or routing.
 23. Fizeau builds the candidate set by enumerating available harnesses,
     provider sources, endpoints, and discovered model IDs, then joining that
     live inventory with catalog metadata.
+23a. A native embedded-provider harness with configured provider sources must
+     not synthesize a providerless fallback candidate when every live provider
+     probe fails or returns no models. It must surface no eligible provider
+     candidates with rejection evidence instead.
 24. The CLI exposes the joined inventory through `fiz --list-models`,
     with JSON support. Rows include model, harness, provider, endpoint/host,
     power, provider/deployment class, cost, speed/perf signal, context,
@@ -321,6 +337,9 @@ prompt behavior and must not be reused for model policy or routing.
 | AC-FEAT-004-10 | The starter shared catalog publishes concrete model entries with 1..10 power, provider/deployment class, power provenance, costs, context, benchmark inputs, and surface projections. Named routing personas or named power bands are not part of the target contract. | `go test ./internal/modelcatalog ./internal/config ./cmd/fiz ./...` |
 | AC-FEAT-004-11 | Manifest schema uses top-level concrete `models` entries and target-level ordered `candidates`; pricing, OpenRouter refresh, context windows, benchmarks, power, and deployment-class provenance are model-scoped while target entries remain policy. Older manifests load through a compatibility upgrade path. | `go test ./internal/modelcatalog ./...` |
 | AC-FEAT-004-12 | Routing policy has statement-backed tests for: local/free preference when constraints are satisfied; hard pins overriding local preference; power bounds overriding local preference; unknown-power exact-pin-only behavior; provider/deployment-class power separation; and no retry of candidate 2 after dispatch failure. | `go test ./internal/routing ./... -run 'Policy|Invariant|Routing'` |
+| AC-FEAT-004-13 | Profile and target routing use the ordered catalog candidate list against live provider discovery; if the primary candidate is absent but a later candidate is advertised, the later candidate remains eligible and is scored with catalog metadata. | `go test ./internal/routing ./... -run 'CatalogCandidates|LiveDiscovery|Routing'` |
+| AC-FEAT-004-14 | Provider-native model IDs with case, vendor-prefix, quantization, accelerator, or packaging suffix differences, such as `Qwen3.6-27B-MLX-8bit`, fuzzy-match to the intended catalog model for power, context, tool support, and auto-routable metadata without treating unrelated short names as equivalent. | `go test ./internal/modelcatalog ./internal/routing ./... -run 'Fuzzy|ProviderNative|ModelEligibility'` |
+| AC-FEAT-004-15 | If all configured provider-backed endpoints are absent from live discovery, the native embedded-provider harness does not produce an empty-provider route candidate and cannot win automatic routing as `provider=""`. | `go test ./... -run 'RouteStatus|Routing|Provider'` |
 
 ## Dependencies
 

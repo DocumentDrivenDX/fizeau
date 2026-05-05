@@ -345,6 +345,9 @@ func (c *Catalog) LookupModel(id string) (ModelEntry, bool) {
 			}
 		}
 	}
+	if entry, ok := c.lookupModelVariant(id); ok {
+		return entry, true
+	}
 	return ModelEntry{}, false
 }
 
@@ -409,15 +412,8 @@ func (c *Catalog) AllModelsInTier(targetID string) []TierModel {
 // does not expose its context window (e.g. LM Studio's /v1/models omits it).
 // Matching is case-insensitive to accept both "qwen3.5-27b" and "Qwen3.5-27B".
 func (c *Catalog) ContextWindowForModel(id string) int {
-	if entry, ok := c.manifest.Models[id]; ok {
+	if entry, ok := c.LookupModel(id); ok {
 		return entry.ContextWindow
-	}
-	// Case-insensitive fallback — catalog YAML uses lowercase but live servers
-	// sometimes present mixed case (e.g. "Qwen3.5-27B-4bit").
-	for mid, entry := range c.manifest.Models {
-		if strings.EqualFold(mid, id) {
-			return entry.ContextWindow
-		}
 	}
 	return 0
 }
@@ -431,15 +427,62 @@ func (c *Catalog) SupportsToolsForModel(id string) bool {
 	if c == nil {
 		return true
 	}
-	if entry, ok := c.manifest.Models[id]; ok {
+	if entry, ok := c.LookupModel(id); ok {
 		return !entry.NoTools
 	}
-	for mid, entry := range c.manifest.Models {
-		if strings.EqualFold(mid, id) {
-			return !entry.NoTools
+	return true
+}
+
+func (c *Catalog) lookupModelVariant(id string) (ModelEntry, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ModelEntry{}, false
+	}
+	for modelID, entry := range c.manifest.Models {
+		if sameModelVariant(id, modelID) {
+			return entry, true
+		}
+		for _, surfaceID := range entry.Surfaces {
+			if sameModelVariant(id, surfaceID) {
+				return entry, true
+			}
 		}
 	}
-	return true
+	return ModelEntry{}, false
+}
+
+func sameModelVariant(a, b string) bool {
+	ca := catalogModelKey(a)
+	cb := catalogModelKey(b)
+	if ca == "" || cb == "" {
+		return false
+	}
+	if ca == cb {
+		return true
+	}
+	if len(ca) < 8 || len(cb) < 8 {
+		return false
+	}
+	return strings.Contains(ca, cb) || strings.Contains(cb, ca)
+}
+
+func catalogModelKey(s string) string {
+	s = strings.TrimSpace(s)
+	if slash := strings.Index(s, "/"); slash > 0 {
+		s = s[slash+1:]
+	}
+	s = strings.ToLower(s)
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // CandidatesFor returns the ordered list of candidate concrete model IDs for

@@ -280,6 +280,51 @@ func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {
 	}
 }
 
+func TestBuildRoutingInputsDisablesAgentWhenLiveProviderDiscoveryEmpty(t *testing.T) {
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"dead-local": {Type: "lmstudio", BaseURL: "http://dead-local.invalid/v1", Model: "qwen3.6-27b"},
+		},
+		names:       []string{"dead-local"},
+		defaultName: "dead-local",
+	}
+	original := probeOpenAIModelsForDiscovery
+	defer func() { probeOpenAIModelsForDiscovery = original }()
+	probeOpenAIModelsForDiscovery = func(context.Context, string, string) ([]string, error) {
+		return nil, errors.New("probe failed")
+	}
+	registry := harnesses.NewRegistry()
+	registry.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	svc := &service{
+		opts:     ServiceOptions{ServiceConfig: sc},
+		registry: registry,
+		hub:      newSessionHub(),
+		catalog:  newCatalogCache(catalogCacheOptions{}),
+	}
+
+	inputs := svc.buildRoutingInputsWithCatalog(context.Background(), nil)
+	agentEntry, ok := findRoutingHarnessEntry(inputs.Harnesses, "agent")
+	if !ok {
+		t.Fatalf("missing agent entry in %#v", inputs.Harnesses)
+	}
+	if agentEntry.Available {
+		t.Fatalf("agent Available=true with no live provider entries: %#v", agentEntry)
+	}
+	if len(agentEntry.Providers) != 0 {
+		t.Fatalf("agent Providers=%#v, want none after failed discovery", agentEntry.Providers)
+	}
+
+	dec, err := routing.Resolve(routing.Request{Harness: "agent"}, inputs)
+	if err == nil {
+		t.Fatal("Resolve unexpectedly selected providerless agent candidate")
+	}
+	for _, candidate := range dec.Candidates {
+		if candidate.Harness == "agent" && candidate.Provider == "" && candidate.Eligible {
+			t.Fatalf("providerless agent candidate was eligible: %#v", candidate)
+		}
+	}
+}
+
 func TestBuildRoutingInputsPopulatesEndpointProviderCostsFromCatalog(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 4

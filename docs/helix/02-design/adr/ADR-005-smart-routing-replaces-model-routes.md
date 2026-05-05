@@ -120,9 +120,9 @@ Prepaid quota changes the marginal-cost term. If a prepaid frontier harness has
 healthy quota with a near reset, the effective marginal cost can be close to
 zero and the highest-power model may rank first. If the same quota is
 exhausted, stale, or far from reset, the quota bonus disappears and
-cost/availability penalties apply. Local LM Studio, oMLX, and Ollama providers
-are treated as free marginal cost but still compete on capability, tool
-support, context, latency, and availability.
+cost/availability penalties apply. Local LM Studio, oMLX, Ollama, Lucebox, and
+vLLM providers are treated as free marginal cost but still compete on
+capability, tool support, context, latency, and availability.
 
 When no hard axes or power bounds are supplied, the service selects the best
 lowest-cost viable auto-routable model it can use from the discovered
@@ -135,6 +135,15 @@ itself local/free, prepaid, or metered; its child provider endpoints are. A
 single native harness may contain local oMLX, local LM Studio, and paid
 OpenRouter providers, and placement filtering must operate on those provider
 candidates.
+
+Profile and target resolution remains catalog-owned, but provider-backed
+routing must not stop at the target's primary concrete model when a target has
+an ordered `candidates` list. For endpoints that publish live model discovery,
+the router checks the ordered catalog candidates against the endpoint's
+advertised model IDs and uses the first candidate that matches. This preserves
+catalog tier policy while allowing local endpoints to serve provider-native
+variants such as `Qwen3.6-27B-MLX-8bit` when the primary candidate for the tier
+is hosted somewhere else.
 
 ### Hard Constraints
 
@@ -166,6 +175,8 @@ Per request:
 
 1. **Build the candidate set** = every available `(harness, provider source,
    endpoint, model)` joined with the catalog and live provider/harness signals.
+   Provider-backed profile/target references expand to the target's ordered
+   catalog candidates before live discovery filtering.
 2. **Apply hard constraints** before scoring: exact model identity, provider
    source/endpoint, harness, and any caller capability requirements.
 3. **Filter by liveness** via `HealthCheck`, recent cooldown state, and live
@@ -177,6 +188,10 @@ Per request:
    `RequiresTools` is true, whose reasoning support is below the request, whose
    catalog power is outside `MinPower`/`MaxPower`, or whose catalog status
    excludes automatic routing.
+   Provider-native model IDs with unambiguous casing, prefix, quantization, or
+   packaging differences must map back to catalog metadata before this gate, so
+   discovered IDs inherit the intended power, context, tool-support, and
+   auto-routable status.
 5. **Score each survivor** using explicit score components: catalog quality,
    observed latency, marginal cost, quota/reset state, local/free preference
    when constraints are satisfied, availability, and staleness penalties.

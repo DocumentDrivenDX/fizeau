@@ -418,6 +418,8 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 			// is no-tools.
 			if len(entry.Providers) > 0 {
 				entry.SupportsTools = anyProviderSupportsTools(entry.Providers)
+			} else {
+				entry.Available = false
 			}
 		}
 		s.applySubscriptionRoutingCost(&entry, cat)
@@ -430,6 +432,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ObservedLatencyMS:           latencyMS,
 		ProviderQuotaExhaustedUntil: s.providerQuotaExhaustedUntil(time.Now()),
 		CatalogResolver:             serviceRoutingCatalogResolver(cat),
+		CatalogCandidatesResolver:   serviceRoutingCatalogCandidatesResolver(cat),
 		ModelEligibility:            serviceRoutingModelEligibility(cat),
 		ReasoningResolver:           serviceRoutingReasoningResolver(cat),
 	}
@@ -529,6 +532,33 @@ func serviceRoutingCatalogResolver(cat *modelcatalog.Catalog) func(ref, surface 
 			return "", false
 		}
 		return resolved.ConcreteModel, true
+	}
+}
+
+func serviceRoutingCatalogCandidatesResolver(cat *modelcatalog.Catalog) func(ref, surface string) ([]string, bool) {
+	if cat == nil {
+		return nil
+	}
+	return func(ref, surface string) ([]string, bool) {
+		catalogSurface, ok := serviceRoutingCatalogSurface(surface)
+		if !ok {
+			return nil, false
+		}
+		resolved, err := cat.Resolve(ref, modelcatalog.ResolveOptions{
+			Surface:         catalogSurface,
+			AllowDeprecated: true,
+		})
+		if err != nil || resolved.CanonicalID == "" {
+			return nil, false
+		}
+		candidates := cat.CandidatesFor(catalogSurface, resolved.CanonicalID)
+		if len(candidates) == 0 {
+			if resolved.ConcreteModel == "" {
+				return nil, false
+			}
+			return []string{resolved.ConcreteModel}, true
+		}
+		return candidates, true
 	}
 }
 
@@ -711,7 +741,7 @@ func anyProviderSupportsTools(providers []routing.ProviderEntry) bool {
 
 func providerUsesLiveDiscovery(providerType string) bool {
 	switch normalizeServiceProviderType(providerType) {
-	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "lucebox", "vllm", "minimax", "qwen", "zai":
 		return true
 	default:
 		return false
@@ -761,7 +791,7 @@ func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat 
 
 func providerTypeIsLocalEndpoint(providerType string) bool {
 	switch normalizeServiceProviderType(providerType) {
-	case "lmstudio", "omlx", "ollama":
+	case "lmstudio", "omlx", "ollama", "lucebox", "vllm":
 		return true
 	default:
 		return false

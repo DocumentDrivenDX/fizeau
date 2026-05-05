@@ -778,6 +778,17 @@ func TestContextWindowForModel_EmbeddedCatalogHasQwenWindow(t *testing.T) {
 	assert.Equal(t, 262144, catalog.ContextWindowForModel("qwen3.5-27b"))
 }
 
+func TestModelEligibility_EmbeddedCatalogMatchesProviderNativeQwenVariant(t *testing.T) {
+	catalog, err := Default()
+	require.NoError(t, err)
+
+	eligibility, ok := catalog.ModelEligibility("Qwen3.6-27B-MLX-8bit")
+	require.True(t, ok)
+	assert.Equal(t, 5, eligibility.Power)
+	assert.True(t, eligibility.AutoRoutable)
+	assert.Equal(t, 262144, catalog.ContextWindowForModel("Qwen3.6-27B-MLX-8bit"))
+}
+
 func TestCandidatesFor_CandidatesList(t *testing.T) {
 	catalog := loadV4FixtureCatalog(t)
 
@@ -928,14 +939,15 @@ func TestDefault_V4TargetsUseModelCandidates(t *testing.T) {
 	assert.Empty(t, target.Surfaces)
 	assert.Zero(t, target.CostInputPerM)
 	assert.Empty(t, target.OpenRouterRefID)
-	assert.Equal(t, []string{"claude-haiku-5.5", "lucebox-dflash", "qwen3.5-27b", "gemini-2.5-flash-lite"}, target.Candidates)
+	assert.Equal(t, []string{"claude-haiku-5.5", "lucebox-dflash", "qwen3.6-27b", "qwen3.5-27b", "gemini-2.5-flash-lite"}, target.Candidates)
 
 	models := catalog.AllModelsInTier("code-economy")
-	require.Len(t, models, 4)
+	require.Len(t, models, 5)
 	assert.Equal(t, "claude-haiku-5.5", models[0].ID)
 	assert.Equal(t, "lucebox-dflash", models[1].ID)
-	assert.Equal(t, "qwen3.5-27b", models[2].ID)
-	assert.Equal(t, "gemini-2.5-flash-lite", models[3].ID)
+	assert.Equal(t, "qwen3.6-27b", models[2].ID)
+	assert.Equal(t, "qwen3.5-27b", models[3].ID)
+	assert.Equal(t, "gemini-2.5-flash-lite", models[4].ID)
 }
 
 func TestUpdateManifestPricing_UpdatesModelEntries(t *testing.T) {

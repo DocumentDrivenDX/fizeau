@@ -306,6 +306,7 @@ type Inputs struct {
 	ProviderQuotaExhaustedUntil map[string]time.Time
 	Now                         time.Time // injected for deterministic testing; default time.Now()
 	CatalogResolver             func(ref, surface string) (concreteModel string, ok bool)
+	CatalogCandidatesResolver   func(ref, surface string) (concreteModels []string, ok bool)
 	ModelEligibility            func(model string) (ModelEligibility, bool)
 
 	// ReasoningResolver returns the catalog's surface_policy reasoning_default
@@ -1006,6 +1007,16 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 
 	// 2. Catalog ref.
 	if req.ModelRef != "" {
+		if len(p.DiscoveredIDs) > 0 && in.CatalogCandidatesResolver != nil {
+			if candidates, ok := in.CatalogCandidatesResolver(req.ModelRef, h.Surface); ok {
+				for _, candidate := range candidates {
+					if matched := FuzzyMatch(candidate, p.DiscoveredIDs); matched != "" {
+						return matched, ""
+					}
+				}
+				return "", fmt.Sprintf("model ref %q not on provider %q", req.ModelRef, p.Name)
+			}
+		}
 		if in.CatalogResolver != nil {
 			if concrete, ok := in.CatalogResolver(req.ModelRef, h.Surface); ok {
 				// If discovery is available, double-check the concrete ID
@@ -1033,6 +1044,16 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 
 	// 3. Profile.
 	if req.Profile != "" {
+		if len(p.DiscoveredIDs) > 0 && in.CatalogCandidatesResolver != nil {
+			if candidates, ok := in.CatalogCandidatesResolver(req.Profile, h.Surface); ok {
+				for _, candidate := range candidates {
+					if matched := FuzzyMatch(candidate, p.DiscoveredIDs); matched != "" {
+						return matched, ""
+					}
+				}
+				return "", fmt.Sprintf("profile %q has no candidate served by provider %q", req.Profile, p.Name)
+			}
+		}
 		if in.CatalogResolver != nil {
 			if concrete, ok := in.CatalogResolver(req.Profile, h.Surface); ok {
 				// If discovery is available, verify the resolved model exists.

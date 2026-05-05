@@ -6,6 +6,12 @@ Automatic routing builds a complete candidate list before choosing.
    model IDs.
 2. Join each discovered model to the catalog for power, context, cost,
    capabilities, provider/deployment class, status, and provenance.
+   Profile and target references with ordered catalog candidates are matched
+   against live provider discovery in order, so an endpoint can serve a later
+   catalog candidate when the primary candidate is absent.
+   Provider-native names with unambiguous casing, prefix, quantization, or
+   packaging differences, such as `Qwen3.6-27B-MLX-8bit`, use the matching
+   catalog model's metadata.
 3. Attach live usage and availability signals: health, cooldown, observed
    latency, prepaid quota, reset time, and marginal cost.
 4. Apply hard pins for model, provider source/endpoint, and harness.

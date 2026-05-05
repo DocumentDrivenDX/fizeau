@@ -546,6 +546,57 @@ func TestSmellCanonicalFormFuzzyMatcher(t *testing.T) {
 	}
 }
 
+func TestProfileRoutingTriesCatalogCandidatesAgainstLiveDiscovery(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "agent",
+			Surface:             "embedded-openai",
+			CostClass:           "local",
+			IsLocal:             true,
+			AutoRoutingEligible: true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			ExactPinSupport:     true,
+			SupportsTools:       true,
+			Providers: []ProviderEntry{{
+				Name:               "vidar",
+				DefaultModel:       "Qwen3.6-27B-MLX-8bit",
+				CostClass:          "local",
+				DiscoveredIDs:      []string{"Qwen3.6-27B-MLX-8bit"},
+				DiscoveryAttempted: true,
+				SupportsTools:      true,
+			}},
+		}},
+		CatalogResolver: func(ref, surface string) (string, bool) {
+			if ref == "cheap" && surface == "embedded-openai" {
+				return "lucebox-dflash", true
+			}
+			return "", false
+		},
+		CatalogCandidatesResolver: func(ref, surface string) ([]string, bool) {
+			if ref == "cheap" && surface == "embedded-openai" {
+				return []string{"lucebox-dflash", "qwen/qwen3.6-27b"}, true
+			}
+			return nil, false
+		},
+		ModelEligibility: func(model string) (ModelEligibility, bool) {
+			if model == "Qwen3.6-27B-MLX-8bit" {
+				return ModelEligibility{Power: 5, AutoRoutable: true}, true
+			}
+			return ModelEligibility{}, false
+		},
+	}
+
+	dec, err := Resolve(Request{Profile: "cheap", ProviderPreference: ProviderPreferenceLocalFirst}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "vidar" || dec.Model != "Qwen3.6-27B-MLX-8bit" {
+		t.Fatalf("selected provider=%q model=%q, want vidar/Qwen3.6-27B-MLX-8bit", dec.Provider, dec.Model)
+	}
+}
+
 // === Smell 3: ddx-4817edfd — capability gating ===
 //
 // Per-(harness, provider, model) capability gating: context window,
