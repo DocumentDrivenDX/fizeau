@@ -101,15 +101,12 @@ func TestRoutingPolicyInvariants(t *testing.T) {
 			wantOnlyHarness: "codex",
 		},
 		{
-			policyStatement: "unknown-power models are exact-pin-only",
+			policyStatement: "unknown-power models remain routable when no power bound is requested",
 			req:             Request{},
 			inputs:          policyInputsWithUnknownPowerModel(),
 			wantHarness:     "agent",
 			wantProvider:    "local",
 			wantModel:       "local-good",
-			wantRejected: map[string]FilterReason{
-				"agent/unknown": FilterReasonPowerMissing,
-			},
 		},
 		{
 			policyStatement: "unknown-power exact pins are allowed",

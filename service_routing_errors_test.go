@@ -3,10 +3,13 @@ package fizeau
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
 )
 
 func TestResolveRouteExplicitHarnessModelIncompatible(t *testing.T) {
@@ -137,6 +140,49 @@ func TestResolveExecuteRouteNormalizesSubprocessAliases(t *testing.T) {
 	}
 	if geminiDecision.Model != "gemini-2.5-pro" {
 		t.Fatalf("gemini alias resolved to %q, want gemini-2.5-pro", geminiDecision.Model)
+	}
+}
+
+func TestResolveExplicitClaudeRejectedWhenFreshQuotaExhausted(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "claude-quota.json")
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
+	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", "")
+
+	now := time.Now().UTC()
+	reset := now.Add(2 * time.Hour).Unix()
+	if err := claudeharness.WriteClaudeQuota(cachePath, claudeharness.ClaudeQuotaSnapshot{
+		CapturedAt:        now,
+		FiveHourRemaining: 0,
+		FiveHourLimit:     100,
+		WeeklyRemaining:   0,
+		WeeklyLimit:       100,
+		Windows: []harnesses.QuotaWindow{{
+			Name:         "Current week (all models)",
+			LimitID:      "weekly-all",
+			UsedPercent:  100,
+			ResetsAtUnix: reset,
+			State:        "exhausted",
+		}},
+		Source:  "runtime_error",
+		Account: &harnesses.AccountInfo{PlanType: "Claude Max"},
+	}); err != nil {
+		t.Fatalf("WriteClaudeQuota: %v", err)
+	}
+
+	svc := testRoutingErrorService()
+	_, err := svc.resolveExecuteRoute(ServiceExecuteRequest{Harness: "claude", Model: "opus-4.7"})
+	if err == nil {
+		t.Fatal("expected exhausted Claude quota to reject explicit claude route")
+	}
+	var quotaErr *NoViableProviderForNow
+	if !errors.As(err, &quotaErr) {
+		t.Fatalf("error=%T %v, want NoViableProviderForNow", err, err)
+	}
+	if !slices.Equal(quotaErr.ExhaustedProviders, []string{"claude"}) {
+		t.Fatalf("ExhaustedProviders=%v, want [claude]", quotaErr.ExhaustedProviders)
+	}
+	if got := quotaErr.RetryAfter.Unix(); got != reset {
+		t.Fatalf("RetryAfter unix=%d, want %d", got, reset)
 	}
 }
 

@@ -113,6 +113,8 @@ type ServiceCompactionData struct {
 type ServiceProgressData struct {
 	Phase                 string `json:"phase"`
 	State                 string `json:"state"`
+	TaskID                string `json:"task_id,omitempty"`
+	Round                 int    `json:"round,omitempty"`
 	Message               string `json:"message,omitempty"`
 	TurnIndex             int    `json:"turn_index,omitempty"`
 	ToolName              string `json:"tool_name,omitempty"`

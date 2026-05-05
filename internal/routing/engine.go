@@ -86,7 +86,8 @@ type HarnessEntry struct {
 	QuotaPercentUsed int
 	QuotaStale       bool
 	QuotaTrend       string // unknown|healthy|burning|exhausting
-	SubscriptionOK   bool   // false = hard gate; true = score-based demotion
+	QuotaReason      string
+	SubscriptionOK   bool // false = hard gate; true = score-based demotion
 
 	// InCooldown marks the entire harness as being in a failure cooldown.
 	// When true the harness is demoted in score (via candidateInternal.InCooldown)
@@ -108,6 +109,7 @@ type ProviderEntry struct {
 	EndpointName       string
 	EndpointBaseURL    string
 	DefaultModel       string
+	CostClass          string
 	DiscoveredIDs      []string // models discovered via /v1/models or equivalent
 	DiscoveryAttempted bool
 	ContextWindows     map[string]int
@@ -785,7 +787,22 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		eligible := true
 		var filterReason FilterReason
 		if reason == "" {
-			if g, fr := CheckPowerEligibility(in.ModelEligibility, model, gateReq); g != "" {
+			// Subscription quota is a hard availability gate and must be
+			// reported before catalog metadata gates. An exhausted Claude/Codex/
+			// Gemini account is never a viable candidate, regardless of whether
+			// the resolved model has complete power metadata.
+			if h.IsSubscription && !h.SubscriptionOK {
+				eligible = false
+				reason = h.QuotaReason
+				if reason == "" {
+					if h.QuotaStale {
+						reason = "subscription quota unavailable"
+					} else {
+						reason = "subscription quota exhausted"
+					}
+				}
+				filterReason = FilterReasonUnhealthy
+			} else if g, fr := CheckPowerEligibility(in.ModelEligibility, model, gateReq); g != "" {
 				eligible = false
 				reason = g
 				filterReason = fr
@@ -818,15 +835,6 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 					filterReason = FilterReasonUnhealthy
 				}
 			}
-		}
-
-		// SubscriptionOK hard gate: a subscription harness with SubscriptionOK=false
-		// (no durable cache, quota cache missing, or routing decision says no)
-		// is ineligible regardless of score.
-		if eligible && h.IsSubscription && !h.SubscriptionOK {
-			eligible = false
-			reason = "subscription quota exhausted"
-			filterReason = FilterReasonUnhealthy
 		}
 
 		if eligible && req.Provider != "" && req.Provider != candidateProviderIdentity(h, p) {
@@ -871,7 +879,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			Provider:              p.Name,
 			EndpointName:          p.EndpointName,
 			Model:                 model,
-			CostClass:             h.CostClass,
+			CostClass:             candidateCostClass(h, p),
 			CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
 			CostSource:            normalizeCostSource(p.CostSource),
 			Power:                 power,
@@ -903,7 +911,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				FilterReason:       filterReason,
 				LatencyMS:          latencyMS,
 				SuccessRate:        providerSuccessRate,
-				CostClass:          h.CostClass,
+				CostClass:          candidateCostClass(h, p),
 				SpeedTPS:           obs,
 				QuotaOK:            h.QuotaOK,
 				QuotaPercentUsed:   h.QuotaPercentUsed,
@@ -932,6 +940,13 @@ func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
 		return p.Name
 	}
 	return h.Name
+}
+
+func candidateCostClass(h HarnessEntry, p ProviderEntry) string {
+	if p.CostClass != "" {
+		return p.CostClass
+	}
+	return h.CostClass
 }
 
 func normalizeCostSource(source string) string {

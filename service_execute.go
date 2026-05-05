@@ -223,6 +223,9 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	if err := validateExplicitHarnessReasoning(canonical, cfg, req.Reasoning); err != nil {
 		return nil, err
 	}
+	if err := validateExplicitHarnessQuota(canonical, cfg); err != nil {
+		return nil, err
+	}
 	resolvedModel := resolveSubprocessModelAlias(canonical, req.Model)
 	return &RouteDecision{
 		Harness:  canonical,
@@ -231,6 +234,46 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 		Reason:   "explicit",
 		Power:    catalogPowerForModel(serviceRoutingCatalog(), resolvedModel),
 	}, nil
+}
+
+func validateExplicitHarnessQuota(name string, cfg harnesses.HarnessConfig) error {
+	if !cfg.IsSubscription {
+		return nil
+	}
+	now := time.Now()
+	qs, ok := subscriptionQuotaForHarness(name, now)
+	if !ok || !qs.Present || !qs.Fresh || qs.OK {
+		return nil
+	}
+	return explicitQuotaUnavailable(name, qs.Windows, now)
+}
+
+func explicitQuotaUnavailable(name string, windows []harnesses.QuotaWindow, now time.Time) error {
+	retryAfter := earliestQuotaResetAfter(windows, now)
+	if retryAfter.IsZero() {
+		retryAfter = now.Add(defaultQuotaRecoveryFallbackInterval)
+	}
+	return &NoViableProviderForNow{
+		RetryAfter:         retryAfter,
+		ExhaustedProviders: []string{name},
+	}
+}
+
+func earliestQuotaResetAfter(windows []harnesses.QuotaWindow, now time.Time) time.Time {
+	var earliest time.Time
+	for _, window := range windows {
+		if window.ResetsAtUnix <= 0 {
+			continue
+		}
+		reset := time.Unix(window.ResetsAtUnix, 0)
+		if !reset.After(now) {
+			continue
+		}
+		if earliest.IsZero() || reset.Before(earliest) {
+			earliest = reset
+		}
+	}
+	return earliest
 }
 
 func validateExplicitHarnessProfile(name string, cfg harnesses.HarnessConfig, profile string) error {
@@ -464,9 +507,9 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	case "pi":
 		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &piharness.Runner{})
 	case "virtual":
-		s.runVirtual(runCtx, req, decision, meta, out, &seq, start, sl)
+		s.runVirtual(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
 	case "script":
-		s.runScript(runCtx, req, decision, meta, out, &seq, start, sl)
+		s.runScript(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
 	default:
 		if cfg, ok := s.registry.Get(decision.Harness); ok && cfg.IsHTTPProvider {
 			s.runNative(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
@@ -487,7 +530,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	}
 }
 
-func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog) {
+func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string) {
 	inlineText := meta["virtual.response"]
 	cfg := virtualprovider.Config{
 		DictDir: meta["virtual.dict_dir"],
@@ -521,6 +564,8 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 		return
 	}
 
+	progress := newSubprocessProgressState(req)
+	emitProgress(out, seq, sl, sessionID, meta, progress.noteRequestStart())
 	resp, err := virtualprovider.New(cfg).Chat(ctx, []agentcore.Message{{Role: agentcore.RoleUser, Content: req.Prompt}}, nil, agentcore.Options{})
 	final := harnesses.FinalData{
 		DurationMS: time.Since(start).Milliseconds(),
@@ -533,6 +578,7 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 	if err != nil {
 		final.Status = "failed"
 		final.Error = err.Error()
+		emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
 		finalizeAndEmit(out, seq, meta, req, sl, final)
 		return
 	}
@@ -550,17 +596,23 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 	if resp.Content != "" {
 		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: resp.Content})
 	}
+	emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
+	if progressFinal := progress.noteResponseComplete(final); progressFinal != nil {
+		emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
+	}
 	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
 
-func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog) {
+func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string) {
+	progress := newSubprocessProgressState(req)
+	emitProgress(out, seq, sl, sessionID, meta, progress.noteRequestStart())
 	delay := metadataInt(meta, "script.delay_ms")
 	if delay > 0 {
 		timer := time.NewTimer(time.Duration(delay) * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
+			final := harnesses.FinalData{
 				Status:     "cancelled",
 				Error:      ctx.Err().Error(),
 				DurationMS: time.Since(start).Milliseconds(),
@@ -569,7 +621,9 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 					Provider: decision.Provider,
 					Model:    decision.Model,
 				},
-			})
+			}
+			emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
+			finalizeAndEmit(out, seq, meta, req, sl, final)
 			return
 		case <-timer.C:
 		}
@@ -577,7 +631,7 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 
 	text, ok := meta["script.stdout"]
 	if !ok {
-		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
+		final := harnesses.FinalData{
 			Status:     "failed",
 			Error:      "script harness requires metadata script.stdout",
 			DurationMS: time.Since(start).Milliseconds(),
@@ -586,7 +640,9 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 				Provider: decision.Provider,
 				Model:    decision.Model,
 			},
-		})
+		}
+		emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
+		finalizeAndEmit(out, seq, meta, req, sl, final)
 		return
 	}
 	exitCode := metadataInt(meta, "script.exit_code")
@@ -607,6 +663,10 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 	if exitCode != 0 {
 		final.Status = "failed"
 		final.Error = metaValue(meta, "script.stderr", fmt.Sprintf("script exited with status %d", exitCode))
+	}
+	emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
+	if progressFinal := progress.noteResponseComplete(final); progressFinal != nil {
+		emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
 	}
 	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
@@ -751,7 +811,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		stallReason    atomic.Value // string
 		stallCount     atomic.Int64
 	)
-	progress := &nativeProgressState{}
+	progress := newNativeProgressState()
 	cancelCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

@@ -242,8 +242,18 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	var parseErr error
 	go func() {
 		defer close(parseDone)
-		mirrored := mirroredEvents(out, progressLog, ctx)
+		mirrored := out
+		var mirrorCh chan harnesses.Event
+		var mirrorDone chan struct{}
+		if progressLog != nil {
+			mirrorCh, mirrorDone = mirroredEvents(out, progressLog, ctx)
+			mirrored = mirrorCh
+		}
 		parseAgg, parseErr = parseOpencodeStream(runCtx, parserReader, mirrored, req.Metadata, seq)
+		if mirrorCh != nil {
+			close(mirrorCh)
+			<-mirrorDone
+		}
 	}()
 
 	stdoutDone := make(chan struct{})
@@ -321,12 +331,11 @@ func (w *stringBuilderWriter) Write(p []byte) (int, error) {
 	return w.sb.Write(p)
 }
 
-func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Context) chan<- harnesses.Event {
-	if log == nil {
-		return dst
-	}
+func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Context) (chan harnesses.Event, chan struct{}) {
 	mid := make(chan harnesses.Event, cap(dst))
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		for ev := range mid {
 			if data, err := json.Marshal(ev); err == nil {
 				_, _ = log.Write(data)
@@ -339,7 +348,7 @@ func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Contex
 			}
 		}
 	}()
-	return mid
+	return mid, done
 }
 
 func trimErrorBlob(s string) string {

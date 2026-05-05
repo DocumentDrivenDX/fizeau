@@ -14,19 +14,25 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
 
-const progressLineLimit = 80
+const (
+	progressLineLimit            = 80
+	progressExceptionalLineLimit = 120
+)
 
 type nativeProgressState struct {
-	turnIndex             int
-	totalToolCalls        int
-	recentTools           []string
-	contextMessages       int
-	contextTokensEstimate int
-	summaryText           string
+	*progressTracker
 }
 
 type subprocessProgressState struct {
+	*progressTracker
+}
+
+type progressTracker struct {
+	kind                  string
 	toolCalls             map[string]harnesses.ToolCallData
+	turnIndex             int
+	totalToolCalls        int
+	recentTools           []string
 	contextMessages       int
 	contextTokensEstimate int
 	summaryText           string
@@ -68,6 +74,7 @@ type nativeCompactionPayload struct {
 }
 
 func emitProgress(out chan<- ServiceEvent, seq *atomic.Int64, sl *serviceSessionLog, sessionID string, meta map[string]string, payload ServiceProgressData) {
+	fillProgressIdentity(&payload, sessionID, meta)
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return
@@ -95,79 +102,221 @@ func emitProgress(out chan<- ServiceEvent, seq *atomic.Int64, sl *serviceSession
 	}
 }
 
-func (p *nativeProgressState) noteRequest(payload nativeLLMRequestPayload) ServiceProgressData {
-	p.turnIndex++
-	p.contextMessages = len(payload.Messages)
-	p.contextTokensEstimate = estimateMessagesTokens(payload.Messages)
+func fillProgressIdentity(payload *ServiceProgressData, sessionID string, meta map[string]string) {
+	if payload == nil {
+		return
+	}
+	if payload.TaskID == "" {
+		payload.TaskID = progressTaskID(sessionID, meta)
+	}
+	if payload.Round == 0 {
+		payload.Round = payload.TurnIndex
+	}
+	payload.Message = progressStatusLine(*payload)
+}
+
+func progressTaskID(sessionID string, meta map[string]string) string {
+	for _, key := range []string{"task_id", "bead_id", "correlation_id"} {
+		if meta != nil && strings.TrimSpace(meta[key]) != "" {
+			return strings.TrimSpace(meta[key])
+		}
+	}
+	return sessionID
+}
+
+func progressStatusLine(payload ServiceProgressData) string {
+	msg := strings.TrimSpace(payload.Message)
+	prefix := compactProgressIdentity(payload.TaskID, payload.Round)
+	if prefix == "" {
+		return boundedProgressText(msg, progressMessageLimit(payload))
+	}
+	if msg == "" {
+		return boundedProgressText(prefix, progressMessageLimit(payload))
+	}
+	return boundedProgressText(prefix+" "+msg, progressMessageLimit(payload))
+}
+
+func compactProgressIdentity(taskID string, round int) string {
+	taskID = compactProgressTaskID(taskID)
+	switch {
+	case taskID != "" && round > 0:
+		return fmt.Sprintf("%s #%d", taskID, round)
+	case taskID != "":
+		return taskID
+	case round > 0:
+		return fmt.Sprintf("#%d", round)
+	default:
+		return ""
+	}
+}
+
+func compactProgressTaskID(taskID string) string {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return ""
+	}
+	return boundedProgressText(taskID, 24)
+}
+
+func progressMessageLimit(payload ServiceProgressData) int {
+	if payload.Phase == "tool" && payload.Command != "" {
+		return progressExceptionalLineLimit
+	}
+	return progressLineLimit
+}
+
+func newNativeProgressState() *nativeProgressState {
+	return &nativeProgressState{progressTracker: &progressTracker{kind: "native"}}
+}
+
+func newSubprocessProgressState(req ServiceExecuteRequest) *subprocessProgressState {
+	return &subprocessProgressState{progressTracker: newHarnessProgressTracker(req)}
+}
+
+func newHarnessProgressTracker(req ServiceExecuteRequest) *progressTracker {
+	return &progressTracker{
+		kind:                  "harness",
+		toolCalls:             make(map[string]harnesses.ToolCallData),
+		contextMessages:       1,
+		contextTokensEstimate: estimateProgressTextTokens(req.Prompt) + estimateProgressTextTokens(req.SystemPrompt),
+	}
+}
+
+func (p *progressTracker) noteThinkingStart(turnIndex int) ServiceProgressData {
+	if turnIndex <= 0 {
+		turnIndex = p.turnIndex
+	}
 	return ServiceProgressData{
 		Phase:                 "thinking",
 		State:                 "start",
 		Message:               shortProgressText("thinking ..."),
-		TurnIndex:             p.turnIndex,
+		TurnIndex:             turnIndex,
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
 		SessionSummary:        p.sessionSummary(),
 	}
 }
 
-func (p *nativeProgressState) noteResponse(payload nativeLLMResponsePayload) ServiceProgressData {
-	totalTokens := payload.Usage.Total
-	if totalTokens <= 0 {
-		totalTokens = payload.Usage.Output
+func (p *progressTracker) noteThinkingComplete(turnIndex int, durationMS int64, usage *harnesses.FinalUsage) ServiceProgressData {
+	if turnIndex <= 0 {
+		turnIndex = p.turnIndex
+	}
+	totalTokens := 0
+	if usage != nil {
+		totalTokens = derefServiceInt(usage.TotalTokens)
+		if totalTokens <= 0 {
+			totalTokens = derefServiceInt(usage.OutputTokens)
+		}
 	}
 	msg := "thinking complete"
 	if totalTokens > 0 {
-		msg = fmt.Sprintf("thinking complete %d tok in %s", totalTokens, roundedDuration(payload.LatencyMS))
-	} else if payload.LatencyMS > 0 {
-		msg = fmt.Sprintf("thinking complete in %s", roundedDuration(payload.LatencyMS))
+		msg = fmt.Sprintf("thought %dtok %s", totalTokens, roundedDuration(durationMS))
+	} else if durationMS > 0 {
+		msg = fmt.Sprintf("thought %s", roundedDuration(durationMS))
 	}
 	return ServiceProgressData{
 		Phase:                 "thinking",
 		State:                 "complete",
 		Message:               shortProgressText(msg),
-		TurnIndex:             p.turnIndex,
-		DurationMS:            payload.LatencyMS,
-		InputTokens:           intPtrIfPositive(payload.Usage.Input),
-		OutputTokens:          intPtrIfPositive(payload.Usage.Output),
-		TotalTokens:           intPtrIfPositive(payload.Usage.Total),
+		TurnIndex:             turnIndex,
+		DurationMS:            durationMS,
+		InputTokens:           finalUsageTokenPtr(usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
+		OutputTokens:          finalUsageTokenPtr(usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
+		TotalTokens:           finalUsageTokenPtr(usage, func(u *harnesses.FinalUsage) *int { return u.TotalTokens }),
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
 		SessionSummary:        p.sessionSummary(),
 	}
 }
 
-func (p *nativeProgressState) noteToolCall(payload nativeToolCallPayload) (ServiceProgressData, ServiceProgressData) {
-	p.totalToolCalls++
-	p.recentTools = appendRecentTool(p.recentTools, payload.Tool)
-	command := summarizeToolInput(payload.Tool, payload.Input)
-	durationMS := payload.DurationMS
-	if durationMS <= 0 {
-		durationMS = 1
+func (p *progressTracker) noteResponseComplete(final harnesses.FinalData) *ServiceProgressData {
+	if final.Status != "success" && final.FinalText == "" && final.Usage == nil {
+		return nil
 	}
-	start := ServiceProgressData{
+	totalTokens := 0
+	if final.Usage != nil {
+		totalTokens = derefServiceInt(final.Usage.TotalTokens)
+		if totalTokens <= 0 {
+			totalTokens = derefServiceInt(final.Usage.OutputTokens)
+		}
+	}
+	msg := "done"
+	if totalTokens > 0 {
+		msg = fmt.Sprintf("done %dtok", totalTokens)
+	}
+	return &ServiceProgressData{
+		Phase:                 "response",
+		State:                 "complete",
+		Message:               shortProgressText(msg),
+		TurnIndex:             p.turnIndex,
+		DurationMS:            final.DurationMS,
+		InputTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
+		OutputTokens:          finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
+		TotalTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.TotalTokens }),
+		ContextMessages:       p.contextMessages,
+		ContextTokensEstimate: p.contextTokensEstimate,
+		SessionSummary:        p.sessionSummary(),
+	}
+}
+
+func (p *progressTracker) noteToolStart(toolName string, input json.RawMessage) ServiceProgressData {
+	p.totalToolCalls++
+	p.recentTools = appendRecentTool(p.recentTools, toolName)
+	command := summarizeToolInput(toolName, input)
+	return ServiceProgressData{
 		Phase:                 "tool",
 		State:                 "start",
-		Message:               shortProgressText(toolStartMessage(payload.Tool, command)),
+		Message:               boundedProgressText(toolStartMessage(toolName, command), progressExceptionalLineLimit),
 		TurnIndex:             p.turnIndex,
-		ToolName:              payload.Tool,
+		ToolName:              toolName,
 		Command:               command,
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
 		SessionSummary:        p.sessionSummary(),
 	}
-	complete := ServiceProgressData{
+}
+
+func (p *progressTracker) noteToolComplete(toolName string, input json.RawMessage, durationMS int64, errText string) ServiceProgressData {
+	command := summarizeToolInput(toolName, input)
+	details := toolName
+	if command != "" {
+		details = command
+	}
+	if durationMS <= 0 {
+		durationMS = 1
+	}
+	return ServiceProgressData{
 		Phase:                 "tool",
 		State:                 "complete",
-		Message:               shortProgressText(toolCompleteMessage(payload.Tool, durationMS, payload.Error)),
+		Message:               boundedProgressText(toolCompleteMessage(details, durationMS, errText), progressExceptionalLineLimit),
 		TurnIndex:             p.turnIndex,
-		ToolName:              payload.Tool,
+		ToolName:              toolName,
 		Command:               command,
 		DurationMS:            durationMS,
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
 		SessionSummary:        p.sessionSummary(),
 	}
-	return start, complete
+}
+
+func (p *nativeProgressState) noteRequest(payload nativeLLMRequestPayload) ServiceProgressData {
+	p.turnIndex++
+	p.contextMessages = len(payload.Messages)
+	p.contextTokensEstimate = estimateMessagesTokens(payload.Messages)
+	return p.noteThinkingStart(p.turnIndex)
+}
+
+func (p *nativeProgressState) noteResponse(payload nativeLLMResponsePayload) ServiceProgressData {
+	usage := &harnesses.FinalUsage{
+		InputTokens:  intPtrIfPositive(payload.Usage.Input),
+		OutputTokens: intPtrIfPositive(payload.Usage.Output),
+		TotalTokens:  intPtrIfPositive(payload.Usage.Total),
+	}
+	return p.noteThinkingComplete(p.turnIndex, payload.LatencyMS, usage)
+}
+
+func (p *nativeProgressState) noteToolCall(payload nativeToolCallPayload) (ServiceProgressData, ServiceProgressData) {
+	return p.noteToolStart(payload.Tool, payload.Input), p.noteToolComplete(payload.Tool, payload.Input, payload.DurationMS, payload.Error)
 }
 
 func (p *nativeProgressState) noteCompaction(payload nativeCompactionPayload) (ServiceProgressData, ServiceProgressData) {
@@ -204,81 +353,16 @@ func (p *nativeProgressState) noteCompaction(payload nativeCompactionPayload) (S
 }
 
 func (p *nativeProgressState) noteFinal(final harnesses.FinalData) *ServiceProgressData {
-	if final.Status != "success" && final.FinalText == "" && final.Usage == nil {
-		return nil
-	}
-	totalTokens := 0
-	if final.Usage != nil {
-		totalTokens = derefServiceInt(final.Usage.TotalTokens)
-		if totalTokens <= 0 {
-			totalTokens = derefServiceInt(final.Usage.OutputTokens)
-		}
-	}
-	msg := "sending response"
-	if totalTokens > 0 {
-		msg = fmt.Sprintf("sending response %d tok", totalTokens)
-	}
-	return &ServiceProgressData{
-		Phase:                 "response",
-		State:                 "complete",
-		Message:               shortProgressText(msg),
-		DurationMS:            final.DurationMS,
-		InputTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
-		OutputTokens:          finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
-		TotalTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.TotalTokens }),
-		ContextMessages:       p.contextMessages,
-		ContextTokensEstimate: p.contextTokensEstimate,
-		SessionSummary:        p.sessionSummary(),
-	}
-}
-
-func newSubprocessProgressState(req ServiceExecuteRequest) *subprocessProgressState {
-	return &subprocessProgressState{
-		toolCalls:             make(map[string]harnesses.ToolCallData),
-		contextMessages:       1,
-		contextTokensEstimate: estimateProgressTextTokens(req.Prompt) + estimateProgressTextTokens(req.SystemPrompt),
-	}
+	return p.noteResponseComplete(final)
 }
 
 func (p *subprocessProgressState) noteRequestStart() ServiceProgressData {
-	return ServiceProgressData{
-		Phase:                 "thinking",
-		State:                 "start",
-		Message:               shortProgressText("thinking ..."),
-		TurnIndex:             1,
-		ContextMessages:       p.contextMessages,
-		ContextTokensEstimate: p.contextTokensEstimate,
-		SessionSummary:        p.sessionSummary(),
-	}
+	p.turnIndex = 1
+	return p.noteThinkingStart(1)
 }
 
 func (p *subprocessProgressState) noteThinkingComplete(final harnesses.FinalData) ServiceProgressData {
-	totalTokens := 0
-	if final.Usage != nil {
-		totalTokens = derefServiceInt(final.Usage.TotalTokens)
-		if totalTokens <= 0 {
-			totalTokens = derefServiceInt(final.Usage.OutputTokens)
-		}
-	}
-	msg := "thinking complete"
-	if totalTokens > 0 {
-		msg = fmt.Sprintf("thinking complete %d tok in %s", totalTokens, roundedDuration(final.DurationMS))
-	} else if final.DurationMS > 0 {
-		msg = fmt.Sprintf("thinking complete in %s", roundedDuration(final.DurationMS))
-	}
-	return ServiceProgressData{
-		Phase:                 "thinking",
-		State:                 "complete",
-		Message:               shortProgressText(msg),
-		TurnIndex:             1,
-		DurationMS:            final.DurationMS,
-		InputTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
-		OutputTokens:          finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
-		TotalTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.TotalTokens }),
-		ContextMessages:       p.contextMessages,
-		ContextTokensEstimate: p.contextTokensEstimate,
-		SessionSummary:        p.sessionSummary(),
-	}
+	return p.progressTracker.noteThinkingComplete(1, final.DurationMS, final.Usage)
 }
 
 func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgressData, bool) {
@@ -291,43 +375,18 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		if payload.ID != "" {
 			p.toolCalls[payload.ID] = payload
 		}
-		command := summarizeToolInput(payload.Name, payload.Input)
-		return ServiceProgressData{
-			Phase:                 "tool",
-			State:                 "start",
-			Message:               shortProgressText(toolStartMessage(payload.Name, command)),
-			ToolName:              payload.Name,
-			Command:               command,
-			ContextMessages:       p.contextMessages,
-			ContextTokensEstimate: p.contextTokensEstimate,
-			SessionSummary:        p.sessionSummary(),
-		}, true
+		return p.noteToolStart(payload.Name, payload.Input), true
 	case harnesses.EventTypeToolResult:
 		var payload harnesses.ToolResultData
 		if err := json.Unmarshal(ev.Data, &payload); err != nil {
 			return ServiceProgressData{}, false
 		}
 		call := p.toolCalls[payload.ID]
-		command := summarizeToolInput(call.Name, call.Input)
 		toolName := call.Name
 		if toolName == "" {
 			toolName = payload.ID
 		}
-		durationMS := payload.DurationMS
-		if durationMS <= 0 {
-			durationMS = 1
-		}
-		return ServiceProgressData{
-			Phase:                 "tool",
-			State:                 "complete",
-			Message:               shortProgressText(toolCompleteMessage(toolName, durationMS, payload.Error)),
-			ToolName:              toolName,
-			Command:               command,
-			DurationMS:            durationMS,
-			ContextMessages:       p.contextMessages,
-			ContextTokensEstimate: p.contextTokensEstimate,
-			SessionSummary:        p.sessionSummary(),
-		}, true
+		return p.noteToolComplete(toolName, call.Input, payload.DurationMS, payload.Error), true
 	}
 	return ServiceProgressData{}, false
 }
@@ -337,49 +396,24 @@ func (p *subprocessProgressState) noteFinal(ev harnesses.Event) (ServiceProgress
 	if err := json.Unmarshal(ev.Data, &final); err != nil {
 		return ServiceProgressData{}, false
 	}
-	if final.Status != "success" && final.FinalText == "" && final.Usage == nil {
+	payload := p.noteResponseComplete(final)
+	if payload == nil {
 		return ServiceProgressData{}, false
 	}
-	totalTokens := 0
-	if final.Usage != nil {
-		totalTokens = derefServiceInt(final.Usage.TotalTokens)
-		if totalTokens <= 0 {
-			totalTokens = derefServiceInt(final.Usage.OutputTokens)
-		}
-	}
-	msg := "sending response"
-	if totalTokens > 0 {
-		msg = fmt.Sprintf("sending response %d tok", totalTokens)
-	}
-	return ServiceProgressData{
-		Phase:                 "response",
-		State:                 "complete",
-		Message:               shortProgressText(msg),
-		DurationMS:            final.DurationMS,
-		InputTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
-		OutputTokens:          finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
-		TotalTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.TotalTokens }),
-		ContextMessages:       p.contextMessages,
-		ContextTokensEstimate: p.contextTokensEstimate,
-		SessionSummary:        p.sessionSummary(),
-	}, true
+	return *payload, true
 }
 
-func (p *subprocessProgressState) sessionSummary() string {
+func (p *progressTracker) sessionSummary() string {
 	if p.summaryText != "" {
 		return p.summaryText
 	}
-	return shortProgressText(fmt.Sprintf(
-		"subprocess tool_calls=%d context_messages=%d context_tokens_estimate=%d",
-		len(p.toolCalls),
-		p.contextMessages,
-		p.contextTokensEstimate,
-	))
-}
-
-func (p *nativeProgressState) sessionSummary() string {
-	if p.summaryText != "" {
-		return p.summaryText
+	if p.kind != "native" {
+		return shortProgressText(fmt.Sprintf(
+			"subprocess tool_calls=%d context_messages=%d context_tokens_estimate=%d",
+			p.totalToolCalls,
+			p.contextMessages,
+			p.contextTokensEstimate,
+		))
 	}
 	latest := "none"
 	if len(p.recentTools) > 0 {
@@ -612,22 +646,22 @@ func compactionMessage(payload nativeCompactionPayload) string {
 
 func toolStartMessage(toolName, command string) string {
 	if command != "" {
-		return fmt.Sprintf("running tool call `%s` ...", command)
+		return fmt.Sprintf("tool `%s` start", command)
 	}
 	if toolName != "" {
-		return fmt.Sprintf("running tool call `%s` ...", toolName)
+		return fmt.Sprintf("tool `%s` start", toolName)
 	}
-	return "running tool call ..."
+	return "tool start"
 }
 
-func toolCompleteMessage(toolName string, durationMS int64, errMsg string) string {
+func toolCompleteMessage(details string, durationMS int64, errMsg string) string {
+	if strings.TrimSpace(details) == "" {
+		details = "tool call"
+	}
 	if strings.TrimSpace(errMsg) != "" {
-		return fmt.Sprintf("tool call `%s` failed in %s", toolName, roundedDuration(durationMS))
+		return fmt.Sprintf("tool `%s` failed %s", details, roundedDuration(durationMS))
 	}
-	if toolName != "" {
-		return fmt.Sprintf("tool call `%s` completed in %s", toolName, roundedDuration(durationMS))
-	}
-	return fmt.Sprintf("tool call completed in %s", roundedDuration(durationMS))
+	return fmt.Sprintf("tool `%s` done %s", details, roundedDuration(durationMS))
 }
 
 func roundedDuration(ms int64) string {

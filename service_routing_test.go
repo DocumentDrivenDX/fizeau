@@ -170,6 +170,7 @@ func TestRoutingInputsUseClaudeQuotaWindows(t *testing.T) {
 		WeeklyRemaining:   90,
 		WeeklyLimit:       100,
 		Source:            "pty",
+		Account:           &harnesses.AccountInfo{PlanType: "Claude Max"},
 		Windows: []harnesses.QuotaWindow{
 			{Name: "extra", LimitID: "claude-extra", UsedPercent: 100, State: "exhausted"},
 		},
@@ -199,6 +200,9 @@ func TestRoutingInputsUseClaudeQuotaWindows(t *testing.T) {
 	}
 	if claudeEntry.QuotaPercentUsed != 100 || claudeEntry.QuotaTrend != routing.QuotaTrendExhausting {
 		t.Fatalf("Claude quota components=%d/%q, want 100/%q", claudeEntry.QuotaPercentUsed, claudeEntry.QuotaTrend, routing.QuotaTrendExhausting)
+	}
+	if !strings.Contains(claudeEntry.QuotaReason, "exhausted claude-extra") {
+		t.Fatalf("Claude QuotaReason=%q, want exhausted claude-extra detail", claudeEntry.QuotaReason)
 	}
 }
 

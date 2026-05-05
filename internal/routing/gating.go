@@ -131,7 +131,10 @@ func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model s
 	}
 	eligibility, ok := lookup(model)
 	if !ok {
-		return fmt.Sprintf("model %q has no catalog power metadata", model), FilterReasonPowerMissing
+		if req.MinPower > 0 || req.MaxPower > 0 {
+			return fmt.Sprintf("model %q has no catalog power metadata", model), FilterReasonPowerMissing
+		}
+		return "", FilterReasonEligible
 	}
 	if eligibility.ExactPinOnly {
 		return fmt.Sprintf("model %q is exact-pin-only", model), FilterReasonExactPinOnly

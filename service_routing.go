@@ -8,9 +8,6 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
@@ -395,70 +392,13 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 			entry.AutoRoutingEligible = false
 		}
 
-		if name == "claude" {
-			dec := claudeharness.ReadClaudeQuotaRoutingDecision(time.Now(), 0)
-			entry.QuotaOK = dec.PreferClaude
-			entry.QuotaStale = !dec.Fresh && dec.SnapshotPresent
-			entry.SubscriptionOK = dec.PreferClaude
-			if dec.Snapshot != nil {
-				maxUsed := claudeQuotaMaxUsedPercent(dec.Snapshot)
-				entry.QuotaPercentUsed = int(maxUsed)
-				if maxUsed >= 90 {
-					entry.QuotaTrend = routing.QuotaTrendExhausting
-				} else if maxUsed >= 70 {
-					entry.QuotaTrend = routing.QuotaTrendBurning
-				} else if dec.Fresh {
-					entry.QuotaTrend = routing.QuotaTrendHealthy
-				}
-			}
-		}
-
-		if name == "codex" {
-			dec := codexharness.ReadCodexQuotaRoutingDecision(time.Now(), 0)
-			entry.QuotaOK = dec.PreferCodex
-			entry.QuotaStale = !dec.Fresh && dec.SnapshotPresent
-			entry.SubscriptionOK = dec.PreferCodex
-			if dec.Snapshot != nil {
-				maxUsed := 0.0
-				for _, window := range dec.Snapshot.Windows {
-					if window.UsedPercent > maxUsed {
-						maxUsed = window.UsedPercent
-					}
-				}
-				entry.QuotaPercentUsed = int(maxUsed)
-				if maxUsed >= 90 {
-					entry.QuotaTrend = routing.QuotaTrendExhausting
-				} else if maxUsed >= 70 {
-					entry.QuotaTrend = routing.QuotaTrendBurning
-				} else if dec.Fresh {
-					entry.QuotaTrend = routing.QuotaTrendHealthy
-				}
-			}
-		}
-
-		if name == "gemini" {
-			// Auth freshness is NOT quota. Only parsed quota evidence
-			// (from PTY /model manage capture) may mark Gemini as
-			// quota-OK for routing. Missing or stale quota evidence
-			// keeps Gemini out of automatic routing regardless of
-			// authentication state.
-			dec := geminiharness.ReadGeminiQuotaRoutingDecision(time.Now(), 0)
-			entry.QuotaOK = dec.PreferGemini
-			entry.QuotaStale = !dec.Fresh && dec.SnapshotPresent
-			entry.SubscriptionOK = dec.PreferGemini
-			if dec.Snapshot != nil {
-				maxUsed := dec.Snapshot.MaxUsedPercent()
-				entry.QuotaPercentUsed = int(maxUsed)
-				if len(dec.ExhaustedTiers) > 0 && len(dec.AvailableTiers) == 0 {
-					entry.QuotaTrend = routing.QuotaTrendExhausting
-				} else if maxUsed >= 90 {
-					entry.QuotaTrend = routing.QuotaTrendExhausting
-				} else if maxUsed >= 70 {
-					entry.QuotaTrend = routing.QuotaTrendBurning
-				} else if dec.Fresh {
-					entry.QuotaTrend = routing.QuotaTrendHealthy
-				}
-			}
+		if qs, ok := subscriptionQuotaForHarness(name, time.Now()); ok {
+			entry.QuotaOK = qs.OK
+			entry.QuotaStale = qs.Present && !qs.Fresh
+			entry.SubscriptionOK = qs.OK
+			entry.QuotaPercentUsed = qs.PercentUsed
+			entry.QuotaTrend = qs.Trend
+			entry.QuotaReason = qs.Reason
 		}
 
 		// Native "agent" harness: enumerate live configured provider endpoints.
@@ -493,28 +433,6 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ModelEligibility:            serviceRoutingModelEligibility(cat),
 		ReasoningResolver:           serviceRoutingReasoningResolver(cat),
 	}
-}
-
-func claudeQuotaMaxUsedPercent(snap *claudeharness.ClaudeQuotaSnapshot) float64 {
-	if snap == nil {
-		return 0
-	}
-	maxUsed := 0.0
-	if snap.FiveHourLimit > 0 {
-		maxUsed = float64(snap.FiveHourLimit-snap.FiveHourRemaining) / float64(snap.FiveHourLimit) * 100
-	}
-	if snap.WeeklyLimit > 0 {
-		weeklyUsed := float64(snap.WeeklyLimit-snap.WeeklyRemaining) / float64(snap.WeeklyLimit) * 100
-		if weeklyUsed > maxUsed {
-			maxUsed = weeklyUsed
-		}
-	}
-	for _, window := range snap.Windows {
-		if window.UsedPercent > maxUsed {
-			maxUsed = window.UsedPercent
-		}
-	}
-	return maxUsed
 }
 
 // providerQuotaExhaustedUntil snapshots the per-provider quota state machine
@@ -697,6 +615,7 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 				EndpointName:       endpoint.Name,
 				EndpointBaseURL:    endpoint.BaseURL,
 				DefaultModel:       pcfg.Model,
+				CostClass:          providerRoutingCostClass(pcfg.Type),
 				DiscoveredIDs:      ids,
 				DiscoveryAttempted: true,
 				ContextWindows:     buildProviderContextWindows(cat, pcfg.Model, ids),
@@ -711,6 +630,7 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 		Name:           providerName,
 		BaseURL:        pcfg.BaseURL,
 		DefaultModel:   pcfg.Model,
+		CostClass:      providerRoutingCostClass(pcfg.Type),
 		ContextWindows: buildProviderContextWindows(cat, pcfg.Model, nil),
 		SupportsTools:  providerSupportsTools(cat, pcfg.Model, nil),
 	}
@@ -846,6 +766,13 @@ func providerTypeIsLocalEndpoint(providerType string) bool {
 	default:
 		return false
 	}
+}
+
+func providerRoutingCostClass(providerType string) string {
+	if providerTypeIsLocalEndpoint(providerType) {
+		return "local"
+	}
+	return "medium"
 }
 
 func subscriptionFallbackProfile(harnessName string) string {

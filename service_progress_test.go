@@ -65,6 +65,13 @@ func sessionLogHasEventType(t *testing.T, dir, want string) bool {
 	return false
 }
 
+func maxProgressMessageLen(p fizeau.ServiceProgressData) int {
+	if p.Phase == "tool" {
+		return 120
+	}
+	return 80
+}
+
 func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	fp := &fizeau.FakeProvider{
 		Dynamic: func(req fizeau.FakeRequest) (fizeau.FakeResponse, error) {
@@ -92,6 +99,7 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 		Provider:      "fake",
 		Model:         "fake-model",
 		SessionLogDir: dir,
+		Metadata:      map[string]string{"task_id": "ddx-123"},
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -109,7 +117,7 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	if !strings.Contains(start.Message, "route") || !strings.Contains(start.Message, "agent") {
 		t.Fatalf("route start message = %q", start.Message)
 	}
-	if len(start.Message) > 80 || len(start.SessionSummary) > 80 {
+	if len(start.Message) > maxProgressMessageLen(start) || len(start.SessionSummary) > 80 {
 		t.Fatalf("route start progress exceeded 80 chars: %#v", start)
 	}
 
@@ -117,10 +125,16 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	if thinkingStart.Phase != "thinking" || thinkingStart.State != "start" {
 		t.Fatalf("thinking start = %#v", thinkingStart)
 	}
+	if thinkingStart.TaskID == "" || thinkingStart.Round != 1 {
+		t.Fatalf("thinking start identity = task %q round %d, want task id and round 1", thinkingStart.TaskID, thinkingStart.Round)
+	}
+	if !strings.Contains(thinkingStart.Message, "ddx-123 #1") {
+		t.Fatalf("thinking start message missing compact identity: %q", thinkingStart.Message)
+	}
 	if !strings.Contains(thinkingStart.Message, "thinking") {
 		t.Fatalf("thinking start message = %q", thinkingStart.Message)
 	}
-	if len(thinkingStart.Message) > 80 || len(thinkingStart.SessionSummary) > 80 {
+	if len(thinkingStart.Message) > maxProgressMessageLen(thinkingStart) || len(thinkingStart.SessionSummary) > 80 {
 		t.Fatalf("thinking start progress exceeded 80 chars: %#v", thinkingStart)
 	}
 
@@ -134,7 +148,7 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	if complete.TotalTokens == nil || *complete.TotalTokens != 15 {
 		t.Fatalf("thinking complete tokens = %#v", complete.TotalTokens)
 	}
-	if len(complete.Message) > 80 || len(complete.SessionSummary) > 80 {
+	if len(complete.Message) > maxProgressMessageLen(complete) || len(complete.SessionSummary) > 80 {
 		t.Fatalf("thinking complete progress exceeded 80 chars: %#v", complete)
 	}
 
@@ -142,10 +156,10 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	if response.Phase != "response" || response.State != "complete" {
 		t.Fatalf("response complete = %#v", response)
 	}
-	if !strings.Contains(response.Message, "sending response") {
+	if !strings.Contains(response.Message, "done") {
 		t.Fatalf("response progress message = %q", response.Message)
 	}
-	if len(response.Message) > 80 || len(response.SessionSummary) > 80 {
+	if len(response.Message) > maxProgressMessageLen(response) || len(response.SessionSummary) > 80 {
 		t.Fatalf("response progress exceeded 80 chars: %#v", response)
 	}
 	if response.TotalTokens == nil || *response.TotalTokens != 15 {
@@ -153,7 +167,7 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	}
 
 	for _, p := range progress {
-		if len(p.Message) > 80 {
+		if len(p.Message) > maxProgressMessageLen(p) {
 			t.Fatalf("progress message too long: %#v", p)
 		}
 		if len(p.SessionSummary) > 80 {
@@ -207,14 +221,14 @@ func TestExecute_EmitsRouteProgressBeforeHarnessWork(t *testing.T) {
 	if !strings.Contains(progress[0].Message, "agent/fake/gpt-5.4") {
 		t.Fatalf("route progress message = %q", progress[0].Message)
 	}
-	if len(progress[0].Message) > 80 || len(progress[0].SessionSummary) > 80 {
+	if len(progress[0].Message) > maxProgressMessageLen(progress[0]) || len(progress[0].SessionSummary) > 80 {
 		t.Fatalf("route progress exceeded 80 chars: %#v", progress[0])
 	}
 	if len(progress) < 2 || progress[1].Phase != "thinking" || progress[1].State != "start" {
 		t.Fatalf("second progress event = %#v, want thinking start", progress[1])
 	}
 	for _, p := range progress {
-		if len(p.Message) > 80 {
+		if len(p.Message) > maxProgressMessageLen(p) {
 			t.Fatalf("progress message too long: %#v", p)
 		}
 		if len(p.SessionSummary) > 80 {
@@ -284,7 +298,7 @@ func TestProgressMessages_BoundedUnder80Chars(t *testing.T) {
 		t.Fatal("expected progress events")
 	}
 	for _, p := range progress {
-		if len(p.Message) > 80 {
+		if len(p.Message) > maxProgressMessageLen(p) {
 			t.Fatalf("progress message too long: %#v", p)
 		}
 		if len(p.SessionSummary) > 80 {
@@ -338,7 +352,7 @@ EOF
 	}
 	var sawThinkingComplete, sawResponseComplete bool
 	for _, p := range progress {
-		if len(p.Message) > 80 {
+		if len(p.Message) > maxProgressMessageLen(p) {
 			t.Fatalf("progress message too long: %#v", p)
 		}
 		if len(p.SessionSummary) > 80 {
@@ -347,12 +361,12 @@ EOF
 		switch {
 		case p.Phase == "thinking" && p.State == "complete":
 			sawThinkingComplete = true
-			if !strings.Contains(p.Message, "thinking complete") {
+			if !strings.Contains(p.Message, "thought") {
 				t.Fatalf("thinking complete message = %q", p.Message)
 			}
 		case p.Phase == "response" && p.State == "complete":
 			sawResponseComplete = true
-			if !strings.Contains(p.Message, "sending response") {
+			if !strings.Contains(p.Message, "done") {
 				t.Fatalf("response complete message = %q", p.Message)
 			}
 		}
@@ -362,6 +376,165 @@ EOF
 	}
 	if !sessionLogHasEventType(t, dir, "progress") {
 		t.Fatal("session log did not persist a progress event")
+	}
+}
+
+func TestSubprocessProgress_AllHarnessesEmitModelTurnProgress(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("/bin/sh not available")
+	}
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	quotaDir := t.TempDir()
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(quotaDir, "missing-claude-quota.json"))
+	t.Setenv("DDX_CLAUDE_QUOTA_CACHE", filepath.Join(quotaDir, "missing-ddx-claude-quota.json"))
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(quotaDir, "missing-codex-quota.json"))
+	t.Setenv("FIZEAU_GEMINI_QUOTA_CACHE", filepath.Join(quotaDir, "missing-gemini-quota.json"))
+
+	scripts := map[string]string{
+		"claude": `#!/bin/sh
+cat <<'EOF'
+{"type":"system","subtype":"init","session_id":"sess-progress","model":"claude-sonnet-4-6"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"hello from claude"}],"usage":{"input_tokens":3,"output_tokens":2}}}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1,"result":"hello from claude","usage":{"input_tokens":3,"output_tokens":2},"session_id":"sess-progress"}
+EOF
+`,
+		"codex": `#!/bin/sh
+cat <<'EOF'
+{"type":"output","item":{"type":"agent_message","text":"hello from codex"}}
+{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":2}}
+EOF
+`,
+		"gemini": `#!/bin/sh
+cat <<'EOF'
+{"type":"init","model":"gemini-test-model"}
+{"type":"message","role":"assistant","content":"hello from gemini","delta":true}
+{"type":"result","status":"success","stats":{"total_tokens":5,"input_tokens":3,"output_tokens":2}}
+EOF
+`,
+		"opencode": `#!/bin/sh
+cat <<'EOF'
+{"text":"hello from opencode","usage":{"input_tokens":3,"output_tokens":2}}
+EOF
+`,
+		"pi": `#!/bin/sh
+cat <<'EOF'
+{"type":"text_end","message":{"usage":{"input":3,"output":2}},"response":"hello from pi"}
+EOF
+`,
+	}
+	for name, script := range scripts {
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+			t.Fatalf("write fake %s: %v", name, err)
+		}
+	}
+
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, harness := range []string{"claude", "codex", "gemini", "opencode", "pi"} {
+		harness := harness
+		t.Run(harness, func(t *testing.T) {
+			dir := t.TempDir()
+			ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
+				Prompt:        "subprocess progress",
+				Harness:       harness,
+				SessionLogDir: dir,
+			})
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			events := drainEvents(t, ch, 5*time.Second)
+			progress := progressEvents(events)
+			assertProgressLifecycle(t, progress)
+			if !sessionLogHasEventType(t, dir, "progress") {
+				t.Fatal("session log did not persist a progress event")
+			}
+		})
+	}
+}
+
+func TestInProcessHarnessProgress_CoversVirtualAndScript(t *testing.T) {
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	cases := []struct {
+		name     string
+		harness  string
+		metadata map[string]string
+	}{
+		{
+			name:    "virtual",
+			harness: "virtual",
+			metadata: map[string]string{
+				"virtual.response":      "virtual response",
+				"virtual.input_tokens":  "3",
+				"virtual.output_tokens": "2",
+				"virtual.total_tokens":  "5",
+			},
+		},
+		{
+			name:    "script",
+			harness: "script",
+			metadata: map[string]string{
+				"script.stdout": "script response",
+			},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
+				Prompt:        "in-process progress",
+				Harness:       tc.harness,
+				SessionLogDir: dir,
+				Metadata:      tc.metadata,
+			})
+			if err != nil {
+				t.Fatalf("Execute: %v", err)
+			}
+			events := drainEvents(t, ch, 5*time.Second)
+			progress := progressEvents(events)
+			assertProgressLifecycle(t, progress)
+			if !sessionLogHasEventType(t, dir, "progress") {
+				t.Fatal("session log did not persist a progress event")
+			}
+		})
+	}
+}
+
+func assertProgressLifecycle(t *testing.T, progress []fizeau.ServiceProgressData) {
+	t.Helper()
+	if len(progress) < 4 {
+		t.Fatalf("expected route + thinking + response progress, got %#v", progress)
+	}
+	if progress[0].Phase != "route" || progress[0].State != "start" {
+		t.Fatalf("first progress = %#v, want route start", progress[0])
+	}
+	if progress[1].Phase != "thinking" || progress[1].State != "start" {
+		t.Fatalf("second progress = %#v, want thinking start", progress[1])
+	}
+	var sawThinkingComplete, sawResponseComplete bool
+	for _, p := range progress {
+		if len(p.Message) > maxProgressMessageLen(p) {
+			t.Fatalf("progress message too long: %#v", p)
+		}
+		if len(p.SessionSummary) > 80 {
+			t.Fatalf("progress session summary too long: %#v", p)
+		}
+		if p.Phase == "thinking" && p.State == "complete" {
+			sawThinkingComplete = true
+		}
+		if p.Phase == "response" && p.State == "complete" {
+			sawResponseComplete = true
+		}
+	}
+	if !sawThinkingComplete || !sawResponseComplete {
+		t.Fatalf("missing thinking/response progress: %#v", progress)
 	}
 }
 
@@ -418,6 +591,9 @@ func TestExecute_NativeEmitsToolProgress(t *testing.T) {
 			if p.ToolName != "bash" {
 				t.Fatalf("tool start ToolName = %q", p.ToolName)
 			}
+			if !strings.Contains(p.Message, "tool `") || !strings.Contains(p.Message, "start") {
+				t.Fatalf("tool start message = %q", p.Message)
+			}
 			if !strings.Contains(p.Command, "echo hi") {
 				t.Fatalf("tool start command = %q", p.Command)
 			}
@@ -431,6 +607,9 @@ func TestExecute_NativeEmitsToolProgress(t *testing.T) {
 			}
 			if p.DurationMS <= 0 {
 				t.Fatalf("tool complete duration = %dms, want > 0", p.DurationMS)
+			}
+			if !strings.Contains(p.Message, "done") {
+				t.Fatalf("tool complete message = %q", p.Message)
 			}
 		}
 	}

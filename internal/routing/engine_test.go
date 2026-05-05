@@ -352,14 +352,47 @@ func TestAutomaticRoutingFiltersCatalogPowerEligibility(t *testing.T) {
 	for _, c := range dec.Candidates {
 		byProvider[c.Provider] = c
 	}
-	if got := byProvider["local-unknown"].FilterReason; got != FilterReasonPowerMissing {
-		t.Fatalf("local-unknown FilterReason=%q, want %q", got, FilterReasonPowerMissing)
+	if got := byProvider["local-unknown"].FilterReason; got != FilterReasonEligible {
+		t.Fatalf("local-unknown FilterReason=%q, want eligible; missing power alone must not block routing", got)
 	}
 	if got := byProvider["local-exact-only"].FilterReason; got != FilterReasonExactPinOnly {
 		t.Fatalf("local-exact-only FilterReason=%q, want %q", got, FilterReasonExactPinOnly)
 	}
-	if !strings.Contains(byProvider["local-unknown"].Reason, "catalog power") {
-		t.Fatalf("local-unknown reason=%q, want catalog power detail", byProvider["local-unknown"].Reason)
+	if !byProvider["local-unknown"].Eligible {
+		t.Fatalf("local-unknown should remain eligible without power metadata: %#v", byProvider["local-unknown"])
+	}
+}
+
+func TestNativeProviderCostClassOverridesAgentHarnessLocalClass(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "agent",
+			Surface:             "embedded-openai",
+			CostClass:           "local",
+			IsLocal:             true,
+			AutoRoutingEligible: true,
+			ExactPinSupport:     true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			SupportsTools:       true,
+			Providers: []ProviderEntry{
+				{Name: "openrouter", DefaultModel: "cloud-model", CostClass: "medium", SupportsTools: true},
+				{Name: "vidar", DefaultModel: "local-model", CostClass: "local", SupportsTools: true},
+			},
+		}},
+	}
+	dec, err := Resolve(Request{}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "vidar" {
+		t.Fatalf("provider=%q, want local vidar; candidates=%+v", dec.Provider, dec.Candidates)
+	}
+	for _, c := range dec.Candidates {
+		if c.Provider == "openrouter" && c.CostClass != "medium" {
+			t.Fatalf("openrouter CostClass=%q, want medium", c.CostClass)
+		}
 	}
 }
 

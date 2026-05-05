@@ -3,6 +3,17 @@
 All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
+## [v0.10.7] — 2026-05-04
+
+### Fixed
+
+- Routing now excludes fresh exhausted subscription harnesses before power
+  checks, while still allowing unknown-power models when no power bound is
+  requested.
+- Claude quota status is normalized through the shared subscription quota view.
+- Progress events now use compact one-line status text with task and round
+  identity for native, subprocess, virtual, and script harness paths.
+
 ## [v0.10.0] — 2026-05-02
 
 ### Added — CONTRACT-003 observability fields
