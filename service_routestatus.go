@@ -3,6 +3,8 @@ package fizeau
 import (
 	"context"
 	"time"
+
+	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
 )
 
 // RouteStatus returns live routing state for configured providers/models.
@@ -70,20 +72,20 @@ func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
 	return report, nil
 }
 
-func routeAttemptCandidateCooldown(records []routeAttemptRecord, providerName, model string, cooldown time.Duration) *CooldownState {
-	var newest *routeAttemptRecord
+func routeAttemptCandidateCooldown(records []routehealth.Record, providerName, model string, cooldown time.Duration) *CooldownState {
+	var newest *routehealth.Record
 	for i := range records {
 		record := &records[i]
-		if record.key.Provider == "" {
+		if record.Key.Provider == "" {
 			continue
 		}
-		if providerName != "" && record.key.Provider != providerName {
+		if providerName != "" && record.Key.Provider != providerName {
 			continue
 		}
-		if record.key.Model != "" && model != "" && record.key.Model != model {
+		if record.Key.Model != "" && model != "" && record.Key.Model != model {
 			continue
 		}
-		if newest == nil || record.recordedAt.After(newest.recordedAt) {
+		if newest == nil || record.RecordedAt.After(newest.RecordedAt) {
 			newest = record
 		}
 	}

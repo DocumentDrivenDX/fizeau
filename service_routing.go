@@ -287,15 +287,15 @@ func (s *service) applyRouteAttemptCooldowns(in *routing.Inputs) {
 		in.CooldownDuration = ttl
 	}
 	for _, record := range records {
-		if record.key.Provider != "" {
-			existing, ok := in.ProviderCooldowns[record.key.Provider]
-			if !ok || record.recordedAt.After(existing) {
-				in.ProviderCooldowns[record.key.Provider] = record.recordedAt
+		if record.Key.Provider != "" {
+			existing, ok := in.ProviderCooldowns[record.Key.Provider]
+			if !ok || record.RecordedAt.After(existing) {
+				in.ProviderCooldowns[record.Key.Provider] = record.RecordedAt
 			}
 		}
-		if record.key.Provider == "" && record.key.Harness != "" {
+		if record.Key.Provider == "" && record.Key.Harness != "" {
 			for i := range in.Harnesses {
-				if in.Harnesses[i].Name == record.key.Harness {
+				if in.Harnesses[i].Name == record.Key.Harness {
 					in.Harnesses[i].InCooldown = true
 				}
 			}

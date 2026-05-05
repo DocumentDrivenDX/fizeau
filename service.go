@@ -12,6 +12,7 @@ import (
 	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
+	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
 	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
 	sessionusage "github.com/DocumentDrivenDX/fizeau/internal/session"
 )
@@ -720,9 +721,7 @@ type service struct {
 	// ResolveRoute; read by RouteStatus.
 	lastDecisionCache map[string]lastDecisionEntry
 
-	routeAttemptMu sync.RWMutex
-	routeAttempts  map[routeAttemptKey]routeAttemptRecord
-	routeMetrics   map[routeAttemptKey]routeMetricRecord
+	routeHealth *routehealth.Store
 
 	// catalog is the service-scope model-catalog cache. Populated lazily
 	// on first use by routing + chat paths; shared across requests so the
@@ -778,29 +777,6 @@ type lastDecisionEntry struct {
 	at       time.Time
 }
 
-type routeAttemptKey struct {
-	Harness  string
-	Provider string
-	Model    string
-	Endpoint string
-}
-
-type routeAttemptRecord struct {
-	key        routeAttemptKey
-	status     string
-	reason     string
-	err        string
-	duration   time.Duration
-	recordedAt time.Time
-}
-
-type routeMetricRecord struct {
-	attempts      int
-	successes     int
-	totalDuration time.Duration
-	recordedAt    time.Time
-}
-
 // loadServiceConfig, when non-nil, is called by New to load a ServiceConfig
 // from a directory path when opts.ServiceConfig is nil. It is registered by
 // the config package via init() to break the import cycle (config imports root).
@@ -839,7 +815,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		hub:              newSessionHub(),
 		runtime:          serviceimpl.NewRuntime(serviceimpl.RuntimeDeps{}),
 		catalog:          newCatalogCache(catalogCacheOptions{AsyncRefreshTimeout: opts.catalogRefreshTimeout()}),
-		routeMetrics:     make(map[routeAttemptKey]routeMetricRecord),
+		routeHealth:      routehealth.NewStore(),
 		routingQuality:   newRoutingQualityStore(),
 		providerQuota:    NewProviderQuotaStateStore(),
 		providerBurnRate: NewProviderBurnRateTracker(),
