@@ -13,11 +13,6 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
-	opencodeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/opencode"
-	piharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/pi"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	virtualprovider "github.com/DocumentDrivenDX/fizeau/internal/provider/virtual"
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
@@ -100,7 +95,8 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	// Generate a session ID and register it in the hub so TailSessionLog
 	// callers can subscribe before or during execution.
 	sessionID := generateSessionID()
-	s.hub.openSession(sessionID)
+	fanout := s.executeEventFanout()
+	fanout.openSession(sessionID)
 
 	outer := make(chan ServiceEvent, 64)
 
@@ -119,7 +115,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	s.recordRoutingQualityForRequest(overrideCtx)
 
 	// Resolve the route.
-	decision, err := s.resolveExecuteRoute(req)
+	decision, err := s.executeRouteResolver().resolveExecuteRoute(req)
 	if err != nil {
 		// NoViableProviderForNow is a transient quota signal — DDx
 		// callers pause their drain loop on RetryAfter and resume.
@@ -127,7 +123,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 		// typed error reaches errors.As without log scraping.
 		var quotaErr *NoViableProviderForNow
 		if errors.As(err, &quotaErr) {
-			s.hub.closeSession(sessionID, ServiceEvent{})
+			fanout.closeSession(sessionID, ServiceEvent{})
 			return nil, err
 		}
 		if isExplicitPinError(err) {
@@ -139,7 +135,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 			pinErr := err
 			if overrideCtx != nil {
 				if rejectedEv, payload, ok := makeRejectedOverrideEvent(overrideCtx, sessionID, pinErr, req.Metadata); ok {
-					s.hub.broadcastEvent(sessionID, rejectedEv)
+					fanout.broadcastEvent(sessionID, rejectedEv)
 					// Persist the rejected_override to the session log so
 					// UsageReport's windowed scan (which sources from
 					// session logs, not the in-memory ring) sees this
@@ -151,7 +147,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 					pinErr = &ErrRejectedOverride{Inner: err, Event: payload}
 				}
 			}
-			s.hub.closeSession(sessionID, ServiceEvent{})
+			fanout.closeSession(sessionID, ServiceEvent{})
 			return nil, pinErr
 		}
 		// Still return a channel that yields a single failed final event so
@@ -168,7 +164,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 		go func() {
 			// Wait briefly for emitFatalFinal to write.
 			time.Sleep(10 * time.Millisecond)
-			s.hub.closeSession(sessionID, ServiceEvent{})
+			fanout.closeSession(sessionID, ServiceEvent{})
 		}()
 		return outer, nil
 	}
@@ -180,7 +176,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	// TailSessionLog subscribers. The fan-out goroutine owns outer's close
 	// and is responsible for inserting the override event (if any) immediately
 	// before the final event per ADR-006 §7.
-	inner := s.hub.wrapExecuteWithHub(sessionID, outer, overrideCtx, meta)
+	inner := fanout.wrapExecuteWithHub(sessionID, outer, overrideCtx, meta)
 
 	// Emit start-of-execution routing_decision so consumers know the picked
 	// chain before any real work fires. The actual chain (post-fallback) is
@@ -436,7 +432,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	// CONTRACT-003 makes session-log lifecycle a service responsibility; the
 	// per-path finalizeAndEmit calls below feed writeEnd in lock-step with
 	// the public final event.
-	sl := s.openSessionLog(req, decision, sessionID)
+	sl := s.executeSessionLogOpener().openSessionLog(req, decision, sessionID)
 	if overrideCtx != nil {
 		// Stash sl so the fan-out goroutine in wrapExecuteWithHub can
 		// persist override events to the session log (ADR-006 §5).
@@ -485,43 +481,16 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	})
 	emitProgress(out, &seq, sl, sessionID, meta, routeProgressData(decision))
 
-	// Branch: native ("agent") path runs the in-process loop; subprocess
-	// paths instantiate the matching internal/harnesses/<name>.Runner.
-	switch decision.Harness {
-	case "agent", "":
-		s.runNative(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
-	case "claude":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &claudeharness.Runner{})
-	case "codex":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &codexharness.Runner{})
-	case "gemini":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &geminiharness.Runner{})
-	case "opencode":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &opencodeharness.Runner{})
-	case "pi":
-		s.runSubprocess(runCtx, req, decision, meta, out, &seq, start, sl, sessionID, &piharness.Runner{})
-	case "virtual":
-		s.runVirtual(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
-	case "script":
-		s.runScript(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
-	default:
-		if cfg, ok := s.registry.Get(decision.Harness); ok && cfg.IsHTTPProvider {
-			s.runNative(runCtx, req, decision, meta, out, &seq, start, sl, sessionID)
-			return
-		}
-		// Unknown / unimplemented subprocess harnesses fail with an explicit
-		// final event so callers do not silently fall back.
-		finalizeAndEmit(out, &seq, meta, req, sl, harnesses.FinalData{
-			Status:     "failed",
-			Error:      fmt.Sprintf("harness %q dispatch not yet wired in service.Execute", decision.Harness),
-			DurationMS: time.Since(start).Milliseconds(),
-			RoutingActual: &harnesses.RoutingActual{
-				Harness:  decision.Harness,
-				Provider: decision.Provider,
-				Model:    decision.Model,
-			},
-		})
-	}
+	s.executeRunnerInvoker().dispatchExecuteRun(runCtx, executeRunContext{
+		req:      req,
+		decision: decision,
+		meta:     meta,
+		out:      out,
+		seq:      &seq,
+		start:    start,
+		sl:       sl,
+		session:  sessionID,
+	})
 }
 
 func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string) {
