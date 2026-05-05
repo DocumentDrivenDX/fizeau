@@ -146,20 +146,26 @@ classifications; trust the property checks.
 
 ## Spec Amendment Discipline
 
-Spec amendments must either:
+Specs represent the desired design of the system. They are the benchmark for
+implementation and testing, not a ledger of implementation gaps. If the code
+does not yet match the spec, track that gap in beads with concrete acceptance
+criteria; do not dilute the spec with caveats about every missing or partially
+implemented piece.
 
-1. **Describe what the code already does** (descriptive) — verify by
-   citing file:line for every claim, or
-2. **Land in the same commit as the code change that makes the claim
-   true** (normative).
+Spec changes should describe designs the project intends to build and has a
+credible belief it can build. Do not land speculative designs that the project
+does not intend to implement, or designs that contradict known constraints
+without resolving them. Unknown gaps are expected: discover them during
+implementation or review, create beads for them, and close those beads until
+the implementation and tests conform to the design.
 
-Never amend a spec aspirationally — claiming behavior the code lacks
-creates a liability that future readers cite as truth. Codex flagged this
-pattern in this repo's spec history multiple times: a draft amendment
-claiming "Provider is a hard pin" when the code only hard-pinned under
+When amending a spec to describe existing mechanics as implementation
+reference, verify the description against the code. Codex flagged this pattern
+in this repo's spec history multiple times: a draft amendment claiming
+"Provider is a hard pin" when the code only hard-pinned under
 `Harness+Provider`; a draft "pre-dispatch HealthCheck re-validation" for
-behavior that wasn't implemented. Both would have been false specs once
-landed.
+behavior that wasn't implemented. Those belonged either as corrected design
+specs plus implementation beads, or as accurate implementation-reference prose.
 
 When a surface is the wrong primary user-facing one but the underlying
 mechanics are accurate, **demote rather than rewrite**: add an
@@ -168,7 +174,8 @@ linking to the ADR that explains the right primary surface. ADR-006 is the
 canonical example — pin precedence stays accurate as implementation
 reference; profile-as-cost-vs-time is the new primary user surface.
 
-When in doubt about descriptive vs. normative, run a code-review pass
+When in doubt about whether a spec is coherent design or unsupported
+speculation, run a code-review pass
 (`ddx agent run --harness codex --model gpt-5.5 --prompt review-amendments.md`)
 before merging spec changes. Codex with gpt-5.5 has been reliable at
 catching code-vs-spec mismatch.
