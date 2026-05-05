@@ -1,8 +1,9 @@
 package fizeau
 
 import (
-	"sync"
 	"time"
+
+	"github.com/DocumentDrivenDX/fizeau/internal/quota"
 )
 
 // ProviderBurnRateTracker maintains a per-provider rolling window of token
@@ -25,66 +26,33 @@ import (
 //
 // The tracker is safe for concurrent use.
 type ProviderBurnRateTracker struct {
-	mu      sync.Mutex
-	budgets map[string]int
-	windows map[string]*burnRateWindow
-}
-
-type burnRateWindow struct {
-	start time.Time // UTC window start (00:00 UTC)
-	used  int       // tokens accumulated within [start, start+24h)
+	inner *quota.BurnRateTracker
 }
 
 // NewProviderBurnRateTracker returns an empty tracker with no configured
 // budgets.
 func NewProviderBurnRateTracker() *ProviderBurnRateTracker {
-	return &ProviderBurnRateTracker{
-		budgets: make(map[string]int),
-		windows: make(map[string]*burnRateWindow),
-	}
+	return &ProviderBurnRateTracker{inner: quota.NewBurnRateTracker()}
 }
 
 // SetBudget installs (or replaces) the daily token budget for provider.
 // budget <= 0 disables predictive exhaustion for that provider (and removes
 // any prior budget).
 func (t *ProviderBurnRateTracker) SetBudget(provider string, budget int) {
-	if t == nil || provider == "" {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if budget <= 0 {
-		delete(t.budgets, provider)
-		return
-	}
-	t.budgets[provider] = budget
+	t.innerTracker().SetBudget(provider, budget)
 }
 
 // Budget returns the currently-configured daily budget for provider, or 0
 // when none is set.
 func (t *ProviderBurnRateTracker) Budget(provider string) int {
-	if t == nil {
-		return 0
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.budgets[provider]
+	return t.innerTracker().Budget(provider)
 }
 
 // Used returns the tokens recorded for provider in the current window at
 // instant now. Crossing a window boundary resets the count to zero; the
 // returned value reflects that reset.
 func (t *ProviderBurnRateTracker) Used(provider string, now time.Time) int {
-	if t == nil || provider == "" {
-		return 0
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	w := t.currentWindowLocked(provider, now)
-	if w == nil {
-		return 0
-	}
-	return w.used
+	return t.innerTracker().Used(provider, now)
 }
 
 // Record adds tokens to provider's rolling-window usage at instant now and
@@ -107,76 +75,13 @@ func (t *ProviderBurnRateTracker) Used(provider string, now time.Time) int {
 //
 // Providers with no configured budget always return exhausted=false.
 func (t *ProviderBurnRateTracker) Record(provider string, tokens int, now time.Time) (exhausted bool, retryAfter time.Time) {
-	if t == nil || provider == "" {
-		return false, time.Time{}
-	}
-	if tokens < 0 {
-		tokens = 0
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	w := t.currentWindowLocked(provider, now)
-	w.used += tokens
-
-	budget, ok := t.budgets[provider]
-	if !ok || budget <= 0 {
-		return false, time.Time{}
-	}
-
-	windowEnd := w.start.Add(24 * time.Hour)
-	if w.used >= budget {
-		return true, windowEnd
-	}
-
-	elapsed := now.Sub(w.start)
-	if elapsed <= 0 {
-		// Just past midnight (or clock skew before window start). No
-		// meaningful burn-rate yet; defer prediction until at least one
-		// nanosecond has elapsed in the window.
-		return false, time.Time{}
-	}
-	remaining := windowEnd.Sub(now)
-	if remaining <= 0 {
-		// Past window end; the next currentWindowLocked call will reset.
-		return false, time.Time{}
-	}
-
-	// burn_rate * remaining_window > budget - used
-	// ⇔ used * remaining_seconds > (budget - used) * elapsed_seconds
-	// Use float64 (seconds) to avoid int64 overflow on full-day windows.
-	lhs := float64(w.used) * remaining.Seconds()
-	rhs := float64(budget-w.used) * elapsed.Seconds()
-	if lhs > rhs {
-		return true, windowEnd
-	}
-	return false, time.Time{}
+	return t.innerTracker().Record(provider, tokens, now)
 }
 
 // Reset drops all per-provider windows (budgets are preserved). Primarily
 // useful in tests.
 func (t *ProviderBurnRateTracker) Reset() {
-	if t == nil {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.windows = make(map[string]*burnRateWindow)
-}
-
-// currentWindowLocked returns the window for provider that contains now,
-// resetting it if now has crossed into a new UTC day. Caller must hold
-// t.mu.
-func (t *ProviderBurnRateTracker) currentWindowLocked(provider string, now time.Time) *burnRateWindow {
-	if t.windows == nil {
-		t.windows = make(map[string]*burnRateWindow)
-	}
-	start := utcDayStart(now)
-	w, ok := t.windows[provider]
-	if !ok || !w.start.Equal(start) {
-		w = &burnRateWindow{start: start}
-		t.windows[provider] = w
-	}
-	return w
+	t.innerTracker().Reset()
 }
 
 // observeTokenUsage funnels post-execution token counts into the burn-rate
@@ -187,18 +92,15 @@ func (t *ProviderBurnRateTracker) currentWindowLocked(provider string, now time.
 // or non-positive token counts are likewise no-ops (apart from window
 // initialization).
 func (s *service) observeTokenUsage(provider string, tokens int, now time.Time) {
-	if s == nil || s.providerBurnRate == nil || provider == "" {
+	if s == nil {
 		return
 	}
-	exhausted, retryAt := s.providerBurnRate.Record(provider, tokens, now)
-	if !exhausted || s.providerQuota == nil {
-		return
-	}
-	s.providerQuota.MarkQuotaExhausted(provider, retryAt)
+	quota.ObserveTokenUsage(s.providerBurnRate.innerTracker(), s.providerQuota.innerStore(), provider, tokens, now)
 }
 
-// utcDayStart returns the UTC midnight at-or-before t.
-func utcDayStart(t time.Time) time.Time {
-	u := t.UTC()
-	return time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
+func (t *ProviderBurnRateTracker) innerTracker() *quota.BurnRateTracker {
+	if t == nil {
+		return nil
+	}
+	return t.inner
 }
