@@ -12,6 +12,7 @@ import (
 	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
+	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
 	sessionusage "github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
@@ -745,10 +746,7 @@ type service struct {
 	// budget will be exceeded before the next UTC daily reset.
 	providerBurnRate *ProviderBurnRateTracker
 
-	// nowFn returns the reference time for usage-window aggregation. Tests
-	// inject a deterministic clock so windows like "today" don't depend on
-	// wall-clock UTC time-of-day.
-	nowFn func() time.Time
+	runtime serviceimpl.Runtime
 }
 
 const (
@@ -771,10 +769,7 @@ func (o ServiceOptions) catalogRefreshTimeout() time.Duration {
 }
 
 func (s *service) now() time.Time {
-	if s.nowFn != nil {
-		return s.nowFn().UTC()
-	}
-	return time.Now().UTC()
+	return s.runtime.Now()
 }
 
 // lastDecisionEntry caches the most recent RouteDecision for a route key.
@@ -842,6 +837,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		opts:             opts,
 		registry:         harnesses.NewRegistry(),
 		hub:              newSessionHub(),
+		runtime:          serviceimpl.NewRuntime(serviceimpl.RuntimeDeps{}),
 		catalog:          newCatalogCache(catalogCacheOptions{AsyncRefreshTimeout: opts.catalogRefreshTimeout()}),
 		routeMetrics:     make(map[routeAttemptKey]routeMetricRecord),
 		routingQuality:   newRoutingQualityStore(),

@@ -12,6 +12,7 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
+	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
 	sessionlog "github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
@@ -226,11 +227,9 @@ func TestListHarnesses_GeminiAccountAndUsageWindows(t *testing.T) {
 		Model:      "gpt-5.4",
 	})
 
-	svc := &service{
-		opts:     ServiceOptions{ServiceConfig: &fakeServiceConfig{workDir: dir}},
-		registry: harnesses.NewRegistry(),
-		nowFn:    func() time.Time { return now },
-	}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: &fakeServiceConfig{workDir: dir}}, func(s *service) {
+		s.runtime = serviceimpl.NewRuntime(serviceimpl.RuntimeDeps{Now: func() time.Time { return now }})
+	})
 	harnesses, err := svc.ListHarnesses(context.Background())
 	if err != nil {
 		t.Fatalf("ListHarnesses: %v", err)

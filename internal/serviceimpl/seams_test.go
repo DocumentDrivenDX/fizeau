@@ -22,6 +22,14 @@ func TestRuntimeDepsClockUsesInjectedClock(t *testing.T) {
 	}
 }
 
+func TestRuntimeOwnsDefaultedClockState(t *testing.T) {
+	want := time.Date(2026, 5, 5, 10, 0, 0, 0, time.FixedZone("EDT", -4*60*60))
+	runtime := NewRuntime(RuntimeDeps{Now: func() time.Time { return want }})
+	if got := runtime.Now(); !got.Equal(want.UTC()) || got.Location() != time.UTC {
+		t.Fatalf("Now() = %v (%v), want %v UTC", got, got.Location(), want.UTC())
+	}
+}
+
 func TestServiceImplDoesNotImportRootPackage(t *testing.T) {
 	cmd := exec.Command("go", "list", "-json", ".")
 	out, err := cmd.Output()

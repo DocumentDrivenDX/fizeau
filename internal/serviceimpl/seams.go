@@ -18,6 +18,17 @@ type RuntimeDeps struct {
 	Now Clock
 }
 
+// Runtime is implementation-local service state that can be constructed from
+// the root facade without depending on root public contract types.
+type Runtime struct {
+	deps RuntimeDeps
+}
+
+// NewRuntime constructs implementation state with defaulted dependencies.
+func NewRuntime(deps RuntimeDeps) Runtime {
+	return Runtime{deps: RuntimeDeps{Now: deps.Clock()}}
+}
+
 // Clock returns the configured clock or the system clock when no test seam is
 // supplied.
 func (d RuntimeDeps) Clock() Clock {
@@ -25,4 +36,9 @@ func (d RuntimeDeps) Clock() Clock {
 		return d.Now
 	}
 	return SystemClock
+}
+
+// Now returns the runtime clock value normalized to UTC.
+func (r Runtime) Now() time.Time {
+	return r.deps.Clock()().UTC()
 }
