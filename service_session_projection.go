@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
 	"github.com/DocumentDrivenDX/fizeau/internal/session"
 )
 
@@ -302,24 +302,11 @@ func (s *service) ReplaySession(ctx context.Context, sessionID string, w io.Writ
 //
 // Returns "" when neither source supplies a directory.
 func (s *service) publicSessionLogDir() string {
-	if s == nil {
-		return ""
-	}
-	if s.opts.SessionLogDir != "" {
-		return s.opts.SessionLogDir
-	}
 	return s.serviceSessionLogDir()
 }
 
 func (s *service) sessionLogPath(sessionID string) (string, error) {
-	if sessionID == "" {
-		return "", fmt.Errorf("session id is required")
-	}
-	dir := s.publicSessionLogDir()
-	if dir == "" {
-		return "", fmt.Errorf("session log directory is not configured")
-	}
-	return filepath.Join(dir, sessionID+".jsonl"), nil
+	return serviceimpl.SessionLogPath(s.publicSessionLogDir(), sessionID)
 }
 
 func convertUsageReport(in *session.UsageReport) *UsageReport {

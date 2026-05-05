@@ -1103,13 +1103,12 @@ func (s *service) serviceSessionLogDir() string {
 	if s == nil {
 		return ""
 	}
-	if s.opts.SessionLogDir != "" {
-		return s.opts.SessionLogDir
-	}
+	configDir := ""
 	if s.opts.ServiceConfig == nil {
-		return ""
+		return serviceimpl.SessionLogDir(s.opts.SessionLogDir, configDir)
 	}
-	return s.opts.ServiceConfig.SessionLogDir()
+	configDir = s.opts.ServiceConfig.SessionLogDir()
+	return serviceimpl.SessionLogDir(s.opts.SessionLogDir, configDir)
 }
 
 func unavailableQuotaState(source, detail string) *QuotaState {
