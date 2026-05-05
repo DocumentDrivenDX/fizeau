@@ -8,15 +8,15 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/transcript"
 )
 
 const (
-	progressLineLimit            = 80
-	progressExceptionalLineLimit = 120
+	progressLineLimit            = transcript.DefaultLineLimit
+	progressExceptionalLineLimit = transcript.ExceptionalToolLineLimit
 )
 
 type nativeProgressState struct {
@@ -109,6 +109,9 @@ func fillProgressIdentity(payload *ServiceProgressData, sessionID string, meta m
 	if payload.TaskID == "" {
 		payload.TaskID = progressTaskID(sessionID, meta)
 	}
+	if payload.Source == "" {
+		payload.Source = payload.Phase
+	}
 	if payload.Round == 0 {
 		payload.Round = payload.TurnIndex
 	}
@@ -116,46 +119,24 @@ func fillProgressIdentity(payload *ServiceProgressData, sessionID string, meta m
 }
 
 func progressTaskID(sessionID string, meta map[string]string) string {
-	for _, key := range []string{"task_id", "bead_id", "correlation_id"} {
-		if meta != nil && strings.TrimSpace(meta[key]) != "" {
-			return strings.TrimSpace(meta[key])
-		}
-	}
-	return sessionID
+	return transcript.TaskID(sessionID, meta)
 }
 
 func progressStatusLine(payload ServiceProgressData) string {
-	msg := strings.TrimSpace(payload.Message)
-	prefix := compactProgressIdentity(payload.TaskID, payload.Round)
-	if prefix == "" {
-		return boundedProgressText(msg, progressMessageLimit(payload))
-	}
-	if msg == "" {
-		return boundedProgressText(prefix, progressMessageLimit(payload))
-	}
-	return boundedProgressText(prefix+" "+msg, progressMessageLimit(payload))
+	return transcript.StatusLine(transcript.StatusLineInput{
+		TaskID:    payload.TaskID,
+		TurnIndex: payload.Round,
+		Message:   payload.Message,
+		Limit:     progressMessageLimit(payload),
+	})
 }
 
 func compactProgressIdentity(taskID string, round int) string {
-	taskID = compactProgressTaskID(taskID)
-	switch {
-	case taskID != "" && round > 0:
-		return fmt.Sprintf("%s #%d", taskID, round)
-	case taskID != "":
-		return taskID
-	case round > 0:
-		return fmt.Sprintf("#%d", round)
-	default:
-		return ""
-	}
+	return transcript.CompactIdentity(taskID, round)
 }
 
 func compactProgressTaskID(taskID string) string {
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return ""
-	}
-	return boundedProgressText(taskID, 24)
+	return transcript.CompactTaskID(taskID)
 }
 
 func progressMessageLimit(payload ServiceProgressData) int {
@@ -202,10 +183,12 @@ func (p *progressTracker) noteThinkingComplete(turnIndex int, durationMS int64, 
 		turnIndex = p.turnIndex
 	}
 	totalTokens := 0
+	outputTokens := 0
 	if usage != nil {
 		totalTokens = derefServiceInt(usage.TotalTokens)
+		outputTokens = derefServiceInt(usage.OutputTokens)
 		if totalTokens <= 0 {
-			totalTokens = derefServiceInt(usage.OutputTokens)
+			totalTokens = outputTokens
 		}
 	}
 	msg := "thinking complete"
@@ -220,6 +203,7 @@ func (p *progressTracker) noteThinkingComplete(turnIndex int, durationMS int64, 
 		Message:               shortProgressText(msg),
 		TurnIndex:             turnIndex,
 		DurationMS:            durationMS,
+		TokPerSec:             progressTokenThroughput(outputTokens, durationMS),
 		InputTokens:           finalUsageTokenPtr(usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
 		OutputTokens:          finalUsageTokenPtr(usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
 		TotalTokens:           finalUsageTokenPtr(usage, func(u *harnesses.FinalUsage) *int { return u.TotalTokens }),
@@ -234,10 +218,12 @@ func (p *progressTracker) noteResponseComplete(final harnesses.FinalData) *Servi
 		return nil
 	}
 	totalTokens := 0
+	outputTokens := 0
 	if final.Usage != nil {
 		totalTokens = derefServiceInt(final.Usage.TotalTokens)
+		outputTokens = derefServiceInt(final.Usage.OutputTokens)
 		if totalTokens <= 0 {
-			totalTokens = derefServiceInt(final.Usage.OutputTokens)
+			totalTokens = outputTokens
 		}
 	}
 	msg := "done"
@@ -250,6 +236,7 @@ func (p *progressTracker) noteResponseComplete(final harnesses.FinalData) *Servi
 		Message:               shortProgressText(msg),
 		TurnIndex:             p.turnIndex,
 		DurationMS:            final.DurationMS,
+		TokPerSec:             progressTokenThroughput(outputTokens, final.DurationMS),
 		InputTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
 		OutputTokens:          finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
 		TotalTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.TotalTokens }),
@@ -263,6 +250,7 @@ func (p *progressTracker) noteToolStart(toolName string, input json.RawMessage) 
 	p.totalToolCalls++
 	p.recentTools = appendRecentTool(p.recentTools, toolName)
 	command := summarizeToolInput(toolName, input)
+	task := summarizeToolTask(toolName, input)
 	return ServiceProgressData{
 		Phase:                 "tool",
 		State:                 "start",
@@ -270,14 +258,18 @@ func (p *progressTracker) noteToolStart(toolName string, input json.RawMessage) 
 		TurnIndex:             p.turnIndex,
 		ToolName:              toolName,
 		Command:               command,
+		Action:                task.Action,
+		Target:                task.Target,
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
 		SessionSummary:        p.sessionSummary(),
 	}
 }
 
-func (p *progressTracker) noteToolComplete(toolName string, input json.RawMessage, durationMS int64, errText string) ServiceProgressData {
+func (p *progressTracker) noteToolComplete(toolName string, input json.RawMessage, output string, durationMS int64, errText string) ServiceProgressData {
 	command := summarizeToolInput(toolName, input)
+	task := summarizeToolTask(toolName, input)
+	outputDetail := summarizeToolOutputDetail(output)
 	details := toolName
 	if command != "" {
 		details = command
@@ -292,6 +284,12 @@ func (p *progressTracker) noteToolComplete(toolName string, input json.RawMessag
 		TurnIndex:             p.turnIndex,
 		ToolName:              toolName,
 		Command:               command,
+		Action:                task.Action,
+		Target:                task.Target,
+		OutputSummary:         outputDetail.Summary,
+		OutputBytes:           outputDetail.Bytes,
+		OutputLines:           outputDetail.Lines,
+		OutputExcerpt:         outputDetail.Excerpt,
 		DurationMS:            durationMS,
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
@@ -316,7 +314,7 @@ func (p *nativeProgressState) noteResponse(payload nativeLLMResponsePayload) Ser
 }
 
 func (p *nativeProgressState) noteToolCall(payload nativeToolCallPayload) (ServiceProgressData, ServiceProgressData) {
-	return p.noteToolStart(payload.Tool, payload.Input), p.noteToolComplete(payload.Tool, payload.Input, payload.DurationMS, payload.Error)
+	return p.noteToolStart(payload.Tool, payload.Input), p.noteToolComplete(payload.Tool, payload.Input, payload.Output, payload.DurationMS, payload.Error)
 }
 
 func (p *nativeProgressState) noteCompaction(payload nativeCompactionPayload) (ServiceProgressData, ServiceProgressData) {
@@ -386,7 +384,7 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		if toolName == "" {
 			toolName = payload.ID
 		}
-		return p.noteToolComplete(toolName, call.Input, payload.DurationMS, payload.Error), true
+		return p.noteToolComplete(toolName, call.Input, payload.Output, payload.DurationMS, payload.Error), true
 	}
 	return ServiceProgressData{}, false
 }
@@ -558,6 +556,284 @@ func summarizeToolInput(toolName string, input json.RawMessage) string {
 	return boundedProgressText(summarizeJSONValue(input), 120)
 }
 
+type toolTaskSummary struct {
+	Action string
+	Target string
+}
+
+func summarizeToolTask(toolName string, input json.RawMessage) toolTaskSummary {
+	toolName = strings.TrimSpace(toolName)
+	payload := map[string]any{}
+	if len(input) > 0 {
+		_ = json.Unmarshal(input, &payload)
+	}
+	path := summaryString(payload, "path", "file")
+	switch toolName {
+	case "read":
+		if path != "" {
+			return toolTaskSummary{Action: "inspect " + lineRangeSummary(payload) + " in " + path, Target: path}
+		}
+		return toolTaskSummary{Action: "inspect file"}
+	case "write":
+		return toolTaskSummary{Action: "write file", Target: path}
+	case "edit", "anchor_edit":
+		return toolTaskSummary{Action: "edit file", Target: path}
+	case "patch":
+		action := "edit file"
+		if op := summaryString(payload, "operation"); op != "" {
+			action = op + " file"
+		}
+		return toolTaskSummary{Action: action, Target: path}
+	case "grep":
+		pattern := summaryString(payload, "pattern")
+		target := firstNonEmpty(summaryString(payload, "dir"), summaryString(payload, "glob"))
+		action := "search"
+		if pattern != "" {
+			action += " " + strconv.Quote(boundedProgressText(pattern, 32))
+		}
+		if target != "" {
+			action += " in " + target
+		}
+		return toolTaskSummary{Action: action, Target: target}
+	case "find":
+		pattern := summaryString(payload, "pattern")
+		target := summaryString(payload, "dir")
+		action := "find files"
+		if pattern != "" {
+			action += " matching " + strconv.Quote(boundedProgressText(pattern, 32))
+		}
+		if target != "" {
+			action += " in " + target
+		}
+		return toolTaskSummary{Action: action, Target: target}
+	case "ls":
+		target := summaryString(payload, "path")
+		if target == "" {
+			target = "."
+		}
+		return toolTaskSummary{Action: "list directory " + target, Target: target}
+	case "bash":
+		return summarizeShellTask(extractBashCommand(payload))
+	default:
+		if path != "" {
+			return toolTaskSummary{Action: toolName, Target: path}
+		}
+		if toolName != "" {
+			return toolTaskSummary{Action: toolName}
+		}
+		return toolTaskSummary{}
+	}
+}
+
+func summarizeShellTask(command string) toolTaskSummary {
+	command = normalizeShellCommand(command)
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return toolTaskSummary{}
+	}
+	switch fields[0] {
+	case "sed":
+		if len(fields) >= 4 && fields[1] == "-n" {
+			target := fields[3]
+			return toolTaskSummary{Action: "inspect " + shellLineRange(fields[2]) + " in " + target, Target: target}
+		}
+	case "cat", "head", "tail":
+		if len(fields) >= 2 {
+			target := fields[len(fields)-1]
+			return toolTaskSummary{Action: "inspect " + target, Target: target}
+		}
+	case "rg", "grep":
+		return summarizeSearchCommand(fields)
+	case "go":
+		if len(fields) >= 2 && fields[1] == "test" {
+			target := strings.Join(fields[2:], " ")
+			return toolTaskSummary{Action: strings.TrimSpace("test " + target), Target: target}
+		}
+	case "git":
+		return summarizeGitCommand(fields)
+	case "apply_patch":
+		return toolTaskSummary{Action: "apply patch"}
+	}
+	return toolTaskSummary{Action: boundedProgressText(command, 96)}
+}
+
+func summarizeSearchCommand(fields []string) toolTaskSummary {
+	pattern := ""
+	target := ""
+	for _, field := range fields[1:] {
+		if strings.HasPrefix(field, "-") {
+			continue
+		}
+		if pattern == "" {
+			pattern = strings.Trim(field, "'\"")
+			continue
+		}
+		target = field
+	}
+	action := "search"
+	if pattern != "" {
+		action += " " + strconv.Quote(boundedProgressText(pattern, 32))
+	}
+	if target != "" {
+		action += " in " + target
+	}
+	return toolTaskSummary{Action: action, Target: target}
+}
+
+func summarizeGitCommand(fields []string) toolTaskSummary {
+	if len(fields) < 2 {
+		return toolTaskSummary{Action: "git"}
+	}
+	switch fields[1] {
+	case "add":
+		target := strings.Join(fields[2:], " ")
+		if target == "" {
+			return toolTaskSummary{Action: "stage changes"}
+		}
+		return toolTaskSummary{Action: "stage changes", Target: target}
+	case "commit":
+		return toolTaskSummary{Action: "commit changes"}
+	case "diff":
+		return toolTaskSummary{Action: "inspect diff"}
+	case "status":
+		return toolTaskSummary{Action: "inspect git status"}
+	case "log":
+		return toolTaskSummary{Action: "inspect git log"}
+	default:
+		return toolTaskSummary{Action: "git " + fields[1]}
+	}
+}
+
+func normalizeShellCommand(command string) string {
+	command = strings.TrimSpace(command)
+	for _, prefix := range []string{"/bin/zsh -lc ", "zsh -lc ", "/bin/bash -lc ", "bash -lc "} {
+		if !strings.HasPrefix(command, prefix) {
+			continue
+		}
+		inner := strings.TrimSpace(strings.TrimPrefix(command, prefix))
+		if unquoted, err := strconv.Unquote(inner); err == nil {
+			command = unquoted
+		} else {
+			command = strings.Trim(inner, `"`)
+		}
+		break
+	}
+	for _, sep := range []string{" && ", " || ", " ; "} {
+		if idx := strings.Index(command, sep); idx >= 0 {
+			command = strings.TrimSpace(command[:idx])
+			break
+		}
+	}
+	return strings.Join(strings.Fields(command), " ")
+}
+
+func shellLineRange(expr string) string {
+	expr = strings.Trim(strings.TrimSpace(expr), "'\"")
+	expr = strings.TrimSuffix(expr, "p")
+	if expr == "" {
+		return "lines"
+	}
+	return "lines " + expr
+}
+
+func lineRangeSummary(payload map[string]any) string {
+	offset := summaryInt(payload, "offset")
+	limit := summaryInt(payload, "limit")
+	if offset <= 0 && limit <= 0 {
+		return "file"
+	}
+	if limit > 0 {
+		return fmt.Sprintf("lines %d-%d", offset+1, offset+limit)
+	}
+	return fmt.Sprintf("from line %d", offset+1)
+}
+
+func summaryString(payload map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := payload[key]; ok {
+			if s, ok := value.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
+}
+
+func summaryInt(payload map[string]any, key string) int {
+	switch value := payload[key].(type) {
+	case float64:
+		return int(value)
+	case int:
+		return value
+	default:
+		return 0
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+type toolOutputDetail struct {
+	Summary string
+	Bytes   int
+	Lines   int
+	Excerpt string
+}
+
+func summarizeToolOutput(output string) string {
+	return summarizeToolOutputDetail(output).Summary
+}
+
+func summarizeToolOutputDetail(output string) toolOutputDetail {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return toolOutputDetail{}
+	}
+	lineCount := strings.Count(output, "\n") + 1
+	byteCount := len([]byte(output))
+	parts := []string{fmt.Sprintf("out=%s", formatByteCount(byteCount))}
+	if lineCount == 1 {
+		parts = append(parts, "1 line")
+	} else {
+		parts = append(parts, fmt.Sprintf("%d lines", lineCount))
+	}
+	excerpt := ""
+	if byteCount > 40 {
+		for _, line := range strings.Split(output, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			excerpt = boundedProgressText(line, 48)
+			parts = append(parts, strconv.Quote(excerpt))
+			break
+		}
+	}
+	return toolOutputDetail{
+		Summary: boundedProgressText(strings.Join(parts, " "), 96),
+		Bytes:   byteCount,
+		Lines:   lineCount,
+		Excerpt: excerpt,
+	}
+}
+
+func formatByteCount(n int) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%dB", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1fKB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1fMB", float64(n)/(1024*1024))
+	}
+}
+
 func summarizeJSONValue(raw json.RawMessage) string {
 	var payload any
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -692,21 +968,18 @@ func derefServiceInt(v *int) int {
 	return *v
 }
 
+func progressTokenThroughput(outputTokens int, durationMS int64) *float64 {
+	if outputTokens <= 0 || durationMS <= 0 {
+		return nil
+	}
+	v := float64(outputTokens) / (float64(durationMS) / 1000)
+	return &v
+}
+
 func estimateProgressTextTokens(s string) int {
 	return (len(s) + 3) / 4
 }
 
 func boundedProgressText(s string, maxRunes int) string {
-	s = strings.TrimSpace(s)
-	if maxRunes <= 0 || s == "" {
-		return ""
-	}
-	if utf8.RuneCountInString(s) <= maxRunes {
-		return s
-	}
-	runes := []rune(s)
-	if maxRunes <= 3 {
-		return string(runes[:maxRunes])
-	}
-	return string(runes[:maxRunes-3]) + "..."
+	return transcript.BoundedText(s, maxRunes)
 }

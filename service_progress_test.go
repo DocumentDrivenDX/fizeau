@@ -148,6 +148,9 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	if complete.TotalTokens == nil || *complete.TotalTokens != 15 {
 		t.Fatalf("thinking complete tokens = %#v", complete.TotalTokens)
 	}
+	if complete.TokPerSec == nil || *complete.TokPerSec <= 0 {
+		t.Fatalf("thinking complete tok/sec = %#v", complete.TokPerSec)
+	}
 	if len(complete.Message) > maxProgressMessageLen(complete) || len(complete.SessionSummary) > 80 {
 		t.Fatalf("thinking complete progress exceeded 80 chars: %#v", complete)
 	}
@@ -164,6 +167,9 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	}
 	if response.TotalTokens == nil || *response.TotalTokens != 15 {
 		t.Fatalf("response progress tokens = %#v", response.TotalTokens)
+	}
+	if response.TokPerSec == nil || *response.TokPerSec <= 0 {
+		t.Fatalf("response tok/sec = %#v", response.TokPerSec)
 	}
 
 	for _, p := range progress {
@@ -611,6 +617,12 @@ func TestExecute_NativeEmitsToolProgress(t *testing.T) {
 			if !strings.Contains(p.Message, "done") {
 				t.Fatalf("tool complete message = %q", p.Message)
 			}
+			if p.OutputSummary == "" || !strings.Contains(p.OutputSummary, "out=") {
+				t.Fatalf("tool complete output summary = %q", p.OutputSummary)
+			}
+			if p.OutputBytes == 0 || p.OutputLines == 0 {
+				t.Fatalf("tool complete output fields = %#v", p)
+			}
 		}
 	}
 	if !sawToolStart || !sawToolComplete {
@@ -767,6 +779,9 @@ func TestProgressEvent_RedactsUnboundedPayloads(t *testing.T) {
 		}
 		if len(p.Command) > 120 {
 			t.Fatalf("command summary too long: %d chars", len(p.Command))
+		}
+		if len(p.OutputSummary) > 96 {
+			t.Fatalf("output summary too long: %d chars", len(p.OutputSummary))
 		}
 	}
 	if !sessionLogHasEventType(t, dir, "progress") {

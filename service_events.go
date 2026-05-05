@@ -111,21 +111,29 @@ type ServiceCompactionData struct {
 // are intentionally compact so operators get useful turn state without
 // leaking full prompts or raw tool output.
 type ServiceProgressData struct {
-	Phase                 string `json:"phase"`
-	State                 string `json:"state"`
-	TaskID                string `json:"task_id,omitempty"`
-	Round                 int    `json:"round,omitempty"`
-	Message               string `json:"message,omitempty"`
-	TurnIndex             int    `json:"turn_index,omitempty"`
-	ToolName              string `json:"tool_name,omitempty"`
-	Command               string `json:"command,omitempty"`
-	DurationMS            int64  `json:"duration_ms,omitempty"`
-	InputTokens           *int   `json:"input_tokens,omitempty"`
-	OutputTokens          *int   `json:"output_tokens,omitempty"`
-	TotalTokens           *int   `json:"total_tokens,omitempty"`
-	ContextMessages       int    `json:"context_messages,omitempty"`
-	ContextTokensEstimate int    `json:"context_tokens_estimate,omitempty"`
-	SessionSummary        string `json:"session_summary,omitempty"`
+	Phase                 string   `json:"phase"`
+	State                 string   `json:"state"`
+	Source                string   `json:"source,omitempty"`
+	TaskID                string   `json:"task_id,omitempty"`
+	Round                 int      `json:"round,omitempty"`
+	Message               string   `json:"message,omitempty"`
+	TurnIndex             int      `json:"turn_index,omitempty"`
+	ToolName              string   `json:"tool_name,omitempty"`
+	Command               string   `json:"command,omitempty"`
+	Action                string   `json:"action,omitempty"`
+	Target                string   `json:"target,omitempty"`
+	OutputSummary         string   `json:"output_summary,omitempty"`
+	OutputBytes           int      `json:"output_bytes,omitempty"`
+	OutputLines           int      `json:"output_lines,omitempty"`
+	OutputExcerpt         string   `json:"output_excerpt,omitempty"`
+	DurationMS            int64    `json:"duration_ms,omitempty"`
+	TokPerSec             *float64 `json:"tok_per_sec,omitempty"`
+	InputTokens           *int     `json:"input_tokens,omitempty"`
+	OutputTokens          *int     `json:"output_tokens,omitempty"`
+	TotalTokens           *int     `json:"total_tokens,omitempty"`
+	ContextMessages       int      `json:"context_messages,omitempty"`
+	ContextTokensEstimate int      `json:"context_tokens_estimate,omitempty"`
+	SessionSummary        string   `json:"session_summary,omitempty"`
 }
 
 func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisionCandidate {

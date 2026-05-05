@@ -59,6 +59,12 @@ func TestRunSubprocess_EmitsToolProgress(t *testing.T) {
 			if p.ToolName != "bash" || p.DurationMS != 7 {
 				t.Fatalf("tool complete progress = %#v", p)
 			}
+			if p.OutputSummary == "" || !strings.Contains(p.OutputSummary, "out=") {
+				t.Fatalf("tool complete output summary = %#v", p)
+			}
+			if p.OutputBytes != len("tool output") || p.OutputLines != 1 {
+				t.Fatalf("tool complete output fields = %#v", p)
+			}
 		}
 	}
 	if !sawStart || !sawComplete {
@@ -83,6 +89,9 @@ func TestRunSubprocess_EmitsResponseProgress(t *testing.T) {
 		if p.Phase == "response" && p.State == "complete" {
 			if p.DurationMS != 42 || p.TotalTokens == nil || *p.TotalTokens != 15 {
 				t.Fatalf("response progress = %#v", p)
+			}
+			if p.TokPerSec == nil || *p.TokPerSec <= 0 {
+				t.Fatalf("response tok/sec = %#v", p.TokPerSec)
 			}
 			return
 		}
