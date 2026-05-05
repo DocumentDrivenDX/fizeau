@@ -24,36 +24,6 @@ func generateSessionID() string {
 	return fmt.Sprintf("svc-%d", time.Now().UnixNano())
 }
 
-// defaultStallReadOnlyIterations is the conservative default applied when
-// ServiceExecuteRequest.StallPolicy is nil. Mirrors today's circuit-breaker
-// thresholds: a model that goes 25 turns without a write or final response
-// is considered stuck.
-const defaultStallReadOnlyIterations = 25
-
-// defaultMaxIterations is the implicit per-execute iteration ceiling when the
-// caller does not set ServiceExecuteRequest.MaxIterations. Sized for the
-// 29–99 tool-call envelope observed on Claude Opus medium-task baselines,
-// with headroom. The read-only-streak stall detector remains independent.
-const defaultMaxIterations = 200
-
-// readOnlyTools enumerates tool names that do not mutate filesystem or
-// remote state. Used by the StallPolicy enforcement to detect "loops of
-// reads with no writes". The list is conservative — when in doubt a tool
-// is treated as side-effecting.
-var readOnlyTools = map[string]bool{
-	"read":       true,
-	"read_file":  true,
-	"grep":       true,
-	"ls":         true,
-	"find":       true,
-	"cat":        true,
-	"head":       true,
-	"tail":       true,
-	"stat":       true,
-	"web_fetch":  true,
-	"web_search": true,
-}
-
 // Execute runs an agent task in-process; emits Events on the returned
 // channel until the task terminates (channel closes). The final event
 // (type=final) carries status, usage, cost, session-log path, and the
@@ -542,131 +512,12 @@ func nativeToolsForRequest(req ServiceExecuteRequest) []agentcore.Tool {
 	return tool.BuiltinToolsForPreset(req.WorkDir, req.ToolPreset, tool.BashOutputFilterConfig{})
 }
 
-func nativePermissionMode(permissions string) (string, error) {
-	switch permissions {
-	case "", "safe":
-		return "safe", nil
-	case "unrestricted":
-		return "unrestricted", nil
-	case "supervised":
-		return "", fmt.Errorf("native agent permission mode %q is unsupported because no approval loop is available", permissions)
-	default:
-		return "", fmt.Errorf("native agent permission mode %q is unsupported", permissions)
-	}
-}
-
-func filterNativeToolsForPermission(tools []agentcore.Tool, permission string) []agentcore.Tool {
-	if permission == "unrestricted" {
-		return tools
-	}
-	filtered := make([]agentcore.Tool, 0, len(tools))
-	for _, tool := range tools {
-		if tool == nil {
-			continue
-		}
-		if readOnlyTools[tool.Name()] {
-			filtered = append(filtered, tool)
-		}
-	}
-	return filtered
-}
-
-func toolNames(tools []agentcore.Tool) []string {
-	names := make([]string, 0, len(tools))
-	for _, tool := range tools {
-		if tool == nil {
-			continue
-		}
-		names = append(names, tool.Name())
-	}
-	return names
-}
-
 // runNative drives the in-process agent loop (loop.go's Run). The provider
 // is wrapped so per-HTTP timeouts fire independently of the request wall-clock
 // cap.
 func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string) {
-	provider := s.nativeExecutionProvider(req, decision)
-	actualHarness := decision.Harness
-	if actualHarness == "" {
-		actualHarness = "agent"
-	}
-	resolvedProvider := s.resolveNativeProvider(nativeProviderRequest(req, decision))
-	actualProvider := resolvedProvider.Name
-	if actualProvider == "" {
-		actualProvider = decision.Provider
-	}
-	actualModel := decision.Model
-	if actualModel == "" {
-		actualModel = resolvedProvider.Entry.Model
-	}
-	if provider == nil {
-		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
-			Status:     "failed",
-			Error:      s.nativeProviderNotConfiguredError(req, decision),
-			DurationMS: time.Since(start).Milliseconds(),
-			RoutingActual: &harnesses.RoutingActual{
-				Harness:  actualHarness,
-				Provider: actualProvider,
-				Model:    actualModel,
-			},
-		})
-		return
-	}
-	permission, permissionErr := nativePermissionMode(req.Permissions)
-	if permissionErr != nil {
-		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
-			Status:     "failed",
-			Error:      permissionErr.Error(),
-			DurationMS: time.Since(start).Milliseconds(),
-			RoutingActual: &harnesses.RoutingActual{
-				Harness:  actualHarness,
-				Provider: actualProvider,
-				Model:    actualModel,
-			},
-		})
-		return
-	}
-
-	// Provider-deadline wrapping: every HTTP call gets the per-request cap.
-	// We use a package-local timeout wrapper to avoid import cycles.
-	if req.ProviderTimeout > 0 {
-		provider = wrapProviderRequestTimeout(provider, req.ProviderTimeout)
-	}
-
-	// Stall policy enforces a read-only-streak circuit breaker; the iteration
-	// cap is decoupled from it. Recorded Claude Opus execute-bead baselines
-	// for medium-difficulty agent tasks land in the 29–99 tool-call range,
-	// so the implicit cap must comfortably exceed that envelope.
-	policy := req.StallPolicy
-	if policy == nil {
-		policy = &StallPolicy{
-			MaxReadOnlyToolIterations: defaultStallReadOnlyIterations,
-		}
-	}
-	maxIter := req.MaxIterations
-	if maxIter <= 0 {
-		maxIter = defaultMaxIterations
-	}
-
-	// Stall tracking state, updated from the loop callback.
-	var (
-		readOnlyStreak atomic.Int64
-		stalled        atomic.Bool
-		stallReason    atomic.Value // string
-		stallCount     atomic.Int64
-	)
 	progress := newNativeProgressState()
-	cancelCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// Bridge agent.Event (loop callback) → harnesses.Event (out chan).
-	// Every callback event is also persisted to the session log so
-	// kept-sandbox bundles preserve the full native trace (llm.request,
-	// llm.response, tool.call, compaction.*) needed to reconstruct a run
-	// for benchmark reruns and post-mortem debugging. The public out-chan
-	// translation below only forwards CONTRACT-003 event types.
-	cb := func(ev agentcore.Event) {
+	observeAgentEvent := func(ev agentcore.Event) {
 		sl.writeEvent(ev)
 		switch ev.Type {
 		case agentcore.EventLLMRequest:
@@ -680,8 +531,6 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 				emitProgress(out, seq, sl, sessionID, meta, progress.noteResponse(payload))
 			}
 		case agentcore.EventToolCall:
-			// Map tool.call → tool_call + tool_result. The loop emits a
-			// single combined event with input + output; we split.
 			var payload nativeToolCallPayload
 			_ = json.Unmarshal(ev.Data, &payload)
 			startProgress, completeProgress := progress.noteToolCall(payload)
@@ -699,33 +548,14 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 				Name:  toolName,
 				Input: input,
 			})
-			outputStr := payload.Output
-			errStr := payload.Error
-			durMS := float64(payload.DurationMS)
 			emitJSONRaw(out, seq, harnesses.EventTypeToolResult, meta, harnesses.ToolResultData{
 				ID:         callID,
-				Output:     outputStr,
-				Error:      errStr,
-				DurationMS: int64(durMS),
+				Output:     payload.Output,
+				Error:      payload.Error,
+				DurationMS: payload.DurationMS,
 			})
 			emitProgress(out, seq, sl, sessionID, meta, completeProgress)
-			// Stall accounting: no-progress tool runs increment the streak;
-			// tool calls that plausibly mutate durable workspace state reset it.
-			if !toolLikelyMakesProgress(toolName, payload) {
-				if v := readOnlyStreak.Add(1); policy.MaxReadOnlyToolIterations > 0 && int(v) >= policy.MaxReadOnlyToolIterations {
-					if stalled.CompareAndSwap(false, true) {
-						stallReason.Store("no_progress_tools_exceeded")
-						stallCount.Store(v)
-						cancel()
-					}
-				}
-			} else {
-				readOnlyStreak.Store(0)
-			}
 		case agentcore.EventCompactionEnd:
-			// We only emit compaction events for *real* compaction work.
-			// loop.go runCompaction already suppresses no-op start/end pairs;
-			// the event we get here represents an actually-performed compaction.
 			var payload nativeCompactionPayload
 			_ = json.Unmarshal(ev.Data, &payload)
 			emitJSONRaw(out, seq, harnesses.EventTypeCompaction, meta, map[string]any{
@@ -736,403 +566,115 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 			compactionProgress, contextProgress := progress.noteCompaction(payload)
 			emitProgress(out, seq, sl, sessionID, meta, compactionProgress)
 			emitProgress(out, seq, sl, sessionID, meta, contextProgress)
-			// Compaction assertion hook (testseam) fires on real compactions only.
-			if hook := s.compactionAssertionHook(); hook != nil {
-				hook(payload.MessagesBefore, payload.MessagesAfter, payload.TokensBefore-payload.TokensAfter)
-			}
 		}
 	}
 
-	tools := filterNativeToolsForPermission(nativeToolsForRequest(req), permission)
-
-	// Tool wiring hook (testseam).
-	if hook := s.toolWiringHook(); hook != nil {
-		hook(decision.Harness, toolNames(tools))
+	var stallMaxReadOnlyIterations *int
+	if req.StallPolicy != nil {
+		stallMaxReadOnlyIterations = &req.StallPolicy.MaxReadOnlyToolIterations
 	}
-	// Prompt assertion hook (testseam).
-	if hook := s.promptAssertionHook(); hook != nil {
-		hook(req.SystemPrompt, req.Prompt, nil)
-	}
-	compactor := newServiceCompactor(req, actualModel)
-
-	// Drive the agent loop. Run is synchronous; stall enforcement uses the
-	// cancelCtx — when read-only-tool-streak limit fires the callback
-	// cancels the context, the loop sees ctx.Done(), returns
-	// StatusCancelled, and we override the final to "stalled".
-	// Temperature/Seed: per CONTRACT-003, nil means unset — omit from the
-	// wire so the server's default applies. The agent loop carries
-	// *float64 / int64 internally; we widen the float here and dereference
-	// Seed (which goes through openai-compat as the int64 zero-value
-	// sentinel — see internal/sdk/openaicompat/client.go).
-	var temperature *float64
-	if req.Temperature != nil {
-		t := float64(*req.Temperature)
-		temperature = &t
-	}
-	var seed int64
-	if req.Seed != nil {
-		seed = *req.Seed
-	}
-	loopReq := agentcore.Request{
-		Prompt:             req.Prompt,
-		SystemPrompt:       req.SystemPrompt,
-		Provider:           provider,
-		Tools:              tools,
-		WorkDir:            req.WorkDir,
-		Callback:           cb,
-		Metadata:           meta,
-		MaxIterations:      maxIter,
-		ResolvedModel:      actualModel,
-		SelectedProvider:   actualProvider,
-		Temperature:        temperature,
-		TopP:               req.TopP,
-		TopK:               req.TopK,
-		MinP:               req.MinP,
-		RepetitionPenalty:  req.RepetitionPenalty,
-		Seed:               seed,
-		SamplingSource:     req.SamplingSource,
-		Reasoning:          effectiveReasoning(req.Reasoning),
-		NoStream:           req.NoStream,
-		MaxTokens:          req.MaxTokens,
-		ReasoningByteLimit: req.ReasoningByteLimit,
-		Compactor:          compactor,
-		CachePolicy:        req.CachePolicy,
-		PlanningMode:       req.PlanningMode || req.ToolPreset == "benchmark",
-	}
-	result, runErr := agentcore.Run(cancelCtx, loopReq)
-	if shouldRetryNativeNoStream(req.NoStream, result, runErr) {
-		loopReq.NoStream = true
-		result, runErr = agentcore.Run(cancelCtx, loopReq)
-	}
-
-	// Map agent.Result → harness FinalData.
-	finalProvider := actualProvider
-	if result.SelectedProvider != "" {
-		finalProvider = result.SelectedProvider
-	}
-	finalModel := actualModel
-	if result.ResolvedModel != "" {
-		finalModel = result.ResolvedModel
-	}
-	final := harnesses.FinalData{
-		DurationMS: time.Since(start).Milliseconds(),
-		FinalText:  result.Output,
-		RoutingActual: &harnesses.RoutingActual{
-			Harness:            actualHarness,
-			Provider:           finalProvider,
-			Model:              finalModel,
-			FallbackChainFired: append([]string(nil), result.AttemptedProviders...),
+	serviceimpl.RunNative(ctx, serviceimpl.NativeRequest{
+		Prompt:                    req.Prompt,
+		SystemPrompt:              req.SystemPrompt,
+		Model:                     req.Model,
+		Provider:                  req.Provider,
+		Harness:                   req.Harness,
+		WorkDir:                   req.WorkDir,
+		Temperature:               req.Temperature,
+		TopP:                      req.TopP,
+		TopK:                      req.TopK,
+		MinP:                      req.MinP,
+		RepetitionPenalty:         req.RepetitionPenalty,
+		Seed:                      req.Seed,
+		SamplingSource:            req.SamplingSource,
+		Reasoning:                 effectiveReasoning(req.Reasoning),
+		NoStream:                  req.NoStream,
+		Permissions:               req.Permissions,
+		Tools:                     nativeToolsForRequest(req),
+		ToolPreset:                req.ToolPreset,
+		PlanningMode:              req.PlanningMode,
+		MaxIterations:             req.MaxIterations,
+		MaxTokens:                 req.MaxTokens,
+		ReasoningByteLimit:        req.ReasoningByteLimit,
+		ProviderTimeout:           req.ProviderTimeout,
+		Timeout:                   req.Timeout,
+		CachePolicy:               req.CachePolicy,
+		StallMaxReadOnlyIteration: stallMaxReadOnlyIterations,
+		Metadata:                  meta,
+		Decision:                  nativeDecision(decision),
+		Started:                   start,
+		SessionID:                 sessionID,
+	}, serviceimpl.NativeCallbacks{
+		ResolveProvider: func(nreq serviceimpl.NativeProviderRequest) serviceimpl.NativeProviderResolution {
+			resolved := s.resolveNativeProvider(ServiceExecuteRequest{
+				Provider: nreq.Provider,
+				Harness:  nreq.Harness,
+				Model:    nreq.Model,
+			})
+			return serviceimpl.NativeProviderResolution{
+				Provider: resolved.Provider,
+				Name:     resolved.Name,
+				Model:    resolved.Entry.Model,
+			}
 		},
-	}
-	// Native loop tracks usage by accumulating per-iteration provider responses
-	// (TokenUsage.Add). Emit the totals verbatim — including explicit zero —
-	// so consumers can distinguish "provider reported zero" from "harness
-	// could not tell". Nil pointers are reserved for cache dimensions the
-	// loop did not observe at all.
-	final.Usage = &harnesses.FinalUsage{
-		InputTokens:      harnesses.IntPtr(result.Tokens.Input),
-		OutputTokens:     harnesses.IntPtr(result.Tokens.Output),
-		CacheReadTokens:  nil,
-		CacheWriteTokens: nil,
-		TotalTokens:      harnesses.IntPtr(result.Tokens.Total),
-		Source:           harnesses.UsageSourceFallback,
-	}
-	if result.Tokens.CacheRead > 0 {
-		final.Usage.CacheReadTokens = harnesses.IntPtr(result.Tokens.CacheRead)
-	}
-	if result.Tokens.CacheWrite > 0 {
-		final.Usage.CacheWriteTokens = harnesses.IntPtr(result.Tokens.CacheWrite)
-	}
-	if result.Tokens.CacheRead > 0 || result.Tokens.CacheWrite > 0 {
-		final.Usage.CacheTokens = harnesses.IntPtr(result.Tokens.CacheRead + result.Tokens.CacheWrite)
-	}
-	if result.CostUSD > 0 {
-		final.CostUSD = result.CostUSD
-	}
-	if result.Output != "" {
-		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: result.Output})
-	}
-	if progressFinal := progress.noteFinal(final); progressFinal != nil {
-		emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
-	}
-	switch {
-	case stalled.Load():
-		final.Status = "stalled"
-		reason, _ := stallReason.Load().(string)
-		// Emit the stall event before the final per CONTRACT-003.
-		emitJSONRaw(out, seq, harnesses.EventTypeStall, meta, map[string]any{
-			"reason": reason,
-			"count":  stallCount.Load(),
-		})
-		final.Error = reason
-	case ctx.Err() == context.DeadlineExceeded || (req.Timeout > 0 && time.Since(start) >= req.Timeout):
-		final.Status = "timed_out"
-		final.Error = "wall-clock timeout"
-	case ctx.Err() == context.Canceled:
-		final.Status = "cancelled"
-	case runErr != nil:
-		final.Status = "failed"
-		final.Error = runErr.Error()
-	case result.Status == agentcore.StatusError:
-		final.Status = "failed"
-		if result.Error != nil {
-			final.Error = result.Error.Error()
-		}
-	case result.Status == agentcore.StatusIterationLimit:
-		final.Status = string(agentcore.StatusIterationLimit)
-	default:
-		final.Status = "success"
-	}
-	if final.Status == "failed" && final.Error != "" && final.RoutingActual != nil {
-		final.RoutingActual.FailureClass = classifyDispatchFailure(final.Error)
-	}
-	if final.RoutingActual != nil && final.Usage != nil {
-		s.observeTokenUsage(final.RoutingActual.Provider, finalUsageTotalTokens(final.Usage), time.Now())
-	}
-
-	finalizeAndEmit(out, seq, meta, req, sl, final)
-}
-
-// finalUsageTotalTokens returns input+output tokens from a FinalUsage
-// (request + response, per fizeau-f2661619 AC2). When a TotalTokens pointer
-// is present it is preferred since some providers report a total that is
-// not the simple sum (e.g. cache-aware billing).
-func finalUsageTotalTokens(u *harnesses.FinalUsage) int {
-	if u == nil {
-		return 0
-	}
-	if u.TotalTokens != nil && *u.TotalTokens > 0 {
-		return *u.TotalTokens
-	}
-	var total int
-	if u.InputTokens != nil {
-		total += *u.InputTokens
-	}
-	if u.OutputTokens != nil {
-		total += *u.OutputTokens
-	}
-	return total
-}
-
-func (s *service) nativeExecutionProvider(req ServiceExecuteRequest, decision RouteDecision) agentcore.Provider {
-	if len(decision.Candidates) > 0 {
-		return &serviceRouteProvider{
-			service:          s,
-			baseRequest:      req,
-			routeKey:         req.Model,
-			candidates:       append([]RouteCandidate(nil), decision.Candidates...),
-			selectedProvider: decision.Provider,
-		}
-	}
-	resolvedProvider := s.resolveNativeProvider(nativeProviderRequest(req, decision))
-	return resolvedProvider.Provider
-}
-
-type serviceRouteProvider struct {
-	service          *service
-	baseRequest      ServiceExecuteRequest
-	routeKey         string
-	candidates       []RouteCandidate
-	selectedProvider string
-	attempted        []string
-	failoverCount    int
-}
-
-func (p *serviceRouteProvider) Chat(ctx context.Context, messages []agentcore.Message, tools []agentcore.ToolDef, opts agentcore.Options) (agentcore.Response, error) {
-	candidate, ok := p.selectedCandidate()
-	if !ok {
-		return agentcore.Response{}, fmt.Errorf("agent: route %q has no selected provider candidate", p.routeKey)
-	}
-	p.attempted = append(p.attempted, candidate.Provider)
-	req := p.baseRequest
-	req.Provider = candidate.Provider
-	req.Model = candidate.Model
-	if candidate.Endpoint != "" {
-		req.Provider = endpointProviderRef(candidate.Provider, candidate.Endpoint)
-	}
-	resolved := p.service.resolveNativeProvider(req)
-	if resolved.Provider == nil {
-		return agentcore.Response{}, fmt.Errorf("agent: provider error: no provider configured for %q", req.Provider)
-	}
-	opts.Model = candidate.Model
-	resp, err := resolved.Provider.Chat(ctx, messages, tools, opts)
-	if err != nil {
-		return agentcore.Response{}, err
-	}
-	p.selectedProvider = candidate.Provider
-	if resp.Attempt == nil {
-		resp.Attempt = &agentcore.AttemptMetadata{}
-	}
-	resp.Attempt.ProviderName = candidate.Provider
-	resp.Attempt.Route = p.routeKey
-	if resp.Attempt.RequestedModel == "" {
-		resp.Attempt.RequestedModel = p.routeKey
-	}
-	return resp, nil
-}
-
-func (p *serviceRouteProvider) selectedCandidate() (RouteCandidate, bool) {
-	for _, candidate := range p.candidates {
-		if !candidate.Eligible || candidate.Provider == "" {
-			continue
-		}
-		if p.selectedProvider == "" || candidate.Provider == p.selectedProvider {
-			return candidate, true
-		}
-	}
-	return RouteCandidate{}, false
-}
-
-func (p *serviceRouteProvider) RoutingReport() agentcore.RoutingReport {
-	return agentcore.RoutingReport{
-		SelectedProvider:   p.selectedProvider,
-		SelectedRoute:      p.routeKey,
-		AttemptedProviders: append([]string(nil), p.attempted...),
-		FailoverCount:      p.failoverCount,
-	}
-}
-
-func toolLikelyMakesProgress(toolName string, payload nativeToolCallPayload) bool {
-	if strings.TrimSpace(payload.Error) != "" {
-		return false
-	}
-	if readOnlyTools[toolName] {
-		return false
-	}
-	if toolName == "bash" {
-		var input any
-		if len(payload.Input) > 0 {
-			if err := json.Unmarshal(payload.Input, &input); err == nil {
-				return bashCommandLikelyMutates(extractBashCommand(input))
+		ProviderNotConfiguredError: func(nreq serviceimpl.NativeProviderRequest, ndecision serviceimpl.NativeDecision) string {
+			return s.nativeProviderNotConfiguredError(ServiceExecuteRequest{
+				Provider: nreq.Provider,
+				Harness:  nreq.Harness,
+				Model:    nreq.Model,
+			}, routeDecision(ndecision))
+		},
+		Compactor: func(model string) agentcore.Compactor {
+			return newServiceCompactor(req, model)
+		},
+		ObserveAgentEvent: observeAgentEvent,
+		EmitEvent: func(t harnesses.EventType, payload any) {
+			emitJSONRaw(out, seq, t, meta, payload)
+		},
+		BeforeFinal: func(final harnesses.FinalData) {
+			if progressFinal := progress.noteFinal(final); progressFinal != nil {
+				emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
 			}
+		},
+		Finalize: func(final harnesses.FinalData) {
+			finalizeAndEmit(out, seq, meta, req, sl, final)
+		},
+		ToolWiringHook:          s.toolWiringHook(),
+		PromptAssertionHook:     s.promptAssertionHook(),
+		CompactionAssertionHook: s.compactionAssertionHook(),
+		ObserveTokenUsage:       s.observeTokenUsage,
+	})
+}
+
+func nativeDecision(decision RouteDecision) serviceimpl.NativeDecision {
+	return serviceimpl.NativeDecision{
+		Harness:    decision.Harness,
+		Provider:   decision.Provider,
+		Model:      decision.Model,
+		Candidates: nativeRouteCandidates(decision.Candidates),
+	}
+}
+
+func routeDecision(decision serviceimpl.NativeDecision) RouteDecision {
+	return RouteDecision{
+		Harness:  decision.Harness,
+		Provider: decision.Provider,
+		Model:    decision.Model,
+	}
+}
+
+func nativeRouteCandidates(in []RouteCandidate) []serviceimpl.NativeRouteCandidate {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]serviceimpl.NativeRouteCandidate, len(in))
+	for i, candidate := range in {
+		out[i] = serviceimpl.NativeRouteCandidate{
+			Provider: candidate.Provider,
+			Endpoint: candidate.Endpoint,
+			Model:    candidate.Model,
+			Eligible: candidate.Eligible,
 		}
-		return false
-	}
-	return true
-}
-
-func shouldRetryNativeNoStream(requestedStream bool, result agentcore.Result, runErr error) bool {
-	if requestedStream || runErr != nil {
-		return false
-	}
-	if result.Status != agentcore.StatusSuccess {
-		return false
-	}
-	if result.Output != "" || len(result.ToolCalls) > 0 {
-		return false
-	}
-	return result.Tokens.Input == 0 && result.Tokens.Output == 0 && result.Tokens.Total == 0
-}
-
-func classifyDispatchFailure(errMsg string) string {
-	msg := strings.ToLower(errMsg)
-	switch {
-	case strings.Contains(msg, "no provider configured"),
-		strings.Contains(msg, "not available"),
-		strings.Contains(msg, "exhausted"),
-		strings.Contains(msg, "not configured"):
-		return "availability"
-	case strings.Contains(msg, "timeout"),
-		strings.Contains(msg, "deadline"),
-		strings.Contains(msg, "connection"),
-		strings.Contains(msg, "refused"),
-		strings.Contains(msg, "no such host"),
-		strings.Contains(msg, "transport"):
-		return "transport"
-	case strings.Contains(msg, "http "),
-		strings.Contains(msg, "status "),
-		strings.Contains(msg, "bad request"),
-		strings.Contains(msg, "unauthorized"),
-		strings.Contains(msg, "not found"),
-		strings.Contains(msg, "unsupported"):
-		return "protocol"
-	default:
-		return "unknown"
-	}
-}
-
-func extractBashCommand(raw any) string {
-	input, ok := raw.(map[string]any)
-	if !ok {
-		return ""
-	}
-	command, _ := input["command"].(string)
-	return strings.TrimSpace(command)
-}
-
-func bashCommandLikelyMutates(command string) bool {
-	command = strings.TrimSpace(command)
-	if command == "" {
-		return false
-	}
-	readOnlyPrefixes := []string{
-		"pwd",
-		"env",
-		"printenv",
-		"which ",
-		"type ",
-		"command -v ",
-		"git status",
-		"git diff",
-		"git show",
-		"git log",
-		"go test",
-		"cargo test",
-		"cargo clippy",
-		"npm test",
-		"pnpm test",
-		"yarn test",
-		"pytest",
-		"ls",
-		"find ",
-		"cat ",
-		"grep ",
-		"rg ",
-		"head ",
-		"tail ",
-		"sed -n",
-	}
-	for _, prefix := range readOnlyPrefixes {
-		if strings.HasPrefix(command, prefix) {
-			return false
-		}
-	}
-	mutatingFragments := []string{
-		"git add",
-		"git commit",
-		"git apply",
-		"git checkout -b",
-		"git switch -c",
-		"mkdir ",
-		"touch ",
-		"mv ",
-		"cp ",
-		"rm ",
-		"sed -i",
-		"tee ",
-		">",
-		">>",
-		"apply_patch",
-		"patch ",
-	}
-	for _, fragment := range mutatingFragments {
-		if strings.Contains(command, fragment) {
-			return true
-		}
-	}
-	return false
-}
-
-func nativeProviderRequest(req ServiceExecuteRequest, decision RouteDecision) ServiceExecuteRequest {
-	out := req
-	if decision.Provider != "" {
-		out.Provider = decision.Provider
-	}
-	if decision.Model != "" {
-		out.Model = decision.Model
-	}
-	if decision.Harness != "" {
-		out.Harness = decision.Harness
 	}
 	return out
 }
@@ -1348,38 +890,6 @@ func emitJSON(out chan<- ServiceEvent, seq *atomic.Int64, t harnesses.EventType,
 // emitJSONRaw is the typed-payload variant used inside the loop callback.
 func emitJSONRaw(out chan<- ServiceEvent, seq *atomic.Int64, t harnesses.EventType, meta map[string]string, payload any) {
 	emitJSON(out, seq, t, meta, payload)
-}
-
-// errProviderRequestTimeout is the package-local sentinel for per-request
-// provider timeouts.
-var errProviderRequestTimeout = errors.New("provider request timeout")
-
-// wrapProviderRequestTimeout decorates p with a per-Chat wall-clock cap.
-// The in-process loop uses the non-streaming Provider interface in this
-// code path; streaming wrapping lives in the CLI command layer.
-func wrapProviderRequestTimeout(p agentcore.Provider, requestTimeout time.Duration) agentcore.Provider {
-	if p == nil || requestTimeout <= 0 {
-		return p
-	}
-	return &timeoutProviderInline{inner: p, requestTimeout: requestTimeout}
-}
-
-type timeoutProviderInline struct {
-	inner          agentcore.Provider
-	requestTimeout time.Duration
-}
-
-func (p *timeoutProviderInline) Chat(ctx context.Context, messages []agentcore.Message, tools []agentcore.ToolDef, opts agentcore.Options) (agentcore.Response, error) {
-	if p.requestTimeout <= 0 {
-		return p.inner.Chat(ctx, messages, tools, opts)
-	}
-	cctx, cancel := context.WithTimeout(ctx, p.requestTimeout)
-	defer cancel()
-	resp, err := p.inner.Chat(cctx, messages, tools, opts)
-	if err != nil && ctx.Err() == nil && cctx.Err() == context.DeadlineExceeded {
-		return resp, fmt.Errorf("%w: wall-clock %s", errProviderRequestTimeout, p.requestTimeout)
-	}
-	return resp, err
 }
 
 // finalizeAndEmit stamps the service-owned session-log path onto final,

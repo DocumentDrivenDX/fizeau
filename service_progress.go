@@ -555,6 +555,15 @@ func summarizeToolInput(toolName string, input json.RawMessage) string {
 	return boundedProgressText(summarizeJSONValue(input), 120)
 }
 
+func extractBashCommand(raw any) string {
+	input, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	command, _ := input["command"].(string)
+	return strings.TrimSpace(command)
+}
+
 type toolTaskSummary struct {
 	Action string
 	Target string
