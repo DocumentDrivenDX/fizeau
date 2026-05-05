@@ -326,7 +326,7 @@ targets:
 		names:       []string{"alpha", "beta", "gamma"},
 		defaultName: "alpha",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 	in := svc.buildRoutingInputs(context.Background())
 
 	got := providerCostsByName(in, "agent")
@@ -397,7 +397,7 @@ func TestBuildRoutingInputsHonorsLocalCostOption(t *testing.T) {
 		defaultName: "local",
 	}
 
-	unsetSvc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	unsetSvc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 	unset := providerCostsByName(unsetSvc.buildRoutingInputs(context.Background()), "agent")
 	assertProviderCost(t, unset, "local", 0, routing.CostSourceUnknown)
 
@@ -738,7 +738,7 @@ func TestBuildRoutingInputsWiresContextWindowsFromCatalog(t *testing.T) {
 		names:       []string{"local"},
 		defaultName: "local",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	in := svc.buildRoutingInputs(context.Background())
 	providers := providerCostsByName(in, "agent")

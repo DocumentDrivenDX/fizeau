@@ -14,7 +14,7 @@ import (
 )
 
 func TestRecordRouteAttempt_DemotesFailedProviderForAutomaticRouting(t *testing.T) {
-	svc := routeAttemptTestService(30 * time.Second)
+	svc := routeAttemptTestService(t, 30*time.Second)
 
 	before, err := svc.ResolveRoute(context.Background(), RouteRequest{
 		Model: "qwen",
@@ -60,7 +60,7 @@ func TestRecordRouteAttempt_DemotesFailedProviderForAutomaticRouting(t *testing.
 }
 
 func TestRecordRouteAttempt_SuccessClearsFailure(t *testing.T) {
-	svc := routeAttemptTestService(30 * time.Second)
+	svc := routeAttemptTestService(t, 30*time.Second)
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
 		Harness:  "agent",
 		Provider: "bragi",
@@ -92,7 +92,7 @@ func TestRecordRouteAttempt_SuccessClearsFailure(t *testing.T) {
 }
 
 func TestRecordRouteAttempt_TTLExpiryRemovesDemotion(t *testing.T) {
-	svc := routeAttemptTestService(10 * time.Millisecond)
+	svc := routeAttemptTestService(t, 10*time.Millisecond)
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
 		Harness:   "agent",
 		Provider:  "bragi",
@@ -116,7 +116,7 @@ func TestRecordRouteAttempt_TTLExpiryRemovesDemotion(t *testing.T) {
 }
 
 func TestRouteStatus_RouteAttemptCooldownSurfaces(t *testing.T) {
-	svc := routeAttemptTestService(30 * time.Second)
+	svc := routeAttemptTestService(t, 30*time.Second)
 	recordedAt := time.Now().Add(-time.Second).UTC()
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
 		Harness:   "agent",
@@ -163,7 +163,7 @@ func TestRouteStatus_RouteAttemptCooldownSurfaces(t *testing.T) {
 }
 
 func TestRouteAttempts_ProviderModelKeying(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	ctx := context.Background()
 
 	keyX := routing.ProviderModelKey("providerA", "", "modelX")
@@ -418,7 +418,8 @@ func TestResolveRoute_GeminiProfilesUseCatalogModels(t *testing.T) {
 	}
 }
 
-func routeAttemptTestService(cooldown time.Duration) *service {
+func routeAttemptTestService(t testing.TB, cooldown time.Duration) *service {
+	t.Helper()
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"bragi":      {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "qwen"},
@@ -428,7 +429,7 @@ func routeAttemptTestService(cooldown time.Duration) *service {
 		defaultName:    "bragi",
 		healthCooldown: cooldown,
 	}
-	return &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	return newTestService(t, ServiceOptions{ServiceConfig: sc})
 }
 
 func routingHarnessEntry(t *testing.T, entries []routing.HarnessEntry, name string) routing.HarnessEntry {

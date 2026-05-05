@@ -43,7 +43,7 @@ func (f *fakeServiceConfig) SessionLogDir() string {
 	return filepath.Join(f.workDir, ".fizeau", "sessions")
 }
 func TestListProviders_NoServiceConfig(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	_, err := svc.ListProviders(context.Background())
 	if err == nil {
 		t.Fatal("expected error when ServiceConfig is nil")
@@ -74,7 +74,7 @@ func TestListProviders_Connected(t *testing.T) {
 		names:       []string{"local"},
 		defaultName: "local",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListProviders(context.Background())
 	if err != nil {
@@ -134,7 +134,7 @@ func TestListProviders_OMLXAdvertisesReasoningControl(t *testing.T) {
 		names:       []string{"vidar-omlx"},
 		defaultName: "vidar-omlx",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListProviders(context.Background())
 	if err != nil {
@@ -156,7 +156,7 @@ func TestListProviders_Unreachable(t *testing.T) {
 		names:       []string{"remote"},
 		defaultName: "remote",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListProviders(context.Background())
 	if err != nil {
@@ -202,7 +202,7 @@ func TestProviderStatus_EndpointDownSurfaced(t *testing.T) {
 		names:       []string{"omlx"},
 		defaultName: "omlx",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListProviders(context.Background())
 	if err != nil {
@@ -246,7 +246,7 @@ func TestListProviders_Anthropic(t *testing.T) {
 		names:       []string{"claude-api"},
 		defaultName: "claude-api",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListProviders(context.Background())
 	if err != nil {
@@ -270,7 +270,7 @@ func TestListProviders_AnthropicNoKey(t *testing.T) {
 		names:       []string{"claude-api"},
 		defaultName: "claude-api",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListProviders(context.Background())
 	if err != nil {
@@ -288,7 +288,7 @@ func TestListProviders_AnthropicNoKey(t *testing.T) {
 }
 
 func TestHealthCheck_NoServiceConfig(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	err := svc.HealthCheck(context.Background(), HealthTarget{Type: "provider", Name: "x"})
 	if err == nil {
 		t.Fatal("expected error when ServiceConfig is nil")
@@ -307,7 +307,7 @@ func TestHealthCheck_Provider_Connected(t *testing.T) {
 			"local": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
 		},
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	if err := svc.HealthCheck(context.Background(), HealthTarget{Type: "provider", Name: "local"}); err != nil {
 		t.Errorf("HealthCheck connected provider: unexpected error: %v", err)
@@ -320,7 +320,7 @@ func TestHealthCheckProviders_UnreachableIncludesReason(t *testing.T) {
 			"dead": {Type: "lmstudio", BaseURL: "http://127.0.0.1:19999/v1"},
 		},
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	err := svc.HealthCheck(context.Background(), HealthTarget{Type: "provider", Name: "dead"})
 	if err == nil {
@@ -333,7 +333,7 @@ func TestHealthCheckProviders_UnreachableIncludesReason(t *testing.T) {
 
 func TestHealthCheck_Provider_NotFound(t *testing.T) {
 	sc := &fakeServiceConfig{providers: map[string]ServiceProviderEntry{}}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	err := svc.HealthCheck(context.Background(), HealthTarget{Type: "provider", Name: "missing"})
 	if err == nil {
@@ -342,7 +342,7 @@ func TestHealthCheck_Provider_NotFound(t *testing.T) {
 }
 
 func TestHealthCheck_Harness_Available(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	// "agent" is always available (embedded).
 	if err := svc.HealthCheck(context.Background(), HealthTarget{Type: "harness", Name: "agent"}); err != nil {
 		t.Errorf("HealthCheck embedded harness: unexpected error: %v", err)
@@ -350,7 +350,7 @@ func TestHealthCheck_Harness_Available(t *testing.T) {
 }
 
 func TestHealthCheck_Harness_NotRegistered(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	err := svc.HealthCheck(context.Background(), HealthTarget{Type: "harness", Name: "nonexistent-harness-xyz"})
 	if err == nil {
 		t.Fatal("expected error for unregistered harness")
@@ -358,7 +358,7 @@ func TestHealthCheck_Harness_NotRegistered(t *testing.T) {
 }
 
 func TestHealthCheck_InvalidType(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	err := svc.HealthCheck(context.Background(), HealthTarget{Type: "invalid", Name: "x"})
 	if err == nil {
 		t.Fatal("expected error for invalid HealthTarget.Type")
@@ -412,7 +412,7 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 		}, nil, nil
 	})
 
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	// HealthCheck for "claude" requires the binary to be discoverable.
 	// If claude is not in PATH, the harness is unavailable → the quota refresh
 	// is never reached. To keep the test self-contained we call the helper
@@ -492,7 +492,7 @@ func TestHealthCheck_GeminiDoesNotInvokeQuotaProbe(t *testing.T) {
 		return nil, nil, nil
 	})
 
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	// "gemini" is registered but unavailable in CI (binary not found).
 	// HealthCheck returns an error but must not invoke the quota refresher.
 	_ = svc.HealthCheck(context.Background(), HealthTarget{Type: "harness", Name: "gemini"})
@@ -663,7 +663,7 @@ func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
 	})
 
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	if _, err := svc.ListHarnesses(context.Background()); err != nil {
 		t.Fatalf("ListHarnesses: %v", err)
 	}
@@ -843,7 +843,7 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 		}
 	})
 
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	_, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "smart"})
 	if err == nil {
 		t.Fatal("ResolveRoute should not wait for background quota refresh to make missing-cache subscription harnesses eligible")

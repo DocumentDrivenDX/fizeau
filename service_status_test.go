@@ -44,7 +44,7 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 		t.Fatalf("WriteCodexQuota: %v", err)
 	}
 
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	harnesses, err := svc.ListHarnesses(context.Background())
 	if err != nil {
 		t.Fatalf("ListHarnesses: %v", err)
@@ -90,7 +90,7 @@ func TestListHarnesses_ClaudeQuotaUsesPreservedWindows(t *testing.T) {
 		t.Fatalf("WriteClaudeQuota: %v", err)
 	}
 
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	infos, err := svc.ListHarnesses(context.Background())
 	if err != nil {
 		t.Fatalf("ListHarnesses: %v", err)
@@ -298,7 +298,7 @@ func TestReferenceConsumerDoctorReportUsesServiceStatus(t *testing.T) {
 		names:       []string{"openrouter"},
 		defaultName: "openrouter",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	providers, err := svc.ListProviders(context.Background())
 	if err != nil {

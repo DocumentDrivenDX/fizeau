@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 )
 
@@ -39,7 +38,7 @@ func fakeFailingModelsServer(status int) *httptest.Server {
 }
 
 func TestListModels_noServiceConfig(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	_, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err == nil {
 		t.Fatal("expected error when ServiceConfig is nil")
@@ -63,7 +62,7 @@ func TestListModels_providerTypesOpenRouterLMStudioOMLX(t *testing.T) {
 		names:       []string{"openrouter", "studio", "vidar-omlx"},
 		defaultName: "openrouter",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err != nil {
@@ -111,7 +110,7 @@ func TestListModels_endpointPoolReturnsEndpointMetadata(t *testing.T) {
 		names:       []string{"studio"},
 		defaultName: "studio",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{Provider: "studio"})
 	if err != nil {
@@ -152,7 +151,7 @@ func TestListModels_endpointPoolSkipsFailingEndpoint(t *testing.T) {
 		names:       []string{"studio"},
 		defaultName: "studio",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{Provider: "studio"})
 	if err != nil {
@@ -180,7 +179,7 @@ func TestListModels_emptyFilterReturnsAll(t *testing.T) {
 		names:       []string{"bragi", "remote"},
 		defaultName: "bragi",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err != nil {
@@ -205,7 +204,7 @@ func TestListModels_filtersProvider(t *testing.T) {
 		names:       []string{"bragi", "remote"},
 		defaultName: "bragi",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{Provider: "bragi"})
 	if err != nil {
@@ -232,7 +231,7 @@ func TestListModels_isDefaultMatchesConfig(t *testing.T) {
 		names:       []string{"bragi"},
 		defaultName: "bragi",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err != nil {
@@ -280,7 +279,7 @@ func TestListModels_catalogRefSetForKnown(t *testing.T) {
 		names:       []string{"bragi"},
 		defaultName: "bragi",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err != nil {
@@ -309,7 +308,7 @@ func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T
 		names:       []string{"bragi"},
 		defaultName: "bragi",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err != nil {
@@ -357,7 +356,7 @@ func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T
 }
 
 func TestListModels_catalogMetadataForSubprocessHarnessModels(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{Harness: "claude"})
 	if err != nil {
@@ -402,7 +401,7 @@ func TestListModels_harnessFilter(t *testing.T) {
 		names:       []string{"bragi"},
 		defaultName: "bragi",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	// Agent harness should return results.
 	infos, err := svc.ListModels(context.Background(), ModelFilter{Harness: "agent"})
@@ -487,7 +486,7 @@ func TestListModels_rankPosition(t *testing.T) {
 		names:       []string{"bragi"},
 		defaultName: "bragi",
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err != nil {

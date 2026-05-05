@@ -12,7 +12,7 @@ import (
 // TestRouteStatus_emptyConfig verifies that RouteStatus returns an empty report
 // when no ServiceConfig is provided.
 func TestRouteStatus_emptyConfig(t *testing.T) {
-	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{})
 	report, err := svc.RouteStatus(context.Background())
 	if err != nil {
 		t.Fatalf("RouteStatus: unexpected error: %v", err)
@@ -38,7 +38,7 @@ func TestRouteStatus_modelsPopulatedFromProviders(t *testing.T) {
 		},
 		names: []string{"bragi", "openrouter"},
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	report, err := svc.RouteStatus(context.Background())
 	if err != nil {
@@ -188,7 +188,7 @@ func TestRouteStatus_attemptCooldownStateSurfaces(t *testing.T) {
 		},
 		names: []string{"bragi", "openrouter"},
 	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 	recordedAt := time.Now().Add(-time.Second).UTC()
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
 		Harness:   "agent",
