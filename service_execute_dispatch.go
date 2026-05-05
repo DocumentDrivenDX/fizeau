@@ -2,16 +2,11 @@ package fizeau
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
-	opencodeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/opencode"
-	piharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/pi"
+	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
 )
 
 type executeRouteResolver interface {
@@ -61,37 +56,33 @@ func (s *service) executeRunnerInvoker() executeRunnerInvoker {
 }
 
 func (s *service) dispatchExecuteRun(ctx context.Context, run executeRunContext) {
-	switch run.decision.Harness {
-	case "agent", "":
-		s.runNative(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session)
-	case "claude":
-		s.runSubprocess(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session, &claudeharness.Runner{})
-	case "codex":
-		s.runSubprocess(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session, &codexharness.Runner{})
-	case "gemini":
-		s.runSubprocess(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session, &geminiharness.Runner{})
-	case "opencode":
-		s.runSubprocess(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session, &opencodeharness.Runner{})
-	case "pi":
-		s.runSubprocess(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session, &piharness.Runner{})
-	case "virtual":
-		s.runVirtual(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session)
-	case "script":
-		s.runScript(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session)
-	default:
-		if cfg, ok := s.registry.Get(run.decision.Harness); ok && cfg.IsHTTPProvider {
-			s.runNative(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session)
-			return
-		}
-		finalizeAndEmit(run.out, run.seq, run.meta, run.req, run.sl, harnesses.FinalData{
-			Status:     "failed",
-			Error:      fmt.Sprintf("harness %q dispatch not yet wired in service.Execute", run.decision.Harness),
-			DurationMS: time.Since(run.start).Milliseconds(),
-			RoutingActual: &harnesses.RoutingActual{
-				Harness:  run.decision.Harness,
-				Provider: run.decision.Provider,
-				Model:    run.decision.Model,
-			},
-		})
+	decision := serviceimpl.ExecuteRunnerDecision{
+		Harness:  run.decision.Harness,
+		Provider: run.decision.Provider,
+		Model:    run.decision.Model,
 	}
+	serviceimpl.DispatchExecuteRun(ctx, serviceimpl.ExecuteDispatchRequest{
+		Decision: decision,
+		Started:  run.start,
+	}, serviceimpl.ExecuteDispatchCallbacks{
+		RunNative: func(ctx context.Context) {
+			s.runNative(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session)
+		},
+		RunSubprocess: func(ctx context.Context, runner harnesses.Harness) {
+			s.runSubprocess(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session, runner)
+		},
+		RunVirtual: func(ctx context.Context) {
+			s.runVirtual(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session)
+		},
+		RunScript: func(ctx context.Context) {
+			s.runScript(ctx, run.req, run.decision, run.meta, run.out, run.seq, run.start, run.sl, run.session)
+		},
+		IsHTTPProvider: func(harness string) bool {
+			cfg, ok := s.registry.Get(harness)
+			return ok && cfg.IsHTTPProvider
+		},
+		Finalize: func(final harnesses.FinalData) {
+			finalizeAndEmit(run.out, run.seq, run.meta, run.req, run.sl, final)
+		},
+	})
 }
