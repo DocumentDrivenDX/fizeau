@@ -23,6 +23,13 @@ binary, anything else) interact only through this surface. **They do not import
 agent internal packages.** When new behavior is needed, consumers file an issue or
 PR against this contract; agent maintainers decide whether the surface grows.
 
+Implementation ownership and package boundaries are governed by
+[ADR-008: Service Package and Transcript Boundaries](../adr/ADR-008-service-package-and-transcript-boundaries.md).
+That ADR makes this contract the public facade, assigns transcript/progress
+semantics to Fizeau, and treats downstream tools such as DDx as pass-through
+consumers of public service events rather than owners of harness-native
+transcript parsing.
+
 ## Module value proposition
 
 `fiz` is the one stop shop for automatically routed one-shot
