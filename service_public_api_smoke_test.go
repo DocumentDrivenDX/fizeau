@@ -55,4 +55,47 @@ func TestPublicServiceAPISmoke(t *testing.T) {
 	if event.Type != fizeau.ServiceEventTypeProgress || len(event.Data) == 0 {
 		t.Fatalf("unexpected event shape: %+v", event)
 	}
+
+	if err := svc.RecordRouteAttempt(context.Background(), fizeau.RouteAttempt{
+		Harness:  "agent",
+		Provider: "public-provider",
+		Model:    "public-model",
+		Status:   "success",
+	}); err != nil {
+		t.Fatalf("RecordRouteAttempt: %v", err)
+	}
+	if _, err := svc.RouteStatus(context.Background()); err != nil {
+		t.Fatalf("RouteStatus: %v", err)
+	}
+	if err := fizeau.ValidateUsageSince("today"); err != nil {
+		t.Fatalf("ValidateUsageSince: %v", err)
+	}
+
+	quotaStore := fizeau.NewProviderQuotaStateStore()
+	quotaStore.MarkQuotaExhausted("public-provider", time.Now().Add(time.Minute))
+	if state, _ := quotaStore.State("public-provider", time.Now()); state != fizeau.ProviderQuotaStateQuotaExhausted {
+		t.Fatalf("quota state = %q, want quota_exhausted", state)
+	}
+	burnRate := fizeau.NewProviderBurnRateTracker()
+	burnRate.SetBudget("public-provider", 100)
+	if got := burnRate.Budget("public-provider"); got != 100 {
+		t.Fatalf("burn-rate budget = %d, want 100", got)
+	}
+
+	metrics := fizeau.RoutingQualityMetrics{
+		AutoAcceptanceRate:       1,
+		OverrideDisagreementRate: 0,
+		OverrideClassBreakdown: []fizeau.OverrideClassBucket{{
+			PromptFeatureBucket: "tokens=tiny,tools=no,reasoning=none",
+			Axis:                "model",
+			Match:               true,
+			Count:               1,
+			SuccessOutcomes:     1,
+		}},
+		TotalRequests:  1,
+		TotalOverrides: 1,
+	}
+	if metrics.OverrideClassBreakdown[0].Axis != "model" {
+		t.Fatalf("unexpected routing-quality metric shape: %+v", metrics)
+	}
 }
