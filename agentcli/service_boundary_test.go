@@ -11,12 +11,7 @@ import (
 	"testing"
 )
 
-// modelRoutesParserDeprecationCycleEnded is flipped to true once the
-// one-release deprecation window for `model_routes:` closes. While
-// false, configs may still parse the deprecated block; once true,
-// TestNoModelRoutesParserAfterDeprecation enforces removal of the
-// loader entry-point in internal/config.
-const modelRoutesParserDeprecationCycleEnded = false
+const modelRoutesParserDeprecationCycleEnded = true
 
 // TestCLIRoutingProviderHasNoCoreProviderImpl asserts that
 // agentcli/routing_provider.go contains no type that implements the
@@ -55,21 +50,16 @@ func TestCLIRoutingProviderHasNoCoreProviderImpl(t *testing.T) {
 	}
 }
 
-// TestNoModelRoutesParserAfterDeprecation is gated on
-// modelRoutesParserDeprecationCycleEnded. While false, this test is a
-// no-op (deprecation cycle still in effect; the loader is intentionally
-// kept). Once flipped to true, the test asserts that
-// internal/config/legacy_model_routes.go no longer carries the
-// `model_routes` YAML envelope or the `noteLegacyModelRoutes` parser —
-// proving the deprecation cycle ended cleanly.
-func TestNoModelRoutesParserAfterDeprecation(t *testing.T) {
+// TestNoRoutePlansParserAfterDeprecation asserts the deprecated route-table
+// parser is gone from internal/config.
+func TestNoRoutePlansParserAfterDeprecation(t *testing.T) {
 	if !modelRoutesParserDeprecationCycleEnded {
-		t.Skip("model_routes deprecation cycle still in effect (ADR-005); flip modelRoutesParserDeprecationCycleEnded when the cycle ends to enforce parser removal")
+		t.Skip("route-table deprecation cycle still in effect")
 	}
 	root := repoRootForBoundaryTest(t)
 	path := filepath.Join(root, "internal", "config", "legacy_model_routes.go")
 	if _, err := os.Stat(path); err == nil {
-		t.Fatalf("internal/config/legacy_model_routes.go must be deleted after the deprecation cycle (ADR-005); file still present at %s", path)
+		t.Fatalf("internal/config/legacy_model_routes.go must be deleted after the deprecation cycle; file still present at %s", path)
 	}
 }
 

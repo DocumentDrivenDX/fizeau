@@ -171,11 +171,6 @@ type RoutingConfig struct {
 	CapabilityWeight float64 `yaml:"capability_weight"`
 }
 
-// ModelRouteConfig and ModelRouteCandidateConfig were moved to
-// legacy_model_routes.go as part of ADR-005. The structural boundary
-// test TestConfigSchemaHasNoModelRoutes asserts those types do not
-// re-enter this file.
-
 // BackendPoolConfig describes a named routing target that selects one provider
 // before a run using a specified strategy.
 type BackendPoolConfig struct {
@@ -255,12 +250,6 @@ type Config struct {
 	// Routing configures default model-first resolution behavior.
 	Routing RoutingConfig `yaml:"routing,omitempty"`
 
-	// ModelRoutes is the deprecated (ADR-005) model-first routing table.
-	// Populated by a second-pass YAML decoder in legacy_model_routes.go
-	// (no parsing tag is declared here), so config.go itself owns no
-	// part of the deprecated surface.
-	ModelRoutes map[string]ModelRouteConfig `yaml:"-"`
-
 	// Backends is a map of named backend pool configurations.
 	Backends map[string]BackendPoolConfig `yaml:"backends,omitempty"`
 
@@ -315,9 +304,7 @@ type Config struct {
 	LegacyAPIKey   string `yaml:"api_key,omitempty"`
 	LegacyModel    string `yaml:"model,omitempty"`
 
-	warnings               []string                    `yaml:"-"`
-	legacyModelRoutes      map[string]ModelRouteConfig `yaml:"-"`
-	legacyModelRoutesPaths []string                    `yaml:"-"`
+	warnings []string `yaml:"-"`
 }
 
 // Defaults returns a Config with sensible defaults.
@@ -355,9 +342,6 @@ func Load(workDir string) (*Config, error) {
 		}
 		if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 			return nil, fmt.Errorf("config: parsing %s: %w", p, err)
-		}
-		if err := noteLegacyModelRoutes(&cfg, []byte(expanded), p); err != nil {
-			return nil, err
 		}
 	}
 
@@ -759,8 +743,6 @@ func (c *Config) GetBackend(name string) (BackendPoolConfig, bool) {
 	return bc, ok
 }
 
-// GetModelRoute / GetDeprecatedBackendRoute moved to legacy_model_routes.go.
-
 // BackendNames returns configured backend pool names in stable alphabetical order.
 func (c *Config) BackendNames() []string {
 	if c.Backends == nil {
@@ -779,8 +761,6 @@ func (c *Config) BackendNames() []string {
 	}
 	return names
 }
-
-// ModelRouteNames moved to legacy_model_routes.go.
 
 // Warnings returns config-load warnings that the CLI may surface.
 func (c *Config) Warnings() []string {
@@ -935,8 +915,6 @@ func rejectLegacyProviderReasoningKeys(data []byte) error {
 
 func (c *Config) finalize() error {
 	c.warnings = nil
-	c.legacyModelRoutes = make(map[string]ModelRouteConfig)
-	c.emitLegacyModelRoutesWarnings()
 
 	if err := c.expandEndpointProviders(); err != nil {
 		return err
@@ -948,17 +926,6 @@ func (c *Config) finalize() error {
 	}
 
 	if err := c.validateProviders(); err != nil {
-		return err
-	}
-
-	if c.ModelRoutes == nil {
-		c.ModelRoutes = make(map[string]ModelRouteConfig)
-	}
-
-	if err := c.translateLegacyBackends(); err != nil {
-		return err
-	}
-	if err := c.validateModelRoutes(); err != nil {
 		return err
 	}
 
@@ -1185,10 +1152,6 @@ func providerUsesEndpoint(providerType string) bool {
 		return false
 	}
 }
-
-// translateLegacyBackends, translateLegacyBackend, validateModelRoutes,
-// validateModelRoute, translateLegacyBackendStrategy moved to
-// legacy_model_routes.go (ADR-005).
 
 // LoadModelCatalog loads the shared model catalog using the configured manifest override path.
 func (c *Config) LoadModelCatalog() (*modelcatalog.Catalog, error) {

@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -502,55 +501,10 @@ func discoverOpenAIModels(ctx context.Context, baseURL, apiKey string) (int, err
 	return len(mr.Data), nil
 }
 
-// serviceProviderCooldown scans all model routes for any candidate matching
-// providerName and returns the first active CooldownState, or nil.
+// serviceProviderCooldown is retained for the provider status field; live
+// route-attempt cooldowns are surfaced on RouteStatus per provider/model.
 func serviceProviderCooldown(sc ServiceConfig, providerName string, cooldown time.Duration) *CooldownState {
-	if sc == nil {
-		return nil
-	}
-	now := time.Now().UTC()
-	for _, routeName := range sc.ModelRouteNames() {
-		for _, candidate := range sc.ModelRouteCandidates(routeName) {
-			if candidate != providerName {
-				continue
-			}
-			failures := serviceLoadRouteFailures(sc, routeName)
-			failedAt, hasFail := failures[providerName]
-			if !hasFail {
-				continue
-			}
-			until := failedAt.Add(cooldown)
-			if until.Before(now) {
-				continue
-			}
-			return &CooldownState{
-				Reason:    "consecutive_failures",
-				Until:     until,
-				FailCount: 1,
-			}
-		}
-	}
 	return nil
-}
-
-// serviceLoadRouteFailures reads the file-backed route health state and returns
-// the Failures map (provider name → failure timestamp).
-func serviceLoadRouteFailures(sc ServiceConfig, routeName string) map[string]time.Time {
-	type routeHealthState struct {
-		Failures map[string]time.Time `json:"failures,omitempty"`
-	}
-	key := serviceRouteStateKey(routeName)
-	path := sc.RouteHealthPath(key)
-	// #nosec G304 -- operator-managed path under workDir
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var rs routeHealthState
-	if err := json.Unmarshal(data, &rs); err != nil {
-		return nil
-	}
-	return rs.Failures
 }
 
 func normalizeServiceProviderType(t string) string {
@@ -611,11 +565,6 @@ func endpointStatusFromProbe(name, baseURL string, probe providerProbeResult, ca
 		out.LastSuccessAt = capturedAt
 	}
 	return out
-}
-
-func serviceRouteStateKey(routeName string) string {
-	replacer := strings.NewReplacer("/", "_", ":", "_", " ", "_")
-	return replacer.Replace(routeName)
 }
 
 // healthCheckRefreshClaudeQuota refreshes the Claude direct PTY quota cache when

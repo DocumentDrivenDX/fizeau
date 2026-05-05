@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"strings"
 	"testing"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/routing"
@@ -13,7 +12,7 @@ import (
 
 // TestServiceExecuteRequestNoPreResolved is an AST guard against the
 // removed PreResolved field. ADR-005 step 1 deleted it; reintroducing it
-// would silently re-enable the model_routes injection conduit.
+// would silently re-enable caller-supplied route decisions.
 func TestServiceExecuteRequestNoPreResolved(t *testing.T) {
 	requireStructHasNoField(t, "service.go", "ServiceExecuteRequest", "PreResolved")
 	requireStructHasNoField(t, "service.go", "RouteRequest", "PreResolved")
@@ -144,9 +143,7 @@ func TestRouteCandidateFilterReasonClassification(t *testing.T) {
 }
 
 // TestResolveRouteIsInformationalOnly verifies that ResolveRoute returns
-// ranked candidates without short-circuiting on configured model_routes.
-// ADR-005 step 1 reverted the 90d9b03 short-circuit; the engine flow must
-// score every candidate.
+// ranked candidates through the engine flow.
 func TestResolveRouteIsInformationalOnly(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -154,14 +151,6 @@ func TestResolveRouteIsInformationalOnly(t *testing.T) {
 		},
 		names:       []string{"local"},
 		defaultName: "local",
-		routeConfigs: map[string]ServiceModelRouteConfig{
-			"model-a": {
-				Strategy: "ordered-failover",
-				Candidates: []ServiceRouteCandidateEntry{
-					{Provider: "local", Model: "model-a", Priority: 100},
-				},
-			},
-		},
 	}
 	svc := publicRouteTraceService(sc)
 
@@ -174,11 +163,6 @@ func TestResolveRouteIsInformationalOnly(t *testing.T) {
 	}
 	if dec == nil || len(dec.Candidates) == 0 {
 		t.Fatalf("expected engine-flow decision, got %#v", dec)
-	}
-	for _, c := range dec.Candidates {
-		if strings.HasPrefix(c.Reason, "model_routes ") {
-			t.Fatalf("ResolveRoute short-circuited model_routes; candidate=%#v", c)
-		}
 	}
 }
 

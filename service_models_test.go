@@ -253,39 +253,6 @@ func TestListModels_isDefaultMatchesConfig(t *testing.T) {
 	}
 }
 
-func TestListModels_isConfiguredMatchesRoute(t *testing.T) {
-	ts := fakeModelsServer([]string{"model-a", "configured-model", "model-b"})
-	defer ts.Close()
-
-	sc := &fakeServiceConfig{
-		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
-		},
-		names:       []string{"bragi"},
-		defaultName: "bragi",
-		routes:      map[string][]string{"configured-model": {"bragi"}},
-	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
-
-	infos, err := svc.ListModels(context.Background(), ModelFilter{})
-	if err != nil {
-		t.Fatalf("ListModels: %v", err)
-	}
-
-	var configuredCount int
-	for _, info := range infos {
-		if info.IsConfigured {
-			configuredCount++
-			if info.ID != "configured-model" {
-				t.Errorf("IsConfigured=true for unexpected model %q", info.ID)
-			}
-		}
-	}
-	if configuredCount != 1 {
-		t.Errorf("want exactly 1 IsConfigured model, got %d", configuredCount)
-	}
-}
-
 func TestListModels_catalogRefSetForKnown(t *testing.T) {
 	// Load the embedded catalog to find a known model ID.
 	cat, err := modelcatalog.Default()

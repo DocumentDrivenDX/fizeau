@@ -169,12 +169,6 @@ func (s *stubServiceConfig) DefaultProviderName() string { return s.defaultName 
 func (s *stubServiceConfig) Provider(string) (fizeau.ServiceProviderEntry, bool) {
 	return fizeau.ServiceProviderEntry{}, false
 }
-func (s *stubServiceConfig) ModelRouteNames() []string            { return nil }
-func (s *stubServiceConfig) ModelRouteCandidates(string) []string { return nil }
-func (s *stubServiceConfig) ModelRouteConfig(string) fizeau.ServiceModelRouteConfig {
-	return fizeau.ServiceModelRouteConfig{}
-}
 func (s *stubServiceConfig) HealthCooldown() time.Duration { return 0 }
 func (s *stubServiceConfig) WorkDir() string               { return "" }
 func (s *stubServiceConfig) SessionLogDir() string         { return "" }
-func (s *stubServiceConfig) RouteHealthPath(string) string { return "" }

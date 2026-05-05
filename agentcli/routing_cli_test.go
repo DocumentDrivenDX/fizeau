@@ -196,13 +196,12 @@ func writeRoutingHistorySession(t *testing.T, workDir, sessionID string, ts time
 	require.NoError(t, os.WriteFile(filepath.Join(logDir, sessionID+".jsonl"), append(line, '\n'), 0o644))
 }
 
-func TestCLI_Run_ModelRouteByModelName(t *testing.T) {
+func TestCLI_Run_ModelByModelName(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
 	home := t.TempDir()
 
 	bragi := newCountedOpenAIServer(t, http.StatusOK, "bragi-runtime-model", "bragi ok")
-	grendel := newCountedOpenAIServer(t, http.StatusOK, "grendel-runtime-model", "grendel ok")
 
 	writeTempConfig(t, workDir, `
 providers:
@@ -210,22 +209,8 @@ providers:
     type: lmstudio
     base_url: `+bragi.baseURL()+`
     api_key: test
-  grendel:
-    type: lmstudio
-    base_url: `+grendel.baseURL()+`
-    api_key: test
 routing:
   default_model: qwen3.5-27b
-model_routes:
-  qwen3.5-27b:
-    strategy: priority-round-robin
-    candidates:
-      - provider: bragi
-        model: qwen3.5-27b
-        priority: 100
-      - provider: grendel
-        model: qwen3.5-27b
-        priority: 100
 default: bragi
 `)
 
@@ -268,23 +253,22 @@ default: bragi
 	var secondResult routingResult
 	require.NoError(t, json.Unmarshal([]byte(second.stdout), &secondResult), "stdout=%s", second.stdout)
 	assert.Equal(t, "qwen3.5-27b", secondResult.SelectedRoute)
-	assert.Equal(t, "grendel", secondResult.SelectedProvider)
+	assert.Equal(t, "bragi", secondResult.SelectedProvider)
 	assert.Equal(t, "qwen3.5-27b", secondResult.RequestedModel)
 	assert.Equal(t, "qwen3.5-27b", secondResult.ResolvedModel)
-	assert.Equal(t, "qwen3.5-27b", grendel.requestedModel())
+	assert.Equal(t, "qwen3.5-27b", bragi.requestedModel())
 
 	secondSessionPath := latestSessionLogPath(t, workDir)
 	secondEvents, err := fizeau.ReadSessionEvents(secondSessionPath)
 	require.NoError(t, err)
 	secondEnd := eventDataByType(t, secondEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "qwen3.5-27b", secondEnd["requested_model"])
-	assert.Equal(t, "grendel", secondEnd["selected_provider"])
+	assert.Equal(t, "bragi", secondEnd["selected_provider"])
 
-	assert.Equal(t, 1, bragi.chatCallCount())
-	assert.Equal(t, 1, grendel.chatCallCount())
+	assert.Equal(t, 2, bragi.chatCallCount())
 }
 
-func TestCLI_ModelRouteFailoverOnAvailabilityError(t *testing.T) {
+func TestCLI_RoutePlanFailoverOnAvailabilityError(t *testing.T) {
 	t.Skip("ADR-005 step 1 removed multi-candidate failover via PreResolved; coverage returns when the smart-routing engine owns provider failover (steps 2+3).")
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
@@ -303,16 +287,6 @@ providers:
     type: lmstudio
     base_url: `+healthy.baseURL()+`
     api_key: test
-model_routes:
-  qwen3.5-27b:
-    strategy: ordered-failover
-    candidates:
-      - provider: bragi
-        model: qwen3.5-27b
-        priority: 100
-      - provider: openrouter
-        model: qwen/qwen3.5-27b
-        priority: 10
 `)
 
 	type routingResult struct {
@@ -348,7 +322,7 @@ model_routes:
 	assert.Equal(t, 1, healthy.chatCallCount())
 }
 
-func TestCLI_ModelRouteDoesNotFailoverOnDeterministic400(t *testing.T) {
+func TestCLI_RoutePlanDoesNotFailoverOnDeterministic400(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
 	home := t.TempDir()
@@ -366,14 +340,6 @@ providers:
     type: lmstudio
     base_url: `+healthy.baseURL()+`
     api_key: test
-model_routes:
-  qwen3.5-27b:
-    strategy: ordered-failover
-    candidates:
-      - provider: bragi
-        model: qwen3.5-27b
-      - provider: openrouter
-        model: qwen/qwen3.5-27b
 `)
 
 	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "no failover")

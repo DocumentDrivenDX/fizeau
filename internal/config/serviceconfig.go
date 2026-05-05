@@ -70,50 +70,6 @@ func (c *configServiceConfig) Provider(name string) (fizeau.ServiceProviderEntry
 	}, true
 }
 
-func (c *configServiceConfig) ModelRouteNames() []string {
-	if c.cfg == nil {
-		return nil
-	}
-	return c.cfg.ModelRouteNames()
-}
-
-func (c *configServiceConfig) ModelRouteCandidates(routeName string) []string {
-	if c.cfg == nil {
-		return nil
-	}
-	route, ok := c.cfg.ModelRoutes[routeName]
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(route.Candidates))
-	for _, cand := range route.Candidates {
-		out = append(out, cand.Provider)
-	}
-	return out
-}
-
-func (c *configServiceConfig) ModelRouteConfig(routeName string) fizeau.ServiceModelRouteConfig {
-	if c.cfg == nil {
-		return fizeau.ServiceModelRouteConfig{}
-	}
-	route, ok := c.cfg.ModelRoutes[routeName]
-	if !ok {
-		return fizeau.ServiceModelRouteConfig{}
-	}
-	candidates := make([]fizeau.ServiceRouteCandidateEntry, 0, len(route.Candidates))
-	for _, cand := range route.Candidates {
-		candidates = append(candidates, fizeau.ServiceRouteCandidateEntry{
-			Provider: cand.Provider,
-			Model:    cand.Model,
-			Priority: cand.Priority,
-		})
-	}
-	return fizeau.ServiceModelRouteConfig{
-		Strategy:   route.Strategy,
-		Candidates: candidates,
-	}
-}
-
 func (c *configServiceConfig) HealthCooldown() time.Duration {
 	if c.cfg == nil || c.cfg.Routing.HealthCooldown == "" {
 		return 0
@@ -135,12 +91,4 @@ func (c *configServiceConfig) SessionLogDir() string {
 		return ""
 	}
 	return filepath.Join(workDir, ProjectConfigDirName(), "sessions")
-}
-
-func (c *configServiceConfig) RouteHealthPath(routeKey string) string {
-	workDir := c.WorkDir()
-	if workDir == "" {
-		return ""
-	}
-	return filepath.Join(workDir, ProjectConfigDirName(), "route-health-"+routeKey+".json")
 }

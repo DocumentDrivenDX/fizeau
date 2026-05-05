@@ -114,9 +114,9 @@ type FizeauService interface {
     // harness/provider/model/endpoint; success clears matching active failures.
     RecordRouteAttempt(ctx context.Context, attempt RouteAttempt) error
 
-    // RouteStatus returns global routing state across all routes: cooldowns,
-    // recent decisions, observation-derived per-(provider source, endpoint,
-    // model) latency.
+    // RouteStatus returns global routing state across live provider/model
+    // candidates: cooldowns, recent decisions, observation-derived
+    // per-(provider source, endpoint, model) latency.
     // Distinct from per-request ResolveRoute — this is the read-only operator
     // dashboard view.
     RouteStatus(ctx context.Context) (*RouteStatusReport, error)
@@ -841,8 +841,8 @@ type RouteStatusReport struct {
 }
 
 type RouteStatusEntry struct {
-    Model          string                  // route key
-    Strategy       string                  // "priority-round-robin" | "first-available"
+    Model          string
+    Strategy       string                  // informational, normally "auto"
     Candidates     []RouteCandidateStatus
     LastDecision   *RouteDecision          // most recent ResolveRoute result for this key (cached)
     LastDecisionAt time.Time

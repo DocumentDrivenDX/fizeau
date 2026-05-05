@@ -39,12 +39,7 @@ func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelIn
 	// Load the model catalog once for cross-referencing.
 	cat, _ := modelcatalog.Default() // ignore error: catalog miss is non-fatal
 
-	// Build lookup sets from config.
 	defaultProviderName := sc.DefaultProviderName()
-	configuredRouteNames := make(map[string]bool, len(sc.ModelRouteNames()))
-	for _, rn := range sc.ModelRouteNames() {
-		configuredRouteNames[rn] = true
-	}
 
 	names := sc.ProviderNames()
 
@@ -78,7 +73,7 @@ func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelIn
 			}
 
 			isDefaultProvider := providerName == defaultProviderName
-			models := listModelsForProvider(ctx, providerName, entry, isDefaultProvider, sc, cat, configuredRouteNames)
+			models := listModelsForProvider(ctx, providerName, entry, isDefaultProvider, sc, cat)
 			results[idx] = indexedModels{idx: idx, models: models}
 		}(i, name)
 	}
@@ -232,7 +227,6 @@ func listModelsForProvider(
 	isDefaultProvider bool,
 	sc ServiceConfig,
 	cat *modelcatalog.Catalog,
-	configuredRouteNames map[string]bool,
 ) []ModelInfo {
 	// Discover model IDs from the provider.
 	discoveries := discoverAndRankModels(ctx, entry, cat)
@@ -295,9 +289,6 @@ func listModelsForProvider(
 
 			// IsDefault: provider is default AND this model is the configured default model.
 			info.IsDefault = isDefaultProvider && configuredDefaultModel != "" && id == configuredDefaultModel
-
-			// IsConfigured: model ID matches an explicit model_routes entry.
-			info.IsConfigured = configuredRouteNames[id]
 
 			// RankPosition from discovery ranking.
 			if pos, ok := rankPos[id]; ok {

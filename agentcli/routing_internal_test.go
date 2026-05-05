@@ -108,7 +108,7 @@ func TestResolveRouteTarget_PrecedenceOrder(t *testing.T) {
 // engine.
 
 func TestHealthyCandidateIndexes_AllHealthy(t *testing.T) {
-	candidates := []agentConfig.ModelRouteCandidateConfig{
+	candidates := []routePlanCandidate{
 		{Provider: "local-1"},
 		{Provider: "local-2"},
 		{Provider: "cloud"},
@@ -121,7 +121,7 @@ func TestHealthyCandidateIndexes_AllHealthy(t *testing.T) {
 }
 
 func TestHealthyCandidateIndexes_SomeUnhealthy(t *testing.T) {
-	candidates := []agentConfig.ModelRouteCandidateConfig{
+	candidates := []routePlanCandidate{
 		{Provider: "local-1"},
 		{Provider: "local-2"},
 		{Provider: "cloud"},
@@ -139,7 +139,7 @@ func TestHealthyCandidateIndexes_SomeUnhealthy(t *testing.T) {
 }
 
 func TestHealthyCandidateIndexes_AllUnhealthy(t *testing.T) {
-	candidates := []agentConfig.ModelRouteCandidateConfig{
+	candidates := []routePlanCandidate{
 		{Provider: "local-1"},
 		{Provider: "local-2"},
 	}
@@ -156,7 +156,7 @@ func TestHealthyCandidateIndexes_AllUnhealthy(t *testing.T) {
 }
 
 func TestPriorityRoundRobinOrder_BasicRotation(t *testing.T) {
-	candidates := []agentConfig.ModelRouteCandidateConfig{
+	candidates := []routePlanCandidate{
 		{Provider: "local-1", Priority: 100},
 		{Provider: "local-2", Priority: 100},
 		{Provider: "cloud", Priority: 50},
@@ -183,7 +183,7 @@ func TestPriorityRoundRobinOrder_BasicRotation(t *testing.T) {
 }
 
 func TestPriorityRoundRobinOrder_FiltersUnhealthy(t *testing.T) {
-	candidates := []agentConfig.ModelRouteCandidateConfig{
+	candidates := []routePlanCandidate{
 		{Provider: "local-1", Priority: 100},
 		{Provider: "local-2", Priority: 100},
 		{Provider: "cloud", Priority: 50},
@@ -201,7 +201,7 @@ func TestPriorityRoundRobinOrder_FiltersUnhealthy(t *testing.T) {
 }
 
 func TestPriorityRoundRobinOrder_AllUnhealthyFallsBack(t *testing.T) {
-	candidates := []agentConfig.ModelRouteCandidateConfig{
+	candidates := []routePlanCandidate{
 		{Provider: "local-1", Priority: 100},
 		{Provider: "local-2", Priority: 100},
 	}
@@ -219,7 +219,7 @@ func TestPriorityRoundRobinOrder_AllUnhealthyFallsBack(t *testing.T) {
 }
 
 func TestOrderedFailoverOrder_AllHealthy(t *testing.T) {
-	candidates := []agentConfig.ModelRouteCandidateConfig{
+	candidates := []routePlanCandidate{
 		{Provider: "local-1"},
 		{Provider: "local-2"},
 		{Provider: "cloud"},
@@ -232,7 +232,7 @@ func TestOrderedFailoverOrder_AllHealthy(t *testing.T) {
 }
 
 func TestOrderedFailoverOrder_SkipsUnhealthy(t *testing.T) {
-	candidates := []agentConfig.ModelRouteCandidateConfig{
+	candidates := []routePlanCandidate{
 		{Provider: "local-1"},
 		{Provider: "local-2"},
 		{Provider: "cloud"},

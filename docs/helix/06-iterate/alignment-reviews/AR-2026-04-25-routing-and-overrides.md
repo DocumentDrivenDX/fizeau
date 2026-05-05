@@ -13,7 +13,7 @@
 
 ### Scope
 
-- ADR-005 smart routing replaces `model_routes` (v0.9.9 release work)
+- ADR-005 smart routing replaces the removed route-table field (v0.9.9 release work)
 - v0.9.10 prompt-caching across the stack (CachePolicy contract, Anthropic
   cache_control, openai-compat prefix-stability gate, cache-aware cost
   attribution)

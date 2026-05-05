@@ -24,8 +24,6 @@ type fakeServiceConfig struct {
 	providers      map[string]ServiceProviderEntry
 	names          []string
 	defaultName    string
-	routes         map[string][]string // routeName -> candidate provider names
-	routeConfigs   map[string]ServiceModelRouteConfig
 	healthCooldown time.Duration
 	workDir        string
 }
@@ -36,30 +34,6 @@ func (f *fakeServiceConfig) Provider(name string) (ServiceProviderEntry, bool) {
 	e, ok := f.providers[name]
 	return e, ok
 }
-func (f *fakeServiceConfig) ModelRouteNames() []string {
-	out := make([]string, 0, len(f.routes))
-	for k := range f.routes {
-		out = append(out, k)
-	}
-	return out
-}
-func (f *fakeServiceConfig) ModelRouteCandidates(routeName string) []string {
-	return f.routes[routeName]
-}
-func (f *fakeServiceConfig) ModelRouteConfig(routeName string) ServiceModelRouteConfig {
-	if f.routeConfigs != nil {
-		if rc, ok := f.routeConfigs[routeName]; ok {
-			return rc
-		}
-	}
-	// Fallback: build a minimal config from the routes map.
-	candidates := f.routes[routeName]
-	entries := make([]ServiceRouteCandidateEntry, len(candidates))
-	for i, p := range candidates {
-		entries[i] = ServiceRouteCandidateEntry{Provider: p, Priority: 100}
-	}
-	return ServiceModelRouteConfig{Candidates: entries}
-}
 func (f *fakeServiceConfig) HealthCooldown() time.Duration { return f.healthCooldown }
 func (f *fakeServiceConfig) WorkDir() string               { return f.workDir }
 func (f *fakeServiceConfig) SessionLogDir() string {
@@ -68,13 +42,6 @@ func (f *fakeServiceConfig) SessionLogDir() string {
 	}
 	return filepath.Join(f.workDir, ".fizeau", "sessions")
 }
-func (f *fakeServiceConfig) RouteHealthPath(routeKey string) string {
-	if f.workDir == "" {
-		return ""
-	}
-	return filepath.Join(f.workDir, ".fizeau", "route-health-"+routeKey+".json")
-}
-
 func TestListProviders_NoServiceConfig(t *testing.T) {
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
 	_, err := svc.ListProviders(context.Background())
@@ -320,47 +287,6 @@ func TestListProviders_AnthropicNoKey(t *testing.T) {
 	}
 }
 
-func TestListProviders_CooldownState(t *testing.T) {
-	dir := t.TempDir()
-	agentDir := filepath.Join(dir, ".fizeau")
-	if err := os.MkdirAll(agentDir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	// Write a route health state with a recent failure.
-	type routeState struct {
-		Failures map[string]time.Time `json:"failures"`
-	}
-	rs := routeState{Failures: map[string]time.Time{"myprovider": time.Now().UTC()}}
-	data, _ := json.Marshal(rs)
-	os.WriteFile(filepath.Join(agentDir, "route-health-myroute.json"), data, 0o600)
-
-	sc := &fakeServiceConfig{
-		providers: map[string]ServiceProviderEntry{
-			"myprovider": {Type: "lmstudio", BaseURL: "http://127.0.0.1:19999/v1"},
-		},
-		names:          []string{"myprovider"},
-		defaultName:    "myprovider",
-		routes:         map[string][]string{"myroute": {"myprovider"}},
-		healthCooldown: 30 * time.Second,
-		workDir:        dir,
-	}
-	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
-
-	infos, err := svc.ListProviders(context.Background())
-	if err != nil {
-		t.Fatalf("ListProviders: %v", err)
-	}
-	if len(infos) != 1 {
-		t.Fatalf("want 1 provider, got %d", len(infos))
-	}
-	if infos[0].CooldownState == nil {
-		t.Fatal("expected CooldownState to be non-nil due to recent failure")
-	}
-	if infos[0].CooldownState.Reason != "consecutive_failures" {
-		t.Errorf("CooldownState.Reason: got %q, want %q", infos[0].CooldownState.Reason, "consecutive_failures")
-	}
-}
-
 func TestHealthCheck_NoServiceConfig(t *testing.T) {
 	svc := &service{opts: ServiceOptions{}, registry: harnesses.NewRegistry()}
 	err := svc.HealthCheck(context.Background(), HealthTarget{Type: "provider", Name: "x"})
@@ -451,21 +377,6 @@ func TestNormalizeServiceProviderType(t *testing.T) {
 		got := normalizeServiceProviderType(tc.in)
 		if got != tc.want {
 			t.Errorf("normalizeServiceProviderType(%q) = %q, want %q", tc.in, got, tc.want)
-		}
-	}
-}
-
-func TestServiceRouteStateKey(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"my/route", "my_route"},
-		{"provider:model", "provider_model"},
-		{"spaces here", "spaces_here"},
-		{"plain", "plain"},
-	}
-	for _, tc := range cases {
-		got := serviceRouteStateKey(tc.in)
-		if got != tc.want {
-			t.Errorf("serviceRouteStateKey(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }

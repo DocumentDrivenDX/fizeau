@@ -1,19 +1,15 @@
 package agentcli
 
-// routing_smart.go implements the legacy per-route smart routing used by the
-// standalone `fiz` CLI to rank providers within an explicit route key.
+// routing_smart.go ranks configured providers for a requested model or model
+// reference when the standalone `fiz` CLI needs a local provider selection.
 //
 // As of agent-1a486c2e, the canonical cross-harness routing engine lives in
 // `internal/routing` and is reachable via `fizeau.FizeauService.ResolveRoute`. The
 // engine ranks `(harness, provider, model)` tuples uniformly and replaces
 // what used to be a parallel implementation here.
 //
-// This file is retained because the standalone CLI's `route-status` and
-// `buildRouteSelection` flows operate over an `agentConfig.Config`'s
-// model_routes — a per-route candidate list that is concept-specific to
-// the CLI binary, not the contract-facing service. New consumers should call
-// `internal/routing.Resolve` (via `service.ResolveRoute`) rather than
-// `buildSmartRoutePlan` directly.
+// New consumers should call `internal/routing.Resolve` through
+// `service.ResolveRoute` rather than `buildSmartRoutePlan` directly.
 
 import (
 	"context"
@@ -89,6 +85,17 @@ type providerModelProbe struct {
 	err    error
 }
 
+type routePlanConfig struct {
+	Strategy   string
+	Candidates []routePlanCandidate
+}
+
+type routePlanCandidate struct {
+	Provider string
+	Model    string
+	Priority int
+}
+
 func (p providerModelProbe) available() bool {
 	return p.err == nil
 }
@@ -142,7 +149,7 @@ func routingWeights(cfg *agentConfig.Config) (reliability, performance, load, co
 	return reliability / total, performance / total, load / total, cost / total, capability / total
 }
 
-func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, allowDeprecated bool, explicitRoute *agentConfig.ModelRouteConfig, scorer CandidateScorer) (smartRoutePlan, error) {
+func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, allowDeprecated bool, explicitRoute *routePlanConfig, scorer CandidateScorer) (smartRoutePlan, error) {
 	now := time.Now().UTC()
 	plan := smartRoutePlan{
 		RouteKey:          routeKey,
@@ -152,7 +159,7 @@ func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 		scorer:            scorer,
 	}
 
-	var route agentConfig.ModelRouteConfig
+	var route routePlanConfig
 	if explicitRoute != nil {
 		route = *explicitRoute
 		if strings.TrimSpace(route.Strategy) != "" {
@@ -180,7 +187,7 @@ func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 
 	modelProbeCache := make(map[string]providerModelProbe)
 	plan.Candidates = make([]smartRouteCandidate, 0, len(route.Candidates))
-	finalCandidates := make([]agentConfig.ModelRouteCandidateConfig, 0, len(route.Candidates))
+	finalCandidates := make([]routePlanCandidate, 0, len(route.Candidates))
 	for _, candidate := range route.Candidates {
 		inspected, resolvedCandidate := inspectSmartRouteCandidate(cfg, routeKey, routeModelRef, allowDeprecated, candidate, history[candidate.Provider], healthState, modelProbeCache, cat, obs)
 		plan.Candidates = append(plan.Candidates, inspected)
@@ -208,25 +215,25 @@ func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 	return plan, nil
 }
 
-func synthesizeIntentRoute(cfg *agentConfig.Config, requestedModel, requestedModelRef string) agentConfig.ModelRouteConfig {
-	candidates := make([]agentConfig.ModelRouteCandidateConfig, 0, len(cfg.ProviderNames()))
+func synthesizeIntentRoute(cfg *agentConfig.Config, requestedModel, requestedModelRef string) routePlanConfig {
+	candidates := make([]routePlanCandidate, 0, len(cfg.ProviderNames()))
 	for _, provider := range cfg.ProviderNames() {
 		model := requestedModel
 		if requestedModelRef != "" {
 			model = ""
 		}
-		candidates = append(candidates, agentConfig.ModelRouteCandidateConfig{
+		candidates = append(candidates, routePlanCandidate{
 			Provider: provider,
 			Model:    model,
 		})
 	}
-	return agentConfig.ModelRouteConfig{
+	return routePlanConfig{
 		Strategy:   "smart",
 		Candidates: candidates,
 	}
 }
 
-func inspectSmartRouteCandidate(cfg *agentConfig.Config, routeKey, routeModelRef string, allowDeprecated bool, candidate agentConfig.ModelRouteCandidateConfig, history smartRouteHistory, healthState routeHealthState, modelProbeCache map[string]providerModelProbe, cat *modelcatalog.Catalog, obs *observations.Store) (smartRouteCandidate, agentConfig.ModelRouteCandidateConfig) {
+func inspectSmartRouteCandidate(cfg *agentConfig.Config, routeKey, routeModelRef string, allowDeprecated bool, candidate routePlanCandidate, history smartRouteHistory, healthState routeHealthState, modelProbeCache map[string]providerModelProbe, cat *modelcatalog.Catalog, obs *observations.Store) (smartRouteCandidate, routePlanCandidate) {
 	report := smartRouteCandidate{
 		Provider:         candidate.Provider,
 		Model:            candidate.Model,
@@ -790,7 +797,7 @@ type routeStatusOutput struct {
 
 // cmdRouteStatus reports the routing engine's eligible-candidate trace for a
 // requested intent (per ADR-005 §5). It calls service.ResolveRoute rather than
-// enumerating model_routes — score components and filter reasons come from the
+// enumerating route tables; score components and filter reasons come from the
 // engine itself, not a parallel CLI implementation.
 func cmdRouteStatus(workDir string, args []string) int {
 	fs := flag.NewFlagSet("route-status", flag.ContinueOnError)

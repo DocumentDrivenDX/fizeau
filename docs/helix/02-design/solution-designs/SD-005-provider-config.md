@@ -125,11 +125,10 @@ Current implementation may still load older `providers:` entries during the
 migration window. Those entries should be treated as endpoint definitions under
 their declared source type, not as the primary routing API.
 
-`model_routes:` is deprecated. Legacy configs that still set it are parsed for
-one release with a deprecation warning naming the offending config path; the
-next release rejects the field. Automatic routing covers the same intent by
-combining provider source discovery, endpoint health, catalog power, and score
-components without per-candidate route order in YAML.
+the removed route-table field was deprecated by ADR-005 and its compatibility parser has now
+been removed. Automatic routing covers the same intent by combining provider
+source discovery, endpoint health, catalog power, and score components without
+per-candidate route order in YAML.
 
 ### Provider Source and Endpoint Fields
 
@@ -380,11 +379,11 @@ replacement metadata, ordered candidates, and per-surface defaults.
 in SD-003. Model policy uses `model_ref`, numeric power bounds, exact model
 pins, or catalog entries, never `preset`.
 
-**D4: Power routing replaces `model_routes`.** Per ADR-005, the service
+**D4: Power routing replaces the removed route-table field.** Per ADR-005, the service
 combines catalog power, provider/harness model inventory, placement, cost,
 context, capability, liveness, and usage/quota to pick the best candidate per
-request. Users do not author per-candidate route order. `model_routes:` config
-is deprecated for one release, then rejected.
+request. Users do not author per-candidate route order. the removed route-table field config
+is rejected as a removed legacy surface.
 
 **D5: Power is routing intent; model/provider/harness are constraints.**
 `--min-power` and `--max-power` select the model-strength range. `--model-ref`
@@ -416,11 +415,9 @@ override available only as metadata.
 expanded at config load time. No shell evaluation.
 
 **D9: Backwards compatible with legacy flat format during migration.** Old flat
-config still maps to one endpoint under the declared provider source. Legacy
-`backends`, `default_backend`, and `model_routes:` config are parsed for one
-release with a deprecation warning naming the offending key path; the next
-release rejects them outright. A boundary test forbids re-introduction of
-`model_routes` parsing after the deprecation cycle ends.
+config still maps to one endpoint under the declared provider source.
+the removed route-table field parsing has been removed after its deprecation cycle. A
+boundary test forbids re-introduction of that parser.
 
 **D10: Provider limit discovery is live and type-gated.** When
 `context_window` or `max_tokens` are zero, the CLI calls `LookupModelLimits`

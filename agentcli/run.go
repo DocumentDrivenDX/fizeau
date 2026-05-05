@@ -852,12 +852,6 @@ func resolveRouteTarget(cfg *agentConfig.Config, backendName, providerName strin
 		if err != nil {
 			return "", "", "", err
 		}
-		if _, ok := cfg.GetModelRoute(resolved.CanonicalID); ok {
-			return resolved.CanonicalID, overrides.ModelRef, "", nil
-		}
-		if _, ok := cfg.GetModelRoute(overrides.ModelRef); ok {
-			return overrides.ModelRef, overrides.ModelRef, "", nil
-		}
 		return resolved.CanonicalID, overrides.ModelRef, "", nil
 	}
 	if cfg.Routing.DefaultModel != "" {
@@ -868,12 +862,6 @@ func resolveRouteTarget(cfg *agentConfig.Config, backendName, providerName strin
 		if err != nil {
 			return "", "", "", err
 		}
-		if _, ok := cfg.GetModelRoute(resolved.CanonicalID); ok {
-			return resolved.CanonicalID, cfg.Routing.DefaultModelRef, "", nil
-		}
-		if _, ok := cfg.GetModelRoute(cfg.Routing.DefaultModelRef); ok {
-			return cfg.Routing.DefaultModelRef, cfg.Routing.DefaultModelRef, "", nil
-		}
 		return resolved.CanonicalID, cfg.Routing.DefaultModelRef, "", nil
 	}
 	if cfg.DefaultBackend != "" {
@@ -883,11 +871,7 @@ func resolveRouteTarget(cfg *agentConfig.Config, backendName, providerName strin
 }
 
 func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, allowDeprecated bool) (providerSelection, any, agentConfig.ProviderConfig, error) {
-	var explicitRoute *agentConfig.ModelRouteConfig
-	if route, ok := cfg.GetModelRoute(routeKey); ok {
-		explicitRoute = &route
-	}
-	plan, err := buildSmartRoutePlan(cfg, workDir, routeKey, routeModelRef, allowDeprecated, explicitRoute, nil)
+	plan, err := buildSmartRoutePlan(cfg, workDir, routeKey, routeModelRef, allowDeprecated, nil, nil)
 	if err != nil {
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}

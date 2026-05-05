@@ -50,34 +50,12 @@ type ServiceConfig interface {
 	DefaultProviderName() string
 	// Provider returns the raw config values for a named provider.
 	Provider(name string) (ServiceProviderEntry, bool)
-	// ModelRouteNames returns configured model-route names.
-	ModelRouteNames() []string
-	// ModelRouteCandidates returns the provider names referenced by a route.
-	ModelRouteCandidates(routeName string) []string
-	// ModelRouteConfig returns the full route config for a named route.
-	// Returns zero value when the route is not found.
-	ModelRouteConfig(routeName string) ServiceModelRouteConfig
 	// HealthCooldown returns the configured cooldown duration (0 = use default 30s).
 	HealthCooldown() time.Duration
 	// WorkDir is the base directory for file-backed health state.
 	WorkDir() string
 	// SessionLogDir returns the configured sessions directory.
 	SessionLogDir() string
-	// RouteHealthPath returns the path to the route health file for a given route key.
-	RouteHealthPath(routeKey string) string
-}
-
-// ServiceModelRouteConfig carries the routing strategy and candidates for one route.
-type ServiceModelRouteConfig struct {
-	Strategy   string                       // "priority-round-robin" | "ordered-failover" | "smart" | ""
-	Candidates []ServiceRouteCandidateEntry // ordered candidate list
-}
-
-// ServiceRouteCandidateEntry is one candidate inside a model route.
-type ServiceRouteCandidateEntry struct {
-	Provider string
-	Model    string // may be empty (provider default)
-	Priority int
 }
 
 // ServiceProviderEntry carries the minimal provider data the service needs.
@@ -314,7 +292,6 @@ type ModelInfo struct {
 	AutoRoutable    bool
 	ExactPinOnly    bool
 	Available       bool
-	IsConfigured    bool   // matches an explicit model_routes entry
 	IsDefault       bool   // matches the configured default model
 	CatalogRef      string // canonical catalog reference if recognized
 	RankPosition    int    // ordinal in latest discovery rank; -1 if unranked
@@ -572,16 +549,16 @@ type RouteStatusReport struct {
 // metric appropriately.
 const RouteStatusRoutingQualityWindow = 100
 
-// RouteStatusEntry describes one configured model route.
+// RouteStatusEntry describes the live provider candidates serving one model.
 type RouteStatusEntry struct {
-	Model          string // route key
-	Strategy       string // "priority-round-robin" | "first-available" | etc.
+	Model          string
+	Strategy       string // informational; route tables are not user-authored
 	Candidates     []RouteCandidateStatus
 	LastDecision   *RouteDecision // most recent ResolveRoute result for this key (cached)
 	LastDecisionAt time.Time
 }
 
-// RouteCandidateStatus describes a single candidate within a route.
+// RouteCandidateStatus describes a single live provider/model candidate.
 //
 // ProviderReliabilityRate is the per-(provider, model) observed completion
 // rate (the legacy "success rate" metric). Per ADR-006 §5 it is labeled

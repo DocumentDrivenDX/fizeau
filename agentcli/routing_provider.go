@@ -30,7 +30,7 @@ type routeHealthState struct {
 	Failures map[string]time.Time `json:"failures,omitempty"`
 }
 
-func routeAttemptOrder(route agentConfig.ModelRouteConfig, counter int, state routeHealthState, cooldown time.Duration) []int {
+func routeAttemptOrder(route routePlanConfig, counter int, state routeHealthState, cooldown time.Duration) []int {
 	switch route.Strategy {
 	case "priority-round-robin":
 		return priorityRoundRobinOrder(route.Candidates, counter, state, cooldown)
@@ -39,7 +39,7 @@ func routeAttemptOrder(route agentConfig.ModelRouteConfig, counter int, state ro
 	}
 }
 
-func priorityRoundRobinOrder(candidates []agentConfig.ModelRouteCandidateConfig, counter int, state routeHealthState, cooldown time.Duration) []int {
+func priorityRoundRobinOrder(candidates []routePlanCandidate, counter int, state routeHealthState, cooldown time.Duration) []int {
 	eligible := healthyCandidateIndexes(candidates, state, cooldown)
 	if len(eligible) == 0 {
 		eligible = make([]int, len(candidates))
@@ -73,7 +73,7 @@ func priorityRoundRobinOrder(candidates []agentConfig.ModelRouteCandidateConfig,
 	return append(rotated, remainder...)
 }
 
-func orderedFailoverOrder(candidates []agentConfig.ModelRouteCandidateConfig, state routeHealthState, cooldown time.Duration) []int {
+func orderedFailoverOrder(candidates []routePlanCandidate, state routeHealthState, cooldown time.Duration) []int {
 	eligible := healthyCandidateIndexes(candidates, state, cooldown)
 	if len(eligible) > 0 {
 		return eligible
@@ -85,7 +85,7 @@ func orderedFailoverOrder(candidates []agentConfig.ModelRouteCandidateConfig, st
 	return order
 }
 
-func healthyCandidateIndexes(candidates []agentConfig.ModelRouteCandidateConfig, state routeHealthState, cooldown time.Duration) []int {
+func healthyCandidateIndexes(candidates []routePlanCandidate, state routeHealthState, cooldown time.Duration) []int {
 	now := time.Now().UTC()
 	var eligible []int
 	for i, candidate := range candidates {

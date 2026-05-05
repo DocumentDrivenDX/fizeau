@@ -145,18 +145,6 @@ func (c *liveListModelsServiceConfig) Provider(name string) (ServiceProviderEntr
 	}, true
 }
 
-func (c *liveListModelsServiceConfig) ModelRouteNames() []string {
-	return nil
-}
-
-func (c *liveListModelsServiceConfig) ModelRouteCandidates(string) []string {
-	return nil
-}
-
-func (c *liveListModelsServiceConfig) ModelRouteConfig(string) ServiceModelRouteConfig {
-	return ServiceModelRouteConfig{}
-}
-
 func (c *liveListModelsServiceConfig) HealthCooldown() time.Duration {
 	return 0
 }

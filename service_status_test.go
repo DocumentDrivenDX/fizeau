@@ -293,16 +293,10 @@ func TestBuildRoutingInputs_IgnoresCodexUsageWindows(t *testing.T) {
 func TestReferenceConsumerDoctorReportUsesServiceStatus(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"openrouter": {Type: "openrouter", BaseURL: "http://127.0.0.1:1/v1"},
+			"openrouter": {Type: "openrouter", BaseURL: "http://127.0.0.1:1/v1", Model: "model-a"},
 		},
 		names:       []string{"openrouter"},
 		defaultName: "openrouter",
-		routes: map[string][]string{
-			"smart": {"openrouter"},
-		},
-		routeConfigs: map[string]ServiceModelRouteConfig{
-			"smart": {Strategy: "ordered-failover", Candidates: []ServiceRouteCandidateEntry{{Provider: "openrouter", Model: "model-a", Priority: 10}}},
-		},
 	}
 	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
 
@@ -329,7 +323,7 @@ func TestReferenceConsumerDoctorReportUsesServiceStatus(t *testing.T) {
 		b.WriteString("\n")
 	}
 	report := b.String()
-	if !strings.Contains(report, "openrouter:") || !strings.Contains(report, "smart:ordered-failover") {
+	if !strings.Contains(report, "openrouter:") || !strings.Contains(report, "model-a:auto") {
 		t.Fatalf("doctor report missing service data: %q", report)
 	}
 }

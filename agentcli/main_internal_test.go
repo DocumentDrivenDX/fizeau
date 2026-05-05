@@ -1,6 +1,9 @@
 package agentcli
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +15,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func routeModelsServer(t *testing.T, models ...string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		data := make([]map[string]string, 0, len(models))
+		for _, model := range models {
+			data = append(data, map[string]string{"id": model})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+	}))
+}
 
 func isolateCatalogHome(t *testing.T) {
 	t.Helper()
@@ -354,23 +372,17 @@ func TestResolveProviderForRun_ExplicitProviderStillUsesExactModelPin(t *testing
 	assert.Equal(t, "exact-model", pc.Model)
 }
 
-func TestResolveProviderForRun_ModelRouteByExplicitModel(t *testing.T) {
+func TestResolveProviderForRun_RoutePlanByExplicitModel(t *testing.T) {
 	workDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
+	server := routeModelsServer(t, "qwen3.5-27b")
+	defer server.Close()
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
 			"bragi": {
 				Type:    "lmstudio",
-				BaseURL: "http://bragi:1234/v1",
+				BaseURL: server.URL + "/v1",
 				Model:   "provider-default",
-			},
-		},
-		ModelRoutes: map[string]agentConfig.ModelRouteConfig{
-			"qwen3.5-27b": {
-				Strategy: "ordered-failover",
-				Candidates: []agentConfig.ModelRouteCandidateConfig{
-					{Provider: "bragi", Model: "qwen3.5-27b"},
-				},
 			},
 		},
 		Default: "bragi",
@@ -387,34 +399,21 @@ func TestResolveProviderForRun_ModelRouteByExplicitModel(t *testing.T) {
 	assert.Equal(t, "qwen3.5-27b", pc.Model)
 }
 
-func TestResolveProviderForRun_DefaultModelRouteOverridesDefaultProvider(t *testing.T) {
+func TestResolveProviderForRun_DefaultRoutePlanOverridesDefaultProvider(t *testing.T) {
 	workDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
 	cfg := &agentConfig.Config{
 		Providers: map[string]agentConfig.ProviderConfig{
-			"vidar": {
-				Type:    "lmstudio",
-				BaseURL: "http://vidar:1234/v1",
-				Model:   "provider-default",
-			},
 			"openrouter": {
 				Type:    "lmstudio",
 				BaseURL: "https://openrouter.ai/api/v1",
-				Model:   "provider-fallback",
+				Model:   "qwen3.5-27b",
 			},
 		},
 		Routing: agentConfig.RoutingConfig{
 			DefaultModel: "qwen3.5-27b",
 		},
-		ModelRoutes: map[string]agentConfig.ModelRouteConfig{
-			"qwen3.5-27b": {
-				Strategy: "ordered-failover",
-				Candidates: []agentConfig.ModelRouteCandidateConfig{
-					{Provider: "openrouter", Model: "qwen/qwen3.5-27b"},
-				},
-			},
-		},
-		Default: "vidar",
+		Default: "openrouter",
 	}
 
 	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", agentConfig.ProviderOverrides{})
@@ -435,14 +434,6 @@ func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
 			"cloud": {
 				Type:    "lmstudio",
 				BaseURL: "https://openrouter.ai/api/v1",
-			},
-		},
-		ModelRoutes: map[string]agentConfig.ModelRouteConfig{
-			"code-medium": {
-				Strategy: "ordered-failover",
-				Candidates: []agentConfig.ModelRouteCandidateConfig{
-					{Provider: "cloud", Model: "gpt-5.4-mini"},
-				},
 			},
 		},
 		Default: "cloud",

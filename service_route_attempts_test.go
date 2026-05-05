@@ -427,16 +427,6 @@ func routeAttemptTestService(cooldown time.Duration) *service {
 		names:          []string{"bragi", "openrouter"},
 		defaultName:    "bragi",
 		healthCooldown: cooldown,
-		routeConfigs: map[string]ServiceModelRouteConfig{
-			"qwen": {
-				Strategy: "ordered-failover",
-				Candidates: []ServiceRouteCandidateEntry{
-					{Provider: "bragi", Model: "qwen", Priority: 100},
-					{Provider: "openrouter", Model: "qwen", Priority: 50},
-				},
-			},
-		},
-		routes: map[string][]string{"qwen": {"bragi", "openrouter"}},
 	}
 	return &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
 }

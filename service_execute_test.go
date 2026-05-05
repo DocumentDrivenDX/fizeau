@@ -35,17 +35,9 @@ func (c *testServiceConfig) Provider(name string) (fizeau.ServiceProviderEntry, 
 	entry, ok := c.providers[name]
 	return entry, ok
 }
-func (c *testServiceConfig) ModelRouteNames() []string { return nil }
-func (c *testServiceConfig) ModelRouteCandidates(string) []string {
-	return nil
-}
-func (c *testServiceConfig) ModelRouteConfig(string) fizeau.ServiceModelRouteConfig {
-	return fizeau.ServiceModelRouteConfig{}
-}
 func (c *testServiceConfig) HealthCooldown() time.Duration { return 0 }
 func (c *testServiceConfig) WorkDir() string               { return "" }
 func (c *testServiceConfig) SessionLogDir() string         { return "" }
-func (c *testServiceConfig) RouteHealthPath(string) string { return "" }
 
 // drainEvents collects everything from ch until it closes or the deadline
 // fires. The final element (when present) is always EventTypeFinal.

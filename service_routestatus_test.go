@@ -2,9 +2,6 @@ package fizeau
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -31,22 +28,15 @@ func TestRouteStatus_emptyConfig(t *testing.T) {
 	}
 }
 
-// TestRouteStatus_routesPopulatedFromConfig verifies that each configured route
-// appears in the report with the correct strategy and candidates.
-func TestRouteStatus_routesPopulatedFromConfig(t *testing.T) {
+// TestRouteStatus_modelsPopulatedFromProviders verifies RouteStatus reports
+// live provider/model candidates, not configured route tables.
+func TestRouteStatus_modelsPopulatedFromProviders(t *testing.T) {
 	sc := &fakeServiceConfig{
-		routeConfigs: map[string]ServiceModelRouteConfig{
-			"code-model": {
-				Strategy: "priority-round-robin",
-				Candidates: []ServiceRouteCandidateEntry{
-					{Provider: "bragi", Model: "qwen3-27b", Priority: 100},
-					{Provider: "openrouter", Model: "qwen3-27b", Priority: 50},
-				},
-			},
+		providers: map[string]ServiceProviderEntry{
+			"bragi":      {Type: "lmstudio", Model: "qwen3-27b"},
+			"openrouter": {Type: "openrouter", Model: "qwen3-27b"},
 		},
-		routes: map[string][]string{
-			"code-model": {"bragi", "openrouter"},
-		},
+		names: []string{"bragi", "openrouter"},
 	}
 	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
 
@@ -59,11 +49,11 @@ func TestRouteStatus_routesPopulatedFromConfig(t *testing.T) {
 	}
 
 	entry := report.Routes[0]
-	if entry.Model != "code-model" {
-		t.Errorf("Model: got %q, want %q", entry.Model, "code-model")
+	if entry.Model != "qwen3-27b" {
+		t.Errorf("Model: got %q, want %q", entry.Model, "qwen3-27b")
 	}
-	if entry.Strategy != "priority-round-robin" {
-		t.Errorf("Strategy: got %q, want %q", entry.Strategy, "priority-round-robin")
+	if entry.Strategy != "auto" {
+		t.Errorf("Strategy: got %q, want auto", entry.Strategy)
 	}
 	if len(entry.Candidates) != 2 {
 		t.Fatalf("Candidates: got %d, want 2", len(entry.Candidates))
@@ -71,14 +61,8 @@ func TestRouteStatus_routesPopulatedFromConfig(t *testing.T) {
 	if entry.Candidates[0].Provider != "bragi" {
 		t.Errorf("Candidates[0].Provider: got %q, want %q", entry.Candidates[0].Provider, "bragi")
 	}
-	if entry.Candidates[0].Priority != 100 {
-		t.Errorf("Candidates[0].Priority: got %d, want 100", entry.Candidates[0].Priority)
-	}
 	if entry.Candidates[1].Provider != "openrouter" {
 		t.Errorf("Candidates[1].Provider: got %q, want %q", entry.Candidates[1].Provider, "openrouter")
-	}
-	if entry.Candidates[1].Priority != 50 {
-		t.Errorf("Candidates[1].Priority: got %d, want 50", entry.Candidates[1].Priority)
 	}
 	// No cooldowns set — both should be healthy.
 	for i, c := range entry.Candidates {
@@ -97,21 +81,10 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	// Build a minimal ServiceConfig that satisfies the routing engine.
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1"},
+			"bragi": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "qwen3-27b"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",
-		routeConfigs: map[string]ServiceModelRouteConfig{
-			"qwen3-27b": {
-				Strategy: "ordered-failover",
-				Candidates: []ServiceRouteCandidateEntry{
-					{Provider: "bragi", Model: "qwen3-27b", Priority: 100},
-				},
-			},
-		},
-		routes: map[string][]string{
-			"qwen3-27b": {"bragi"},
-		},
 	}
 
 	// Seed registry with the "agent" harness available so routing can resolve.
@@ -161,19 +134,10 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	// We give it a provider so the engine can build a candidate.
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1"},
+			"bragi": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "mymodel"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",
-		routeConfigs: map[string]ServiceModelRouteConfig{
-			"mymodel": {
-				Strategy: "ordered-failover",
-				Candidates: []ServiceRouteCandidateEntry{
-					{Provider: "bragi", Model: "mymodel", Priority: 100},
-				},
-			},
-		},
-		routes: map[string][]string{"mymodel": {"bragi"}},
 	}
 
 	svc := &service{
@@ -215,43 +179,27 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	}
 }
 
-// TestRouteStatus_cooldownStateSurfaces verifies that a provider under cooldown
-// surfaces a non-nil Cooldown on its RouteCandidateStatus and Healthy=false.
-func TestRouteStatus_cooldownStateSurfaces(t *testing.T) {
-	dir := t.TempDir()
-	agentDir := filepath.Join(dir, ".fizeau")
-	if err := os.MkdirAll(agentDir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-
-	// Write a route-health file indicating a recent failure for "bragi".
-	type routeState struct {
-		Failures map[string]time.Time `json:"failures"`
-	}
-	rs := routeState{Failures: map[string]time.Time{"bragi": time.Now().UTC()}}
-	data, _ := json.Marshal(rs)
-	routeKey := serviceRouteStateKey("code-model")
-	if err := os.WriteFile(filepath.Join(agentDir, "route-health-"+routeKey+".json"), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
+func TestRouteStatus_attemptCooldownStateSurfaces(t *testing.T) {
 	sc := &fakeServiceConfig{
-		workDir:        dir,
 		healthCooldown: 30 * time.Second,
-		routeConfigs: map[string]ServiceModelRouteConfig{
-			"code-model": {
-				Strategy: "priority-round-robin",
-				Candidates: []ServiceRouteCandidateEntry{
-					{Provider: "bragi", Model: "qwen3-27b", Priority: 100},
-					{Provider: "openrouter", Model: "qwen3-27b", Priority: 50},
-				},
-			},
+		providers: map[string]ServiceProviderEntry{
+			"bragi":      {Type: "lmstudio", Model: "qwen3-27b"},
+			"openrouter": {Type: "openrouter", Model: "qwen3-27b"},
 		},
-		routes: map[string][]string{
-			"code-model": {"bragi", "openrouter"},
-		},
+		names: []string{"bragi", "openrouter"},
 	}
 	svc := &service{opts: ServiceOptions{ServiceConfig: sc}, registry: harnesses.NewRegistry()}
+	recordedAt := time.Now().Add(-time.Second).UTC()
+	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Harness:   "agent",
+		Provider:  "bragi",
+		Model:     "qwen3-27b",
+		Status:    "failed",
+		Reason:    "rate_limit",
+		Timestamp: recordedAt,
+	}); err != nil {
+		t.Fatalf("RecordRouteAttempt: %v", err)
+	}
 
 	report, err := svc.RouteStatus(context.Background())
 	if err != nil {
@@ -282,8 +230,8 @@ func TestRouteStatus_cooldownStateSurfaces(t *testing.T) {
 	if bragi.Cooldown == nil {
 		t.Fatal("bragi: Cooldown should be non-nil")
 	}
-	if bragi.Cooldown.Reason != "consecutive_failures" {
-		t.Errorf("bragi Cooldown.Reason: got %q, want %q", bragi.Cooldown.Reason, "consecutive_failures")
+	if bragi.Cooldown.Reason != "rate_limit" {
+		t.Errorf("bragi Cooldown.Reason: got %q, want %q", bragi.Cooldown.Reason, "rate_limit")
 	}
 	if bragi.Cooldown.Until.IsZero() {
 		t.Error("bragi Cooldown.Until should be non-zero")

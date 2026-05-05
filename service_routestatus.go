@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// RouteStatus returns global routing state across all configured routes.
+// RouteStatus returns live routing state for configured providers/models.
 // It is the operator dashboard view: cooldowns, recent decisions, and
 // per-candidate health. Distinct from per-request ResolveRoute.
 func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
@@ -29,40 +29,42 @@ func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
 	cooldown := s.routeAttemptTTL()
 	activeAttempts := s.activeRouteAttempts(report.GeneratedAt, cooldown)
 
-	routeNames := sc.ModelRouteNames()
-	report.Routes = make([]RouteStatusEntry, 0, len(routeNames))
-
-	for _, routeName := range routeNames {
-		rc := sc.ModelRouteConfig(routeName)
-		entry := RouteStatusEntry{
-			Model:    routeName,
-			Strategy: rc.Strategy,
+	entries := make(map[string]*RouteStatusEntry)
+	order := make([]string, 0)
+	for i, providerName := range sc.ProviderNames() {
+		provider, ok := sc.Provider(providerName)
+		if !ok {
+			continue
 		}
-
-		// Populate LastDecision from cache.
-		if cached, ok := s.lookupRouteDecision(routeName); ok {
-			entry.LastDecision = cached.decision
-			entry.LastDecisionAt = cached.at
+		model := provider.Model
+		if model == "" {
+			model = providerName
 		}
-
-		// Build per-candidate status.
-		for _, cand := range rc.Candidates {
-			cs := RouteCandidateStatus{
-				Provider: cand.Provider,
-				Model:    cand.Model,
-				Priority: cand.Priority,
+		entry, ok := entries[model]
+		if !ok {
+			entry = &RouteStatusEntry{Model: model, Strategy: "auto"}
+			if cached, ok := s.lookupRouteDecision(model); ok {
+				entry.LastDecision = cached.decision
+				entry.LastDecisionAt = cached.at
 			}
-			// Check cooldown state for this candidate.
-			cs.Cooldown = routeCandidateCooldown(sc, routeName, cand.Provider, cooldown)
-			if attemptCooldown := routeAttemptCandidateCooldown(activeAttempts, cand.Provider, cand.Model, cooldown); attemptCooldown != nil {
-				cs.Cooldown = attemptCooldown
-			}
-			cs.Healthy = cs.Cooldown == nil
-			// RecentLatencyMS and RecentSuccessRate: zero — observation store not yet wired.
-			entry.Candidates = append(entry.Candidates, cs)
+			entries[model] = entry
+			order = append(order, model)
 		}
+		cs := RouteCandidateStatus{
+			Provider: providerName,
+			Model:    model,
+			Priority: len(sc.ProviderNames()) - i,
+		}
+		if attemptCooldown := routeAttemptCandidateCooldown(activeAttempts, providerName, model, cooldown); attemptCooldown != nil {
+			cs.Cooldown = attemptCooldown
+		}
+		cs.Healthy = cs.Cooldown == nil
+		entry.Candidates = append(entry.Candidates, cs)
+	}
 
-		report.Routes = append(report.Routes, entry)
+	report.Routes = make([]RouteStatusEntry, 0, len(order))
+	for _, model := range order {
+		report.Routes = append(report.Routes, *entries[model])
 	}
 
 	return report, nil
@@ -89,30 +91,6 @@ func routeAttemptCandidateCooldown(records []routeAttemptRecord, providerName, m
 		return nil
 	}
 	return routeAttemptCooldown(*newest, cooldown)
-}
-
-// routeCandidateCooldown returns the active CooldownState for a specific
-// (route, provider) pair, or nil if not in cooldown.
-func routeCandidateCooldown(sc ServiceConfig, routeName, providerName string, cooldown time.Duration) *CooldownState {
-	if sc == nil {
-		return nil
-	}
-	now := time.Now().UTC()
-	failures := serviceLoadRouteFailures(sc, routeName)
-	failedAt, hasFail := failures[providerName]
-	if !hasFail {
-		return nil
-	}
-	until := failedAt.Add(cooldown)
-	if until.Before(now) {
-		return nil
-	}
-	return &CooldownState{
-		Reason:      "consecutive_failures",
-		Until:       until,
-		FailCount:   1,
-		LastAttempt: failedAt,
-	}
 }
 
 // cacheRouteDecision stores a ResolveRoute result keyed by routeKey.

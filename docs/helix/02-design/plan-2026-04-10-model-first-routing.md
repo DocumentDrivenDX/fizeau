@@ -4,6 +4,10 @@
 **Status**: CONVERGED
 **Refinement Rounds**: 5
 
+> Historical plan note: this document records the pre-ADR-005 design path.
+> The hand-authored route-table compatibility surface described below has since
+> been removed; ADR-005 and CONTRACT-003 are authoritative for current routing.
+
 ## Problem Statement
 
 The current routing surface makes users name a `backend` pool before they can
@@ -168,7 +172,7 @@ ddx-agent -p "Some nice prompt" --backend code-fast-local
 Caller integration (see CONTRACT-003):
 
 - Callers may invoke the embedded harness with a model ref or exact pin.
-- Callers do not name `model_routes`, provider candidates, or health state.
+- Callers do not name the removed route-table field, provider candidates, or health state.
 - Embedded `ddx-agent` returns routing attribution facts that callers can log and
   display alongside their cross-harness routing evidence.
 
@@ -209,7 +213,7 @@ routing:
   default_model_ref: code-fast
   health_cooldown: 30s
 
-model_routes:
+route-table config:
   qwen3.5-27b:
     strategy: priority-round-robin
     candidates:
@@ -256,7 +260,7 @@ candidate table.
   - `DefaultModel`
   - `DefaultModelRef`
   - `HealthCooldown`
-- `ModelRouteConfig`
+- `RouteTableConfig`
   - `Strategy`
   - `Candidates`
 - `RouteCandidateConfig`
