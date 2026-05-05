@@ -705,125 +705,67 @@ func newServiceCompactor(req ServiceExecuteRequest, model string) agentcore.Comp
 // re-uses the wall-clock-bounded ctx so PTY/orphan reaping is automatic
 // when our ctx (which already carries the request Timeout) cancels.
 func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string, runner harnesses.Harness) {
-	// Wrapped harnesses (pi/codex/claude-code) pin samplers internally per
-	// ADR-007 §4. Per CONTRACT-003 our ServiceExecuteRequest carries pointer
-	// types; the harness ExecuteRequest still uses scalars. Dereference here
-	// — nil maps to the existing zero-value "unset" sentinel that adapters
-	// already ignore.
-	var hTemperature float32
-	if req.Temperature != nil {
-		hTemperature = *req.Temperature
-	}
-	var hSeed int64
-	if req.Seed != nil {
-		hSeed = *req.Seed
-	}
-	hReq := harnesses.ExecuteRequest{
+	progress := newSubprocessProgressState(req)
+	serviceimpl.RunSubprocess(ctx, serviceimpl.SubprocessRequest{
 		Prompt:        req.Prompt,
 		SystemPrompt:  req.SystemPrompt,
-		Provider:      decision.Provider,
-		Model:         decision.Model,
 		WorkDir:       req.WorkDir,
 		Permissions:   req.Permissions,
-		Temperature:   hTemperature,
-		Seed:          hSeed,
-		Reasoning:     adapterReasoning(req.Reasoning),
+		Temperature:   req.Temperature,
+		Seed:          req.Seed,
+		Reasoning:     effectiveReasoning(req.Reasoning),
 		Timeout:       req.Timeout,
 		IdleTimeout:   req.IdleTimeout,
 		SessionLogDir: req.SessionLogDir,
 		Metadata:      meta,
-	}
-	progress := newSubprocessProgressState(req)
-	emitProgress(out, seq, sl, sessionID, meta, progress.noteRequestStart())
-	in, err := runner.Execute(ctx, hReq)
-	if err != nil {
-		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
-			Status:     "failed",
-			Error:      err.Error(),
-			DurationMS: time.Since(start).Milliseconds(),
-			RoutingActual: &harnesses.RoutingActual{
-				Harness:  decision.Harness,
-				Provider: decision.Provider,
-				Model:    decision.Model,
-			},
-		})
-		return
-	}
-	// Forward events. Stamp metadata onto each (subprocess runners already
-	// echo metadata, but we re-stamp defensively to match the contract's
-	// "every Event carries it" guarantee).
-	for ev := range in {
-		if ev.Metadata == nil {
-			ev.Metadata = meta
-		}
-		if payload, ok := progress.noteEvent(ev); ok && ev.Type != harnesses.EventTypeProgress {
-			emitProgress(out, seq, sl, sessionID, meta, payload)
-		}
-		if ev.Type == harnesses.EventTypeFinal {
-			var final harnesses.FinalData
-			if err := json.Unmarshal(ev.Data, &final); err == nil {
-				emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
-			}
-			ev = stampSubprocessFinalRouting(ev, decision)
-			ev = stampSubprocessFinalSessionLog(ev, sl)
-			// Mirror the terminal event into the service-owned session log
-			// so subprocess runs produce the same start+end records natives do.
-			if err := json.Unmarshal(ev.Data, &final); err == nil {
-				sl.writeEnd(req, meta, final)
-			}
-			if payload, ok := progress.noteFinal(ev); ok {
-				emitProgress(out, seq, sl, sessionID, meta, payload)
-			}
-		}
-		// Re-sequence events so a single Execute presents a monotonically
-		// increasing sequence to the consumer.
-		ev.Sequence = seq.Add(1) - 1
-		select {
-		case out <- ev:
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// stampSubprocessFinalSessionLog overwrites the subprocess-reported
-// SessionLogPath with the service-owned lifecycle log path so consumers
-// consistently resolve to the authoritative record.
-func stampSubprocessFinalSessionLog(ev ServiceEvent, sl *serviceSessionLog) ServiceEvent {
-	if sl == nil || sl.path == "" {
-		return ev
-	}
-	var final harnesses.FinalData
-	if err := json.Unmarshal(ev.Data, &final); err != nil {
-		return ev
-	}
-	final.SessionLogPath = sl.path
-	raw, err := json.Marshal(final)
-	if err != nil {
-		return ev
-	}
-	ev.Data = raw
-	return ev
-}
-
-func stampSubprocessFinalRouting(ev ServiceEvent, decision RouteDecision) ServiceEvent {
-	var final harnesses.FinalData
-	if err := json.Unmarshal(ev.Data, &final); err != nil {
-		return ev
-	}
-	if final.RoutingActual == nil {
-		final.RoutingActual = &harnesses.RoutingActual{
+		Decision: serviceimpl.ExecuteRunnerDecision{
 			Harness:  decision.Harness,
 			Provider: decision.Provider,
 			Model:    decision.Model,
-		}
+		},
+		Started:        start,
+		SessionLogPath: sessionLogPath(sl),
+	}, runner, serviceimpl.SubprocessCallbacks{
+		BeforeExecute: func() {
+			emitProgress(out, seq, sl, sessionID, meta, progress.noteRequestStart())
+		},
+		BeforeFinal: func(final harnesses.FinalData) {
+			emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
+		},
+		ObserveEvent: func(ev harnesses.Event) harnesses.Event {
+			if payload, ok := progress.noteEvent(ev); ok && ev.Type != harnesses.EventTypeProgress {
+				emitProgress(out, seq, sl, sessionID, meta, payload)
+			}
+			if ev.Type == harnesses.EventTypeFinal {
+				if payload, ok := progress.noteFinal(ev); ok {
+					emitProgress(out, seq, sl, sessionID, meta, payload)
+				}
+			}
+			return ev
+		},
+		EmitEvent: func(ev harnesses.Event) bool {
+			ev.Sequence = seq.Add(1) - 1
+			select {
+			case out <- ev:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		},
+		Finalize: func(final harnesses.FinalData) {
+			finalizeAndEmit(out, seq, meta, req, sl, final)
+		},
+		WriteEnd: func(finalMeta map[string]string, final harnesses.FinalData) {
+			sl.writeEnd(req, finalMeta, final)
+		},
+	})
+}
+
+func sessionLogPath(sl *serviceSessionLog) string {
+	if sl == nil {
+		return ""
 	}
-	raw, err := json.Marshal(final)
-	if err != nil {
-		return ev
-	}
-	ev.Data = raw
-	return ev
+	return sl.path
 }
 
 // emitFinal wraps a FinalData into a ServiceEvent and writes it to out.
