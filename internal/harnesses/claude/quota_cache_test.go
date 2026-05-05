@@ -131,7 +131,6 @@ func TestReadClaudeQuotaUsesDefaultCachePath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "claude-quota.json")
 	t.Setenv(claudeQuotaCacheEnv, path)
-	t.Setenv(claudeQuotaCacheEnvLegacy, "")
 
 	snap := ClaudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
@@ -150,20 +149,16 @@ func TestReadClaudeQuotaUsesDefaultCachePath(t *testing.T) {
 	assert.Equal(t, "pty", loaded.Source)
 }
 
-// TestReadClaudeQuotaBackCompatFallback verifies that when the new path/env
-// returns no snapshot, ReadClaudeQuota falls back to the old DDx path for the
-// one-minor-version transition window.
-func TestReadClaudeQuotaBackCompatFallback(t *testing.T) {
+func TestReadClaudeQuotaDoesNotReadLegacyEnvPath(t *testing.T) {
 	dir := t.TempDir()
 
 	newPath := filepath.Join(dir, "new-claude-quota.json")
-	oldPath := filepath.Join(dir, "old-claude-quota.json")
+	legacyPath := filepath.Join(dir, "old-claude-quota.json")
 
-	// New path is empty; old path has a valid snapshot.
 	t.Setenv(claudeQuotaCacheEnv, newPath)
-	t.Setenv(claudeQuotaCacheEnvLegacy, oldPath)
+	t.Setenv("DDX_CLAUDE_QUOTA_CACHE", legacyPath)
 
-	oldSnap := ClaudeQuotaSnapshot{
+	legacySnap := ClaudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 9999,
 		FiveHourLimit:     10000,
@@ -171,25 +166,21 @@ func TestReadClaudeQuotaBackCompatFallback(t *testing.T) {
 		WeeklyLimit:       70000,
 		Source:            "pty",
 	}
-	require.NoError(t, WriteClaudeQuota(oldPath, oldSnap))
+	require.NoError(t, WriteClaudeQuota(legacyPath, legacySnap))
 
 	loaded, ok := ReadClaudeQuota()
-	require.True(t, ok, "expected back-compat fallback to return the old snapshot")
-	require.NotNil(t, loaded)
-	assert.Equal(t, 9999, loaded.FiveHourRemaining, "back-compat fallback should return the old snapshot's data")
-	assert.Equal(t, "pty", loaded.Source)
+	assert.False(t, ok, "legacy DDx cache env must not be read")
+	assert.Nil(t, loaded)
 }
 
-// TestReadClaudeQuotaNewPathTakesPrecedence verifies that when both the new
-// and old paths have snapshots, the new path wins.
-func TestReadClaudeQuotaNewPathTakesPrecedence(t *testing.T) {
+func TestReadClaudeQuotaUsesNewPathOnly(t *testing.T) {
 	dir := t.TempDir()
 
 	newPath := filepath.Join(dir, "new-claude-quota.json")
-	oldPath := filepath.Join(dir, "old-claude-quota.json")
+	legacyPath := filepath.Join(dir, "old-claude-quota.json")
 
 	t.Setenv(claudeQuotaCacheEnv, newPath)
-	t.Setenv(claudeQuotaCacheEnvLegacy, oldPath)
+	t.Setenv("DDX_CLAUDE_QUOTA_CACHE", legacyPath)
 
 	newSnap := ClaudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
@@ -199,7 +190,7 @@ func TestReadClaudeQuotaNewPathTakesPrecedence(t *testing.T) {
 		WeeklyLimit:       70000,
 		Source:            "pty",
 	}
-	oldSnap := ClaudeQuotaSnapshot{
+	legacySnap := ClaudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 9999,
 		FiveHourLimit:     10000,
@@ -208,7 +199,7 @@ func TestReadClaudeQuotaNewPathTakesPrecedence(t *testing.T) {
 		Source:            "pty",
 	}
 	require.NoError(t, WriteClaudeQuota(newPath, newSnap))
-	require.NoError(t, WriteClaudeQuota(oldPath, oldSnap))
+	require.NoError(t, WriteClaudeQuota(legacyPath, legacySnap))
 
 	loaded, ok := ReadClaudeQuota()
 	require.True(t, ok)
@@ -455,7 +446,6 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 func TestClaudeQuotaExhaustedMessageMarksCache(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "claude-quota.json")
 	t.Setenv(claudeQuotaCacheEnv, path)
-	t.Setenv(claudeQuotaCacheEnvLegacy, "")
 	now := time.Date(2026, 5, 4, 22, 0, 0, 0, time.UTC)
 
 	ok := MarkClaudeQuotaExhaustedFromMessage("You're out of extra usage · resets May 7, 12am (America/New_York)", now)
@@ -474,7 +464,6 @@ func TestReadClaudeQuotaRoutingDecisionDefaultPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "claude-quota.json")
 	t.Setenv(claudeQuotaCacheEnv, path)
-	t.Setenv(claudeQuotaCacheEnvLegacy, "")
 
 	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
 

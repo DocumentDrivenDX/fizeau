@@ -450,7 +450,6 @@ func TestRunnerExecute_QuotaMessageMarksCache(t *testing.T) {
 	tmp := t.TempDir()
 	cachePath := filepath.Join(tmp, "claude-quota.json")
 	t.Setenv(claudeQuotaCacheEnv, cachePath)
-	t.Setenv(claudeQuotaCacheEnvLegacy, "")
 
 	binPath := filepath.Join(tmp, "claude")
 	script := `#!/bin/sh

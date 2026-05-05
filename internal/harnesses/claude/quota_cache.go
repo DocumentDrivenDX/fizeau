@@ -38,10 +38,6 @@ const DefaultClaudeQuotaStaleAfter = 15 * time.Minute
 // claudeQuotaCacheEnv lets tests override the cache file path.
 const claudeQuotaCacheEnv = "FIZEAU_CLAUDE_QUOTA_CACHE"
 
-// claudeQuotaCacheEnvLegacy is the old DDx env var, read during the
-// one-minor-version back-compat window. Removed at v0.5.0.
-const claudeQuotaCacheEnvLegacy = "DDX_CLAUDE_QUOTA_CACHE"
-
 // ClaudeQuotaCachePath returns the durable location for the Claude quota
 // cache. It resolves to $XDG_STATE_HOME/<config-dir>/claude-quota.json, or
 // ~/.local/state/<config-dir>/claude-quota.json when XDG_STATE_HOME is unset.
@@ -59,23 +55,6 @@ func ClaudeQuotaCachePath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".local", "state", productinfo.ConfigDir, "claude-quota.json"), nil
-}
-
-// claudeQuotaCachePathLegacy returns the OLD DDx cache path used before the
-// path-namespace rebase. It is consulted during the back-compat read window
-// when the new path yields no snapshot. Removed at v0.5.0.
-func claudeQuotaCachePathLegacy() (string, error) {
-	if path := os.Getenv(claudeQuotaCacheEnvLegacy); path != "" {
-		return path, nil
-	}
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "ddx", "claude-quota.json"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local", "state", "ddx", "claude-quota.json"), nil
 }
 
 // WriteClaudeQuota atomically persists a ClaudeQuotaSnapshot to the given
@@ -133,12 +112,8 @@ func ReadClaudeQuotaFrom(path string) (*ClaudeQuotaSnapshot, bool) {
 	return &snap, true
 }
 
-// ReadClaudeQuota tries the new path first, then falls back to the old
-// path for one minor-version transition window. After v0.5.0, the back-compat
-// fallback is removed.
-//
 // The second return value is false if no snapshot is present or cannot be
-// decoded in either location.
+// decoded.
 //
 // Callers SHOULD check snapshot age via ClaudeQuotaSnapshotAge (or
 // IsClaudeQuotaFresh) before trusting the values; this function does not
@@ -149,17 +124,7 @@ func ReadClaudeQuota() (*ClaudeQuotaSnapshot, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if snap, ok := ReadClaudeQuotaFrom(path); ok {
-		return snap, true
-	}
-
-	// Back-compat fallback: read from the old DDx path during the
-	// one-minor-version transition window. Removed at v0.5.0.
-	legacyPath, err := claudeQuotaCachePathLegacy()
-	if err != nil {
-		return nil, false
-	}
-	return ReadClaudeQuotaFrom(legacyPath)
+	return ReadClaudeQuotaFrom(path)
 }
 
 // ClaudeQuotaSnapshotAge reports the age of a snapshot relative to now.
