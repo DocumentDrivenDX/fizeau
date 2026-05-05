@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/sessionlog"
 )
 
 const defaultEventBuffer = 64
@@ -227,16 +226,9 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 		return nil, -1, "", err, "failed"
 	}
 
-	var progressLog *os.File
-	if req.SessionLogDir != "" {
-		sid := req.SessionID
-		if sid == "" {
-			sid = fmt.Sprintf("pi-%d", time.Now().UnixNano())
-		}
-		if f, err := sessionlog.OpenAppend(req.SessionLogDir, sid); err == nil {
-			progressLog = f
-			defer progressLog.Close()
-		}
+	progressLog, _ := harnesses.OpenProgressLog(req.SessionLogDir, req.SessionID, "pi")
+	if progressLog != nil {
+		defer progressLog.Close()
 	}
 
 	parserReader, parserWriter := io.Pipe()
@@ -245,12 +237,10 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	var parseErr error
 	go func() {
 		defer close(parseDone)
-		mirrored, owned, mirrorDone := mirroredEvents(out, progressLog, ctx)
+		mirrored, mirrorDone := harnesses.MirrorEvents(out, progressLog, ctx)
 		parseAgg, parseErr = parsePiStream(runCtx, parserReader, mirrored, req.Metadata, seq)
-		if owned {
-			close(mirrored)
-			<-mirrorDone
-		}
+		close(mirrored)
+		<-mirrorDone
 	}()
 
 	stdoutDone := make(chan struct{})
@@ -326,40 +316,6 @@ type stringBuilderWriter struct {
 
 func (w *stringBuilderWriter) Write(p []byte) (int, error) {
 	return w.sb.Write(p)
-}
-
-// mirroredEvents wraps dst with an event-mirroring goroutine when log is
-// non-nil. It returns:
-//   - mid: the channel the parser should send on
-//   - owned: true when mid was newly created (caller must close mid and
-//     wait on done before closing dst — otherwise an in-flight event can
-//     race a closed dst and panic with "send on closed channel")
-//   - done: signals the mirror goroutine has exited; pre-closed when no
-//     mirror was started.
-func mirroredEvents(dst chan harnesses.Event, log *os.File, ctx context.Context) (mid chan harnesses.Event, owned bool, done <-chan struct{}) {
-	doneCh := make(chan struct{})
-	if log == nil {
-		close(doneCh)
-		return dst, false, doneCh
-	}
-	mid = make(chan harnesses.Event, cap(dst))
-	go func() {
-		defer close(doneCh)
-		for ev := range mid {
-			if data, err := json.Marshal(ev); err == nil {
-				_, _ = log.Write(data)
-				_, _ = log.Write([]byte("\n"))
-			}
-			select {
-			case dst <- ev:
-			case <-ctx.Done():
-				for range mid {
-				}
-				return
-			}
-		}
-	}()
-	return mid, true, doneCh
 }
 
 func trimErrorBlob(s string) string {

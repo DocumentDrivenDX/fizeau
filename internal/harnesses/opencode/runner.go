@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/sessionlog"
 )
 
 const defaultEventBuffer = 64
@@ -224,16 +223,9 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 		return nil, -1, "", err, "failed"
 	}
 
-	var progressLog *os.File
-	if req.SessionLogDir != "" {
-		sid := req.SessionID
-		if sid == "" {
-			sid = fmt.Sprintf("opencode-%d", time.Now().UnixNano())
-		}
-		if f, err := sessionlog.OpenAppend(req.SessionLogDir, sid); err == nil {
-			progressLog = f
-			defer progressLog.Close()
-		}
+	progressLog, _ := harnesses.OpenProgressLog(req.SessionLogDir, req.SessionID, "opencode")
+	if progressLog != nil {
+		defer progressLog.Close()
 	}
 
 	parserReader, parserWriter := io.Pipe()
@@ -242,18 +234,10 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	var parseErr error
 	go func() {
 		defer close(parseDone)
-		mirrored := out
-		var mirrorCh chan harnesses.Event
-		var mirrorDone chan struct{}
-		if progressLog != nil {
-			mirrorCh, mirrorDone = mirroredEvents(out, progressLog, ctx)
-			mirrored = mirrorCh
-		}
+		mirrored, mirrorDone := harnesses.MirrorEvents(out, progressLog, ctx)
 		parseAgg, parseErr = parseOpencodeStream(runCtx, parserReader, mirrored, req.Metadata, seq)
-		if mirrorCh != nil {
-			close(mirrorCh)
-			<-mirrorDone
-		}
+		close(mirrored)
+		<-mirrorDone
 	}()
 
 	stdoutDone := make(chan struct{})
@@ -329,26 +313,6 @@ type stringBuilderWriter struct {
 
 func (w *stringBuilderWriter) Write(p []byte) (int, error) {
 	return w.sb.Write(p)
-}
-
-func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Context) (chan harnesses.Event, chan struct{}) {
-	mid := make(chan harnesses.Event, cap(dst))
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for ev := range mid {
-			if data, err := json.Marshal(ev); err == nil {
-				_, _ = log.Write(data)
-				_, _ = log.Write([]byte("\n"))
-			}
-			select {
-			case dst <- ev:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return mid, done
 }
 
 func trimErrorBlob(s string) string {

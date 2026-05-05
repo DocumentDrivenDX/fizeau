@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	osexec "os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -274,21 +273,9 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 		return nil, -1, "", err, "failed"
 	}
 
-	// Open the per-run progress trace, when SessionLogDir is set, so the
-	// agent loop's TailSessionLog endpoint can mirror events to disk.
-	var progressLog *os.File
-	if req.SessionLogDir != "" {
-		if err := os.MkdirAll(req.SessionLogDir, 0o755); err == nil {
-			sid := req.SessionID
-			if sid == "" {
-				sid = fmt.Sprintf("claude-%d", time.Now().UnixNano())
-			}
-			logPath := filepath.Join(req.SessionLogDir, "agent-"+sid+".jsonl")
-			if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-				progressLog = f
-				defer progressLog.Close()
-			}
-		}
+	progressLog, _ := harnesses.OpenProgressLog(req.SessionLogDir, req.SessionID, "claude")
+	if progressLog != nil {
+		defer progressLog.Close()
 	}
 
 	// Tee stdout into the parser and (optionally) into the progress log.
@@ -300,7 +287,7 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	// signals that the mirror goroutine has fully drained — must be awaited
 	// before run() lets defer close(out) fire, otherwise we get a close vs.
 	// chansend race when the mirror is mid-send to dst.
-	mirrored, mirrorDone := mirroredEvents(out, progressLog, ctx)
+	mirrored, mirrorDone := harnesses.MirrorEvents(out, progressLog, ctx)
 	go func() {
 		defer close(parseDone)
 		defer close(mirrored) // releases the mirror goroutine's range loop
@@ -472,33 +459,6 @@ type stringBuilderWriter struct {
 
 func (w *stringBuilderWriter) Write(p []byte) (int, error) {
 	return w.sb.Write(p)
-}
-
-// mirroredEvents returns (in, done): callers send events on `in` and close
-// it when finished; the goroutine forwards each event to dst and, when log
-// is non-nil, also writes a JSONL line for TailSessionLog consumers. `done`
-// closes once the goroutine has fully drained, so the caller can safely
-// close dst without racing with an in-flight send.
-func mirroredEvents(dst chan<- harnesses.Event, log *os.File, ctx context.Context) (chan harnesses.Event, <-chan struct{}) {
-	mid := make(chan harnesses.Event, cap(dst))
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for ev := range mid {
-			if log != nil {
-				if data, err := json.Marshal(ev); err == nil {
-					_, _ = log.Write(data)
-					_, _ = log.Write([]byte("\n"))
-				}
-			}
-			select {
-			case dst <- ev:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return mid, done
 }
 
 // trimErrorBlob caps stderr for inclusion in the final event so a runaway

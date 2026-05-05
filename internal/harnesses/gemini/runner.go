@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/sessionlog"
 )
 
 const defaultEventBuffer = 64
@@ -238,16 +237,9 @@ func (r *Runner) runBuffered(ctx context.Context, binary string, req harnesses.E
 		return nil, -1, "", err, "failed"
 	}
 
-	var progressLog *os.File
-	if req.SessionLogDir != "" {
-		sid := req.SessionID
-		if sid == "" {
-			sid = fmt.Sprintf("gemini-%d", time.Now().UnixNano())
-		}
-		if f, err := sessionlog.OpenAppend(req.SessionLogDir, sid); err == nil {
-			progressLog = f
-			defer progressLog.Close()
-		}
+	progressLog, _ := harnesses.OpenProgressLog(req.SessionLogDir, req.SessionID, "gemini")
+	if progressLog != nil {
+		defer progressLog.Close()
 	}
 
 	// Buffer stdout; emit after process exits (no streaming parser for gemini).
@@ -356,12 +348,7 @@ func emitGeminiOutput(ctx context.Context, output string, out chan<- harnesses.E
 	}
 	*seq++
 
-	if progressLog != nil {
-		if data, err := json.Marshal(ev); err == nil {
-			_, _ = progressLog.Write(data)
-			_, _ = progressLog.Write([]byte("\n"))
-		}
-	}
+	harnesses.WriteProgressEvent(progressLog, ev)
 
 	select {
 	case out <- ev:
