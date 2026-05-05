@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -46,6 +48,25 @@ func TestExecuteDispatcherMovesConcreteRunnerSelectionOutOfExecuteLoop(t *testin
 			`"github.com/DocumentDrivenDX/fizeau/internal/harnesses/opencode"`,
 			`"github.com/DocumentDrivenDX/fizeau/internal/harnesses/pi"`:
 			t.Fatalf("service_execute.go imports concrete runner package %s; selection belongs behind executeRunnerInvoker", path)
+		}
+	}
+}
+
+func TestVirtualAndScriptMechanicsMovedOutOfRootExecute(t *testing.T) {
+	data, err := os.ReadFile("service_execute.go")
+	if err != nil {
+		t.Fatalf("read service_execute.go: %v", err)
+	}
+	src := string(data)
+	for _, implementationDetail := range []string{
+		"virtual.response",
+		"virtual.dict_dir",
+		"script.stdout",
+		"script.exit_code",
+		"script.delay_ms",
+	} {
+		if strings.Contains(src, implementationDetail) {
+			t.Fatalf("service_execute.go still contains runner implementation detail %q", implementationDetail)
 		}
 	}
 }

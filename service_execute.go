@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -14,9 +13,9 @@ import (
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	virtualprovider "github.com/DocumentDrivenDX/fizeau/internal/provider/virtual"
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
 	"github.com/DocumentDrivenDX/fizeau/internal/tool"
 )
 
@@ -494,70 +493,12 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 }
 
 func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string) {
-	inlineText := meta["virtual.response"]
-	cfg := virtualprovider.Config{
-		DictDir: meta["virtual.dict_dir"],
-	}
-	if inlineText != "" {
-		cfg.InlineResponses = []virtualprovider.InlineResponse{{
-			PromptMatch: metaValue(meta, "virtual.prompt_match", req.Prompt),
-			Response: agentcore.Response{
-				Content: inlineText,
-				Usage: agentcore.TokenUsage{
-					Input:  metadataInt(meta, "virtual.input_tokens"),
-					Output: metadataInt(meta, "virtual.output_tokens"),
-					Total:  metadataInt(meta, "virtual.total_tokens"),
-				},
-				Model: metaValue(meta, "virtual.model", decision.Model),
-			},
-			DelayMS: metadataInt(meta, "virtual.delay_ms"),
-		}}
-	}
-	if cfg.DictDir == "" && len(cfg.InlineResponses) == 0 {
-		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
-			Status:     "failed",
-			Error:      "virtual harness requires metadata virtual.response or virtual.dict_dir",
-			DurationMS: time.Since(start).Milliseconds(),
-			RoutingActual: &harnesses.RoutingActual{
-				Harness:  decision.Harness,
-				Provider: decision.Provider,
-				Model:    decision.Model,
-			},
-		})
-		return
-	}
-
 	progress := newSubprocessProgressState(req)
 	emitProgress(out, seq, sl, sessionID, meta, progress.noteRequestStart())
-	resp, err := virtualprovider.New(cfg).Chat(ctx, []agentcore.Message{{Role: agentcore.RoleUser, Content: req.Prompt}}, nil, agentcore.Options{})
-	final := harnesses.FinalData{
-		DurationMS: time.Since(start).Milliseconds(),
-		RoutingActual: &harnesses.RoutingActual{
-			Harness:  decision.Harness,
-			Provider: decision.Provider,
-			Model:    metaValue(meta, "virtual.model", decision.Model),
-		},
-	}
-	if err != nil {
-		final.Status = "failed"
-		final.Error = err.Error()
-		emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
-		finalizeAndEmit(out, seq, meta, req, sl, final)
-		return
-	}
-	final.Status = "success"
-	final.FinalText = resp.Content
-	// Virtual provider always tracks usage (synthetic but provenance-preserving):
-	// emit the exact counts upstream returned, including explicit zero. A nil
-	// usage from this path is reserved for the no-Chat (failure) branch above.
-	final.Usage = &harnesses.FinalUsage{
-		InputTokens:  harnesses.IntPtr(resp.Usage.Input),
-		OutputTokens: harnesses.IntPtr(resp.Usage.Output),
-		TotalTokens:  harnesses.IntPtr(resp.Usage.Total),
-		Source:       harnesses.UsageSourceFallback,
-	}
-	if resp.Content != "" {
-		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: resp.Content})
+	result := serviceimpl.RunVirtual(ctx, executeRunnerRequest(req, decision, meta, start))
+	final := result.Final
+	if result.EmitText {
+		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: result.Text})
 	}
 	emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
 	if progressFinal := progress.noteResponseComplete(final); progressFinal != nil {
@@ -569,63 +510,10 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, out chan<- ServiceEvent, seq *atomic.Int64, start time.Time, sl *serviceSessionLog, sessionID string) {
 	progress := newSubprocessProgressState(req)
 	emitProgress(out, seq, sl, sessionID, meta, progress.noteRequestStart())
-	delay := metadataInt(meta, "script.delay_ms")
-	if delay > 0 {
-		timer := time.NewTimer(time.Duration(delay) * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			final := harnesses.FinalData{
-				Status:     "cancelled",
-				Error:      ctx.Err().Error(),
-				DurationMS: time.Since(start).Milliseconds(),
-				RoutingActual: &harnesses.RoutingActual{
-					Harness:  decision.Harness,
-					Provider: decision.Provider,
-					Model:    decision.Model,
-				},
-			}
-			emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
-			finalizeAndEmit(out, seq, meta, req, sl, final)
-			return
-		case <-timer.C:
-		}
-	}
-
-	text, ok := meta["script.stdout"]
-	if !ok {
-		final := harnesses.FinalData{
-			Status:     "failed",
-			Error:      "script harness requires metadata script.stdout",
-			DurationMS: time.Since(start).Milliseconds(),
-			RoutingActual: &harnesses.RoutingActual{
-				Harness:  decision.Harness,
-				Provider: decision.Provider,
-				Model:    decision.Model,
-			},
-		}
-		emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
-		finalizeAndEmit(out, seq, meta, req, sl, final)
-		return
-	}
-	exitCode := metadataInt(meta, "script.exit_code")
-	final := harnesses.FinalData{
-		Status:     "success",
-		ExitCode:   exitCode,
-		FinalText:  text,
-		DurationMS: time.Since(start).Milliseconds(),
-		RoutingActual: &harnesses.RoutingActual{
-			Harness:  decision.Harness,
-			Provider: decision.Provider,
-			Model:    decision.Model,
-		},
-	}
-	if text != "" {
-		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: text})
-	}
-	if exitCode != 0 {
-		final.Status = "failed"
-		final.Error = metaValue(meta, "script.stderr", fmt.Sprintf("script exited with status %d", exitCode))
+	result := serviceimpl.RunScript(ctx, executeRunnerRequest(req, decision, meta, start))
+	final := result.Final
+	if result.EmitText {
+		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: result.Text})
 	}
 	emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
 	if progressFinal := progress.noteResponseComplete(final); progressFinal != nil {
@@ -634,22 +522,17 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
 
-func metaValue(meta map[string]string, key, fallback string) string {
-	if meta == nil {
-		return fallback
+func executeRunnerRequest(req ServiceExecuteRequest, decision RouteDecision, meta map[string]string, start time.Time) serviceimpl.ExecuteRunnerRequest {
+	return serviceimpl.ExecuteRunnerRequest{
+		Prompt:   req.Prompt,
+		Metadata: meta,
+		Decision: serviceimpl.ExecuteRunnerDecision{
+			Harness:  decision.Harness,
+			Provider: decision.Provider,
+			Model:    decision.Model,
+		},
+		Started: start,
 	}
-	if v := meta[key]; v != "" {
-		return v
-	}
-	return fallback
-}
-
-func metadataInt(meta map[string]string, key string) int {
-	if meta == nil {
-		return 0
-	}
-	n, _ := strconv.Atoi(meta[key])
-	return n
 }
 
 func nativeToolsForRequest(req ServiceExecuteRequest) []agentcore.Tool {
