@@ -3,7 +3,6 @@ package fizeau
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -562,221 +561,17 @@ type toolTaskSummary struct {
 }
 
 func summarizeToolTask(toolName string, input json.RawMessage) toolTaskSummary {
-	toolName = strings.TrimSpace(toolName)
-	payload := map[string]any{}
-	if len(input) > 0 {
-		_ = json.Unmarshal(input, &payload)
-	}
-	path := summaryString(payload, "path", "file")
-	switch toolName {
-	case "read":
-		if path != "" {
-			return toolTaskSummary{Action: "inspect " + lineRangeSummary(payload) + " in " + path, Target: path}
-		}
-		return toolTaskSummary{Action: "inspect file"}
-	case "write":
-		return toolTaskSummary{Action: "write file", Target: path}
-	case "edit", "anchor_edit":
-		return toolTaskSummary{Action: "edit file", Target: path}
-	case "patch":
-		action := "edit file"
-		if op := summaryString(payload, "operation"); op != "" {
-			action = op + " file"
-		}
-		return toolTaskSummary{Action: action, Target: path}
-	case "grep":
-		pattern := summaryString(payload, "pattern")
-		target := firstNonEmpty(summaryString(payload, "dir"), summaryString(payload, "glob"))
-		action := "search"
-		if pattern != "" {
-			action += " " + strconv.Quote(boundedProgressText(pattern, 32))
-		}
-		if target != "" {
-			action += " in " + target
-		}
-		return toolTaskSummary{Action: action, Target: target}
-	case "find":
-		pattern := summaryString(payload, "pattern")
-		target := summaryString(payload, "dir")
-		action := "find files"
-		if pattern != "" {
-			action += " matching " + strconv.Quote(boundedProgressText(pattern, 32))
-		}
-		if target != "" {
-			action += " in " + target
-		}
-		return toolTaskSummary{Action: action, Target: target}
-	case "ls":
-		target := summaryString(payload, "path")
-		if target == "" {
-			target = "."
-		}
-		return toolTaskSummary{Action: "list directory " + target, Target: target}
-	case "bash":
-		return summarizeShellTask(extractBashCommand(payload))
-	default:
-		if path != "" {
-			return toolTaskSummary{Action: toolName, Target: path}
-		}
-		if toolName != "" {
-			return toolTaskSummary{Action: toolName}
-		}
-		return toolTaskSummary{}
-	}
+	got := transcript.SummarizeToolCall(toolName, input)
+	return toolTaskSummary(got)
 }
 
 func summarizeShellTask(command string) toolTaskSummary {
-	command = normalizeShellCommand(command)
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
-		return toolTaskSummary{}
-	}
-	switch fields[0] {
-	case "sed":
-		if len(fields) >= 4 && fields[1] == "-n" {
-			target := fields[3]
-			return toolTaskSummary{Action: "inspect " + shellLineRange(fields[2]) + " in " + target, Target: target}
-		}
-	case "cat", "head", "tail":
-		if len(fields) >= 2 {
-			target := fields[len(fields)-1]
-			return toolTaskSummary{Action: "inspect " + target, Target: target}
-		}
-	case "rg", "grep":
-		return summarizeSearchCommand(fields)
-	case "go":
-		if len(fields) >= 2 && fields[1] == "test" {
-			target := strings.Join(fields[2:], " ")
-			return toolTaskSummary{Action: strings.TrimSpace("test " + target), Target: target}
-		}
-	case "git":
-		return summarizeGitCommand(fields)
-	case "apply_patch":
-		return toolTaskSummary{Action: "apply patch"}
-	}
-	return toolTaskSummary{Action: boundedProgressText(command, 96)}
-}
-
-func summarizeSearchCommand(fields []string) toolTaskSummary {
-	pattern := ""
-	target := ""
-	for _, field := range fields[1:] {
-		if strings.HasPrefix(field, "-") {
-			continue
-		}
-		if pattern == "" {
-			pattern = strings.Trim(field, "'\"")
-			continue
-		}
-		target = field
-	}
-	action := "search"
-	if pattern != "" {
-		action += " " + strconv.Quote(boundedProgressText(pattern, 32))
-	}
-	if target != "" {
-		action += " in " + target
-	}
-	return toolTaskSummary{Action: action, Target: target}
-}
-
-func summarizeGitCommand(fields []string) toolTaskSummary {
-	if len(fields) < 2 {
-		return toolTaskSummary{Action: "git"}
-	}
-	switch fields[1] {
-	case "add":
-		target := strings.Join(fields[2:], " ")
-		if target == "" {
-			return toolTaskSummary{Action: "stage changes"}
-		}
-		return toolTaskSummary{Action: "stage changes", Target: target}
-	case "commit":
-		return toolTaskSummary{Action: "commit changes"}
-	case "diff":
-		return toolTaskSummary{Action: "inspect diff"}
-	case "status":
-		return toolTaskSummary{Action: "inspect git status"}
-	case "log":
-		return toolTaskSummary{Action: "inspect git log"}
-	default:
-		return toolTaskSummary{Action: "git " + fields[1]}
-	}
+	got := transcript.SummarizeShellCommand(command)
+	return toolTaskSummary(got)
 }
 
 func normalizeShellCommand(command string) string {
-	command = strings.TrimSpace(command)
-	for _, prefix := range []string{"/bin/zsh -lc ", "zsh -lc ", "/bin/bash -lc ", "bash -lc "} {
-		if !strings.HasPrefix(command, prefix) {
-			continue
-		}
-		inner := strings.TrimSpace(strings.TrimPrefix(command, prefix))
-		if unquoted, err := strconv.Unquote(inner); err == nil {
-			command = unquoted
-		} else {
-			command = strings.Trim(inner, `"`)
-		}
-		break
-	}
-	for _, sep := range []string{" && ", " || ", " ; "} {
-		if idx := strings.Index(command, sep); idx >= 0 {
-			command = strings.TrimSpace(command[:idx])
-			break
-		}
-	}
-	return strings.Join(strings.Fields(command), " ")
-}
-
-func shellLineRange(expr string) string {
-	expr = strings.Trim(strings.TrimSpace(expr), "'\"")
-	expr = strings.TrimSuffix(expr, "p")
-	if expr == "" {
-		return "lines"
-	}
-	return "lines " + expr
-}
-
-func lineRangeSummary(payload map[string]any) string {
-	offset := summaryInt(payload, "offset")
-	limit := summaryInt(payload, "limit")
-	if offset <= 0 && limit <= 0 {
-		return "file"
-	}
-	if limit > 0 {
-		return fmt.Sprintf("lines %d-%d", offset+1, offset+limit)
-	}
-	return fmt.Sprintf("from line %d", offset+1)
-}
-
-func summaryString(payload map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if value, ok := payload[key]; ok {
-			if s, ok := value.(string); ok && strings.TrimSpace(s) != "" {
-				return strings.TrimSpace(s)
-			}
-		}
-	}
-	return ""
-}
-
-func summaryInt(payload map[string]any, key string) int {
-	switch value := payload[key].(type) {
-	case float64:
-		return int(value)
-	case int:
-		return value
-	default:
-		return 0
-	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return transcript.NormalizeShellCommand(command)
 }
 
 type toolOutputDetail struct {
@@ -791,125 +586,20 @@ func summarizeToolOutput(output string) string {
 }
 
 func summarizeToolOutputDetail(output string) toolOutputDetail {
-	output = strings.TrimSpace(output)
-	if output == "" {
-		return toolOutputDetail{}
-	}
-	lineCount := strings.Count(output, "\n") + 1
-	byteCount := len([]byte(output))
-	parts := []string{fmt.Sprintf("out=%s", formatByteCount(byteCount))}
-	if lineCount == 1 {
-		parts = append(parts, "1 line")
-	} else {
-		parts = append(parts, fmt.Sprintf("%d lines", lineCount))
-	}
-	excerpt := ""
-	if byteCount > 40 {
-		for _, line := range strings.Split(output, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			excerpt = boundedProgressText(line, 48)
-			parts = append(parts, strconv.Quote(excerpt))
-			break
-		}
-	}
-	return toolOutputDetail{
-		Summary: boundedProgressText(strings.Join(parts, " "), 96),
-		Bytes:   byteCount,
-		Lines:   lineCount,
-		Excerpt: excerpt,
-	}
+	got := transcript.SummarizeOutput(output)
+	return toolOutputDetail(got)
 }
 
 func formatByteCount(n int) string {
-	switch {
-	case n < 1024:
-		return fmt.Sprintf("%dB", n)
-	case n < 1024*1024:
-		return fmt.Sprintf("%.1fKB", float64(n)/1024)
-	default:
-		return fmt.Sprintf("%.1fMB", float64(n)/(1024*1024))
-	}
+	return transcript.FormatByteCount(n)
 }
 
 func summarizeJSONValue(raw json.RawMessage) string {
-	var payload any
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return strings.TrimSpace(string(raw))
-	}
-	return summarizeAnyValue(payload)
-}
-
-func summarizeAnyValue(v any) string {
-	switch x := v.(type) {
-	case map[string]any:
-		keys := make([]string, 0, len(x))
-		for k := range x {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		if len(keys) > 3 {
-			keys = keys[:3]
-		}
-		parts := make([]string, 0, len(keys))
-		for _, key := range keys {
-			parts = append(parts, fmt.Sprintf("%s=%s", key, summarizeValueForKey(key, x[key])))
-		}
-		if len(x) > len(keys) {
-			parts = append(parts, "...")
-		}
-		return "{" + strings.Join(parts, ", ") + "}"
-	case []any:
-		return fmt.Sprintf("[%d item(s)]", len(x))
-	case string:
-		return fmt.Sprintf("%q", boundedProgressText(x, 32))
-	case float64, bool, nil:
-		return fmt.Sprint(x)
-	default:
-		return fmt.Sprintf("%T", x)
-	}
-}
-
-func summarizeValueForKey(key string, v any) string {
-	if isSensitiveSummaryKey(key) {
-		return "[redacted]"
-	}
-	switch x := v.(type) {
-	case string:
-		return fmt.Sprintf("%q", boundedProgressText(x, 32))
-	case map[string]any, []any:
-		return summarizeAnyValue(x)
-	case float64, bool, nil:
-		return fmt.Sprint(x)
-	default:
-		return fmt.Sprintf("%T", x)
-	}
+	return transcript.SummarizeJSONValue(raw)
 }
 
 func isSensitiveSummaryKey(key string) bool {
-	key = strings.ToLower(key)
-	switch {
-	case strings.Contains(key, "secret"):
-		return true
-	case strings.Contains(key, "token"):
-		return true
-	case strings.Contains(key, "password"):
-		return true
-	case strings.Contains(key, "passwd"):
-		return true
-	case strings.Contains(key, "api_key"):
-		return true
-	case strings.Contains(key, "apikey"):
-		return true
-	case strings.Contains(key, "key"):
-		return true
-	case strings.Contains(key, "auth"):
-		return true
-	default:
-		return false
-	}
+	return transcript.IsSensitiveSummaryKey(key)
 }
 
 func compactionMessage(payload nativeCompactionPayload) string {
@@ -969,11 +659,7 @@ func derefServiceInt(v *int) int {
 }
 
 func progressTokenThroughput(outputTokens int, durationMS int64) *float64 {
-	if outputTokens <= 0 || durationMS <= 0 {
-		return nil
-	}
-	v := float64(outputTokens) / (float64(durationMS) / 1000)
-	return &v
+	return transcript.TokenThroughput(outputTokens, durationMS)
 }
 
 func estimateProgressTextTokens(s string) int {
