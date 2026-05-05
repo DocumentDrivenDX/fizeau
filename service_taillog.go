@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
 )
 
 // sessionHub is a concurrent-safe broadcast store for in-flight and completed
@@ -122,34 +123,7 @@ func (h *sessionHub) subscribe(sessionID string) (<-chan ServiceEvent, error) {
 // remaining event stream. Callers attached after completion receive the stored
 // final event then see the channel close. Returns an error for unknown IDs.
 func (s *service) TailSessionLog(ctx context.Context, sessionID string) (<-chan ServiceEvent, error) {
-	ch, err := s.hub.subscribe(sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Wrap ch so ctx cancellation closes our output channel without leaking
-	// the subscriber slot. We drain into a proxy channel so callers see ctx
-	// cancellation as a clean channel close (not a blocked read).
-	proxy := make(chan ServiceEvent, 32)
-	go func() {
-		defer close(proxy)
-		for {
-			select {
-			case ev, ok := <-ch:
-				if !ok {
-					return
-				}
-				select {
-				case proxy <- ev:
-				case <-ctx.Done():
-					return
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return proxy, nil
+	return serviceimpl.TailSessionLog(ctx, sessionID, s.hub.subscribe)
 }
 
 // wrapExecuteWithHub wraps the inner out channel so that every event emitted
