@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,8 @@ import (
 	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 )
+
+const progressLineLimit = 80
 
 type nativeProgressState struct {
 	turnIndex             int
@@ -99,7 +102,7 @@ func (p *nativeProgressState) noteRequest(payload nativeLLMRequestPayload) Servi
 	return ServiceProgressData{
 		Phase:                 "thinking",
 		State:                 "start",
-		Message:               "thinking ...",
+		Message:               shortProgressText("thinking ..."),
 		TurnIndex:             p.turnIndex,
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
@@ -121,7 +124,7 @@ func (p *nativeProgressState) noteResponse(payload nativeLLMResponsePayload) Ser
 	return ServiceProgressData{
 		Phase:                 "thinking",
 		State:                 "complete",
-		Message:               msg,
+		Message:               shortProgressText(msg),
 		TurnIndex:             p.turnIndex,
 		DurationMS:            payload.LatencyMS,
 		InputTokens:           intPtrIfPositive(payload.Usage.Input),
@@ -144,7 +147,7 @@ func (p *nativeProgressState) noteToolCall(payload nativeToolCallPayload) (Servi
 	start := ServiceProgressData{
 		Phase:                 "tool",
 		State:                 "start",
-		Message:               toolStartMessage(payload.Tool, command),
+		Message:               shortProgressText(toolStartMessage(payload.Tool, command)),
 		TurnIndex:             p.turnIndex,
 		ToolName:              payload.Tool,
 		Command:               command,
@@ -155,7 +158,7 @@ func (p *nativeProgressState) noteToolCall(payload nativeToolCallPayload) (Servi
 	complete := ServiceProgressData{
 		Phase:                 "tool",
 		State:                 "complete",
-		Message:               toolCompleteMessage(payload.Tool, durationMS, payload.Error),
+		Message:               shortProgressText(toolCompleteMessage(payload.Tool, durationMS, payload.Error)),
 		TurnIndex:             p.turnIndex,
 		ToolName:              payload.Tool,
 		Command:               command,
@@ -169,7 +172,7 @@ func (p *nativeProgressState) noteToolCall(payload nativeToolCallPayload) (Servi
 
 func (p *nativeProgressState) noteCompaction(payload nativeCompactionPayload) (ServiceProgressData, ServiceProgressData) {
 	if payload.Summary != "" {
-		p.summaryText = boundedProgressText(payload.Summary, 240)
+		p.summaryText = shortProgressText(payload.Summary)
 	}
 	if payload.MessagesAfter > 0 {
 		p.contextMessages = payload.MessagesAfter
@@ -184,7 +187,7 @@ func (p *nativeProgressState) noteCompaction(payload nativeCompactionPayload) (S
 	compaction := ServiceProgressData{
 		Phase:                 "compaction",
 		State:                 "complete",
-		Message:               compactionMessage(payload),
+		Message:               shortProgressText(compactionMessage(payload)),
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
 		SessionSummary:        p.sessionSummary(),
@@ -192,7 +195,7 @@ func (p *nativeProgressState) noteCompaction(payload nativeCompactionPayload) (S
 	contextUpdate := ServiceProgressData{
 		Phase:                 "context",
 		State:                 "update",
-		Message:               "context summary updated",
+		Message:               shortProgressText("context summary updated"),
 		ContextMessages:       p.contextMessages,
 		ContextTokensEstimate: p.contextTokensEstimate,
 		SessionSummary:        p.sessionSummary(),
@@ -218,7 +221,7 @@ func (p *nativeProgressState) noteFinal(final harnesses.FinalData) *ServiceProgr
 	return &ServiceProgressData{
 		Phase:                 "response",
 		State:                 "complete",
-		Message:               msg,
+		Message:               shortProgressText(msg),
 		DurationMS:            final.DurationMS,
 		InputTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
 		OutputTokens:          finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
@@ -237,6 +240,47 @@ func newSubprocessProgressState(req ServiceExecuteRequest) *subprocessProgressSt
 	}
 }
 
+func (p *subprocessProgressState) noteRequestStart() ServiceProgressData {
+	return ServiceProgressData{
+		Phase:                 "thinking",
+		State:                 "start",
+		Message:               shortProgressText("thinking ..."),
+		TurnIndex:             1,
+		ContextMessages:       p.contextMessages,
+		ContextTokensEstimate: p.contextTokensEstimate,
+		SessionSummary:        p.sessionSummary(),
+	}
+}
+
+func (p *subprocessProgressState) noteThinkingComplete(final harnesses.FinalData) ServiceProgressData {
+	totalTokens := 0
+	if final.Usage != nil {
+		totalTokens = derefServiceInt(final.Usage.TotalTokens)
+		if totalTokens <= 0 {
+			totalTokens = derefServiceInt(final.Usage.OutputTokens)
+		}
+	}
+	msg := "thinking complete"
+	if totalTokens > 0 {
+		msg = fmt.Sprintf("thinking complete %d tok in %s", totalTokens, roundedDuration(final.DurationMS))
+	} else if final.DurationMS > 0 {
+		msg = fmt.Sprintf("thinking complete in %s", roundedDuration(final.DurationMS))
+	}
+	return ServiceProgressData{
+		Phase:                 "thinking",
+		State:                 "complete",
+		Message:               shortProgressText(msg),
+		TurnIndex:             1,
+		DurationMS:            final.DurationMS,
+		InputTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
+		OutputTokens:          finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
+		TotalTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.TotalTokens }),
+		ContextMessages:       p.contextMessages,
+		ContextTokensEstimate: p.contextTokensEstimate,
+		SessionSummary:        p.sessionSummary(),
+	}
+}
+
 func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgressData, bool) {
 	switch ev.Type {
 	case harnesses.EventTypeToolCall:
@@ -251,7 +295,7 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		return ServiceProgressData{
 			Phase:                 "tool",
 			State:                 "start",
-			Message:               toolStartMessage(payload.Name, command),
+			Message:               shortProgressText(toolStartMessage(payload.Name, command)),
 			ToolName:              payload.Name,
 			Command:               command,
 			ContextMessages:       p.contextMessages,
@@ -276,7 +320,7 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		return ServiceProgressData{
 			Phase:                 "tool",
 			State:                 "complete",
-			Message:               toolCompleteMessage(toolName, durationMS, payload.Error),
+			Message:               shortProgressText(toolCompleteMessage(toolName, durationMS, payload.Error)),
 			ToolName:              toolName,
 			Command:               command,
 			DurationMS:            durationMS,
@@ -310,7 +354,7 @@ func (p *subprocessProgressState) noteFinal(ev harnesses.Event) (ServiceProgress
 	return ServiceProgressData{
 		Phase:                 "response",
 		State:                 "complete",
-		Message:               msg,
+		Message:               shortProgressText(msg),
 		DurationMS:            final.DurationMS,
 		InputTokens:           finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.InputTokens }),
 		OutputTokens:          finalUsageTokenPtr(final.Usage, func(u *harnesses.FinalUsage) *int { return u.OutputTokens }),
@@ -325,12 +369,12 @@ func (p *subprocessProgressState) sessionSummary() string {
 	if p.summaryText != "" {
 		return p.summaryText
 	}
-	return boundedProgressText(fmt.Sprintf(
+	return shortProgressText(fmt.Sprintf(
 		"subprocess tool_calls=%d context_messages=%d context_tokens_estimate=%d",
 		len(p.toolCalls),
 		p.contextMessages,
 		p.contextTokensEstimate,
-	), 240)
+	))
 }
 
 func (p *nativeProgressState) sessionSummary() string {
@@ -341,14 +385,101 @@ func (p *nativeProgressState) sessionSummary() string {
 	if len(p.recentTools) > 0 {
 		latest = strings.Join(p.recentTools, ", ")
 	}
-	return boundedProgressText(fmt.Sprintf(
+	return shortProgressText(fmt.Sprintf(
 		"turns=%d tool_calls=%d latest_tools=%s context_messages=%d context_tokens_estimate=%d",
 		p.turnIndex,
 		p.totalToolCalls,
 		latest,
 		p.contextMessages,
 		p.contextTokensEstimate,
-	), 240)
+	))
+}
+
+func routeProgressData(decision RouteDecision) ServiceProgressData {
+	candidate := selectedRouteCandidate(decision)
+	label := joinProgressParts(decision.Harness, decision.Provider, decision.Model)
+	if label == "" {
+		label = joinProgressParts(decision.Provider, decision.Model)
+	}
+	parts := []string{"route"}
+	if label != "" {
+		parts = append(parts, label)
+	}
+	power := decision.Power
+	if power <= 0 && candidate != nil {
+		power = candidate.Components.Power
+	}
+	if power > 0 {
+		parts = append(parts, fmt.Sprintf("power=%d", power))
+	}
+	if candidate != nil {
+		if speed := candidate.Components.SpeedTPS; speed > 0 {
+			parts = append(parts, "speed="+formatProgressFloat(speed))
+		}
+		if cost := candidate.CostUSDPer1kTokens; cost > 0 {
+			parts = append(parts, "cost="+formatProgressFloat(cost))
+		}
+		if source := strings.TrimSpace(candidate.CostSource); source != "" {
+			parts = append(parts, "cost_source="+source)
+		}
+	}
+	line := shortProgressText(strings.Join(compactProgressParts(parts), " "))
+	return ServiceProgressData{
+		Phase:          "route",
+		State:          "start",
+		Message:        line,
+		SessionSummary: line,
+	}
+}
+
+func selectedRouteCandidate(decision RouteDecision) *RouteCandidate {
+	if len(decision.Candidates) == 0 {
+		return nil
+	}
+	for i := range decision.Candidates {
+		c := &decision.Candidates[i]
+		if c.Harness == decision.Harness && c.Provider == decision.Provider && c.Model == decision.Model {
+			return c
+		}
+	}
+	for i := range decision.Candidates {
+		c := &decision.Candidates[i]
+		if c.Provider == decision.Provider && c.Model == decision.Model {
+			return c
+		}
+	}
+	if len(decision.Candidates) == 1 {
+		return &decision.Candidates[0]
+	}
+	return nil
+}
+
+func joinProgressParts(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			out = append(out, strings.TrimSpace(part))
+		}
+	}
+	return strings.Join(out, "/")
+}
+
+func compactProgressParts(parts []string) []string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) != "" {
+			out = append(out, strings.TrimSpace(part))
+		}
+	}
+	return out
+}
+
+func formatProgressFloat(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+func shortProgressText(s string) string {
+	return boundedProgressText(s, progressLineLimit)
 }
 
 func appendRecentTool(tools []string, name string) []string {
@@ -540,5 +671,8 @@ func boundedProgressText(s string, maxRunes int) string {
 		return s
 	}
 	runes := []rune(s)
-	return string(runes[:maxRunes]) + "...[truncated]"
+	if maxRunes <= 3 {
+		return string(runes[:maxRunes])
+	}
+	return string(runes[:maxRunes-3]) + "..."
 }

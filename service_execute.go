@@ -446,6 +446,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 		SessionID:        sessionID,
 		Candidates:       routingDecisionEventCandidates(decision.Candidates),
 	})
+	emitProgress(out, &seq, sl, sessionID, meta, routeProgressData(decision))
 
 	// Branch: native ("agent") path runs the in-process loop; subprocess
 	// paths instantiate the matching internal/harnesses/<name>.Runner.
@@ -1285,6 +1286,8 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 		SessionLogDir: req.SessionLogDir,
 		Metadata:      meta,
 	}
+	progress := newSubprocessProgressState(req)
+	emitProgress(out, seq, sl, sessionID, meta, progress.noteRequestStart())
 	in, err := runner.Execute(ctx, hReq)
 	if err != nil {
 		finalizeAndEmit(out, seq, meta, req, sl, harnesses.FinalData{
@@ -1302,7 +1305,6 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 	// Forward events. Stamp metadata onto each (subprocess runners already
 	// echo metadata, but we re-stamp defensively to match the contract's
 	// "every Event carries it" guarantee).
-	progress := newSubprocessProgressState(req)
 	for ev := range in {
 		if ev.Metadata == nil {
 			ev.Metadata = meta
@@ -1311,11 +1313,14 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 			emitProgress(out, seq, sl, sessionID, meta, payload)
 		}
 		if ev.Type == harnesses.EventTypeFinal {
+			var final harnesses.FinalData
+			if err := json.Unmarshal(ev.Data, &final); err == nil {
+				emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
+			}
 			ev = stampSubprocessFinalRouting(ev, decision)
 			ev = stampSubprocessFinalSessionLog(ev, sl)
 			// Mirror the terminal event into the service-owned session log
 			// so subprocess runs produce the same start+end records natives do.
-			var final harnesses.FinalData
 			if err := json.Unmarshal(ev.Data, &final); err == nil {
 				sl.writeEnd(req, meta, final)
 			}
