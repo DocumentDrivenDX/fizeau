@@ -3,6 +3,28 @@
 All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
+## [v0.10.8] — 2026-05-05
+
+### Changed
+
+- Root `package fizeau` is now the public service facade for the cleanup
+  covered by ADR-008. Concrete execution dispatch, transcript/progress
+  rendering, route-health feedback, provider quota state, burn-rate tracking,
+  and routing-quality aggregation now live behind internal package boundaries.
+- Fizeau owns the public transcript/progress semantics for native and
+  subprocess harness paths, so downstream consumers can consume service events
+  and projections without parsing harness-native streams or private session-log
+  records.
+- Pure no-op compaction remains silent at the public service boundary; stale
+  downstream no-op compaction stall policy should migrate away from that signal.
+
+### Tests
+
+- Public facade smoke coverage now exercises constructor/service import,
+  progress events, route feedback/status, usage-window validation,
+  provider quota wrappers, burn-rate wrappers, and routing-quality metric
+  structs from `package fizeau_test`.
+
 ## [v0.10.7] — 2026-05-04
 
 ### Fixed
