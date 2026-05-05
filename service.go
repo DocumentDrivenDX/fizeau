@@ -728,7 +728,6 @@ type ServiceExecuteRequest struct {
 // default in service_execute.go.
 type StallPolicy struct {
 	MaxReadOnlyToolIterations int // 0 = disabled
-	MaxNoopCompactions        int // 0 = disabled
 }
 
 // service is the concrete FizeauService implementation.

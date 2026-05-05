@@ -36,12 +36,6 @@ func generateSessionID() string {
 // is considered stuck.
 const defaultStallReadOnlyIterations = 25
 
-// defaultStallNoopCompactions is the default no-op compaction ceiling.
-// Each pre-/post-turn checkpoint where the compactor declines to run counts.
-// At >50 it is overwhelmingly likely the model is no longer producing
-// useful state changes — fail fast.
-const defaultStallNoopCompactions = 50
-
 // defaultMaxIterations is the implicit per-execute iteration ceiling when the
 // caller does not set ServiceExecuteRequest.MaxIterations. Sized for the
 // 29–99 tool-call envelope observed on Claude Opus medium-task baselines,
@@ -796,7 +790,6 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 	if policy == nil {
 		policy = &StallPolicy{
 			MaxReadOnlyToolIterations: defaultStallReadOnlyIterations,
-			MaxNoopCompactions:        defaultStallNoopCompactions,
 		}
 	}
 	maxIter := req.MaxIterations

@@ -406,7 +406,6 @@ type ExecuteRequest struct {
 
 type StallPolicy struct {
     MaxReadOnlyToolIterations int // 0 = disabled
-    MaxNoopCompactions        int // 0 = disabled
 }
 
 ### Selection precedence
@@ -1800,8 +1799,10 @@ The agent owns these execution-time behaviors. Callers do not opt in or out.
 - **Stall detection.** Per `StallPolicy`. Default policy (when caller passes
   `nil`) uses conservative limits matching today's circuit-breaker thresholds.
 
-- **Compaction-stuck breaking.** Implicit in the `StallPolicy` default;
-  callers don't configure separately.
+- **No-op compaction silence.** Pure no-op compaction probes are not progress
+  and are not externally stall-detected. They emit no public compaction events.
+  Real compaction failures such as `ErrCompactionStuck` and
+  `ErrCompactionNoFit` remain fatal execution errors.
 
 - **OS-level subprocess cleanup.** On `ctx.Done()`, agent reaps PTY and
   orphan processes for subprocess harnesses. Tested and guaranteed.
