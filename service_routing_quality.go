@@ -1,10 +1,9 @@
 package fizeau
 
 import (
-	"sort"
-	"strings"
-	"sync"
 	"time"
+
+	"github.com/DocumentDrivenDX/fizeau/internal/routingquality"
 )
 
 // ADR-006 §5: routing-quality is the user-facing measure of how often
@@ -65,31 +64,18 @@ type OverrideClassBucket struct {
 	UnknownOutcomes   int `json:"unknown_outcomes"`
 }
 
-// routingQualityRecord is one entry in the in-process routing-quality
-// store. Override is nil for un-overridden requests; non-nil entries carry
-// the full override event payload (with outcome stamped on after the final
-// event).
 type routingQualityRecord struct {
-	at       time.Time
-	override *ServiceOverrideData
+	inner *routingquality.Record
 }
 
-// routingQualityStore is the service-scope in-memory ring of routing-quality
-// records. Bounded so long-lived services don't grow unboundedly; the
-// retention budget is sized so RouteStatus's "last 100 requests" window is
-// always covered while UsageReport's "last 30d" window is best-effort (the
-// authoritative cross-restart source remains session logs once persistence
-// is added).
 type routingQualityStore struct {
-	mu      sync.RWMutex
-	records []*routingQualityRecord
-	cap     int
+	inner *routingquality.Store
 }
 
 const routingQualityStoreCap = 1024
 
 func newRoutingQualityStore() *routingQualityStore {
-	return &routingQualityStore{cap: routingQualityStoreCap}
+	return &routingQualityStore{inner: routingquality.NewStore(routingQualityStoreCap)}
 }
 
 // recordRequest appends a request to the store and returns the freshly
@@ -98,45 +84,28 @@ func newRoutingQualityStore() *routingQualityStore {
 // allowing callers (the override fan-out goroutine) to back-write the
 // post-execution outcome without racing the ring's eviction.
 func (s *routingQualityStore) recordRequest(at time.Time, override *ServiceOverrideData) *routingQualityRecord {
-	if s == nil {
+	if s == nil || s.inner == nil {
 		return nil
 	}
-	if at.IsZero() {
-		at = time.Now().UTC()
-	}
-	rec := &routingQualityRecord{at: at.UTC()}
+	var internal *routingquality.OverrideData
 	if override != nil {
-		clone := *override
-		rec.override = &clone
+		internal = toRoutingQualityOverride(*override)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.records = append(s.records, rec)
-	if s.cap > 0 && len(s.records) > s.cap {
-		drop := len(s.records) - s.cap
-		s.records = s.records[drop:]
-	}
-	return rec
+	rec := s.inner.RecordRequest(at, internal)
+	return &routingQualityRecord{inner: rec}
 }
 
 // snapshotRecent returns up to maxN of the most recent records, optionally
 // filtered by since (zero means no time filter). Records are returned in
 // insertion order (oldest first within the slice).
 func (s *routingQualityStore) snapshotRecent(maxN int, since time.Time) []*routingQualityRecord {
-	if s == nil {
+	if s == nil || s.inner == nil {
 		return nil
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]*routingQualityRecord, 0, len(s.records))
-	for _, r := range s.records {
-		if !since.IsZero() && r.at.Before(since) {
-			continue
-		}
-		out = append(out, r)
-	}
-	if maxN > 0 && len(out) > maxN {
-		out = out[len(out)-maxN:]
+	records := s.inner.SnapshotRecent(maxN, since)
+	out := make([]*routingQualityRecord, 0, len(records))
+	for _, rec := range records {
+		out = append(out, &routingQualityRecord{inner: rec})
 	}
 	return out
 }
@@ -144,20 +113,13 @@ func (s *routingQualityStore) snapshotRecent(maxN int, since time.Time) []*routi
 // snapshotWindow returns records whose timestamps fall within [start, end).
 // Either bound may be zero to mean "unbounded".
 func (s *routingQualityStore) snapshotWindow(start, end time.Time) []*routingQualityRecord {
-	if s == nil {
+	if s == nil || s.inner == nil {
 		return nil
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]*routingQualityRecord, 0, len(s.records))
-	for _, r := range s.records {
-		if !start.IsZero() && r.at.Before(start) {
-			continue
-		}
-		if !end.IsZero() && !r.at.Before(end) {
-			continue
-		}
-		out = append(out, r)
+	records := s.inner.SnapshotWindow(start, end)
+	out := make([]*routingQualityRecord, 0, len(records))
+	for _, rec := range records {
+		out = append(out, &routingQualityRecord{inner: rec})
 	}
 	return out
 }
@@ -168,28 +130,11 @@ func (s *routingQualityStore) snapshotWindow(start, end time.Time) []*routingQua
 // list of override events recorded over the same window. The function does
 // not interact with the store, so tests can feed synthetic data directly.
 func computeRoutingQualityMetrics(totalRequests int, overrides []ServiceOverrideData) RoutingQualityMetrics {
-	m := RoutingQualityMetrics{
-		TotalRequests:  totalRequests,
-		TotalOverrides: len(overrides),
+	internal := make([]routingquality.OverrideData, 0, len(overrides))
+	for _, ov := range overrides {
+		internal = append(internal, *toRoutingQualityOverride(ov))
 	}
-	if totalRequests > 0 {
-		noOverride := totalRequests - len(overrides)
-		if noOverride < 0 {
-			noOverride = 0
-		}
-		m.AutoAcceptanceRate = float64(noOverride) / float64(totalRequests)
-	}
-	if len(overrides) > 0 {
-		disagree := 0
-		for _, ov := range overrides {
-			if overrideDisagreesOnAnyAxis(ov) {
-				disagree++
-			}
-		}
-		m.OverrideDisagreementRate = float64(disagree) / float64(len(overrides))
-	}
-	m.OverrideClassBreakdown = buildOverrideClassBreakdown(overrides)
-	return m
+	return fromRoutingQualityMetrics(routingquality.ComputeMetrics(totalRequests, internal))
 }
 
 // computeRoutingQualityMetricsFromRecords aggregates the store-side record
@@ -197,116 +142,14 @@ func computeRoutingQualityMetrics(totalRequests int, overrides []ServiceOverride
 // UsageReport sources from session logs instead — see
 // aggregateRoutingQualityFromSessionLogs.
 func computeRoutingQualityMetricsFromRecords(records []*routingQualityRecord) RoutingQualityMetrics {
-	overrides := make([]ServiceOverrideData, 0, len(records))
+	internal := make([]*routingquality.Record, 0, len(records))
 	for _, r := range records {
-		if r == nil || r.override == nil {
+		if r == nil || r.inner == nil {
 			continue
 		}
-		overrides = append(overrides, *r.override)
+		internal = append(internal, r.inner)
 	}
-	return computeRoutingQualityMetrics(len(records), overrides)
-}
-
-// overrideDisagreesOnAnyAxis returns true when the user pin differs from
-// auto on at least one of the overridden axes. Coincidental-agreement
-// overrides (every overridden axis matches auto) return false.
-func overrideDisagreesOnAnyAxis(ov ServiceOverrideData) bool {
-	if len(ov.AxesOverridden) == 0 {
-		return false
-	}
-	for _, axis := range ov.AxesOverridden {
-		match, ok := ov.MatchPerAxis[axis]
-		if !ok || !match {
-			return true
-		}
-	}
-	return false
-}
-
-// buildOverrideClassBreakdown pivots overrides into a deterministic list of
-// (PromptFeatureBucket, Axis, Match) buckets with outcome aggregates. Each
-// override contributes one bucket increment per overridden axis.
-func buildOverrideClassBreakdown(overrides []ServiceOverrideData) []OverrideClassBucket {
-	if len(overrides) == 0 {
-		return nil
-	}
-	type key struct {
-		bucket string
-		axis   string
-		match  bool
-	}
-	tally := make(map[key]*OverrideClassBucket)
-	for _, ov := range overrides {
-		bucket := promptFeatureBucket(ov.PromptFeatures)
-		for _, axis := range ov.AxesOverridden {
-			match := ov.MatchPerAxis[axis]
-			k := key{bucket: bucket, axis: axis, match: match}
-			b, ok := tally[k]
-			if !ok {
-				b = &OverrideClassBucket{
-					PromptFeatureBucket: bucket,
-					Axis:                axis,
-					Match:               match,
-				}
-				tally[k] = b
-			}
-			b.Count++
-			switch outcomeStatus(ov.Outcome) {
-			case "success":
-				b.SuccessOutcomes++
-			case "stalled":
-				b.StalledOutcomes++
-			case "failed":
-				b.FailedOutcomes++
-			case "cancelled":
-				b.CancelledOutcomes++
-			default:
-				b.UnknownOutcomes++
-			}
-		}
-	}
-	out := make([]OverrideClassBucket, 0, len(tally))
-	for _, b := range tally {
-		out = append(out, *b)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].PromptFeatureBucket != out[j].PromptFeatureBucket {
-			return out[i].PromptFeatureBucket < out[j].PromptFeatureBucket
-		}
-		if out[i].Axis != out[j].Axis {
-			return out[i].Axis < out[j].Axis
-		}
-		// false < true to keep mismatch rows ahead of coincidental-agreement
-		return !out[i].Match && out[j].Match
-	})
-	return out
-}
-
-func outcomeStatus(o *ServiceOverrideOutcome) string {
-	if o == nil {
-		return ""
-	}
-	return o.Status
-}
-
-// promptFeatureBucket coalesces (estimated_tokens, requires_tools, reasoning)
-// into a stable, low-cardinality string label. Buckets are deliberately
-// coarse so the breakdown stays human-scannable; finer-grained slicing is
-// future work.
-func promptFeatureBucket(pf ServiceOverridePromptFeatures) string {
-	parts := make([]string, 0, 3)
-	parts = append(parts, "tokens="+tokenSizeBucket(pf.EstimatedTokens))
-	if pf.RequiresTools {
-		parts = append(parts, "tools=yes")
-	} else {
-		parts = append(parts, "tools=no")
-	}
-	if pf.Reasoning != "" {
-		parts = append(parts, "reasoning="+pf.Reasoning)
-	} else {
-		parts = append(parts, "reasoning=none")
-	}
-	return strings.Join(parts, ",")
+	return fromRoutingQualityMetrics(routingquality.ComputeMetricsFromRecords(internal))
 }
 
 // recordRoutingQualityForRequest records one Execute call into the
@@ -336,30 +179,56 @@ func (s *service) recordRoutingQualityForRequest(ovr *overrideContext) {
 // goroutine establishes happens-before, so plain field writes are race-free
 // here).
 func stampOutcomeOnRecord(rec *routingQualityRecord, outcome *ServiceOverrideOutcome) {
-	if rec == nil || outcome == nil || rec.override == nil {
+	if rec == nil || rec.inner == nil || outcome == nil {
 		return
 	}
-	clone := *outcome
-	rec.override.Outcome = &clone
+	routingquality.StampOutcome(rec.inner, &routingquality.Outcome{Status: outcome.Status})
 }
 
-func tokenSizeBucket(tokens *int) string {
-	if tokens == nil {
-		return "unknown"
+func toRoutingQualityOverride(ov ServiceOverrideData) *routingquality.OverrideData {
+	out := &routingquality.OverrideData{
+		AxesOverridden: append([]string(nil), ov.AxesOverridden...),
+		MatchPerAxis:   make(map[string]bool, len(ov.MatchPerAxis)),
+		PromptFeatures: routingquality.PromptFeatures{
+			RequiresTools: ov.PromptFeatures.RequiresTools,
+			Reasoning:     ov.PromptFeatures.Reasoning,
+		},
 	}
-	t := *tokens
-	switch {
-	case t <= 0:
-		return "unknown"
-	case t < 1000:
-		return "tiny"
-	case t < 4000:
-		return "small"
-	case t < 16000:
-		return "medium"
-	case t < 64000:
-		return "large"
-	default:
-		return "xlarge"
+	for axis, match := range ov.MatchPerAxis {
+		out.MatchPerAxis[axis] = match
 	}
+	if ov.PromptFeatures.EstimatedTokens != nil {
+		tokens := *ov.PromptFeatures.EstimatedTokens
+		out.PromptFeatures.EstimatedTokens = &tokens
+	}
+	if ov.Outcome != nil {
+		out.Outcome = &routingquality.Outcome{Status: ov.Outcome.Status}
+	}
+	return out
+}
+
+func fromRoutingQualityMetrics(m routingquality.Metrics) RoutingQualityMetrics {
+	out := RoutingQualityMetrics{
+		AutoAcceptanceRate:       m.AutoAcceptanceRate,
+		OverrideDisagreementRate: m.OverrideDisagreementRate,
+		TotalRequests:            m.TotalRequests,
+		TotalOverrides:           m.TotalOverrides,
+	}
+	if len(m.OverrideClassBreakdown) > 0 {
+		out.OverrideClassBreakdown = make([]OverrideClassBucket, 0, len(m.OverrideClassBreakdown))
+		for _, b := range m.OverrideClassBreakdown {
+			out.OverrideClassBreakdown = append(out.OverrideClassBreakdown, OverrideClassBucket{
+				PromptFeatureBucket: b.PromptFeatureBucket,
+				Axis:                b.Axis,
+				Match:               b.Match,
+				Count:               b.Count,
+				SuccessOutcomes:     b.SuccessOutcomes,
+				StalledOutcomes:     b.StalledOutcomes,
+				FailedOutcomes:      b.FailedOutcomes,
+				CancelledOutcomes:   b.CancelledOutcomes,
+				UnknownOutcomes:     b.UnknownOutcomes,
+			})
+		}
+	}
+	return out
 }
