@@ -125,6 +125,22 @@ func TestMountCLI_ChildCommandsDelegateWithoutExiting(t *testing.T) {
 	}
 }
 
+func TestMountCLI_RunHelpIncludesHarnessPin(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd := MountCLI(WithStdout(&stdout), WithStderr(&stderr))
+	cmd.SetArgs([]string{"run", "--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	help := stdout.String() + stderr.String()
+	if !strings.Contains(help, "--harness") {
+		t.Fatalf("help output missing --harness flag:\n%s", help)
+	}
+	if !strings.Contains(help, "Harness hard pin") {
+		t.Fatalf("help output missing harness hard-pin description:\n%s", help)
+	}
+}
+
 func TestNeedsLegacyPassthrough(t *testing.T) {
 	tests := []struct {
 		name string
