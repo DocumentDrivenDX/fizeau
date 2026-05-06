@@ -133,6 +133,97 @@ The only per-run inputs that should change are:
 
 ---
 
+## Vidar Qwen3.6 Harness Matrix
+
+`run_vidar_qwen36_terminalbench_baseline.sh` runs the shared Vidar oMLX
+OpenAI-compatible profile against `fiz`, `pi`, and `opencode` through Harbor.
+Use this path when comparing harness capability on the same local model/provider.
+
+Before running, make sure the local model endpoint is reachable from Harbor task
+containers as `http://vidar:1235/v1`. The script sets `OMLX_API_KEY=local` by
+default because the local OpenAI-compatible endpoint only needs a non-empty key.
+
+The `benchmark-results/` tree is ignored by git, so the pinned in-container
+artifacts must be staged locally before a run. Defaults are:
+
+- `benchmark-results/bin/opencode-1.3.17-linux-x64/opencode`
+- `benchmark-results/bin/node-v20.19.2-linux-x64.tar.gz`
+- `benchmark-results/bin/pi-coding-agent-0.67.1/package.tgz`
+
+You can override those with `HARBOR_OPENCODE_ARTIFACT`, `HARBOR_NODE_TARBALL`,
+and `HARBOR_PI_PACKAGE_TARBALL`.
+
+One reproducible way to prepare the artifacts:
+
+```bash
+mkdir -p benchmark-results/bin
+
+curl -fL \
+  https://nodejs.org/dist/v20.19.2/node-v20.19.2-linux-x64.tar.gz \
+  -o benchmark-results/bin/node-v20.19.2-linux-x64.tar.gz
+
+docker run --rm --platform linux/amd64 \
+  -v "$PWD/benchmark-results/bin:/out" \
+  debian:bookworm-slim \
+  sh -lc 'apt-get update >/dev/null &&
+    apt-get install -y curl ca-certificates unzip >/dev/null &&
+    curl -fsSL https://opencode.ai/install | VERSION=1.3.17 bash &&
+    mkdir -p /out/opencode-1.3.17-linux-x64 &&
+    cp /root/.opencode/bin/opencode /out/opencode-1.3.17-linux-x64/opencode &&
+    chmod 755 /out/opencode-1.3.17-linux-x64/opencode'
+
+docker run --rm --platform linux/amd64 \
+  -v "$PWD/benchmark-results/bin:/out" \
+  node:20-bookworm-slim \
+  sh -lc 'npm install -g @mariozechner/pi-coding-agent@0.67.1 >/dev/null &&
+    mkdir -p /out/pi-coding-agent-0.67.1 &&
+    tar -C /usr/local/lib/node_modules/@mariozechner \
+      -czf /out/pi-coding-agent-0.67.1/package.tgz pi-coding-agent'
+```
+
+For fair timings against a single local provider, run one harness at a time and
+wait for it to finish before starting the next. Do not run separate matrix
+processes concurrently against the same Vidar/oMLX server.
+
+```bash
+# Isolated opencode canary. This is the path used to validate opencode parity
+# after the adapter fixes on 2026-05-06.
+HARBOR_AGENT_TIMEOUT_MULTIPLIER=4 \
+TIER=canary \
+HARNESSES=opencode \
+REPS=1 \
+FORCE_RERUN=1 \
+JOBS=1 \
+OUT=benchmark-results/matrix-vidar-qwen36-canary-opencode-$(date -u +%Y%m%dT%H%M%SZ) \
+scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+
+# Then run pi and fiz in separate invocations for uncontaminated timing.
+TIER=canary HARNESSES=pi REPS=1 FORCE_RERUN=1 JOBS=1 \
+  scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+TIER=canary HARNESSES=fiz REPS=1 FORCE_RERUN=1 JOBS=1 \
+  scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+```
+
+The opencode Harbor adapter intentionally runs with `--print-logs
+--log-level DEBUG`, a fixed `--title terminal-bench`, and an explicit task
+directory. Each run archives:
+
+- `/logs/agent/opencode.txt` — JSON events plus internal opencode logs
+- `/logs/agent/opencode.config.json` — generated provider/model config
+- `/logs/agent/opencode-data.tgz` — opencode session/data directory
+
+Known-good isolated canary result from 2026-05-06:
+
+| Harness | Task | Status | Reward | Wall seconds |
+|---------|------|--------|--------|--------------|
+| opencode | `git-leak-recovery` | `graded_pass` | 1 | 527 |
+| opencode | `fix-git` | `graded_pass` | 1 | 860 |
+| opencode | `log-summary-date-ranges` | `graded_pass` | 1 | 499 |
+
+Aggregate: `3/3`, mean reward `1.0`, standard deviation `0.0`.
+
+---
+
 ## Harbor Adapter
 
 `harbor_agent.py` is the `BaseInstalledAgent` Python adapter that Harbor uses

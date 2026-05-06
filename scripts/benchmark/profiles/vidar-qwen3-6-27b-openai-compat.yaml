@@ -1,0 +1,26 @@
+# Qwen3.6-27B-MLX-8bit via Vidar oMLX OpenAI-compatible endpoint.
+# Use this profile for cross-harness comparisons: fiz can use provider type
+# omlx, but pi/opencode need an OpenAI-compatible provider id.
+id: vidar-qwen3-6-27b-openai-compat
+provider:
+  type: openai-compat
+  model: Qwen3.6-27B-MLX-8bit
+  base_url: http://vidar:1235/v1
+  api_key_env: OMLX_API_KEY
+pricing:
+  input_usd_per_mtok: 0.0
+  output_usd_per_mtok: 0.0
+  cached_input_usd_per_mtok: 0.0
+limits:
+  max_output_tokens: 32768
+  context_tokens: 128000
+  rate_limit_rpm: 60
+  rate_limit_tpm: 100000
+sampling:
+  temperature: 0.6
+  reasoning: low
+  top_p: 0.95
+  top_k: 20
+versioning:
+  resolved_at: "2026-05-06"
+  snapshot: "Qwen3.6-27B-MLX-8bit via Vidar oMLX OpenAI-compatible API"

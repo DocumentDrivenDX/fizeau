@@ -485,12 +485,12 @@ type harborRunResult struct {
 }
 
 // harborAgentArgs returns the agent selection args for harbor run.
-// opencode uses the built-in harbor agent; pi and fiz use custom adapters.
+// All benchmarked harnesses use repo-owned adapters so profile translation is
+// identical between local command-builder smokes and Harbor-graded runs.
 func harborAgentArgs(harness string) []string {
 	switch harness {
 	case "opencode":
-		// Harbor ships a built-in opencode agent.
-		return []string{"--agent", "opencode"}
+		return []string{"--agent-import-path", "scripts.benchmark.harbor_adapters.opencode:OpencodeAgent"}
 	case "pi":
 		return []string{"--agent-import-path", "scripts.benchmark.harbor_adapters.pi:PiAgent"}
 	default: // fiz
@@ -511,6 +511,9 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 		"--jobs-dir", opts.jobsDir,
 		"--job-name", opts.jobName,
 	)
+	if multiplier := strings.TrimSpace(os.Getenv("HARBOR_AGENT_TIMEOUT_MULTIPLIER")); multiplier != "" {
+		args = append(args, "--agent-timeout-multiplier", multiplier)
+	}
 	if apiKeyVal != "" {
 		args = append(args, "--ae", apiKeyEnv+"="+apiKeyVal)
 	}
@@ -1084,6 +1087,9 @@ func samplingEnvPairs(p *profile.Profile) []string {
 func fizeauProviderEnv(p *profile.Profile) string {
 	if p.Provider.Type == profile.ProviderOpenAICompat && strings.Contains(p.Provider.BaseURL, "openrouter") {
 		return string(profile.ProviderOpenRouter)
+	}
+	if p.Provider.Type == profile.ProviderOpenAICompat && strings.Contains(p.Provider.BaseURL, "vidar:1235") {
+		return string(profile.ProviderOMLX)
 	}
 	return string(p.Provider.Type)
 }
