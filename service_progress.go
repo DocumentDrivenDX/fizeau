@@ -147,11 +147,11 @@ func progressTaskID(sessionID string, meta map[string]string) string {
 
 func progressStatusLine(payload ServiceProgressData) string {
 	return transcript.StatusLine(transcript.StatusLineInput{
-		TaskID:    payload.TaskID,
-		TurnIndex: payload.Round,
-		Message:   payload.Message,
+		TaskID:      payload.TaskID,
+		TurnIndex:   payload.Round,
+		Message:     payload.Message,
 		SinceLastMS: payload.SinceLastMS,
-		Limit:     progressMessageLimit(payload),
+		Limit:       progressMessageLimit(payload),
 	})
 }
 
