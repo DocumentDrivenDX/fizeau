@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DocumentDrivenDX/fizeau/internal/modelmatch"
 	"github.com/DocumentDrivenDX/fizeau/internal/sdk/openaicompat"
 )
 
@@ -120,21 +121,11 @@ func getAndDecode(ctx context.Context, timeout time.Duration, endpoint, apiKey s
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// stripSlashedPrefix drops everything through the first '/' in s. For "qwen/x"
-// returns "x"; for "x" returns "x". Used to put both requested and catalog
-// names in the same shape before comparison, so callers can supply either
-// bare names or vendor-prefixed names.
-func stripSlashedPrefix(s string) string {
-	if i := strings.Index(s, "/"); i >= 0 {
-		return s[i+1:]
-	}
-	return s
-}
-
 // MatchModelIDs returns every catalog entry whose normalized form contains
-// the normalized request as a substring. Normalization lowercases and strips
-// the first slashed-prefix on both sides, so "qwen/qwen3.6" and "Qwen3.6" and
-// "qwen3.6" all match "Qwen3.6-35B-A3B-4bit" and "Qwen3.6-35B-A3B-nvfp4".
+// the normalized request as a substring. Normalization lowercases, strips a
+// single leading vendor namespace, and removes all non-alphanumeric
+// separators, so "qwen/qwen3.6" and "Qwen3.6" and "qwen3.6" all match
+// "Qwen3.6-35B-A3B-4bit" and "Qwen3.6-35B-A3B-nvfp4".
 //
 // The returned slice preserves original catalog case and order. An empty slice
 // means no match; callers are responsible for deciding whether to pass the
@@ -144,18 +135,7 @@ func stripSlashedPrefix(s string) string {
 // scalar logic previously in NormalizeModelID. NormalizeModelID is retained
 // as a backward-compatible wrapper.
 func MatchModelIDs(requested string, catalog []string) []string {
-	req := stripSlashedPrefix(strings.ToLower(strings.TrimSpace(requested)))
-	if req == "" {
-		return nil
-	}
-	var matches []string
-	for _, id := range catalog {
-		normalized := stripSlashedPrefix(strings.ToLower(id))
-		if strings.Contains(normalized, req) {
-			matches = append(matches, id)
-		}
-	}
-	return matches
+	return modelmatch.Match(requested, catalog)
 }
 
 // NormalizeModelID resolves a caller-supplied model name against the server's

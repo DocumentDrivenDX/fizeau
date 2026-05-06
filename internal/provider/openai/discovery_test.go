@@ -198,6 +198,12 @@ func TestNormalizeModelID(t *testing.T) {
 		assert.Equal(t, "qwen/qwen3-coder-next", result)
 	})
 
+	t.Run("separator normalization resolves a single concrete model", func(t *testing.T) {
+		result, err := NormalizeModelID("qwen36", []string{"Qwen-3.6-27b-MLX-8bit"})
+		require.NoError(t, err)
+		assert.Equal(t, "Qwen-3.6-27b-MLX-8bit", result)
+	})
+
 	t.Run("ambiguous suffix match returns error", func(t *testing.T) {
 		_, err := NormalizeModelID("foo", []string{"org1/foo", "org2/foo"})
 		require.Error(t, err)
@@ -247,6 +253,12 @@ func TestMatchModelIDs(t *testing.T) {
 		catalog   []string
 		want      []string
 	}{
+		{
+			name:      "qwen36 normalizes to a single concrete model",
+			requested: "qwen36",
+			catalog:   []string{"Qwen-3.6-27b-MLX-8bit"},
+			want:      []string{"Qwen-3.6-27b-MLX-8bit"},
+		},
 		{
 			name:      "qwen3.6 matches both quantization variants",
 			requested: "qwen3.6",

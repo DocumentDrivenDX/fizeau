@@ -148,9 +148,9 @@ func TestResolveRouteErrorIncludesCandidatesAndTraceError(t *testing.T) {
 		t.Fatal("error decision Candidates is empty")
 	}
 
-	var noViable *routing.NoViableCandidateError
-	if !errors.As(err, &noViable) {
-		t.Fatalf("errors.As no viable: %T %v", err, err)
+	var noMatch *ErrModelConstraintNoMatch
+	if !errors.As(err, &noMatch) {
+		t.Fatalf("errors.As no-match: %T %v", err, err)
 	}
 	var traced DecisionWithCandidates
 	if !errors.As(err, &traced) {
@@ -165,8 +165,8 @@ func TestResolveRouteErrorIncludesCandidatesAndTraceError(t *testing.T) {
 		t.Fatal("RouteCandidates returned an alias of the decision candidates")
 	}
 
-	if !strings.Contains(err.Error(), "no viable routing candidate") {
-		t.Fatalf("error=%q, want no viable routing candidate detail", err.Error())
+	if !strings.Contains(err.Error(), "no matching model") {
+		t.Fatalf("error=%q, want no matching model detail", err.Error())
 	}
 }
 

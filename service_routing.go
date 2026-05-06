@@ -31,6 +31,16 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	if err := ValidateCorrelationID(req.CorrelationID); err != nil {
 		return nil, err
 	}
+	if req.Harness != "" && req.Model != "" {
+		canonical := harnesses.ResolveHarnessAlias(req.Harness)
+		if !s.registry.Has(canonical) {
+			return nil, fmt.Errorf("unknown harness %q", req.Harness)
+		}
+		cfg, _ := s.registry.Get(canonical)
+		if err := validateExplicitHarnessModel(canonical, cfg, req.Model, req.Provider); err != nil {
+			return nil, err
+		}
+	}
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
 	profile := req.Profile
@@ -44,10 +54,17 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	}
 	in := s.buildRoutingInputsWithCatalog(ctx, cat)
 
+	resolvedModel, modelCandidates, modelErr := s.resolveModelConstraint(req.Harness, req.Provider, req.Model, in, cat)
+	if modelErr != nil {
+		result := &RouteDecision{Candidates: modelCandidates}
+		s.annotateRouteDecisionEvidence(result)
+		return result, publicRoutingError(modelErr, result.Candidates)
+	}
+
 	rReq := routing.Request{
 		Profile:               profile,
 		ModelRef:              modelRef,
-		Model:                 req.Model,
+		Model:                 resolvedModel,
 		Provider:              req.Provider,
 		Harness:               req.Harness,
 		Reasoning:             effectiveReasoningString(req.Reasoning),
@@ -281,6 +298,14 @@ func escalateProfileLadder(req routing.Request, in routing.Inputs, origErr error
 // ErrProfilePinConflict) are surfaced as-is — escalating past an explicit
 // pin would silently change the caller's intent.
 func shouldEscalateOnError(err error) bool {
+	var modelConstraintAmbiguous *ErrModelConstraintAmbiguous
+	if errors.As(err, &modelConstraintAmbiguous) {
+		return false
+	}
+	var modelConstraintNoMatch *ErrModelConstraintNoMatch
+	if errors.As(err, &modelConstraintNoMatch) {
+		return false
+	}
 	var modelErr *routing.ErrHarnessModelIncompatible
 	if errors.As(err, &modelErr) {
 		return false
