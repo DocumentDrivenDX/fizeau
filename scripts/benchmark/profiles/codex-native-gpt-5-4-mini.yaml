@@ -1,9 +1,9 @@
 # Codex native medium-cost reference cell. This profile intentionally represents
 # the model selected by Codex CLI, not a model-controlled OpenAI-compatible row.
-id: codex-native-gpt-5-5-mini
+id: codex-native-gpt-5-4-mini
 provider:
   type: openai
-  model: gpt-5.5-mini
+  model: gpt-5.4-mini
   base_url: native-codex
   api_key_env: OPENAI_API_KEY
 pricing:
@@ -20,4 +20,4 @@ sampling:
   reasoning: medium
 versioning:
   resolved_at: "2026-05-06"
-  snapshot: "Codex CLI native --model gpt-5.5-mini"
+  snapshot: "Codex CLI native --model gpt-5.4-mini"

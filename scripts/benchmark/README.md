@@ -254,7 +254,7 @@ local-model rows unless the analysis explicitly calls out the model confound.
 
 The runner uses paired one-cell invocations so Claude Code only runs with
 `claude-native-sonnet-4-6` (`sonnet-4.6`) and Codex only runs with
-`codex-native-gpt-5-5-mini` (`gpt-5.5-mini`). This avoids meaningless
+`codex-native-gpt-5-4-mini` (`gpt-5.4-mini`). This avoids meaningless
 cross-products like Claude Code with the Codex profile.
 
 Prepare linux artifacts before running inside Harbor containers:
@@ -281,6 +281,17 @@ BASELINE=frontier TIER=canary REPS=1 FORCE_RERUN=1 JOBS=1 \
 ```
 
 Do not commit those tarballs or benchmark-result artifacts.
+
+To compare `fiz` against the same medium-cost model families through
+OpenRouter, run separate `fiz` cells with the OpenRouter profiles:
+
+```bash
+TIER=canary HARNESSES=fiz PROFILE=gpt-5-4-mini-openrouter REPS=1 FORCE_RERUN=1 JOBS=1 \
+  scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+
+TIER=canary HARNESSES=fiz PROFILE=claude-sonnet-4-6 REPS=1 FORCE_RERUN=1 JOBS=1 \
+  scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+```
 
 ---
 

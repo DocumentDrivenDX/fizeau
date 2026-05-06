@@ -81,7 +81,7 @@ class CodexAgent(BaseInstalledAgent):
     ) -> None:
         del context
 
-        model = _bench_env("FIZEAU_MODEL", "gpt-5.5-mini")
+        model = _bench_env("FIZEAU_MODEL", "gpt-5.4-mini")
         reasoning = _bench_env("FIZEAU_REASONING", "")
         reasoning_args = f"-c reasoning.effort={shlex.quote(reasoning)} " if reasoning else ""
         command = (
