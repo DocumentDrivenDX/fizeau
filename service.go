@@ -722,6 +722,7 @@ type service struct {
 	lastDecisionCache map[string]lastDecisionEntry
 
 	routeHealth *routehealth.Store
+	routeLeases *routehealth.LeaseStore
 
 	// catalog is the service-scope model-catalog cache. Populated lazily
 	// on first use by routing + chat paths; shared across requests so the
@@ -816,6 +817,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		runtime:          serviceimpl.NewRuntime(serviceimpl.RuntimeDeps{}),
 		catalog:          newCatalogCache(catalogCacheOptions{AsyncRefreshTimeout: opts.catalogRefreshTimeout()}),
 		routeHealth:      routehealth.NewStore(),
+		routeLeases:      routehealth.NewLeaseStore(),
 		routingQuality:   newRoutingQualityStore(),
 		providerQuota:    NewProviderQuotaStateStore(),
 		providerBurnRate: NewProviderBurnRateTracker(),

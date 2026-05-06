@@ -72,6 +72,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		}
 		return result, publicRoutingError(err, result.Candidates)
 	}
+	s.applyStickyRouteLease(req.CorrelationID, result)
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
 		result.Model = resolveSubprocessModelAlias(result.Harness, result.Model)
@@ -943,16 +944,18 @@ func (s *service) probeEndpointDiscoveredIDs(ctx context.Context, pcfg ServicePr
 // is already specific enough that the legacy resolveExecuteRoute path applies.
 func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*RouteDecision, error) {
 	rr := RouteRequest{
-		Profile:     req.Profile,
-		Model:       req.Model,
-		Provider:    req.Provider,
-		Harness:     req.Harness,
-		ModelRef:    req.ModelRef,
-		Reasoning:   req.Reasoning,
-		Permissions: req.Permissions,
-		CachePolicy: req.CachePolicy,
-		MinPower:    req.MinPower,
-		MaxPower:    req.MaxPower,
+		Profile:       req.Profile,
+		Model:         req.Model,
+		Provider:      req.Provider,
+		Harness:       req.Harness,
+		ModelRef:      req.ModelRef,
+		Reasoning:     req.Reasoning,
+		Permissions:   req.Permissions,
+		CachePolicy:   req.CachePolicy,
+		MinPower:      req.MinPower,
+		MaxPower:      req.MaxPower,
+		Role:          req.Role,
+		CorrelationID: req.CorrelationID,
 	}
 	dec, err := s.ResolveRoute(context.Background(), rr)
 	if err != nil {
