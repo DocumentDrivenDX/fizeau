@@ -441,6 +441,18 @@ the routing engine enforces:
    scoring; they apply only to unpinned automatic routing and never override
    hard harness/provider/model pins.
 
+**Model constraint resolution.** When `Model` is set on `ExecuteRequest` or
+`RouteRequest`, Fizeau owns the full resolution pipeline. DDx passes the raw
+string unchanged. Fizeau normalizes case, whitespace, vendor prefixes, and
+delimiter characters, then matches against discovered/provider model IDs and
+catalog-resolved concrete IDs. The service, not DDx, chooses the final concrete
+model ID, reports ambiguity when multiple candidates survive normalization, and
+returns typed no-match evidence when no concrete model can be resolved.
+
+`ModelRef` remains a separate exact catalog-reference surface. The contract
+above does not change `ModelRef` exactness; it only clarifies how raw `Model`
+pins are resolved before route selection.
+
 When no `MinPower`, `MaxPower`, exact model, provider-source/endpoint, or
 harness constraint is supplied, automatic routing selects the best lowest-cost
 viable auto-routable model from discovered inventory.
@@ -1791,10 +1803,14 @@ default and replay supporting realtime, scaled, and collapsed timing modes.
 
 The agent owns these execution-time behaviors. Callers do not opt in or out.
 
-- **Orphan-model validation.** When `Model` is set but matches no provider's
-  discovery and no catalog entry, `Execute` fails immediately with
-  `Status="failed", error="orphan model: <name>"` rather than silently picking
-  the wrong provider.
+- **Explicit model resolution.** `Execute` and `ResolveRoute` use the same
+  raw-`Model` resolution semantics. A unique normalized match becomes the
+  concrete model ID used for route selection; ambiguous or missing matches fail
+  with typed evidence instead of falling through to an unrelated model.
+
+- **Orphan-model validation.** When raw `Model` resolution finds no concrete
+  candidate, `Execute` and `ResolveRoute` fail before dispatch with typed
+  no-match evidence rather than silently picking the wrong provider.
 
 - **Discovery-backed model pins.** When `Model` is pinned and no catalog entry
   exists, `Execute` resolves it through provider discovery: if `Provider` is

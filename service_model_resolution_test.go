@@ -1,0 +1,271 @@
+package fizeau
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestResolveRouteModelConstraintNormalization(t *testing.T) {
+	cases := []struct {
+		name      string
+		request   string
+		models    []string
+		wantModel string
+	}{
+		{
+			name:      "separator normalization",
+			request:   "qwen36",
+			models:    []string{"Qwen-3.6-27b-MLX-8bit"},
+			wantModel: "Qwen-3.6-27b-MLX-8bit",
+		},
+		{
+			name:      "slash prefix tolerated",
+			request:   "qwen/qwen3.6",
+			models:    []string{"Qwen3.6-35B-A3B-4bit"},
+			wantModel: "Qwen3.6-35B-A3B-4bit",
+		},
+		{
+			name:      "case insensitive",
+			request:   "QWEN3.6",
+			models:    []string{"Qwen3.6-35B-A3B-4bit"},
+			wantModel: "Qwen3.6-35B-A3B-4bit",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-05-06T00:00:00Z
+catalog_version: test
+models:
+  fallback-model:
+    status: active
+    surfaces:
+      agent.openai: fallback-model
+profiles:
+  default:
+    target: fallback-target
+targets:
+  fallback-target:
+    family: fallback
+    candidates: [fallback-model]
+    surfaces:
+      agent.openai: fallback-model
+`))
+			defer catalogCleanup()
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/v1/models":
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"data":[`))
+					for i, model := range tc.models {
+						if i > 0 {
+							_, _ = w.Write([]byte(","))
+						}
+						_, _ = w.Write([]byte(`{"id":"` + model + `"}`))
+					}
+					_, _ = w.Write([]byte(`]}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+
+			sc := &fakeServiceConfig{
+				providers: map[string]ServiceProviderEntry{
+					"live": {Type: "openai", BaseURL: srv.URL + "/v1", Model: "fallback-model"},
+				},
+				names:       []string{"live"},
+				defaultName: "live",
+			}
+			svc, err := New(ServiceOptions{ServiceConfig: sc})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: tc.request})
+			if err != nil {
+				t.Fatalf("ResolveRoute: %v", err)
+			}
+			if dec == nil {
+				t.Fatal("ResolveRoute returned nil decision")
+			}
+			if dec.Model != tc.wantModel {
+				t.Fatalf("ResolveRoute model=%q, want %q", dec.Model, tc.wantModel)
+			}
+		})
+	}
+}
+
+func TestResolveRouteModelConstraintAmbiguousAndNoMatch(t *testing.T) {
+	catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-05-06T00:00:00Z
+catalog_version: test
+models:
+  fallback-model:
+    status: active
+    surfaces:
+      agent.openai: fallback-model
+profiles:
+  default:
+    target: fallback-target
+targets:
+  fallback-target:
+    family: fallback
+    candidates: [fallback-model]
+    surfaces:
+      agent.openai: fallback-model
+`))
+	defer catalogCleanup()
+
+	t.Run("ambiguous", func(t *testing.T) {
+		srv := openAIModelChatServer(t, []string{
+			"Qwen3.6-35B-A3B-4bit",
+			"Qwen3.6-35B-A3B-nvfp4",
+		}, "Qwen3.6-35B-A3B-4bit", "pong")
+		defer srv.Close()
+
+		sc := &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"live": {Type: "openai", BaseURL: srv.URL + "/v1", Model: "fallback-model"},
+			},
+			names:       []string{"live"},
+			defaultName: "live",
+		}
+		svc, err := New(ServiceOptions{ServiceConfig: sc})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "qwen3.6"})
+		if err == nil {
+			t.Fatal("expected ambiguous model constraint error")
+		}
+		var typed *ErrModelConstraintAmbiguous
+		if !errors.As(err, &typed) {
+			t.Fatalf("errors.As should extract ErrModelConstraintAmbiguous: %T %v", err, err)
+		}
+		if typed.Model != "qwen3.6" {
+			t.Fatalf("Model=%q, want qwen3.6", typed.Model)
+		}
+		if len(typed.Candidates) < 2 {
+			t.Fatalf("Candidates=%v, want multiple candidates", typed.Candidates)
+		}
+		if dec == nil || len(dec.Candidates) == 0 {
+			t.Fatalf("expected evidence candidates on decision, got %#v", dec)
+		}
+	})
+
+	t.Run("no match", func(t *testing.T) {
+		srv := openAIModelChatServer(t, []string{"OtherModel"}, "OtherModel", "pong")
+		defer srv.Close()
+
+		sc := &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"live": {Type: "openai", BaseURL: srv.URL + "/v1", Model: "fallback-model"},
+			},
+			names:       []string{"live"},
+			defaultName: "live",
+		}
+		svc, err := New(ServiceOptions{ServiceConfig: sc})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "qwen36"})
+		if err == nil {
+			t.Fatal("expected no-match model constraint error")
+		}
+		var typed *ErrModelConstraintNoMatch
+		if !errors.As(err, &typed) {
+			t.Fatalf("errors.As should extract ErrModelConstraintNoMatch: %T %v", err, err)
+		}
+		if typed.Model != "qwen36" {
+			t.Fatalf("Model=%q, want qwen36", typed.Model)
+		}
+		if len(typed.Candidates) == 0 {
+			t.Fatal("expected no-match error to include nearby candidates")
+		}
+		if dec == nil || len(dec.Candidates) == 0 {
+			t.Fatalf("expected evidence candidates on decision, got %#v", dec)
+		}
+		if strings.Contains(dec.Model, "OtherModel") {
+			t.Fatalf("decision should not silently fall back: %#v", dec)
+		}
+	})
+}
+
+func TestExecuteModelConstraintNormalization(t *testing.T) {
+	catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-05-06T00:00:00Z
+catalog_version: test
+models:
+  fallback-model:
+    status: active
+    surfaces:
+      agent.openai: fallback-model
+profiles:
+  default:
+    target: fallback-target
+targets:
+  fallback-target:
+    family: fallback
+    candidates: [fallback-model]
+    surfaces:
+      agent.openai: fallback-model
+`))
+	defer catalogCleanup()
+
+	cases := []struct {
+		name    string
+		request string
+	}{
+		{name: "separator normalization", request: "qwen36"},
+		{name: "slash prefix tolerated", request: "qwen/qwen3.6"},
+		{name: "case insensitive", request: "QWEN3.6"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := openAIModelChatServer(t, []string{"Qwen-3.6-27b-MLX-8bit"}, "Qwen-3.6-27b-MLX-8bit", "pong")
+			defer srv.Close()
+
+			sc := &fakeServiceConfig{
+				providers: map[string]ServiceProviderEntry{
+					"live": {Type: "openai", BaseURL: srv.URL + "/v1", Model: "fallback-model"},
+				},
+				names:       []string{"live"},
+				defaultName: "live",
+			}
+			svc, err := New(ServiceOptions{ServiceConfig: sc})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			final := executeAndFinal(t, svc, ServiceExecuteRequest{
+				Prompt:          "ping",
+				Model:           tc.request,
+				Timeout:         5 * time.Second,
+				ProviderTimeout: 2 * time.Second,
+			})
+			if final.Status != "success" {
+				t.Fatalf("Status = %q, want success (error=%q)", final.Status, final.Error)
+			}
+			if final.RoutingActual == nil {
+				t.Fatal("RoutingActual is nil")
+			}
+			if final.RoutingActual.Model != "Qwen-3.6-27b-MLX-8bit" {
+				t.Fatalf("RoutingActual.Model = %q, want canonical model", final.RoutingActual.Model)
+			}
+		})
+	}
+}

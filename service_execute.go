@@ -278,6 +278,14 @@ func explicitProfileConstraint(profile string) (string, bool) {
 }
 
 func isExplicitPinError(err error) bool {
+	var modelConstraintAmbiguous *ErrModelConstraintAmbiguous
+	if errors.As(err, &modelConstraintAmbiguous) {
+		return true
+	}
+	var modelConstraintNoMatch *ErrModelConstraintNoMatch
+	if errors.As(err, &modelConstraintNoMatch) {
+		return true
+	}
 	var modelErr *ErrHarnessModelIncompatible
 	if errors.As(err, &modelErr) {
 		return true

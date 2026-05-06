@@ -3,6 +3,7 @@ package fizeau
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -353,17 +354,24 @@ func TestExecuteEndpointFirstRoutingNoLiveModelMatchDiagnostic(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	final := executeAndFinal(t, svc, ServiceExecuteRequest{
+	_, err = svc.Execute(context.Background(), ServiceExecuteRequest{
 		Prompt:  "ping",
-		Model:   "qwen3.6",
+		Model:   "zxqv-no-match-20260506",
 		Profile: "offline",
 		Timeout: 2 * time.Second,
 	})
-	if final.Status != "failed" {
-		t.Fatalf("Status = %q, want failed", final.Status)
+	if err == nil {
+		t.Fatal("expected execute to fail with no-match model constraint")
 	}
-	if !strings.Contains(final.Error, "no live endpoint offers a match for qwen3.6") {
-		t.Fatalf("Error = %q, want no-live-match diagnostic", final.Error)
+	var typed *ErrModelConstraintNoMatch
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrModelConstraintNoMatch: %T %v", err, err)
+	}
+	if typed.Model != "zxqv-no-match-20260506" {
+		t.Fatalf("Model=%q, want zxqv-no-match-20260506", typed.Model)
+	}
+	if len(typed.Candidates) == 0 {
+		t.Fatal("expected no-match diagnostic to include nearby candidates")
 	}
 }
 

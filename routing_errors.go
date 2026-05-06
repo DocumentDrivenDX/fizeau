@@ -10,6 +10,8 @@ import (
 var (
 	errHarnessModelIncompatible = errors.New("agent: harness model incompatible")
 	errProfilePinConflict       = errors.New("agent: profile pin conflict")
+	errModelConstraintAmbiguous = errors.New("agent: model constraint ambiguous")
+	errModelConstraintNoMatch   = errors.New("agent: model constraint no match")
 	errNoProfileCandidate       = errors.New("agent: no profile candidate")
 	errUnknownProfile           = errors.New("agent: unknown profile")
 	errNoLiveProvider           = errors.New("agent: no live provider")
@@ -47,6 +49,64 @@ func (e ErrUnknownProvider) Is(target error) bool {
 
 func (e ErrUnknownProvider) Unwrap() error {
 	return errUnknownProvider
+}
+
+// ErrModelConstraintAmbiguous reports that an explicit Model pin matched more
+// than one concrete model after normalization.
+type ErrModelConstraintAmbiguous struct {
+	// Model is the raw model pin supplied by the caller.
+	Model string
+	// Candidates are the concrete model IDs that matched the pin.
+	Candidates []string
+}
+
+func (e ErrModelConstraintAmbiguous) Error() string {
+	if len(e.Candidates) == 0 {
+		return fmt.Sprintf("ambiguous model %q", e.Model)
+	}
+	return fmt.Sprintf("ambiguous model %q: candidates: %s", e.Model, strings.Join(e.Candidates, ", "))
+}
+
+func (e ErrModelConstraintAmbiguous) Is(target error) bool {
+	switch target.(type) {
+	case ErrModelConstraintAmbiguous, *ErrModelConstraintAmbiguous:
+		return true
+	default:
+		return errors.Is(errModelConstraintAmbiguous, target)
+	}
+}
+
+func (e ErrModelConstraintAmbiguous) Unwrap() error {
+	return errModelConstraintAmbiguous
+}
+
+// ErrModelConstraintNoMatch reports that an explicit Model pin matched no
+// discovered or catalog-resolved concrete model IDs.
+type ErrModelConstraintNoMatch struct {
+	// Model is the raw model pin supplied by the caller.
+	Model string
+	// Candidates are the nearby candidate IDs considered during resolution.
+	Candidates []string
+}
+
+func (e ErrModelConstraintNoMatch) Error() string {
+	if len(e.Candidates) == 0 {
+		return fmt.Sprintf("no matching model for %q", e.Model)
+	}
+	return fmt.Sprintf("no matching model for %q; nearby candidates: %s", e.Model, strings.Join(e.Candidates, ", "))
+}
+
+func (e ErrModelConstraintNoMatch) Is(target error) bool {
+	switch target.(type) {
+	case ErrModelConstraintNoMatch, *ErrModelConstraintNoMatch:
+		return true
+	default:
+		return errors.Is(errModelConstraintNoMatch, target)
+	}
+}
+
+func (e ErrModelConstraintNoMatch) Unwrap() error {
+	return errModelConstraintNoMatch
 }
 
 // DecisionWithCandidates is implemented by routing errors that retain the
