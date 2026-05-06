@@ -3,6 +3,25 @@
 All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
+## [v0.10.9] — 2026-05-06
+
+### Changed
+
+- Sticky utilization routing now records and replays the evidence used to
+  choose a destination, including endpoint load and route-health state, so the
+  public routing projections can explain why a sticky route won.
+- In-process sticky route leases now back the routing behavior for local model
+  variants, with provider utilization probes normalized across `llama-server`,
+  `vllm`, `rapid-mlx`, and `omlx`.
+- Provider and route-status surfaces now carry the sticky-utilization evidence
+  needed by the service facade and session replay helpers.
+
+### Tests
+
+- Coverage was added or refreshed for sticky route selection, route-health
+  utilization storage, provider utilization probes, and cassette-based
+  utilization recordings for the local server providers.
+
 ## [v0.10.8] — 2026-05-05
 
 ### Changed
