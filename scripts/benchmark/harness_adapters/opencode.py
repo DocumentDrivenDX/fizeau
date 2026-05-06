@@ -37,16 +37,13 @@ class Agent(BaseAdapter):
         provider_id = provider_id_for(profile)
         provider_model = f"{provider_id}/{profile.provider.model}"
         tmp = tempfile.mkdtemp(prefix="opencode-bench-")
+        config = provider_config(provider_id, profile)
         env = {
             "OPENCODE_DISABLE_AUTOUPDATE": "1",
             "OPENCODE_CONFIG_DIR": f"{tmp}/opencode-config",
             "OPENCODE_DATA_DIR": f"{tmp}/opencode-data",
             profile.provider.api_key_env: os.environ.get(profile.provider.api_key_env, ""),
-            "OPENCODE_PROVIDER_CONFIG_JSON": json.dumps(
-                provider_config(provider_id, profile),
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
+            "OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True, separators=(",", ":")),
         }
         args = ["-m", provider_model]
         notes: list[str] = []
@@ -72,6 +69,7 @@ class Agent(BaseAdapter):
         if workdir:
             argv.extend(["--dir", workdir])
         argv.extend(applied.argv)
+        argv.append("--")
         argv.append(prompt)
         return CommandSpec(argv=argv, env=applied.env, stdin="", cwd=workdir, notes=applied.notes)
 
@@ -130,8 +128,17 @@ def provider_config(provider_id: str, profile: BenchmarkProfile) -> dict[str, An
     return {
         "provider": {
             provider_id: {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": provider_id,
                 "options": options,
-                "models": {profile.provider.model: {}},
+                "models": {
+                    profile.provider.model: {
+                        "limit": {
+                            "context": profile.limits.context_tokens or 128000,
+                            "output": profile.limits.max_output_tokens or 32768,
+                        },
+                    },
+                },
             },
         },
     }

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import json
+import tempfile
 import time
 from typing import Any
 
@@ -39,8 +41,10 @@ class Agent(BaseAdapter):
                 env["OPENROUTER_API_KEY"] = api_key
             else:
                 provider = "openai-compat"
-                env["PI_OPENAI_COMPAT_BASE_URL"] = profile.provider.base_url
-                env["PI_OPENAI_COMPAT_API_KEY"] = api_key
+                tmp = tempfile.mkdtemp(prefix="pi-bench-")
+                env["PI_CODING_AGENT_DIR"] = tmp
+                env[profile.provider.api_key_env] = api_key
+                write_models_json(tmp, provider, profile)
         elif provider == "openai":
             env["OPENAI_API_KEY"] = api_key
         elif provider == "anthropic":
@@ -102,3 +106,30 @@ class Agent(BaseAdapter):
 
 
 __all__ = ["Agent", "PI_VERSION"]
+
+
+def write_models_json(agent_dir: str, provider: str, profile: BenchmarkProfile) -> None:
+    os.makedirs(agent_dir, exist_ok=True)
+    model: dict[str, Any] = {
+        "id": profile.provider.model,
+        "api": "openai-completions",
+        "reasoning": bool(profile.sampling.reasoning),
+        "contextWindow": profile.limits.context_tokens or 128000,
+        "maxTokens": profile.limits.max_output_tokens or 16384,
+        "compat": {
+            "supportsUsageInStreaming": True,
+            "maxTokensField": "max_tokens",
+            "thinkingFormat": "qwen",
+        },
+    }
+    config = {
+        "providers": {
+            provider: {
+                "baseUrl": profile.provider.base_url,
+                "apiKey": profile.provider.api_key_env,
+                "models": [model],
+            },
+        },
+    }
+    with open(os.path.join(agent_dir, "models.json"), "w", encoding="utf-8") as f:
+        json.dump(config, f, sort_keys=True)

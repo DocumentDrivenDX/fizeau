@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 
 from scripts.benchmark.harness_adapters.base import BenchmarkProfile
@@ -23,18 +24,15 @@ class OpencodeAdapterTest(unittest.TestCase):
         self.assertIn(f"VERSION={OPENCODE_VERSION}", spec.argv[2])
 
     def test_command_is_non_interactive_and_maps_profile(self) -> None:
+        os.environ["FAKE_PROVIDER_API_KEY"] = API_KEY
         spec = self.agent.command(self.profile, "solve task", "/tmp/task")
 
-        self.assertEqual(spec.argv[:11], [
+        self.assertEqual(spec.argv[:7], [
             "opencode",
             "run",
             "--format",
             "json",
             "--pure",
-            "--mdns",
-            "false",
-            "--hostname",
-            "127.0.0.1",
             "--port",
             "0",
         ])
@@ -47,15 +45,20 @@ class OpencodeAdapterTest(unittest.TestCase):
         self.assertEqual(spec.argv[-2:], ["--", "solve task"])
         self.assertEqual(spec.stdin, "")
         self.assertEqual(spec.env["OPENCODE_DISABLE_AUTOUPDATE"], "1")
-        self.assertEqual(spec.env["OPENCODE_CONFIG_DIR"], "${CELL_TMP}/opencode-config")
-        self.assertEqual(spec.env["OPENCODE_DATA_DIR"], "${CELL_TMP}/opencode-data")
+        self.assertTrue(spec.env["OPENCODE_CONFIG_DIR"].endswith("/opencode-config"))
+        self.assertTrue(spec.env["OPENCODE_DATA_DIR"].endswith("/opencode-data"))
 
-        config = json.loads(spec.env["OPENCODE_PROVIDER_CONFIG_JSON"])
+        config = json.loads(spec.env["OPENCODE_CONFIG_CONTENT"])
+        self.assertEqual(config["provider"]["openrouter"]["npm"], "@ai-sdk/openai-compatible")
         options = config["provider"]["openrouter"]["options"]
         self.assertEqual(options["baseURL"], "https://openrouter.ai/api/v1")
         self.assertEqual(options["apiKey"], "{env:FAKE_PROVIDER_API_KEY}")
         self.assertEqual(options["temperature"], 0.0)
         self.assertEqual(options["maxTokens"], 4096)
+        self.assertEqual(
+            config["provider"]["openrouter"]["models"]["qwen/qwen3.6-plus"]["limit"]["context"],
+            131072,
+        )
 
     def test_parse_telemetry_maps_json_events_to_d4_schema(self) -> None:
         stream = "\n".join([

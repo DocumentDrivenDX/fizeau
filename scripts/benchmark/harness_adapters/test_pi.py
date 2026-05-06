@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import unittest
 
 from scripts.benchmark.harness_adapters.base import BenchmarkProfile
@@ -20,6 +22,7 @@ class PiAdapterTest(unittest.TestCase):
         )
 
     def test_command_is_non_interactive_and_maps_openai_compat_profile(self) -> None:
+        os.environ["FAKE_PROVIDER_API_KEY"] = API_KEY
         spec = self.agent.command(self.profile, "solve task", "/tmp/task")
 
         self.assertEqual(spec.argv[:9], [
@@ -42,8 +45,16 @@ class PiAdapterTest(unittest.TestCase):
         self.assertEqual(spec.argv[-1], "solve task")
         self.assertEqual(spec.stdin, "")
         self.assertEqual(spec.cwd, "/tmp/task")
-        self.assertEqual(spec.env["PI_OPENAI_COMPAT_BASE_URL"], "http://127.0.0.1:65530/v1")
-        self.assertEqual(spec.env["PI_OPENAI_COMPAT_API_KEY"], "${FAKE_PROVIDER_API_KEY}")
+        self.assertEqual(spec.env["FAKE_PROVIDER_API_KEY"], API_KEY)
+        self.assertIn("PI_CODING_AGENT_DIR", spec.env)
+        with open(os.path.join(spec.env["PI_CODING_AGENT_DIR"], "models.json"), encoding="utf-8") as f:
+            config = json.load(f)
+        model = config["providers"]["openai-compat"]["models"][0]
+        self.assertEqual(config["providers"]["openai-compat"]["baseUrl"], "http://127.0.0.1:65530/v1")
+        self.assertEqual(config["providers"]["openai-compat"]["apiKey"], "FAKE_PROVIDER_API_KEY")
+        self.assertEqual(model["id"], "qwen/qwen3.6-plus")
+        self.assertEqual(model["api"], "openai-completions")
+        self.assertEqual(model["contextWindow"], 131072)
         self.assertTrue(any("temperature" in note for note in spec.notes))
         self.assertTrue(any("max_output_tokens" in note for note in spec.notes))
 
