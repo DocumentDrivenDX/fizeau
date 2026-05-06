@@ -65,6 +65,7 @@ class ClaudeAgent(BaseInstalledAgent):
                     "set -euo pipefail; "
                     f"tar -xzf {shlex.quote(_NODE_TARBALL_TARGET)} -C /installed-agent; "
                     "mv /installed-agent/node-v* /installed-agent/node; "
+                    "export PATH=/installed-agent/node/bin:$PATH; "
                     f"/installed-agent/node/bin/npm install -g {shlex.quote(_PACKAGE_TARBALL_TARGET)}; "
                     f"ln -sf /installed-agent/node/bin/claude {shlex.quote(_BINARY_TARGET)}; "
                     f"chmod 755 {shlex.quote(_BINARY_TARGET)}"
@@ -112,8 +113,8 @@ class ClaudeAgent(BaseInstalledAgent):
             "set -euo pipefail; "
             "cd /testbed 2>/dev/null || cd /workspace 2>/dev/null || true; "
             f"{shlex.quote(_BINARY_TARGET)} {bare}--print -p --verbose "
-            "--output-format stream-json --permission-mode bypassPermissions "
-            f"--dangerously-skip-permissions --model {shlex.quote(model)} {effort_args}"
+            "--output-format stream-json --permission-mode acceptEdits "
+            f"--model {shlex.quote(model)} {effort_args}"
             '"$HARBOR_INSTRUCTION" '
             f"2>&1 | stdbuf -oL tee {shlex.quote(_OUTPUT_LOG)}"
         )

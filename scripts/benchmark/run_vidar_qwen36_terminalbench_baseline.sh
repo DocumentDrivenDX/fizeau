@@ -229,8 +229,8 @@ prepare_claude_artifact() {
     prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
     return
   fi
-  if command -v claude >/dev/null 2>&1 && [[ "$(host_arch)" == "$(container_node_arch)" ]]; then
-    export HARBOR_CLAUDE_ARTIFACT="$(command -v claude)"
+  if [[ "${HARBOR_USE_INSTALLED_CLAUDE_BINARY:-0}" == "1" ]] && command -v claude >/dev/null 2>&1 && [[ "$(host_arch)" == "$(container_node_arch)" ]]; then
+    export HARBOR_CLAUDE_ARTIFACT="$(readlink -f "$(command -v claude)")"
     prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
     return
   fi
@@ -257,7 +257,7 @@ prepare_codex_artifact() {
     return
   fi
   if command -v codex >/dev/null 2>&1 && [[ "$(host_arch)" == "$(container_node_arch)" ]]; then
-    export HARBOR_CODEX_ARTIFACT="$(command -v codex)"
+    export HARBOR_CODEX_ARTIFACT="$(readlink -f "$(command -v codex)")"
     prepare_home_tarball "HARBOR_CODEX_HOME_TARBALL" ".codex" "codex-home.tgz"
     return
   fi

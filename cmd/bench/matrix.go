@@ -515,6 +515,9 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 		"--jobs-dir", opts.jobsDir,
 		"--job-name", opts.jobName,
 	)
+	if truthyEnv("HARBOR_FORCE_BUILD") {
+		args = append(args, "--force-build")
+	}
 	if multiplier := strings.TrimSpace(os.Getenv("HARBOR_AGENT_TIMEOUT_MULTIPLIER")); multiplier != "" {
 		args = append(args, "--agent-timeout-multiplier", multiplier)
 	}
@@ -1096,6 +1099,15 @@ func fizeauProviderEnv(p *profile.Profile) string {
 		return string(profile.ProviderOMLX)
 	}
 	return string(p.Provider.Type)
+}
+
+func truthyEnv(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // queryModelServerInfo attempts to fetch model metadata from a lmstudio

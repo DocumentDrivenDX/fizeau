@@ -39,6 +39,7 @@ common_env=(
   "REPS=1"
   "JOBS=1"
   "FORCE_RERUN=1"
+  "HARBOR_FORCE_BUILD=${HARBOR_FORCE_BUILD:-1}"
   "OUT=${OUT}"
 )
 

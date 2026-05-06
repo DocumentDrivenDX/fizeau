@@ -66,6 +66,7 @@ class CodexAgent(BaseInstalledAgent):
                     "set -euo pipefail; "
                     f"tar -xzf {shlex.quote(_NODE_TARBALL_TARGET)} -C /installed-agent; "
                     "mv /installed-agent/node-v* /installed-agent/node; "
+                    "export PATH=/installed-agent/node/bin:$PATH; "
                     f"/installed-agent/node/bin/npm install -g {shlex.quote(_PACKAGE_TARBALL_TARGET)}; "
                     f"ln -sf /installed-agent/node/bin/codex {shlex.quote(_BINARY_TARGET)}; "
                     f"chmod 755 {shlex.quote(_BINARY_TARGET)}"
