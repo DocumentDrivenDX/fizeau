@@ -1,0 +1,2 @@
+verification_command: go test ./internal/provider/registry ./internal/config ./... -run 'Registry|ProviderType|llama|NormalizeServiceProviderType'
+reason: The current tree already satisfies the llama-server acceptance criteria: the provider registers itself, config normalization defaults to http://localhost:8080/v1, endpoint expansion uses port 8080, and the targeted test slice passes without code changes.
