@@ -1,0 +1,10 @@
+verification_command: go test ./internal/routing ./... -run 'Sticky|Lease|Routing'
+
+Outcome:
+- The bead's sticky-lease requirements are already implemented in the current tree.
+- `internal/routehealth/lease_store.go` stores sticky leases keyed by sticky key plus provider/model scope, tracks acquired/refreshed/expires timestamps, expires abandoned leases, and records invalidations with reasons.
+- `service_route_leases.go` wires validated `CorrelationID` into sticky lease assignment and refresh, and invalidates leases when the endpoint disappears or becomes ineligible.
+- `service_route_leases_test.go` proves same-key reuse across endpoint preference changes.
+- `internal/routehealth/lease_store_test.go` covers refresh, expiry, invalidation, and concurrent distinct keys.
+
+No code edits were required to satisfy the acceptance slice.
