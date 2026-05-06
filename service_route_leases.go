@@ -28,7 +28,9 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 	if s == nil || decision == nil || strings.TrimSpace(stickyKey) == "" {
 		return
 	}
+	decision.Sticky.KeyPresent = true
 	if decision.Harness != "agent" || decision.Provider == "" {
+		decision.Sticky.Assignment = "not_applicable"
 		return
 	}
 
@@ -48,6 +50,8 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 			store.Acquire(now, stickyRouteLeaseTTL, key, baseProvider, lease.Endpoint, decision.Model)
 			decision.Provider = candidate.Provider
 			decision.Endpoint = candidate.Endpoint
+			decision.Sticky.Assignment = "reused"
+			decision.Sticky.Reason = "live sticky lease reused"
 			return
 		}
 		reason := "endpoint disappeared"
@@ -65,6 +69,7 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 		store.Invalidate(now, key, reason)
 	}
 	if decision.Provider == "" && decision.Endpoint == "" {
+		decision.Sticky.Assignment = "none"
 		return
 	}
 	chosenEndpoint := decision.Endpoint
@@ -78,6 +83,10 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 		return
 	}
 	store.Acquire(now, stickyRouteLeaseTTL, key, baseProvider, chosenEndpoint, decision.Model)
+	decision.Sticky.Assignment = "acquired"
+	if decision.Sticky.Reason == "" {
+		decision.Sticky.Reason = "new sticky lease acquired"
+	}
 }
 
 func stickyLeaseCandidate(candidates []RouteCandidate, harness, provider, model, endpoint string) (RouteCandidate, bool) {

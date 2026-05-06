@@ -104,9 +104,13 @@ type FizeauService interface {
     // ResolveRoute resolves a single under-specified request to a concrete
     // (Harness, ProviderSource/Endpoint, Model). The returned RouteDecision is
     // informational: operator dashboards, route-status displays, and debug
-    // surfaces. It is not re-injectable into Execute. Execute always re-resolves
-    // on its own inputs (idempotent for the same caller intent, modulo health
-    // changes which is the intended behavior).
+    // surfaces. RouteDecision includes the selected endpoint, sticky-lease
+    // evidence (status only; never the raw key), and endpoint utilization
+    // evidence when available so operators can explain why a worker stayed
+    // pinned or why a fresh key picked a specific endpoint. It is not
+    // re-injectable into Execute. Execute always re-resolves on its own inputs
+    // (idempotent for the same caller intent, modulo health changes which is
+    // the intended behavior).
     ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error)
 
     // RecordRouteAttempt records availability feedback about externally routed
@@ -115,8 +119,9 @@ type FizeauService interface {
     RecordRouteAttempt(ctx context.Context, attempt RouteAttempt) error
 
     // RouteStatus returns global routing state across live provider/model
-    // candidates: cooldowns, recent decisions, observation-derived
-    // per-(provider source, endpoint, model) latency.
+    // candidates: cooldowns, recent decisions, sticky assignment status,
+    // selected endpoint, and observation-derived per-(provider source,
+    // endpoint, model) latency / utilization evidence.
     // Distinct from per-request ResolveRoute — this is the read-only operator
     // dashboard view.
     RouteStatus(ctx context.Context) (*RouteStatusReport, error)

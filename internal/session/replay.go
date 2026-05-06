@@ -54,6 +54,38 @@ func Replay(path string, w io.Writer) error {
 			fmt.Fprintf(w, "=== Session %s ===\n", e.SessionID)
 			fmt.Fprintf(w, "Time: %s\n", e.Timestamp.Format("2006-01-02 15:04:05 UTC"))
 			fmt.Fprintf(w, "Provider: %s | Model: %s\n", data.Provider, data.Model)
+			if data.SelectedEndpoint != "" {
+				fmt.Fprintf(w, "Selected endpoint: %s\n", data.SelectedEndpoint)
+			}
+			if data.Sticky.KeyPresent || data.Sticky.Assignment != "" || data.Sticky.Reason != "" {
+				fmt.Fprintf(w, "Sticky: key=%s assignment=%s",
+					routingStickyLabel(data.Sticky.KeyPresent),
+					labelOrUnknown(data.Sticky.Assignment))
+				if data.Sticky.Reason != "" {
+					fmt.Fprintf(w, " reason=%s", data.Sticky.Reason)
+				}
+				fmt.Fprintln(w)
+			}
+			if data.Utilization.Source != "" || data.Utilization.Freshness != "" ||
+				data.Utilization.ActiveRequests != nil || data.Utilization.QueuedRequests != nil ||
+				data.Utilization.MaxConcurrency != nil || data.Utilization.CachePressure != nil {
+				fmt.Fprintf(w, "Utilization: source=%s freshness=%s",
+					labelOrUnknown(data.Utilization.Source),
+					labelOrUnknown(data.Utilization.Freshness))
+				if data.Utilization.ActiveRequests != nil {
+					fmt.Fprintf(w, " active=%d", *data.Utilization.ActiveRequests)
+				}
+				if data.Utilization.QueuedRequests != nil {
+					fmt.Fprintf(w, " queued=%d", *data.Utilization.QueuedRequests)
+				}
+				if data.Utilization.MaxConcurrency != nil {
+					fmt.Fprintf(w, " max=%d", *data.Utilization.MaxConcurrency)
+				}
+				if data.Utilization.CachePressure != nil {
+					fmt.Fprintf(w, " cache_pressure=%.2f", *data.Utilization.CachePressure)
+				}
+				fmt.Fprintln(w)
+			}
 			fmt.Fprintf(w, "Max iterations: %d | Work dir: %s\n", data.MaxIterations, data.WorkDir)
 			if data.SystemPrompt != "" {
 				fmt.Fprintf(w, "\n[System]\n%s\n", data.SystemPrompt)
@@ -103,6 +135,9 @@ func Replay(path string, w io.Writer) error {
 			if data.Model != "" {
 				fmt.Fprintf(w, "Model: %s\n", data.Model)
 			}
+			if data.SelectedEndpoint != "" {
+				fmt.Fprintf(w, "Selected endpoint: %s\n", data.SelectedEndpoint)
+			}
 			fmt.Fprintf(w, "Duration: %dms | Tokens: %d in / %d out",
 				data.DurationMs, data.Tokens.Input, data.Tokens.Output)
 			if data.CostUSD == nil || *data.CostUSD < 0 {
@@ -126,6 +161,20 @@ func Replay(path string, w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func routingStickyLabel(present bool) string {
+	if present {
+		return "present"
+	}
+	return "absent"
+}
+
+func labelOrUnknown(v string) string {
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }
 
 func compactJSON(raw json.RawMessage) string {

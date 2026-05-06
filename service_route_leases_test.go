@@ -79,6 +79,9 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 	if first.Provider != "local@desk-b" || first.Endpoint != "desk-b" {
 		t.Fatalf("first decision=%#v, want desk-b", first)
 	}
+	if !first.Sticky.KeyPresent || first.Sticky.Assignment != "acquired" {
+		t.Fatalf("first sticky evidence=%#v, want acquired sticky lease", first.Sticky)
+	}
 
 	time.Sleep(30 * time.Millisecond)
 	now = time.Now().UTC()
@@ -110,6 +113,9 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 	}
 	if second.Provider != "local@desk-b" || second.Endpoint != "desk-b" {
 		t.Fatalf("sticky decision=%#v, want reused desk-b despite reversed baseline", second)
+	}
+	if second.Sticky.Assignment != "reused" {
+		t.Fatalf("second sticky evidence=%#v, want reused", second.Sticky)
 	}
 }
 
@@ -174,6 +180,12 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 	if first.Provider != "local@desk-b" || first.Endpoint != "desk-b" {
 		t.Fatalf("first decision=%#v, want desk-b as the least-loaded endpoint", first)
 	}
+	if first.Utilization.Source != string(utilization.SourceLlamaSlots) {
+		t.Fatalf("first utilization source=%q, want %q", first.Utilization.Source, utilization.SourceLlamaSlots)
+	}
+	if first.Utilization.Freshness != string(utilization.FreshnessFresh) {
+		t.Fatalf("first utilization freshness=%q, want fresh", first.Utilization.Freshness)
+	}
 
 	second, err := svc.ResolveRoute(context.Background(), RouteRequest{
 		Harness:       "agent",
@@ -185,6 +197,9 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 	}
 	if second.Provider != "local@desk-a" || second.Endpoint != "desk-a" {
 		t.Fatalf("second decision=%#v, want desk-a after desk-b lease increased load", second)
+	}
+	if second.Utilization.Source != string(utilization.SourceLlamaSlots) {
+		t.Fatalf("second utilization source=%q, want %q", second.Utilization.Source, utilization.SourceLlamaSlots)
 	}
 }
 

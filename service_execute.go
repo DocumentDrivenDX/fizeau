@@ -186,13 +186,18 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 		return nil, err
 	}
 	resolvedModel := resolveSubprocessModelAlias(canonical, req.Model)
-	return &RouteDecision{
+	decision := &RouteDecision{
 		Harness:  canonical,
 		Provider: req.Provider,
 		Model:    resolvedModel,
 		Reason:   "explicit",
 		Power:    catalogPowerForModel(serviceRoutingCatalog(), resolvedModel),
-	}, nil
+	}
+	if decision.Endpoint == "" {
+		_, endpoint, _ := splitEndpointProviderRef(decision.Provider)
+		decision.Endpoint = endpoint
+	}
+	return decision, nil
 }
 
 func validateExplicitHarnessQuota(name string, cfg harnesses.HarnessConfig) error {
@@ -438,11 +443,25 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	// reserved keys).
 	routingMeta := metaWithRoleAndCorrelation(meta, req.Role, req.CorrelationID)
 	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, routingMeta, ServiceRoutingDecisionData{
-		Harness:          decision.Harness,
-		Provider:         decision.Provider,
-		Endpoint:         decision.Endpoint,
-		Model:            decision.Model,
-		Reason:           decision.Reason,
+		Harness:  decision.Harness,
+		Provider: decision.Provider,
+		Endpoint: decision.Endpoint,
+		Model:    decision.Model,
+		Reason:   decision.Reason,
+		Sticky: ServiceRoutingStickyState{
+			KeyPresent: decision.Sticky.KeyPresent,
+			Assignment: decision.Sticky.Assignment,
+			Reason:     decision.Sticky.Reason,
+		},
+		Utilization: ServiceRoutingUtilizationState{
+			Source:         decision.Utilization.Source,
+			Freshness:      decision.Utilization.Freshness,
+			ActiveRequests: decision.Utilization.ActiveRequests,
+			QueuedRequests: decision.Utilization.QueuedRequests,
+			MaxConcurrency: decision.Utilization.MaxConcurrency,
+			CachePressure:  decision.Utilization.CachePressure,
+			ObservedAt:     decision.Utilization.ObservedAt,
+		},
 		RequestedHarness: req.Harness,
 		HarnessSource:    harnessSource(req),
 		SessionID:        sessionID,

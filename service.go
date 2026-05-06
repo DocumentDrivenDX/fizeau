@@ -431,6 +431,12 @@ type RouteDecision struct {
 	Model string
 	// Reason summarizes why the selected candidate won.
 	Reason string
+	// Sticky captures whether this decision reused an existing sticky lease
+	// or created a new one.
+	Sticky RouteStickyState
+	// Utilization captures the endpoint sample that informed the selected
+	// candidate, when known.
+	Utilization RouteUtilizationState
 	// Power is the catalog-projected power of the selected Model
 	// (per CONTRACT-003 § Catalog Power Projection). 0 means
 	// unknown/exact-pin-only/no catalog entry. DDx callers read this
@@ -470,6 +476,8 @@ type RouteCandidate struct {
 	// success rate, quota, capability) that fed the final Score. Consumers use these to
 	// explain rankings without parsing the free-form Reason.
 	Components RouteCandidateComponents
+	// Utilization carries the normalized load sample used by the router.
+	Utilization RouteUtilizationState
 }
 
 // FilterReason* enumerate the canonical disqualification reasons surfaced
@@ -514,6 +522,26 @@ type RouteCandidateComponents struct {
 	Capability float64
 }
 
+// RouteStickyState describes sticky routing evidence without exposing the
+// underlying key.
+type RouteStickyState struct {
+	KeyPresent bool   `json:"key_present,omitempty"`
+	Assignment string `json:"assignment,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+// RouteUtilizationState summarizes the live utilization sample associated
+// with a candidate or selected endpoint.
+type RouteUtilizationState struct {
+	Source         string    `json:"source,omitempty"`
+	Freshness      string    `json:"freshness,omitempty"`
+	ActiveRequests *int      `json:"active_requests,omitempty"`
+	QueuedRequests *int      `json:"queued_requests,omitempty"`
+	MaxConcurrency *int      `json:"max_concurrency,omitempty"`
+	CachePressure  *float64  `json:"cache_pressure,omitempty"`
+	ObservedAt     time.Time `json:"observed_at,omitempty"`
+}
+
 // RouteAttempt is caller feedback about one attempted route candidate.
 // Status="success" clears matching active failures; any other non-empty status
 // records a same-process failure until the service health cooldown expires.
@@ -553,11 +581,13 @@ const RouteStatusRoutingQualityWindow = 100
 
 // RouteStatusEntry describes the live provider candidates serving one model.
 type RouteStatusEntry struct {
-	Model          string
-	Strategy       string // informational; route tables are not user-authored
-	Candidates     []RouteCandidateStatus
-	LastDecision   *RouteDecision // most recent ResolveRoute result for this key (cached)
-	LastDecisionAt time.Time
+	Model            string
+	Strategy         string // informational; route tables are not user-authored
+	SelectedEndpoint string
+	Sticky           RouteStickyState
+	Candidates       []RouteCandidateStatus
+	LastDecision     *RouteDecision // most recent ResolveRoute result for this key (cached)
+	LastDecisionAt   time.Time
 }
 
 // RouteCandidateStatus describes a single live provider/model candidate.

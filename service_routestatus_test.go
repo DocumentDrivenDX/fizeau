@@ -99,8 +99,10 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	dec := &RouteDecision{
 		Harness:  "agent",
 		Provider: "bragi",
+		Endpoint: "desk-a",
 		Model:    "qwen3-27b",
 		Reason:   "test",
+		Sticky:   RouteStickyState{KeyPresent: true, Assignment: "reused", Reason: "live sticky lease reused"},
 	}
 	svc.cacheRouteDecision("qwen3-27b", dec)
 
@@ -123,6 +125,12 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	}
 	if entry.LastDecisionAt.IsZero() {
 		t.Error("LastDecisionAt: should be non-zero")
+	}
+	if entry.SelectedEndpoint != "desk-a" {
+		t.Fatalf("SelectedEndpoint = %q, want desk-a", entry.SelectedEndpoint)
+	}
+	if !entry.Sticky.KeyPresent || entry.Sticky.Assignment != "reused" {
+		t.Fatalf("Sticky = %#v, want reused sticky evidence", entry.Sticky)
 	}
 }
 
@@ -176,6 +184,9 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	}
 	if found.LastDecision == nil {
 		t.Fatal("LastDecision: expected non-nil after successful ResolveRoute")
+	}
+	if dec.Endpoint != "" && found.SelectedEndpoint != dec.Endpoint {
+		t.Fatalf("SelectedEndpoint = %q, want %q", found.SelectedEndpoint, dec.Endpoint)
 	}
 }
 

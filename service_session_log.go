@@ -22,6 +22,7 @@ type serviceSessionLog struct {
 	logger    *session.Logger
 	path      string
 	sessionID string
+	decision  RouteDecision
 	endOnce   sync.Once
 	endWrote  atomic.Bool
 	closeOnce sync.Once
@@ -39,16 +40,32 @@ func (s *service) openSessionLog(req ServiceExecuteRequest, decision RouteDecisi
 		logger:    logger,
 		path:      filepath.Join(req.SessionLogDir, sessionID+".jsonl"),
 		sessionID: sessionID,
+		decision:  decision,
 	}
 	// CONTRACT-003: echo top-level Role + CorrelationID into the
 	// session-log header (one line per session). Top-level wins over
 	// any caller Metadata entry under the reserved keys.
 	headerMeta := metaWithRoleAndCorrelation(req.Metadata, req.Role, req.CorrelationID)
 	start := session.SessionStartData{
-		Provider:          s.providerTypeLabel(decision.Provider),
-		Model:             decision.Model,
-		SelectedProvider:  decision.Provider,
-		SelectedRoute:     req.SelectedRoute,
+		Provider:         s.providerTypeLabel(decision.Provider),
+		Model:            decision.Model,
+		SelectedProvider: decision.Provider,
+		SelectedEndpoint: decision.Endpoint,
+		SelectedRoute:    req.SelectedRoute,
+		Sticky: session.RoutingStickyState{
+			KeyPresent: req.CorrelationID != "",
+			Assignment: decision.Sticky.Assignment,
+			Reason:     decision.Sticky.Reason,
+		},
+		Utilization: session.RoutingUtilizationState{
+			Source:         decision.Utilization.Source,
+			Freshness:      decision.Utilization.Freshness,
+			ActiveRequests: decision.Utilization.ActiveRequests,
+			QueuedRequests: decision.Utilization.QueuedRequests,
+			MaxConcurrency: decision.Utilization.MaxConcurrency,
+			CachePressure:  decision.Utilization.CachePressure,
+			ObservedAt:     decision.Utilization.ObservedAt,
+		},
 		RequestedHarness:  req.Harness,
 		ResolvedHarness:   decision.Harness,
 		HarnessSource:     harnessSource(req),
@@ -78,11 +95,26 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 	sl.endOnce.Do(func() {
 		sl.endWrote.Store(true)
 		end := session.SessionEndData{
-			Status:            harnessStatusToCoreStatus(final.Status),
-			Output:            final.FinalText,
-			Tokens:            finalUsageToCoreTokens(final.Usage),
-			DurationMs:        final.DurationMS,
-			SelectedRoute:     req.SelectedRoute,
+			Status:           harnessStatusToCoreStatus(final.Status),
+			Output:           final.FinalText,
+			Tokens:           finalUsageToCoreTokens(final.Usage),
+			DurationMs:       final.DurationMS,
+			SelectedRoute:    req.SelectedRoute,
+			SelectedEndpoint: sl.decision.Endpoint,
+			Sticky: session.RoutingStickyState{
+				KeyPresent: req.CorrelationID != "",
+				Assignment: sl.decision.Sticky.Assignment,
+				Reason:     sl.decision.Sticky.Reason,
+			},
+			Utilization: session.RoutingUtilizationState{
+				Source:         sl.decision.Utilization.Source,
+				Freshness:      sl.decision.Utilization.Freshness,
+				ActiveRequests: sl.decision.Utilization.ActiveRequests,
+				QueuedRequests: sl.decision.Utilization.QueuedRequests,
+				MaxConcurrency: sl.decision.Utilization.MaxConcurrency,
+				CachePressure:  sl.decision.Utilization.CachePressure,
+				ObservedAt:     sl.decision.Utilization.ObservedAt,
+			},
 			RequestedHarness:  req.Harness,
 			ResolvedHarness:   "",
 			HarnessSource:     harnessSource(req),

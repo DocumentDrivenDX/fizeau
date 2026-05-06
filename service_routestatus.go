@@ -48,6 +48,8 @@ func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
 			if cached, ok := s.lookupRouteDecision(model); ok {
 				entry.LastDecision = cached.decision
 				entry.LastDecisionAt = cached.at
+				entry.SelectedEndpoint = cached.decision.Endpoint
+				entry.Sticky = cached.decision.Sticky
 			}
 			entries[model] = entry
 			order = append(order, model)

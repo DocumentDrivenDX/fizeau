@@ -165,21 +165,32 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 				QuotaTrend:       c.Components.QuotaTrend,
 				Capability:       c.Components.Capability,
 			},
+			Utilization: ServiceRoutingUtilizationState{
+				Source:         c.Utilization.Source,
+				Freshness:      c.Utilization.Freshness,
+				ActiveRequests: c.Utilization.ActiveRequests,
+				QueuedRequests: c.Utilization.QueuedRequests,
+				MaxConcurrency: c.Utilization.MaxConcurrency,
+				CachePressure:  c.Utilization.CachePressure,
+				ObservedAt:     c.Utilization.ObservedAt,
+			},
 		}
 	}
 	return out
 }
 
 type ServiceRoutingDecisionData struct {
-	Harness          string   `json:"harness"`
-	Provider         string   `json:"provider,omitempty"`
-	Endpoint         string   `json:"endpoint,omitempty"`
-	Model            string   `json:"model"`
-	Reason           string   `json:"reason"`
-	RequestedHarness string   `json:"requested_harness,omitempty"`
-	HarnessSource    string   `json:"harness_source,omitempty"`
-	FallbackChain    []string `json:"fallback_chain,omitempty"`
-	SessionID        string   `json:"session_id,omitempty"`
+	Harness          string                         `json:"harness"`
+	Provider         string                         `json:"provider,omitempty"`
+	Endpoint         string                         `json:"endpoint,omitempty"`
+	Model            string                         `json:"model"`
+	Reason           string                         `json:"reason"`
+	Sticky           ServiceRoutingStickyState      `json:"sticky,omitempty"`
+	Utilization      ServiceRoutingUtilizationState `json:"utilization,omitempty"`
+	RequestedHarness string                         `json:"requested_harness,omitempty"`
+	HarnessSource    string                         `json:"harness_source,omitempty"`
+	FallbackChain    []string                       `json:"fallback_chain,omitempty"`
+	SessionID        string                         `json:"session_id,omitempty"`
 
 	// Candidates exposes the full ranked decision trace. Each candidate
 	// carries per-axis component scores (cost / latency / success rate /
@@ -202,6 +213,7 @@ type ServiceRoutingDecisionCandidate struct {
 	Reason             string                           `json:"reason,omitempty"`
 	FilterReason       string                           `json:"filter_reason,omitempty"`
 	Components         ServiceRoutingDecisionComponents `json:"components"`
+	Utilization        ServiceRoutingUtilizationState   `json:"utilization,omitempty"`
 }
 
 // ServiceRoutingDecisionComponents exposes the per-axis score inputs.
@@ -216,6 +228,22 @@ type ServiceRoutingDecisionComponents struct {
 	QuotaPercentUsed int     `json:"quota_percent_used"`
 	QuotaTrend       string  `json:"quota_trend,omitempty"`
 	Capability       float64 `json:"capability"`
+}
+
+type ServiceRoutingStickyState struct {
+	KeyPresent bool   `json:"key_present,omitempty"`
+	Assignment string `json:"assignment,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+type ServiceRoutingUtilizationState struct {
+	Source         string    `json:"source,omitempty"`
+	Freshness      string    `json:"freshness,omitempty"`
+	ActiveRequests *int      `json:"active_requests,omitempty"`
+	QueuedRequests *int      `json:"queued_requests,omitempty"`
+	MaxConcurrency *int      `json:"max_concurrency,omitempty"`
+	CachePressure  *float64  `json:"cache_pressure,omitempty"`
+	ObservedAt     time.Time `json:"observed_at,omitempty"`
 }
 
 type ServiceStallData struct {

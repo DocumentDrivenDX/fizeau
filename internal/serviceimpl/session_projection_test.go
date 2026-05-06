@@ -42,8 +42,28 @@ func TestWriteAndReplaySessionLog(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "svc-1.jsonl")
 	logger := session.NewLogger(dir, "svc-1")
-	logger.Emit(agentcore.EventSessionStart, session.SessionStartData{Prompt: "hello"})
-	logger.Emit(agentcore.EventSessionEnd, session.SessionEndData{Status: agentcore.StatusSuccess})
+	logger.Emit(agentcore.EventSessionStart, session.SessionStartData{
+		Prompt:           "hello",
+		SelectedEndpoint: "desk-a",
+		Sticky: session.RoutingStickyState{
+			KeyPresent: true,
+			Assignment: "acquired",
+			Reason:     "new sticky lease acquired",
+		},
+		Utilization: session.RoutingUtilizationState{
+			Source:    "llama-server.slots",
+			Freshness: "fresh",
+		},
+	})
+	logger.Emit(agentcore.EventSessionEnd, session.SessionEndData{
+		Status:           agentcore.StatusSuccess,
+		SelectedEndpoint: "desk-a",
+		Sticky: session.RoutingStickyState{
+			KeyPresent: true,
+			Assignment: "acquired",
+			Reason:     "new sticky lease acquired",
+		},
+	})
 	if err := logger.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -55,6 +75,9 @@ func TestWriteAndReplaySessionLog(t *testing.T) {
 	if !strings.Contains(raw.String(), "\"type\": \"session.start\"") {
 		t.Fatalf("raw log missing session.start: %s", raw.String())
 	}
+	if !strings.Contains(raw.String(), "\"selected_endpoint\": \"desk-a\"") {
+		t.Fatalf("raw log missing selected_endpoint: %s", raw.String())
+	}
 
 	var replay bytes.Buffer
 	if err := ReplaySession(context.Background(), path, &replay); err != nil {
@@ -62,6 +85,9 @@ func TestWriteAndReplaySessionLog(t *testing.T) {
 	}
 	if !strings.Contains(replay.String(), "Session svc-1") {
 		t.Fatalf("replay missing session header: %s", replay.String())
+	}
+	if !strings.Contains(replay.String(), "Selected endpoint: desk-a") {
+		t.Fatalf("replay missing selected endpoint: %s", replay.String())
 	}
 }
 

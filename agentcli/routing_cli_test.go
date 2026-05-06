@@ -480,23 +480,56 @@ providers:
 		SuccessRate float64 `json:"success_rate"`
 		Capability  float64 `json:"capability"`
 	}
+	type sticky struct {
+		KeyPresent bool   `json:"key_present"`
+		Assignment string `json:"assignment"`
+		Reason     string `json:"reason"`
+	}
+	type utilization struct {
+		Source         string   `json:"source"`
+		Freshness      string   `json:"freshness"`
+		ActiveRequests *int     `json:"active_requests"`
+		QueuedRequests *int     `json:"queued_requests"`
+		MaxConcurrency *int     `json:"max_concurrency"`
+		CachePressure  *float64 `json:"cache_pressure"`
+	}
 	type candidate struct {
-		Harness      string    `json:"harness"`
-		Provider     string    `json:"provider"`
-		Model        string    `json:"model"`
-		Score        float64   `json:"score"`
-		Components   component `json:"components"`
-		Eligible     bool      `json:"eligible"`
-		FilterReason string    `json:"filter_reason"`
-		Winner       bool      `json:"winner"`
+		Harness      string      `json:"harness"`
+		Provider     string      `json:"provider"`
+		Endpoint     string      `json:"endpoint"`
+		Model        string      `json:"model"`
+		Score        float64     `json:"score"`
+		Components   component   `json:"components"`
+		Utilization  utilization `json:"utilization"`
+		Eligible     bool        `json:"eligible"`
+		FilterReason string      `json:"filter_reason"`
+		Winner       bool        `json:"winner"`
 	}
 	var parsed struct {
-		Model      string      `json:"model"`
-		Winner     *candidate  `json:"winner"`
-		Candidates []candidate `json:"candidates"`
+		Model            string      `json:"model"`
+		SelectedEndpoint string      `json:"selected_endpoint"`
+		Sticky           sticky      `json:"sticky"`
+		Utilization      utilization `json:"utilization"`
+		Winner           *candidate  `json:"winner"`
+		Candidates       []candidate `json:"candidates"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
 	assert.Equal(t, "qwen3.5-27b", parsed.Model)
+	var generic map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(out.stdout), &generic), "stdout=%s", out.stdout)
+	for _, key := range []string{"selected_endpoint", "sticky", "utilization"} {
+		if _, ok := generic[key]; !ok {
+			t.Fatalf("missing %q in route-status JSON: %s", key, out.stdout)
+		}
+	}
+	var candidateGeneric []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(generic["candidates"], &candidateGeneric))
+	if len(candidateGeneric) == 0 {
+		t.Fatal("expected at least one candidate in route-status JSON")
+	}
+	if _, ok := candidateGeneric[0]["utilization"]; !ok {
+		t.Fatalf("missing candidate utilization in route-status JSON: %s", out.stdout)
+	}
 
 	// Each candidate carries the new structured shape from
 	// service.ResolveRoute: provider, model, score, components, eligible bool,
@@ -537,6 +570,8 @@ providers:
 	require.NotNil(t, parsed.Winner, "an eligible winner must be selected")
 	assert.True(t, parsed.Winner.Eligible)
 	assert.Empty(t, parsed.Winner.FilterReason, "winner must have an empty filter_reason")
+	assert.Equal(t, parsed.Winner.Endpoint, parsed.SelectedEndpoint)
+	assert.False(t, parsed.Sticky.KeyPresent, "no correlation id was supplied, so sticky key should be absent")
 
 	// The winner must also appear inside the candidates array and be flagged.
 	winnerInList := 0
@@ -548,6 +583,10 @@ providers:
 		}
 	}
 	assert.Equal(t, 1, winnerInList, "exactly one candidate should be flagged winner")
+	for _, c := range parsed.Candidates {
+		_ = c.Utilization.Source
+		_ = c.Utilization.Freshness
+	}
 }
 
 // TestRouteStatus_ShowsEligibleCandidatesPerIntent asserts that

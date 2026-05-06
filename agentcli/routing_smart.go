@@ -769,30 +769,34 @@ type routeStatusComponents struct {
 }
 
 type routeStatusCandidate struct {
-	Harness      string                `json:"harness,omitempty"`
-	Provider     string                `json:"provider"`
-	Endpoint     string                `json:"endpoint,omitempty"`
-	Model        string                `json:"model"`
-	Score        float64               `json:"score"`
-	Components   routeStatusComponents `json:"components"`
-	Eligible     bool                  `json:"eligible"`
-	FilterReason string                `json:"filter_reason"`
-	Reason       string                `json:"reason,omitempty"`
-	CostSource   string                `json:"cost_source,omitempty"`
-	Winner       bool                  `json:"winner"`
+	Harness      string                           `json:"harness,omitempty"`
+	Provider     string                           `json:"provider"`
+	Endpoint     string                           `json:"endpoint,omitempty"`
+	Model        string                           `json:"model"`
+	Score        float64                          `json:"score"`
+	Components   routeStatusComponents            `json:"components"`
+	Utilization  rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
+	Eligible     bool                             `json:"eligible"`
+	FilterReason string                           `json:"filter_reason"`
+	Reason       string                           `json:"reason,omitempty"`
+	CostSource   string                           `json:"cost_source,omitempty"`
+	Winner       bool                             `json:"winner"`
 }
 
 type routeStatusOutput struct {
-	Profile    string                 `json:"profile,omitempty"`
-	Model      string                 `json:"model,omitempty"`
-	ModelRef   string                 `json:"model_ref,omitempty"`
-	Provider   string                 `json:"provider,omitempty"`
-	Harness    string                 `json:"harness,omitempty"`
-	MinPower   int                    `json:"min_power,omitempty"`
-	MaxPower   int                    `json:"max_power,omitempty"`
-	Winner     *routeStatusCandidate  `json:"winner,omitempty"`
-	Candidates []routeStatusCandidate `json:"candidates"`
-	Error      string                 `json:"error,omitempty"`
+	Profile          string                           `json:"profile,omitempty"`
+	Model            string                           `json:"model,omitempty"`
+	ModelRef         string                           `json:"model_ref,omitempty"`
+	Provider         string                           `json:"provider,omitempty"`
+	Harness          string                           `json:"harness,omitempty"`
+	MinPower         int                              `json:"min_power,omitempty"`
+	MaxPower         int                              `json:"max_power,omitempty"`
+	SelectedEndpoint string                           `json:"selected_endpoint,omitempty"`
+	Sticky           rootfizeau.RouteStickyState      `json:"sticky,omitempty"`
+	Utilization      rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
+	Winner           *routeStatusCandidate            `json:"winner,omitempty"`
+	Candidates       []routeStatusCandidate           `json:"candidates"`
+	Error            string                           `json:"error,omitempty"`
 }
 
 // cmdRouteStatus reports the routing engine's eligible-candidate trace for a
@@ -870,6 +874,9 @@ func cmdRouteStatus(workDir string, args []string) int {
 		out.Error = resolveErr.Error()
 	}
 	if decision != nil {
+		out.SelectedEndpoint = decision.Endpoint
+		out.Sticky = decision.Sticky
+		out.Utilization = decision.Utilization
 		winnerSet := decision.Harness != "" || decision.Provider != "" || decision.Model != ""
 		for _, c := range decision.Candidates {
 			entry := routeStatusCandidate{
@@ -882,6 +889,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 				FilterReason: c.FilterReason,
 				Reason:       c.Reason,
 				CostSource:   c.CostSource,
+				Utilization:  c.Utilization,
 				Components: routeStatusComponents{
 					Power:            c.Components.Power,
 					Cost:             c.Components.Cost,
@@ -932,21 +940,52 @@ func cmdRouteStatus(workDir string, args []string) int {
 		fmt.Printf("Max Power: %d\n", out.MaxPower)
 	}
 	if out.Winner != nil {
-		fmt.Printf("Winner: %s/%s/%s score=%.2f\n", out.Winner.Harness, out.Winner.Provider, out.Winner.Model, out.Winner.Score)
+		fmt.Printf("Winner: %s/%s/%s endpoint=%s score=%.2f\n", out.Winner.Harness, out.Winner.Provider, out.Winner.Model, out.Winner.Endpoint, out.Winner.Score)
+	}
+	if out.SelectedEndpoint != "" {
+		fmt.Printf("Selected endpoint: %s\n", out.SelectedEndpoint)
+	}
+	if out.Sticky.KeyPresent || out.Sticky.Assignment != "" || out.Sticky.Reason != "" {
+		fmt.Printf("Sticky: key=%s assignment=%s", stickyLabel(out.Sticky.KeyPresent), labelOrUnknown(out.Sticky.Assignment))
+		if out.Sticky.Reason != "" {
+			fmt.Printf(" reason=%s", out.Sticky.Reason)
+		}
+		fmt.Println()
+	}
+	if out.Utilization.Source != "" || out.Utilization.Freshness != "" || out.Utilization.ActiveRequests != nil || out.Utilization.QueuedRequests != nil || out.Utilization.MaxConcurrency != nil || out.Utilization.CachePressure != nil {
+		fmt.Printf("Utilization: source=%s freshness=%s", labelOrUnknown(out.Utilization.Source), labelOrUnknown(out.Utilization.Freshness))
+		if out.Utilization.ActiveRequests != nil {
+			fmt.Printf(" active=%d", *out.Utilization.ActiveRequests)
+		}
+		if out.Utilization.QueuedRequests != nil {
+			fmt.Printf(" queued=%d", *out.Utilization.QueuedRequests)
+		}
+		if out.Utilization.MaxConcurrency != nil {
+			fmt.Printf(" max=%d", *out.Utilization.MaxConcurrency)
+		}
+		if out.Utilization.CachePressure != nil {
+			fmt.Printf(" cache_pressure=%.2f", *out.Utilization.CachePressure)
+		}
+		fmt.Println()
 	}
 	if resolveErr != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", resolveErr)
 	}
-	fmt.Printf("%-10s %-12s %-32s %-5s %-5s %-9s %-10s %-10s %-9s %s\n",
-		"HARNESS", "PROVIDER", "MODEL", "ELIG", "POWER", "SCORE", "COST", "LATENCY", "SUCCESS", "FILTER_REASON")
+	fmt.Printf("%-10s %-12s %-14s %-32s %-5s %-5s %-9s %-10s %-10s %-9s %-10s %s\n",
+		"HARNESS", "PROVIDER", "ENDPOINT", "MODEL", "ELIG", "POWER", "SCORE", "COST", "LATENCY", "SUCCESS", "SELECTED", "FILTER_REASON")
 	for _, c := range out.Candidates {
 		elig := "no"
 		if c.Eligible {
 			elig = "yes"
 		}
-		fmt.Printf("%-10s %-12s %-32s %-5s %-5d %-9.2f %-10.4f %-10.0f %-9.2f %s\n",
+		selected := "-"
+		if c.Winner {
+			selected = "yes"
+		}
+		fmt.Printf("%-10s %-12s %-14s %-32s %-5s %-5d %-9.2f %-10.4f %-10.0f %-9.2f %-10s %s\n",
 			c.Harness,
 			c.Provider,
+			truncate(c.Endpoint, 14),
 			truncate(c.Model, 32),
 			elig,
 			c.Components.Power,
@@ -954,6 +993,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 			c.Components.Cost,
 			c.Components.LatencyMS,
 			c.Components.SuccessRate,
+			selected,
 			c.FilterReason,
 		)
 	}
@@ -993,4 +1033,18 @@ func truncate(value string, n int) string {
 		return value[:n]
 	}
 	return value[:n-2] + ".."
+}
+
+func stickyLabel(present bool) string {
+	if present {
+		return "present"
+	}
+	return "absent"
+}
+
+func labelOrUnknown(v string) string {
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }

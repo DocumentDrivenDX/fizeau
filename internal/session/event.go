@@ -9,25 +9,28 @@ import (
 
 // SessionStartData is the data payload for a session.start event.
 type SessionStartData struct {
-	Provider           string            `json:"provider"`
-	Model              string            `json:"model"`
-	SelectedProvider   string            `json:"selected_provider,omitempty"`
-	SelectedRoute      string            `json:"selected_route,omitempty"`
-	RequestedHarness   string            `json:"requested_harness,omitempty"`
-	ResolvedHarness    string            `json:"resolved_harness,omitempty"`
-	HarnessSource      string            `json:"harness_source,omitempty"`
-	RequestedModel     string            `json:"requested_model,omitempty"`
-	RequestedModelRef  string            `json:"requested_model_ref,omitempty"`
-	ResolvedModelRef   string            `json:"resolved_model_ref,omitempty"`
-	ResolvedModel      string            `json:"resolved_model,omitempty"`
-	Reasoning          agent.Reasoning   `json:"reasoning,omitempty"`
-	AttemptedProviders []string          `json:"attempted_providers,omitempty"`
-	FailoverCount      int               `json:"failover_count,omitempty"`
-	WorkDir            string            `json:"work_dir"`
-	MaxIterations      int               `json:"max_iterations"`
-	Prompt             string            `json:"prompt"`
-	SystemPrompt       string            `json:"system_prompt,omitempty"`
-	Metadata           map[string]string `json:"metadata,omitempty"`
+	Provider           string                  `json:"provider"`
+	Model              string                  `json:"model"`
+	SelectedProvider   string                  `json:"selected_provider,omitempty"`
+	SelectedEndpoint   string                  `json:"selected_endpoint,omitempty"`
+	SelectedRoute      string                  `json:"selected_route,omitempty"`
+	Sticky             RoutingStickyState      `json:"sticky,omitempty"`
+	Utilization        RoutingUtilizationState `json:"utilization,omitempty"`
+	RequestedHarness   string                  `json:"requested_harness,omitempty"`
+	ResolvedHarness    string                  `json:"resolved_harness,omitempty"`
+	HarnessSource      string                  `json:"harness_source,omitempty"`
+	RequestedModel     string                  `json:"requested_model,omitempty"`
+	RequestedModelRef  string                  `json:"requested_model_ref,omitempty"`
+	ResolvedModelRef   string                  `json:"resolved_model_ref,omitempty"`
+	ResolvedModel      string                  `json:"resolved_model,omitempty"`
+	Reasoning          agent.Reasoning         `json:"reasoning,omitempty"`
+	AttemptedProviders []string                `json:"attempted_providers,omitempty"`
+	FailoverCount      int                     `json:"failover_count,omitempty"`
+	WorkDir            string                  `json:"work_dir"`
+	MaxIterations      int                     `json:"max_iterations"`
+	Prompt             string                  `json:"prompt"`
+	SystemPrompt       string                  `json:"system_prompt,omitempty"`
+	Metadata           map[string]string       `json:"metadata,omitempty"`
 }
 
 // LLMRequestData is the data payload for an llm.request event.
@@ -75,26 +78,49 @@ type ToolCallData struct {
 
 // SessionEndData is the data payload for a session.end event.
 type SessionEndData struct {
-	Status             agent.Status      `json:"status"`
-	Output             string            `json:"output"`
-	Tokens             agent.TokenUsage  `json:"tokens"`
-	CostUSD            *float64          `json:"cost_usd,omitempty"`
-	DurationMs         int64             `json:"duration_ms"`
-	Model              string            `json:"model,omitempty"`
-	SelectedProvider   string            `json:"selected_provider,omitempty"`
-	SelectedRoute      string            `json:"selected_route,omitempty"`
-	RequestedHarness   string            `json:"requested_harness,omitempty"`
-	ResolvedHarness    string            `json:"resolved_harness,omitempty"`
-	HarnessSource      string            `json:"harness_source,omitempty"`
-	RequestedModel     string            `json:"requested_model,omitempty"`
-	RequestedModelRef  string            `json:"requested_model_ref,omitempty"`
-	ResolvedModelRef   string            `json:"resolved_model_ref,omitempty"`
-	ResolvedModel      string            `json:"resolved_model,omitempty"`
-	Reasoning          agent.Reasoning   `json:"reasoning,omitempty"`
-	AttemptedProviders []string          `json:"attempted_providers,omitempty"`
-	FailoverCount      int               `json:"failover_count,omitempty"`
-	Metadata           map[string]string `json:"metadata,omitempty"`
-	Error              string            `json:"error,omitempty"`
+	Status             agent.Status            `json:"status"`
+	Output             string                  `json:"output"`
+	Tokens             agent.TokenUsage        `json:"tokens"`
+	CostUSD            *float64                `json:"cost_usd,omitempty"`
+	DurationMs         int64                   `json:"duration_ms"`
+	Model              string                  `json:"model,omitempty"`
+	SelectedProvider   string                  `json:"selected_provider,omitempty"`
+	SelectedEndpoint   string                  `json:"selected_endpoint,omitempty"`
+	SelectedRoute      string                  `json:"selected_route,omitempty"`
+	Sticky             RoutingStickyState      `json:"sticky,omitempty"`
+	Utilization        RoutingUtilizationState `json:"utilization,omitempty"`
+	RequestedHarness   string                  `json:"requested_harness,omitempty"`
+	ResolvedHarness    string                  `json:"resolved_harness,omitempty"`
+	HarnessSource      string                  `json:"harness_source,omitempty"`
+	RequestedModel     string                  `json:"requested_model,omitempty"`
+	RequestedModelRef  string                  `json:"requested_model_ref,omitempty"`
+	ResolvedModelRef   string                  `json:"resolved_model_ref,omitempty"`
+	ResolvedModel      string                  `json:"resolved_model,omitempty"`
+	Reasoning          agent.Reasoning         `json:"reasoning,omitempty"`
+	AttemptedProviders []string                `json:"attempted_providers,omitempty"`
+	FailoverCount      int                     `json:"failover_count,omitempty"`
+	Metadata           map[string]string       `json:"metadata,omitempty"`
+	Error              string                  `json:"error,omitempty"`
+}
+
+// RoutingStickyState summarizes sticky routing behavior without exposing
+// the raw sticky key.
+type RoutingStickyState struct {
+	KeyPresent bool   `json:"key_present,omitempty"`
+	Assignment string `json:"assignment,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+// RoutingUtilizationState carries the live endpoint sample that informed a
+// routing decision.
+type RoutingUtilizationState struct {
+	Source         string    `json:"source,omitempty"`
+	Freshness      string    `json:"freshness,omitempty"`
+	ActiveRequests *int      `json:"active_requests,omitempty"`
+	QueuedRequests *int      `json:"queued_requests,omitempty"`
+	MaxConcurrency *int      `json:"max_concurrency,omitempty"`
+	CachePressure  *float64  `json:"cache_pressure,omitempty"`
+	ObservedAt     time.Time `json:"observed_at,omitempty"`
 }
 
 // NewEvent creates an Event with the given type and data, auto-assigning

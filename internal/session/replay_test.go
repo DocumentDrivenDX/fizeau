@@ -23,8 +23,22 @@ func TestReplay(t *testing.T) {
 	// Write a test session log
 	logger := NewLogger(dir, sessionID)
 	logger.Emit(agent.EventSessionStart, SessionStartData{
-		Provider:      "lmstudio",
-		Model:         "qwen3.5-7b",
+		Provider:         "lmstudio",
+		Model:            "qwen3.5-7b",
+		SelectedEndpoint: "desk-b",
+		Sticky: RoutingStickyState{
+			KeyPresent: true,
+			Assignment: "reused",
+			Reason:     "live sticky lease reused",
+		},
+		Utilization: RoutingUtilizationState{
+			Source:         "llama-server.slots",
+			Freshness:      "fresh",
+			ActiveRequests: intPtr(1),
+			QueuedRequests: intPtr(0),
+			MaxConcurrency: intPtr(2),
+			CachePressure:  float64Ptr(0.5),
+		},
 		WorkDir:       "/tmp/test",
 		MaxIterations: 20,
 		Prompt:        "Read main.go",
@@ -66,6 +80,9 @@ func TestReplay(t *testing.T) {
 	output := buf.String()
 	assert.Contains(t, output, "Session replay-test")
 	assert.Contains(t, output, "qwen3.5-7b")
+	assert.Contains(t, output, "Selected endpoint: desk-b")
+	assert.Contains(t, output, "Sticky: key=present assignment=reused reason=live sticky lease reused")
+	assert.Contains(t, output, "Utilization: source=llama-server.slots freshness=fresh")
 	assert.Contains(t, output, "[System]")
 	assert.Contains(t, output, "You are a helpful assistant.")
 	assert.Contains(t, output, "[User]")
@@ -75,6 +92,10 @@ func TestReplay(t *testing.T) {
 	assert.Contains(t, output, "The package is main.")
 	assert.Contains(t, output, "End (success)")
 	assert.Contains(t, output, "$0 (local)")
+}
+
+func intPtr(v int) *int {
+	return &v
 }
 
 func TestReplay_UnknownSessionCost(t *testing.T) {

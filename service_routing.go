@@ -9,6 +9,7 @@ import (
 
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
 	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
 
@@ -70,9 +71,15 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		if result == nil {
 			result = &RouteDecision{}
 		}
+		s.annotateRouteDecisionEvidence(result)
 		return result, publicRoutingError(err, result.Candidates)
 	}
 	s.applyStickyRouteLease(req.CorrelationID, result)
+	if result != nil && result.Endpoint == "" {
+		_, endpoint, _ := splitEndpointProviderRef(result.Provider)
+		result.Endpoint = endpoint
+	}
+	s.annotateRouteDecisionEvidence(result)
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
 		result.Model = resolveSubprocessModelAlias(result.Harness, result.Model)
@@ -132,6 +139,72 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 			Capability:       capabilityScoreForCostClass(candidate.CostClass),
 		},
 	}
+}
+
+func (s *service) annotateRouteDecisionEvidence(decision *RouteDecision) {
+	if s == nil || decision == nil {
+		return
+	}
+	decision.Utilization = s.routeUtilizationEvidence(decision.Provider, decision.Endpoint, decision.Model)
+	for i := range decision.Candidates {
+		decision.Candidates[i].Utilization = s.routeUtilizationEvidence(
+			decision.Candidates[i].Provider,
+			decision.Candidates[i].Endpoint,
+			decision.Candidates[i].Model,
+		)
+	}
+}
+
+func (s *service) routeUtilizationEvidence(provider, endpoint, model string) RouteUtilizationState {
+	if s == nil || s.routeUtilization == nil {
+		return RouteUtilizationState{}
+	}
+	keyProvider := strings.TrimSpace(provider)
+	keyEndpoint := strings.TrimSpace(endpoint)
+	if base, ep, ok := splitEndpointProviderRef(keyProvider); ok {
+		keyProvider = base
+		if keyEndpoint == "" {
+			keyEndpoint = ep
+		}
+	}
+	sample, ok := s.routeUtilization.Sample(keyProvider, keyEndpoint, model)
+	if !ok {
+		return RouteUtilizationState{}
+	}
+	return routeUtilizationStateFromSample(sample)
+}
+
+func routeUtilizationStateFromSample(sample utilization.EndpointUtilization) RouteUtilizationState {
+	out := RouteUtilizationState{
+		Source:     string(sample.Source),
+		Freshness:  string(sample.Freshness),
+		ObservedAt: sample.ObservedAt,
+	}
+	if sample.ActiveRequests != nil {
+		out.ActiveRequests = utilization.Int(*sample.ActiveRequests)
+	}
+	if sample.QueuedRequests != nil {
+		out.QueuedRequests = utilization.Int(*sample.QueuedRequests)
+	}
+	if sample.MaxConcurrency != nil {
+		out.MaxConcurrency = utilization.Int(*sample.MaxConcurrency)
+	}
+	if sample.CacheUsage != nil {
+		v := *sample.CacheUsage
+		out.CachePressure = &v
+	}
+	if out.CachePressure == nil && sample.MaxConcurrency != nil && *sample.MaxConcurrency > 0 {
+		total := 0
+		if sample.ActiveRequests != nil {
+			total += *sample.ActiveRequests
+		}
+		if sample.QueuedRequests != nil {
+			total += *sample.QueuedRequests
+		}
+		pressure := float64(total) / float64(*sample.MaxConcurrency)
+		out.CachePressure = &pressure
+	}
+	return out
 }
 
 // publicFilterReason maps the typed FilterReason emitted by the internal

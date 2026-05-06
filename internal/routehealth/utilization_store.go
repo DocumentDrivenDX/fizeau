@@ -66,6 +66,34 @@ func (s *UtilizationStore) Record(provider, endpoint, model string, sample utili
 	s.samples[key] = cloneUtilization(sample)
 }
 
+// Sample returns the most recent utilization sample for provider/endpoint/model.
+// When the endpoint-specific sample is unavailable, provider-wide samples are
+// considered as a fallback so callers can still surface coarse utilization
+// evidence without guessing at private probe internals.
+func (s *UtilizationStore) Sample(provider, endpoint, model string) (utilization.EndpointUtilization, bool) {
+	if s == nil {
+		return utilization.EndpointUtilization{}, false
+	}
+	keyProvider := strings.TrimSpace(provider)
+	keyEndpoint := strings.TrimSpace(endpoint)
+	keyModel := strings.TrimSpace(model)
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.samples) == 0 {
+		return utilization.EndpointUtilization{}, false
+	}
+	if sample, ok := s.samples[NormalizeUtilizationKey(keyProvider, keyEndpoint, keyModel)]; ok {
+		return cloneUtilization(sample), true
+	}
+	if keyProvider != "" {
+		if sample, ok := s.samples[NormalizeUtilizationKey(keyProvider, "", keyModel)]; ok {
+			return cloneUtilization(sample), true
+		}
+	}
+	return utilization.EndpointUtilization{}, false
+}
+
 // EndpointLoads returns the normalized load per endpoint for provider/model.
 // Fresh utilization samples are combined with the supplied lease counts;
 // stale or missing samples fall back to lease counts only.
