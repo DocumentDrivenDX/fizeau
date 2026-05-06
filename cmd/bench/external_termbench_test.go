@@ -61,6 +61,9 @@ func TestLoadTermbenchSubset_LocalWideAllTasksExist(t *testing.T) {
 		t.Fatalf("local-wide task count = %d, want %d", got, want)
 	}
 	tasksDir := filepath.Join(repoRoot, "scripts", "benchmark", "external", "terminal-bench-2")
+	if _, err := os.Stat(filepath.Join(tasksDir, subset.Tasks[0].ID)); err != nil {
+		t.Skipf("terminal-bench-2 tree unavailable in this worktree: %v", err)
+	}
 	for _, task := range subset.Tasks {
 		if _, err := os.Stat(filepath.Join(tasksDir, task.ID)); err != nil {
 			t.Fatalf("local-wide task %q must exist under pinned TB-2 tree: %v", task.ID, err)

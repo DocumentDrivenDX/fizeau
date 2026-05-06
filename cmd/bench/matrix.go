@@ -45,6 +45,7 @@ type matrixRunReport struct {
 	GradingOutcome          string                   `json:"grading_outcome"`
 	Reward                  *int                     `json:"reward"`
 	FinalStatus             string                   `json:"final_status"`
+	InvalidClass            string                   `json:"invalid_class,omitempty"`
 	Retriable               bool                     `json:"retriable,omitempty"`
 	Turns                   *int                     `json:"turns"`
 	ToolCalls               *int                     `json:"tool_calls"`
@@ -74,23 +75,28 @@ type matrixOutput struct {
 	Reps            int               `json:"reps"`
 	BudgetUSD       float64           `json:"budget_usd"`
 	PerRunBudgetUSD float64           `json:"per_run_budget_usd,omitempty"`
+	InvalidRuns     int               `json:"invalid_runs"`
+	InvalidByClass  map[string]int    `json:"invalid_by_class,omitempty"`
 	Runs            []matrixRunReport `json:"runs"`
 	Cells           []matrixCell      `json:"cells"`
 	Notes           []string          `json:"notes,omitempty"`
 }
 
 type matrixCell struct {
-	Harness       string   `json:"harness"`
-	ProfileID     string   `json:"profile_id"`
-	NRuns         int      `json:"n_runs"`
-	NReported     int      `json:"n_reported"`
-	MeanReward    *float64 `json:"mean_reward"`
-	SDReward      *float64 `json:"sd_reward"`
-	CostUSD       float64  `json:"cost_usd"`
-	InputTokens   int      `json:"input_tokens"`
-	OutputTokens  int      `json:"output_tokens"`
-	CachedTokens  int      `json:"cached_input_tokens"`
-	RetriedTokens int      `json:"retried_input_tokens"`
+	Harness       string         `json:"harness"`
+	ProfileID     string         `json:"profile_id"`
+	NRuns         int            `json:"n_runs"`
+	NValid        int            `json:"n_valid"`
+	NReported     int            `json:"n_reported"`
+	NInvalid      int            `json:"n_invalid"`
+	InvalidCounts map[string]int `json:"invalid_counts,omitempty"`
+	MeanReward    *float64       `json:"mean_reward"`
+	SDReward      *float64       `json:"sd_reward"`
+	CostUSD       float64        `json:"cost_usd"`
+	InputTokens   int            `json:"input_tokens"`
+	OutputTokens  int            `json:"output_tokens"`
+	CachedTokens  int            `json:"cached_input_tokens"`
+	RetriedTokens int            `json:"retried_input_tokens"`
 }
 
 type matrixAdapterResult struct {
@@ -337,7 +343,7 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 	if !opts.forceRerun {
 		if existing, ok, err := loadExistingMatrixReport(reportPath); err != nil {
 			return matrixRunReport{}, false, err
-		} else if ok && shouldSkipMatrixReport(existing.FinalStatus, opts.resume, opts.retryBudgetHalted) {
+		} else if ok && shouldSkipMatrixReport(existing, opts.resume, opts.retryBudgetHalted) {
 			return existing, true, nil
 		}
 	}
@@ -460,6 +466,7 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 		report.Reward = nil
 	}
 	report.FinalStatus = deriveMatrixFinalStatus(report.ProcessOutcome, report.GradingOutcome, report.Reward, report.Retriable)
+	report.InvalidClass = classifyMatrixInvalid(report)
 	report.FinishedAt = time.Now().UTC()
 	if err := writeJSONAtomic(reportPath, report); err != nil {
 		return matrixRunReport{}, false, err
@@ -744,14 +751,17 @@ func matrixRunKey(r matrixRunReport) string {
 	return fmt.Sprintf("%s\x00%s\x00%06d\x00%s", r.Harness, r.ProfileID, r.Rep, r.TaskID)
 }
 
-func shouldSkipMatrixReport(finalStatus string, resume, retryBudgetHalted bool) bool {
+func shouldSkipMatrixReport(report matrixRunReport, resume, retryBudgetHalted bool) bool {
 	if !resume {
 		return false
 	}
-	if retryBudgetHalted && finalStatus == "budget_halted" {
+	if retryBudgetHalted && report.FinalStatus == "budget_halted" {
 		return false
 	}
-	switch finalStatus {
+	if classifyMatrixInvalid(report) != "" {
+		return true
+	}
+	switch report.FinalStatus {
 	case "graded_pass", "graded_fail", "install_fail_permanent", "budget_halted":
 		return true
 	default:
@@ -921,6 +931,7 @@ func summarizeMatrixCells(runs []matrixRunReport) []matrixCell {
 	type acc struct {
 		cell          matrixCell
 		rewards       []float64
+		invalidCounts map[string]int
 		cost          float64
 		inputTokens   int
 		outputTokens  int
@@ -936,9 +947,18 @@ func summarizeMatrixCells(runs []matrixRunReport) []matrixCell {
 			byKey[key] = a
 		}
 		a.cell.NRuns++
-		if run.Reward != nil {
-			a.cell.NReported++
-			a.rewards = append(a.rewards, float64(*run.Reward))
+		if invalidClass := classifyMatrixInvalid(run); invalidClass != "" {
+			a.cell.NInvalid++
+			if a.invalidCounts == nil {
+				a.invalidCounts = map[string]int{}
+			}
+			a.invalidCounts[invalidClass]++
+		} else {
+			a.cell.NValid++
+			if run.Reward != nil {
+				a.cell.NReported++
+				a.rewards = append(a.rewards, float64(*run.Reward))
+			}
 		}
 		a.cost += run.CostUSD
 		a.inputTokens += intValue(run.InputTokens)
@@ -953,6 +973,7 @@ func summarizeMatrixCells(runs []matrixRunReport) []matrixCell {
 		a.cell.OutputTokens = a.outputTokens
 		a.cell.CachedTokens = a.cachedTokens
 		a.cell.RetriedTokens = a.retriedTokens
+		a.cell.InvalidCounts = a.invalidCounts
 		if len(a.rewards) > 0 {
 			mean := mean(a.rewards)
 			sd := sampleSD(a.rewards, mean)

@@ -58,11 +58,14 @@ func cmdMatrixAggregate(args []string) int {
 		Reps:            maxRep(runs),
 		BudgetUSD:       previous.BudgetUSD,
 		PerRunBudgetUSD: previous.PerRunBudgetUSD,
+		InvalidByClass:  summarizeMatrixInvalids(runs),
+		InvalidRuns:     countMatrixInvalids(runs),
 		Runs:            runs,
 		Cells:           summarizeMatrixCells(runs),
 		Notes: []string{
 			"Generated from per-cell report.json files by matrix-aggregate.",
 			"Null rewards are excluded from mean reward denominators and reflected in n_reported.",
+			"Invalid cells are excluded from capability pass-rate denominators and listed with invalid_class.",
 		},
 	}
 	if len(previous.Profiles) > 0 {
@@ -192,6 +195,8 @@ func renderMatrixMarkdown(output matrixOutput, costs matrixCostsOutput) string {
 			cell.Harness, cell.ProfileID, cell.InputTokens, cell.OutputTokens, cell.CachedInputTokens, cell.RetriedInputTokens, cell.CostUSD)
 	}
 	b.WriteString("\n")
+	writeMarkdownInvalidRuns(&b, output.Runs)
+	b.WriteString("\n")
 	writeMarkdownNonGraded(&b, output.Runs)
 	return b.String()
 }
@@ -226,7 +231,7 @@ func writeMarkdownRewardTable(b *strings.Builder, output matrixOutput) {
 				b.WriteString(" n/a |")
 				continue
 			}
-			fmt.Fprintf(b, " %.2f +/- %.2f (n=%d/%d) |", *cell.MeanReward, *cell.SDReward, cell.NReported, cell.NRuns)
+			fmt.Fprintf(b, " %.2f +/- %.2f (n=%d/%d) |", *cell.MeanReward, *cell.SDReward, cell.NReported, cell.NValid)
 		}
 		b.WriteString("\n")
 	}
@@ -239,6 +244,9 @@ func writeMarkdownPassCountTable(b *strings.Builder, output matrixOutput) {
 	runCounts := map[string]int{}
 	for _, run := range output.Runs {
 		key := run.TaskID + "\x00" + run.Harness + "\x00" + run.ProfileID
+		if classifyMatrixInvalid(run) != "" {
+			continue
+		}
 		runCounts[key]++
 		if run.FinalStatus == "graded_pass" {
 			passCounts[key]++
@@ -258,15 +266,45 @@ func writeMarkdownPassCountTable(b *strings.Builder, output matrixOutput) {
 		for _, cell := range cells {
 			parts := strings.SplitN(cell, " / ", 2)
 			key := task + "\x00" + parts[0] + "\x00" + parts[1]
+			if runCounts[key] == 0 {
+				b.WriteString(" n/a |")
+				continue
+			}
 			fmt.Fprintf(b, " %d/%d |", passCounts[key], runCounts[key])
 		}
 		b.WriteString("\n")
 	}
 }
 
+func writeMarkdownInvalidRuns(b *strings.Builder, runs []matrixRunReport) {
+	var invalids []matrixRunReport
+	for _, run := range runs {
+		if class := classifyMatrixInvalid(run); class != "" {
+			invalids = append(invalids, run)
+		}
+	}
+	if len(invalids) == 0 {
+		return
+	}
+	b.WriteString("## Invalid runs\n\n")
+	b.WriteString("| Cell / rep / task | invalid_class | final_status | cause |\n")
+	b.WriteString("|-------------------|---------------|--------------|-------|\n")
+	for _, run := range invalids {
+		cause := run.Error
+		if cause == "" {
+			cause = run.ProcessOutcome
+		}
+		fmt.Fprintf(b, "| %s / %s / %d / %s | %s | %s | %s |\n",
+			run.Harness, run.ProfileID, run.Rep, run.TaskID, classifyMatrixInvalid(run), run.FinalStatus, markdownEscape(cause))
+	}
+}
+
 func writeMarkdownNonGraded(b *strings.Builder, runs []matrixRunReport) {
 	var nonGraded []matrixRunReport
 	for _, run := range runs {
+		if classifyMatrixInvalid(run) != "" {
+			continue
+		}
 		if run.FinalStatus != "graded_pass" && run.FinalStatus != "graded_fail" {
 			nonGraded = append(nonGraded, run)
 		}
@@ -329,4 +367,27 @@ func maxRep(runs []matrixRunReport) int {
 
 func markdownEscape(s string) string {
 	return strings.ReplaceAll(s, "|", "\\|")
+}
+
+func countMatrixInvalids(runs []matrixRunReport) int {
+	n := 0
+	for _, run := range runs {
+		if classifyMatrixInvalid(run) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+func summarizeMatrixInvalids(runs []matrixRunReport) map[string]int {
+	counts := map[string]int{}
+	for _, run := range runs {
+		if class := classifyMatrixInvalid(run); class != "" {
+			counts[class]++
+		}
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	return counts
 }
