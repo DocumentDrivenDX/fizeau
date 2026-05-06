@@ -112,6 +112,28 @@ Bead `agent-6d6ae2f6` introduced this. Highlights:
 7. Run a 3–5 task baseline on at least three arms and write up
    `docs/research/external-benchmark-baseline-<date>.md`.
 
+## Evidence Ledger Obligation
+
+Every new benchmark adapter or importer must also define how its source results
+project into the benchmark evidence ledger described by
+`solution-designs/SD-012-benchmark-evidence-ledger.md`.
+
+The adapter/importer plan must explicitly state:
+
+- benchmark name/version and dataset commit or capture timestamp
+- score metric and normalization
+- subject identity fields: model, harness, provider, endpoint, and deployment
+  class
+- version fields for Fizeau, harness wrapper, harness CLI/runtime, provider
+  surface, model snapshot, and benchmark/scorer
+- source artifact paths and hashes
+- session-log and trajectory linkage when the run is executed through Fizeau
+- invalid-run taxonomy and denominator handling
+- whether the benchmark can contribute to FHI, catalog model power, or both
+
+Do not add a new benchmark runner that produces only benchmark-specific output
+without a ledger projection bead.
+
 ## What stays out of scope
 
 - Internal beadbench is unaffected — `--external=...` is opt-in.

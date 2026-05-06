@@ -13,17 +13,37 @@ ddx:
 
 **Bead**: agent-fab7feae (Author SD-010 — Multi-Harness × Model Matrix Benchmark)
 **Type**: Design spec (normative)
-**Status**: Draft — pending codex peer review and user sign-off on the open question (anchor model)
+**Status**: Draft — superseded for official fiz-wrapper comparisons by
+`terminalbench-fiz-wrapper-comparison-2026-05-06`; retained as implementation
+reference for matrix runner mechanics, telemetry, aggregation, and publication
+rules.
 
 ---
 
 ## 1. Summary
 
-This spec governs the **multi-harness × model matrix benchmark**: TerminalBench-2
-runs that compare fiz against other CLI agent harnesses (initial tranche:
-`pi`, `opencode`) on a shared anchor model and a shared task subset, and that
-extend in later tranches to a second model and to frontier-reference cells
-(`codex`, `claude-code`).
+This spec originally governed the **multi-harness × model matrix benchmark**:
+TerminalBench-2 runs that compare fiz against other CLI agent harnesses
+(initial tranche: `pi`, `opencode`) on a shared anchor model and a shared task
+subset, and that extend in later tranches to a second model and to
+frontier-reference cells (`codex`, `claude-code`).
+
+The official comparison architecture changed on 2026-05-06. Official
+TerminalBench cells now run through one Harbor installed agent,
+`scripts/benchmark/harbor_agent.py:FizeauAgent`, and select the execution path
+with fiz pins such as `FIZEAU_HARNESS=claude`, `FIZEAU_HARNESS=codex`,
+`FIZEAU_HARNESS=pi`, `FIZEAU_HARNESS=opencode`, or
+`FIZEAU_PROVIDER=openrouter`. Raw per-harness Harbor adapters may remain as
+diagnostics, but they are not the official comparison path.
+
+This document remains normative for reusable mechanics only:
+
+- matrix run state machine
+- failure taxonomy
+- aggregation outputs
+- cost reporting
+- reproducibility metadata
+- same-model-different-harness caveats
 
 **Relation to existing specs.** SD-010 *extends*, it does not replace:
 
@@ -70,6 +90,12 @@ installed in-container are dropped from the matrix (documented in the OSS
 harness install spike), not run host-side.
 
 ### D2. Single CLI entry: `fiz-bench matrix`
+
+2026-05-06 amendment: the single entry still applies, but official cells should
+pass only the `fiz` Harbor adapter/installed agent and vary the fiz target via
+profile/env pins. Historical examples below that pass `--harnesses=fiz,pi,...`
+are retained as diagnostic-run examples and must not be used for official
+fiz-wrapper comparison claims.
 
 A Go subcommand replaces the parallel-shell-scripts approach. It reuses the
 existing TB subset loader and harness registry; it shells out to `harbor run`
@@ -211,7 +237,12 @@ test in that package MUST load every shipped profile.
 
 ---
 
-## 4. Adapter Contract (Normative)
+## 4. Adapter Contract (Diagnostic Reference)
+
+2026-05-06 amendment: this section is diagnostic reference for raw harness
+adapters. Official TerminalBench comparison adapters are governed by
+`terminalbench-fiz-wrapper-comparison-2026-05-06`, which routes all official
+Claude, Codex, pi, opencode, and provider-path cells through `FizeauAgent`.
 
 Adapters live under `scripts/benchmark/harness_adapters/`. There is **one
 adapter file per harness**; env-var-based dispatch is forbidden. The cell

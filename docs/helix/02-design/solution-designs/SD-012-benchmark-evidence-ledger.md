@@ -77,6 +77,21 @@ Identity fields:
 - `subject`: model, harness, provider, endpoint, and optional surface.
 - `scope`: task, subset, split, repetition, and run identifiers.
 
+Versioned identity is required for evidence that may feed FHI, catalog power,
+or comparative claims. Records must capture, directly or through provenance:
+
+- Fizeau version and git commit.
+- Harness wrapper name/version and wrapped harness CLI/runtime version.
+- Provider name, endpoint/API surface, deployment class, and provider version or
+  capture timestamp.
+- Model raw name, canonical catalog id when known, resolved snapshot/version
+  when available, quantization/precision for local artifacts, and context limit.
+- Benchmark name/version, scorer version, dataset commit, subset id/version, and
+  runner/importer version.
+- Local/self-hosted runtime version, model artifact id/checksum, OS/architecture,
+  hardware class, accelerator backend, and utilization/capacity signals when
+  available.
+
 ## Subject Semantics
 
 `subject.model` is the canonical model identity if known. `subject.model_raw`
@@ -308,11 +323,50 @@ Benchmark-specific resource notes:
 Each importer should preserve source artifact paths and source hashes so a
 ledger record can be traced back to the original run.
 
+## Storage Policy
+
+Raw benchmark output directories remain gitignored under `benchmark-results/`.
+They may contain large logs, model outputs, tarballs, local auth-derived paths,
+or upstream artifacts that should not be committed.
+
+Curated evidence is stored separately:
+
+- Local working ledgers: `benchmark-results/evidence/<run-id>.jsonl`.
+- Checked-in small fixtures: `scripts/benchmark/testdata/evidence/`.
+- Checked-in curated snapshots, when explicitly approved:
+  `scripts/benchmark/evidence/<snapshot-id>.jsonl`.
+- Human-readable summaries and claims: `docs/research/`.
+
+Checked-in curated snapshots must contain normalized evidence records only, not
+raw prompts, raw tool outputs, credentials, or large upstream artifacts. Every
+record in a checked-in snapshot must include source artifact hashes or URLs so
+the raw source can be audited outside git.
+
+## Implementation Beads
+
+The implementation work for this design is tracked under DDx epic
+`fizeau-89e1e403` ("EPIC: Build FHI benchmark evidence pipeline"). Child beads
+must stay scoped to one implementation layer each:
+
+1. `fizeau-39b9669a` — extend and validate
+   `benchmark-evidence.schema.json` for versioned axes, local-runtime metadata,
+   session-log provenance, and invalid-run classes.
+2. `fizeau-395d124d` — implement a ledger writer/importer CLI for appending
+   validated JSONL records.
+3. `fizeau-2c59b948` — import TerminalBench matrix outputs and link Fizeau
+   session logs and Harbor verifier artifacts.
+4. `fizeau-fde8c9bd` — import beadbench reports and DDx execute-bead evidence.
+5. `fizeau-ff5fcc61` — import external benchmark rows/reports for Rapid-MLX
+   MHI, SkillsBench, SWE-bench, and HumanEval.
+6. `fizeau-d5e91885` — implement a versioned FHI formula and claim generator.
+7. `fizeau-dcb621f8` — document one reproducible workflow from benchmark
+   execution to ledger import to FHI/claim output.
+
+Each child bead must name its in-scope files, out-of-scope files, and at least
+one command-based acceptance criterion.
+
 ## Open Questions
 
-- Whether the first ledger implementation should live under `benchmark-results/`
-  only, or whether curated evidence snapshots should be checked in under
-  `docs/research/` or `scripts/benchmark/evidence/`.
 - Exact power derivation weights. These should be data-driven once we have
   enough harness-normalized TerminalBench and local-model runs.
 - Whether latency/cost should affect catalog `power` directly or only routing
