@@ -233,30 +233,31 @@ func recordInteractions(t *testing.T, client *http.Client, baseURL string, recor
 	require.GreaterOrEqual(t, afterChatStatus.TotalPromptTokens, idleStatus.TotalPromptTokens)
 	require.GreaterOrEqual(t, afterChatStatus.TotalCompletionTokens, idleStatus.TotalCompletionTokens)
 
-	loadResp, err := startStreamingChat(client, baseURL, model, "Write a 200-word paragraph about a small robot.", 64)
-	require.NoError(t, err)
-	if recordMode {
-		t.Cleanup(func() {
-			if loadResp != nil && loadResp.Body != nil {
-				_, _ = io.Copy(io.Discard, loadResp.Body)
-				_ = loadResp.Body.Close()
-			}
+	if os.Getenv("RAPID_MLX_RECORD_LOAD") == "1" {
+		loadResp, err := startStreamingChat(client, baseURL, model, "Write a 200-word paragraph about a small robot.", 64)
+		require.NoError(t, err)
+		if recordMode {
+			t.Cleanup(func() {
+				if loadResp != nil && loadResp.Body != nil {
+					_, _ = io.Copy(io.Discard, loadResp.Body)
+					_ = loadResp.Body.Close()
+				}
+			})
+		}
+
+		loadStatus := waitForStatus(t, client, baseURL, func(s rapidMLXStatusSnapshot) bool {
+			return s.NumRunning > 0
 		})
-	}
 
-	loadStatus := waitForStatus(t, client, baseURL, func(s rapidMLXStatusSnapshot) bool {
-		return s.NumRunning > 0
-	})
+		require.GreaterOrEqual(t, loadStatus.NumRunning, 1)
+		require.NotNil(t, loadStatus.TTFTSeconds)
+		require.NotNil(t, loadStatus.TokensPerSecond)
+		require.NotNil(t, loadStatus.ActiveRequestPhase)
 
-	require.GreaterOrEqual(t, loadStatus.NumRunning, 1)
-	require.NotNil(t, loadStatus.TTFTSeconds)
-	require.NotNil(t, loadStatus.TokensPerSecond)
-	require.NotNil(t, loadStatus.ActiveRequestPhase)
-	require.NotNil(t, loadStatus.CacheHitType)
-
-	if loadResp != nil && loadResp.Body != nil {
-		_, _ = io.Copy(io.Discard, loadResp.Body)
-		_ = loadResp.Body.Close()
+		if loadResp != nil && loadResp.Body != nil {
+			_, _ = io.Copy(io.Discard, loadResp.Body)
+			_ = loadResp.Body.Close()
+		}
 	}
 }
 

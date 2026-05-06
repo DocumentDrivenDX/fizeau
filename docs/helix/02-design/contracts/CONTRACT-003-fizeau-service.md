@@ -88,11 +88,10 @@ type FizeauService interface {
     // listed on ModelInfo below and land through agent-da67ebbe.
     ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
 
-    // ListProfiles, ResolveProfile, and ProfileAliases are implemented legacy
-    // compatibility surfaces for catalog references that predate numeric power
-    // routing. They are not the target routing abstraction and must not grow new
-    // routing semantics. Numeric MinPower/MaxPower request fields land through
-    // agent-79e194aa.
+    // ListProfiles, ResolveProfile, and ProfileAliases describe named power
+    // policies. A profile is shorthand for a point or bounded range on the
+    // model power curve, plus optional ranking preferences; it is not a closed
+    // list of concrete models.
     ListProfiles(ctx context.Context) ([]ProfileInfo, error)
     ResolveProfile(ctx context.Context, name string) (*ResolvedProfile, error)
     ProfileAliases(ctx context.Context) (map[string]string, error)
@@ -157,12 +156,12 @@ func New(opts Options) (FizeauService, error)
 ```
 
 **Sixteen methods total.** `Execute` is the primary verb; `TailSessionLog`,
-`ListHarnesses`, `ListProviders`, `ListModels`, legacy `ListProfiles`,
-legacy `ResolveProfile`, legacy `ProfileAliases`, `HealthCheck`,
-`ResolveRoute`, `RecordRouteAttempt`, and `RouteStatus` are the supporting
-routing/status surface; `UsageReport`, `ListSessionLogs`, `WriteSessionLog`,
-and `ReplaySession` are the historical session-log projection used by
-`fiz log`, `replay`, and `usage`.
+`ListHarnesses`, `ListProviders`, `ListModels`, `ListProfiles`,
+`ResolveProfile`, `ProfileAliases`, `HealthCheck`, `ResolveRoute`,
+`RecordRouteAttempt`, and `RouteStatus` are the supporting routing/status
+surface; `UsageReport`, `ListSessionLogs`, `WriteSessionLog`, and
+`ReplaySession` are the historical session-log projection used by `fiz log`,
+`replay`, and `usage`.
 
 ## Mountable CLI Surface
 
@@ -220,10 +219,9 @@ This contract distinguishes implemented surface from target power-routing
 surface:
 
 - Implemented today: `ListModels`, provider/endpoint identity, route decisions,
-  route-attempt feedback, prompt-feature gates, and legacy catalog reference
-  methods.
-- Planned through `agent-79e194aa`: `MinPower` and `MaxPower` on
-  `ServiceExecuteRequest`, `RouteRequest`, and `ModelFilter`.
+  route-attempt feedback, prompt-feature gates, and catalog reference methods.
+- Planned through `agent-79e194aa`: profile power policy, `MinPower`, and
+  `MaxPower` on `ServiceExecuteRequest`, `RouteRequest`, and `ModelFilter`.
 - Planned through `agent-da67ebbe`: `ModelInfo` inventory fields for power,
   provider/deployment class or equivalent power provenance, availability,
   auto-routable, and exact-pin-only.
@@ -289,8 +287,8 @@ type Tool interface {
     Parallel() bool
 }
 
-// Routing strength is power-owned. Callers either set MinPower/MaxPower or pin
-// Model, Provider, or Harness directly. Power is numeric from 1..10; 0 means
+// Routing strength is power-owned. Callers set Profile, MinPower/MaxPower, or
+// pin Model, Provider, or Harness directly. Power is numeric from 1..10; 0 means
 // no bound when used on request filters and unknown/exact-pin-only when used on
 // model inventory rows.
 
@@ -300,6 +298,7 @@ type ExecuteRequest struct {
     Model        string  // optional; resolved via ResolveRoute if empty
     Provider     string  // optional hard pin; empty = router decides
     Harness      string  // optional preference (hard); empty = router decides
+    Profile      string  // optional named power policy; empty = no profile policy
     MinPower     int     // PLANNED agent-79e194aa; optional lower bound; 0 = no lower bound
     MaxPower     int     // PLANNED agent-79e194aa; optional upper bound; 0 = no upper bound
     ModelRef     string  // optional alias from the catalog; concrete refs are exact
@@ -383,11 +382,10 @@ type ExecuteRequest struct {
     Metadata map[string]string
 
     // Role tags the kind of work this call performs, e.g. "implementer",
-    // "reviewer", "decomposer", "summarizer". Observational only:
-    // echoed into the routing_decision and final event Metadata, plus the
-    // session-log header. Day 1, Role does NOT enter the selection
-    // precedence chain and does NOT affect routing eligibility. Empty
-    // means unset.
+    // "reviewer", "decomposer", "summarizer". Role is echoed into the
+    // routing_decision and final event Metadata, plus the session-log header.
+    // It is not a hard constraint and does not affect routing eligibility.
+    // Empty means unset.
     //
     // Normalization: lowercased, alphanumeric and hyphen only, max 64
     // characters. Invalid values are rejected pre-dispatch with a typed
@@ -396,11 +394,11 @@ type ExecuteRequest struct {
 
     // CorrelationID joins calls that share work context — for example
     // "bead_123:attempt_4" — so reviewer + implementer + retry attempts
-    // can be joined in logs and aggregations. Observational only:
-    // echoed into routing_decision and final event Metadata, plus the
-    // session-log header. Day 1, CorrelationID does NOT enter the
-    // selection precedence chain and does NOT affect routing
-    // eligibility. Empty means unset.
+    // can be joined in logs and aggregations. It is echoed into
+    // routing_decision and final event Metadata, plus the session-log header.
+    // When validated and non-empty, it is also the sticky route key used to bias
+    // related requests toward the same server instance. It is not a hard
+    // constraint and does not affect eligibility. Empty means unset.
     //
     // Normalization: printable ASCII only, no control characters, no
     // whitespace except hyphen / colon / underscore (which are part of
@@ -436,10 +434,14 @@ the routing engine enforces:
 4. **`ModelRef`** — catalog reference. A ref to a concrete model is an exact
    model constraint. Catalog aliases are for exact model identity and migration,
    not target routing personas.
-5. **`MinPower` / `MaxPower`** — routing strength bounds. Higher power means
+5. **`Profile`** — named power policy. The profile expands to effective power
+   bounds and optional ranking preferences before candidate filtering. It never
+   broadens or overrides hard harness/provider/model pins.
+6. **`MinPower` / `MaxPower`** — routing strength bounds. Higher power means
    stronger for agent tasks. These bounds filter candidate models before
    scoring; they apply only to unpinned automatic routing and never override
-   hard harness/provider/model pins.
+   hard harness/provider/model pins. When a profile is also supplied, numeric
+   bounds further constrain the profile's effective policy.
 
 **Model constraint resolution.** When `Model` is set on `ExecuteRequest` or
 `RouteRequest`, Fizeau owns the full resolution pipeline. DDx passes the raw
@@ -452,9 +454,9 @@ concrete model ID, reports ambiguity when multiple candidates survive
 normalization, and returns typed no-match evidence when no concrete model can
 be resolved.
 
-`ModelRef` remains a separate exact catalog-reference surface. The contract
-above does not change `ModelRef` exactness; it only clarifies how raw `Model`
-pins are resolved before route selection.
+`ModelRef` remains a separate exact catalog-reference surface. It is not a
+profile. The contract above does not change `ModelRef` exactness; it only
+clarifies how raw `Model` pins are resolved before route selection.
 
 When no `MinPower`, `MaxPower`, exact model, provider-source/endpoint, or
 harness constraint is supplied, automatic routing selects the best lowest-cost
@@ -463,18 +465,17 @@ viable auto-routable model from discovered inventory.
 Auto-selection inputs (`EstimatedPromptTokens`, `RequiresTools`, `Reasoning`)
 apply after hard pins and power bounds. They never override an explicit pin.
 
-`Role` and `CorrelationID` are observational only and do **NOT** enter the
-precedence chain in this contract version. They never affect candidate
-filtering, scoring, or tiebreaking. If a future revision adds routing-affecting
-behavior keyed on either field, this section must be amended at that time so
-the precedence chain documents the new dependency. Today they are echoed into
-the `routing_decision` and final-event `Metadata`, the session-log header, and
-nothing else routing-relevant.
+`Role` is observational and does not enter filtering, scoring, or
+tiebreaking. `CorrelationID` does not enter eligibility filtering, but a valid
+non-empty value is the sticky route key for ranking affinity. That affinity is
+to the server instance, not the model. It is a score component, not a pin:
+health, hard saturation, context fit, required capabilities, power policy, and
+hard pins still decide eligibility first.
 
 ### Role and CorrelationID normalization
 
-`Role` and `CorrelationID` are observational fields shared by
-`ServiceExecuteRequest` and `RouteRequest`. The service validates them
+`Role` and `CorrelationID` are shared by `ServiceExecuteRequest` and
+`RouteRequest`. The service validates them
 pre-dispatch (before any session state is opened or any provider is
 called) and rejects invalid values with typed errors. Validation is
 identity-or-reject: the service does not silently rewrite caller input.
@@ -592,7 +593,7 @@ boundary:
   exists. Subprocess harnesses may still implement their own supervised modes.
 
 type RouteRequest struct {
-    Profile               string // legacy compatibility; not target routing policy
+    Profile               string // named power policy; not a concrete model set
     Model                 string
     Provider              string
     Harness               string
@@ -604,7 +605,7 @@ type RouteRequest struct {
     EstimatedPromptTokens int  // when >0, filter candidates whose context window cannot hold the prompt
     RequiresTools         bool // when true, filter providers whose SupportsTools() is false
     CachePolicy           string // "" / "default" / "off"; mirrors ServiceExecuteRequest.CachePolicy
-    Role                  string // observational; mirrors ServiceExecuteRequest.Role for ResolveRoute parity
+    Role                  string // mirrors ServiceExecuteRequest.Role for ResolveRoute parity
     CorrelationID         string // sticky route key when validated; also mirrors ServiceExecuteRequest.CorrelationID
 }
 
@@ -612,6 +613,7 @@ type RouteDecision struct {
     Harness    string
     Provider   string  // provider source or endpoint selector; empty when not applicable
     Endpoint   string  // selected named endpoint when applicable
+    ServerInstance string // normalized inference-server identity for sticky affinity
     Model      string
     Reason     string  // human-readable explanation
     Power      int     // catalog-projected power of the selected Model; 0 = unknown / exact-pin-only
@@ -621,21 +623,24 @@ type RouteDecision struct {
 }
 
 type StickyRouteState struct {
-    Key        string
+    Key        string // redacted or hashed in operator-facing JSON
+    ServerInstance string
     Status     string // "new" | "reused" | "expired" | "invalidated" | "none"
     Reason     string // machine-readable explanation when not reused
+    Bonus      float64
     ExpiresAt  time.Time
 }
 
 type EndpointUtilization struct {
     Provider       string
     Endpoint       string
+    ServerInstance string
     Model          string
     ActiveRequests int
     QueuedRequests int
     MaxConcurrency int
     CacheUsageRatio float64
-    Source         string // "vllm_metrics" | "llama_metrics" | "llama_slots" | "fizeau_leases" | "unknown"
+    Source         string // "vllm" | "llama_metrics" | "llama_slots" | "omlx" | "rapid_mlx" | "fizeau_leases" | "unknown"
     Fresh          bool
     ObservedAt     time.Time
 }
@@ -644,6 +649,7 @@ type Candidate struct {
     Harness         string
     Provider        string // provider source or endpoint selector
     Endpoint        string
+    ServerInstance  string
     Model           string
     Power           int // PLANNED agent-da67ebbe; 1..10, 0 unknown/exact-pin-only
     Score           float64
@@ -786,6 +792,7 @@ type ProviderInfo struct {
     Name          string
     Type          string  // "openai" | "openrouter" | "lmstudio" | "omlx" | "vllm" | "llama-server" | "ollama" | "anthropic" | "virtual"
     BaseURL       string
+    ServerInstance string
     Status        string  // "connected" | "unreachable" | "error: <msg>"
     ModelCount    int
     Capabilities  []string  // {"tool_use","vision","json_mode","streaming"}
@@ -807,7 +814,9 @@ type ModelInfo struct {
     Harness       string  // for subprocess-only models, the owning harness
     EndpointName  string  // configured endpoint name, "default", or host:port fallback
     EndpointBaseURL string // endpoint base URL used for discovery; empty when not applicable
+    ServerInstance string  // normalized inference-server identity for sticky affinity
     ContextLength int     // resolved (provider API > catalog > default)
+    ContextSource string    // provider_api|provider_config|catalog|default|unknown
     Power         int     // PLANNED agent-da67ebbe; catalog power 1..10; 0 unknown/exact-pin-only
     DeploymentClass string // PLANNED agent-da67ebbe; provider/deployment class or equivalent provenance
     PowerProvenance string // PLANNED agent-da67ebbe; compact source/method summary for power
@@ -832,8 +841,10 @@ type ModelFilter struct {
 }
 
 type ProfileInfo struct {
-    Name               string // legacy catalog reference compatibility
-    Target             string
+    Name               string // named power policy
+    MinPower           int
+    MaxPower           int
+    Target             string // compatibility target when applicable
     AliasOf            string
     ProviderPreference string
     Deprecated         bool
@@ -844,8 +855,10 @@ type ProfileInfo struct {
 }
 
 type ResolvedProfile struct {
-    Name            string // legacy catalog reference compatibility
-    Target          string
+    Name            string // named power policy
+    MinPower        int
+    MaxPower        int
+    Target          string // compatibility target when applicable
     Deprecated      bool
     Replacement     string
     CatalogVersion  string
@@ -895,6 +908,8 @@ type RouteStatusEntry struct {
 
 type RouteCandidateStatus struct {
     Provider          string
+    Endpoint          string
+    ServerInstance    string
     Model             string
     Priority          int
     Healthy           bool
@@ -1768,10 +1783,13 @@ contract sentence. agent-de968c76 owns this suite. Minimum statements:
 - `Role` and `CorrelationID` are NOT echoed into `text_delta` event metadata
   (per-event bloat avoidance); the existing Metadata echo path on `text_delta`
   still applies for caller-supplied metadata under non-reserved keys.
-- `Role` and `CorrelationID` never affect eligibility filtering Day 1.
-- Without a `CorrelationID`, routing is unchanged from baseline.
+- `Role` never affects eligibility filtering or scoring.
+- `CorrelationID` never affects eligibility filtering, but a valid non-empty
+  value contributes sticky server-instance affinity during scoring.
+- Without a `CorrelationID`, sticky affinity is absent and routing uses the
+  normal candidate score.
 - `ResolveRoute` and `Execute` observe identical routing policy for the same
-  correlation-aware request (Day 1: both ignore the fields for routing).
+  correlation-aware request.
 - Invalid `Role` and `CorrelationID` values are rejected pre-dispatch with the
   typed `*RoleNormalizationError` and `*CorrelationIDNormalizationError`.
 - `ServiceRoutingActual.Power` reflects the catalog-projected power of the

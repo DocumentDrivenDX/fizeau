@@ -53,6 +53,9 @@ prompt behavior and must not be reused for model policy or routing.
   from Go logic and consumed by the catalog package
 - **Model reference** — a user-facing name resolved through the catalog, such
   as a concrete model entry or optional alias
+- **Profile** — a named shorthand for a power-policy point or bounded power
+  range, with optional ranking preferences. Profiles do not name a closed set
+  of concrete models and do not override hard pins.
 - **Canonical target** — the stable policy target the catalog wants a given
   reference to resolve to; one target may project to different concrete models
   and reasoning defaults on different consumer surfaces
@@ -65,10 +68,13 @@ prompt behavior and must not be reused for model policy or routing.
   Benchmarks alone do not make different deployment classes equivalent.
 - **Route candidate** — one discovered `(harness, provider source, endpoint,
   model)` option after joining live inventory with catalog metadata
+- **Server instance** — the concrete inference server reached by a candidate,
+  derived from endpoint configuration or normalized host/port, such as
+  `grendel`, `vidar`, or `sindri`. Stickiness targets server instances, not
+  model strings.
 - **Sticky route key** — a request sequence identity, normally the validated
-  `CorrelationID` or a future worker/session sequence ID, used to keep a
-  long-running worker on the same concrete provider endpoint across related
-  requests
+  `CorrelationID` or a future worker/session sequence ID, used to bias related
+  requests toward the same server instance
 - **Endpoint utilization** — a normalized operational signal for one provider
   endpoint, including active requests, queued/deferred requests, concurrency
   when known, cache pressure when known, freshness, and source
@@ -177,9 +183,10 @@ prompt behavior and must not be reused for model policy or routing.
     public CLI/config/API `reasoning` field: `auto`, `off`, `low`, `medium`,
     `high`, supported extended values such as `minimal`, `xhigh` / `x-high`,
     and `max`, or numeric values such as `0`, `2048`, and `8192`.
-18. Catalog defaults are keyed to model metadata and numeric power. The target
-    architecture does not define named routing personas or named power bands;
-    automated callers use numeric `MinPower` and `MaxPower`.
+18. Catalog defaults are keyed to model metadata and numeric power. Profiles
+    are allowed only as named shorthands for specific points on the power curve
+    or bounded power-policy ranges. They are not routing personas and do not
+    resolve to a closed list of models.
     - Explicit caller `reasoning` always wins over tier defaults, including
       supported requests above high such as `xhigh`, `x-high`, or `max`, and
       explicit numeric values.
@@ -213,7 +220,8 @@ prompt behavior and must not be reused for model policy or routing.
      candidates with rejection evidence instead.
 24. The CLI exposes the joined inventory through `fiz --list-models`,
     with JSON support. Rows include model, harness, provider, endpoint/host,
-    power, provider/deployment class, cost, speed/perf signal, context,
+    server instance, power, provider/deployment class, cost, speed/perf signal,
+    maximum configured context length, context source,
     availability, catalog reference, auto-routable status, and exact-pin-only
     status.
 25. Routing filters candidates by hard caller constraints first:
@@ -221,8 +229,11 @@ prompt behavior and must not be reused for model policy or routing.
     - `Provider` means only that provider source/type or explicit endpoint
       selector may be used, depending on the request surface.
     - `Harness` means only that harness may be used.
-26. `MinPower` and `MaxPower` filter only unpinned automatic routing. They do
-    not widen or override hard model/provider/harness pins.
+26. `Profile`, `MinPower`, and `MaxPower` filter only unpinned automatic
+    routing. A profile expands to an effective power policy before candidate
+    filtering. Numeric bounds supplied with a profile further constrain that
+    policy. None of these fields widen or override hard model/provider/harness
+    pins.
 27. When no `MinPower` or `MaxPower` is supplied, automatic routing still uses
     the discovered inventory and selects the best lowest-cost viable
     auto-routable model according to power, cost, availability, speed, context,
@@ -231,22 +242,26 @@ prompt behavior and must not be reused for model policy or routing.
     unknown-power models unless the caller explicitly pins that model and live
     discovery confirms it is available.
 29. The router ranks survivors by model power, provider/deployment placement,
-    effective marginal cost, prepaid quota, availability, context/capability,
-    and observed speed/latency.
+    effective marginal cost, prepaid quota, availability, maximum configured
+    context length, context/capability fit, observed speed/latency, normalized
+    utilization, and sticky server-instance affinity.
 30. When unpinned local/free LLMs are available and satisfy requested power,
     tools, context, and health constraints, they are preferred over paid cloud
     candidates. This local/free preference never overrides hard pins,
     `MinPower`/`MaxPower`, or capability requirements.
-30a. For multiple eligible local/free endpoints that serve the same resolved
-     model at equivalent quality, routing assigns each new sticky route key to
-     the least-loaded eligible endpoint. Load combines service-owned in-flight
-     route leases with fresh provider-owned utilization probes when available.
-     Requests with the same sticky route key reuse the assigned endpoint to keep
-     worker-local conversational and cache behavior stable.
-30b. A sticky assignment may be broken only when the pinned endpoint is no
-     longer configured, no longer advertises the resolved model, is in health
-     cooldown, or crosses a hard saturation threshold. A merely better score on
-     another endpoint is not enough to move an existing sticky key.
+30a. For multiple eligible local/free server instances, routing assigns each
+     new sticky route key to the least-loaded eligible server instance. Load
+     combines service-owned in-flight route leases with fresh provider-owned
+     utilization probes when available. Requests with the same sticky route key
+     receive a ranking bonus for that server instance so worker-local cache
+     behavior stays stable across related requests, including requests that use
+     a different model on the same server.
+30b. Sticky affinity never bypasses eligibility. A sticky server instance may
+     lose when it no longer satisfies hard pins, power policy, context,
+     capability, health, quota, or hard saturation constraints. A merely better
+     score on another server instance is not enough to move an existing sticky
+     key; severe utilization or performance pressure is enough when the scoring
+     policy says the affinity bonus is outweighed.
 30c. On a single machine, in-process route leases provide the authoritative
      sticky assignment and fallback load count. On multiple machines, correct
      cross-process stickiness and fair distribution require a shared lease
@@ -254,19 +269,22 @@ prompt behavior and must not be reused for model policy or routing.
      shared leases. See
      [plan-2026-05-05-shared-lease-backend.md](../../02-design/plan-2026-05-05-shared-lease-backend.md)
      for the lease-record and atomic acquire/refresh/release contract.
-30d. `vllm`, `llama-server`, and `omlx` utilization is provider-owned and
-     type-derived. `vllm` uses root `/metrics`. `llama-server` uses root
+30d. Local provider utilization is provider-owned and type-derived where the
+     server exposes it. `vllm` uses root `/metrics`. `llama-server` uses root
      `/metrics` when started with `--metrics` and root `/slots` as fallback.
      `omlx` uses root `/api/status` and may optionally consume admin-only
-     `/admin/api/stats` when explicitly configured. A configured
+     `/admin/api/stats` when explicitly configured. `rapid-mlx` uses its
+     documented status or metrics surface when available and otherwise reports
+     unknown utilization with service-owned lease fallback. A configured
      OpenAI-compatible `base_url` ending in `/v1` is converted to the server
      root for these probes.
 31. `agent.Run()` still receives one concrete `Provider` per attempt. `Execute`
     selects and dispatches the top candidate once.
 32. The selected concrete harness, provider source, endpoint, model, requested
-    model input, resolved model reference, power bounds, sticky assignment
-    status, endpoint utilization source/freshness, and score components are
-    recorded in the result/session artifacts when known.
+    model input, resolved model reference, profile, effective power policy,
+    server instance, maximum configured context length, sticky assignment
+    status, endpoint utilization source/freshness, performance signal, and
+    score components are recorded in the result/session artifacts when known.
 33. Existing `backends`, `default_backend`, `--backend`, and user-authored
     route-table surfaces are deprecated compatibility inputs during migration
     and must emit warnings if still parsed.
@@ -340,9 +358,9 @@ prompt behavior and must not be reused for model policy or routing.
 - **Utilization probe unavailable or stale**: keep the endpoint eligible if
   normal model discovery and health checks pass. Use service-owned route leases
   as the load signal and mark utilization source/freshness in route evidence.
-- **Sticky endpoint unavailable**: invalidate that sticky assignment and resolve
-  a new endpoint from the currently eligible candidate set. Record the invalidation
-  reason.
+- **Sticky server instance unavailable or ineligible**: invalidate or demote
+  that sticky assignment and resolve from the currently eligible candidate set.
+  Record the reason.
 - **Semantic task failure**: caller-owned. DDx or another caller may retry with
   a stronger `MinPower`, capped `MaxPower`, or different pins, but the agent
   does not infer semantic failure or escalate automatically.
@@ -369,21 +387,21 @@ prompt behavior and must not be reused for model policy or routing.
 | AC-FEAT-004-02 | Model references resolve through the embedded or external manifest to the correct consumer-surface model string and per-surface reasoning metadata, and missing references/surfaces fail deterministically before the run. | `go test ./internal/modelcatalog ./internal/config ./cmd/fiz ./...` |
 | AC-FEAT-004-03 | Deprecated or stale model references are rejected by default, surface replacement metadata, and can be explicitly allowed only when the caller opts in. | `go test ./internal/modelcatalog ./internal/config ./cmd/fiz ./...` |
 | AC-FEAT-004-04 | An explicit concrete `--model`, provider-source/endpoint constraint, or `--harness` is a hard constraint. If it cannot be satisfied, routing returns detailed no-candidate evidence and never substitutes a different model/source/endpoint/harness. | `go test ./internal/routing ./cmd/fiz ./...` |
-| AC-FEAT-004-05 | `fiz --list-models` exposes the joined available-model inventory with model, harness, provider, endpoint/host, power, provider/deployment class, cost, speed/perf, context, availability, catalog reference, auto-routable, and exact-pin-only fields. | `go test ./cmd/fiz ./... -run 'ListModels|Models'` |
+| AC-FEAT-004-05 | `fiz --list-models` exposes the joined available-model inventory with model, harness, provider, endpoint/host, server instance, power, provider/deployment class, cost, speed/perf, maximum configured context length, context source, availability, catalog reference, auto-routable, and exact-pin-only fields. | `go test ./cmd/fiz ./... -run 'ListModels|Models'` |
 | AC-FEAT-004-06 | Automatic routing excludes unknown-power and exact-pin-only models, honors `MinPower`/`MaxPower`, and uses only models with catalog power unless the caller made an exact model pin. | `go test ./internal/modelcatalog ./internal/routing ./...` |
 | AC-FEAT-004-07 | The selected harness, provider, endpoint, requested model input, resolved model reference, resolved concrete model, power, and score components are recorded in run result and session artifacts so callers and downstream analytics can attribute the actual embedded-provider choice without reproducing route logic. | `go test ./cmd/fiz ./internal/session ./...` |
 | AC-FEAT-004-08 | Deprecated `backends`, `default_backend`, `--backend`, and user-authored route-table inputs still resolve during the migration window if supported, emit a deprecation warning, and do not define the target architecture. | `go test ./internal/config ./cmd/fiz ./...` |
 | AC-FEAT-004-09 | Catalog publication produces an immutable versioned manifest bundle plus a stable channel pointer, and ordinary request execution never fetches remote manifest data implicitly. | `go test ./internal/modelcatalog ./cmd/fiz ./...` |
-| AC-FEAT-004-10 | The starter shared catalog publishes concrete model entries with 1..10 power, provider/deployment class, power provenance, costs, context, benchmark inputs, and surface projections. Named routing personas or named power bands are not part of the target contract. | `go test ./internal/modelcatalog ./internal/config ./cmd/fiz ./...` |
+| AC-FEAT-004-10 | The starter shared catalog publishes concrete model entries with 1..10 power, provider/deployment class, power provenance, costs, context, benchmark inputs, surface projections, and profile definitions that expand only to effective power policy. Legacy `code-medium` and `code-high` names remain exact compatibility aliases or are deprecated; they do not define target routing policy. | `go test ./internal/modelcatalog ./internal/config ./cmd/fiz ./...` |
 | AC-FEAT-004-11 | Manifest schema uses top-level concrete `models` entries and target-level ordered `candidates`; pricing, OpenRouter refresh, context windows, benchmarks, power, and deployment-class provenance are model-scoped while target entries remain policy. Older manifests load through a compatibility upgrade path. | `go test ./internal/modelcatalog ./...` |
 | AC-FEAT-004-12 | Routing policy has statement-backed tests for: local/free preference when constraints are satisfied; hard pins overriding local preference; power bounds overriding local preference; unknown-power exact-pin-only behavior; provider/deployment-class power separation; and no retry of candidate 2 after dispatch failure. | `go test ./internal/routing ./... -run 'Policy|Invariant|Routing'` |
 | AC-FEAT-004-13 | Profile and target routing use the ordered catalog candidate list against live provider discovery; if the primary candidate is absent but a later candidate is advertised, the later candidate remains eligible and is scored with catalog metadata. | `go test ./internal/routing ./... -run 'CatalogCandidates|LiveDiscovery|Routing'` |
 | AC-FEAT-004-14 | Provider-native model IDs with case, vendor-prefix, quantization, accelerator, or packaging suffix differences, such as `Qwen3.6-27B-MLX-8bit`, fuzzy-match to the intended catalog model for power, context, tool support, and auto-routable metadata without treating unrelated short names as equivalent. | `go test ./internal/modelcatalog ./internal/routing ./... -run 'Fuzzy|ProviderNative|ModelEligibility'` |
 | AC-FEAT-004-15 | If all configured provider-backed endpoints are absent from live discovery, the native embedded-provider harness does not produce an empty-provider route candidate and cannot win automatic routing as `provider=""`. | `go test ./... -run 'RouteStatus|Routing|Provider'` |
-| AC-FEAT-004-16 | For equivalent local endpoints serving the same resolved model, the same sticky route key repeatedly resolves to the same provider endpoint until its lease expires or the endpoint becomes unavailable. | `go test ./internal/routing ./... -run 'Sticky|Lease|Routing'` |
-| AC-FEAT-004-17 | Different sticky route keys are distributed across equivalent local endpoints by normalized load; a saturated endpoint is avoided for new keys, while an existing key stays pinned unless the endpoint is unavailable or hard-saturated. | `go test ./internal/routing ./... -run 'Utilization|Sticky|RouteStatus'` |
-| AC-FEAT-004-18 | vLLM and llama-server utilization probes feed normalized endpoint utilization into routing; stale or failed probes fall back to service-owned in-flight lease counts without making otherwise healthy endpoints unavailable. | `go test ./internal/provider/... ./internal/routing/... -run 'Utilization|VLLM|Llama|Routing'` |
-| AC-FEAT-004-19 | `route-status --json` and session artifacts expose selected endpoint, sticky assignment state, utilization source/freshness, active/queued counts when known, and score components used for local endpoint selection. | `go test ./cmd/fiz ./internal/session ./... -run 'RouteStatus|RoutingDecision|Session'` |
+| AC-FEAT-004-16 | The same validated `CorrelationID` repeatedly receives sticky affinity for the same server instance, even when related requests use different models on that server, until the lease expires or the server instance becomes ineligible. | `go test ./internal/routing ./... -run 'Sticky|Lease|Correlation|Routing'` |
+| AC-FEAT-004-17 | Different sticky route keys are distributed across eligible local server instances by normalized load; a saturated server is avoided for new keys, while an existing key stays biased to its server unless eligibility or score pressure outweighs the affinity bonus. | `go test ./internal/routing ./... -run 'Utilization|Sticky|RouteStatus'` |
+| AC-FEAT-004-18 | vLLM, llama-server, oMLX, and Rapid-MLX utilization probes feed normalized endpoint utilization into routing where available; stale, missing, or failed probes fall back to service-owned in-flight lease counts without making otherwise healthy endpoints unavailable. | `go test ./internal/provider/... ./internal/routing/... -run 'Utilization|VLLM|Llama|OMLX|RapidMLX|Routing'` |
+| AC-FEAT-004-19 | `route-status --json` and session artifacts expose selected endpoint, server instance, sticky assignment state, utilization source/freshness, active/queued counts when known, performance signal, maximum configured context length, and score components used for candidate selection. | `go test ./cmd/fiz ./internal/session ./... -run 'RouteStatus|RoutingDecision|Session'` |
 
 ## Dependencies
 

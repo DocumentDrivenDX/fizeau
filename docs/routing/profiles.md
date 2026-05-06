@@ -1,15 +1,24 @@
-# Legacy Routing Names
+# Routing Profiles
 
-This page is retained for old links only.
+Profiles are named shorthands for points on the routing power curve. They
+expand to effective power policy, not to a closed set of concrete models.
 
-The target routing interface is numeric power plus hard constraints. Use
-`--min-power`, `--max-power`, `--model`, `--provider`, `--harness`, and
-`fiz --list-models`.
+Use `--profile` when the caller wants the project-maintained default for a
+power point. Use `--min-power` and `--max-power` when the caller needs an
+explicit numeric bound. Use `--model`, `--provider`, and `--harness` only as
+hard pins.
 
-Old named routing macros are compatibility data, not the target interface.
-They must not be used for new automation.
+`ModelRef` is separate from profiles. It resolves catalog references for exact
+model identity and migration compatibility. Legacy names such as
+`code-medium` and `code-high` are compatibility model references or deprecated
+aliases; they are not target routing profiles.
 
-When automatic routing selects among equivalent local endpoints, the selected
-endpoint is sticky for the request sequence. New sequences are assigned by
-least-loaded endpoint; repeated requests with the same sticky key keep using
-their assigned endpoint unless it becomes unavailable or hard-saturated.
+Routing first applies eligibility: hard pins, profile/power policy, context
+fit, required capabilities, health, and quota. It then ranks eligible
+candidates by power, cost, deployment placement, utilization, performance,
+context headroom, and sticky affinity.
+
+Sticky affinity is keyed by validated `CorrelationID` and targets the server
+instance, such as `grendel` or `vidar`, rather than a model string. Related
+requests bias toward the same server instance to preserve cache locality, but
+that affinity is a score component, not a pin.
