@@ -3,6 +3,7 @@ package fizeau
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -156,6 +157,75 @@ func TestExecuteExplicitHarnessPinUnknownHarnessFailsWithoutBroaderDispatch(t *t
 	}
 	if !strings.Contains(final.Error, "unknown harness") {
 		t.Fatalf("final error = %q, want unknown harness", final.Error)
+	}
+}
+
+func TestExecuteExplicitHarnessPinRejectsUnsupportedCodexCombinationWithoutBroadening(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-05-06T00:00:00Z
+models:
+  small-ctx-model:
+    family: test
+    status: active
+    surfaces: {agent.openai: small-ctx-model}
+targets:
+  small-ctx:
+    family: test
+    candidates: [small-ctx-model]
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := publicRouteTraceService(&fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"local": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "small-ctx-model"},
+		},
+		names:       []string{"local"},
+		defaultName: "local",
+	})
+
+	req := ServiceExecuteRequest{
+		Prompt:   "hello",
+		Harness:  "codex",
+		Provider: "local",
+		Model:    "small-ctx-model",
+	}
+
+	ch, err := svc.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected explicit codex pin to fail before dispatch")
+	}
+	if ch != nil {
+		t.Fatalf("expected no event channel for typed pre-resolution error, got %#v", ch)
+	}
+
+	var typed *ErrHarnessModelIncompatible
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrHarnessModelIncompatible: %T %v", err, err)
+	}
+	if typed.Harness != "codex" {
+		t.Fatalf("typed Harness = %q, want codex", typed.Harness)
+	}
+	if typed.Model != "small-ctx-model" {
+		t.Fatalf("typed Model = %q, want small-ctx-model", typed.Model)
+	}
+
+	// Without the explicit harness pin, the same request is routable.
+	decision, routeErr := svc.ResolveRoute(context.Background(), RouteRequest{
+		Provider: req.Provider,
+		Model:    req.Model,
+	})
+	if routeErr != nil {
+		t.Fatalf("ResolveRoute without harness pin: %v", routeErr)
+	}
+	if decision == nil {
+		t.Fatal("ResolveRoute without harness pin returned nil decision")
+	}
+	if decision.Harness == "codex" {
+		t.Fatalf("ResolveRoute without harness pin still selected codex: %#v", decision)
+	}
+	if decision.Provider != "local" {
+		t.Fatalf("ResolveRoute without harness pin provider = %q, want local", decision.Provider)
 	}
 }
 
