@@ -45,21 +45,27 @@ func TestListModels_noServiceConfig(t *testing.T) {
 	}
 }
 
-func TestListModels_providerTypesOpenRouterLMStudioOMLX(t *testing.T) {
+func TestListModels_providerTypesOpenRouterLMStudioOMLXVLLMRapidMLX(t *testing.T) {
 	openrouter := fakeModelsServer([]string{"openrouter/model-a"})
 	defer openrouter.Close()
 	lmstudio := fakeModelsServer([]string{"lmstudio-model-a"})
 	defer lmstudio.Close()
 	omlx := fakeModelsServer([]string{"omlx-model-a"})
 	defer omlx.Close()
+	vllm := fakeModelsServer([]string{"vllm-model-a"})
+	defer vllm.Close()
+	rapidmlx := fakeModelsServer([]string{"rapid-mlx-model-a"})
+	defer rapidmlx.Close()
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"openrouter": {Type: "openrouter", BaseURL: openrouter.URL + "/api/v1"},
 			"studio":     {Type: "lmstudio", BaseURL: lmstudio.URL + "/v1"},
 			"vidar-omlx": {Type: "omlx", BaseURL: omlx.URL + "/v1"},
+			"sindri":     {Type: "vllm", BaseURL: vllm.URL + "/v1"},
+			"grendel":    {Type: "rapid-mlx", BaseURL: rapidmlx.URL + "/v1"},
 		},
-		names:       []string{"openrouter", "studio", "vidar-omlx"},
+		names:       []string{"openrouter", "studio", "vidar-omlx", "sindri", "grendel"},
 		defaultName: "openrouter",
 	}
 	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
@@ -68,14 +74,16 @@ func TestListModels_providerTypesOpenRouterLMStudioOMLX(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)
 	}
-	if len(infos) != 3 {
-		t.Fatalf("want 3 models, got %d: %v", len(infos), modelIDs(infos))
+	if len(infos) != 5 {
+		t.Fatalf("want 5 models, got %d: %v", len(infos), modelIDs(infos))
 	}
 
 	wantTypes := map[string]string{
 		"openrouter": "openrouter",
 		"studio":     "lmstudio",
 		"vidar-omlx": "omlx",
+		"sindri":     "vllm",
+		"grendel":    "rapid-mlx",
 	}
 	for _, info := range infos {
 		if info.ProviderType != wantTypes[info.Provider] {

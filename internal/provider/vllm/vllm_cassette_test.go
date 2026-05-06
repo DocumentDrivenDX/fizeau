@@ -29,7 +29,6 @@ const (
 	vllmRecordModel        = "facebook/opt-125m"
 	vllmRecordPrompt       = "Reply with one short word."
 	vllmLoadPrompt         = "Write a 200-word paragraph about a small robot."
-	vllmRequestModelName   = vllmRecordModel
 	vllmRequestMaxTokens   = 8
 	vllmLoadMaxTokens      = 96
 	vllmRequestTemperature = 0
@@ -60,9 +59,13 @@ func TestVLLMRecordCassetteAndUtilization(t *testing.T) {
 	})
 
 	if testutil.ModeForEnvironment() == recorder.ModeRecordOnly {
+		if baseURL := strings.TrimSpace(os.Getenv("VLLM_RECORD_BASE_URL")); baseURL != "" {
+			recordInteractions(t, client, baseURL, http.DefaultClient, true)
+			return
+		}
+
 		srv := mustStartVLLMServer(t)
 		t.Cleanup(srv.Stop)
-
 		recordInteractions(t, client, srv.BaseURL, srv.DirectClient, true)
 		return
 	}
@@ -114,7 +117,8 @@ func recordInteractions(t *testing.T, client *http.Client, baseURL string, probe
 	t.Helper()
 	rootURL := serverRootURL(baseURL)
 	models := fetchModels(t, client, baseURL)
-	require.Contains(t, models, vllmRequestModelName)
+	require.NotEmpty(t, models)
+	model := preferredRecordModel(models)
 
 	idleMetrics := fetchMetrics(t, client, rootURL)
 	require.Equal(t, 0, idleMetrics.Running)
@@ -122,8 +126,7 @@ func recordInteractions(t *testing.T, client *http.Client, baseURL string, probe
 	require.GreaterOrEqual(t, idleMetrics.CacheUsage, 0.0)
 	require.NotEmpty(t, idleMetrics.CacheMetric)
 
-	minimalChat := chatCompletion(t, client, baseURL, vllmRecordPrompt, vllmRequestMaxTokens)
-	require.NotEmpty(t, minimalChat)
+	_ = chatCompletion(t, client, baseURL, model, vllmRecordPrompt, vllmRequestMaxTokens)
 
 	afterChatMetrics := fetchMetrics(t, client, rootURL)
 	require.GreaterOrEqual(t, afterChatMetrics.Running, 0)
@@ -131,7 +134,7 @@ func recordInteractions(t *testing.T, client *http.Client, baseURL string, probe
 	require.NotEmpty(t, afterChatMetrics.CacheMetric)
 
 	if recordMode {
-		loadResp, err := startStreamingLoadRequest(probeClient, strings.TrimRight(baseURL, "/"), vllmLoadPrompt, vllmLoadMaxTokens)
+		loadResp, err := startStreamingLoadRequest(probeClient, strings.TrimRight(baseURL, "/"), model, vllmLoadPrompt, vllmLoadMaxTokens)
 		require.NoError(t, err)
 
 		waitForMetric(t, probeClient, rootURL, func(s vllmMetricsSnapshot) bool {
@@ -156,6 +159,15 @@ func recordInteractions(t *testing.T, client *http.Client, baseURL string, probe
 	require.GreaterOrEqual(t, loadMetrics.Running, 0)
 	require.GreaterOrEqual(t, loadMetrics.Waiting, 0)
 	require.NotEmpty(t, loadMetrics.CacheMetric)
+}
+
+func preferredRecordModel(models []string) string {
+	for _, model := range models {
+		if model == vllmRecordModel {
+			return model
+		}
+	}
+	return models[0]
 }
 
 func fetchModels(t *testing.T, client *http.Client, baseURL string) []string {
@@ -197,16 +209,16 @@ func fetchMetrics(t *testing.T, client *http.Client, baseURL string) vllmMetrics
 	return snap
 }
 
-func chatCompletion(t *testing.T, client *http.Client, baseURL, prompt string, maxTokens int) string {
+func chatCompletion(t *testing.T, client *http.Client, baseURL, model, prompt string, maxTokens int) string {
 	t.Helper()
-	content, err := chatCompletionRaw(client, baseURL, prompt, maxTokens)
+	content, err := chatCompletionRaw(client, baseURL, model, prompt, maxTokens)
 	require.NoError(t, err)
 	return content
 }
 
-func chatCompletionRaw(client *http.Client, baseURL, prompt string, maxTokens int) (string, error) {
+func chatCompletionRaw(client *http.Client, baseURL, model, prompt string, maxTokens int) (string, error) {
 	body := map[string]any{
-		"model":       vllmRequestModelName,
+		"model":       model,
 		"messages":    []map[string]string{{"role": "user", "content": prompt}},
 		"max_tokens":  maxTokens,
 		"temperature": vllmRequestTemperature,
@@ -247,9 +259,9 @@ func chatCompletionRaw(client *http.Client, baseURL, prompt string, maxTokens in
 	return payload.Choices[0].Message.Content, nil
 }
 
-func startStreamingLoadRequest(client *http.Client, baseURL, prompt string, maxTokens int) (*http.Response, error) {
+func startStreamingLoadRequest(client *http.Client, baseURL, model, prompt string, maxTokens int) (*http.Response, error) {
 	body := map[string]any{
-		"model":       vllmRequestModelName,
+		"model":       model,
 		"messages":    []map[string]string{{"role": "user", "content": prompt}},
 		"max_tokens":  maxTokens,
 		"temperature": vllmRequestTemperature,

@@ -33,9 +33,9 @@ func NewUtilizationProbe(baseURL string, client *http.Client) *UtilizationProbe 
 	}
 }
 
-// Probe fetches /v1/status from the server root and returns a normalized
-// sample. Failures return stale or unknown utilization instead of surfacing
-// endpoint unavailability.
+// Probe fetches /v1/status from the OpenAI-compatible base URL and returns a
+// normalized sample. Failures return stale or unknown utilization instead of
+// surfacing endpoint unavailability.
 func (p *UtilizationProbe) Probe(ctx context.Context) utilization.EndpointUtilization {
 	snapshot, ok := p.probeStatus(ctx)
 	if !ok {
@@ -49,7 +49,11 @@ func (p *UtilizationProbe) Probe(ctx context.Context) utilization.EndpointUtiliz
 }
 
 func (p *UtilizationProbe) probeStatus(ctx context.Context) (rapidMLXStatusSnapshot, bool) {
-	body, err := p.get(ctx, utilization.ServerRoot(p.baseURL)+"/status")
+	base := strings.TrimRight(p.baseURL, "/")
+	body, err := p.get(ctx, base+"/status")
+	if err != nil && strings.HasSuffix(base, "/v1") {
+		body, err = p.get(ctx, utilization.ServerRoot(p.baseURL)+"/status")
+	}
 	if err != nil {
 		return rapidMLXStatusSnapshot{}, false
 	}
@@ -93,17 +97,26 @@ func parseRapidMLXStatus(body string) (rapidMLXStatusSnapshot, error) {
 		if snapshot.MetalActiveMemoryBytes == nil {
 			snapshot.MetalActiveMemoryBytes = firstInt64(metal, "active_bytes", "active_memory_bytes")
 		}
+		if snapshot.MetalActiveMemoryBytes == nil {
+			snapshot.MetalActiveMemoryBytes = firstGBAsBytes(metal, "active_memory_gb", "active_gb")
+		}
 		if snapshot.MetalPeakMemoryBytes == nil {
 			snapshot.MetalPeakMemoryBytes = firstInt64(metal, "peak_bytes", "peak_memory_bytes")
 		}
+		if snapshot.MetalPeakMemoryBytes == nil {
+			snapshot.MetalPeakMemoryBytes = firstGBAsBytes(metal, "peak_memory_gb", "peak_gb")
+		}
 		if snapshot.MetalCacheMemoryBytes == nil {
 			snapshot.MetalCacheMemoryBytes = firstInt64(metal, "cache_bytes", "cache_memory_bytes")
+		}
+		if snapshot.MetalCacheMemoryBytes == nil {
+			snapshot.MetalCacheMemoryBytes = firstGBAsBytes(metal, "cache_memory_gb", "cache_gb")
 		}
 	}
 
 	if cache, ok := firstMap(payload, "cache", "cache_stats", "cache_state"); ok {
 		if snapshot.CacheUsage == nil {
-			snapshot.CacheUsage = firstFloat(cache, "usage", "pressure", "ratio")
+			snapshot.CacheUsage = firstFloat(cache, "usage", "pressure", "ratio", "memory_utilization")
 		}
 		if snapshot.CacheHitType == nil {
 			snapshot.CacheHitType = firstString(cache, "hit_type", "cache_hit_type")
@@ -251,6 +264,14 @@ func firstIntPtr(payload map[string]any, keys ...string) *int {
 func firstInt64(payload map[string]any, keys ...string) *int64 {
 	if v := firstNumber(payload, keys...); v != nil {
 		val := int64(*v)
+		return &val
+	}
+	return nil
+}
+
+func firstGBAsBytes(payload map[string]any, keys ...string) *int64 {
+	if v := firstNumber(payload, keys...); v != nil {
+		val := int64(*v * 1024 * 1024 * 1024)
 		return &val
 	}
 	return nil

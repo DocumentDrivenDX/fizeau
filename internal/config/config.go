@@ -1033,6 +1033,8 @@ func defaultEndpointPort(providerType string) int {
 		return 1236
 	case "vllm":
 		return 8000
+	case "rapid-mlx":
+		return 8000
 	case "ollama":
 		return 11434
 	default:

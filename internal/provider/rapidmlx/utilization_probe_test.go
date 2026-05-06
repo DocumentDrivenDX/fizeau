@@ -103,11 +103,50 @@ func TestRapidMLXUtilizationProbe_ParseStatusAndNormalize(t *testing.T) {
 	require.InDelta(t, 43.6, *sample.TokensPerSecond, 1e-9)
 }
 
+func TestRapidMLXUtilizationProbe_ParseCurrentStatusShape(t *testing.T) {
+	body := strings.Join([]string{
+		`{`,
+		`  "status": "generating",`,
+		`  "model": "mlx-community/Qwen3.6-27B-8bit",`,
+		`  "num_running": 0,`,
+		`  "num_waiting": 0,`,
+		`  "total_prompt_tokens": 11,`,
+		`  "total_completion_tokens": 2,`,
+		`  "metal": {`,
+		`    "active_memory_gb": 28.92,`,
+		`    "peak_memory_gb": 28.94,`,
+		`    "cache_memory_gb": 0.0`,
+		`  },`,
+		`  "cache": {`,
+		`    "memory_utilization": 0.0543,`,
+		`    "tokens_saved": 0`,
+		`  },`,
+		`  "requests": []`,
+		`}`,
+	}, "\n")
+
+	snapshot, err := parseRapidMLXStatus(body)
+	require.NoError(t, err)
+	require.NotNil(t, snapshot.CacheUsage)
+	require.InDelta(t, 0.0543, *snapshot.CacheUsage, 1e-9)
+	require.NotNil(t, snapshot.MetalActiveMemoryBytes)
+	require.NotNil(t, snapshot.MetalPeakMemoryBytes)
+	require.Greater(t, *snapshot.MetalActiveMemoryBytes, int64(28*1024*1024*1024))
+	require.Greater(t, *snapshot.MetalPeakMemoryBytes, *snapshot.MetalActiveMemoryBytes)
+
+	sample := snapshot.normalize()
+	require.Equal(t, utilization.SourceRapidMLXStatus, sample.Source)
+	require.NotNil(t, sample.CacheUsage)
+	require.InDelta(t, 0.0543, *sample.CacheUsage, 1e-9)
+	require.NotNil(t, sample.MetalActiveMemoryBytes)
+	require.NotNil(t, sample.MetalPeakMemoryBytes)
+}
+
 func TestRapidMLXUtilizationProbe_FailureReturnsStaleOrUnknown(t *testing.T) {
 	var hits int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/status":
+		case "/v1/status":
 			hits++
 			if hits == 1 {
 				_, _ = w.Write([]byte(`{"num_running":1,"num_waiting":0,"cache":{"usage":0.5}}`))
@@ -175,13 +214,11 @@ func TestRapidMLXRecordCassetteAndUtilization(t *testing.T) {
 
 func recordInteractions(t *testing.T, client *http.Client, baseURL string, recordMode bool) {
 	t.Helper()
-	rootURL := utilization.ServerRoot(baseURL)
-
 	models := fetchModels(t, client, baseURL)
 	require.NotEmpty(t, models)
 	model := models[0]
 
-	idleStatus := fetchStatus(t, client, rootURL)
+	idleStatus := fetchStatus(t, client, baseURL)
 	require.Equal(t, 0, idleStatus.NumRunning)
 	require.Equal(t, 0, idleStatus.NumWaiting)
 	require.NotNil(t, idleStatus.CacheUsage)
@@ -191,7 +228,7 @@ func recordInteractions(t *testing.T, client *http.Client, baseURL string, recor
 	minimalChat := chatCompletion(t, client, baseURL, model, "Reply with one short word.", 8)
 	require.NotEmpty(t, minimalChat)
 
-	afterChatStatus := fetchStatus(t, client, rootURL)
+	afterChatStatus := fetchStatus(t, client, baseURL)
 	require.Equal(t, 0, afterChatStatus.NumRunning)
 	require.GreaterOrEqual(t, afterChatStatus.TotalPromptTokens, idleStatus.TotalPromptTokens)
 	require.GreaterOrEqual(t, afterChatStatus.TotalCompletionTokens, idleStatus.TotalCompletionTokens)
@@ -207,7 +244,7 @@ func recordInteractions(t *testing.T, client *http.Client, baseURL string, recor
 		})
 	}
 
-	loadStatus := waitForStatus(t, client, rootURL, func(s rapidMLXStatusSnapshot) bool {
+	loadStatus := waitForStatus(t, client, baseURL, func(s rapidMLXStatusSnapshot) bool {
 		return s.NumRunning > 0
 	})
 

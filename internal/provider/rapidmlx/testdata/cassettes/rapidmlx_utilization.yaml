@@ -7,216 +7,51 @@ interactions:
         proto_major: 1
         proto_minor: 1
         content_length: 0
-        host: vcr.local
-        url: http://vcr.local/v1/models
+        host: grendel:8000
+        url: http://grendel:8000/v1/models
         method: GET
       response:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 145
-        body: '{"object":"list","data":[{"id":"mlx-community/Qwen3.5-4B-MLX-4bit","object":"model","created":1778033309,"owned_by":"rapid-mlx"}]}'
+        content_length: 127
+        body: '{"object":"list","data":[{"id":"mlx-community/Qwen3.6-27B-8bit","object":"model","created":1778104083,"owned_by":"rapid-mlx"}]}'
         headers:
             Content-Length:
-                - "145"
+                - "127"
             Content-Type:
                 - application/json
+            Date:
+                - Wed, 06 May 2026 21:48:03 GMT
             Server:
-                - rapid-mlx
+                - uvicorn
         status: 200 OK
         code: 200
-        duration: 120.125µs
+        duration: 45.51796ms
     - id: 1
       request:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
         content_length: 0
-        host: vcr.local
-        url: http://vcr.local/status
+        host: grendel:8000
+        url: http://grendel:8000/status
         method: GET
       response:
         proto: HTTP/1.1
         proto_major: 1
         proto_minor: 1
-        content_length: 310
-        body: |
-            {
-              "num_running": 0,
-              "num_waiting": 0,
-              "total_prompt_tokens": 0,
-              "total_completion_tokens": 0,
-              "metal": {
-                "active_bytes": 34359738368,
-                "peak_bytes": 42949672960,
-                "cache_bytes": 8589934592
-              },
-              "cache": {
-                "usage": 0.2,
-                "hit_type": "prefix",
-                "cached_tokens": 0,
-                "generated_tokens": 0
-              }
-            }
+        content_length: 22
+        body: '{"detail":"Not Found"}'
         headers:
             Content-Length:
-                - "310"
+                - "22"
             Content-Type:
                 - application/json
+            Date:
+                - Wed, 06 May 2026 21:48:03 GMT
             Server:
-                - rapid-mlx
-        status: 200 OK
-        code: 200
-        duration: 95.417µs
-    - id: 2
-      request:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 144
-        host: vcr.local
-        body: '{"max_tokens":8,"messages":[{"content":"Reply with one short word.","role":"user"}],"model":"mlx-community/Qwen3.5-4B-MLX-4bit","temperature":0}'
-        headers:
-            Content-Type:
-                - application/json
-        url: http://vcr.local/v1/chat/completions
-        method: POST
-      response:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 319
-        body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","content":"swift"}}],"created":1778033310,"model":"mlx-community/Qwen3.5-4B-MLX-4bit","object":"chat.completion","usage":{"completion_tokens":1,"prompt_tokens":34,"total_tokens":35,"prompt_tokens_details":{"cached_tokens":0}}}'
-        headers:
-            Content-Length:
-                - "319"
-            Content-Type:
-                - application/json
-            Server:
-                - rapid-mlx
-        status: 200 OK
-        code: 200
-        duration: 188.958µs
-    - id: 3
-      request:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 0
-        host: vcr.local
-        url: http://vcr.local/status
-        method: GET
-      response:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 315
-        body: |
-            {
-              "num_running": 0,
-              "num_waiting": 0,
-              "total_prompt_tokens": 34,
-              "total_completion_tokens": 1,
-              "metal": {
-                "active_bytes": 34896609280,
-                "peak_bytes": 42949672960,
-                "cache_bytes": 8724152320
-              },
-              "cache": {
-                "usage": 0.8125,
-                "hit_type": "prefix",
-                "cached_tokens": 0,
-                "generated_tokens": 1
-              }
-            }
-        headers:
-            Content-Length:
-                - "315"
-            Content-Type:
-                - application/json
-            Server:
-                - rapid-mlx
-        status: 200 OK
-        code: 200
-        duration: 87.542µs
-    - id: 4
-      request:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 180
-        host: vcr.local
-        body: '{"max_tokens":64,"messages":[{"content":"Write a 200-word paragraph about a small robot.","role":"user"}],"model":"mlx-community/Qwen3.5-4B-MLX-4bit","stream":true,"temperature":0}'
-        headers:
-            Content-Type:
-                - application/json
-        url: http://vcr.local/v1/chat/completions
-        method: POST
-      response:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 337
-        body: '{"choices":[{"finish_reason":"length","index":0,"message":{"role":"assistant","content":"The robot woke at dawn."}}],"created":1778033311,"model":"mlx-community/Qwen3.5-4B-MLX-4bit","object":"chat.completion","usage":{"completion_tokens":64,"prompt_tokens":79,"total_tokens":143,"prompt_tokens_details":{"cached_tokens":32}}}'
-        headers:
-            Content-Length:
-                - "337"
-            Content-Type:
-                - application/json
-            Server:
-                - rapid-mlx
-        status: 200 OK
-        code: 200
-        duration: 256.875µs
-    - id: 5
-      request:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 0
-        host: vcr.local
-        url: http://vcr.local/status
-        method: GET
-      response:
-        proto: HTTP/1.1
-        proto_major: 1
-        proto_minor: 1
-        content_length: 512
-        body: |
-            {
-              "num_running": 1,
-              "num_waiting": 2,
-              "total_prompt_tokens": 113,
-              "total_completion_tokens": 65,
-              "metal": {
-                "active_bytes": 38654705664,
-                "peak_bytes": 42949672960,
-                "cache_bytes": 10737418240
-              },
-              "cache": {
-                "usage": 0.9,
-                "hit_type": "prefix",
-                "cached_tokens": 32,
-                "generated_tokens": 64
-              },
-              "active_requests": [
-                {
-                  "phase": "running",
-                  "ttft_s": 0.08,
-                  "tokens_per_second": 43.6,
-                  "cache_hit_type": "prefix",
-                  "cached_tokens": 32,
-                  "generated_tokens": 64
-                }
-              ]
-            }
-        headers:
-            Content-Length:
-                - "512"
-            Content-Type:
-                - application/json
-            Server:
-                - rapid-mlx
-        status: 200 OK
-        code: 200
-        duration: 104.667µs
+                - uvicorn
+        status: 404 Not Found
+        code: 404
+        duration: 32.666179ms
