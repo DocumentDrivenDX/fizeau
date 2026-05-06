@@ -12,15 +12,17 @@ ddx:
 ## Problem
 
 The medium-model TerminalBench comparison attempted to compare native Claude
-Code, native Codex, and fiz by installing separate Harbor agents for each
-harness. That duplicates fiz's routing and harness-normalization job inside
-benchmark glue. It also creates false failures from Harbor/container details:
-TerminalBench images commonly run as root, prebuilt task images may be
-cross-architecture, and Claude/Codex permission/auth flags differ.
+Code, native Codex, pi, opencode, and fiz by installing separate Harbor agents
+for each harness. That duplicates fiz's routing and harness-normalization job
+inside benchmark glue. It also creates false failures from Harbor/container
+details: TerminalBench images commonly run as root, prebuilt task images may be
+cross-architecture, and harness permission/auth flags differ.
 
-The benchmark should not hand-roll Claude Code or Codex CLI semantics. Fizeau
-already owns those wrappers through its harness registry, permission policy,
-model aliasing, session logging, and quota/account interpretation.
+The benchmark should not hand-roll any harness CLI semantics that fiz already
+wraps. Fizeau owns those wrappers through its harness registry, permission
+policy, model aliasing, session logging, quota/account interpretation, and
+subprocess event normalization. Using fiz for pi and opencode also increases
+coverage of the wrappers operators actually depend on.
 
 ## Decision
 
@@ -32,13 +34,15 @@ pins into that single agent:
 
 - `FIZEAU_HARNESS=claude` for fiz-wrapped Claude Code.
 - `FIZEAU_HARNESS=codex` for fiz-wrapped Codex.
+- `FIZEAU_HARNESS=pi` for fiz-wrapped pi.
+- `FIZEAU_HARNESS=opencode` for fiz-wrapped opencode.
 - `FIZEAU_PROVIDER=openrouter` for fiz's provider path.
 - `FIZEAU_MODEL`, `FIZEAU_MODEL_REF`, and `FIZEAU_REASONING` retain their
   existing meanings.
 
-Raw Harbor Claude/Codex adapters may remain as diagnostics, but they are not
-part of the official medium-model or frontier-reference TerminalBench
-comparison.
+Raw Harbor Claude/Codex/pi/opencode adapters may remain as diagnostics, but
+they are not part of the official medium-model or frontier-reference
+TerminalBench comparison.
 
 ## Benchmark Lanes
 
@@ -48,6 +52,8 @@ The medium-model comparison uses these cells:
 | --- | --- |
 | `fiz-harness-claude-sonnet-4-6` | Fizeau pinned to the Claude Code harness. |
 | `fiz-harness-codex-gpt-5-4-mini` | Fizeau pinned to the Codex harness. |
+| `fiz-harness-pi-gpt-5-4-mini` | Fizeau pinned to the pi harness. |
+| `fiz-harness-opencode-gpt-5-4-mini` | Fizeau pinned to the opencode harness. |
 | `fiz-openrouter-claude-sonnet-4-6` | Fizeau provider path through OpenRouter to Sonnet. |
 | `fiz-openrouter-gpt-5-4-mini` | Fizeau provider path through OpenRouter to GPT mini. |
 
@@ -99,11 +105,11 @@ excluded from mean reward denominators and cost/capability comparisons.
    signatures, including Claude Code `api_error_status: 429` and
    `out_of_credits`.
 5. Tests prove the official comparison script does not call raw Harbor
-   Claude/Codex adapters.
+   Claude/Codex/pi/opencode adapters.
 
 ## Out Of Scope
 
-- Making raw Harbor Claude/Codex adapters production quality.
+- Making raw Harbor Claude/Codex/pi/opencode adapters production quality.
 - Reimplementing upstream TerminalBench scoring.
 - Treating OpenRouter Sonnet and Claude Code Sonnet as the same provider
   surface.
