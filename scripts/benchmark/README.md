@@ -307,6 +307,19 @@ provider, and benchmark. New importers should project source reports into the
 schema at `scripts/benchmark/benchmark-evidence.schema.json`; see
 `docs/helix/02-design/solution-designs/SD-012-benchmark-evidence-ledger.md`.
 
+Curated external snapshots can be imported with:
+
+```bash
+go run ./cmd/bench evidence import-external \
+  --source cmd/bench/testdata/external-benchmarks/rapid-mlx-mhi.md \
+  --out /tmp/rapid-mlx.jsonl
+```
+
+The same command accepts SkillsBench CSV, SWE-bench CSV, and HumanEval JSONL
+fixtures. Imported rows keep `unknown` harness/provider values explicit instead
+of dropping them, and HumanEval rows are flagged as low-cost model-power
+evidence rather than primary FHI coverage.
+
 ### Claude and Codex reference baselines
 
 Set `BASELINE=frontier` to run native Claude Code and Codex reference cells:
