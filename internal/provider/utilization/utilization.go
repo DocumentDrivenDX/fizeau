@@ -13,6 +13,7 @@ type Source string
 
 const (
 	SourceUnknown        Source = "unknown"
+	SourceOMLXStatus     Source = "omlx.status"
 	SourceVLLMMetrics    Source = "vllm.metrics"
 	SourceLlamaMetrics   Source = "llama-server.metrics"
 	SourceLlamaSlots     Source = "llama-server.slots"

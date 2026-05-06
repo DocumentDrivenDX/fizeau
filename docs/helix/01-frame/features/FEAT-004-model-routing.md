@@ -254,11 +254,13 @@ prompt behavior and must not be reused for model policy or routing.
      shared leases. See
      [plan-2026-05-05-shared-lease-backend.md](../../02-design/plan-2026-05-05-shared-lease-backend.md)
      for the lease-record and atomic acquire/refresh/release contract.
-30d. `vllm` and `llama-server` utilization is provider-owned and type-derived.
-     `vllm` uses root `/metrics`. `llama-server` uses root `/metrics` when
-     started with `--metrics` and root `/slots` as fallback. A configured
-     OpenAI-compatible `base_url` ending in `/v1` is converted to the server root
-     for these probes.
+30d. `vllm`, `llama-server`, and `omlx` utilization is provider-owned and
+     type-derived. `vllm` uses root `/metrics`. `llama-server` uses root
+     `/metrics` when started with `--metrics` and root `/slots` as fallback.
+     `omlx` uses root `/api/status` and may optionally consume admin-only
+     `/admin/api/stats` when explicitly configured. A configured
+     OpenAI-compatible `base_url` ending in `/v1` is converted to the server
+     root for these probes.
 31. `agent.Run()` still receives one concrete `Provider` per attempt. `Execute`
     selects and dispatches the top candidate once.
 32. The selected concrete harness, provider source, endpoint, model, requested
