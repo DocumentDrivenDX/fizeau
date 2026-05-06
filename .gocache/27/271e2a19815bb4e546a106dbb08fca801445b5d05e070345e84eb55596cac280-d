@@ -1,0 +1,5 @@
+./compactor.go
+./config.go
+./serialize.go
+./summarize.go
+./tokens.go

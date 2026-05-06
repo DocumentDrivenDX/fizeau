@@ -1,0 +1,9 @@
+./agent.go
+./errors.go
+./loop.go
+./options.go
+./pricing.go
+./provider_capability.go
+./provider_error.go
+./stream.go
+./stream_consume.go
