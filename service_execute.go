@@ -497,7 +497,6 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 	if result.EmitText {
 		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: result.Text})
 	}
-	emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
 	if progressFinal := progress.noteResponseComplete(final); progressFinal != nil {
 		emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
 	}
@@ -512,7 +511,6 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 	if result.EmitText {
 		emitJSONRaw(out, seq, harnesses.EventTypeTextDelta, meta, harnesses.TextDeltaData{Text: result.Text})
 	}
-	emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
 	if progressFinal := progress.noteResponseComplete(final); progressFinal != nil {
 		emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
 	}
@@ -756,7 +754,6 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 			emitProgress(out, seq, sl, sessionID, meta, progress.noteRequestStart())
 		},
 		BeforeFinal: func(final harnesses.FinalData) {
-			emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
 		},
 		ObserveEvent: func(ev harnesses.Event) harnesses.Event {
 			ev = progress.annotateToolResultDuration(ev)

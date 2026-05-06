@@ -129,6 +129,7 @@ type ServiceProgressData struct {
 	OutputLines           int      `json:"output_lines,omitempty"`
 	OutputExcerpt         string   `json:"output_excerpt,omitempty"`
 	DurationMS            int64    `json:"duration_ms,omitempty"`
+	SinceLastMS           int64    `json:"since_last_ms,omitempty"`
 	TokPerSec             *float64 `json:"tok_per_sec,omitempty"`
 	InputTokens           *int     `json:"input_tokens,omitempty"`
 	OutputTokens          *int     `json:"output_tokens,omitempty"`

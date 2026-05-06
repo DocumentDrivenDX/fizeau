@@ -26,6 +26,9 @@ type serviceSessionLog struct {
 	endOnce   sync.Once
 	endWrote  atomic.Bool
 	closeOnce sync.Once
+
+	progressMu     sync.Mutex
+	lastProgressAt time.Time
 }
 
 // openSessionLog creates the session-log writer for req and emits the

@@ -3,6 +3,7 @@ package transcript
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -78,10 +79,11 @@ type Output struct {
 }
 
 type StatusLineInput struct {
-	TaskID    string
-	TurnIndex int
-	Message   string
-	Limit     int
+	TaskID      string
+	TurnIndex   int
+	Message     string
+	SinceLastMS int64
+	Limit       int
 }
 
 func StatusLine(in StatusLineInput) string {
@@ -91,14 +93,28 @@ func StatusLine(in StatusLineInput) string {
 	}
 	msg := strings.TrimSpace(in.Message)
 	prefix := CompactIdentity(in.TaskID, in.TurnIndex)
+	age := CompactElapsed(in.SinceLastMS)
 	switch {
-	case prefix == "":
+	case prefix == "" && age == "":
 		return BoundedText(msg, limit)
-	case msg == "":
+	case prefix == "":
+		return BoundedText(strings.TrimSpace(age+" "+msg), limit)
+	case msg == "" && age == "":
 		return BoundedText(prefix, limit)
-	default:
+	case msg == "":
+		return BoundedText(prefix+" "+age, limit)
+	case age == "":
 		return BoundedText(prefix+" "+msg, limit)
+	default:
+		return BoundedText(prefix+" "+age+" "+msg, limit)
 	}
+}
+
+func CompactElapsed(ms int64) string {
+	if ms <= 0 {
+		return ""
+	}
+	return "+" + (time.Duration(ms) * time.Millisecond).String()
 }
 
 func CompactIdentity(taskID string, turnIndex int) string {

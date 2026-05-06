@@ -75,6 +75,10 @@ type nativeCompactionPayload struct {
 }
 
 func emitProgress(out chan<- ServiceEvent, seq *atomic.Int64, sl *serviceSessionLog, sessionID string, meta map[string]string, payload ServiceProgressData) {
+	now := time.Now().UTC()
+	if sl != nil {
+		payload.SinceLastMS = sl.progressIntervalMS(now)
+	}
 	fillProgressIdentity(&payload, sessionID, meta)
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -84,7 +88,7 @@ func emitProgress(out chan<- ServiceEvent, seq *atomic.Int64, sl *serviceSession
 	ev := harnesses.Event{
 		Type:     harnesses.EventTypeProgress,
 		Sequence: eventSeq,
-		Time:     time.Now().UTC(),
+		Time:     now,
 		Metadata: meta,
 		Data:     raw,
 	}
@@ -101,6 +105,24 @@ func emitProgress(out chan<- ServiceEvent, seq *atomic.Int64, sl *serviceSession
 			Data:      raw,
 		})
 	}
+}
+
+func (sl *serviceSessionLog) progressIntervalMS(now time.Time) int64 {
+	if sl == nil || now.IsZero() {
+		return 0
+	}
+	sl.progressMu.Lock()
+	defer sl.progressMu.Unlock()
+	if sl.lastProgressAt.IsZero() {
+		sl.lastProgressAt = now
+		return 0
+	}
+	elapsed := now.Sub(sl.lastProgressAt).Milliseconds()
+	sl.lastProgressAt = now
+	if elapsed <= 0 {
+		return 0
+	}
+	return elapsed
 }
 
 func fillProgressIdentity(payload *ServiceProgressData, sessionID string, meta map[string]string) {
@@ -128,6 +150,7 @@ func progressStatusLine(payload ServiceProgressData) string {
 		TaskID:    payload.TaskID,
 		TurnIndex: payload.Round,
 		Message:   payload.Message,
+		SinceLastMS: payload.SinceLastMS,
 		Limit:     progressMessageLimit(payload),
 	})
 }
