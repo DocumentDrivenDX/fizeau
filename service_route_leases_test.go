@@ -188,6 +188,64 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 	}
 }
 
+func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
+	originalProbe := probeOpenAIModelsForDiscovery
+	defer func() { probeOpenAIModelsForDiscovery = originalProbe }()
+	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+		switch {
+		case strings.Contains(baseURL, "desk-a"):
+			return []string{"qwen/qwen3.6"}, nil
+		case strings.Contains(baseURL, "desk-b"):
+			return []string{"qwen/qwen3.6"}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"local": {
+				Type: "lmstudio",
+				Endpoints: []ServiceProviderEndpoint{
+					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1"},
+					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1"},
+				},
+				Model: "qwen/qwen3.6",
+			},
+		},
+		names:          []string{"local"},
+		defaultName:    "local",
+		healthCooldown: 20 * time.Millisecond,
+	}
+	svc := &service{
+		opts:        ServiceOptions{ServiceConfig: sc},
+		registry:    harnesses.NewRegistry(),
+		hub:         newSessionHub(),
+		catalog:     newCatalogCache(catalogCacheOptions{}),
+		routeHealth: routehealth.NewStore(),
+		routeLeases: routehealth.NewLeaseStore(),
+	}
+	svc.routeUtilizationStore().Record("local", "desk-a", "qwen/qwen3.6", utilization.EndpointUtilization{
+		ActiveRequests: utilization.Int(1),
+		MaxConcurrency: utilization.Int(1),
+		Source:         utilization.SourceLlamaSlots,
+		Freshness:      utilization.FreshnessFresh,
+	})
+	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b", "local", "qwen/qwen3.6"), "local", "desk-b", "qwen/qwen3.6")
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Harness:       "agent",
+		Model:         "qwen/qwen3.6",
+		CorrelationID: "saturated-load-key",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec.Provider != "local@desk-b" || dec.Endpoint != "desk-b" {
+		t.Fatalf("decision=%#v, want desk-b because desk-a is saturated", dec)
+	}
+}
+
 func TestResolveRouteStickyLeaseIgnoresStaleUtilizationFallback(t *testing.T) {
 	originalProbe := probeOpenAIModelsForDiscovery
 	defer func() { probeOpenAIModelsForDiscovery = originalProbe }()
