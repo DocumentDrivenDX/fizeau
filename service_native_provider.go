@@ -21,6 +21,7 @@ import (
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openrouter"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/rapidmlx"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/vllm"
 )
 

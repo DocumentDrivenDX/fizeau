@@ -314,7 +314,7 @@ type discoveredModelSet struct {
 // ranks results against the catalog. IDs preserve discovery order per endpoint.
 func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat *modelcatalog.Catalog) []discoveredModelSet {
 	switch normalizeServiceProviderType(entry.Type) {
-	case "openai", "openrouter", "lmstudio", "omlx", "ollama", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "omlx", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
 		endpoints := modelDiscoveryEndpoints(entry)
 		if len(endpoints) == 0 {
 			return nil

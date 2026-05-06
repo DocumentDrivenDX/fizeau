@@ -61,7 +61,7 @@ concern and must not be used as the routing key or analytics label.
 #### Concrete OpenAI-Compatible Providers
 
 6. Each concrete provider (`lmstudio`, `omlx`, `ollama`, `vllm`,
-   `llama-server`, `openai`, `openrouter`) wraps a shared
+   `rapid-mlx`, `llama-server`, `openai`, `openrouter`) wraps a shared
    `internal/sdk/openaicompat` layer that owns:
    Chat Completions request shaping, tool schema serialization, streaming chunk
    parsing, tool-call delta accumulation, debug wire capture, request timeouts,
@@ -78,6 +78,7 @@ concern and must not be used as the routing key or analytics label.
    - `ollama`: local defaults, Ollama capability claims.
    - `vllm`: local or self-hosted vLLM defaults, OpenAI-compatible serving
      behavior, and `/metrics` utilization discovery.
+   - `rapid-mlx`: Rapid-MLX defaults and OpenAI-compatible serving behavior.
    - `llama-server`: llama.cpp `llama-server` defaults, OpenAI-compatible
      serving behavior, `/metrics` utilization discovery when started with
      `--metrics`, and `/slots` utilization fallback when slots are enabled.
@@ -110,7 +111,8 @@ providers:
 ```
 
 10. Supported provider `type` values: `openai`, `openrouter`, `lmstudio`,
-    `omlx`, `vllm`, `llama-server`, `ollama`, `anthropic`, `virtual`.
+    `omlx`, `vllm`, `rapid-mlx`, `llama-server`, `ollama`, `anthropic`,
+    `virtual`.
     `type: openai-compat` is rejected at config load. URL inference maps
     well-known hosts/ports to concrete types at config load only.
 11. For cloud providers, `base_url` is a shorthand for a single endpoint when
@@ -275,7 +277,7 @@ type AttemptMetadata struct {
     (`<base_url>/models`, typically `/v1/models`).
 27. `ModelInfo` results for provider-backed models include the configured
     provider name, concrete provider type (`openrouter`, `lmstudio`, `vllm`,
-    `llama-server`, or `omlx`), endpoint name, endpoint base URL, model ID,
+    `rapid-mlx`, `llama-server`, or `omlx`), endpoint name, endpoint base URL, model ID,
     availability, ranking, context/cost/catalog metadata when known, and
     route/default markers.
 28. Endpoint-pool behavior is additive and deterministic: a reachable endpoint
@@ -294,7 +296,7 @@ type AttemptMetadata struct {
     - `SupportsStructuredOutput() bool` — honors `response_format: json_object`
       or equivalent JSON-mode / tool-use-required semantics
 30. Capability flags are type-keyed (`lmstudio` / `omlx` / `vllm` /
-    `llama-server` / `openrouter` / `ollama` / `openai`). Unknown types return
+    `rapid-mlx` / `llama-server` / `openrouter` / `ollama` / `openai`). Unknown types return
     `false` conservatively so routing rejects rather than dispatches-and-fails.
 31. Protocol capability is distinct from routing capability (the benchmark-
     quality score used by smart-routing scoring). These axes do not interact.

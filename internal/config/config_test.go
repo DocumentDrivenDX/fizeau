@@ -343,6 +343,7 @@ func TestBuildProvider_ConcreteProviderTypes(t *testing.T) {
 			"lmstudio":   {Type: "lmstudio", BaseURL: "http://localhost:1234/v1", Model: "qwen3"},
 			"omlx":       {Type: "omlx", BaseURL: "http://localhost:1235/v1", Model: "qwen3"},
 			"ollama":     {Type: "ollama", BaseURL: "http://localhost:11434/v1", Model: "llama3.2"},
+			"rapidmlx":   {Type: "rapid-mlx", Model: "qwen3"},
 			"anthropic":  {Type: "anthropic", APIKey: "sk-ant-test", Model: "claude-sonnet-4-20250514"},
 		},
 	}
@@ -373,6 +374,31 @@ func TestBuildProvider_WithHeaders(t *testing.T) {
 	p, err := cfg.BuildProvider("openrouter")
 	require.NoError(t, err)
 	assert.NotNil(t, p)
+}
+
+func TestBuildProvider_RapidMLXDefaultBaseURL(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"rapidmlx": {
+				Type:  "rapid-mlx",
+				Model: "qwen3",
+			},
+		},
+	}
+
+	p, err := cfg.BuildProvider("rapidmlx")
+	require.NoError(t, err)
+	require.NotNil(t, p)
+
+	metadata, ok := p.(interface {
+		ChatStartMetadata() (string, string, int)
+	})
+	require.True(t, ok, "provider must expose chat start metadata")
+
+	system, host, port := metadata.ChatStartMetadata()
+	assert.Equal(t, "rapid-mlx", system)
+	assert.Equal(t, "localhost", host)
+	assert.Equal(t, 8000, port)
 }
 
 func TestResolveProviderConfig_ModelRefOpenAI(t *testing.T) {
@@ -1129,6 +1155,28 @@ default: studio
 	studio, ok := cfg.GetProvider("studio")
 	require.True(t, ok)
 	assert.Equal(t, "lmstudio", studio.Type)
+}
+
+func TestLoad_RapidMLXDefaultBaseURL(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".fizeau")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  rapid:
+    type: rapid-mlx
+    model: qwen3
+default: rapid
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	pc, ok := cfg.GetProvider("rapid")
+	require.True(t, ok)
+	assert.Equal(t, "rapid-mlx", pc.Type)
+	assert.Equal(t, "http://localhost:8000/v1", pc.BaseURL)
 }
 
 func TestLoad_MissingTypeUnknownBaseURLRejected(t *testing.T) {
