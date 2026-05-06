@@ -72,7 +72,16 @@
         "dataset_commit": {
           "type": "string"
         },
+        "subset_id": {
+          "type": "string"
+        },
+        "subset_version": {
+          "type": "string"
+        },
         "scorer": {
+          "type": "string"
+        },
+        "scorer_version": {
           "type": "string"
         },
         "higher_is_better": {
@@ -133,6 +142,15 @@
         "subset": {
           "type": "string"
         },
+        "subset_id": {
+          "type": "string"
+        },
+        "subset_version": {
+          "type": "string"
+        },
+        "denominator_rule": {
+          "type": "string"
+        },
         "split": {
           "type": "string"
         },
@@ -185,10 +203,73 @@
         }
       }
     },
+    "invalid_class": {
+      "type": "string"
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "formula_version": {
+          "type": "string"
+        },
+        "evidence_window": {
+          "type": "string"
+        },
+        "included_benchmarks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "included_subsets": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "denominator_rule": {
+          "type": "string"
+        },
+        "coverage_note": {
+          "type": "string"
+        },
+        "confidence_note": {
+          "type": "string"
+        }
+      }
+    },
+    "denominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "included": {
+          "type": "boolean"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "excluded_classes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "excluded_tasks": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "included_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excluded_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "components": {
       "type": "object",
       "additionalProperties": {
-        "type": ["number", "integer", "string", "boolean", "null"]
+        "type": ["number", "integer", "string", "boolean", "null", "array", "object"]
       }
     },
     "cost": {
@@ -211,19 +292,162 @@
         "tool_calls": { "type": "integer", "minimum": 0 },
         "tool_call_errors": { "type": "integer", "minimum": 0 },
         "exit_code": { "type": "integer" },
-        "outcome": { "type": "string" }
+        "outcome": { "type": "string" },
+        "deployment_class": {
+          "type": "string",
+          "enum": ["managed_frontier", "managed_non_frontier", "local", "self_hosted"]
+        },
+        "quantization": {
+          "type": "string"
+        },
+        "local_runtime_name": {
+          "type": "string"
+        },
+        "local_runtime_version": {
+          "type": "string"
+        },
+        "server_name": {
+          "type": "string"
+        },
+        "server_version": {
+          "type": "string"
+        },
+        "context_limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hardware_class": {
+          "type": "string"
+        },
+        "hardware_accelerator": {
+          "type": "string"
+        },
+        "hardware_accelerator_backend": {
+          "type": "string"
+        },
+        "hardware_memory_gb": {
+          "type": "number",
+          "minimum": 0
+        },
+        "hardware_os": {
+          "type": "string"
+        },
+        "hardware_arch": {
+          "type": "string"
+        },
+        "sampling_temperature": {
+          "type": "number"
+        },
+        "sampling_top_p": {
+          "type": "number"
+        },
+        "sampling_top_k": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sampling_min_p": {
+          "type": "number"
+        },
+        "sampling_reasoning": {
+          "type": "string"
+        },
+        "utilization_active_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "utilization_queue_depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "utilization_memory_pressure": {
+          "type": "number",
+          "minimum": 0
+        },
+        "utilization_tokens_per_second": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "environment": {
       "type": "object",
       "additionalProperties": {
-        "type": ["number", "integer", "string", "boolean", "null"]
+        "type": ["number", "integer", "string", "boolean", "null", "array", "object"]
       }
     },
     "provenance": {
       "type": "object",
       "additionalProperties": {
-        "type": ["number", "integer", "string", "boolean", "null"]
+        "type": ["number", "integer", "string", "boolean", "null", "array", "object"]
+      },
+      "properties": {
+        "fizeau_version": {
+          "type": "string"
+        },
+        "fizeau_git_commit": {
+          "type": "string"
+        },
+        "harness_wrapper_name": {
+          "type": "string"
+        },
+        "harness_wrapper_version": {
+          "type": "string"
+        },
+        "harness_cli_version": {
+          "type": "string"
+        },
+        "harness_runtime_version": {
+          "type": "string"
+        },
+        "provider_endpoint": {
+          "type": "string"
+        },
+        "provider_surface": {
+          "type": "string"
+        },
+        "provider_version": {
+          "type": "string"
+        },
+        "provider_capture_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "model_snapshot": {
+          "type": "string"
+        },
+        "model_version": {
+          "type": "string"
+        },
+        "model_artifact_path": {
+          "type": "string"
+        },
+        "model_artifact_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "session_log_path": {
+          "type": "string"
+        },
+        "session_log_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "trajectory_path": {
+          "type": "string"
+        },
+        "trajectory_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "benchmark_subset": {
+          "type": "string"
+        },
+        "benchmark_subset_version": {
+          "type": "string"
+        },
+        "benchmark_runner_version": {
+          "type": "string"
+        }
       }
     }
   }
