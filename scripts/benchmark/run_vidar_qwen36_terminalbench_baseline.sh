@@ -19,6 +19,22 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT}"
 
+HOST_MACHINE="$(uname -m)"
+case "${HOST_MACHINE}" in
+  x86_64|amd64)
+    HOST_GOARCH="amd64"
+    HOST_NODE_ARCH="x64"
+    ;;
+  aarch64|arm64)
+    HOST_GOARCH="arm64"
+    HOST_NODE_ARCH="arm64"
+    ;;
+  *)
+    HOST_GOARCH="${HOST_MACHINE}"
+    HOST_NODE_ARCH="${HOST_MACHINE}"
+    ;;
+esac
+
 TIER="${TIER:-full}"
 REPS="${REPS:-3}"
 JOBS="${JOBS:-1}"
@@ -28,7 +44,7 @@ HARNESSES="${HARNESSES:-pi,opencode,fiz}"
 OUT="${OUT:-benchmark-results/matrix-${BASELINE}-${TIER}-$(date -u +%Y%m%dT%H%M%SZ)}"
 BENCH="${BENCH:-go run ./cmd/bench}"
 TASKS_DIR="${TASKS_DIR:-scripts/benchmark/external/terminal-bench-2}"
-FIZ_ARTIFACT="${FIZ_ARTIFACT:-benchmark-results/bin/fiz-linux-amd64}"
+FIZ_ARTIFACT="${FIZ_ARTIFACT:-benchmark-results/bin/fiz-linux-${HOST_GOARCH}}"
 
 case "${TIER}" in
   canary)
@@ -93,17 +109,13 @@ require_file() {
 }
 
 host_arch() {
-  case "$(uname -m)" in
-    x86_64|amd64) echo "x64" ;;
-    aarch64|arm64) echo "arm64" ;;
-    *) uname -m ;;
-  esac
+  echo "${HOST_NODE_ARCH}"
 }
 
 container_node_arch() {
-  # Harbor benchmark task images and existing pinned artifacts are linux/x64 by
-  # default. Override when running native arm64 task containers.
-  echo "${HARBOR_NODE_ARCH:-x64}"
+  # Harbor Docker runs on the host architecture by default. Override only when
+  # forcing a non-native container platform.
+  echo "${HARBOR_NODE_ARCH:-${HOST_NODE_ARCH}}"
 }
 
 ensure_node_tarball() {
@@ -206,13 +218,14 @@ prepare_home_tarball() {
 }
 
 prepare_claude_artifact() {
+  local default_artifact="benchmark-results/bin/claude-linux-${HOST_GOARCH}/claude"
   if [[ -n "${HARBOR_CLAUDE_ARTIFACT:-}" ]]; then
     require_file "${HARBOR_CLAUDE_ARTIFACT}" "set HARBOR_CLAUDE_ARTIFACT to an existing Claude Code binary"
     prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
     return
   fi
-  if [[ -f "benchmark-results/bin/claude-linux-amd64/claude" ]]; then
-    export HARBOR_CLAUDE_ARTIFACT="${ROOT}/benchmark-results/bin/claude-linux-amd64/claude"
+  if [[ -f "${default_artifact}" ]]; then
+    export HARBOR_CLAUDE_ARTIFACT="${ROOT}/${default_artifact}"
     prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
     return
   fi
@@ -232,13 +245,14 @@ prepare_claude_artifact() {
 }
 
 prepare_codex_artifact() {
+  local default_artifact="benchmark-results/bin/codex-linux-${HOST_GOARCH}/codex"
   if [[ -n "${HARBOR_CODEX_ARTIFACT:-}" ]]; then
     require_file "${HARBOR_CODEX_ARTIFACT}" "set HARBOR_CODEX_ARTIFACT to an existing Codex binary"
     prepare_home_tarball "HARBOR_CODEX_HOME_TARBALL" ".codex" "codex-home.tgz"
     return
   fi
-  if [[ -f "benchmark-results/bin/codex-linux-amd64/codex" ]]; then
-    export HARBOR_CODEX_ARTIFACT="${ROOT}/benchmark-results/bin/codex-linux-amd64/codex"
+  if [[ -f "${default_artifact}" ]]; then
+    export HARBOR_CODEX_ARTIFACT="${ROOT}/${default_artifact}"
     prepare_home_tarball "HARBOR_CODEX_HOME_TARBALL" ".codex" "codex-home.tgz"
     return
   fi
@@ -288,7 +302,7 @@ fi
 export OMLX_API_KEY="${OMLX_API_KEY:-local}"
 
 mkdir -p "$(dirname "${FIZ_ARTIFACT}")"
-GOOS="${GOOS:-linux}" GOARCH="${GOARCH:-amd64}" go build -o "${FIZ_ARTIFACT}" ./cmd/fiz
+GOOS="${GOOS:-linux}" GOARCH="${GOARCH:-${HOST_GOARCH}}" go build -o "${FIZ_ARTIFACT}" ./cmd/fiz
 export HARBOR_AGENT_ARTIFACT="${HARBOR_AGENT_ARTIFACT:-${ROOT}/${FIZ_ARTIFACT}}"
 
 run_matrix() {

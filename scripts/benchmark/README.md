@@ -332,14 +332,18 @@ Prepare linux artifacts before running inside Harbor containers:
 scripts/benchmark/run_medium_model_terminalbench_comparison.sh canary
 ```
 
-The runner prepares native Claude/Codex harness artifacts automatically. If a
-container-compatible binary already exists at
-`benchmark-results/bin/claude-linux-amd64/claude` or
-`benchmark-results/bin/codex-linux-amd64/codex`, it uses that. Otherwise it
-uses the locally installed `claude` / `codex` versions to `npm pack` the matching
-CLI packages, uploads the pinned Node.js tarball, and installs the CLIs inside
-the Harbor container. If API key environment variables are not present, it also
-packages local `~/.claude` and `~/.codex` state into gitignored tarballs under
+The runner prepares native Claude/Codex harness artifacts automatically. Harbor
+Docker jobs are assumed to run on the host architecture by default, so the
+runner builds `fiz` for the host `GOARCH`, looks for native CLI artifacts under
+`benchmark-results/bin/claude-linux-<goarch>/claude` and
+`benchmark-results/bin/codex-linux-<goarch>/codex`, and otherwise uses the
+locally installed `claude` / `codex` binaries when they match the container
+architecture. If a non-native container platform is forced, set
+`HARBOR_NODE_ARCH=x64` or `HARBOR_NODE_ARCH=arm64` and the runner will instead
+`npm pack` the matching CLI packages, upload the corresponding Node.js tarball,
+and install the CLIs inside the Harbor container. If API key environment
+variables are not present, it also packages local `~/.claude` and `~/.codex`
+auth/config state into gitignored tarballs under
 `benchmark-results/bin/native-homes/` so the container can use the same logged-in
 CLI accounts. Set `HARBOR_SKIP_NATIVE_HOME=1` to disable that behavior.
 
