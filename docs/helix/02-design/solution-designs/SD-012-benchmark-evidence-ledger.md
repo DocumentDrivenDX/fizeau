@@ -29,11 +29,15 @@ strength over time.
 
 ## Problem
 
-TerminalBench, MHI-style evals, SWE-bench, HumanEval, MMLU, TAU-bench, and
-project-local beadbench results all measure different things. Some are close to
-model-only capability. Others are explicitly model × harness behavior. Current
-Fizeau catalog power stores a single integer with provenance, but the raw
-evidence that led to the integer is not represented in a common shape.
+TerminalBench, MHI-style evals, SkillsBench, SWE-bench, HumanEval, MMLU,
+TAU-bench, and project-local beadbench results all measure different things.
+The concrete MHI source captured for this design is Rapid-MLX's Model-Harness
+Index resource in `docs/resources/rapid-mlx-mhi-2026-05-06.md`; SkillsBench,
+SWE-bench, and HumanEval are captured in sibling files under `docs/resources/`.
+Some benchmarks are close to model-only capability. Others are explicitly model
+× harness behavior. Current Fizeau catalog power stores a single integer with
+provenance, but the raw evidence that led to the integer is not represented in a
+common shape.
 
 Without a raw evidence layer:
 
@@ -129,7 +133,20 @@ Near-term importers should cover:
 - Harbor job `result.json` and verifier reward files.
 - beadbench `report.json`.
 - public TerminalBench leaderboard reward cache.
+- SkillsBench public rows or local SkillsBench reports.
+- SWE-bench family leaderboard rows or task-level reports.
+- HumanEval pass@k reports as low-cost coding/model-power components.
 - MHI-style local eval reports when available.
+
+The first MHI-style source to support is Rapid-MLX commit
+`903487e82ad1998f0c20b721a7df66ec815ea673`, documented in
+`docs/resources/rapid-mlx-mhi-2026-05-06.md`.
+
+Benchmark-specific resource notes:
+
+- `docs/resources/skillsbench-2026-05-06.md`
+- `docs/resources/swebench-2026-05-06.md`
+- `docs/resources/humaneval-2026-05-06.md`
 
 Each importer should preserve source artifact paths and source hashes so a
 ledger record can be traced back to the original run.
