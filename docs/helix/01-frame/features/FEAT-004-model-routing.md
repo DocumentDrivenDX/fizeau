@@ -26,8 +26,9 @@ auto-routable model from the discovered inventory.
 This feature therefore has three related but separate responsibilities:
 
 - **Provider sources and endpoints** — concrete transport/auth definitions for
-  provider types such as `lmstudio`, `omlx`, `openrouter`, `anthropic`, and
-  subprocess harnesses such as `codex` or `claude`
+  provider types such as `lmstudio`, `omlx`, `vllm`, `llama-server`,
+  `openrouter`, `anthropic`, and subprocess harnesses such as `codex` or
+  `claude`
 - **Shared model catalog** — agent-owned model metadata, numeric power,
   aliases, surface mappings, deprecations, costs, and benchmark provenance
 - **Power-based routing** — generated candidate inventory plus deterministic
@@ -64,6 +65,13 @@ prompt behavior and must not be reused for model policy or routing.
   Benchmarks alone do not make different deployment classes equivalent.
 - **Route candidate** — one discovered `(harness, provider source, endpoint,
   model)` option after joining live inventory with catalog metadata
+- **Sticky route key** — a request sequence identity, normally the validated
+  `CorrelationID` or a future worker/session sequence ID, used to keep a
+  long-running worker on the same concrete provider endpoint across related
+  requests
+- **Endpoint utilization** — a normalized operational signal for one provider
+  endpoint, including active requests, queued/deferred requests, concurrency
+  when known, cache pressure when known, freshness, and source
 - **Prompt preset** — system prompt selection (`preset`, `--preset`); unrelated
   to model policy and routing
 
@@ -88,10 +96,11 @@ prompt behavior and must not be reused for model policy or routing.
 #### Phase 1 (P0): Provider Sources and Endpoints
 
 1. `Config` specifies provider sources with concrete `type` values (`openai`,
-   `openrouter`, `lmstudio`, `omlx`, `ollama`, `anthropic`, and harness-backed
-   sources where applicable) plus endpoint transport/auth data such as base
-   URL, API key, headers, and optional endpoint pools. `type: openai-compat` is
-   rejected at config load; use the actual model source instead.
+   `openrouter`, `lmstudio`, `omlx`, `vllm`, `llama-server`, `ollama`,
+   `anthropic`, and harness-backed sources where applicable) plus endpoint
+   transport/auth data such as base URL, API key, headers, and optional
+   endpoint pools. `type: openai-compat` is rejected at config load; use the
+   actual model source instead.
 2. Endpoint labels may exist for diagnostics, host display, and explicit
    endpoint selection, but stable user-authored endpoint labels are not the
    primary routing API.
@@ -228,11 +237,32 @@ prompt behavior and must not be reused for model policy or routing.
     tools, context, and health constraints, they are preferred over paid cloud
     candidates. This local/free preference never overrides hard pins,
     `MinPower`/`MaxPower`, or capability requirements.
+30a. For multiple eligible local/free endpoints that serve the same resolved
+     model at equivalent quality, routing assigns each new sticky route key to
+     the least-loaded eligible endpoint. Load combines service-owned in-flight
+     route leases with fresh provider-owned utilization probes when available.
+     Requests with the same sticky route key reuse the assigned endpoint to keep
+     worker-local conversational and cache behavior stable.
+30b. A sticky assignment may be broken only when the pinned endpoint is no
+     longer configured, no longer advertises the resolved model, is in health
+     cooldown, or crosses a hard saturation threshold. A merely better score on
+     another endpoint is not enough to move an existing sticky key.
+30c. On a single machine, in-process route leases provide the authoritative
+     sticky assignment and fallback load count. On multiple machines, correct
+     cross-process stickiness and fair distribution require a shared lease
+     backend; server metrics are advisory and racy, not a replacement for
+     shared leases.
+30d. `vllm` and `llama-server` utilization is provider-owned and type-derived.
+     `vllm` uses root `/metrics`. `llama-server` uses root `/metrics` when
+     started with `--metrics` and root `/slots` as fallback. A configured
+     OpenAI-compatible `base_url` ending in `/v1` is converted to the server root
+     for these probes.
 31. `agent.Run()` still receives one concrete `Provider` per attempt. `Execute`
     selects and dispatches the top candidate once.
 32. The selected concrete harness, provider source, endpoint, model, requested
-    model input, resolved model reference, power bounds, and score components
-    are recorded in the result/session artifacts.
+    model input, resolved model reference, power bounds, sticky assignment
+    status, endpoint utilization source/freshness, and score components are
+    recorded in the result/session artifacts when known.
 33. Existing `backends`, `default_backend`, `--backend`, and user-authored
     route-table surfaces are deprecated compatibility inputs during migration
     and must emit warnings if still parsed.
@@ -303,6 +333,12 @@ prompt behavior and must not be reused for model policy or routing.
   return an attempted-route error containing harness, provider source,
   endpoint, model, and failure class. The agent does not try another candidate
   in that request.
+- **Utilization probe unavailable or stale**: keep the endpoint eligible if
+  normal model discovery and health checks pass. Use service-owned route leases
+  as the load signal and mark utilization source/freshness in route evidence.
+- **Sticky endpoint unavailable**: invalidate that sticky assignment and resolve
+  a new endpoint from the currently eligible candidate set. Record the invalidation
+  reason.
 - **Semantic task failure**: caller-owned. DDx or another caller may retry with
   a stronger `MinPower`, capped `MaxPower`, or different pins, but the agent
   does not infer semantic failure or escalate automatically.
@@ -340,6 +376,10 @@ prompt behavior and must not be reused for model policy or routing.
 | AC-FEAT-004-13 | Profile and target routing use the ordered catalog candidate list against live provider discovery; if the primary candidate is absent but a later candidate is advertised, the later candidate remains eligible and is scored with catalog metadata. | `go test ./internal/routing ./... -run 'CatalogCandidates|LiveDiscovery|Routing'` |
 | AC-FEAT-004-14 | Provider-native model IDs with case, vendor-prefix, quantization, accelerator, or packaging suffix differences, such as `Qwen3.6-27B-MLX-8bit`, fuzzy-match to the intended catalog model for power, context, tool support, and auto-routable metadata without treating unrelated short names as equivalent. | `go test ./internal/modelcatalog ./internal/routing ./... -run 'Fuzzy|ProviderNative|ModelEligibility'` |
 | AC-FEAT-004-15 | If all configured provider-backed endpoints are absent from live discovery, the native embedded-provider harness does not produce an empty-provider route candidate and cannot win automatic routing as `provider=""`. | `go test ./... -run 'RouteStatus|Routing|Provider'` |
+| AC-FEAT-004-16 | For equivalent local endpoints serving the same resolved model, the same sticky route key repeatedly resolves to the same provider endpoint until its lease expires or the endpoint becomes unavailable. | `go test ./internal/routing ./... -run 'Sticky|Lease|Routing'` |
+| AC-FEAT-004-17 | Different sticky route keys are distributed across equivalent local endpoints by normalized load; a saturated endpoint is avoided for new keys, while an existing key stays pinned unless the endpoint is unavailable or hard-saturated. | `go test ./internal/routing ./... -run 'Utilization|Sticky|RouteStatus'` |
+| AC-FEAT-004-18 | vLLM and llama-server utilization probes feed normalized endpoint utilization into routing; stale or failed probes fall back to service-owned in-flight lease counts without making otherwise healthy endpoints unavailable. | `go test ./internal/provider/... ./internal/routing/... -run 'Utilization|VLLM|Llama|Routing'` |
+| AC-FEAT-004-19 | `route-status --json` and session artifacts expose selected endpoint, sticky assignment state, utilization source/freshness, active/queued counts when known, and score components used for local endpoint selection. | `go test ./cmd/fiz ./internal/session ./... -run 'RouteStatus|RoutingDecision|Session'` |
 
 ## Dependencies
 

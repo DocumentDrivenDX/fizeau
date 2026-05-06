@@ -585,7 +585,7 @@ type RouteRequest struct {
     RequiresTools         bool // when true, filter providers whose SupportsTools() is false
     CachePolicy           string // "" / "default" / "off"; mirrors ServiceExecuteRequest.CachePolicy
     Role                  string // observational; mirrors ServiceExecuteRequest.Role for ResolveRoute parity
-    CorrelationID         string // observational; mirrors ServiceExecuteRequest.CorrelationID for ResolveRoute parity
+    CorrelationID         string // sticky route key when validated; also mirrors ServiceExecuteRequest.CorrelationID
 }
 
 type RouteDecision struct {
@@ -595,7 +595,29 @@ type RouteDecision struct {
     Model      string
     Reason     string  // human-readable explanation
     Power      int     // catalog-projected power of the selected Model; 0 = unknown / exact-pin-only
+    Sticky     *StickyRouteState
+    Utilization *EndpointUtilization
     Candidates []Candidate  // full ranking, including rejected candidates
+}
+
+type StickyRouteState struct {
+    Key        string
+    Status     string // "new" | "reused" | "expired" | "invalidated" | "none"
+    Reason     string // machine-readable explanation when not reused
+    ExpiresAt  time.Time
+}
+
+type EndpointUtilization struct {
+    Provider       string
+    Endpoint       string
+    Model          string
+    ActiveRequests int
+    QueuedRequests int
+    MaxConcurrency int
+    CacheUsageRatio float64
+    Source         string // "vllm_metrics" | "llama_metrics" | "llama_slots" | "fizeau_leases" | "unknown"
+    Fresh          bool
+    ObservedAt     time.Time
 }
 
 type Candidate struct {
@@ -611,6 +633,8 @@ type Candidate struct {
     FilterReason    string // machine-readable rejection reason when Eligible=false
     EstimatedCost   CostEstimate
     PerfSignal      PerfSignal
+    Sticky          *StickyRouteState
+    Utilization     *EndpointUtilization
 }
 
 type RouteAttempt struct {
@@ -740,7 +764,7 @@ type HarnessCapabilityMatrix struct {
 
 type ProviderInfo struct {
     Name          string
-    Type          string  // "openai" | "openrouter" | "lmstudio" | "omlx" | "ollama" | "anthropic" | "virtual"
+    Type          string  // "openai" | "openrouter" | "lmstudio" | "omlx" | "vllm" | "llama-server" | "ollama" | "anthropic" | "virtual"
     BaseURL       string
     Status        string  // "connected" | "unreachable" | "error: <msg>"
     ModelCount    int
@@ -751,6 +775,7 @@ type ProviderInfo struct {
     Auth          AccountStatus
     EndpointStatus []EndpointStatus
     Quota         *QuotaState
+    Utilization   *EndpointUtilization
     UsageWindows  []UsageWindow
     LastError     *StatusError
 }
@@ -758,7 +783,7 @@ type ProviderInfo struct {
 type ModelInfo struct {
     ID            string
     Provider      string  // provider source or endpoint selector currently used by the service
-    ProviderType  string  // concrete provider source type, e.g. "openrouter", "lmstudio", or "omlx"
+    ProviderType  string  // concrete provider source type, e.g. "openrouter", "lmstudio", "vllm", "llama-server", or "omlx"
     Harness       string  // for subprocess-only models, the owning harness
     EndpointName  string  // configured endpoint name, "default", or host:port fallback
     EndpointBaseURL string // endpoint base URL used for discovery; empty when not applicable
@@ -856,6 +881,8 @@ type RouteCandidateStatus struct {
     Cooldown          *CooldownState
     RecentLatencyMS   float64  // observation-derived
     RecentSuccessRate float64  // 0-1
+    Utilization       *EndpointUtilization
+    Sticky            *StickyRouteState
 }
 
 type UsageReportOptions struct {

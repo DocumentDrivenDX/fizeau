@@ -120,9 +120,10 @@ Prepaid quota changes the marginal-cost term. If a prepaid frontier harness has
 healthy quota with a near reset, the effective marginal cost can be close to
 zero and the highest-power model may rank first. If the same quota is
 exhausted, stale, or far from reset, the quota bonus disappears and
-cost/availability penalties apply. Local LM Studio, oMLX, Ollama, Lucebox, and
-vLLM providers are treated as free marginal cost but still compete on
-capability, tool support, context, latency, and availability.
+cost/availability penalties apply. Local LM Studio, oMLX, Ollama, Lucebox,
+vLLM, and llama-server providers are treated as free marginal cost but still
+compete on capability, tool support, context, latency, availability, and
+endpoint utilization when choosing among equivalent local endpoints.
 
 When no hard axes or power bounds are supplied, the service selects the best
 lowest-cost viable auto-routable model it can use from the discovered
@@ -144,6 +145,27 @@ advertised model IDs and uses the first candidate that matches. This preserves
 catalog tier policy while allowing local endpoints to serve provider-native
 variants such as `Qwen3.6-27B-MLX-8bit` when the primary candidate for the tier
 is hosted somewhere else.
+
+Local endpoint routing adds a sticky utilization step inside the eligible
+candidate set. If a request carries a sticky route key, normally the validated
+`CorrelationID` or a future worker/session sequence ID, and that key has a live
+lease for an endpoint that still serves the resolved model, the router reuses
+that endpoint. If no valid lease exists, the router assigns the key to the
+least-loaded equivalent endpoint. Existing sticky keys move only when the pinned
+endpoint disappears, stops serving the model, enters cooldown, or crosses a hard
+saturation threshold.
+
+Provider-owned utilization probes refine new sticky assignments but do not
+replace route leases. `vllm` probes root `/metrics` for
+`vllm:num_requests_running`, `vllm:num_requests_waiting`, and cache pressure.
+`llama-server` probes root `/metrics` when started with `--metrics`, and falls
+back to root `/slots` when metrics are unavailable. A configured
+OpenAI-compatible base URL ending in `/v1` is converted to server root for these
+probes. Probe failure makes utilization unknown/stale, not unavailable; routing
+falls back to service-owned in-flight lease counts. In multi-machine
+deployments, a shared lease backend is required for correct cross-process
+stickiness and fair distribution because server metrics alone are sampled and
+racy.
 
 ### Hard Constraints
 
@@ -192,13 +214,18 @@ Per request:
    packaging differences must map back to catalog metadata before this gate, so
    discovered IDs inherit the intended power, context, tool-support, and
    auto-routable status.
-5. **Score each survivor** using explicit score components: catalog quality,
+5. **Apply sticky local endpoint assignment**: reuse an existing live lease for
+   the sticky route key when present, otherwise use endpoint utilization and
+   service-owned lease counts to choose among equivalent local endpoints serving
+   the same resolved model.
+6. **Score each survivor** using explicit score components: catalog quality,
    observed latency, marginal cost, quota/reset state, local/free preference
-   when constraints are satisfied, availability, and staleness penalties.
-   Candidate trace output must expose these components.
-6. **Dispatch top-1 once**, return the full ranked candidate trace in the
+   when constraints are satisfied, endpoint utilization pressure, availability,
+   and staleness penalties. Candidate trace output must expose these
+   components.
+7. **Dispatch top-1 once**, return the full ranked candidate trace in the
    routing decision event so callers can see why candidates 2..N lost.
-7. **Report dispatch outcome** for the attempted candidate. Do not rotate to a
+8. **Report dispatch outcome** for the attempted candidate. Do not rotate to a
    second candidate. Record only availability/transport/protocol outcome facts
    for the attempted `(harness, provider source, endpoint, model)` tuple and
    return structured evidence to the caller.

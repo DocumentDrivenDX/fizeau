@@ -15,8 +15,8 @@ ddx:
 
 Fizeau supports multiple LLM backends through a common interface, with two
 built-in groups: a set of concrete OpenAI-compatible providers (LM Studio,
-omlx, Ollama, OpenAI, OpenRouter) and an Anthropic provider (Claude). This
-implements PRD P0 requirements 3-4.
+omlx, Ollama, vLLM, llama-server, OpenAI, OpenRouter) and an Anthropic provider
+(Claude). This implements PRD P0 requirements 3-4.
 
 Provider identity names the **actual model source** (e.g. `lmstudio`, `openrouter`,
 `ollama`, `anthropic`). The OpenAI-compatible HTTP/SSE protocol is a shared
@@ -60,8 +60,9 @@ concern and must not be used as the routing key or analytics label.
 
 #### Concrete OpenAI-Compatible Providers
 
-6. Each concrete provider (`lmstudio`, `omlx`, `ollama`, `openai`,
-   `openrouter`) wraps a shared `internal/sdk/openaicompat` layer that owns:
+6. Each concrete provider (`lmstudio`, `omlx`, `ollama`, `vllm`,
+   `llama-server`, `openai`, `openrouter`) wraps a shared
+   `internal/sdk/openaicompat` layer that owns:
    Chat Completions request shaping, tool schema serialization, streaming chunk
    parsing, tool-call delta accumulation, debug wire capture, request timeouts,
    and generic `/v1/models` discovery. The shared layer contains no
@@ -75,6 +76,11 @@ concern and must not be used as the routing key or analytics label.
    - `omlx`: endpoint list, `/v1/models/status` limit discovery, oMLX stream
      quirks.
    - `ollama`: local defaults, Ollama capability claims.
+   - `vllm`: local or self-hosted vLLM defaults, OpenAI-compatible serving
+     behavior, and `/metrics` utilization discovery.
+   - `llama-server`: llama.cpp `llama-server` defaults, OpenAI-compatible
+     serving behavior, `/metrics` utilization discovery when started with
+     `--metrics`, and `/slots` utilization fallback when slots are enabled.
    - `openai`: api.openai.com defaults, OpenAI API key, OpenAI model/list
      behavior.
    - `openrouter`: OpenRouter base URL, API key, headers, model limit
@@ -104,7 +110,7 @@ providers:
 ```
 
 10. Supported provider `type` values: `openai`, `openrouter`, `lmstudio`,
-    `omlx`, `ollama`, `anthropic`, `virtual`.
+    `omlx`, `vllm`, `llama-server`, `ollama`, `anthropic`, `virtual`.
     `type: openai-compat` is rejected at config load. URL inference maps
     well-known hosts/ports to concrete types at config load only.
 11. For cloud providers, `base_url` is a shorthand for a single endpoint when
@@ -145,6 +151,30 @@ type AttemptMetadata struct {
     - `openrouter`: `GET https://openrouter.ai/api/v1/models` →
       `context_length` and `top_provider.max_completion_tokens`
     - Other types: no probe; falls through to zero
+
+#### Provider Utilization Discovery
+
+15a. Local OpenAI-compatible providers may expose endpoint utilization. This is
+     provider-owned behavior determined by concrete provider `type`, not a
+     normal-case user config block. The configured `base_url` remains the
+     OpenAI-compatible API base (usually ending in `/v1`); utilization probes
+     derive the server root by stripping a trailing `/v1` path component before
+     querying root-scoped observability endpoints.
+15b. `vllm` probes `GET /metrics` on the server root and normalizes
+     `vllm:num_requests_running`, `vllm:num_requests_waiting`, and cache
+     pressure from `vllm:kv_cache_usage_perc` or older
+     `vllm:gpu_cache_usage_perc` into a provider-independent endpoint
+     utilization signal.
+15c. `llama-server` first probes `GET /metrics` on the server root when the
+     server was started with `--metrics`, normalizing
+     `llamacpp:requests_processing`, `llamacpp:requests_deferred`, and
+     `llamacpp:kv_cache_usage_ratio`. If metrics are unavailable, it probes
+     `GET /slots` and normalizes the number of slots with `is_processing=true`
+     plus the returned slot count. `/slots` is expected to be enabled unless the
+     operator starts `llama-server` with `--no-slots`.
+15d. Utilization probe failure does not make an endpoint unavailable by itself.
+     The provider returns stale or unknown utilization and routing falls back to
+     service-owned in-flight lease counts and normal availability health.
 
 #### Reasoning Configuration
 
@@ -220,16 +250,34 @@ type AttemptMetadata struct {
 25. Local providers with multiple endpoints may select a different endpoint
     per discovery call based on health state.
 
+#### Real-Server Provider Cassettes
+
+25a. Provider API compatibility for `vllm` and `llama-server` is validated with
+     golden HTTP cassettes recorded from real server processes, not hand-written
+     endpoint mocks. Tests use the established `go-vcr` library for HTTP
+     record/replay.
+25b. Replay mode is the default for ordinary `go test` runs and must fail when
+     a required cassette interaction is missing. Record mode is opt-in via an
+     environment flag and owns server lifecycle: it installs or pulls the
+     required server runtime, starts a trivial CPU model on free local ports,
+     waits for readiness, records `/v1/models`, observability endpoints,
+     minimal chat, and under-load utilization evidence, then stops the server.
+25c. The record harness redacts credentials before saving cassettes. Developer
+     overrides for already-running servers may exist, but the acceptance path
+     must not require a user to manually install or start vLLM or llama-server.
+
 #### Public Model Listing
 
 26. `FizeauService.ListModels` is the public interface for listing configured
-    provider models. It must list OpenRouter, LM Studio, and oMLX models by
-    querying each configured endpoint's OpenAI-compatible models endpoint
+    provider models. It must list OpenRouter, LM Studio, oMLX, vLLM, and
+    llama-server models by querying each configured endpoint's
+    OpenAI-compatible models endpoint
     (`<base_url>/models`, typically `/v1/models`).
 27. `ModelInfo` results for provider-backed models include the configured
-    provider name, concrete provider type (`openrouter`, `lmstudio`, or
-    `omlx`), endpoint name, endpoint base URL, model ID, availability, ranking,
-    context/cost/catalog metadata when known, and route/default markers.
+    provider name, concrete provider type (`openrouter`, `lmstudio`, `vllm`,
+    `llama-server`, or `omlx`), endpoint name, endpoint base URL, model ID,
+    availability, ranking, context/cost/catalog metadata when known, and
+    route/default markers.
 28. Endpoint-pool behavior is additive and deterministic: a reachable endpoint
     contributes its discovered models; an unreachable endpoint contributes no
     models and does not prevent other endpoints or providers from being listed.
@@ -245,9 +293,9 @@ type AttemptMetadata struct {
       stream with incremental `choices[0].delta` chunks
     - `SupportsStructuredOutput() bool` — honors `response_format: json_object`
       or equivalent JSON-mode / tool-use-required semantics
-30. Capability flags are type-keyed (`lmstudio` / `omlx` / `openrouter` /
-    `ollama` / `openai`). Unknown types return `false` conservatively so
-    routing rejects rather than dispatches-and-fails.
+30. Capability flags are type-keyed (`lmstudio` / `omlx` / `vllm` /
+    `llama-server` / `openrouter` / `ollama` / `openai`). Unknown types return
+    `false` conservatively so routing rejects rather than dispatches-and-fails.
 31. Protocol capability is distinct from routing capability (the benchmark-
     quality score used by smart-routing scoring). These axes do not interact.
 
@@ -296,14 +344,17 @@ type AttemptMetadata struct {
 
 ## Success Metrics
 
-- Same prompt completes successfully via LM Studio, omlx, Ollama, and
-  Anthropic providers
+- Same prompt completes successfully via LM Studio, omlx, vLLM, llama-server,
+  Ollama, and Anthropic providers
 - Token counts are accurately reported for all providers
 - Provider swap is a type/base-URL change — no code changes
 - When `model` is unset, auto-discovery selects a working model without
   operator intervention
 - `LookupModelLimits` returns non-zero values for LM Studio, omlx, and
   OpenRouter when their servers are reachable
+- vLLM and llama-server utilization probes return normalized active/queued/cache
+  signals when their observability endpoints are available, and stale/unknown
+  utilization when they are not
 
 ## Acceptance Criteria
 
@@ -320,6 +371,9 @@ type AttemptMetadata struct {
 | AC-FEAT-003-09 | Provider config rejects `type: openai-compat` and `flavor` at config load; concrete provider types are accepted; `base_url` is expanded to a single endpoint for cloud providers. | `go test ./provider/... ./...` |
 | AC-FEAT-003-10 | No code emits `openai-compat` as a provider name or telemetry label; `ProviderType` (e.g. `lmstudio`, `openrouter`) is used instead for cost attribution and routing keys. | `go test ./provider/... ./...` |
 | AC-FEAT-003-11 | `FizeauService.ListModels` lists models from OpenRouter, LM Studio, and oMLX through the public service API, includes provider type and endpoint identity in each `ModelInfo`, and continues listing healthy endpoints when another endpoint in the same pool fails. | `go test ./... -run TestListModels` |
+| AC-FEAT-003-12 | `type: llama-server` is accepted as a first-class OpenAI-compatible provider with default base URL `http://localhost:8080/v1`, endpoint-pool support, registry construction, public provider/model listing, and native provider dispatch through the same registry paths as other concrete providers. | `go test ./internal/provider/registry ./internal/config ./... -run 'Registry|ProviderType|llama'` |
+| AC-FEAT-003-13 | vLLM utilization is recorded from a real CPU vLLM server with `go-vcr`: record mode installs or pulls the runtime, starts a trivial CPU model, records `/v1/models`, `/metrics`, minimal chat, and under-load metrics; replay mode is default and parses running, waiting, and cache-pressure metrics from the cassette. | `go test ./internal/provider/vllm ./... -run 'VLLM.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 go test ./internal/provider/vllm -run 'Record'` |
+| AC-FEAT-003-14 | llama-server utilization is recorded from a real llama.cpp server with `go-vcr`: record mode installs or pulls `llama-server`, starts a trivial CPU GGUF model with `--metrics` and `/slots` enabled, records `/v1/models`, `/metrics`, `/slots`, minimal chat, and busy-slot evidence; replay mode is default and parses processing, deferred, cache-ratio, and slot occupancy signals from the cassette. | `go test ./internal/provider/llamaserver ./... -run 'Llama.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 go test ./internal/provider/llamaserver -run 'Record'` |
 
 ## Constraints and Assumptions
 

@@ -99,6 +99,16 @@ provider_sources:
         model: Qwen3.5-27B-4bit
         reasoning: off
 
+  - type: vllm
+    endpoints:
+      - label: bragi-vllm
+        base_url: http://bragi:8000/v1
+
+  - type: llama-server
+    endpoints:
+      - label: local-llama
+        base_url: http://localhost:8080/v1
+
   - type: openrouter
     endpoints:
       - label: openrouter
@@ -136,7 +146,7 @@ Source fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `type` | enum | Provider source type such as `lmstudio`, `omlx`, `ollama`, `openrouter`, `anthropic`, or harness-backed sources where applicable |
+| `type` | enum | Provider source type such as `lmstudio`, `omlx`, `vllm`, `llama-server`, `ollama`, `openrouter`, `anthropic`, or harness-backed sources where applicable |
 | `endpoints` | list | Concrete transport/auth locations for this source |
 
 Endpoint fields:
@@ -284,7 +294,15 @@ Per request, the service:
    4. Capability removes candidates with too-small context windows, missing
       tool support for `RequiresTools`, unsupported explicit reasoning, or
       stale/deprecated catalog status when not explicitly allowed.
-5. Scores survivors with explicit components:
+5. Applies sticky endpoint assignment for equivalent local/free endpoints:
+   1. If the request has a live sticky route key with a valid lease, reuse that
+      `(provider source, endpoint, model)` assignment before new load balancing.
+   2. If no valid lease exists, use normalized endpoint utilization plus
+      service-owned in-flight lease counts to prefer the least-loaded equivalent
+      local endpoint.
+   3. Existing sticky assignments move only when the endpoint disappears, stops
+      serving the model, enters cooldown, or crosses a hard saturation threshold.
+6. Scores survivors with explicit components:
 
    ```text
    score = power_weighted_capability
@@ -296,7 +314,7 @@ Per request, the service:
          - stale_signal_penalty
    ```
 
-6. Dispatches the top candidate exactly once. On provider/harness failure, the
+7. Dispatches the top candidate exactly once. On provider/harness failure, the
    service records the attempted route outcome and returns the full ranked
    trace. It does not try the next eligible candidate and it does not widen
    power bounds inside the same request.
@@ -448,6 +466,32 @@ additional endpoints: `GET /v1/models/status` returns per-model
 `max_context_window` and `max_tokens`. Set `type: omlx` to use dedicated limit
 discovery and avoid probe ambiguity.
 
+**D12A: vLLM and llama-server are first-class local provider sources with
+provider-owned utilization probes.** Set `type: vllm` for a vLLM OpenAI server
+and `type: llama-server` for llama.cpp `llama-server`. Their `base_url` remains
+the OpenAI-compatible API base, usually `/v1`; utilization probes derive the
+server root by removing a trailing `/v1`.
+
+- **vLLM** — `GET /metrics` on the server root; normalize
+  `vllm:num_requests_running`, `vllm:num_requests_waiting`, and cache pressure
+  from `vllm:kv_cache_usage_perc` or legacy `vllm:gpu_cache_usage_perc`.
+- **llama-server** — `GET /metrics` on the server root when the process is
+  started with `--metrics`; normalize `llamacpp:requests_processing`,
+  `llamacpp:requests_deferred`, and `llamacpp:kv_cache_usage_ratio`. If metrics
+  are unavailable, fall back to `GET /slots` and count `is_processing` slots.
+
+Provider utilization is not a route table and not a user-authored policy block.
+It is an operational input for choosing among otherwise equivalent eligible
+local endpoints.
+
+**D12B: Sticky route leases preserve worker affinity.** A long-running worker
+sequence with the same sticky route key reuses its assigned local endpoint.
+New sticky keys are assigned to the least-loaded equivalent endpoint. On a
+single machine, in-process leases are authoritative and provider utilization is
+an advisory refinement. Across multiple Fizeau processes, correct stickiness and
+fair balancing require a shared lease backend; raw server metrics alone are
+sampled and racy.
+
 **D13: Protocol capabilities are type-keyed and conservative.** The provider
 exposes `SupportsTools()`, `SupportsStream()`, and
 `SupportsStructuredOutput()` accessors that return the effective capability for
@@ -487,6 +531,15 @@ result per discovered model per endpoint. Source type and endpoint identity are
 explicit `ModelInfo` fields so consumers do not read provider config or infer
 type from URLs. Endpoint failures are local to that endpoint during listing;
 status diagnostics remain in `ListProviders` and `HealthCheck`.
+
+**D17: Provider observability cassettes come from real servers.** vLLM and
+llama-server provider compatibility tests use the established `go-vcr` library.
+Replay mode is the default test path. Record mode is opt-in and owns the full
+server lifecycle: install or pull the runtime, start a trivial CPU model on
+temporary ports, wait for readiness, record `/v1/models`, provider
+observability endpoints, minimal chat, and under-load utilization evidence, then
+stop the server. The acceptance path must not require a developer to manually
+start servers.
 
 ## CLI UX
 
@@ -563,3 +616,5 @@ package split:
   `reasoning_default`, and CLI `--reasoning`.
 - D16 (endpoint-aware provider model listing) is implemented through
   `FizeauService.ListModels` and the exported `ModelInfo` provider/endpoint fields.
+- D12A-D12B and D17 govern local endpoint utilization, sticky route leases, and
+  real-server VCR acceptance for vLLM and llama-server.
