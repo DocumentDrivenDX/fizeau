@@ -334,7 +334,7 @@ func TestParseCodexStream_CommandExecutionToolEvents(t *testing.T) {
 	if err := json.Unmarshal(events[0].Data, &call); err != nil {
 		t.Fatalf("unmarshal tool_call: %v", err)
 	}
-	if call.ID != "item_1" || call.Name != "command_execution" {
+	if call.ID != "item_1" || call.Name != "bash" {
 		t.Fatalf("tool_call: got %+v", call)
 	}
 	if !strings.Contains(string(call.Input), "/bin/sh -lc") {

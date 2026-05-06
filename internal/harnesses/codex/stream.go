@@ -150,7 +150,7 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 				}
 				if err := emit(harnesses.EventTypeToolCall, harnesses.ToolCallData{
 					ID:    codexToolID(ev.Item.ID),
-					Name:  "command_execution",
+					Name:  "bash",
 					Input: input,
 				}); err != nil {
 					return agg, err

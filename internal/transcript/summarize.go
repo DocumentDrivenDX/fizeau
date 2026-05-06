@@ -119,7 +119,7 @@ func SummarizeShellCommand(command string) ToolSummary {
 
 func NormalizeShellCommand(command string) string {
 	command = strings.TrimSpace(command)
-	for _, prefix := range []string{"/bin/zsh -lc ", "zsh -lc ", "/bin/bash -lc ", "bash -lc "} {
+	for _, prefix := range []string{"/bin/zsh -lc ", "zsh -lc ", "/bin/bash -lc ", "bash -lc ", "/bin/sh -lc ", "sh -lc "} {
 		if !strings.HasPrefix(command, prefix) {
 			continue
 		}

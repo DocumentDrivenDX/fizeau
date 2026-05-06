@@ -86,7 +86,7 @@ EOF
 		toolName string
 	}{
 		{"claude", "claude cassette final", true, "Bash"},
-		{"codex", "codex cassette final", true, "command_execution"},
+		{"codex", "codex cassette final", true, "bash"},
 		{"pi", "pi cassette final", true, ""},
 		{"opencode", "opencode cassette final", false, ""},
 		{"gemini", "gemini cassette final", true, ""},
@@ -219,7 +219,7 @@ func TestHarnessGoldenCassetteReplay_ServiceEvents(t *testing.T) {
 		toolName string
 		text     string
 	}{
-		{harness: "codex", toolName: "command_execution", text: "codex cassette final"},
+		{harness: "codex", toolName: "bash", text: "codex cassette final"},
 		{harness: "claude", toolName: "Bash", text: "claude cassette final"},
 	} {
 		t.Run(tc.harness, func(t *testing.T) {

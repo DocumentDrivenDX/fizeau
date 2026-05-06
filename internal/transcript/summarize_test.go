@@ -29,6 +29,13 @@ func TestSummarizeToolCallSamples(t *testing.T) {
 			wantTarget: "cli/internal/agent/session_log_format.go",
 		},
 		{
+			name:       "sh wrapped sed range",
+			tool:       "bash",
+			input:      `{"command":"/bin/sh -lc \"sed -n '240,320p' cli/internal/agent/session_log_format.go\""}`,
+			wantAction: "inspect lines 240,320 in cli/internal/agent/session_log_format.go",
+			wantTarget: "cli/internal/agent/session_log_format.go",
+		},
+		{
 			name:       "search",
 			tool:       "bash",
 			input:      `{"command":"rg -n \"FormatSessionLogLines\" cli/internal/agent/session_log_format_test.go"}`,
