@@ -238,6 +238,58 @@ tasks at the pinned dataset commit. It is intentionally separate from the
 historical `termbench-subset.json`, which still contains five task IDs that are
 not present in the pinned TB-2 tree.
 
+### Medium-model reference comparison
+
+Use the dedicated entrypoint for the medium-cost native-vs-fiz comparison:
+
+```bash
+OPENROUTER_API_KEY=sk-or-... \
+  scripts/benchmark/run_medium_model_terminalbench_comparison.sh
+```
+
+By default this runs the 15-task `wide` subset at `REPS=1`, `JOBS=1`, and
+writes one combined matrix under
+`benchmark-results/matrix-medium-model-wide-<UTC>/`. To do only the 3-task
+preflight:
+
+```bash
+OPENROUTER_API_KEY=sk-or-... \
+  scripts/benchmark/run_medium_model_terminalbench_comparison.sh canary
+```
+
+Cells included:
+
+- Claude Code native: `sonnet-4.6`
+- Codex native: `gpt-5.4-mini`
+- fiz via OpenRouter: `anthropic/claude-sonnet-4.6`
+- fiz via OpenRouter: `openai/gpt-5.4-mini`
+
+### Bootstrap Subset Selection
+
+`TIER=wide` should not rely on a hand-maintained sense of task difficulty. Use
+the selector below to bootstrap a 15-task subset from public
+Terminal-Bench-2 leaderboard trial rewards:
+
+```bash
+scripts/benchmark/select_terminalbench_subset.py
+```
+
+The selector reads reward files from
+`harborframework/terminal-bench-2-leaderboard` on Hugging Face, groups
+submissions into broad `frontier`, `medium_frontier`, and `non_frontier`
+families by model name, and emits:
+
+- tasks almost everyone passes
+- tasks almost nobody passes
+- tasks mostly passed by frontier submissions
+- tasks mostly passed by medium-frontier submissions
+- tasks consistently passed by non-frontier submissions
+- probes where the monotonic difficulty assumption appears false
+
+The generated manifest is written to
+`scripts/beadbench/external/termbench-subset-external-bootstrap.json`. Review
+the monotonicity report before replacing the committed `wide` subset.
+
 ### Claude and Codex reference baselines
 
 Set `BASELINE=frontier` to run native Claude Code and Codex reference cells:
