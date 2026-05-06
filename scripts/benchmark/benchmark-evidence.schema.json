@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DocumentDrivenDX/fizeau/scripts/benchmark/benchmark-evidence.schema.json",
+  "title": "Fizeau Benchmark Evidence Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "captured_at",
+    "source",
+    "benchmark",
+    "subject",
+    "scope",
+    "score"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "benchmark-evidence/v1"
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["fizeau_runner", "external_leaderboard", "imported_report"]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string"
+        },
+        "artifact_path": {
+          "type": "string"
+        },
+        "artifact_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "examples": ["terminal-bench", "swe-bench", "humaneval", "mmlu", "tau-bench", "beadbench", "mhi"]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataset_commit": {
+          "type": "string"
+        },
+        "scorer": {
+          "type": "string"
+        },
+        "higher_is_better": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_raw", "harness", "provider"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Canonical Fizeau catalog model id when known."
+        },
+        "model_raw": {
+          "type": "string",
+          "minLength": 1
+        },
+        "harness": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string"
+        },
+        "deployment_class": {
+          "type": "string"
+        },
+        "reasoning": {
+          "type": "string"
+        },
+        "sampling": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "subset": {
+          "type": "string"
+        },
+        "split": {
+          "type": "string"
+        },
+        "rep": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_tasks": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "value"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "raw_value": {
+          "type": ["number", "string"]
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "confidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "method": { "type": "string" },
+            "lower": { "type": "number" },
+            "upper": { "type": "number" }
+          }
+        }
+      }
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["number", "integer", "string", "boolean", "null"]
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "usd": { "type": "number", "minimum": 0 },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cached_input_tokens": { "type": "integer", "minimum": 0 },
+        "pricing_source": { "type": "string" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "wall_seconds": { "type": "number", "minimum": 0 },
+        "turns": { "type": "integer", "minimum": 0 },
+        "tool_calls": { "type": "integer", "minimum": 0 },
+        "tool_call_errors": { "type": "integer", "minimum": 0 },
+        "exit_code": { "type": "integer" },
+        "outcome": { "type": "string" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["number", "integer", "string", "boolean", "null"]
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["number", "integer", "string", "boolean", "null"]
+      }
+    }
+  }
+}

@@ -299,6 +299,14 @@ not yet in the catalog are assigned bootstrap powers in
 overrides use a `submission:` prefix for rows that do not expose a clean
 `Harness__Model` split or represent a multi-model stack.
 
+### Benchmark Evidence
+
+Benchmark runner outputs are benchmark-specific, but long-term model power
+should be derived from normalized raw evidence keyed by model, harness,
+provider, and benchmark. New importers should project source reports into the
+schema at `scripts/benchmark/benchmark-evidence.schema.json`; see
+`docs/helix/02-design/solution-designs/SD-012-benchmark-evidence-ledger.md`.
+
 ### Claude and Codex reference baselines
 
 Set `BASELINE=frontier` to run native Claude Code and Codex reference cells:
