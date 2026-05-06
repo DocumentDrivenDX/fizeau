@@ -72,6 +72,9 @@
         "dataset_commit": {
           "type": "string"
         },
+        "dataset": {
+          "type": "string"
+        },
         "subset_id": {
           "type": "string"
         },
@@ -202,6 +205,9 @@
           }
         }
       }
+    },
+    "final_status": {
+      "type": "string"
     },
     "invalid_class": {
       "type": "string"

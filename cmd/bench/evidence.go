@@ -10,7 +10,7 @@ import (
 
 func cmdEvidence(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: %s evidence <subcommand>\n\nSubcommands:\n  validate   Validate evidence records in a JSON/JSONL file\n  append     Append validated evidence records to a JSONL ledger\n", benchCommandName())
+		fmt.Fprintf(os.Stderr, "Usage: %s evidence <subcommand>\n\nSubcommands:\n  validate            Validate evidence records in a JSON/JSONL file\n  append              Append validated evidence records to a JSONL ledger\n  import-terminalbench Import a TerminalBench matrix directory into JSONL evidence\n", benchCommandName())
 		return 2
 	}
 
@@ -19,8 +19,10 @@ func cmdEvidence(args []string) int {
 		return cmdEvidenceValidate(args[1:])
 	case "append":
 		return cmdEvidenceAppend(args[1:])
+	case "import-terminalbench":
+		return cmdEvidenceImportTerminalBench(args[1:])
 	case "help", "-h", "--help":
-		fmt.Fprintf(os.Stderr, "Usage: %s evidence validate <file>\n       %s evidence append --in <records.jsonl> --ledger <ledger.jsonl>\n", benchCommandName(), benchCommandName())
+		fmt.Fprintf(os.Stderr, "Usage: %s evidence validate <file>\n       %s evidence append --in <records.jsonl> --ledger <ledger.jsonl>\n       %s evidence import-terminalbench --matrix <dir> --out <records.jsonl>\n", benchCommandName(), benchCommandName(), benchCommandName())
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "%s evidence: unknown subcommand %q\n", benchCommandName(), args[0])
