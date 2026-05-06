@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -46,5 +47,26 @@ func TestLoadTermbenchSubset_Canary(t *testing.T) {
 	}
 	if subset.Dataset != "terminal-bench@2.0" {
 		t.Errorf("canary dataset = %q, want terminal-bench@2.0", subset.Dataset)
+	}
+}
+
+func TestLoadTermbenchSubset_LocalWideAllTasksExist(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	path := filepath.Join(repoRoot, "scripts", "beadbench", "external", "termbench-subset-local-wide.json")
+	subset, err := loadTermbenchSubset(path)
+	if err != nil {
+		t.Fatalf("load local-wide subset: %v", err)
+	}
+	if got, want := len(subset.Tasks), 15; got != want {
+		t.Fatalf("local-wide task count = %d, want %d", got, want)
+	}
+	tasksDir := filepath.Join(repoRoot, "scripts", "benchmark", "external", "terminal-bench-2")
+	for _, task := range subset.Tasks {
+		if _, err := os.Stat(filepath.Join(tasksDir, task.ID)); err != nil {
+			t.Fatalf("local-wide task %q must exist under pinned TB-2 tree: %v", task.ID, err)
+		}
+		if task.Category == "" || task.Difficulty == "" || task.Rationale == "" {
+			t.Fatalf("local-wide task %q missing category/difficulty/rationale", task.ID)
+		}
 	}
 }

@@ -196,6 +196,19 @@ func TestFizeauProviderEnvMapsOpenRouterCompatProfile(t *testing.T) {
 	}
 }
 
+func TestHarborAgentArgsIncludesReferenceHarnessAdapters(t *testing.T) {
+	cases := map[string]string{
+		"claude": "scripts.benchmark.harbor_adapters.claude:ClaudeAgent",
+		"codex":  "scripts.benchmark.harbor_adapters.codex:CodexAgent",
+	}
+	for harness, want := range cases {
+		got := harborAgentArgs(harness)
+		if len(got) != 2 || got[0] != "--agent-import-path" || got[1] != want {
+			t.Fatalf("harborAgentArgs(%q) = %#v, want import path %q", harness, got, want)
+		}
+	}
+}
+
 func benchRepoRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()

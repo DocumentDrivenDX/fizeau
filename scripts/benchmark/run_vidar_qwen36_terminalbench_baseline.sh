@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compare pi, opencode, and fiz on Vidar oMLX Qwen3.6-27B over TerminalBench.
+# Compare harnesses over TerminalBench.
 #
-# Defaults run the evidence-grade 89-task TB-2 subset:
+# Defaults run the evidence-grade Vidar/oMLX Qwen3.6 local-model baseline:
 #   scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
 #
 # Faster tiers:
 #   TIER=canary scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
-#   TIER=core   scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+#   TIER=wide   scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+#
+# Frontier reference cells, one profile per native harness:
+#   BASELINE=frontier TIER=canary scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
 #
 # Useful overrides:
 #   REPS=1 FORCE_RERUN=1 OUT=benchmark-results/matrix-my-run ...
@@ -19,9 +22,10 @@ cd "${ROOT}"
 TIER="${TIER:-full}"
 REPS="${REPS:-3}"
 JOBS="${JOBS:-1}"
+BASELINE="${BASELINE:-local}"
 PROFILE="${PROFILE:-vidar-qwen3-6-27b-openai-compat}"
 HARNESSES="${HARNESSES:-pi,opencode,fiz}"
-OUT="${OUT:-benchmark-results/matrix-vidar-qwen36-${TIER}-$(date -u +%Y%m%dT%H%M%SZ)}"
+OUT="${OUT:-benchmark-results/matrix-${BASELINE}-${TIER}-$(date -u +%Y%m%dT%H%M%SZ)}"
 BENCH="${BENCH:-go run ./cmd/bench}"
 TASKS_DIR="${TASKS_DIR:-scripts/benchmark/external/terminal-bench-2}"
 FIZ_ARTIFACT="${FIZ_ARTIFACT:-benchmark-results/bin/fiz-linux-amd64}"
@@ -33,11 +37,14 @@ case "${TIER}" in
   core)
     SUBSET="${SUBSET:-scripts/beadbench/external/termbench-subset.json}"
     ;;
+  wide)
+    SUBSET="${SUBSET:-scripts/beadbench/external/termbench-subset-local-wide.json}"
+    ;;
   full)
     SUBSET="${SUBSET:-scripts/beadbench/external/termbench-full.json}"
     ;;
   *)
-    echo "unknown TIER=${TIER}; use canary, core, or full" >&2
+    echo "unknown TIER=${TIER}; use canary, core, wide, or full" >&2
     exit 2
     ;;
 esac
@@ -104,6 +111,18 @@ if contains_harness "pi"; then
   fi
 fi
 
+if contains_harness "claude" && [[ -z "${HARBOR_CLAUDE_ARTIFACT:-}" ]]; then
+  require_file \
+    "benchmark-results/bin/claude-linux-amd64/claude" \
+    "set HARBOR_CLAUDE_ARTIFACT or prepare a linux/amd64 Claude Code artifact; see scripts/benchmark/README.md"
+fi
+
+if contains_harness "codex" && [[ -z "${HARBOR_CODEX_ARTIFACT:-}" ]]; then
+  require_file \
+    "benchmark-results/bin/codex-linux-amd64/codex" \
+    "set HARBOR_CODEX_ARTIFACT or prepare a linux/amd64 Codex artifact; see scripts/benchmark/README.md"
+fi
+
 # Some OpenAI-compatible clients require a non-empty key even for local oMLX.
 export OMLX_API_KEY="${OMLX_API_KEY:-local}"
 
@@ -111,42 +130,66 @@ mkdir -p "$(dirname "${FIZ_ARTIFACT}")"
 GOOS="${GOOS:-linux}" GOARCH="${GOARCH:-amd64}" go build -o "${FIZ_ARTIFACT}" ./cmd/fiz
 export HARBOR_AGENT_ARTIFACT="${HARBOR_AGENT_ARTIFACT:-${ROOT}/${FIZ_ARTIFACT}}"
 
-matrix_args=(
-  matrix
-  --profiles="${PROFILE}"
-  --harnesses="${HARNESSES}"
-  --reps="${REPS}"
-  --subset="${SUBSET}"
-  --tasks-dir="${TASKS_DIR}"
-  --out="${OUT}"
-  --jobs="${JOBS}"
-)
+run_matrix() {
+  local harnesses="$1"
+  local profiles="$2"
+  local out_dir="$3"
+  local matrix_args=(
+    matrix
+    --profiles="${profiles}"
+    --harnesses="${harnesses}"
+    --reps="${REPS}"
+    --subset="${SUBSET}"
+    --tasks-dir="${TASKS_DIR}"
+    --out="${out_dir}"
+    --jobs="${JOBS}"
+  )
 
-if [[ "${FORCE_RERUN:-0}" == "1" ]]; then
-  matrix_args+=(--force-rerun)
-else
-  matrix_args+=(--resume)
-fi
+  if [[ "${FORCE_RERUN:-0}" == "1" ]]; then
+    matrix_args+=(--force-rerun)
+  else
+    matrix_args+=(--resume)
+  fi
 
-if [[ -n "${PER_RUN_BUDGET_USD:-}" ]]; then
-  matrix_args+=(--per-run-budget-usd="${PER_RUN_BUDGET_USD}")
-fi
+  if [[ -n "${PER_RUN_BUDGET_USD:-}" ]]; then
+    matrix_args+=(--per-run-budget-usd="${PER_RUN_BUDGET_USD}")
+  fi
 
-if [[ -n "${BUDGET_USD:-}" ]]; then
-  matrix_args+=(--budget-usd="${BUDGET_USD}")
-fi
+  if [[ -n "${BUDGET_USD:-}" ]]; then
+    matrix_args+=(--budget-usd="${BUDGET_USD}")
+  fi
 
-echo "Running Vidar Qwen3.6 TerminalBench matrix"
-echo "  tier:      ${TIER}"
-echo "  subset:    ${SUBSET}"
-echo "  profile:   ${PROFILE}"
-echo "  harnesses: ${HARNESSES}"
-echo "  reps:      ${REPS}"
-echo "  jobs:      ${JOBS}"
-echo "  out:       ${OUT}"
-echo
+  echo "Running TerminalBench matrix"
+  echo "  baseline:  ${BASELINE}"
+  echo "  tier:      ${TIER}"
+  echo "  subset:    ${SUBSET}"
+  echo "  profile:   ${profiles}"
+  echo "  harnesses: ${harnesses}"
+  echo "  reps:      ${REPS}"
+  echo "  jobs:      ${JOBS}"
+  echo "  out:       ${out_dir}"
+  echo
 
-${BENCH} "${matrix_args[@]}"
+  ${BENCH} "${matrix_args[@]}"
+}
+
+case "${BASELINE}" in
+  local)
+    run_matrix "${HARNESSES}" "${PROFILE}" "${OUT}"
+    ;;
+  frontier)
+    # Native Claude/Codex reference cells deliberately do not share a model.
+    # Run them as paired one-cell invocations so the matrix does not produce
+    # meaningless claude×codex-profile cross-products.
+    run_matrix "claude" "${CLAUDE_PROFILE:-claude-native-sonnet-4-6}" "${OUT}"
+    run_matrix "codex" "${CODEX_PROFILE:-codex-native-gpt-5-4}" "${OUT}"
+    rm -f "${OUT}/matrix.json"
+    ;;
+  *)
+    echo "unknown BASELINE=${BASELINE}; use local or frontier" >&2
+    exit 2
+    ;;
+esac
 ${BENCH} matrix-aggregate "${OUT}"
 
 echo

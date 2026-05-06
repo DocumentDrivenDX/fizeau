@@ -222,6 +222,65 @@ Known-good isolated canary result from 2026-05-06:
 
 Aggregate: `3/3`, mean reward `1.0`, standard deviation `0.0`.
 
+### Wider local baseline
+
+Use `TIER=wide` when the canary passes and you want broader task coverage
+without jumping to the full 89-task TB-2 sweep:
+
+```bash
+TIER=wide HARNESSES=fiz REPS=1 FORCE_RERUN=1 JOBS=1 \
+  scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+```
+
+The wide tier uses
+`scripts/beadbench/external/termbench-subset-local-wide.json`: 15 valid TB-2
+tasks at the pinned dataset commit. It is intentionally separate from the
+historical `termbench-subset.json`, which still contains five task IDs that are
+not present in the pinned TB-2 tree.
+
+### Claude and Codex reference baselines
+
+Set `BASELINE=frontier` to run native Claude Code and Codex reference cells:
+
+```bash
+BASELINE=frontier TIER=canary REPS=1 FORCE_RERUN=1 JOBS=1 \
+  scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+```
+
+These cells are **not model-controlled comparisons** against Vidar/Qwen. They
+answer a different question: how the native subscription/reference harnesses
+perform on the same TerminalBench tasks. Keep them in a separate table from the
+local-model rows unless the analysis explicitly calls out the model confound.
+
+The runner uses paired one-cell invocations so Claude Code only runs with
+`claude-native-sonnet-4-6` and Codex only runs with `codex-native-gpt-5-4`.
+This avoids meaningless cross-products like Claude Code with the Codex profile.
+
+Prepare linux artifacts before running inside Harbor containers:
+
+```bash
+mkdir -p benchmark-results/bin/claude-linux-amd64 benchmark-results/bin/codex-linux-amd64
+
+# Either copy pinned linux/amd64 binaries into these locations, or set:
+#   HARBOR_CLAUDE_ARTIFACT=/path/to/claude
+#   HARBOR_CODEX_ARTIFACT=/path/to/codex
+```
+
+Authentication can use API keys passed by the profile env vars
+(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) or a tarred harness home directory:
+
+```bash
+tar -C "$HOME" -czf benchmark-results/bin/claude-home.tgz .claude
+tar -C "$HOME" -czf benchmark-results/bin/codex-home.tgz .codex
+
+HARBOR_CLAUDE_HOME_TARBALL=benchmark-results/bin/claude-home.tgz \
+HARBOR_CODEX_HOME_TARBALL=benchmark-results/bin/codex-home.tgz \
+BASELINE=frontier TIER=canary REPS=1 FORCE_RERUN=1 JOBS=1 \
+  scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+```
+
+Do not commit those tarballs or benchmark-result artifacts.
+
 ---
 
 ## Harbor Adapter

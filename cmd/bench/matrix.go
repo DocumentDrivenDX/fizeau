@@ -489,6 +489,10 @@ type harborRunResult struct {
 // identical between local command-builder smokes and Harbor-graded runs.
 func harborAgentArgs(harness string) []string {
 	switch harness {
+	case "claude":
+		return []string{"--agent-import-path", "scripts.benchmark.harbor_adapters.claude:ClaudeAgent"}
+	case "codex":
+		return []string{"--agent-import-path", "scripts.benchmark.harbor_adapters.codex:CodexAgent"}
 	case "opencode":
 		return []string{"--agent-import-path", "scripts.benchmark.harbor_adapters.opencode:OpencodeAgent"}
 	case "pi":
