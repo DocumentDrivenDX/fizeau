@@ -416,12 +416,15 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		ranked = append(ranked, entries...)
 	}
 
-	// Compute scores.
+	// Compute scores only after eligibility is final. Rejected candidates keep
+	// a zero score because cost/utilization/performance/sticky ranking should
+	// never influence the eligibility boundary.
 	for i := range ranked {
-		ranked[i].out.Score = scorePolicy(req.Profile, ranked[i].internal)
-		if ranked[i].out.Eligible {
-			ranked[i].out.Reason = fmt.Sprintf("profile=%s; score=%.1f", req.Profile, ranked[i].out.Score)
+		if !ranked[i].out.Eligible {
+			continue
 		}
+		ranked[i].out.Score = scorePolicy(req.Profile, ranked[i].internal)
+		ranked[i].out.Reason = fmt.Sprintf("profile=%s; score=%.1f", req.Profile, ranked[i].out.Score)
 	}
 	neutralCost, hasKnownCost := neutralKnownCost(ranked)
 
