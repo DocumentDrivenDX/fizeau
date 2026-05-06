@@ -107,7 +107,10 @@ func decodeOverride(t *testing.T, ev *fizeau.ServiceEvent) fizeau.ServiceOverrid
 // override-event surface is silent (no ErrRejectedOverride wrapper, no
 // override events in any channel that may be returned).
 func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	// Use an explicit empty ServiceConfig so this test does not auto-load the
+	// developer's repo-local provider config and accidentally perform a live
+	// unpinned routing attempt.
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
