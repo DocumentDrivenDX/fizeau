@@ -329,11 +329,26 @@ cross-products like Claude Code with the Codex profile.
 Prepare linux artifacts before running inside Harbor containers:
 
 ```bash
-mkdir -p benchmark-results/bin/claude-linux-amd64 benchmark-results/bin/codex-linux-amd64
+scripts/benchmark/run_medium_model_terminalbench_comparison.sh canary
+```
 
-# Either copy pinned linux/amd64 binaries into these locations, or set:
-#   HARBOR_CLAUDE_ARTIFACT=/path/to/claude
-#   HARBOR_CODEX_ARTIFACT=/path/to/codex
+The runner prepares native Claude/Codex harness artifacts automatically. If a
+container-compatible binary already exists at
+`benchmark-results/bin/claude-linux-amd64/claude` or
+`benchmark-results/bin/codex-linux-amd64/codex`, it uses that. Otherwise it
+uses the locally installed `claude` / `codex` versions to `npm pack` the matching
+CLI packages, uploads the pinned Node.js tarball, and installs the CLIs inside
+the Harbor container. If API key environment variables are not present, it also
+packages local `~/.claude` and `~/.codex` state into gitignored tarballs under
+`benchmark-results/bin/native-homes/` so the container can use the same logged-in
+CLI accounts. Set `HARBOR_SKIP_NATIVE_HOME=1` to disable that behavior.
+
+Manual overrides remain available:
+
+```bash
+HARBOR_CLAUDE_ARTIFACT=/path/to/claude \
+HARBOR_CODEX_ARTIFACT=/path/to/codex \
+  scripts/benchmark/run_medium_model_terminalbench_comparison.sh canary
 ```
 
 Authentication can use API keys passed by the profile env vars

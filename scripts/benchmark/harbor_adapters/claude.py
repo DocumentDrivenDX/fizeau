@@ -15,6 +15,8 @@ from harbor.models.agent.context import AgentContext
 _BINARY_TARGET = "/installed-agent/claude"
 _OUTPUT_LOG = "/logs/agent/claude.txt"
 _HOME_TARBALL_TARGET = "/installed-agent/claude-home.tgz"
+_NODE_TARBALL_TARGET = "/installed-agent/node.tgz"
+_PACKAGE_TARBALL_TARGET = "/installed-agent/claude-code.tgz"
 
 
 def _bench_env(name: str, default: str = "") -> str:
@@ -34,17 +36,40 @@ class ClaudeAgent(BaseInstalledAgent):
 
     async def install(self, environment: BaseEnvironment) -> None:
         binary_src = Path(_bench_env("HARBOR_CLAUDE_ARTIFACT", "benchmark-results/bin/claude-linux-amd64/claude"))
-        if not binary_src.is_file():
+        package_tgz = _bench_env("HARBOR_CLAUDE_PACKAGE_TARBALL", "")
+        node_tgz = _bench_env("HARBOR_NODE_TARBALL", "")
+        if not binary_src.is_file() and not (package_tgz and node_tgz):
             raise FileNotFoundError(
-                "Claude Code binary not found. Set HARBOR_CLAUDE_ARTIFACT or prepare "
-                "benchmark-results/bin/claude-linux-amd64/claude."
+                "Claude Code binary not found. Set HARBOR_CLAUDE_ARTIFACT, or set "
+                "HARBOR_CLAUDE_PACKAGE_TARBALL with HARBOR_NODE_TARBALL."
             )
         await self.exec_as_root(
             environment,
             command="mkdir -p /installed-agent /logs/agent /home/agent/.claude",
         )
-        await environment.upload_file(binary_src, _BINARY_TARGET)
-        await self.exec_as_root(environment, command=f"chmod 755 {shlex.quote(_BINARY_TARGET)}")
+        if binary_src.is_file():
+            await environment.upload_file(binary_src, _BINARY_TARGET)
+            await self.exec_as_root(environment, command=f"chmod 755 {shlex.quote(_BINARY_TARGET)}")
+        else:
+            package_src = Path(package_tgz)
+            node_src = Path(node_tgz)
+            if not package_src.is_file():
+                raise FileNotFoundError(f"HARBOR_CLAUDE_PACKAGE_TARBALL not found: {package_src}")
+            if not node_src.is_file():
+                raise FileNotFoundError(f"HARBOR_NODE_TARBALL not found: {node_src}")
+            await environment.upload_file(node_src, _NODE_TARBALL_TARGET)
+            await environment.upload_file(package_src, _PACKAGE_TARBALL_TARGET)
+            await self.exec_as_root(
+                environment,
+                command=(
+                    "set -euo pipefail; "
+                    f"tar -xzf {shlex.quote(_NODE_TARBALL_TARGET)} -C /installed-agent; "
+                    "mv /installed-agent/node-v* /installed-agent/node; "
+                    f"/installed-agent/node/bin/npm install -g {shlex.quote(_PACKAGE_TARBALL_TARGET)}; "
+                    f"ln -sf /installed-agent/node/bin/claude {shlex.quote(_BINARY_TARGET)}; "
+                    f"chmod 755 {shlex.quote(_BINARY_TARGET)}"
+                ),
+            )
 
         home_tgz = _bench_env("HARBOR_CLAUDE_HOME_TARBALL", "")
         if home_tgz:

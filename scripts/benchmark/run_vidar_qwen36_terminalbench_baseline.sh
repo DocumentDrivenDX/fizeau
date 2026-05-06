@@ -92,6 +92,171 @@ require_file() {
   fi
 }
 
+host_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo "x64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *) uname -m ;;
+  esac
+}
+
+container_node_arch() {
+  # Harbor benchmark task images and existing pinned artifacts are linux/x64 by
+  # default. Override when running native arm64 task containers.
+  echo "${HARBOR_NODE_ARCH:-x64}"
+}
+
+ensure_node_tarball() {
+  if [[ -n "${HARBOR_NODE_TARBALL:-}" ]]; then
+    require_file "${HARBOR_NODE_TARBALL}" "set HARBOR_NODE_TARBALL to an existing Node.js linux tarball"
+    return
+  fi
+
+  local arch version path url
+  arch="$(container_node_arch)"
+  version="${HARBOR_NODE_VERSION:-20.19.2}"
+  path="benchmark-results/bin/node-v${version}-linux-${arch}.tar.gz"
+  if [[ ! -f "${path}" ]]; then
+    mkdir -p "$(dirname "${path}")"
+    url="https://nodejs.org/dist/v${version}/node-v${version}-linux-${arch}.tar.gz"
+    echo "Preparing Node.js for Harbor native CLI install: ${url}"
+    curl -fsSL "${url}" -o "${path}"
+  fi
+  export HARBOR_NODE_TARBALL="${ROOT}/${path}"
+}
+
+npm_pack_once() {
+  local package_spec="$1"
+  local out_dir="$2"
+  local match_prefix="$3"
+  mkdir -p "${out_dir}"
+  local existing
+  existing="$(find "${out_dir}" -maxdepth 1 -type f -name "${match_prefix}-*.tgz" | sort | tail -n 1 || true)"
+  if [[ -n "${existing}" ]]; then
+    printf '%s\n' "${ROOT}/${existing}"
+    return
+  fi
+  echo "Packing ${package_spec} for Harbor install" >&2
+  npm pack "${package_spec}" --pack-destination "${out_dir}" >/dev/null
+  existing="$(find "${out_dir}" -maxdepth 1 -type f -name "${match_prefix}-*.tgz" | sort | tail -n 1 || true)"
+  if [[ -z "${existing}" ]]; then
+    echo "npm pack did not create ${match_prefix}-*.tgz in ${out_dir}" >&2
+    exit 1
+  fi
+  printf '%s\n' "${ROOT}/${existing}"
+}
+
+installed_claude_version() {
+  if command -v claude >/dev/null 2>&1; then
+    claude --version 2>/dev/null | awk '{print $1; exit}'
+  fi
+}
+
+installed_codex_version() {
+  if command -v codex >/dev/null 2>&1; then
+    codex --version 2>/dev/null | awk '{print $2; exit}'
+  fi
+}
+
+prepare_home_tarball() {
+  local env_name="$1"
+  local home_name="$2"
+  local out_name="$3"
+  local current="${!env_name:-}"
+  if [[ -n "${current}" ]]; then
+    require_file "${current}" "set ${env_name} to an existing ${home_name} tarball"
+    return
+  fi
+  if [[ "${HARBOR_SKIP_NATIVE_HOME:-0}" == "1" ]]; then
+    return
+  fi
+  if [[ ! -d "${HOME}/${home_name}" ]]; then
+    return
+  fi
+
+  local out_dir out_path
+  out_dir="benchmark-results/bin/native-homes"
+  out_path="${out_dir}/${out_name}"
+  mkdir -p "${out_dir}"
+  local tmp
+  tmp="$(mktemp -d)"
+  mkdir -p "${tmp}/${home_name}"
+  case "${home_name}" in
+    .claude)
+      for rel in .credentials.json settings.json mcp-needs-auth-cache.json config plugins; do
+        if [[ -e "${HOME}/${home_name}/${rel}" ]]; then
+          cp -a "${HOME}/${home_name}/${rel}" "${tmp}/${home_name}/"
+        fi
+      done
+      ;;
+    .codex)
+      for rel in auth.json config.toml version.json rules; do
+        if [[ -e "${HOME}/${home_name}/${rel}" ]]; then
+          cp -a "${HOME}/${home_name}/${rel}" "${tmp}/${home_name}/"
+        fi
+      done
+      ;;
+    *)
+      cp -a "${HOME}/${home_name}/." "${tmp}/${home_name}/"
+      ;;
+  esac
+  tar -czf "${out_path}" -C "${tmp}" "${home_name}"
+  rm -rf "${tmp}"
+  export "${env_name}=${ROOT}/${out_path}"
+}
+
+prepare_claude_artifact() {
+  if [[ -n "${HARBOR_CLAUDE_ARTIFACT:-}" ]]; then
+    require_file "${HARBOR_CLAUDE_ARTIFACT}" "set HARBOR_CLAUDE_ARTIFACT to an existing Claude Code binary"
+    prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
+    return
+  fi
+  if [[ -f "benchmark-results/bin/claude-linux-amd64/claude" ]]; then
+    export HARBOR_CLAUDE_ARTIFACT="${ROOT}/benchmark-results/bin/claude-linux-amd64/claude"
+    prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
+    return
+  fi
+  if command -v claude >/dev/null 2>&1 && [[ "$(host_arch)" == "$(container_node_arch)" ]]; then
+    export HARBOR_CLAUDE_ARTIFACT="$(command -v claude)"
+    prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
+    return
+  fi
+
+  need npm
+  ensure_node_tarball
+  local version spec
+  version="${HARBOR_CLAUDE_VERSION:-$(installed_claude_version)}"
+  spec="@anthropic-ai/claude-code${version:+@${version}}"
+  export HARBOR_CLAUDE_PACKAGE_TARBALL="${HARBOR_CLAUDE_PACKAGE_TARBALL:-$(npm_pack_once "${spec}" "benchmark-results/bin/npm-packages" "anthropic-ai-claude-code")}"
+  prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
+}
+
+prepare_codex_artifact() {
+  if [[ -n "${HARBOR_CODEX_ARTIFACT:-}" ]]; then
+    require_file "${HARBOR_CODEX_ARTIFACT}" "set HARBOR_CODEX_ARTIFACT to an existing Codex binary"
+    prepare_home_tarball "HARBOR_CODEX_HOME_TARBALL" ".codex" "codex-home.tgz"
+    return
+  fi
+  if [[ -f "benchmark-results/bin/codex-linux-amd64/codex" ]]; then
+    export HARBOR_CODEX_ARTIFACT="${ROOT}/benchmark-results/bin/codex-linux-amd64/codex"
+    prepare_home_tarball "HARBOR_CODEX_HOME_TARBALL" ".codex" "codex-home.tgz"
+    return
+  fi
+  if command -v codex >/dev/null 2>&1 && [[ "$(host_arch)" == "$(container_node_arch)" ]]; then
+    export HARBOR_CODEX_ARTIFACT="$(command -v codex)"
+    prepare_home_tarball "HARBOR_CODEX_HOME_TARBALL" ".codex" "codex-home.tgz"
+    return
+  fi
+
+  need npm
+  ensure_node_tarball
+  local version spec
+  version="${HARBOR_CODEX_VERSION:-$(installed_codex_version)}"
+  spec="@openai/codex${version:+@${version}}"
+  export HARBOR_CODEX_PACKAGE_TARBALL="${HARBOR_CODEX_PACKAGE_TARBALL:-$(npm_pack_once "${spec}" "benchmark-results/bin/npm-packages" "openai-codex")}"
+  prepare_home_tarball "HARBOR_CODEX_HOME_TARBALL" ".codex" "codex-home.tgz"
+}
+
 if contains_harness "opencode" && [[ -z "${HARBOR_OPENCODE_ARTIFACT:-}" ]]; then
   require_file \
     "benchmark-results/bin/opencode-1.3.17-linux-x64/opencode" \
@@ -111,16 +276,12 @@ if contains_harness "pi"; then
   fi
 fi
 
-if contains_harness "claude" && [[ -z "${HARBOR_CLAUDE_ARTIFACT:-}" ]]; then
-  require_file \
-    "benchmark-results/bin/claude-linux-amd64/claude" \
-    "set HARBOR_CLAUDE_ARTIFACT or prepare a linux/amd64 Claude Code artifact; see scripts/benchmark/README.md"
+if contains_harness "claude"; then
+  prepare_claude_artifact
 fi
 
-if contains_harness "codex" && [[ -z "${HARBOR_CODEX_ARTIFACT:-}" ]]; then
-  require_file \
-    "benchmark-results/bin/codex-linux-amd64/codex" \
-    "set HARBOR_CODEX_ARTIFACT or prepare a linux/amd64 Codex artifact; see scripts/benchmark/README.md"
+if contains_harness "codex"; then
+  prepare_codex_artifact
 fi
 
 # Some OpenAI-compatible clients require a non-empty key even for local oMLX.
