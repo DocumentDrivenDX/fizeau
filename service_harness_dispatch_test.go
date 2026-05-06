@@ -23,6 +23,12 @@ cat <<'EOF'
 {"type":"result","status":"success","stats":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}
 EOF
 `)
+	writeFakeHarness(t, binDir, "codex", `#!/bin/sh
+cat <<'EOF'
+{"type":"output","item":{"type":"agent_message","text":"codex service response"}}
+{"type":"turn.completed","usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}}
+EOF
+`)
 	writeFakeHarness(t, binDir, "opencode", `#!/bin/sh
 cat <<'EOF'
 opencode service response
@@ -47,6 +53,7 @@ EOF
 		reason  fizeau.Reasoning
 		text    string
 	}{
+		{harness: "codex", model: "gpt-5.4", reason: fizeau.ReasoningLow, text: "codex service response"},
 		{harness: "gemini", model: "gemini-2.5-flash", text: "gemini service response"},
 		{harness: "opencode", model: "opencode/gpt-5.4", reason: fizeau.ReasoningLow, text: "opencode service response"},
 		{harness: "pi", model: "gemini-2.5-flash", reason: fizeau.ReasoningLow, text: "pi service response"},
@@ -96,7 +103,8 @@ func TestExecute_SubprocessHarnessMissingBinaryFinalFailure(t *testing.T) {
 
 	ch, err := svc.Execute(ctx, fizeau.ServiceExecuteRequest{
 		Prompt:  "hello",
-		Harness: "gemini",
+		Harness: "codex",
+		Model:   "gpt-5.4",
 	})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -108,8 +116,11 @@ func TestExecute_SubprocessHarnessMissingBinaryFinalFailure(t *testing.T) {
 	if result.FinalStatus != "failed" {
 		t.Fatalf("FinalStatus: got %q", result.FinalStatus)
 	}
-	if !strings.Contains(result.TerminalError, "gemini binary not found") {
+	if !strings.Contains(result.TerminalError, "codex binary not found") {
 		t.Fatalf("TerminalError: got %q", result.TerminalError)
+	}
+	if result.RoutingActual == nil || result.RoutingActual.Harness != "codex" {
+		t.Fatalf("RoutingActual: got %#v, want codex", result.RoutingActual)
 	}
 }
 
