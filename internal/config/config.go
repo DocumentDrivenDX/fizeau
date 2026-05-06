@@ -16,14 +16,15 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/anthropic"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/limits"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/llamaserver"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/lucebox"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/ollama"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/omlx"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/openrouter"
-	provregistry "github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/rapidmlx"
+	provregistry "github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/vllm"
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
@@ -34,7 +35,7 @@ import (
 
 // ProviderConfig describes a single named provider.
 type ProviderConfig struct {
-	Type      string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", or "anthropic"
+	Type      string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", or "anthropic"
 	BaseURL   string             `yaml:"base_url,omitempty"` // shorthand for one endpoint
 	Endpoints []ProviderEndpoint `yaml:"endpoints,omitempty"`
 	APIKey    string             `yaml:"api_key,omitempty"`
@@ -1024,6 +1025,8 @@ func defaultEndpointPort(providerType string) int {
 	switch providerType {
 	case "lmstudio":
 		return 1234
+	case "llama-server":
+		return 8080
 	case "omlx":
 		return 1235
 	case "lucebox":
@@ -1090,6 +1093,10 @@ func normalizeProviderConfig(pc ProviderConfig) ProviderConfig {
 		if pc.BaseURL == "" {
 			pc.BaseURL = lmstudio.DefaultBaseURL
 		}
+	case "llama-server":
+		if pc.BaseURL == "" {
+			pc.BaseURL = llamaserver.DefaultBaseURL
+		}
 	case "omlx":
 		if pc.BaseURL == "" {
 			pc.BaseURL = omlx.DefaultBaseURL
@@ -1151,7 +1158,7 @@ func inferProviderTypeFromBaseURL(baseURL string) string {
 
 func providerUsesEndpoint(providerType string) bool {
 	switch providerType {
-	case "openai", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
 		return true
 	default:
 		return false
@@ -1190,7 +1197,7 @@ func ProviderImplicitGenerationConfig(providerType string) bool {
 
 func surfaceForProviderType(providerType string) (modelcatalog.Surface, error) {
 	switch providerType {
-	case "openai", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
 		return modelcatalog.SurfaceAgentOpenAI, nil
 	case "anthropic":
 		return modelcatalog.SurfaceAgentAnthropic, nil
@@ -1245,12 +1252,12 @@ func (c *Config) validateProviders() error {
 	}
 	for name, pc := range c.Providers {
 		if pc.Type == "openai-compat" {
-			return fmt.Errorf("config: provider %q: type openai-compat is no longer supported; use openai, openrouter, lmstudio, omlx, rapid-mlx, or ollama", name)
+			return fmt.Errorf("config: provider %q: type openai-compat is no longer supported; use openai, openrouter, lmstudio, llama-server, omlx, rapid-mlx, or ollama", name)
 		}
 		switch pc.Type {
-		case "openai", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai", "anthropic":
+		case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai", "anthropic":
 		default:
-			return fmt.Errorf("config: provider %q has unknown type %q (use openai, openrouter, lmstudio, omlx, luce, vllm, rapid-mlx, ollama, or anthropic)", name, pc.Type)
+			return fmt.Errorf("config: provider %q has unknown type %q (use openai, openrouter, lmstudio, llama-server, omlx, luce, vllm, rapid-mlx, ollama, or anthropic)", name, pc.Type)
 		}
 		if providerUsesEndpoint(pc.Type) {
 			for i, endpoint := range pc.Endpoints {

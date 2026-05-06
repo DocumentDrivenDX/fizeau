@@ -99,6 +99,18 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	}
 }
 
+func TestProviderUsesLiveDiscovery_LlamaServer(t *testing.T) {
+	if !providerUsesLiveDiscovery("llama-server") {
+		t.Fatal("expected llama-server to use live discovery")
+	}
+}
+
+func TestProviderTypeIsLocalEndpoint_LlamaServer(t *testing.T) {
+	if !providerTypeIsLocalEndpoint("llama-server") {
+		t.Fatal("expected llama-server to count as a local endpoint")
+	}
+}
+
 func TestResolveRouteErrorIncludesCandidatesAndTraceError(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "redacted")
 	t.Setenv("GOOGLE_API_KEY", "")

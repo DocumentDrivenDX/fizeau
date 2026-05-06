@@ -14,14 +14,15 @@ import (
 	// the case branches and stayed even after agent-8e4eb44c collapsed
 	// them — they're load-bearing for the init() registration.
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/anthropic"
+	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/llamaserver"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lucebox"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/ollama"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/omlx"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openrouter"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/rapidmlx"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
 	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/vllm"
 )
 

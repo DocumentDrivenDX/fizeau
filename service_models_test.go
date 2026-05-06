@@ -90,6 +90,35 @@ func TestListModels_providerTypesOpenRouterLMStudioOMLX(t *testing.T) {
 	}
 }
 
+func TestListModels_providerTypeLlamaServer(t *testing.T) {
+	llama := fakeModelsServer([]string{"llama-3.1"})
+	defer llama.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"llama": {Type: "llama-server", BaseURL: llama.URL + "/v1"},
+		},
+		names:       []string{"llama"},
+		defaultName: "llama",
+	}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+
+	infos, err := svc.ListModels(context.Background(), ModelFilter{})
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(infos) != 1 {
+		t.Fatalf("want 1 model, got %d: %v", len(infos), modelIDs(infos))
+	}
+	info := infos[0]
+	if info.ProviderType != "llama-server" {
+		t.Fatalf("provider type = %q, want llama-server", info.ProviderType)
+	}
+	if info.EndpointBaseURL != llama.URL+"/v1" {
+		t.Fatalf("endpoint base URL = %q, want %q", info.EndpointBaseURL, llama.URL+"/v1")
+	}
+}
+
 func TestListModels_endpointPoolReturnsEndpointMetadata(t *testing.T) {
 	vidar := fakeModelsServer([]string{"vidar-model"})
 	defer vidar.Close()

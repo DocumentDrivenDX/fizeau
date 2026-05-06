@@ -383,7 +383,7 @@ func probeServiceProviderDetailed(ctx context.Context, entry ServiceProviderEntr
 		// Treat key presence as the connectivity signal.
 		return providerProbeResult{status: "connected", caps: providerCapabilities(entry)}
 
-	case "openai", "openrouter", "lmstudio", "omlx", "rapid-mlx", "ollama", "minimax", "qwen", "zai", "":
+	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "rapid-mlx", "ollama", "minimax", "qwen", "zai", "":
 		if entry.BaseURL == "" {
 			return providerProbeResult{status: "error: base_url not configured", detail: "base_url not configured"}
 		}

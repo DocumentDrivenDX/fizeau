@@ -116,6 +116,43 @@ func TestListProviders_Connected(t *testing.T) {
 	}
 }
 
+func TestListProviders_LlamaServerConnected(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" || r.URL.Path == "/models" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "llama-3.1"}},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"llama": {Type: "llama-server", BaseURL: ts.URL + "/v1"},
+		},
+		names:       []string{"llama"},
+		defaultName: "llama",
+	}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+
+	infos, err := svc.ListProviders(context.Background())
+	if err != nil {
+		t.Fatalf("ListProviders: %v", err)
+	}
+	if len(infos) != 1 {
+		t.Fatalf("want 1 provider, got %d", len(infos))
+	}
+	if infos[0].Type != "llama-server" {
+		t.Fatalf("provider type = %q, want llama-server", infos[0].Type)
+	}
+	if infos[0].Status != "connected" {
+		t.Fatalf("provider status = %q, want connected", infos[0].Status)
+	}
+}
+
 func TestListProviders_OMLXAdvertisesReasoningControl(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" || r.URL.Path == "/models" {

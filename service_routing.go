@@ -742,7 +742,7 @@ func anyProviderSupportsTools(providers []routing.ProviderEntry) bool {
 
 func providerUsesLiveDiscovery(providerType string) bool {
 	switch normalizeServiceProviderType(providerType) {
-	case "openai", "openrouter", "lmstudio", "omlx", "rapid-mlx", "ollama", "lucebox", "vllm", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "rapid-mlx", "ollama", "lucebox", "vllm", "minimax", "qwen", "zai":
 		return true
 	default:
 		return false
@@ -792,7 +792,7 @@ func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat 
 
 func providerTypeIsLocalEndpoint(providerType string) bool {
 	switch normalizeServiceProviderType(providerType) {
-	case "lmstudio", "omlx", "rapid-mlx", "ollama", "lucebox", "vllm":
+	case "lmstudio", "llama-server", "omlx", "rapid-mlx", "ollama", "lucebox", "vllm":
 		return true
 	default:
 		return false

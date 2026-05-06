@@ -341,6 +341,7 @@ func TestBuildProvider_ConcreteProviderTypes(t *testing.T) {
 			"openai":     {Type: "openai", APIKey: "sk-test", Model: "gpt-4o"},
 			"openrouter": {Type: "openrouter", APIKey: "sk-test", Model: "openai/gpt-4o-mini"},
 			"lmstudio":   {Type: "lmstudio", BaseURL: "http://localhost:1234/v1", Model: "qwen3"},
+			"llama":      {Type: "llama-server", Model: "llama-3.1"},
 			"omlx":       {Type: "omlx", BaseURL: "http://localhost:1235/v1", Model: "qwen3"},
 			"ollama":     {Type: "ollama", BaseURL: "http://localhost:11434/v1", Model: "llama3.2"},
 			"rapidmlx":   {Type: "rapid-mlx", Model: "qwen3"},
@@ -353,6 +354,55 @@ func TestBuildProvider_ConcreteProviderTypes(t *testing.T) {
 		require.NoError(t, err, name)
 		assert.NotNil(t, p, name)
 	}
+}
+
+func TestLoad_LlamaServerDefaultBaseURLAndEndpoint(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".fizeau")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  llama:
+    type: llama-server
+    model: llama-3.1
+default: llama
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	pc, ok := cfg.GetProvider("llama")
+	require.True(t, ok)
+	assert.Equal(t, "llama-server", pc.Type)
+	assert.Equal(t, "http://localhost:8080/v1", pc.BaseURL)
+	require.Len(t, pc.Endpoints, 1)
+	assert.Equal(t, "default", pc.Endpoints[0].Name)
+	assert.Equal(t, "http://localhost:8080/v1", pc.Endpoints[0].BaseURL)
+}
+
+func TestLoad_LlamaServerEndpointPoolUsesPort8080(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".fizeau")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+endpoints:
+  - type: llama-server
+    host: vidar
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	pc, ok := cfg.GetProvider("llama-server-vidar")
+	require.True(t, ok)
+	assert.Equal(t, "llama-server", pc.Type)
+	assert.Equal(t, "http://vidar:8080/v1", pc.BaseURL)
+	require.Len(t, pc.Endpoints, 1)
+	assert.Equal(t, "http://vidar:8080/v1", pc.Endpoints[0].BaseURL)
 }
 
 func TestBuildProvider_WithHeaders(t *testing.T) {
