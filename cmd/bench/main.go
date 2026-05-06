@@ -57,7 +57,7 @@ Commands:
   run        Run corpus against discovered candidates
   report     Render a results file as table, json, or markdown
   profiles   Manage v7 benchmark profiles (subcommand: list)
-  evidence   Validate and append benchmark evidence records
+  evidence   Validate and append benchmark evidence records, including curated external imports
   matrix     Run the SD-010 harness/profile/task matrix
   matrix-aggregate
              Aggregate matrix cell reports into matrix.json, matrix.md, costs.json
