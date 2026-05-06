@@ -182,7 +182,7 @@ case "${BASELINE}" in
     # Run them as paired one-cell invocations so the matrix does not produce
     # meaningless claude×codex-profile cross-products.
     run_matrix "claude" "${CLAUDE_PROFILE:-claude-native-sonnet-4-6}" "${OUT}"
-    run_matrix "codex" "${CODEX_PROFILE:-codex-native-gpt-5-4}" "${OUT}"
+    run_matrix "codex" "${CODEX_PROFILE:-codex-native-gpt-5-5-mini}" "${OUT}"
     rm -f "${OUT}/matrix.json"
     ;;
   *)

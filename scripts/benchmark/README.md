@@ -253,8 +253,9 @@ perform on the same TerminalBench tasks. Keep them in a separate table from the
 local-model rows unless the analysis explicitly calls out the model confound.
 
 The runner uses paired one-cell invocations so Claude Code only runs with
-`claude-native-sonnet-4-6` and Codex only runs with `codex-native-gpt-5-4`.
-This avoids meaningless cross-products like Claude Code with the Codex profile.
+`claude-native-sonnet-4-6` (`sonnet-4.6`) and Codex only runs with
+`codex-native-gpt-5-5-mini` (`gpt-5.5-mini`). This avoids meaningless
+cross-products like Claude Code with the Codex profile.
 
 Prepare linux artifacts before running inside Harbor containers:
 
