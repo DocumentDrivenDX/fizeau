@@ -29,6 +29,8 @@ func run(args []string) int {
 		return cmdReport(args[1:])
 	case "profiles":
 		return cmdProfiles(args[1:])
+	case "evidence":
+		return cmdEvidence(args[1:])
 	case "matrix":
 		return cmdMatrix(args[1:])
 	case "matrix-aggregate":
@@ -55,6 +57,7 @@ Commands:
   run        Run corpus against discovered candidates
   report     Render a results file as table, json, or markdown
   profiles   Manage v7 benchmark profiles (subcommand: list)
+  evidence   Validate and append benchmark evidence records
   matrix     Run the SD-010 harness/profile/task matrix
   matrix-aggregate
              Aggregate matrix cell reports into matrix.json, matrix.md, costs.json
