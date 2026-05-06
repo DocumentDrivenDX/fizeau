@@ -251,7 +251,9 @@ prompt behavior and must not be reused for model policy or routing.
      sticky assignment and fallback load count. On multiple machines, correct
      cross-process stickiness and fair distribution require a shared lease
      backend; server metrics are advisory and racy, not a replacement for
-     shared leases.
+     shared leases. See
+     [plan-2026-05-05-shared-lease-backend.md](../../02-design/plan-2026-05-05-shared-lease-backend.md)
+     for the lease-record and atomic acquire/refresh/release contract.
 30d. `vllm` and `llama-server` utilization is provider-owned and type-derived.
      `vllm` uses root `/metrics`. `llama-server` uses root `/metrics` when
      started with `--metrics` and root `/slots` as fallback. A configured

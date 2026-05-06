@@ -165,7 +165,8 @@ probes. Probe failure makes utilization unknown/stale, not unavailable; routing
 falls back to service-owned in-flight lease counts. In multi-machine
 deployments, a shared lease backend is required for correct cross-process
 stickiness and fair distribution because server metrics alone are sampled and
-racy.
+racy. The shared lease contract is specified in
+[plan-2026-05-05-shared-lease-backend.md](../plan-2026-05-05-shared-lease-backend.md).
 
 ### Hard Constraints
 
