@@ -154,16 +154,19 @@ func addMountedSubcommands(root *cobra.Command, cfg mountConfig) {
 	root.AddCommand(nativeUpdateCommand())
 	for _, name := range []string{"version", "run"} {
 		subcommandName := name
-		root.AddCommand(&cobra.Command{
-			Use:                subcommandName,
-			SilenceUsage:       true,
-			SilenceErrors:      true,
-			DisableFlagParsing: true,
+		subcmd := &cobra.Command{
+			Use:           subcommandName,
+			SilenceUsage:  true,
+			SilenceErrors: true,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				legacy := legacyArgs(cmd, append([]string{subcommandName}, args...)...)
 				return runMounted(cfg, legacy)
 			},
-		})
+		}
+		if subcommandName == "version" {
+			subcmd.DisableFlagParsing = true
+		}
+		root.AddCommand(subcmd)
 	}
 }
 
@@ -585,6 +588,7 @@ func catalogCheckArgs(cmd *cobra.Command, args []string) []string {
 func NeedsLegacyPassthrough(args []string) bool {
 	valueFlags := map[string]bool{
 		"--backend":   true,
+		"--harness":   true,
 		"--max-power": true,
 		"--max-iter":  true,
 		"--min-power": true,
@@ -637,6 +641,7 @@ func addLegacyPersistentFlags(cmd *cobra.Command) {
 	flags.Bool("json", false, "Output result as JSON")
 	flags.String("provider", "", "Named provider from config")
 	flags.String("backend", "", "Deprecated named backend pool from config")
+	flags.String("harness", "", "Harness hard pin (selects a specific harness)")
 	flags.String("model", "", "Model route key or explicit concrete model override")
 	flags.String("model-ref", "", "Model catalog reference")
 	flags.Bool("list-models", false, "List available models with routing metadata")
@@ -666,6 +671,7 @@ func legacyArgs(cmd *cobra.Command, args ...string) []string {
 	}
 	for _, name := range []string{
 		"backend",
+		"harness",
 		"max-power",
 		"max-iter",
 		"min-power",

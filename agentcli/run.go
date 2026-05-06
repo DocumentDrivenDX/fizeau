@@ -126,6 +126,7 @@ func runWithOptions(opts Options) int {
 	jsonOutput := fs.Bool("json", false, "Output result as JSON")
 	providerFlag := fs.String("provider", "", "Named provider from config (e.g., vidar, openrouter)")
 	backendFlag := fs.String("backend", "", "Deprecated named backend pool from config")
+	harnessFlag := fs.String("harness", "", "Harness hard pin (selects a specific harness)")
 	model := fs.String("model", "", "Model route key or explicit concrete model override")
 	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target)")
 	listModels := fs.Bool("list-models", false, "List available models with routing metadata")
@@ -391,6 +392,7 @@ func runWithOptions(opts Options) int {
 		RequestedModelRef:       selection.RequestedModelRef,
 		ResolvedModelRef:        selection.ResolvedModelRef,
 		ResolvedModel:           selection.ResolvedModel,
+		Harness:                 *harnessFlag,
 		Reasoning:               resolvedReasoning,
 		NoStream:                selection.NoStream,
 		MinPower:                *minPower,
@@ -410,7 +412,7 @@ func runWithOptions(opts Options) int {
 		PlanningMode:            *planFlag,
 	})
 
-	result, err := executeViaService(ctx, req, selection, sessionLogDir(wd, cfg), agentConfig.NewServiceConfig(cfg, wd))
+	result, err := executeViaServiceFn(ctx, req, selection, sessionLogDir(wd, cfg), agentConfig.NewServiceConfig(cfg, wd))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 1
@@ -445,6 +447,8 @@ func runWithOptions(opts Options) int {
 		return 1
 	}
 }
+
+var executeViaServiceFn = executeViaService
 
 func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, selection providerSelection, logDir string, serviceConfig fizeau.ServiceConfig) (cliExecutionResult, error) {
 	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: serviceConfig})
@@ -546,6 +550,7 @@ type serviceExecuteRequestParams struct {
 	RequestedModelRef       string
 	ResolvedModelRef        string
 	ResolvedModel           string
+	Harness                 string
 	Reasoning               fizeau.Reasoning
 	NoStream                bool
 	MinPower                int
@@ -612,7 +617,9 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 	}
 	provider := params.SelectedProvider
 	harness := ""
-	if params.SelectedProvider != "" {
+	if params.Harness != "" {
+		harness = params.Harness
+	} else if params.SelectedProvider != "" {
 		harness = "agent"
 	}
 	permissions := params.Permissions
@@ -674,6 +681,7 @@ func normalizeRunSubcommand(args []string) (bool, []string) {
 	}
 	valueFlags := map[string]bool{
 		"backend":   true,
+		"harness":   true,
 		"max-power": true,
 		"max-iter":  true,
 		"min-power": true,
