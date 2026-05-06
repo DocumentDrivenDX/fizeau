@@ -18,8 +18,8 @@ func TestRoutingLegacyNamesDocPointsToPowerRouting(t *testing.T) {
 		"--provider",
 		"--harness",
 		"fiz --list-models",
-		"compatibility data",
-		"must not be used for new automation",
+		"compatibility metadata",
+		"not the primary routing surface",
 	}
 	for _, text := range required {
 		if !strings.Contains(doc, text) {

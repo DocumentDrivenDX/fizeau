@@ -27,11 +27,17 @@ version: 1
 generated_at: 2026-04-10T00:00:00Z
 profiles:
   code-high:
-    target: alpha-smart
+    min_power: 9
+    max_power: 10
+    compatibility_target: alpha-smart
   code-medium:
-    target: beta-fast
+    min_power: 7
+    max_power: 8
+    compatibility_target: beta-fast
   code-economy:
-    target: gamma-economy
+    min_power: 5
+    max_power: 5
+    compatibility_target: gamma-economy
 targets:
   alpha-smart:
     family: alpha
@@ -86,17 +92,24 @@ func TestDefault_ReasoningDefaultsByTier(t *testing.T) {
 	tests := []struct {
 		ref  string
 		want reasoning.Reasoning
+		min  int
+		max  int
 	}{
-		{ref: "cheap", want: reasoning.ReasoningOff},
-		{ref: "code-economy", want: reasoning.ReasoningOff},
-		{ref: "standard", want: reasoning.ReasoningOff},
-		{ref: "code-medium", want: reasoning.ReasoningOff},
-		{ref: "smart", want: reasoning.ReasoningHigh},
-		{ref: "code-high", want: reasoning.ReasoningHigh},
+		{ref: "cheap", want: reasoning.ReasoningOff, min: 5, max: 5},
+		{ref: "code-economy", want: reasoning.ReasoningOff, min: 5, max: 5},
+		{ref: "standard", want: reasoning.ReasoningOff, min: 7, max: 8},
+		{ref: "code-medium", want: reasoning.ReasoningOff, min: 7, max: 8},
+		{ref: "smart", want: reasoning.ReasoningHigh, min: 9, max: 10},
+		{ref: "code-high", want: reasoning.ReasoningHigh, min: 9, max: 10},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.ref, func(t *testing.T) {
+			profile, ok := catalog.Profile(tt.ref)
+			require.True(t, ok)
+			assert.Equal(t, tt.min, profile.MinPower)
+			assert.Equal(t, tt.max, profile.MaxPower)
+			assert.NotEmpty(t, profile.CompatibilityTarget)
 			resolved, err := catalog.Resolve(tt.ref, ResolveOptions{
 				Surface: SurfaceAgentOpenAI,
 			})
@@ -113,15 +126,17 @@ func TestDefault_ProfileProviderPreferences(t *testing.T) {
 	tests := []struct {
 		profile string
 		target  string
+		min     int
+		max     int
 		want    string
 	}{
-		{profile: "default", target: "code-medium", want: providerPreferenceLocalFirst},
-		{profile: "local", target: "code-economy", want: providerPreferenceLocalOnly},
-		{profile: "standard", target: "code-medium", want: providerPreferenceLocalFirst},
-		{profile: "smart", target: "code-high", want: providerPreferenceSubscriptionFirst},
-		{profile: "cheap", target: "code-economy", want: providerPreferenceLocalFirst},
-		{profile: "offline", target: "code-economy", want: providerPreferenceLocalOnly},
-		{profile: "air-gapped", target: "code-economy", want: providerPreferenceLocalOnly},
+		{profile: "default", target: "code-medium", min: 7, max: 8, want: providerPreferenceLocalFirst},
+		{profile: "local", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
+		{profile: "standard", target: "code-medium", min: 7, max: 8, want: providerPreferenceLocalFirst},
+		{profile: "smart", target: "code-high", min: 9, max: 10, want: providerPreferenceSubscriptionFirst},
+		{profile: "cheap", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalFirst},
+		{profile: "offline", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
+		{profile: "air-gapped", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
 	}
 	for _, tt := range tests {
 		t.Run(tt.profile, func(t *testing.T) {
@@ -129,6 +144,9 @@ func TestDefault_ProfileProviderPreferences(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, tt.profile, profile.Name)
 			assert.Equal(t, tt.target, profile.Target)
+			assert.Equal(t, tt.target, profile.CompatibilityTarget)
+			assert.Equal(t, tt.min, profile.MinPower)
+			assert.Equal(t, tt.max, profile.MaxPower)
 			assert.Equal(t, tt.want, profile.ProviderPreference)
 		})
 	}

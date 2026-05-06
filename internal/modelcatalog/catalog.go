@@ -52,9 +52,12 @@ type Metadata struct {
 
 // Profile describes one named catalog profile.
 type Profile struct {
-	Name               string
-	Target             string
-	ProviderPreference string
+	Name                string
+	Target              string
+	CompatibilityTarget string
+	MinPower            int
+	MaxPower            int
+	ProviderPreference  string
 }
 
 // Alias describes one catalog alias.
@@ -126,10 +129,14 @@ func (c *Catalog) Profiles() []Profile {
 	out := make([]Profile, 0, len(names))
 	for _, name := range names {
 		entry := c.profileEntries[name]
+		compatTarget := profileCompatibilityTarget(entry)
 		out = append(out, Profile{
-			Name:               name,
-			Target:             entry.Target,
-			ProviderPreference: normalizedProviderPreference(entry.ProviderPreference),
+			Name:                name,
+			Target:              compatTarget,
+			CompatibilityTarget: compatTarget,
+			MinPower:            entry.MinPower,
+			MaxPower:            entry.MaxPower,
+			ProviderPreference:  normalizedProviderPreference(entry.ProviderPreference),
 		})
 	}
 	return out
@@ -141,10 +148,14 @@ func (c *Catalog) Profile(name string) (Profile, bool) {
 	if !ok {
 		return Profile{}, false
 	}
+	compatTarget := profileCompatibilityTarget(entry)
 	return Profile{
-		Name:               strings.TrimSpace(name),
-		Target:             entry.Target,
-		ProviderPreference: normalizedProviderPreference(entry.ProviderPreference),
+		Name:                strings.TrimSpace(name),
+		Target:              compatTarget,
+		CompatibilityTarget: compatTarget,
+		MinPower:            entry.MinPower,
+		MaxPower:            entry.MaxPower,
+		ProviderPreference:  normalizedProviderPreference(entry.ProviderPreference),
 	}, true
 }
 
@@ -224,7 +235,7 @@ func (c *Catalog) Current(profile string, opts ResolveOptions) (ResolvedTarget, 
 		return ResolvedTarget{}, &UnknownReferenceError{Ref: profile}
 	}
 
-	return c.resolveTarget(profile, profile, entry.Target, opts)
+	return c.resolveTarget(profile, profile, profileCompatibilityTarget(entry), opts)
 }
 
 // Resolve resolves a profile, canonical target, or alias to a concrete model ID.
@@ -235,7 +246,7 @@ func (c *Catalog) Resolve(ref string, opts ResolveOptions) (ResolvedTarget, erro
 	}
 
 	if entry, ok := c.profileEntries[ref]; ok {
-		return c.resolveTarget(ref, ref, entry.Target, opts)
+		return c.resolveTarget(ref, ref, profileCompatibilityTarget(entry), opts)
 	}
 	if _, ok := c.manifest.Targets[ref]; ok {
 		return c.resolveTarget(ref, "", ref, opts)
@@ -413,8 +424,30 @@ func (c *Catalog) AllModelsInTier(targetID string) []TierModel {
 // does not expose its context window (e.g. LM Studio's /v1/models omits it).
 // Matching is case-insensitive to accept both "qwen3.5-27b" and "Qwen3.5-27B".
 func (c *Catalog) ContextWindowForModel(id string) int {
-	if entry, ok := c.LookupModel(id); ok {
+	if entry, ok := c.LookupModel(id); ok && entry.ContextWindow > 0 {
 		return entry.ContextWindow
+	}
+	best := 0
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return 0
+	}
+	for modelID, entry := range c.manifest.Models {
+		if strings.EqualFold(modelID, id) || sameModelVariant(id, modelID) {
+			if entry.ContextWindow > best {
+				best = entry.ContextWindow
+			}
+		}
+		for _, concrete := range entry.Surfaces {
+			if strings.EqualFold(concrete, id) || sameModelVariant(id, concrete) {
+				if entry.ContextWindow > best {
+					best = entry.ContextWindow
+				}
+			}
+		}
+	}
+	if best > 0 {
+		return best
 	}
 	return 0
 }
@@ -439,17 +472,65 @@ func (c *Catalog) lookupModelVariant(id string) (ModelEntry, bool) {
 	if id == "" {
 		return ModelEntry{}, false
 	}
+	var (
+		best     ModelEntry
+		bestID   string
+		bestSeen bool
+	)
 	for modelID, entry := range c.manifest.Models {
-		if sameModelVariant(id, modelID) {
-			return entry, true
-		}
-		for _, surfaceID := range entry.Surfaces {
-			if sameModelVariant(id, surfaceID) {
-				return entry, true
+		matched := sameModelVariant(id, modelID)
+		if !matched {
+			for _, surfaceID := range entry.Surfaces {
+				if sameModelVariant(id, surfaceID) {
+					matched = true
+					break
+				}
 			}
 		}
+		if !matched {
+			continue
+		}
+		if !bestSeen || betterModelVariantMatch(entry, modelID, best, bestID) {
+			best = entry
+			bestID = modelID
+			bestSeen = true
+		}
 	}
-	return ModelEntry{}, false
+	if !bestSeen {
+		return ModelEntry{}, false
+	}
+	return best, true
+}
+
+func betterModelVariantMatch(candidate ModelEntry, candidateID string, best ModelEntry, bestID string) bool {
+	candidateStatus := normalizedStatus(candidate.Status)
+	bestStatus := normalizedStatus(best.Status)
+	if candidateStatus != bestStatus {
+		return statusRank(candidateStatus) > statusRank(bestStatus)
+	}
+	if candidate.Power != best.Power {
+		return candidate.Power > best.Power
+	}
+	if candidate.ContextWindow != best.ContextWindow {
+		return candidate.ContextWindow > best.ContextWindow
+	}
+	if candidate.ExactPinOnly != best.ExactPinOnly {
+		return !candidate.ExactPinOnly && best.ExactPinOnly
+	}
+	return candidateID < bestID
+}
+
+func statusRank(status string) int {
+	switch normalizedStatus(status) {
+	case statusActive:
+		return 2
+	case statusDeprecated:
+		return 1
+	case statusStale:
+		return 0
+	default:
+		return -1
+	}
 }
 
 func sameModelVariant(a, b string) bool {

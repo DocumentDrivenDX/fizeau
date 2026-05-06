@@ -437,43 +437,69 @@ models:
 
 profiles:
   default:
-    target: code-medium
+    min_power: 7
+    max_power: 8
+    compatibility_target: code-medium
     provider_preference: local-first
   local:
-    target: code-economy
+    min_power: 5
+    max_power: 5
+    compatibility_target: code-economy
     provider_preference: local-only
   offline:
-    target: code-economy
+    min_power: 5
+    max_power: 5
+    compatibility_target: code-economy
     provider_preference: local-only
   air-gapped:
-    target: code-economy
+    min_power: 5
+    max_power: 5
+    compatibility_target: code-economy
     provider_preference: local-only
   code-high:
-    target: code-high
+    min_power: 9
+    max_power: 10
+    compatibility_target: code-high
     provider_preference: subscription-first
   code-smart:
-    target: code-high
+    min_power: 9
+    max_power: 10
+    compatibility_target: code-high
     provider_preference: subscription-first
   smart:
-    target: code-high
+    min_power: 9
+    max_power: 10
+    compatibility_target: code-high
     provider_preference: subscription-first
   code-medium:
-    target: code-medium
+    min_power: 7
+    max_power: 8
+    compatibility_target: code-medium
     provider_preference: local-first
   code-fast:
-    target: code-medium
+    min_power: 7
+    max_power: 8
+    compatibility_target: code-medium
     provider_preference: local-first
   fast:
-    target: code-medium
+    min_power: 7
+    max_power: 8
+    compatibility_target: code-medium
     provider_preference: local-first
   standard:
-    target: code-medium
+    min_power: 7
+    max_power: 8
+    compatibility_target: code-medium
     provider_preference: local-first
   code-economy:
-    target: code-economy
+    min_power: 5
+    max_power: 5
+    compatibility_target: code-economy
     provider_preference: local-first
   cheap:
-    target: code-economy
+    min_power: 5
+    max_power: 5
+    compatibility_target: code-economy
     provider_preference: local-first
 
 targets:

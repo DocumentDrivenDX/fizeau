@@ -24,17 +24,20 @@ func TestServiceProfiles_ListResolveAliases(t *testing.T) {
 	if byName["smart"].AliasOf != "code-high" {
 		t.Fatalf("smart AliasOf: got %q, want code-high", byName["smart"].AliasOf)
 	}
-	if byName["cheap"].Target != "code-economy" {
-		t.Fatalf("cheap Target: got %q, want code-economy", byName["cheap"].Target)
+	if byName["smart"].CompatibilityTarget != "code-high" || byName["smart"].MinPower != 9 || byName["smart"].MaxPower != 10 {
+		t.Fatalf("smart profile policy: %#v", byName["smart"])
+	}
+	if byName["cheap"].CompatibilityTarget != "code-economy" || byName["cheap"].MinPower != 5 || byName["cheap"].MaxPower != 5 {
+		t.Fatalf("cheap profile policy: %#v", byName["cheap"])
 	}
 	if byName["standard"].CatalogVersion == "" {
 		t.Fatal("CatalogVersion should be populated")
 	}
-	if byName["default"].Target != "code-medium" || byName["default"].ProviderPreference != "local-first" {
-		t.Fatalf("default profile: %#v, want target code-medium/local-first", byName["default"])
+	if byName["default"].CompatibilityTarget != "code-medium" || byName["default"].ProviderPreference != "local-first" {
+		t.Fatalf("default profile: %#v, want compatibility target code-medium/local-first", byName["default"])
 	}
-	if byName["local"].Target != "code-economy" || byName["local"].ProviderPreference != "local-only" {
-		t.Fatalf("local profile: %#v, want target code-economy/local-only", byName["local"])
+	if byName["local"].CompatibilityTarget != "code-economy" || byName["local"].ProviderPreference != "local-only" {
+		t.Fatalf("local profile: %#v, want compatibility target code-economy/local-only", byName["local"])
 	}
 	if !byName["claude-sonnet"].Deprecated {
 		t.Fatal("claude-sonnet should be listed as a deprecated alias")
@@ -65,8 +68,8 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveProfile: %v", err)
 	}
-	if resolved.Target != "code-high" {
-		t.Fatalf("Target: got %q, want code-high", resolved.Target)
+	if resolved.Target != "code-high" || resolved.CompatibilityTarget != "code-high" || resolved.MinPower != 9 || resolved.MaxPower != 10 {
+		t.Fatalf("profile policy: %#v", resolved)
 	}
 	if len(resolved.Surfaces) == 0 {
 		t.Fatal("expected profile surfaces")
@@ -78,8 +81,11 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if nativeOpenAI.Harness != "agent" {
 		t.Fatalf("native-openai Harness: got %q, want agent", nativeOpenAI.Harness)
 	}
-	if nativeOpenAI.Model == "" || len(nativeOpenAI.Candidates) == 0 {
-		t.Fatalf("native-openai model candidates missing: %#v", nativeOpenAI)
+	if nativeOpenAI.Model == "" {
+		t.Fatalf("native-openai model missing: %#v", nativeOpenAI)
+	}
+	if len(nativeOpenAI.Candidates) != 0 {
+		t.Fatalf("native-openai should not expose a closed candidate set: %#v", nativeOpenAI.Candidates)
 	}
 	if nativeOpenAI.ReasoningDefault != fizeau.ReasoningHigh {
 		t.Fatalf("ReasoningDefault: got %q, want high", nativeOpenAI.ReasoningDefault)
@@ -101,8 +107,8 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if gemini.ReasoningDefault != fizeau.ReasoningOff {
 		t.Fatalf("gemini ReasoningDefault: got %q, want off", gemini.ReasoningDefault)
 	}
-	if len(gemini.Candidates) == 0 || gemini.Candidates[0] != "gemini-2.5-pro" {
-		t.Fatalf("gemini candidates: %#v", gemini.Candidates)
+	if len(gemini.Candidates) != 0 {
+		t.Fatalf("gemini should not expose a closed candidate set: %#v", gemini.Candidates)
 	}
 }
 
