@@ -1,0 +1,2 @@
+verification_command: go test ./internal/provider/registry ./internal/config ./... -run 'Registry|ProviderType|llama|NormalizeServiceProviderType'
+reason: The llama-server provider is already registered, config normalization already defaults to http://localhost:8080/v1 and creates endpoint pools, and the service-time native path already routes through the registry. The targeted acceptance test command passed without any code changes.
