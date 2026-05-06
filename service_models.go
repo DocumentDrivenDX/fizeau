@@ -27,7 +27,7 @@ import (
 // ListModels returns models matching the filter, with full metadata.
 // Empty filter returns all models from every reachable provider.
 func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error) {
-	if filter.Harness != "" && filter.Harness != "agent" {
+	if filter.Harness != "" && harnesses.ResolveHarnessAlias(filter.Harness) != "fiz" {
 		return s.listModelsForSubprocessHarness(filter), nil
 	}
 
@@ -56,8 +56,8 @@ func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelIn
 			results[i] = indexedModels{idx: i, models: nil}
 			continue
 		}
-		// Apply harness filter: providers are served by the "agent" harness.
-		if filter.Harness != "" && filter.Harness != "agent" {
+		// Apply harness filter: providers are served by the "fiz" harness.
+		if filter.Harness != "" && harnesses.ResolveHarnessAlias(filter.Harness) != "fiz" {
 			results[i] = indexedModels{idx: i, models: nil}
 			continue
 		}
@@ -265,7 +265,7 @@ func listModelsForProvider(
 				ID:              id,
 				Provider:        providerName,
 				ProviderType:    providerType,
-				Harness:         "agent",
+				Harness:         "fiz",
 				EndpointName:    discovery.EndpointName,
 				EndpointBaseURL: discovery.EndpointBaseURL,
 				Available:       true,

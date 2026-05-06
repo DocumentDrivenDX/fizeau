@@ -323,7 +323,7 @@ func validateExplicitProvider(sc ServiceConfig, cfg harnesses.HarnessConfig, pro
 }
 
 func validateExplicitHarnessModel(name string, cfg harnesses.HarnessConfig, model, provider string) error {
-	if model == "" || cfg.TestOnly || cfg.IsHTTPProvider || name == "agent" {
+	if model == "" || cfg.TestOnly || cfg.IsHTTPProvider || name == "fiz" {
 		return nil
 	}
 	if modelSupportedForHarness(name, cfg, model, provider) {

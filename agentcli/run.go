@@ -620,7 +620,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 	if params.Harness != "" {
 		harness = params.Harness
 	} else if params.SelectedProvider != "" {
-		harness = "agent"
+		harness = "fiz"
 	}
 	permissions := params.Permissions
 	if permissions == "" {

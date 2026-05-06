@@ -3,7 +3,7 @@ package harnesses
 import "github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 
 // PreferenceOrder defines the default harness preference when multiple are available.
-var PreferenceOrder = []string{"codex", "claude", "opencode", "agent", "pi", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "gemini"}
+var PreferenceOrder = []string{"codex", "claude", "opencode", "fiz", "pi", "openrouter", "lmstudio", "omlx", "lucebox", "vllm", "gemini"}
 
 // builtinHarnesses defines known harnesses and how to invoke them.
 var builtinHarnesses = map[string]HarnessConfig{
@@ -108,8 +108,8 @@ var builtinHarnesses = map[string]HarnessConfig{
 		IsLocal:         false,
 		ExactPinSupport: true,
 	},
-	"agent": {
-		Name:                "agent",
+	"fiz": {
+		Name:                "fiz",
 		Binary:              productinfo.BinaryName, // embedded — runs in-process via the agent library, not as a subprocess
 		PermissionArgs:      map[string][]string{"safe": {}, "unrestricted": {}},
 		PromptMode:          "arg",
@@ -201,8 +201,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 // "local" always routes to the embedded agent; it must never
 // fall through to a cloud harness like claude or codex.
 var harnessAliases = map[string]string{
-	"local": "agent",
-	"fiz":   "agent",
+	"local": "fiz",
 }
 
 // ResolveHarnessAlias returns the canonical harness name for an alias,
@@ -283,7 +282,7 @@ func (r *Registry) Discover() []HarnessStatus {
 			Binary: h.Binary,
 		}
 		// Embedded harnesses are always available — no binary lookup needed.
-		if name == "virtual" || name == "agent" || name == "script" {
+		if name == "virtual" || name == "fiz" || name == "script" {
 			status.Available = true
 			status.Path = "(embedded)"
 		} else if h.IsHTTPProvider {

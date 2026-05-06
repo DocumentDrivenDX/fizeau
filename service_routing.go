@@ -20,7 +20,7 @@ var loadRoutingCatalog = modelcatalog.Default
 //
 // The implementation delegates to internal/routing.Resolve — the single
 // routing engine that consolidates DDx-side harness-tier ranking and
-// agent-side provider failover ordering.
+// fiz-side provider failover ordering.
 func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error) {
 	if err := ValidatePowerBounds(req.MinPower, req.MaxPower); err != nil {
 		return nil, err
@@ -488,7 +488,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 			// harness quota caches below.
 			SubscriptionOK: true,
 		}
-		if name == "agent" && s.opts.ServiceConfig == nil {
+		if name == "fiz" && s.opts.ServiceConfig == nil {
 			entry.AutoRoutingEligible = false
 		}
 
@@ -501,8 +501,8 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 			entry.QuotaReason = qs.Reason
 		}
 
-		// Native "agent" harness: enumerate live configured provider endpoints.
-		if name == "agent" && s.opts.ServiceConfig != nil {
+		// Native "fiz" harness: enumerate live configured provider endpoints.
+		if name == "fiz" && s.opts.ServiceConfig != nil {
 			for _, pname := range s.opts.ServiceConfig.ProviderNames() {
 				pcfg, ok := s.opts.ServiceConfig.Provider(pname)
 				if !ok {

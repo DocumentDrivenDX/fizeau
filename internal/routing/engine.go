@@ -97,7 +97,7 @@ type HarnessEntry struct {
 
 	// Providers is the list of providers this harness can dispatch to.
 	// For subprocess harnesses (claude/codex) this is typically a single
-	// vendor entry. For the native "agent" harness it is the configured
+	// vendor entry. For the native "fiz" harness it is the configured
 	// list of HTTP providers.
 	Providers []ProviderEntry
 }
@@ -393,7 +393,7 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 
 	canonicalHarness := req.Harness
 	if canonicalHarness == "local" {
-		canonicalHarness = "agent"
+		canonicalHarness = "fiz"
 	}
 
 	var ranked []rankedCandidate
@@ -598,7 +598,7 @@ func explicitPinError(req Request, in Inputs) error {
 
 func canonicalHarnessPin(harness string) string {
 	if harness == "local" {
-		return "agent"
+		return "fiz"
 	}
 	return harness
 }

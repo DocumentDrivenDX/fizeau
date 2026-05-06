@@ -34,7 +34,7 @@ type ExecuteDispatchCallbacks struct {
 // DispatchExecuteRun selects the concrete runner for an Execute request.
 func DispatchExecuteRun(ctx context.Context, req ExecuteDispatchRequest, cb ExecuteDispatchCallbacks) {
 	switch req.Decision.Harness {
-	case "agent", "":
+	case "fiz", "":
 		if cb.RunNative != nil {
 			cb.RunNative(ctx)
 		}

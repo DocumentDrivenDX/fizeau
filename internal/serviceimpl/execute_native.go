@@ -121,7 +121,7 @@ func RunNative(ctx context.Context, req NativeRequest, cb NativeCallbacks) {
 	provider := nativeExecutionProvider(req, cb.ResolveProvider)
 	actualHarness := req.Decision.Harness
 	if actualHarness == "" {
-		actualHarness = "agent"
+		actualHarness = "fiz"
 	}
 	resolvedProvider := resolveProvider(cb.ResolveProvider, nativeProviderRequest(req, req.Decision))
 	actualProvider := resolvedProvider.Name
