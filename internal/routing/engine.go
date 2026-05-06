@@ -290,13 +290,15 @@ var ProfileEscalationLadder = []string{"cheap", "standard", "smart"}
 
 // Inputs bundles the engine's external data sources.
 type Inputs struct {
-	Harnesses           []HarnessEntry
-	HistoricalSuccess   map[string]float64   // by harness name; -1 = insufficient data
-	ObservedSpeedTPS    map[string]float64   // by "provider:model"
-	ProviderSuccessRate map[string]float64   // by ProviderModelKey(provider, endpoint, model)
-	ObservedLatencyMS   map[string]float64   // by ProviderModelKey(provider, endpoint, model)
-	ProviderCooldowns   map[string]time.Time // by provider name
-	CooldownDuration    time.Duration        // 0 = no cooldown enforcement
+	Harnesses            []HarnessEntry
+	HistoricalSuccess    map[string]float64 // by harness name; -1 = insufficient data
+	ObservedSpeedTPS     map[string]float64 // by "provider:model"
+	ProviderSuccessRate  map[string]float64 // by ProviderModelKey(provider, endpoint, model)
+	ObservedLatencyMS    map[string]float64 // by ProviderModelKey(provider, endpoint, model)
+	EndpointLoads        map[string]EndpointLoad
+	EndpointLoadResolver func(provider, endpoint, model string) (EndpointLoad, bool)
+	ProviderCooldowns    map[string]time.Time // by provider name
+	CooldownDuration     time.Duration        // 0 = no cooldown enforcement
 
 	// ProviderQuotaExhaustedUntil maps provider name → retry_after time.
 	// A provider with retry_after > Now is treated as quota_exhausted and
@@ -316,6 +318,15 @@ type Inputs struct {
 	// (e.g. an off-only variant under a profile whose surface default is
 	// "high") are correctly disqualified instead of slipping through.
 	ReasoningResolver func(profile, surface string) (resolved string, ok bool)
+}
+
+// EndpointLoad is the routing engine's normalized view of endpoint load for a
+// single provider/model tuple.
+type EndpointLoad struct {
+	LeaseCount           int
+	NormalizedLoad       float64
+	UtilizationFresh     bool
+	UtilizationSaturated bool
 }
 
 // ModelEligibility is the routing engine's catalog-power view for one model.
@@ -350,6 +361,9 @@ type candidateInternal struct {
 	InCooldown            bool
 	ProviderAffinityMatch bool
 	ProviderPreference    string
+	EndpointLoad          float64
+	EndpointLoadFresh     bool
+	EndpointSaturated     bool
 }
 
 // ProviderModelKey is the metrics key used by routing callers for provider
@@ -436,6 +450,14 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		lj := costClassRank[ranked[j].internal.CostClass] == 0
 		if li != lj {
 			return li
+		}
+		if sameLocalEndpointGroup(ranked[i].internal, ranked[j].internal) {
+			if ranked[i].internal.EndpointSaturated != ranked[j].internal.EndpointSaturated {
+				return !ranked[i].internal.EndpointSaturated
+			}
+			if ranked[i].internal.EndpointLoad != ranked[j].internal.EndpointLoad {
+				return ranked[i].internal.EndpointLoad < ranked[j].internal.EndpointLoad
+			}
 		}
 		if ranked[i].out.Harness != ranked[j].out.Harness {
 			return ranked[i].out.Harness < ranked[j].out.Harness
@@ -782,6 +804,15 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			latencyMS = in.ObservedLatencyMS[ProviderModelKey(p.Name, "", model)]
 		}
 		power := candidatePower(in.ModelEligibility, model)
+		endpointLoad := EndpointLoad{}
+		if in.EndpointLoadResolver != nil {
+			loadProvider, loadEndpoint := candidateLoadIdentity(h, p)
+			if resolved, ok := in.EndpointLoadResolver(loadProvider, loadEndpoint, model); ok {
+				endpointLoad = resolved
+			}
+		} else if load, ok := in.EndpointLoads[key]; ok {
+			endpointLoad = load
+		}
 
 		gateReq := resolveRequestReasoning(req, h.Surface, in.ReasoningResolver)
 
@@ -897,6 +928,9 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			InCooldown:            inCooldown || h.InCooldown,
 			ProviderAffinityMatch: req.Provider != "" && req.Provider == candidateProviderIdentity(h, p),
 			ProviderPreference:    req.ProviderPreference,
+			EndpointLoad:          endpointLoad.NormalizedLoad,
+			EndpointLoadFresh:     endpointLoad.UtilizationFresh,
+			EndpointSaturated:     endpointLoad.UtilizationSaturated,
 		}
 		out = append(out, rankedCandidate{
 			out: Candidate{
@@ -943,6 +977,18 @@ func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
 	return h.Name
 }
 
+func candidateLoadIdentity(h HarnessEntry, p ProviderEntry) (string, string) {
+	provider := candidateProviderIdentity(h, p)
+	endpoint := p.EndpointName
+	if base, ep, ok := strings.Cut(provider, "@"); ok && base != "" {
+		provider = base
+		if endpoint == "" {
+			endpoint = ep
+		}
+	}
+	return provider, endpoint
+}
+
 func candidateCostClass(h HarnessEntry, p ProviderEntry) string {
 	if p.CostClass != "" {
 		return p.CostClass
@@ -957,6 +1003,28 @@ func normalizeCostSource(source string) string {
 	default:
 		return CostSourceUnknown
 	}
+}
+
+func sameLocalEndpointGroup(a, b candidateInternal) bool {
+	if a.Harness == "" || b.Harness == "" || a.Model == "" || b.Model == "" {
+		return false
+	}
+	if a.CostClass != "local" || b.CostClass != "local" {
+		return false
+	}
+	aBase := providerBaseName(a.Provider)
+	bBase := providerBaseName(b.Provider)
+	if aBase == "" || bBase == "" || aBase != bBase {
+		return false
+	}
+	return a.Model == b.Model
+}
+
+func providerBaseName(provider string) string {
+	if base, _, ok := strings.Cut(provider, "@"); ok {
+		return base
+	}
+	return provider
 }
 
 func neutralKnownCost(candidates []rankedCandidate) (float64, bool) {

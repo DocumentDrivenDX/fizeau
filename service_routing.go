@@ -358,6 +358,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	for _, st := range statuses {
 		statusByName[st.Name] = st
 	}
+	now := time.Now().UTC()
 
 	var entries []routing.HarnessEntry
 	for _, name := range s.registry.Names() {
@@ -426,16 +427,17 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		s.applySubscriptionRoutingCost(&entry, cat)
 		entries = append(entries, entry)
 	}
-	successRate, latencyMS := s.routeMetricSignals(time.Now(), s.routeAttemptTTL())
+	successRate, latencyMS := s.routeMetricSignals(now, s.routeAttemptTTL())
 	return routing.Inputs{
 		Harnesses:                   entries,
 		ProviderSuccessRate:         successRate,
 		ObservedLatencyMS:           latencyMS,
-		ProviderQuotaExhaustedUntil: s.providerQuotaExhaustedUntil(time.Now()),
+		ProviderQuotaExhaustedUntil: s.providerQuotaExhaustedUntil(now),
 		CatalogResolver:             serviceRoutingCatalogResolver(cat),
 		CatalogCandidatesResolver:   serviceRoutingCatalogCandidatesResolver(cat),
 		ModelEligibility:            serviceRoutingModelEligibility(cat),
 		ReasoningResolver:           serviceRoutingReasoningResolver(cat),
+		EndpointLoadResolver:        s.routeEndpointLoadsResolver(now),
 	}
 }
 

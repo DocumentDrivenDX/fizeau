@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
+	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
 
 const stickyRouteLeaseTTL = routehealth.DefaultLeaseTTL
@@ -14,6 +15,13 @@ func (s *service) routeLeaseStore() *routehealth.LeaseStore {
 		s.routeLeases = routehealth.NewLeaseStore()
 	}
 	return s.routeLeases
+}
+
+func (s *service) routeUtilizationStore() *routehealth.UtilizationStore {
+	if s.routeUtilization == nil {
+		s.routeUtilization = routehealth.NewUtilizationStore()
+	}
+	return s.routeUtilization
 }
 
 func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecision) {
@@ -56,64 +64,20 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 		}
 		store.Invalidate(now, key, reason)
 	}
-
-	candidate, found := stickyLeasePick(decision.Candidates, decision.Harness, baseProvider, decision.Model, store.LeaseCounts(now, baseProvider, decision.Model))
-	if !found || !candidate.Eligible {
+	if decision.Provider == "" && decision.Endpoint == "" {
 		return
 	}
-	chosenEndpoint := candidate.Endpoint
+	chosenEndpoint := decision.Endpoint
 	if chosenEndpoint == "" {
-		_, chosenEndpoint, _ = splitEndpointProviderRef(candidate.Provider)
+		_, chosenEndpoint, _ = splitEndpointProviderRef(decision.Provider)
 	}
 	if chosenEndpoint == "" {
-		chosenEndpoint = candidate.Provider
+		chosenEndpoint = decision.Provider
+	}
+	if chosenEndpoint == "" {
+		return
 	}
 	store.Acquire(now, stickyRouteLeaseTTL, key, baseProvider, chosenEndpoint, decision.Model)
-	decision.Provider = candidate.Provider
-	decision.Endpoint = candidate.Endpoint
-}
-
-func stickyLeasePick(candidates []RouteCandidate, harness, provider, model string, counts map[string]int) (RouteCandidate, bool) {
-	var chosen RouteCandidate
-	found := false
-	for _, candidate := range candidates {
-		if !candidate.Eligible || candidate.Harness != harness || candidate.Model != model {
-			continue
-		}
-		baseProvider, _, _ := splitEndpointProviderRef(candidate.Provider)
-		if baseProvider == "" {
-			baseProvider = candidate.Provider
-		}
-		if baseProvider != provider {
-			continue
-		}
-		if candidate.Endpoint == "" && candidate.Provider == "" {
-			continue
-		}
-		if !found {
-			chosen = candidate
-			found = true
-			continue
-		}
-		leftCount := counts[endpointOf(candidate)]
-		rightCount := counts[endpointOf(chosen)]
-		if leftCount != rightCount {
-			if leftCount < rightCount {
-				chosen = candidate
-			}
-			continue
-		}
-		if candidate.Score != chosen.Score {
-			if candidate.Score > chosen.Score {
-				chosen = candidate
-			}
-			continue
-		}
-		if endpointOf(candidate) < endpointOf(chosen) {
-			chosen = candidate
-		}
-	}
-	return chosen, found
 }
 
 func stickyLeaseCandidate(candidates []RouteCandidate, harness, provider, model, endpoint string) (RouteCandidate, bool) {
@@ -160,9 +124,31 @@ func stickyLeaseAnyEndpoint(candidates []RouteCandidate, harness, provider, endp
 	return RouteCandidate{}, false
 }
 
-func endpointOf(candidate RouteCandidate) string {
-	if _, endpoint, ok := splitEndpointProviderRef(candidate.Provider); ok && endpoint != "" {
-		return endpoint
+func (s *service) routeEndpointLoadsResolver(now time.Time) func(provider, endpoint, model string) (routing.EndpointLoad, bool) {
+	if s == nil {
+		return nil
 	}
-	return candidate.Endpoint
+	leaseStore := s.routeLeaseStore()
+	utilStore := s.routeUtilizationStore()
+	return func(provider, endpoint, model string) (routing.EndpointLoad, bool) {
+		leaseCounts := leaseStore.LeaseCounts(now, provider, model)
+		loads := utilStore.EndpointLoads(provider, model, leaseCounts)
+		load, ok := loads[endpoint]
+		if !ok {
+			if count, ok := leaseCounts[endpoint]; ok {
+				return routing.EndpointLoad{
+					LeaseCount:       count,
+					NormalizedLoad:   float64(count),
+					UtilizationFresh: false,
+				}, true
+			}
+			return routing.EndpointLoad{}, false
+		}
+		return routing.EndpointLoad{
+			LeaseCount:           load.LeaseCount,
+			NormalizedLoad:       load.NormalizedLoad,
+			UtilizationFresh:     load.UtilizationFresh,
+			UtilizationSaturated: load.UtilizationSaturated,
+		}, true
+	}
 }
