@@ -202,6 +202,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 // fall through to a cloud harness like claude or codex.
 var harnessAliases = map[string]string{
 	"local": "agent",
+	"fiz":   "agent",
 }
 
 // ResolveHarnessAlias returns the canonical harness name for an alias,

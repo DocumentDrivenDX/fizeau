@@ -105,6 +105,7 @@ func TestRegistryFirstAvailableEmbeddedFallback(t *testing.T) {
 
 func TestResolveHarnessAlias(t *testing.T) {
 	assert.Equal(t, "agent", ResolveHarnessAlias("local"))
+	assert.Equal(t, "agent", ResolveHarnessAlias("fiz"))
 	assert.Equal(t, "claude", ResolveHarnessAlias("claude"))
 	assert.Equal(t, "unknown", ResolveHarnessAlias("unknown"))
 }
