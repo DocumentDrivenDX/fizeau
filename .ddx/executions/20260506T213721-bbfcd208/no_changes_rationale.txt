@@ -1,0 +1,6 @@
+verification_command: go test ./cmd/bench
+evidence:
+  - cmd/bench/matrix_invalid.go classifies invalid_quota, invalid_auth, invalid_setup, and invalid_provider from report fields and log text.
+  - cmd/bench/matrix.go excludes invalid runs from reward and pass-rate denominators in summarizeMatrixCells, writeMarkdownRewardTable, and writeMarkdownPassCountTable.
+  - cmd/bench/matrix_aggregate.go surfaces InvalidRuns and InvalidByClass in matrix.json and renders an Invalid runs section in matrix.md.
+  - cmd/bench/matrix_invalid_test.go covers Claude quota, pi/opencode setup/auth cases, setup/native-arch failure, verifier failure after attempt, and invalid-denominator aggregation.
