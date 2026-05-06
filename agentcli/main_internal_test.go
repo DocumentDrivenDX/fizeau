@@ -224,7 +224,7 @@ func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 	assert.Equal(t, "default", serviceReq.ToolPreset)
 	assert.Equal(t, toolNames(tools), toolNames(serviceReq.Tools))
 	assert.Equal(t, workDir, serviceReq.WorkDir)
-	assert.Equal(t, "agent", serviceReq.Harness)
+	assert.Equal(t, "fiz", serviceReq.Harness)
 	assert.Equal(t, "local", serviceReq.Provider)
 	assert.Equal(t, "test-model", serviceReq.Model)
 	assert.True(t, serviceReq.NoStream == false)

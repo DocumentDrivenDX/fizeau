@@ -84,7 +84,7 @@ default: studio
 
 	known := findListModelsRow(rows, "qwen3.5-27b")
 	require.NotNil(t, known, "rows=%s", res.stdout)
-	assert.Equal(t, "agent", known.Harness)
+	assert.Equal(t, "fiz", known.Harness)
 	assert.Equal(t, "studio", known.Provider)
 	assert.Equal(t, "lmstudio", known.ProviderType)
 	assert.Equal(t, "vidar", known.EndpointName)

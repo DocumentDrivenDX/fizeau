@@ -441,12 +441,12 @@ func TestListModels_harnessFilter(t *testing.T) {
 	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	// Agent harness should return results.
-	infos, err := svc.ListModels(context.Background(), ModelFilter{Harness: "agent"})
+	infos, err := svc.ListModels(context.Background(), ModelFilter{Harness: "fiz"})
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)
 	}
 	if len(infos) != 1 {
-		t.Fatalf("want 1 model for harness=agent, got %d", len(infos))
+		t.Fatalf("want 1 model for harness=fiz, got %d", len(infos))
 	}
 
 	// Claude harness should return the documented CLI/TUI model surface.

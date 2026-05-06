@@ -70,7 +70,7 @@ func TestExecuteExplicitHarnessPinsDispatchRequestedRunner(t *testing.T) {
 				Provider: "openrouter",
 				Model:    "gpt-5.4",
 			},
-			wantHarness: "agent",
+			wantHarness: "fiz",
 			wantNative:  true,
 		},
 	}

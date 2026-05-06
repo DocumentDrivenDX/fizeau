@@ -10,7 +10,7 @@ import (
 
 func TestRegistryBuiltinHarnesses(t *testing.T) {
 	r := NewRegistry()
-	for _, name := range []string{"codex", "claude", "gemini", "opencode", "agent", "pi"} {
+	for _, name := range []string{"codex", "claude", "gemini", "opencode", "fiz", "pi"} {
 		assert.True(t, r.Has(name), "should have builtin harness: %s", name)
 	}
 	assert.False(t, r.Has("nonexistent"))
@@ -62,7 +62,7 @@ func TestRegistryDiscoverEmbeddedAlwaysAvailable(t *testing.T) {
 	for _, s := range statuses {
 		byName[s.Name] = s
 	}
-	assert.True(t, byName["agent"].Available, "embedded agent should always be available")
+	assert.True(t, byName["fiz"].Available, "embedded fiz should always be available")
 	assert.True(t, byName["virtual"].Available, "virtual harness should always be available")
 	assert.True(t, byName["script"].Available, "script harness should always be available")
 }
@@ -84,7 +84,7 @@ func TestRegistryDiscoverHTTPProviders(t *testing.T) {
 
 func TestRegistryFirstAvailable(t *testing.T) {
 	r := NewRegistry()
-	// With default LookPath, embedded agent is always available.
+	// With default LookPath, embedded fiz is always available.
 	name, ok := r.FirstAvailable()
 	assert.True(t, ok)
 	assert.NotEmpty(t, name)
@@ -104,8 +104,8 @@ func TestRegistryFirstAvailableEmbeddedFallback(t *testing.T) {
 }
 
 func TestResolveHarnessAlias(t *testing.T) {
-	assert.Equal(t, "agent", ResolveHarnessAlias("local"))
-	assert.Equal(t, "agent", ResolveHarnessAlias("fiz"))
+	assert.Equal(t, "fiz", ResolveHarnessAlias("local"))
+	assert.Equal(t, "fiz", ResolveHarnessAlias("fiz"))
 	assert.Equal(t, "claude", ResolveHarnessAlias("claude"))
 	assert.Equal(t, "unknown", ResolveHarnessAlias("unknown"))
 }
@@ -131,10 +131,10 @@ func TestBuiltinHarnessesMetadata(t *testing.T) {
 	assert.True(t, codex.AutoRoutingEligible)
 	assert.True(t, codex.ExactPinSupport)
 
-	agent, _ := r.Get("agent")
-	assert.True(t, agent.IsLocal)
-	assert.Equal(t, "local", agent.CostClass)
-	assert.True(t, agent.AutoRoutingEligible)
+	fiz, _ := r.Get("fiz")
+	assert.True(t, fiz.IsLocal)
+	assert.Equal(t, "local", fiz.CostClass)
+	assert.True(t, fiz.AutoRoutingEligible)
 
 	claude, _ := r.Get("claude")
 	assert.True(t, claude.AutoRoutingEligible)
