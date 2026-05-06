@@ -759,6 +759,7 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 			emitProgress(out, seq, sl, sessionID, meta, progress.noteThinkingComplete(final))
 		},
 		ObserveEvent: func(ev harnesses.Event) harnesses.Event {
+			ev = progress.annotateToolResultDuration(ev)
 			if payload, ok := progress.noteEvent(ev); ok && ev.Type != harnesses.EventTypeProgress {
 				emitProgress(out, seq, sl, sessionID, meta, payload)
 			}

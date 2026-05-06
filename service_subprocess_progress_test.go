@@ -75,6 +75,43 @@ func TestRunSubprocess_EmitsToolProgress(t *testing.T) {
 	}
 }
 
+func TestRunSubprocess_DerivesMissingToolDurationFromEventTimes(t *testing.T) {
+	start := time.Date(2026, 5, 6, 21, 17, 34, 260_000_000, time.UTC)
+	end := start.Add(31*time.Second + 624*time.Millisecond)
+	events := runSubprocessProgressEvents(t, []harnesses.Event{
+		harnessEventAt(t, harnesses.EventTypeToolCall, harnesses.ToolCallData{ID: "tool-1", Name: "bash", Input: json.RawMessage(`{"command":"go test ./cmd/bench"}`)}, start),
+		harnessEventAt(t, harnesses.EventTypeToolResult, harnesses.ToolResultData{ID: "tool-1", Output: "ok\n"}, end),
+		harnessEvent(t, harnesses.EventTypeFinal, harnesses.FinalData{Status: "success"}),
+	})
+
+	for _, ev := range events {
+		if ev.Type != harnesses.EventTypeToolResult {
+			continue
+		}
+		var result harnesses.ToolResultData
+		if err := json.Unmarshal(ev.Data, &result); err != nil {
+			t.Fatalf("unmarshal tool result: %v", err)
+		}
+		if result.DurationMS != 31624 {
+			t.Fatalf("tool_result duration = %dms, want 31624ms", result.DurationMS)
+		}
+		break
+	}
+
+	for _, p := range subprocessProgressEvents(events) {
+		if p.Phase == "tool" && p.State == "complete" {
+			if p.DurationMS != 31624 || p.OutputBytes != len("ok") || p.OutputLines != 1 {
+				t.Fatalf("tool complete progress = %#v", p)
+			}
+			if !strings.Contains(p.Message, "31.624s") {
+				t.Fatalf("tool complete message = %q, want derived duration", p.Message)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing tool complete progress: %#v", subprocessProgressEvents(events))
+}
+
 func TestRunSubprocess_EmitsResponseProgress(t *testing.T) {
 	events := runSubprocessProgressEvents(t, []harnesses.Event{
 		harnessEvent(t, harnesses.EventTypeFinal, harnesses.FinalData{
@@ -184,13 +221,18 @@ func subprocessProgressEvents(events []ServiceEvent) []ServiceProgressData {
 
 func harnessEvent(t *testing.T, typ harnesses.EventType, payload any) harnesses.Event {
 	t.Helper()
+	return harnessEventAt(t, typ, payload, time.Now().UTC())
+}
+
+func harnessEventAt(t *testing.T, typ harnesses.EventType, payload any, at time.Time) harnesses.Event {
+	t.Helper()
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal harness event: %v", err)
 	}
 	return harnesses.Event{
 		Type: typ,
-		Time: time.Now().UTC(),
+		Time: at,
 		Data: raw,
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -386,6 +387,36 @@ func TestParseCodexStream_CommandExecutionFailure(t *testing.T) {
 	}
 	if result.Output != "boom" {
 		t.Fatalf("tool_result output: got %q", result.Output)
+	}
+}
+
+func TestParseCodexStream_CommandExecutionDuration(t *testing.T) {
+	reader, writer := io.Pipe()
+	go func() {
+		fmt.Fprintln(writer, `{"type":"item.started","item":{"id":"item_slow","type":"command_execution","command":"sleep 1","status":"in_progress"}}`)
+		time.Sleep(20 * time.Millisecond)
+		fmt.Fprintln(writer, `{"type":"item.completed","item":{"id":"item_slow","type":"command_execution","command":"sleep 1","aggregated_output":"done","exit_code":0,"status":"completed"}}`)
+		writer.Close()
+	}()
+
+	out := make(chan harnesses.Event, 16)
+	var seq int64
+	if _, err := parseCodexStream(context.Background(), reader, out, nil, &seq); err != nil {
+		t.Fatalf("parseCodexStream: %v", err)
+	}
+	close(out)
+
+	var result harnesses.ToolResultData
+	for ev := range out {
+		if ev.Type != harnesses.EventTypeToolResult {
+			continue
+		}
+		if err := json.Unmarshal(ev.Data, &result); err != nil {
+			t.Fatalf("unmarshal tool_result: %v", err)
+		}
+	}
+	if result.DurationMS < 20 {
+		t.Fatalf("tool_result duration = %dms, want >=20ms", result.DurationMS)
 	}
 }
 

@@ -30,6 +30,7 @@ type progressTracker struct {
 	kind                  string
 	toolCalls             map[string]harnesses.ToolCallData
 	toolCallIndexes       map[string]int
+	toolCallStarts        map[string]time.Time
 	turnIndex             int
 	totalToolCalls        int
 	recentTools           []string
@@ -162,6 +163,7 @@ func newHarnessProgressTracker(req ServiceExecuteRequest) *progressTracker {
 		kind:                  "harness",
 		toolCalls:             make(map[string]harnesses.ToolCallData),
 		toolCallIndexes:       make(map[string]int),
+		toolCallStarts:        make(map[string]time.Time),
 		contextMessages:       1,
 		contextTokensEstimate: estimateProgressTextTokens(req.Prompt) + estimateProgressTextTokens(req.SystemPrompt),
 	}
@@ -276,6 +278,30 @@ func (p *progressTracker) noteToolStart(toolName, callID string, input json.RawM
 	}
 }
 
+func (p *progressTracker) noteToolStartTime(callID string, at time.Time) {
+	if callID == "" || at.IsZero() || p.toolCallStarts == nil {
+		return
+	}
+	p.toolCallStarts[callID] = at
+}
+
+func (p *progressTracker) toolElapsedMS(callID string, completedAt time.Time) int64 {
+	if callID == "" || completedAt.IsZero() || p.toolCallStarts == nil {
+		return 0
+	}
+	startedAt, ok := p.toolCallStarts[callID]
+	if !ok || startedAt.IsZero() || completedAt.Before(startedAt) {
+		return 0
+	}
+	return completedAt.Sub(startedAt).Milliseconds()
+}
+
+func (p *progressTracker) forgetToolStartTime(callID string) {
+	if callID != "" && p.toolCallStarts != nil {
+		delete(p.toolCallStarts, callID)
+	}
+}
+
 func (p *progressTracker) noteToolComplete(toolName, callID string, input json.RawMessage, output string, durationMS int64, errText string) ServiceProgressData {
 	command := summarizeToolInput(toolName, input)
 	task := summarizeToolTask(toolName, input)
@@ -289,7 +315,7 @@ func (p *progressTracker) noteToolComplete(toolName, callID string, input json.R
 		details = command
 	}
 	if durationMS <= 0 {
-		durationMS = 1
+		durationMS = 0
 	}
 	return ServiceProgressData{
 		Phase:                 "tool",
@@ -388,6 +414,7 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		}
 		if payload.ID != "" {
 			p.toolCalls[payload.ID] = payload
+			p.noteToolStartTime(payload.ID, ev.Time)
 		}
 		_ = p.noteToolStart(payload.Name, payload.ID, payload.Input)
 		return ServiceProgressData{}, false
@@ -396,6 +423,10 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		if err := json.Unmarshal(ev.Data, &payload); err != nil {
 			return ServiceProgressData{}, false
 		}
+		if payload.DurationMS <= 0 {
+			payload.DurationMS = p.toolElapsedMS(payload.ID, ev.Time)
+		}
+		p.forgetToolStartTime(payload.ID)
 		call := p.toolCalls[payload.ID]
 		toolName := call.Name
 		if toolName == "" {
@@ -404,6 +435,29 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		return p.noteToolComplete(toolName, payload.ID, call.Input, payload.Output, payload.DurationMS, payload.Error), true
 	}
 	return ServiceProgressData{}, false
+}
+
+func (p *subprocessProgressState) annotateToolResultDuration(ev harnesses.Event) harnesses.Event {
+	if ev.Type != harnesses.EventTypeToolResult {
+		return ev
+	}
+	var payload harnesses.ToolResultData
+	if err := json.Unmarshal(ev.Data, &payload); err != nil {
+		return ev
+	}
+	if payload.DurationMS > 0 {
+		return ev
+	}
+	payload.DurationMS = p.toolElapsedMS(payload.ID, ev.Time)
+	if payload.DurationMS <= 0 {
+		return ev
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ev
+	}
+	ev.Data = raw
+	return ev
 }
 
 func (p *subprocessProgressState) noteFinal(ev harnesses.Event) (ServiceProgressData, bool) {

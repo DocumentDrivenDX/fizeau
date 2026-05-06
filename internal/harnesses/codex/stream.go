@@ -35,6 +35,7 @@ type codexEvent struct {
 		AggregatedOutput string          `json:"aggregated_output"`
 		ExitCode         *int            `json:"exit_code"`
 		Status           string          `json:"status"`
+		DurationMS       int64           `json:"duration_ms"`
 	} `json:"item"`
 	Usage      json.RawMessage `json:"usage"`
 	CapturedAt string          `json:"captured_at"`
@@ -77,8 +78,9 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 	agg := &streamAggregate{}
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 256*1024), 16*1024*1024)
+	toolStarts := make(map[string]time.Time)
 
-	emit := func(t harnesses.EventType, data any) error {
+	emitAt := func(t harnesses.EventType, data any, at time.Time) error {
 		raw, err := json.Marshal(data)
 		if err != nil {
 			return err
@@ -86,7 +88,7 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 		ev := harnesses.Event{
 			Type:     t,
 			Sequence: *seq,
-			Time:     time.Now().UTC(),
+			Time:     at,
 			Metadata: metadata,
 			Data:     raw,
 		}
@@ -97,6 +99,10 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+	emit := func(t harnesses.EventType, data any) (time.Time, error) {
+		at := time.Now().UTC()
+		return at, emitAt(t, data, at)
 	}
 
 	for scanner.Scan() {
@@ -119,25 +125,35 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 		switch ev.Type {
 		case "output":
 			if ev.Item.Type == "agent_message" && ev.Item.Text != "" {
-				if err := emit(harnesses.EventTypeTextDelta, harnesses.TextDeltaData{Text: ev.Item.Text}); err != nil {
+				if _, err := emit(harnesses.EventTypeTextDelta, harnesses.TextDeltaData{Text: ev.Item.Text}); err != nil {
 					return agg, err
 				}
 				agg.FinalText = ev.Item.Text
 			}
 		case "item.completed":
 			if ev.Item.Type == "command_execution" {
-				if err := emit(harnesses.EventTypeToolResult, harnesses.ToolResultData{
-					ID:     codexToolID(ev.Item.ID),
-					Output: ev.Item.AggregatedOutput,
-					Error:  codexCommandError(ev.Item.Status, ev.Item.ExitCode),
-				}); err != nil {
+				at := time.Now().UTC()
+				id := codexToolID(ev.Item.ID)
+				durationMS := ev.Item.DurationMS
+				if durationMS <= 0 {
+					if startedAt, ok := toolStarts[id]; ok {
+						durationMS = at.Sub(startedAt).Milliseconds()
+					}
+				}
+				delete(toolStarts, id)
+				if err := emitAt(harnesses.EventTypeToolResult, harnesses.ToolResultData{
+					ID:         codexToolID(ev.Item.ID),
+					Output:     ev.Item.AggregatedOutput,
+					Error:      codexCommandError(ev.Item.Status, ev.Item.ExitCode),
+					DurationMS: durationMS,
+				}, at); err != nil {
 					return agg, err
 				}
 				continue
 			}
 			text := codexCompletedItemText(ev.Item.Text, ev.Item.Content)
 			if text != "" {
-				if err := emit(harnesses.EventTypeTextDelta, harnesses.TextDeltaData{Text: text}); err != nil {
+				if _, err := emit(harnesses.EventTypeTextDelta, harnesses.TextDeltaData{Text: text}); err != nil {
 					return agg, err
 				}
 				agg.FinalText = text
@@ -148,13 +164,16 @@ func parseCodexStream(ctx context.Context, r io.Reader, out chan<- harnesses.Eve
 				if err != nil {
 					return agg, err
 				}
-				if err := emit(harnesses.EventTypeToolCall, harnesses.ToolCallData{
-					ID:    codexToolID(ev.Item.ID),
+				id := codexToolID(ev.Item.ID)
+				at, err := emit(harnesses.EventTypeToolCall, harnesses.ToolCallData{
+					ID:    id,
 					Name:  "bash",
 					Input: input,
-				}); err != nil {
+				})
+				if err != nil {
 					return agg, err
 				}
+				toolStarts[id] = at
 			}
 		case "turn.completed":
 			agg.recordUsage(ev.Usage)
