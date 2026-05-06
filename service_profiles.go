@@ -20,15 +20,18 @@ func (s *service) ListProfiles(_ context.Context) ([]ProfileInfo, error) {
 	seen := make(map[string]struct{}, len(profiles)+len(aliases))
 	for _, profile := range profiles {
 		info := ProfileInfo{
-			Name:               profile.Name,
-			Target:             profile.Target,
-			ProviderPreference: profile.ProviderPreference,
-			CatalogVersion:     meta.CatalogVersion,
-			ManifestSource:     meta.ManifestSource,
-			ManifestVersion:    meta.ManifestVersion,
+			Name:                profile.Name,
+			Target:              profile.Target,
+			CompatibilityTarget: profile.CompatibilityTarget,
+			MinPower:            profile.MinPower,
+			MaxPower:            profile.MaxPower,
+			ProviderPreference:  profile.ProviderPreference,
+			CatalogVersion:      meta.CatalogVersion,
+			ManifestSource:      meta.ManifestSource,
+			ManifestVersion:     meta.ManifestVersion,
 		}
-		if profile.Name != profile.Target {
-			info.AliasOf = profile.Target
+		if profile.CompatibilityTarget != "" && profile.Name != profile.CompatibilityTarget {
+			info.AliasOf = profile.CompatibilityTarget
 		}
 		out = append(out, info)
 		seen[profile.Name] = struct{}{}
@@ -61,8 +64,8 @@ func (s *service) ProfileAliases(_ context.Context) (map[string]string, error) {
 	}
 	out := make(map[string]string)
 	for _, profile := range cat.Profiles() {
-		if profile.Name != profile.Target {
-			out[profile.Name] = profile.Target
+		if profile.CompatibilityTarget != "" && profile.Name != profile.CompatibilityTarget {
+			out[profile.Name] = profile.CompatibilityTarget
 		}
 	}
 	for _, alias := range cat.Aliases() {
@@ -81,10 +84,68 @@ func (s *service) ResolveProfile(_ context.Context, name string) (*ResolvedProfi
 		return nil, err
 	}
 	meta := cat.Metadata()
+	profile, ok := cat.Profile(name)
+	var compatTarget string
+	var deprecated bool
+	var replacement string
+	if ok {
+		compatTarget = profile.CompatibilityTarget
+		if compatTarget == "" {
+			compatTarget = profile.Target
+		}
+	}
+	if !ok {
+		var aliasTarget string
+		for _, surface := range serviceProfileSurfaces() {
+			target, err := cat.Resolve(name, modelcatalog.ResolveOptions{
+				Surface:         surface.catalogSurface,
+				AllowDeprecated: true,
+			})
+			if err != nil {
+				if _, ok := err.(*modelcatalog.MissingSurfaceError); ok {
+					continue
+				}
+				return nil, err
+			}
+			aliasTarget = target.CanonicalID
+			if target.Deprecated && target.Replacement != "" {
+				deprecated = true
+				replacement = target.Replacement
+				aliasTarget = target.Replacement
+			} else if target.Deprecated {
+				deprecated = true
+			}
+			break
+		}
+		if aliasTarget == "" {
+			return nil, fmt.Errorf("profile %q is not defined in the catalog", name)
+		}
+		if resolvedProfile, ok := cat.Profile(aliasTarget); ok {
+			profile = resolvedProfile
+			compatTarget = profile.CompatibilityTarget
+			if compatTarget == "" {
+				compatTarget = profile.Target
+			}
+		} else {
+			for _, candidate := range cat.Profiles() {
+				if candidate.CompatibilityTarget == aliasTarget || candidate.Target == aliasTarget {
+					profile = candidate
+					compatTarget = candidate.CompatibilityTarget
+					if compatTarget == "" {
+						compatTarget = candidate.Target
+					}
+					break
+				}
+			}
+		}
+	}
+	if compatTarget == "" {
+		return nil, fmt.Errorf("profile %q has no compatibility target", name)
+	}
 
 	var resolved *ResolvedProfile
 	for _, surface := range serviceProfileSurfaces() {
-		target, err := cat.Resolve(name, modelcatalog.ResolveOptions{
+		target, err := cat.Resolve(compatTarget, modelcatalog.ResolveOptions{
 			Surface:         surface.catalogSurface,
 			AllowDeprecated: true,
 		})
@@ -96,25 +157,23 @@ func (s *service) ResolveProfile(_ context.Context, name string) (*ResolvedProfi
 		}
 		if resolved == nil {
 			resolved = &ResolvedProfile{
-				Name:            name,
-				Target:          target.CanonicalID,
-				Deprecated:      target.Deprecated,
-				Replacement:     target.Replacement,
-				CatalogVersion:  meta.CatalogVersion,
-				ManifestSource:  meta.ManifestSource,
-				ManifestVersion: meta.ManifestVersion,
+				Name:                name,
+				Target:              compatTarget,
+				CompatibilityTarget: compatTarget,
+				MinPower:            profile.MinPower,
+				MaxPower:            profile.MaxPower,
+				Deprecated:          deprecated || target.Deprecated,
+				Replacement:         replacement,
+				CatalogVersion:      meta.CatalogVersion,
+				ManifestSource:      meta.ManifestSource,
+				ManifestVersion:     meta.ManifestVersion,
 			}
-		}
-		candidates := cat.CandidatesFor(surface.catalogSurface, target.CanonicalID)
-		if len(candidates) == 0 && target.ConcreteModel != "" {
-			candidates = []string{target.ConcreteModel}
 		}
 		resolved.Surfaces = append(resolved.Surfaces, ProfileSurface{
 			Name:                    surface.name,
 			Harness:                 surface.harness,
 			ProviderSystem:          surface.providerSystem,
 			Model:                   target.ConcreteModel,
-			Candidates:              append([]string(nil), candidates...),
 			PlacementOrder:          append([]string(nil), target.SurfacePolicy.PlacementOrder...),
 			CostCeilingInputPerMTok: cloneFloat64(target.SurfacePolicy.MaxInputCostPerMTokUSD),
 			ReasoningDefault:        Reasoning(target.SurfacePolicy.ReasoningDefault),

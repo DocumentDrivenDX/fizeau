@@ -8,10 +8,15 @@ power point. Use `--min-power` and `--max-power` when the caller needs an
 explicit numeric bound. Use `--model`, `--provider`, and `--harness` only as
 hard pins.
 
-`ModelRef` is separate from profiles. It resolves catalog references for exact
-model identity and migration compatibility. Legacy names such as
-`code-medium` and `code-high` are compatibility model references or deprecated
-aliases; they are not target routing profiles.
+Use `fiz --list-models` to inspect numeric power, compatibility metadata, and
+the live routing inventory before selecting a profile or hard pin.
+
+`ModelRef` is separate from profiles. It resolves catalog references for exact model identity and migration compatibility. Legacy names such as `code-medium` and `code-high` are compatibility metadata and are not the primary routing surface.
+
+Catalog profile listings expose effective `MinPower`/`MaxPower` along with an
+optional compatibility target for older references. The compatibility target
+documents how older names map onto the new power-policy shorthand, but it does
+not define a closed candidate list for routing.
 
 Routing first applies eligibility: hard pins, profile/power policy, context
 fit, required capabilities, health, and quota. It then ranks eligible

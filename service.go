@@ -310,26 +310,32 @@ type ModelFilter struct {
 }
 
 type ProfileInfo struct {
-	Name               string
-	Target             string
-	AliasOf            string
-	ProviderPreference string
-	Deprecated         bool
-	Replacement        string
-	CatalogVersion     string
-	ManifestSource     string
-	ManifestVersion    int
+	Name                string
+	Target              string
+	CompatibilityTarget string
+	AliasOf             string
+	MinPower            int
+	MaxPower            int
+	ProviderPreference  string
+	Deprecated          bool
+	Replacement         string
+	CatalogVersion      string
+	ManifestSource      string
+	ManifestVersion     int
 }
 
 type ResolvedProfile struct {
-	Name            string
-	Target          string
-	Deprecated      bool
-	Replacement     string
-	CatalogVersion  string
-	ManifestSource  string
-	ManifestVersion int
-	Surfaces        []ProfileSurface
+	Name                string
+	Target              string
+	CompatibilityTarget string
+	MinPower            int
+	MaxPower            int
+	Deprecated          bool
+	Replacement         string
+	CatalogVersion      string
+	ManifestSource      string
+	ManifestVersion     int
+	Surfaces            []ProfileSurface
 }
 
 type ProfileSurface struct {

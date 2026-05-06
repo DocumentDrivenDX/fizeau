@@ -118,8 +118,11 @@ type manifest struct {
 }
 
 type profileEntry struct {
-	Target             string `yaml:"target"`
-	ProviderPreference string `yaml:"provider_preference,omitempty"`
+	Target              string `yaml:"target,omitempty"`
+	CompatibilityTarget string `yaml:"compatibility_target,omitempty"`
+	MinPower            int    `yaml:"min_power,omitempty"`
+	MaxPower            int    `yaml:"max_power,omitempty"`
+	ProviderPreference  string `yaml:"provider_preference,omitempty"`
 }
 
 // surfaceValue represents a surface entry that may be a plain model ID string
@@ -453,18 +456,28 @@ func validateManifest(m manifest) error {
 		if strings.TrimSpace(profile) == "" {
 			return fmt.Errorf("profile name must not be empty")
 		}
-		if strings.TrimSpace(entry.Target) == "" {
-			return fmt.Errorf("profile %q must define target", profile)
+		compatTarget := profileCompatibilityTarget(entry)
+		if strings.TrimSpace(entry.Target) != "" && strings.TrimSpace(compatTarget) != "" && strings.TrimSpace(entry.Target) != strings.TrimSpace(compatTarget) {
+			return fmt.Errorf("profile %q target and compatibility_target must match when both are set", profile)
 		}
-		if _, ok := m.Targets[entry.Target]; !ok {
-			return fmt.Errorf("profile %q references unknown target %q", profile, entry.Target)
+		if entry.MinPower < 0 {
+			return fmt.Errorf("profile %q min_power must be >= 0", profile)
+		}
+		if entry.MaxPower < 0 {
+			return fmt.Errorf("profile %q max_power must be >= 0", profile)
+		}
+		if entry.MinPower > 0 && entry.MaxPower > 0 && entry.MinPower > entry.MaxPower {
+			return fmt.Errorf("profile %q min_power must be <= max_power", profile)
+		}
+		if entry.MinPower == 0 && entry.MaxPower == 0 && compatTarget == "" {
+			return fmt.Errorf("profile %q must define min_power/max_power or compatibility_target", profile)
 		}
 		switch entry.ProviderPreference {
 		case "", providerPreferenceLocalFirst, providerPreferenceSubscriptionFirst, providerPreferenceLocalOnly, providerPreferenceSubscriptionOnly:
 		default:
 			return fmt.Errorf("profile %q has invalid provider_preference %q", profile, entry.ProviderPreference)
 		}
-		if owner, exists := reserved[profile]; exists && profile != entry.Target {
+		if owner, exists := reserved[profile]; exists && profile != compatTarget {
 			return fmt.Errorf("profile %q collides with %s", profile, owner)
 		}
 		reserved[profile] = fmt.Sprintf("profile %q", profile)
@@ -559,6 +572,13 @@ func normalizedProviderPreference(preference string) string {
 		return providerPreferenceLocalFirst
 	}
 	return preference
+}
+
+func profileCompatibilityTarget(entry profileEntry) string {
+	if target := strings.TrimSpace(entry.CompatibilityTarget); target != "" {
+		return target
+	}
+	return strings.TrimSpace(entry.Target)
 }
 
 func findReplacementCycle(m manifest, start string) string {
