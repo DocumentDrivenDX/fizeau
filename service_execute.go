@@ -560,8 +560,6 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		case agentcore.EventToolCall:
 			var payload nativeToolCallPayload
 			_ = json.Unmarshal(ev.Data, &payload)
-			startProgress, completeProgress := progress.noteToolCall(payload)
-			emitProgress(out, seq, sl, sessionID, meta, startProgress)
 			toolName := payload.Tool
 			input := payload.Input
 			if input == nil {
@@ -570,6 +568,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 				}
 			}
 			callID := fmt.Sprintf("call-%d", ev.Seq)
+			_, completeProgress := progress.noteToolCall(callID, payload)
 			emitJSONRaw(out, seq, harnesses.EventTypeToolCall, meta, harnesses.ToolCallData{
 				ID:    callID,
 				Name:  toolName,

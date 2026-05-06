@@ -611,6 +611,9 @@ func TestExecute_NativeEmitsToolProgress(t *testing.T) {
 			if p.ToolName != "bash" {
 				t.Fatalf("tool complete ToolName = %q", p.ToolName)
 			}
+			if p.ToolCallID == "" || p.ToolCallIndex != 1 {
+				t.Fatalf("tool complete identity = id %q index %d", p.ToolCallID, p.ToolCallIndex)
+			}
 			if p.DurationMS <= 0 {
 				t.Fatalf("tool complete duration = %dms, want > 0", p.DurationMS)
 			}
@@ -625,8 +628,8 @@ func TestExecute_NativeEmitsToolProgress(t *testing.T) {
 			}
 		}
 	}
-	if !sawToolStart || !sawToolComplete {
-		t.Fatalf("missing tool progress events: %#v", progress)
+	if sawToolStart || !sawToolComplete {
+		t.Fatalf("tool progress events = %#v, want only complete", progress)
 	}
 	if !sessionLogHasEventType(t, dir, "progress") {
 		t.Fatal("session log did not persist a progress event")

@@ -29,6 +29,7 @@ type subprocessProgressState struct {
 type progressTracker struct {
 	kind                  string
 	toolCalls             map[string]harnesses.ToolCallData
+	toolCallIndexes       map[string]int
 	turnIndex             int
 	totalToolCalls        int
 	recentTools           []string
@@ -146,7 +147,10 @@ func progressMessageLimit(payload ServiceProgressData) int {
 }
 
 func newNativeProgressState() *nativeProgressState {
-	return &nativeProgressState{progressTracker: &progressTracker{kind: "native"}}
+	return &nativeProgressState{progressTracker: &progressTracker{
+		kind:            "native",
+		toolCallIndexes: make(map[string]int),
+	}}
 }
 
 func newSubprocessProgressState(req ServiceExecuteRequest) *subprocessProgressState {
@@ -157,6 +161,7 @@ func newHarnessProgressTracker(req ServiceExecuteRequest) *progressTracker {
 	return &progressTracker{
 		kind:                  "harness",
 		toolCalls:             make(map[string]harnesses.ToolCallData),
+		toolCallIndexes:       make(map[string]int),
 		contextMessages:       1,
 		contextTokensEstimate: estimateProgressTextTokens(req.Prompt) + estimateProgressTextTokens(req.SystemPrompt),
 	}
@@ -245,8 +250,12 @@ func (p *progressTracker) noteResponseComplete(final harnesses.FinalData) *Servi
 	}
 }
 
-func (p *progressTracker) noteToolStart(toolName string, input json.RawMessage) ServiceProgressData {
+func (p *progressTracker) noteToolStart(toolName, callID string, input json.RawMessage) ServiceProgressData {
 	p.totalToolCalls++
+	toolCallIndex := p.totalToolCalls
+	if callID != "" && p.toolCallIndexes != nil {
+		p.toolCallIndexes[callID] = toolCallIndex
+	}
 	p.recentTools = appendRecentTool(p.recentTools, toolName)
 	command := summarizeToolInput(toolName, input)
 	task := summarizeToolTask(toolName, input)
@@ -256,6 +265,8 @@ func (p *progressTracker) noteToolStart(toolName string, input json.RawMessage) 
 		Message:               boundedProgressText(toolStartMessage(toolName, command), progressExceptionalLineLimit),
 		TurnIndex:             p.turnIndex,
 		ToolName:              toolName,
+		ToolCallID:            callID,
+		ToolCallIndex:         toolCallIndex,
 		Command:               command,
 		Action:                task.Action,
 		Target:                task.Target,
@@ -265,10 +276,14 @@ func (p *progressTracker) noteToolStart(toolName string, input json.RawMessage) 
 	}
 }
 
-func (p *progressTracker) noteToolComplete(toolName string, input json.RawMessage, output string, durationMS int64, errText string) ServiceProgressData {
+func (p *progressTracker) noteToolComplete(toolName, callID string, input json.RawMessage, output string, durationMS int64, errText string) ServiceProgressData {
 	command := summarizeToolInput(toolName, input)
 	task := summarizeToolTask(toolName, input)
 	outputDetail := summarizeToolOutputDetail(output)
+	toolCallIndex := 0
+	if callID != "" && p.toolCallIndexes != nil {
+		toolCallIndex = p.toolCallIndexes[callID]
+	}
 	details := toolName
 	if command != "" {
 		details = command
@@ -282,6 +297,8 @@ func (p *progressTracker) noteToolComplete(toolName string, input json.RawMessag
 		Message:               boundedProgressText(toolCompleteMessage(details, durationMS, errText), progressExceptionalLineLimit),
 		TurnIndex:             p.turnIndex,
 		ToolName:              toolName,
+		ToolCallID:            callID,
+		ToolCallIndex:         toolCallIndex,
 		Command:               command,
 		Action:                task.Action,
 		Target:                task.Target,
@@ -312,8 +329,8 @@ func (p *nativeProgressState) noteResponse(payload nativeLLMResponsePayload) Ser
 	return p.noteThinkingComplete(p.turnIndex, payload.LatencyMS, usage)
 }
 
-func (p *nativeProgressState) noteToolCall(payload nativeToolCallPayload) (ServiceProgressData, ServiceProgressData) {
-	return p.noteToolStart(payload.Tool, payload.Input), p.noteToolComplete(payload.Tool, payload.Input, payload.Output, payload.DurationMS, payload.Error)
+func (p *nativeProgressState) noteToolCall(callID string, payload nativeToolCallPayload) (ServiceProgressData, ServiceProgressData) {
+	return p.noteToolStart(payload.Tool, callID, payload.Input), p.noteToolComplete(payload.Tool, callID, payload.Input, payload.Output, payload.DurationMS, payload.Error)
 }
 
 func (p *nativeProgressState) noteCompaction(payload nativeCompactionPayload) (ServiceProgressData, ServiceProgressData) {
@@ -372,7 +389,8 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		if payload.ID != "" {
 			p.toolCalls[payload.ID] = payload
 		}
-		return p.noteToolStart(payload.Name, payload.Input), true
+		_ = p.noteToolStart(payload.Name, payload.ID, payload.Input)
+		return ServiceProgressData{}, false
 	case harnesses.EventTypeToolResult:
 		var payload harnesses.ToolResultData
 		if err := json.Unmarshal(ev.Data, &payload); err != nil {
@@ -383,7 +401,7 @@ func (p *subprocessProgressState) noteEvent(ev harnesses.Event) (ServiceProgress
 		if toolName == "" {
 			toolName = payload.ID
 		}
-		return p.noteToolComplete(toolName, call.Input, payload.Output, payload.DurationMS, payload.Error), true
+		return p.noteToolComplete(toolName, payload.ID, call.Input, payload.Output, payload.DurationMS, payload.Error), true
 	}
 	return ServiceProgressData{}, false
 }

@@ -59,6 +59,9 @@ func TestRunSubprocess_EmitsToolProgress(t *testing.T) {
 			if p.ToolName != "bash" || p.DurationMS != 7 {
 				t.Fatalf("tool complete progress = %#v", p)
 			}
+			if p.ToolCallID != "tool-1" || p.ToolCallIndex != 1 {
+				t.Fatalf("tool complete identity = %#v", p)
+			}
 			if p.OutputSummary == "" || !strings.Contains(p.OutputSummary, "out=") {
 				t.Fatalf("tool complete output summary = %#v", p)
 			}
@@ -67,8 +70,8 @@ func TestRunSubprocess_EmitsToolProgress(t *testing.T) {
 			}
 		}
 	}
-	if !sawStart || !sawComplete {
-		t.Fatalf("missing tool progress events: %#v", subprocessProgressEvents(events))
+	if sawStart || !sawComplete {
+		t.Fatalf("tool progress events = %#v, want only complete", subprocessProgressEvents(events))
 	}
 }
 

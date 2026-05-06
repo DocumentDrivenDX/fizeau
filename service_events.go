@@ -119,6 +119,8 @@ type ServiceProgressData struct {
 	Message               string   `json:"message,omitempty"`
 	TurnIndex             int      `json:"turn_index,omitempty"`
 	ToolName              string   `json:"tool_name,omitempty"`
+	ToolCallID            string   `json:"tool_call_id,omitempty"`
+	ToolCallIndex         int      `json:"tool_call_index,omitempty"`
 	Command               string   `json:"command,omitempty"`
 	Action                string   `json:"action,omitempty"`
 	Target                string   `json:"target,omitempty"`
