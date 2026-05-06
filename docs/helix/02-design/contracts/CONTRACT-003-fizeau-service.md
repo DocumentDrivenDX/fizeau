@@ -443,11 +443,14 @@ the routing engine enforces:
 
 **Model constraint resolution.** When `Model` is set on `ExecuteRequest` or
 `RouteRequest`, Fizeau owns the full resolution pipeline. DDx passes the raw
-string unchanged. Fizeau normalizes case, whitespace, vendor prefixes, and
-delimiter characters, then matches against discovered/provider model IDs and
-catalog-resolved concrete IDs. The service, not DDx, chooses the final concrete
-model ID, reports ambiguity when multiple candidates survive normalization, and
-returns typed no-match evidence when no concrete model can be resolved.
+string unchanged. Fizeau owns normalization, catalog alias lookup, substring
+matching, ambiguity handling, no-match handling, and final route selection for
+that raw constraint. The service normalizes case, whitespace, vendor prefixes,
+and delimiter characters, then matches against discovered/provider model IDs
+and catalog-resolved concrete IDs. The service, not DDx, chooses the final
+concrete model ID, reports ambiguity when multiple candidates survive
+normalization, and returns typed no-match evidence when no concrete model can
+be resolved.
 
 `ModelRef` remains a separate exact catalog-reference surface. The contract
 above does not change `ModelRef` exactness; it only clarifies how raw `Model`
