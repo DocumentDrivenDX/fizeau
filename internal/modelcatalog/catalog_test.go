@@ -789,6 +789,32 @@ func TestModelEligibility_EmbeddedCatalogMatchesProviderNativeQwenVariant(t *tes
 	assert.Equal(t, 262144, catalog.ContextWindowForModel("Qwen3.6-27B-MLX-8bit"))
 }
 
+func TestModelEligibility_EmbeddedCatalogMatchesClaudeFamilyDisplayVariants(t *testing.T) {
+	catalog, err := Default()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		wantPower int
+	}{
+		{name: "Claude-Opus-4.6", wantPower: 10},
+		{name: "claude-opus-4-6", wantPower: 10},
+		{name: "Opus-4.6", wantPower: 10},
+		{name: "Claude-4.6-opus", wantPower: 10},
+		{name: "Claude-4.5-sonnet", wantPower: 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			eligibility, ok := catalog.ModelEligibility(tt.name)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantPower, eligibility.Power)
+			assert.True(t, eligibility.AutoRoutable)
+			assert.Equal(t, 1000000, catalog.ContextWindowForModel(tt.name))
+		})
+	}
+}
+
 func TestCandidatesFor_CandidatesList(t *testing.T) {
 	catalog := loadV4FixtureCatalog(t)
 

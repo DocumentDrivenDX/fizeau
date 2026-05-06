@@ -3,6 +3,7 @@ package modelcatalog
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
@@ -460,6 +461,9 @@ func sameModelVariant(a, b string) bool {
 	if ca == cb {
 		return true
 	}
+	if sameNamedFamilyMajor(a, b) {
+		return true
+	}
 	if len(ca) < 8 || len(cb) < 8 {
 		return false
 	}
@@ -483,6 +487,65 @@ func catalogModelKey(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func sameNamedFamilyMajor(a, b string) bool {
+	familyA, majorA := namedFamilyMajor(a)
+	familyB, majorB := namedFamilyMajor(b)
+	return familyA != "" && familyA == familyB && majorA > 0 && majorA == majorB
+}
+
+func namedFamilyMajor(s string) (string, int) {
+	tokens := catalogModelTokens(s)
+	if len(tokens) == 0 {
+		return "", 0
+	}
+	family := ""
+	for _, token := range tokens {
+		switch token {
+		case "opus", "sonnet", "haiku":
+			family = token
+		}
+	}
+	if family == "" {
+		return "", 0
+	}
+	for _, token := range tokens {
+		n, err := strconv.Atoi(token)
+		if err == nil {
+			return family, n
+		}
+	}
+	return family, 0
+}
+
+func catalogModelTokens(s string) []string {
+	s = strings.TrimSpace(s)
+	if slash := strings.Index(s, "/"); slash > 0 {
+		s = s[slash+1:]
+	}
+	s = strings.ToLower(s)
+	var out []string
+	var b strings.Builder
+	flush := func() {
+		if b.Len() == 0 {
+			return
+		}
+		out = append(out, b.String())
+		b.Reset()
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			flush()
+		}
+	}
+	flush()
+	return out
 }
 
 // CandidatesFor returns the ordered list of candidate concrete model IDs for

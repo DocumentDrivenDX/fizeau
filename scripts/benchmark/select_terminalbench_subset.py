@@ -56,12 +56,18 @@ NON_FRONTIER_PATTERNS = [
 ]
 
 
+DEFAULT_POWER_MAP = Path(__file__).with_name("terminalbench_model_power.json")
+DEFAULT_CATALOG = Path("internal/modelcatalog/catalog/models.yaml")
+
+
 @dataclass
 class Trial:
     submission: str
     tier: str
     task_id: str
     reward: float
+    power: int = 0
+    model_field: str = ""
 
 
 @dataclass
@@ -131,8 +137,141 @@ def next_link(link_header: str) -> str:
     return ""
 
 
-def classify_submission(path: str) -> str:
-    name = path.rsplit("/", 1)[-1].lower()
+def power_band(power: int) -> str:
+    if power >= 9:
+        return "frontier"
+    if power >= 7:
+        return "medium_frontier"
+    if power >= 4:
+        return "non_frontier"
+    return "other"
+
+
+def load_power_map(path: Path) -> dict[str, Any]:
+    raw = json.loads(path.read_text())
+    models = raw.get("models", {})
+    return {normalize_model_key(key): value for key, value in models.items()}
+
+
+def load_catalog_power(path: Path) -> list[dict[str, Any]]:
+    try:
+        import yaml
+    except ImportError as exc:
+        raise SystemExit("PyYAML is required to load catalog model power") from exc
+
+    raw = yaml.safe_load(path.read_text())
+    out: list[dict[str, Any]] = []
+    for model_id, entry in (raw.get("models") or {}).items():
+        aliases = [
+            model_id,
+            entry.get("display_name", ""),
+            entry.get("openrouter_id", ""),
+            entry.get("openrouter_ref_id", ""),
+        ]
+        aliases.extend((entry.get("surfaces") or {}).values())
+        out.append({
+            "id": model_id,
+            "power": int(entry.get("power") or 0),
+            "aliases": [alias for alias in aliases if isinstance(alias, str) and alias.strip()],
+        })
+    return out
+
+
+def normalize_model_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+
+
+def submission_name(path: str) -> str:
+    return path.rsplit("/", 1)[-1]
+
+
+def model_field_from_submission(path: str) -> str:
+    name = submission_name(path)
+    _, sep, model = name.partition("__")
+    return model if sep else name
+
+
+def power_for_submission(path: str, power_map: dict[str, Any], catalog_power: list[dict[str, Any]]) -> int:
+    name = submission_name(path)
+    override = power_map.get(normalize_model_key("submission:" + name))
+    if override:
+        return int(override.get("power", 0))
+
+    model_field = model_field_from_submission(path)
+    catalog = power_for_model_field(model_field, catalog_power)
+    if catalog:
+        return catalog
+
+    keys = [normalize_model_key(model_field)]
+    for key in keys:
+        entry = power_map.get(key)
+        if entry:
+            return int(entry.get("power", 0))
+    return 0
+
+
+def power_for_model_field(model_field: str, catalog_power: list[dict[str, Any]]) -> int:
+    for entry in catalog_power:
+        for alias in entry["aliases"]:
+            if same_model_variant(model_field, alias):
+                return entry["power"]
+    return 0
+
+
+def same_model_variant(a: str, b: str) -> bool:
+    ca = catalog_model_key(a)
+    cb = catalog_model_key(b)
+    if not ca or not cb:
+        return False
+    if ca == cb:
+        return True
+    if same_named_family_major(a, b):
+        return True
+    if len(ca) < 8 or len(cb) < 8:
+        return False
+    return ca in cb or cb in ca
+
+
+def catalog_model_key(value: str) -> str:
+    value = value.strip()
+    if "/" in value and not value.startswith("submission:"):
+        value = value.split("/", 1)[1]
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def same_named_family_major(a: str, b: str) -> bool:
+    family_a, major_a = named_family_major(a)
+    family_b, major_b = named_family_major(b)
+    return bool(family_a and family_a == family_b and major_a and major_a == major_b)
+
+
+def named_family_major(value: str) -> tuple[str, int]:
+    if "/" in value:
+        value = value.split("/", 1)[1]
+    tokens = [token for token in re.split(r"[^a-z0-9]+", value.lower()) if token]
+    family = ""
+    for token in tokens:
+        if token in {"opus", "sonnet", "haiku"}:
+            family = token
+    if not family:
+        return "", 0
+    for token in tokens:
+        if token.isdigit():
+            return family, int(token)
+    return family, 0
+
+
+def classify_submission(
+    path: str,
+    power_map: dict[str, Any] | None = None,
+    catalog_power: list[dict[str, Any]] | None = None,
+) -> str:
+    if power_map is not None:
+        power = power_for_submission(path, power_map, catalog_power or [])
+        if power:
+            return power_band(power)
+
+    name = submission_name(path).lower()
     if any(re.search(pattern, name) for pattern in NON_FRONTIER_PATTERNS):
         return "non_frontier"
     if any(re.search(pattern, name) for pattern in MEDIUM_FRONTIER_PATTERNS):
@@ -151,13 +290,20 @@ def task_id_from_reward_path(path: str) -> str | None:
     return trial_dir.split("__", 1)[0] or None
 
 
-def discover_trials(cache_path: Path, *, refresh: bool) -> list[Trial]:
+def discover_trials(
+    cache_path: Path,
+    *,
+    refresh: bool,
+    power_map: dict[str, Any],
+    catalog_power: list[dict[str, Any]],
+) -> list[Trial]:
     if cache_path.exists() and not refresh:
         raw = json.loads(cache_path.read_text())
-        return [Trial(**item) for item in raw["trials"]]
+        trials = [Trial(**item) for item in raw["trials"]]
+        return [with_power(trial, power_map, catalog_power) for trial in trials]
 
     if os.environ.get("TERMBENCH_SELECTOR_SNAPSHOT") == "1":
-        trials = discover_trials_from_snapshot(cache_path.parent / "terminalbench-leaderboard-rewards")
+        trials = discover_trials_from_snapshot(cache_path.parent / "terminalbench-leaderboard-rewards", power_map, catalog_power)
         if trials:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(json.dumps({"trials": [trial.__dict__ for trial in trials]}, indent=2, sort_keys=True))
@@ -171,7 +317,7 @@ def discover_trials(cache_path: Path, *, refresh: bool) -> list[Trial]:
     ]
     reward_paths: list[str] = []
     for index, submission in enumerate(submissions, 1):
-        print(f"[{index:02d}/{len(submissions):02d}] {classify_submission(submission):15s} {submission}", file=sys.stderr)
+        print(f"[{index:02d}/{len(submissions):02d}] {classify_submission(submission, power_map, catalog_power):15s} {submission}", file=sys.stderr)
         try:
             files = api_list(submission, recursive=True)
         except (HTTPError, URLError) as exc:
@@ -185,7 +331,7 @@ def discover_trials(cache_path: Path, *, refresh: bool) -> list[Trial]:
     print(f"fetching {len(reward_paths)} reward files", file=sys.stderr)
     trials: list[Trial] = []
     with ThreadPoolExecutor(max_workers=32) as pool:
-        futures = {pool.submit(fetch_reward_trial, path): path for path in reward_paths}
+        futures = {pool.submit(fetch_reward_trial, path, power_map, catalog_power): path for path in reward_paths}
         for i, future in enumerate(as_completed(futures), 1):
             trial = future.result()
             if trial is not None:
@@ -197,7 +343,16 @@ def discover_trials(cache_path: Path, *, refresh: bool) -> list[Trial]:
     return trials
 
 
-def fetch_reward_trial(reward_path: str) -> Trial | None:
+def with_power(trial: Trial, power_map: dict[str, Any], catalog_power: list[dict[str, Any]]) -> Trial:
+    power = power_for_submission(trial.submission, power_map, catalog_power)
+    if power:
+        trial.power = power
+        trial.tier = power_band(power)
+        trial.model_field = model_field_from_submission(trial.submission)
+    return trial
+
+
+def fetch_reward_trial(reward_path: str, power_map: dict[str, Any], catalog_power: list[dict[str, Any]]) -> Trial | None:
     task_id = task_id_from_reward_path(reward_path)
     if not task_id:
         return None
@@ -210,15 +365,18 @@ def fetch_reward_trial(reward_path: str) -> Trial | None:
         reward = float(text)
     except (HTTPError, URLError, ValueError):
         return None
+    power = power_for_submission(submission, power_map, catalog_power)
     return Trial(
         submission=submission,
-        tier=classify_submission(submission),
+        tier=power_band(power) if power else classify_submission(submission),
         task_id=task_id,
         reward=reward,
+        power=power,
+        model_field=model_field_from_submission(submission),
     )
 
 
-def discover_trials_from_snapshot(local_dir: Path) -> list[Trial]:
+def discover_trials_from_snapshot(local_dir: Path, power_map: dict[str, Any], catalog_power: list[dict[str, Any]]) -> list[Trial]:
     try:
         from huggingface_hub import snapshot_download
     except Exception:
@@ -246,11 +404,14 @@ def discover_trials_from_snapshot(local_dir: Path) -> list[Trial]:
             reward = float(reward_path.read_text().strip())
         except ValueError:
             continue
+        power = power_for_submission(submission, power_map, catalog_power)
         trials.append(Trial(
             submission=submission,
-            tier=classify_submission(submission),
+            tier=power_band(power) if power else classify_submission(submission),
             task_id=task_id,
             reward=reward,
+            power=power,
+            model_field=model_field_from_submission(submission),
         ))
     return trials
 
@@ -325,6 +486,11 @@ def build_manifest(tasks: dict[str, TaskStats], selected_by_bucket: dict[str, li
         "dataset_repo": "https://github.com/laude-institute/terminal-bench-2",
         "dataset_commit": DATASET_COMMIT,
         "selection_rule": "External leaderboard bootstrap: choose global-easy, global-hard, frontier-only, medium-frontier, non-frontier, and non-monotonic probe tasks by tiered reward rates.",
+        "power_bands": {
+            "frontier": "power >= 9",
+            "medium_frontier": "7 <= power <= 8",
+            "non_frontier": "4 <= power <= 6",
+        },
         "source": {
             "type": "huggingface_dataset",
             "dataset": DATASET,
@@ -339,11 +505,15 @@ def main() -> int:
     parser.add_argument("--tasks-dir", default="scripts/benchmark/external/terminal-bench-2")
     parser.add_argument("--cache", default="benchmark-results/cache/terminalbench-leaderboard-rewards.json")
     parser.add_argument("--out", default="scripts/beadbench/external/termbench-subset-external-bootstrap.json")
+    parser.add_argument("--catalog", default=str(DEFAULT_CATALOG))
+    parser.add_argument("--power-map", default=str(DEFAULT_POWER_MAP))
     parser.add_argument("--refresh", action="store_true")
     args = parser.parse_args()
 
+    power_map = load_power_map(Path(args.power_map))
+    catalog_power = load_catalog_power(Path(args.catalog))
     task_ids = valid_task_ids(Path(args.tasks_dir))
-    trials = discover_trials(Path(args.cache), refresh=args.refresh)
+    trials = discover_trials(Path(args.cache), refresh=args.refresh, power_map=power_map, catalog_power=catalog_power)
     stats = {tid: stat for tid, stat in aggregate(trials).items() if tid in task_ids}
     if not stats:
         raise SystemExit("no leaderboard task stats matched local TB-2 task ids")

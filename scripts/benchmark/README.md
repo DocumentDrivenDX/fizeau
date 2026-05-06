@@ -277,7 +277,7 @@ scripts/benchmark/select_terminalbench_subset.py
 The selector reads reward files from
 `harborframework/terminal-bench-2-leaderboard` on Hugging Face, groups
 submissions into broad `frontier`, `medium_frontier`, and `non_frontier`
-families by model name, and emits:
+families by Fizeau catalog power, and emits:
 
 - tasks almost everyone passes
 - tasks almost nobody passes
@@ -289,6 +289,15 @@ families by model name, and emits:
 The generated manifest is written to
 `scripts/beadbench/external/termbench-subset-external-bootstrap.json`. Review
 the monotonicity report before replacing the committed `wide` subset.
+
+Submission directories are interpreted as `Harness__Model` when that delimiter
+is present. The `Model` field is matched against
+`internal/modelcatalog/catalog/models.yaml` first, using the same broad display
+variant behavior as catalog model eligibility. Leaderboard-only models that are
+not yet in the catalog are assigned bootstrap powers in
+`scripts/benchmark/terminalbench_model_power.json`; exact submission-name
+overrides use a `submission:` prefix for rows that do not expose a clean
+`Harness__Model` split or represent a multi-model stack.
 
 ### Claude and Codex reference baselines
 
