@@ -228,6 +228,9 @@ func listModelsForProvider(
 	sc ServiceConfig,
 	cat *modelcatalog.Catalog,
 ) []ModelInfo {
+	if entry.ConfigError != "" {
+		return nil
+	}
 	// Discover model IDs from the provider.
 	discoveries := discoverAndRankModels(ctx, entry, cat)
 	if len(discoveries) == 0 {

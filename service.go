@@ -62,11 +62,15 @@ type ServiceConfig interface {
 
 // ServiceProviderEntry carries the minimal provider data the service needs.
 type ServiceProviderEntry struct {
-	Type      string // "openai" | "openrouter" | "lmstudio" | "omlx" | "ollama" | "anthropic"
+	Type      string // "openai" | "openrouter" | "lmstudio" | "llama-server" | "omlx" | "lucebox" | "vllm" | "rapid-mlx" | "ollama" | "anthropic"
 	BaseURL   string
 	Endpoints []ServiceProviderEndpoint
 	APIKey    string
 	Model     string // configured default model (may be empty)
+	// ConfigError marks this provider entry invalid while allowing the rest of
+	// the service config to load. Invalid providers are reported in status
+	// surfaces and excluded from routing.
+	ConfigError string
 	// DailyTokenBudget is the operator-configured per-UTC-day token budget
 	// (request + response) for this provider. Zero means no local burn-rate
 	// prediction; the provider's own quota signal still applies.

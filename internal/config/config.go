@@ -306,7 +306,8 @@ type Config struct {
 	LegacyAPIKey   string `yaml:"api_key,omitempty"`
 	LegacyModel    string `yaml:"model,omitempty"`
 
-	warnings []string `yaml:"-"`
+	warnings       []string          `yaml:"-"`
+	providerErrors map[string]string `yaml:"-"`
 }
 
 // Defaults returns a Config with sensible defaults.
@@ -541,6 +542,9 @@ func (c *Config) BuildProvider(name string) (agent.Provider, error) {
 	if !ok {
 		return nil, fmt.Errorf("config: unknown provider %q", name)
 	}
+	if detail := c.ProviderError(name); detail != "" {
+		return nil, fmt.Errorf("config: provider %q invalid: %s", name, detail)
+	}
 	return buildProviderFromConfig(pc)
 }
 
@@ -681,6 +685,9 @@ func (c *Config) ResolveProviderConfig(name string, overrides ProviderOverrides)
 	if !ok {
 		return ProviderConfig{}, nil, fmt.Errorf("config: unknown provider %q", name)
 	}
+	if detail := c.ProviderError(name); detail != "" {
+		return ProviderConfig{}, nil, fmt.Errorf("config: provider %q invalid: %s", name, detail)
+	}
 
 	if overrides.Model != "" {
 		pc.Model = overrides.Model
@@ -772,6 +779,31 @@ func (c *Config) Warnings() []string {
 	out := make([]string, len(c.warnings))
 	copy(out, c.warnings)
 	return out
+}
+
+// ProviderError returns the provider-scoped config error recorded during load,
+// if any. Provider-scoped errors do not make the whole config unloadable.
+func (c *Config) ProviderError(name string) string {
+	if c == nil || c.providerErrors == nil {
+		return ""
+	}
+	return c.providerErrors[name]
+}
+
+func (c *Config) markProviderError(name, detail string) {
+	if c.providerErrors == nil {
+		c.providerErrors = make(map[string]string)
+	}
+	c.providerErrors[name] = detail
+	c.addWarning(fmt.Sprintf("config: provider %q ignored: %s", name, detail))
+}
+
+func (c *Config) addWarning(msg string) {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return
+	}
+	c.warnings = append(c.warnings, msg)
 }
 
 // selectProviderIndex returns the provider list index to use for a backend pool
@@ -917,6 +949,7 @@ func rejectLegacyProviderReasoningKeys(data []byte) error {
 
 func (c *Config) finalize() error {
 	c.warnings = nil
+	c.providerErrors = nil
 
 	if err := c.expandEndpointProviders(); err != nil {
 		return err
@@ -927,9 +960,7 @@ func (c *Config) finalize() error {
 		c.Providers[name] = normalized
 	}
 
-	if err := c.validateProviders(); err != nil {
-		return err
-	}
+	c.validateProviders()
 
 	if c.CompactionPercent != 0 && (c.CompactionPercent < 1 || c.CompactionPercent > 100) {
 		return fmt.Errorf("config: compaction_percent must be 1-100, got %d", c.CompactionPercent)
@@ -953,7 +984,8 @@ func (c *Config) expandEndpointProviders() error {
 	for i, endpoint := range c.Endpoints {
 		pc, name, err := providerConfigFromEndpoint(endpoint, i+1)
 		if err != nil {
-			return err
+			c.addWarning(err.Error())
+			continue
 		}
 		name = uniqueEndpointProviderName(name, used)
 		used[name] = true
@@ -1245,32 +1277,33 @@ func SaveToFile(path string, cfg *Config) error {
 	return nil
 }
 
-// validateProviders checks configured provider entries. A config with no
-// providers is still loadable because several CLI surfaces do not need a
-// runtime provider.
-func (c *Config) validateProviders() error {
+// validateProviders records provider-scoped errors without rejecting the whole
+// config. A single broken provider must not prevent status, routing, or other
+// healthy providers from working.
+func (c *Config) validateProviders() {
 	if len(c.Providers) == 0 {
-		return nil
+		return
 	}
 	for name, pc := range c.Providers {
 		if pc.Type == "openai-compat" {
-			return fmt.Errorf("config: provider %q: type openai-compat is no longer supported; use openai, openrouter, lmstudio, llama-server, omlx, rapid-mlx, or ollama", name)
+			c.markProviderError(name, "type openai-compat is no longer supported; use openai, openrouter, lmstudio, llama-server, omlx, rapid-mlx, or ollama")
+			continue
 		}
-		switch pc.Type {
-		case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai", "anthropic":
-		default:
-			return fmt.Errorf("config: provider %q has unknown type %q (use openai, openrouter, lmstudio, llama-server, omlx, luce, vllm, rapid-mlx, ollama, or anthropic)", name, pc.Type)
+		if _, ok := provregistry.Lookup(pc.Type); !ok {
+			c.markProviderError(name, fmt.Sprintf("unknown type %q (registered types: %s)", pc.Type, strings.Join(provregistry.Types(), ", ")))
+			continue
 		}
 		if providerUsesEndpoint(pc.Type) {
 			for i, endpoint := range pc.Endpoints {
 				if endpoint.BaseURL == "" {
-					return fmt.Errorf("config: provider %q endpoint %d: base_url is required", name, i+1)
+					c.markProviderError(name, fmt.Sprintf("endpoint %d: base_url is required", i+1))
+					break
 				}
 			}
 		}
 		if (pc.Type == "openai" || pc.Type == "openrouter" || pc.Type == "anthropic") && pc.APIKey == "" {
-			return fmt.Errorf("config: provider %q (%s): api_key is required", name, pc.Type)
+			c.markProviderError(name, fmt.Sprintf("type %s: api_key is required", pc.Type))
+			continue
 		}
 	}
-	return nil
 }

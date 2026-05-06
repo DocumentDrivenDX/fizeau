@@ -288,6 +288,21 @@ func (s *service) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
 				DefaultModel: entry.Model,
 			}
 
+			if entry.ConfigError != "" {
+				capturedAt := time.Now().UTC()
+				info.Status = "error: invalid provider config"
+				info.EndpointStatus = providerEndpointStatusesFromProbe(entry, providerProbeResult{
+					status: "error: invalid provider config",
+					detail: entry.ConfigError,
+				}, capturedAt)
+				info.Auth = providerAuthStatus(entry, info.Status, capturedAt)
+				info.Quota = providerQuotaState(entry, capturedAt)
+				info.CooldownState = serviceProviderCooldown(sc, name, cooldown)
+				info.LastError = statusErrorDetail(info.Status, entry.ConfigError, "service provider config", capturedAt)
+				results[idx] = indexedInfo{idx: idx, info: info}
+				return
+			}
+
 			probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 			capturedAt := time.Now().UTC()

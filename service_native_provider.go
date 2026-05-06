@@ -177,6 +177,9 @@ func (s *service) availableProviderTypes() string {
 // is one Register() call in the new package; no edits to this file
 // or internal/config/config.go's factory.
 func (s *service) buildNativeProvider(name string, entry ServiceProviderEntry) agentcore.Provider {
+	if entry.ConfigError != "" {
+		return nil
+	}
 	typ := normalizeServiceProviderType(entry.Type)
 	if d, ok := registry.Lookup(typ); ok {
 		return d.Factory(registry.Inputs{

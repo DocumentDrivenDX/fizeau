@@ -728,6 +728,9 @@ func serviceRoutingCatalogSurface(surface string) (modelcatalog.Surface, bool) {
 }
 
 func (s *service) liveProviderEntries(ctx context.Context, providerName string, pcfg ServiceProviderEntry, cat *modelcatalog.Catalog) []routing.ProviderEntry {
+	if pcfg.ConfigError != "" {
+		return nil
+	}
 	if providerUsesLiveDiscovery(pcfg.Type) && s.catalog != nil {
 		endpoints := modelDiscoveryEndpoints(pcfg)
 		out := make([]routing.ProviderEntry, 0, len(endpoints))

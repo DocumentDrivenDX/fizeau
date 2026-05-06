@@ -1135,7 +1135,7 @@ default: vidar
 	assert.Contains(t, err.Error(), "use reasoning")
 }
 
-func TestLoad_OpenAICompatTypeRejected(t *testing.T) {
+func TestLoad_OpenAICompatTypeRecordsProviderError(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".fizeau")
@@ -1149,7 +1149,11 @@ providers:
 default: local
 `), 0o644))
 
-	_, err := Load(dir)
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Contains(t, cfg.ProviderError("local"), "type openai-compat is no longer supported")
+
+	_, err = cfg.BuildProvider("local")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "type openai-compat is no longer supported")
 }
@@ -1229,7 +1233,7 @@ default: rapid
 	assert.Equal(t, "http://localhost:8000/v1", pc.BaseURL)
 }
 
-func TestLoad_MissingTypeUnknownBaseURLRejected(t *testing.T) {
+func TestLoad_MissingTypeUnknownBaseURLRecordsProviderError(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".fizeau")
@@ -1243,9 +1247,46 @@ providers:
 default: unknown
 `), 0o644))
 
-	_, err := Load(dir)
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Contains(t, cfg.ProviderError("unknown"), `unknown type`)
+	require.NotEmpty(t, cfg.Warnings())
+	assert.Contains(t, cfg.Warnings()[0], `config: provider "unknown" ignored: unknown type ""`)
+	assert.Contains(t, cfg.Warnings()[0], `registered types:`)
+	assert.Contains(t, cfg.Warnings()[0], `rapid-mlx`)
+
+	_, err = cfg.BuildProvider("unknown")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `provider "unknown" has unknown type`)
+	assert.Contains(t, err.Error(), `provider "unknown" invalid`)
+}
+
+func TestLoad_InvalidProviderDoesNotHideHealthyProviders(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".fizeau")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  broken:
+    type: not-a-provider
+    base_url: http://broken.invalid/v1
+  grendel:
+    type: rapid-mlx
+    base_url: http://grendel:8000/v1
+default: grendel
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Contains(t, cfg.ProviderNames(), "broken")
+	assert.Contains(t, cfg.ProviderNames(), "grendel")
+	assert.Contains(t, cfg.ProviderError("broken"), `unknown type "not-a-provider"`)
+	assert.Empty(t, cfg.ProviderError("grendel"))
+
+	p, err := cfg.BuildProvider("grendel")
+	require.NoError(t, err)
+	require.NotNil(t, p)
 }
 
 func TestLoad_ReasoningThresholds(t *testing.T) {

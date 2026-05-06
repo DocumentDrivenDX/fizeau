@@ -89,6 +89,58 @@ func TestNew_LoadsFromConfigPathWhenServiceConfigNil(t *testing.T) {
 	}
 }
 
+func TestNew_LoadsConfigWithInvalidProviderEntry(t *testing.T) {
+	workDir := t.TempDir()
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(fakeHome, ".config"))
+
+	agentDir := filepath.Join(workDir, ".fizeau")
+	if err := os.MkdirAll(agentDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(agentDir, "config.yaml"), []byte(`
+providers:
+  broken:
+    type: not-a-provider
+    base_url: http://broken.invalid/v1
+  local:
+    type: rapid-mlx
+    base_url: http://grendel:8000/v1
+default: broken
+`), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	svc, err := fizeau.New(fizeau.ServiceOptions{ConfigPath: filepath.Join(workDir, "config.yaml")})
+	if err != nil {
+		t.Fatalf("New should not hard-fail on one invalid provider: %v", err)
+	}
+
+	providers, err := svc.ListProviders(context.Background())
+	if err != nil {
+		t.Fatalf("ListProviders: %v", err)
+	}
+	var sawBroken, sawRapid bool
+	for _, p := range providers {
+		switch p.Name {
+		case "broken":
+			sawBroken = true
+			if p.LastError == nil || p.LastError.Type != "error" {
+				t.Fatalf("broken LastError = %#v, want config error", p.LastError)
+			}
+		case "local":
+			sawRapid = true
+			if p.Type != "rapid-mlx" {
+				t.Fatalf("rapid provider Type = %q, want rapid-mlx", p.Type)
+			}
+		}
+	}
+	if !sawBroken || !sawRapid {
+		t.Fatalf("providers = %#v, want broken and local rapid-mlx entries", providers)
+	}
+}
+
 // TestNew_FallsBackToDefaultPath verifies that when both ServiceConfig and
 // ConfigPath are nil/empty, New succeeds (falling back to global config or
 // returning a service that reports no-config errors gracefully).

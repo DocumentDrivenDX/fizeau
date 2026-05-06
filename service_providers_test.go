@@ -116,6 +116,39 @@ func TestListProviders_Connected(t *testing.T) {
 	}
 }
 
+func TestListProviders_InvalidProviderConfigReportedWithoutProbe(t *testing.T) {
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"broken": {
+				Type:        "not-a-provider",
+				BaseURL:     "http://broken.invalid/v1",
+				ConfigError: `unknown type "not-a-provider"`,
+			},
+		},
+		names:       []string{"broken"},
+		defaultName: "broken",
+	}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+
+	infos, err := svc.ListProviders(context.Background())
+	if err != nil {
+		t.Fatalf("ListProviders: %v", err)
+	}
+	if len(infos) != 1 {
+		t.Fatalf("want 1 provider, got %d", len(infos))
+	}
+	info := infos[0]
+	if info.Status != "error: invalid provider config" {
+		t.Fatalf("Status = %q, want invalid provider config", info.Status)
+	}
+	if info.LastError == nil || info.LastError.Detail != `unknown type "not-a-provider"` {
+		t.Fatalf("LastError = %#v, want config detail", info.LastError)
+	}
+	if len(info.EndpointStatus) != 1 || info.EndpointStatus[0].LastError == nil {
+		t.Fatalf("EndpointStatus = %#v, want endpoint-level config error", info.EndpointStatus)
+	}
+}
+
 func TestListProviders_LlamaServerConnected(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" || r.URL.Path == "/models" {
