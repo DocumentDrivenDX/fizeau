@@ -142,6 +142,11 @@ Example FHI claim:
 
 > Using fiz, the most effective model is Opus 4.7, with FHI 56.
 
+Example local-vs-frontier FHI claim:
+
+> With fiz 0.10 and oMLX 0.8.10, Qwen 3.6 27B 8-bit gets FHI 50, only 6
+> points behind Opus 4.7.
+
 These claims require more than headline scores. A claim generator must include
 or be able to trace:
 
@@ -151,6 +156,9 @@ or be able to trace:
   capture timestamp when no version is available
 - exact model raw name, canonical model id when known, and resolved model
   snapshot/version when available
+- deployment class, local runtime/server version, quantization, hardware
+  profile, accelerator backend, context length, and reasoning/sampling controls
+  for local or self-hosted stacks
 - benchmark name, benchmark version, dataset commit, subset id/version, scorer,
   repetition count, and run timestamps
 - score metric, normalized score, raw score, confidence interval or
@@ -216,6 +224,63 @@ HumanEval, MMLU, and MHI-style components may contribute to FHI, but they must
 not dominate long-horizon agentic evidence. TerminalBench, beadbench,
 SkillsBench, and SWE-bench-style task outcomes should carry the primary weight
 once enough harness-normalized rows exist.
+
+### Deployment-Class Comparisons
+
+FHI must support local-stack comparisons against frontier and non-frontier cloud
+baselines. This is one of the primary product questions: whether local or
+self-hosted deployments are close enough to frontier managed providers to be
+useful under Fizeau.
+
+Example valid claim:
+
+```text
+FHI formula=fhi/v1, evidence window=2026-Q2
+benchmarks=terminalbench-wide, beadbench-v1, skillsbench-import
+
+local stack:
+  fiz=0.10
+  harness=fiz-native
+  provider=omlx
+  provider_version=0.8.10
+  model=Qwen 3.6 27B MLX 8-bit
+  quantization=8-bit
+  hardware=Mac Studio M3 Ultra 512GB
+
+frontier baseline:
+  harness=fiz-native
+  provider=anthropic
+  model=Opus 4.7
+
+Qwen 3.6 27B 8-bit via oMLX    FHI 50
+Opus 4.7 via Anthropic          FHI 56
+delta                           -6
+```
+
+Deployment-class reports must group rows by at least:
+
+- `managed_frontier`
+- `managed_non_frontier`
+- `local`
+- `self_hosted`
+
+Local/self-hosted rows require additional environment facts because those facts
+are part of the capability surface:
+
+- runtime/server name and version, e.g. `omlx 0.8.10`
+- model artifact id/path or checksum when available
+- quantization and precision
+- hardware class, memory, accelerator backend, and OS/architecture
+- endpoint type, e.g. OpenAI-compatible, Anthropic-compatible, native API
+- context limit and reasoning/sampling controls actually applied
+- utilization/capacity signals when available, such as active requests, queue
+  depth, memory pressure, and tokens/s
+
+The claim generator must not compare a local row to a frontier row unless the
+included benchmark set, scoring formula, evidence window, and denominator rules
+are identical. If one side lacks a benchmark component, the report either
+computes a coverage-adjusted FHI with an explicit confidence penalty or refuses
+the comparison.
 
 ## Initial Import Targets
 
