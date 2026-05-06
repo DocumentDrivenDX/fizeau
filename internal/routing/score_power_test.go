@@ -59,6 +59,19 @@ func TestScorePowerMinPowerAndPinsRemainConstraints(t *testing.T) {
 	if dec.Harness != "agent" || dec.Provider != "local" || dec.Model != "local-good" {
 		t.Fatalf("exact pin winner=%s/%s/%s, want agent/local/local-good", dec.Harness, dec.Provider, dec.Model)
 	}
+
+	dec, err = Resolve(Request{Provider: "local", MinPower: 9}, in)
+	if err != nil {
+		t.Fatalf("Resolve pinned provider: %v", err)
+	}
+	if dec.Provider != "local" || dec.Model != "local-good" {
+		t.Fatalf("pinned provider winner=%s/%s, want local/local-good", dec.Provider, dec.Model)
+	}
+	for _, c := range dec.Candidates {
+		if c.Provider == "local" && !c.Eligible {
+			t.Fatalf("pinned provider must remain eligible under MinPower: %#v", c)
+		}
+	}
 }
 
 func TestScorePowerCostAndSpeedBreakTies(t *testing.T) {
