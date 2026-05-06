@@ -12,10 +12,11 @@ import (
 type Source string
 
 const (
-	SourceUnknown      Source = "unknown"
-	SourceVLLMMetrics  Source = "vllm.metrics"
-	SourceLlamaMetrics Source = "llama-server.metrics"
-	SourceLlamaSlots   Source = "llama-server.slots"
+	SourceUnknown        Source = "unknown"
+	SourceVLLMMetrics    Source = "vllm.metrics"
+	SourceLlamaMetrics   Source = "llama-server.metrics"
+	SourceLlamaSlots     Source = "llama-server.slots"
+	SourceRapidMLXStatus Source = "rapid-mlx.status"
 )
 
 // Freshness describes whether a sample was observed just now, reused after a
@@ -31,13 +32,24 @@ const (
 // EndpointUtilization is the normalized utilization shape shared by local
 // provider probes.
 type EndpointUtilization struct {
-	ActiveRequests *int
-	QueuedRequests *int
-	CacheUsage     *float64
-	MaxConcurrency *int
-	Source         Source
-	Freshness      Freshness
-	ObservedAt     time.Time
+	ActiveRequests         *int
+	QueuedRequests         *int
+	CacheUsage             *float64
+	MaxConcurrency         *int
+	TotalPromptTokens      *int
+	TotalCompletionTokens  *int
+	CacheHitType           *string
+	CachedTokens           *int
+	GeneratedTokens        *int
+	ActiveRequestPhase     *string
+	TTFTSeconds            *float64
+	TokensPerSecond        *float64
+	MetalActiveMemoryBytes *int64
+	MetalPeakMemoryBytes   *int64
+	MetalCacheMemoryBytes  *int64
+	Source                 Source
+	Freshness              Freshness
+	ObservedAt             time.Time
 }
 
 // Cache preserves the most recent successful sample so probe failures can
@@ -90,6 +102,16 @@ func Int(v int) *int {
 
 // Float64 returns a pointer to v.
 func Float64(v float64) *float64 {
+	return &v
+}
+
+// Int64 returns a pointer to v.
+func Int64(v int64) *int64 {
+	return &v
+}
+
+// String returns a pointer to v.
+func String(v string) *string {
 	return &v
 }
 
@@ -155,6 +177,39 @@ func clone(sample EndpointUtilization) EndpointUtilization {
 	}
 	if sample.MaxConcurrency != nil {
 		out.MaxConcurrency = Int(*sample.MaxConcurrency)
+	}
+	if sample.TotalPromptTokens != nil {
+		out.TotalPromptTokens = Int(*sample.TotalPromptTokens)
+	}
+	if sample.TotalCompletionTokens != nil {
+		out.TotalCompletionTokens = Int(*sample.TotalCompletionTokens)
+	}
+	if sample.CacheHitType != nil {
+		out.CacheHitType = String(*sample.CacheHitType)
+	}
+	if sample.CachedTokens != nil {
+		out.CachedTokens = Int(*sample.CachedTokens)
+	}
+	if sample.GeneratedTokens != nil {
+		out.GeneratedTokens = Int(*sample.GeneratedTokens)
+	}
+	if sample.ActiveRequestPhase != nil {
+		out.ActiveRequestPhase = String(*sample.ActiveRequestPhase)
+	}
+	if sample.TTFTSeconds != nil {
+		out.TTFTSeconds = Float64(*sample.TTFTSeconds)
+	}
+	if sample.TokensPerSecond != nil {
+		out.TokensPerSecond = Float64(*sample.TokensPerSecond)
+	}
+	if sample.MetalActiveMemoryBytes != nil {
+		out.MetalActiveMemoryBytes = Int64(*sample.MetalActiveMemoryBytes)
+	}
+	if sample.MetalPeakMemoryBytes != nil {
+		out.MetalPeakMemoryBytes = Int64(*sample.MetalPeakMemoryBytes)
+	}
+	if sample.MetalCacheMemoryBytes != nil {
+		out.MetalCacheMemoryBytes = Int64(*sample.MetalCacheMemoryBytes)
 	}
 	return out
 }

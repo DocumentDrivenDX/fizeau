@@ -167,14 +167,19 @@ type AttemptMetadata struct {
      pressure from `vllm:kv_cache_usage_perc` or older
      `vllm:gpu_cache_usage_perc` into a provider-independent endpoint
      utilization signal.
-15c. `llama-server` first probes `GET /metrics` on the server root when the
+15c. `rapid-mlx` probes `GET /v1/status` on the server root and normalizes
+     `num_running`, `num_waiting`, total prompt/completion token counters,
+     Metal active/peak/cache memory, cache hit metadata, and per-request
+     `ttft_s` / `tokens_per_second` fields into a provider-independent endpoint
+     utilization signal.
+15d. `llama-server` first probes `GET /metrics` on the server root when the
      server was started with `--metrics`, normalizing
      `llamacpp:requests_processing`, `llamacpp:requests_deferred`, and
      `llamacpp:kv_cache_usage_ratio`. If metrics are unavailable, it probes
      `GET /slots` and normalizes the number of slots with `is_processing=true`
      plus the returned slot count. `/slots` is expected to be enabled unless the
      operator starts `llama-server` with `--no-slots`.
-15d. Utilization probe failure does not make an endpoint unavailable by itself.
+15e. Utilization probe failure does not make an endpoint unavailable by itself.
      The provider returns stale or unknown utilization and routing falls back to
      service-owned in-flight lease counts and normal availability health.
 
@@ -376,6 +381,7 @@ type AttemptMetadata struct {
 | AC-FEAT-003-12 | `type: llama-server` is accepted as a first-class OpenAI-compatible provider with default base URL `http://localhost:8080/v1`, endpoint-pool support, registry construction, public provider/model listing, and native provider dispatch through the same registry paths as other concrete providers. | `go test ./internal/provider/registry ./internal/config ./... -run 'Registry|ProviderType|llama'` |
 | AC-FEAT-003-13 | vLLM utilization is recorded from a real CPU vLLM server with `go-vcr`: record mode installs or pulls the runtime, starts a trivial CPU model, records `/v1/models`, `/metrics`, minimal chat, and under-load metrics; replay mode is default and parses running, waiting, and cache-pressure metrics from the cassette. | `go test ./internal/provider/vllm ./... -run 'VLLM.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 go test ./internal/provider/vllm -run 'Record'` |
 | AC-FEAT-003-14 | llama-server utilization is recorded from a real llama.cpp server with `go-vcr`: record mode installs or pulls `llama-server`, starts a trivial CPU GGUF model with `--metrics` and `/slots` enabled, records `/v1/models`, `/metrics`, `/slots`, minimal chat, and busy-slot evidence; replay mode is default and parses processing, deferred, cache-ratio, and slot occupancy signals from the cassette. | `go test ./internal/provider/llamaserver ./... -run 'Llama.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 go test ./internal/provider/llamaserver -run 'Record'` |
+| AC-FEAT-003-15 | Rapid-MLX utilization is recorded from a real macOS Apple Silicon Rapid-MLX server with `go-vcr`: record mode requires `FIZEAU_RECORD_PROVIDER_CASSETTES=1` and `RAPID_MLX_RECORD_BASE_URL`, records `/v1/models`, `/v1/status`, minimal chat, and under-load status evidence when feasible; replay mode is default and parses running, waiting, total prompt/completion counters, Metal memory, cache details, and active-request timing fields from the cassette. | `go test ./internal/provider/rapidmlx ./internal/provider/... -run 'Rapid.*Utilization|Rapid.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 RAPID_MLX_RECORD_BASE_URL=http://host:8000/v1 go test ./internal/provider/rapidmlx -run 'Record'` |
 
 ## Constraints and Assumptions
 
