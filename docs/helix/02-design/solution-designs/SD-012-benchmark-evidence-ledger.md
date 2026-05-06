@@ -125,6 +125,98 @@ Power should therefore answer "how strong is this model for automatic routing?"
 Model × harness evidence should answer "how strong is this combination in this
 benchmark environment?"
 
+## Derived Reports and Claim Grammar
+
+The ledger is successful only if it can produce strong, reproducible claims from
+raw evidence. Reports should support two families of statements:
+
+1. Benchmark-specific comparative claims.
+2. Cross-benchmark Fizeau Harness Intelligence claims.
+
+Example benchmark-specific claim:
+
+> fiz native with Opus 4.7 scores 81.0 on TerminalBench, 0.7 points below Claude
+> Code with Opus 4.7 on the same subset.
+
+Example FHI claim:
+
+> Using fiz, the most effective model is Opus 4.7, with FHI 56.
+
+These claims require more than headline scores. A claim generator must include
+or be able to trace:
+
+- exact Fizeau version or git commit
+- exact harness name and harness version
+- exact provider name, provider endpoint/API surface, and provider version or
+  capture timestamp when no version is available
+- exact model raw name, canonical model id when known, and resolved model
+  snapshot/version when available
+- benchmark name, benchmark version, dataset commit, subset id/version, scorer,
+  repetition count, and run timestamps
+- score metric, normalized score, raw score, confidence interval or
+  uncertainty note, and denominator
+- invalid-run counts/classes and denominator handling
+- source artifact paths and hashes, including session logs and upstream
+  verifier outputs when available
+
+### Benchmark-Specific Claims
+
+Benchmark-specific reports compare rows only when the benchmark, scorer,
+dataset/subset, model, and provider surface are intentionally controlled or when
+the report states which axis is being varied.
+
+For example, a valid TerminalBench harness comparison may vary only
+`subject.harness` while holding model/provider/benchmark/subset constant:
+
+```text
+TerminalBench tb2-wide@<dataset_commit>, REPS=3
+model=opus-4.7, provider=anthropic, benchmark=terminal-bench
+
+fiz-native       81.0 ± 2.1
+claude-code      81.7 ± 1.8
+delta            -0.7
+```
+
+The report must not claim that a harness is better or worse when the rows also
+vary model, provider, subset, scorer, or benchmark version unless the claim text
+names those confounds explicitly.
+
+### FHI Claims
+
+Fizeau Harness Intelligence is a derived model × harness × provider metric. FHI
+answers "how effective is this combination when driven through Fizeau's
+execution surface?" It is separate from catalog model `power`, which answers
+"how strong is this model for automatic routing?"
+
+An FHI report may rank models within a fixed harness/provider surface:
+
+```text
+FHI for harness=fiz-native, provider=anthropic, evidence window=2026-Q2
+
+opus-4.7         56
+sonnet-4.6       49
+gpt-5.4-mini     43
+```
+
+It may also rank harnesses within a fixed model/provider surface:
+
+```text
+FHI for model=opus-4.7, provider=anthropic, evidence window=2026-Q2
+
+claude-code      57
+fiz-native       56
+fiz-claude       55
+```
+
+FHI derivation is policy-owned and must be versioned. Every FHI output includes
+the FHI formula version, benchmark weights, included evidence window, included
+benchmarks, excluded evidence with reasons, and confidence/coverage notes.
+
+HumanEval, MMLU, and MHI-style components may contribute to FHI, but they must
+not dominate long-horizon agentic evidence. TerminalBench, beadbench,
+SkillsBench, and SWE-bench-style task outcomes should carry the primary weight
+once enough harness-normalized rows exist.
+
 ## Initial Import Targets
 
 Near-term importers should cover:
