@@ -50,15 +50,17 @@ func (s *service) openSessionLog(req ServiceExecuteRequest, decision RouteDecisi
 	// any caller Metadata entry under the reserved keys.
 	headerMeta := metaWithRoleAndCorrelation(req.Metadata, req.Role, req.CorrelationID)
 	start := session.SessionStartData{
-		Provider:         s.providerTypeLabel(decision.Provider),
-		Model:            decision.Model,
-		SelectedProvider: decision.Provider,
-		SelectedEndpoint: decision.Endpoint,
-		SelectedRoute:    req.SelectedRoute,
+		Provider:               s.providerTypeLabel(decision.Provider),
+		Model:                  decision.Model,
+		SelectedProvider:       decision.Provider,
+		SelectedEndpoint:       decision.Endpoint,
+		SelectedServerInstance: decision.ServerInstance,
+		SelectedRoute:          req.SelectedRoute,
 		Sticky: session.RoutingStickyState{
-			KeyPresent: req.CorrelationID != "",
-			Assignment: decision.Sticky.Assignment,
-			Reason:     decision.Sticky.Reason,
+			KeyPresent:     req.CorrelationID != "",
+			Assignment:     decision.Sticky.Assignment,
+			ServerInstance: decision.Sticky.ServerInstance,
+			Reason:         decision.Sticky.Reason,
 		},
 		Utilization: session.RoutingUtilizationState{
 			Source:         decision.Utilization.Source,
@@ -105,9 +107,10 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 			SelectedRoute:    req.SelectedRoute,
 			SelectedEndpoint: sl.decision.Endpoint,
 			Sticky: session.RoutingStickyState{
-				KeyPresent: req.CorrelationID != "",
-				Assignment: sl.decision.Sticky.Assignment,
-				Reason:     sl.decision.Sticky.Reason,
+				KeyPresent:     req.CorrelationID != "",
+				Assignment:     sl.decision.Sticky.Assignment,
+				ServerInstance: sl.decision.Sticky.ServerInstance,
+				Reason:         sl.decision.Sticky.Reason,
 			},
 			Utilization: session.RoutingUtilizationState{
 				Source:         sl.decision.Utilization.Source,
@@ -136,11 +139,17 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 			end.ResolvedHarness = final.RoutingActual.Harness
 			end.Model = final.RoutingActual.Model
 			end.SelectedProvider = final.RoutingActual.Provider
+			if final.RoutingActual.ServerInstance != "" {
+				end.SelectedServerInstance = final.RoutingActual.ServerInstance
+			}
 			end.ResolvedModel = final.RoutingActual.Model
 			end.AttemptedProviders = append([]string(nil), final.RoutingActual.FallbackChainFired...)
 			if len(end.AttemptedProviders) > 1 {
 				end.FailoverCount = len(end.AttemptedProviders) - 1
 			}
+		}
+		if end.SelectedServerInstance == "" {
+			end.SelectedServerInstance = sl.decision.ServerInstance
 		}
 		sl.logger.Emit(agentcore.EventSessionEnd, end)
 	})

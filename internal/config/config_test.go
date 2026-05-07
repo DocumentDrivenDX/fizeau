@@ -134,6 +134,12 @@ endpoints:
   - type: omlx
     host: vidar
     port: 1235
+  - type: rapid-mlx
+    host: grendel
+    port: 8000
+  - type: vllm
+    host: sindri
+    port: 8000
   - type: openrouter
     api_key: sk-test
 `), 0o644))
@@ -142,9 +148,11 @@ endpoints:
 	require.NoError(t, err)
 
 	names := cfg.ProviderNames()
-	require.Len(t, names, 3)
+	require.Len(t, names, 5)
 	assert.Contains(t, names, "lmstudio-vidar-1234")
 	assert.Contains(t, names, "omlx-vidar-1235")
+	assert.Contains(t, names, "rapid-mlx-grendel-8000")
+	assert.Contains(t, names, "vllm-sindri-8000")
 	assert.Contains(t, names, "openrouter-openrouter.ai-api")
 	assert.Equal(t, "qwen3.6", cfg.Routing.DefaultModel)
 
@@ -152,18 +160,62 @@ endpoints:
 	require.True(t, ok)
 	assert.Equal(t, "lmstudio", lm.Type)
 	assert.Equal(t, "http://vidar:1234/v1", lm.BaseURL)
+	require.Len(t, lm.Endpoints, 1)
+	assert.Equal(t, "vidar:1234", lm.Endpoints[0].ServerInstance)
 	assert.Empty(t, lm.Model)
 
 	om, ok := cfg.GetProvider("omlx-vidar-1235")
 	require.True(t, ok)
 	assert.Equal(t, "http://vidar:1235/v1", om.BaseURL)
+	require.Len(t, om.Endpoints, 1)
+	assert.Equal(t, "vidar:1235", om.Endpoints[0].ServerInstance)
 	assert.Empty(t, om.Model)
+
+	grendel, ok := cfg.GetProvider("rapid-mlx-grendel-8000")
+	require.True(t, ok)
+	assert.Equal(t, "grendel:8000", grendel.ServerInstance)
+	require.Len(t, grendel.Endpoints, 1)
+	assert.Equal(t, "grendel:8000", grendel.Endpoints[0].ServerInstance)
+
+	sindri, ok := cfg.GetProvider("vllm-sindri-8000")
+	require.True(t, ok)
+	assert.Equal(t, "sindri:8000", sindri.ServerInstance)
+	require.Len(t, sindri.Endpoints, 1)
+	assert.Equal(t, "sindri:8000", sindri.Endpoints[0].ServerInstance)
 
 	router, ok := cfg.GetProvider("openrouter-openrouter.ai-api")
 	require.True(t, ok)
 	assert.Equal(t, "openrouter", router.Type)
 	assert.Equal(t, "sk-test", router.APIKey)
 	assert.Empty(t, router.Model)
+}
+
+func TestLoad_ServerInstanceOverride(t *testing.T) {
+	isolateHome(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".fizeau")
+	require.NoError(t, os.MkdirAll(cfgDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
+providers:
+  grendel:
+    type: rapid-mlx
+    base_url: http://grendel:8000/v1
+    server_instance: shared-grendel
+    endpoints:
+      - name: primary
+        base_url: http://grendel:8000/v1
+        server_instance: shared-grendel
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+
+	p, ok := cfg.GetProvider("grendel")
+	require.True(t, ok)
+	assert.Equal(t, "shared-grendel", p.ServerInstance)
+	require.Len(t, p.Endpoints, 1)
+	assert.Equal(t, "shared-grendel", p.Endpoints[0].ServerInstance)
 }
 
 func TestLoad_EnvExpansion(t *testing.T) {

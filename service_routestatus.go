@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
+	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 )
 
 // RouteStatus returns live routing state for configured providers/models.
@@ -49,15 +50,17 @@ func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
 				entry.LastDecision = cached.decision
 				entry.LastDecisionAt = cached.at
 				entry.SelectedEndpoint = cached.decision.Endpoint
+				entry.SelectedServerInstance = cached.decision.ServerInstance
 				entry.Sticky = cached.decision.Sticky
 			}
 			entries[model] = entry
 			order = append(order, model)
 		}
 		cs := RouteCandidateStatus{
-			Provider: providerName,
-			Model:    model,
-			Priority: len(sc.ProviderNames()) - i,
+			Provider:       providerName,
+			Model:          model,
+			ServerInstance: serverinstance.Normalize(provider.BaseURL, provider.ServerInstance),
+			Priority:       len(sc.ProviderNames()) - i,
 		}
 		if attemptCooldown := routeAttemptCandidateCooldown(activeAttempts, providerName, model, cooldown); attemptCooldown != nil {
 			cs.Cooldown = attemptCooldown

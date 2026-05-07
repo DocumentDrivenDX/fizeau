@@ -65,15 +65,17 @@ func TestServiceSessionLogPersistsHarnessProvenance(t *testing.T) {
 		Prompt:        "test prompt",
 	}
 	sl := svc.openSessionLog(req, RouteDecision{
-		Harness:  "claude",
-		Provider: "claude",
-		Model:    "sonnet",
+		Harness:        "claude",
+		Provider:       "claude",
+		ServerInstance: "claude-sonnet-1",
+		Model:          "sonnet",
 	}, sessionID)
 	sl.writeEnd(req, nil, harnesses.FinalData{
 		Status: string(agentcore.StatusSuccess),
 		RoutingActual: &harnesses.RoutingActual{
-			Harness: "claude",
-			Model:   "sonnet",
+			Harness:        "claude",
+			ServerInstance: "claude-sonnet-1",
+			Model:          "sonnet",
 		},
 	})
 	sl.close()
@@ -88,6 +90,7 @@ func TestServiceSessionLogPersistsHarnessProvenance(t *testing.T) {
 		`"type":"session.end"`,
 		`"resolved_harness":"claude"`,
 		`"harness_source":"auto_route"`,
+		`"selected_server_instance":"claude-sonnet-1"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("session log missing %s:\n%s", want, text)

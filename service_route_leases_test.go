@@ -30,8 +30,8 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 			"local": {
 				Type: "lmstudio",
 				Endpoints: []ServiceProviderEndpoint{
-					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1"},
-					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1"},
+					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1", ServerInstance: "desk-a"},
+					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1", ServerInstance: "desk-b"},
 				},
 				Model: "qwen/qwen3.6",
 			},
@@ -138,8 +138,8 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 			"local": {
 				Type: "lmstudio",
 				Endpoints: []ServiceProviderEndpoint{
-					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1"},
-					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1"},
+					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1", ServerInstance: "desk-a"},
+					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1", ServerInstance: "desk-b"},
 				},
 				Model: "qwen/qwen3.6",
 			},
@@ -222,8 +222,8 @@ func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
 			"local": {
 				Type: "lmstudio",
 				Endpoints: []ServiceProviderEndpoint{
-					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1"},
-					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1"},
+					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1", ServerInstance: "desk-a"},
+					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1", ServerInstance: "desk-b"},
 				},
 				Model: "qwen/qwen3.6",
 			},
@@ -280,8 +280,8 @@ func TestResolveRouteStickyLeaseIgnoresStaleUtilizationFallback(t *testing.T) {
 			"local": {
 				Type: "lmstudio",
 				Endpoints: []ServiceProviderEndpoint{
-					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1"},
-					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1"},
+					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1", ServerInstance: "desk-a"},
+					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1", ServerInstance: "desk-b"},
 				},
 				Model: "qwen/qwen3.6",
 			},

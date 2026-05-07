@@ -68,7 +68,7 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	svc := publicRouteTraceService(&fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"local": {Type: "test", BaseURL: "http://127.0.0.1:9999/v1", Model: "model-a"},
+			"local": {Type: "test", BaseURL: "http://127.0.0.1:9999/v1", ServerInstance: "127.0.0.1:9999", Model: "model-a"},
 		},
 		names:       []string{"local"},
 		defaultName: "local",
@@ -87,12 +87,18 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	if dec.Harness != "fiz" || dec.Provider != "local" || dec.Model != "model-a" {
 		t.Fatalf("decision=%#v, want fiz/local/model-a", dec)
 	}
+	if dec.ServerInstance == "" {
+		t.Fatalf("decision=%#v, want server_instance", dec)
+	}
 	if len(dec.Candidates) != 1 {
 		t.Fatalf("Candidates length=%d, want 1: %#v", len(dec.Candidates), dec.Candidates)
 	}
 	candidate := dec.Candidates[0]
 	if !candidate.Eligible || candidate.Harness != "fiz" || candidate.Provider != "local" || candidate.Model != "model-a" {
 		t.Fatalf("candidate=%#v, want eligible agent/local/model-a", candidate)
+	}
+	if candidate.ServerInstance == "" {
+		t.Fatalf("candidate=%#v, want server_instance", candidate)
 	}
 	if !strings.Contains(candidate.Reason, "score=") {
 		t.Fatalf("eligible candidate Reason=%q, want scoring reason", candidate.Reason)

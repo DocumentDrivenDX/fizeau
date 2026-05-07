@@ -33,8 +33,8 @@ func TestRouteStatus_emptyConfig(t *testing.T) {
 func TestRouteStatus_modelsPopulatedFromProviders(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi":      {Type: "lmstudio", Model: "qwen3-27b"},
-			"openrouter": {Type: "openrouter", Model: "qwen3-27b"},
+			"bragi":      {Type: "lmstudio", BaseURL: "http://bragi.invalid/v1", Model: "qwen3-27b"},
+			"openrouter": {Type: "openrouter", BaseURL: "https://openrouter.invalid/v1", Model: "qwen3-27b"},
 		},
 		names: []string{"bragi", "openrouter"},
 	}
@@ -60,6 +60,9 @@ func TestRouteStatus_modelsPopulatedFromProviders(t *testing.T) {
 	}
 	if entry.Candidates[0].Provider != "bragi" {
 		t.Errorf("Candidates[0].Provider: got %q, want %q", entry.Candidates[0].Provider, "bragi")
+	}
+	if entry.Candidates[0].ServerInstance == "" {
+		t.Errorf("Candidates[0].ServerInstance should be populated: %#v", entry.Candidates[0])
 	}
 	if entry.Candidates[1].Provider != "openrouter" {
 		t.Errorf("Candidates[1].Provider: got %q, want %q", entry.Candidates[1].Provider, "openrouter")
@@ -97,12 +100,13 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	// Inject a decision directly into the cache (simulating a resolved route)
 	// since ResolveRoute may fail without a real provider.
 	dec := &RouteDecision{
-		Harness:  "fiz",
-		Provider: "bragi",
-		Endpoint: "desk-a",
-		Model:    "qwen3-27b",
-		Reason:   "test",
-		Sticky:   RouteStickyState{KeyPresent: true, Assignment: "reused", Reason: "live sticky lease reused"},
+		Harness:        "fiz",
+		Provider:       "bragi",
+		Endpoint:       "desk-a",
+		ServerInstance: "desk-a",
+		Model:          "qwen3-27b",
+		Reason:         "test",
+		Sticky:         RouteStickyState{KeyPresent: true, Assignment: "reused", ServerInstance: "desk-a", Reason: "live sticky lease reused"},
 	}
 	svc.cacheRouteDecision("qwen3-27b", dec)
 
@@ -120,6 +124,9 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	if entry.LastDecision.Provider != "bragi" {
 		t.Errorf("LastDecision.Provider: got %q, want %q", entry.LastDecision.Provider, "bragi")
 	}
+	if entry.LastDecision.ServerInstance == "" {
+		t.Errorf("LastDecision.ServerInstance should be populated: %#v", entry.LastDecision)
+	}
 	if entry.LastDecision.Model != "qwen3-27b" {
 		t.Errorf("LastDecision.Model: got %q, want %q", entry.LastDecision.Model, "qwen3-27b")
 	}
@@ -128,6 +135,9 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	}
 	if entry.SelectedEndpoint != "desk-a" {
 		t.Fatalf("SelectedEndpoint = %q, want desk-a", entry.SelectedEndpoint)
+	}
+	if entry.SelectedServerInstance == "" {
+		t.Fatalf("SelectedServerInstance should be populated: %#v", entry)
 	}
 	if !entry.Sticky.KeyPresent || entry.Sticky.Assignment != "reused" {
 		t.Fatalf("Sticky = %#v, want reused sticky evidence", entry.Sticky)
@@ -142,7 +152,7 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	// We give it a provider so the engine can build a candidate.
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "mymodel"},
+			"bragi": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", ServerInstance: "bragi-instance", Model: "mymodel"},
 		},
 		names:       []string{"bragi"},
 		defaultName: "bragi",
@@ -194,8 +204,8 @@ func TestRouteStatus_attemptCooldownStateSurfaces(t *testing.T) {
 	sc := &fakeServiceConfig{
 		healthCooldown: 30 * time.Second,
 		providers: map[string]ServiceProviderEntry{
-			"bragi":      {Type: "lmstudio", Model: "qwen3-27b"},
-			"openrouter": {Type: "openrouter", Model: "qwen3-27b"},
+			"bragi":      {Type: "lmstudio", BaseURL: "http://bragi.invalid/v1", Model: "qwen3-27b"},
+			"openrouter": {Type: "openrouter", BaseURL: "https://openrouter.invalid/v1", Model: "qwen3-27b"},
 		},
 		names: []string{"bragi", "openrouter"},
 	}

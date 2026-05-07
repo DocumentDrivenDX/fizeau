@@ -102,6 +102,7 @@ func selectConfiguredEndpointProvider(sc ServiceConfig, ref string) (string, Ser
 			continue
 		}
 		entry.BaseURL = endpoint.BaseURL
+		entry.ServerInstance = endpoint.ServerInstance
 		entry.Endpoints = []ServiceProviderEndpoint{{Name: endpoint.Name, BaseURL: endpoint.BaseURL}}
 		return ref, entry, true
 	}

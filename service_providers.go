@@ -21,6 +21,7 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
+	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 )
 
 const (
@@ -82,6 +83,7 @@ type providerProbeResult struct {
 	detail           string
 	endpointName     string
 	baseURL          string
+	serverInstance   string
 	endpointStatuses []EndpointStatus
 }
 
@@ -551,10 +553,12 @@ func serviceTrimError(msg string) string {
 func providerEndpointStatusesFromProbe(entry ServiceProviderEntry, probe providerProbeResult, capturedAt time.Time) []EndpointStatus {
 	endpoints := modelDiscoveryEndpoints(entry)
 	if len(endpoints) == 0 {
+		probe.serverInstance = entry.ServerInstance
 		return []EndpointStatus{endpointStatusFromProbe("default", entry.BaseURL, probe, capturedAt)}
 	}
 	out := make([]EndpointStatus, 0, len(endpoints))
 	for _, endpoint := range endpoints {
+		probe.serverInstance = endpoint.ServerInstance
 		out = append(out, endpointStatusFromProbe(endpoint.Name, endpoint.BaseURL, probe, capturedAt))
 	}
 	return out
@@ -566,15 +570,16 @@ func endpointStatusFromProbe(name, baseURL string, probe providerProbeResult, ca
 		source = "service provider config"
 	}
 	out := EndpointStatus{
-		Name:       endpointDisplayName(name, baseURL),
-		BaseURL:    baseURL,
-		ProbeURL:   source,
-		Status:     endpointStatus(probe.status),
-		Source:     source,
-		CapturedAt: capturedAt,
-		Fresh:      true,
-		ModelCount: probe.modelCount,
-		LastError:  statusErrorDetail(probe.status, probe.detail, source, capturedAt),
+		Name:           endpointDisplayName(name, baseURL),
+		BaseURL:        baseURL,
+		ServerInstance: serverinstance.Normalize(baseURL, probe.serverInstance),
+		ProbeURL:       source,
+		Status:         endpointStatus(probe.status),
+		Source:         source,
+		CapturedAt:     capturedAt,
+		Fresh:          true,
+		ModelCount:     probe.modelCount,
+		LastError:      statusErrorDetail(probe.status, probe.detail, source, capturedAt),
 	}
 	if out.Status == "connected" {
 		out.LastSuccessAt = capturedAt

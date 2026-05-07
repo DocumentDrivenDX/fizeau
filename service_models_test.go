@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 )
 
 // fakeModelsServer returns an httptest.Server that serves the given model IDs from /v1/models.
@@ -95,6 +96,9 @@ func TestListModels_providerTypesOpenRouterLMStudioOMLXVLLMRapidMLX(t *testing.T
 		if info.EndpointBaseURL == "" {
 			t.Errorf("provider %q model %q missing EndpointBaseURL", info.Provider, info.ID)
 		}
+		if got := serverinstance.FromBaseURL(info.EndpointBaseURL); info.ServerInstance != got {
+			t.Errorf("provider %q model %q server instance = %q, want %q", info.Provider, info.ID, info.ServerInstance, got)
+		}
 	}
 }
 
@@ -139,7 +143,7 @@ func TestListModels_endpointPoolReturnsEndpointMetadata(t *testing.T) {
 				Type:    "lmstudio",
 				BaseURL: vidar.URL + "/v1",
 				Endpoints: []ServiceProviderEndpoint{
-					{Name: "vidar", BaseURL: vidar.URL + "/v1"},
+					{Name: "vidar", BaseURL: vidar.URL + "/v1", ServerInstance: "vidar-instance"},
 					{Name: "eitri", BaseURL: eitri.URL + "/v1"},
 				},
 			},
@@ -164,8 +168,14 @@ func TestListModels_endpointPoolReturnsEndpointMetadata(t *testing.T) {
 	if got["vidar-model"].EndpointName != "vidar" || got["vidar-model"].EndpointBaseURL != vidar.URL+"/v1" {
 		t.Errorf("vidar metadata = %#v", got["vidar-model"])
 	}
+	if got["vidar-model"].ServerInstance != "vidar-instance" {
+		t.Errorf("vidar server instance = %q, want explicit override", got["vidar-model"].ServerInstance)
+	}
 	if got["eitri-model"].EndpointName != "eitri" || got["eitri-model"].EndpointBaseURL != eitri.URL+"/v1" {
 		t.Errorf("eitri metadata = %#v", got["eitri-model"])
+	}
+	if got["eitri-model"].ServerInstance != serverinstance.FromBaseURL(eitri.URL+"/v1") {
+		t.Errorf("eitri server instance = %q, want derived host:port", got["eitri-model"].ServerInstance)
 	}
 }
 

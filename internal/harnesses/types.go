@@ -179,6 +179,7 @@ func BoolPtr(v bool) *bool {
 type RoutingActual struct {
 	Harness            string   `json:"harness"`
 	Provider           string   `json:"provider,omitempty"`
+	ServerInstance     string   `json:"server_instance,omitempty"`
 	Model              string   `json:"model"`
 	FallbackChainFired []string `json:"fallback_chain_fired,omitempty"`
 	FailureClass       string   `json:"failure_class,omitempty"`
