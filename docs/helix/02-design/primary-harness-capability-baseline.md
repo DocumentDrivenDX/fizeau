@@ -49,11 +49,11 @@ can exist in a broader matrix, but this primary baseline is deliberately strict.
 | claude | pass | pass | pass | pass | pass | `safe`, `supervised`, `unrestricted` | pass | pass | pass | pass | pass | pass | pass | pass |
 | gemini | pass | pass | pass | pass | pass | `safe`, `supervised`, `unrestricted` | pass | pass | n/a | n/a | pass | pass, auth-gated | pass | pass |
 
-## Native Fiz Evidence
+## Native `fiz` Evidence
 
-The native Fizeau harness identity (`fiz`) is eligible for automatic routing
-because its core capabilities are covered through `Service.Execute` with
-provider test doubles.
+The native harness identity (`fiz`) is eligible for automatic routing because
+its core capabilities are covered through `Service.Execute` with provider test
+doubles.
 Current evidence:
 
 | Capability | Evidence |

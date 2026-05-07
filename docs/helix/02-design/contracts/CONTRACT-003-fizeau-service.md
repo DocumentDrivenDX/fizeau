@@ -23,10 +23,9 @@ binary, anything else) interact only through this surface. **They do not import
 Fizeau internal packages.** When new behavior is needed, consumers file an issue or
 PR against this contract; Fizeau maintainers decide whether the surface grows.
 
-The native in-process Fizeau harness identity is `fiz`. The term `agent` is
-reserved for real external AI-agent concepts or historical references that
-cannot be changed safely; it is not a public alias for the native Fizeau
-route.
+The native in-process harness identity is `fiz`. The term `agent` is reserved
+for real external AI-agent concepts or historical references that cannot be
+changed safely; it is not a public alias for the native `fiz` route.
 
 Implementation ownership and package boundaries are governed by
 [ADR-008: Service Package and Transcript Boundaries](../adr/ADR-008-service-package-and-transcript-boundaries.md).
