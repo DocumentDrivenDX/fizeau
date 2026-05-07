@@ -252,8 +252,8 @@ source hashes are the committed evidence.
 
 ### 4. Generate FHI claims
 
-Use `fiz-bench fhi delta` for pairwise benchmark claims and `fiz-bench fhi
-rank` for cross-benchmark FHI rankings:
+Use `go run ./cmd/bench fhi delta` for pairwise benchmark claims and
+`go run ./cmd/bench fhi rank` for cross-benchmark FHI rankings:
 
 ```bash
 go run ./cmd/bench fhi delta \
