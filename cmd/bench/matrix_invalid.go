@@ -23,6 +23,8 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 	switch report.FinalStatus {
 	case "graded_pass", "graded_fail", "verifier_fail":
 		return ""
+	case "install_fail_permanent", "install_failed":
+		return matrixInvalidSetup
 	}
 	if isMatrixKnownInvalidClass(report.FinalStatus) {
 		return report.FinalStatus

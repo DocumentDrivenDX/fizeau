@@ -32,6 +32,13 @@ func TestClassifyMatrixInvalidFromFixtures(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("raw install_fail_permanent final status", func(t *testing.T) {
+		report := matrixRunReport{FinalStatus: "install_fail_permanent"}
+		if got := classifyMatrixInvalid(report); got != matrixInvalidSetup {
+			t.Fatalf("classifyMatrixInvalid(raw install_fail_permanent) = %q, want %q", got, matrixInvalidSetup)
+		}
+	})
 }
 
 func TestMatrixAggregateIncludesInvalidCountsAndSkipsInvalidDenominators(t *testing.T) {
