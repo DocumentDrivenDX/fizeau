@@ -475,7 +475,7 @@ func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {
 	}
 }
 
-func TestBuildRoutingInputsDisablesAgentWhenLiveProviderDiscoveryEmpty(t *testing.T) {
+func TestBuildRoutingInputsDisablesFizWhenLiveProviderDiscoveryEmpty(t *testing.T) {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"dead-local": {Type: "lmstudio", BaseURL: "http://dead-local.invalid/v1", Model: "qwen3.6-27b"},
@@ -498,15 +498,15 @@ func TestBuildRoutingInputsDisablesAgentWhenLiveProviderDiscoveryEmpty(t *testin
 	}
 
 	inputs := svc.buildRoutingInputsWithCatalog(context.Background(), nil)
-	agentEntry, ok := findRoutingHarnessEntry(inputs.Harnesses, "fiz")
+	fizEntry, ok := findRoutingHarnessEntry(inputs.Harnesses, "fiz")
 	if !ok {
 		t.Fatalf("missing fiz entry in %#v", inputs.Harnesses)
 	}
-	if agentEntry.Available {
-		t.Fatalf("agent Available=true with no live provider entries: %#v", agentEntry)
+	if fizEntry.Available {
+		t.Fatalf("fiz Available=true with no live provider entries: %#v", fizEntry)
 	}
-	if len(agentEntry.Providers) != 0 {
-		t.Fatalf("agent Providers=%#v, want none after failed discovery", agentEntry.Providers)
+	if len(fizEntry.Providers) != 0 {
+		t.Fatalf("fiz Providers=%#v, want none after failed discovery", fizEntry.Providers)
 	}
 
 	dec, err := routing.Resolve(routing.Request{Harness: "fiz"}, inputs)
@@ -1041,7 +1041,7 @@ profiles:
 	newSvc := func(t *testing.T) (*service, func()) {
 		t.Helper()
 		// Block claude/codex/gemini subprocess harnesses from the
-		// candidate set so the test isolates the agent harness's
+		// candidate set so the test isolates the fiz harness's
 		// per-provider tier escalation behavior.
 		t.Setenv("GEMINI_API_KEY", "")
 		t.Setenv("GOOGLE_API_KEY", "")

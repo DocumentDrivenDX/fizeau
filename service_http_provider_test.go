@@ -126,7 +126,7 @@ func TestResolveConfiguredNativeProviderSelectionOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("agent harness still falls back to default provider", func(t *testing.T) {
+	t.Run("fiz harness still falls back to default provider", func(t *testing.T) {
 		sc := &fakeServiceConfig{
 			providers: map[string]ServiceProviderEntry{
 				"bragi": {Type: "lmstudio", BaseURL: "http://bragi.invalid/v1"},

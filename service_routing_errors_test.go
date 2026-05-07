@@ -213,7 +213,7 @@ func TestResolveRouteExplicitProfilePinConflict(t *testing.T) {
 		Harness: "fiz",
 	})
 	if err == nil {
-		t.Fatal("expected smart profile to conflict with local agent harness")
+		t.Fatal("expected smart profile to conflict with local fiz harness")
 	}
 	var inverse *ErrProfilePinConflict
 	if !errors.As(err, &inverse) {
