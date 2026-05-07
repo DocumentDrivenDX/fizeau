@@ -651,7 +651,7 @@ func explicitProfileConstraint(profile, providerPreference string) (string, bool
 	switch profile {
 	case "local", "offline", "air-gapped":
 		return ProviderPreferenceLocalOnly, true
-	case "smart", "code-smart", "code-high":
+	case "smart", "code-smart":
 		return ProviderPreferenceSubscriptionOnly, true
 	default:
 		return "", false

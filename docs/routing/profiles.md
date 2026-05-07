@@ -11,7 +11,11 @@ hard pins.
 Use `fiz --list-models` to inspect numeric power, compatibility metadata, and
 the live routing inventory before selecting a profile or hard pin.
 
-`ModelRef` is separate from profiles. It resolves catalog references for exact model identity and migration compatibility. Legacy names such as `code-medium` and `code-high` are compatibility-only aliases for existing catalog targets; they are not the primary routing surface and should not be used in new guidance.
+`ModelRef` is separate from profiles. It resolves catalog references for exact
+model identity and migration compatibility. The legacy `code-*` routing names
+are compatibility-only catalog targets, not the primary routing surface. When
+you need their replacement guidance, prefer `--profile smart|standard|cheap`
+or a numeric power range via `--min-power` and `--max-power`.
 
 Catalog profile listings expose effective `MinPower`/`MaxPower` along with an
 optional compatibility target for older references. The compatibility target

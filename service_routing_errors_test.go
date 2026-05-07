@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,6 +240,28 @@ func TestResolveRouteUnknownProfileIsTyped(t *testing.T) {
 	}
 	if typed.Profile != "does-not-exist" {
 		t.Fatalf("Profile=%q, want does-not-exist", typed.Profile)
+	}
+}
+
+func TestResolveRouteLegacyCodeProfilesRejectWithReplacementGuidance(t *testing.T) {
+	svc := testRoutingErrorService()
+
+	for profile, want := range map[string]string{
+		"code-medium": "--profile standard",
+		"code-high":   "--profile smart",
+	} {
+		t.Run(profile, func(t *testing.T) {
+			_, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: profile})
+			if err == nil {
+				t.Fatalf("expected %s to be rejected", profile)
+			}
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("error=%q, want replacement guidance %q", err.Error(), want)
+			}
+			if !strings.Contains(err.Error(), "--min-power/--max-power") {
+				t.Fatalf("error=%q, want numeric power guidance", err.Error())
+			}
+		})
 	}
 }
 
