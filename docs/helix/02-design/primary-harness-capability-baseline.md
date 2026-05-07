@@ -183,7 +183,7 @@ reported mode set is exactly documented and enforced.
 Evidence:
 
 - adapter argument tests for subprocess harnesses
-- native tool-set enforcement tests for `agent`
+- native tool-set enforcement tests for `fiz`
 
 ### ListModels
 
@@ -230,7 +230,7 @@ Examples:
 
 - Codex: `-m <model>`
 - Claude: `--model <model>`
-- agent: provider request model or resolved provider/profile model metadata
+- fiz: provider request model or resolved provider/profile model metadata
 
 ### ListReasoning
 
@@ -240,7 +240,7 @@ not baseline-complete.
 
 Acceptable reasoning-list sources:
 
-- provider/model capability metadata for `agent`
+- provider/model capability metadata for `fiz`
 - harness registry or catalog data when the CLI values are stable
 - authenticated TUI or CLI evidence when the available levels are surfaced there
 
@@ -273,7 +273,7 @@ Examples:
 - Claude: `--effort <level>` if supported by the installed CLI, or a
   version-pinned compatibility table accepted by the reasoning-listing
   evidence; otherwise this capability remains `gap`
-- agent: resolved provider request metadata or internal reasoning-budget
+- fiz: resolved provider request metadata or internal reasoning-budget
   metadata
 
 ### TokenUsage

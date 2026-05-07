@@ -39,9 +39,9 @@ transcript parsing.
 `fiz` is the one stop shop for automatically routed one-shot
 noninteractive agentic prompts. Two roles:
 
-1. **Direct first-class agent** over native model providers (LM Studio, OpenRouter,
-   Anthropic, etc.). Designed to be the high-performance choice for batch
-   noninteractive tasks.
+1. **Direct first-class `fiz` harness** over native model providers (LM Studio,
+   OpenRouter, Anthropic, etc.). Designed to be the high-performance choice
+   for batch noninteractive tasks.
 2. **Wrapper around other agents** — subprocess harnesses (claude, codex,
    opencode, pi, gemini) — used when their interactive features, vendor billing,
    specific capabilities, or comparison/fallback routing wants them in the
