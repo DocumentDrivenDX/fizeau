@@ -139,6 +139,13 @@ The benchmark evidence pipeline is: run a benchmark, import the resulting
 artifacts into the evidence ledger, validate and append the records, then ask
 `fiz-bench fhi` for comparative claims.
 
+This workflow is anchored by [SD-012](../../docs/helix/02-design/solution-designs/SD-012-benchmark-evidence-ledger.md)
+and the benchmark resource notes for
+[Rapid-MLX MHI](../../docs/resources/rapid-mlx-mhi-2026-05-06.md),
+[SkillsBench](../../docs/resources/skillsbench-2026-05-06.md),
+[SWE-bench](../../docs/resources/swebench-2026-05-06.md), and
+[HumanEval](../../docs/resources/humaneval-2026-05-06.md).
+
 ### 1. Run benchmark jobs
 
 Use the TerminalBench runners to produce the raw matrix or report artifacts:
@@ -182,6 +189,9 @@ go run ./cmd/bench evidence import-external \
 including Rapid-MLX MHI, SkillsBench, SWE-bench, and HumanEval fixtures.
 Beadbench and other local runs enter the ledger through their importer paths,
 not by hand-editing the schema.
+Raw benchmark artifacts remain in the gitignored `benchmark-results/` tree.
+Only curated snapshots or source hashes that have been normalized into ledger
+records should be committed.
 
 ### 3. Validate and append to the ledger
 
@@ -224,6 +234,19 @@ benchmark version, subset id/version, scorer, evidence window, denominator
 policy, and run environment fixed while comparing two harness rows such as
 `fiz-native` and `claude-code`.
 
+Example harness-vs-harness claim:
+
+```text
+FHI formula=fhi/v1, evidence window=2026-Q2
+benchmarks=terminal-bench tb2-wide@<dataset_commit>
+model=Opus 4.7
+provider=anthropic
+
+fiz-native     81.0 ± 2.1
+claude-code    81.7 ± 1.8
+delta         -0.7
+```
+
 Local-vs-frontier claims must pin the same formula version, evidence window,
 benchmark set, and denominator rules on both sides. The local row also needs the
 deployment-class facts that make the environment auditable:
@@ -237,6 +260,28 @@ deployment-class facts that make the environment auditable:
 
 The frontier row should carry the same benchmark and formula pins, plus the
 provider and model snapshot/version captured by the source.
+
+Example local-vs-frontier claim:
+
+```text
+FHI formula=fhi/v1, evidence window=2026-Q2
+benchmarks=terminal-bench, beadbench-v1, skillsbench-import
+
+local stack:
+  fiz=0.10
+  harness=fiz-native
+  provider=omlx
+  provider_version=0.8.10
+  model=Qwen3.6-27B-MLX-8bit
+  quantization=8-bit
+  hardware=Mac Studio
+
+frontier stack:
+  harness=claude-code
+  provider=anthropic
+  model=Opus 4.7
+  snapshot=anthropic/claude-4.7-20260501
+```
 
 ---
 
