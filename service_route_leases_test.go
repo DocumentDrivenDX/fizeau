@@ -76,8 +76,9 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRoute first: %v", err)
 	}
-	if first.Provider != "local@desk-b" || first.Endpoint != "desk-b" {
-		t.Fatalf("first decision=%#v, want desk-b", first)
+	firstServer := first.ServerInstance
+	if firstServer == "" {
+		t.Fatalf("first decision=%#v, want server instance", first)
 	}
 	if !first.Sticky.KeyPresent || first.Sticky.Assignment != "acquired" {
 		t.Fatalf("first sticky evidence=%#v, want acquired sticky lease", first.Sticky)
@@ -111,11 +112,185 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRoute second: %v", err)
 	}
-	if second.Provider != "local@desk-b" || second.Endpoint != "desk-b" {
-		t.Fatalf("sticky decision=%#v, want reused desk-b despite reversed baseline", second)
+	if second.ServerInstance != firstServer {
+		t.Fatalf("sticky decision=%#v, want reused server %q despite reversed baseline", second, firstServer)
 	}
 	if second.Sticky.Assignment != "reused" {
 		t.Fatalf("second sticky evidence=%#v, want reused", second.Sticky)
+	}
+	if second.Sticky.Bonus <= 0 {
+		t.Fatalf("second sticky evidence=%#v, want sticky bonus", second.Sticky)
+	}
+}
+
+func TestResolveRouteStickyLeasePrefersSameServerAcrossModels(t *testing.T) {
+	originalProbe := probeOpenAIModelsForDiscovery
+	defer func() { probeOpenAIModelsForDiscovery = originalProbe }()
+	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+		switch {
+		case strings.Contains(baseURL, "desk-a"):
+			return []string{"model-a", "model-b"}, nil
+		case strings.Contains(baseURL, "desk-b"):
+			return []string{"model-a", "model-b"}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"local": {
+				Type: "lmstudio",
+				Endpoints: []ServiceProviderEndpoint{
+					{Name: "desk-a", BaseURL: "http://desk-a.invalid/v1", ServerInstance: "desk-a"},
+					{Name: "desk-b", BaseURL: "http://desk-b.invalid/v1", ServerInstance: "desk-b"},
+				},
+			},
+		},
+		names:          []string{"local"},
+		defaultName:    "local",
+		healthCooldown: 20 * time.Millisecond,
+	}
+	svc := &service{
+		opts:        ServiceOptions{ServiceConfig: sc},
+		registry:    harnesses.NewRegistry(),
+		hub:         newSessionHub(),
+		catalog:     newCatalogCache(catalogCacheOptions{}),
+		routeHealth: routehealth.NewStore(),
+		routeLeases: routehealth.NewLeaseStore(),
+	}
+	svc.routeUtilizationStore().Record("local", "desk-a", "model-a", utilization.EndpointUtilization{
+		ActiveRequests: utilization.Int(0),
+		MaxConcurrency: utilization.Int(2),
+		Source:         utilization.SourceLlamaSlots,
+		Freshness:      utilization.FreshnessFresh,
+	})
+	svc.routeUtilizationStore().Record("local", "desk-b", "model-a", utilization.EndpointUtilization{
+		ActiveRequests: utilization.Int(0),
+		MaxConcurrency: utilization.Int(2),
+		Source:         utilization.SourceLlamaSlots,
+		Freshness:      utilization.FreshnessFresh,
+	})
+	svc.routeUtilizationStore().Record("local", "desk-a", "model-b", utilization.EndpointUtilization{
+		ActiveRequests: utilization.Int(0),
+		MaxConcurrency: utilization.Int(2),
+		Source:         utilization.SourceLlamaSlots,
+		Freshness:      utilization.FreshnessFresh,
+	})
+	svc.routeUtilizationStore().Record("local", "desk-b", "model-b", utilization.EndpointUtilization{
+		ActiveRequests: utilization.Int(0),
+		MaxConcurrency: utilization.Int(2),
+		Source:         utilization.SourceLlamaSlots,
+		Freshness:      utilization.FreshnessFresh,
+	})
+	now := time.Now().UTC()
+	requireNoError(t, svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Provider:  "local@desk-b",
+		Endpoint:  "desk-b",
+		Model:     "model-a",
+		Status:    "success",
+		Duration:  10 * time.Millisecond,
+		Timestamp: now,
+	}))
+	requireNoError(t, svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Provider:  "local@desk-a",
+		Endpoint:  "desk-a",
+		Model:     "model-a",
+		Status:    "failed",
+		Duration:  80 * time.Millisecond,
+		Timestamp: now,
+	}))
+
+	first, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Harness:       "fiz",
+		Model:         "model-a",
+		CorrelationID: "bead-cross-model",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute first: %v", err)
+	}
+	if first.ServerInstance == "" {
+		t.Fatalf("first decision=%#v, want server instance", first)
+	}
+	firstServer := first.ServerInstance
+	time.Sleep(30 * time.Millisecond)
+	now = time.Now().UTC()
+	if firstServer == "desk-a" {
+		requireNoError(t, svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+			Provider:  "local@desk-b",
+			Endpoint:  "desk-b",
+			Model:     "model-b",
+			Status:    "success",
+			Duration:  10 * time.Millisecond,
+			Timestamp: now,
+		}))
+		requireNoError(t, svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+			Provider:  "local@desk-a",
+			Endpoint:  "desk-a",
+			Model:     "model-b",
+			Status:    "failed",
+			Duration:  90 * time.Millisecond,
+			Timestamp: now,
+		}))
+		svc.routeUtilizationStore().Record("local", "desk-a", "model-b", utilization.EndpointUtilization{
+			ActiveRequests: utilization.Int(1),
+			MaxConcurrency: utilization.Int(2),
+			Source:         utilization.SourceLlamaSlots,
+			Freshness:      utilization.FreshnessFresh,
+		})
+		svc.routeUtilizationStore().Record("local", "desk-b", "model-b", utilization.EndpointUtilization{
+			ActiveRequests: utilization.Int(0),
+			MaxConcurrency: utilization.Int(2),
+			Source:         utilization.SourceLlamaSlots,
+			Freshness:      utilization.FreshnessFresh,
+		})
+	} else {
+		requireNoError(t, svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+			Provider:  "local@desk-a",
+			Endpoint:  "desk-a",
+			Model:     "model-b",
+			Status:    "success",
+			Duration:  10 * time.Millisecond,
+			Timestamp: now,
+		}))
+		requireNoError(t, svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+			Provider:  "local@desk-b",
+			Endpoint:  "desk-b",
+			Model:     "model-b",
+			Status:    "failed",
+			Duration:  90 * time.Millisecond,
+			Timestamp: now,
+		}))
+		svc.routeUtilizationStore().Record("local", "desk-a", "model-b", utilization.EndpointUtilization{
+			ActiveRequests: utilization.Int(0),
+			MaxConcurrency: utilization.Int(2),
+			Source:         utilization.SourceLlamaSlots,
+			Freshness:      utilization.FreshnessFresh,
+		})
+		svc.routeUtilizationStore().Record("local", "desk-b", "model-b", utilization.EndpointUtilization{
+			ActiveRequests: utilization.Int(1),
+			MaxConcurrency: utilization.Int(2),
+			Source:         utilization.SourceLlamaSlots,
+			Freshness:      utilization.FreshnessFresh,
+		})
+	}
+
+	second, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Harness:       "fiz",
+		Model:         "model-b",
+		CorrelationID: "bead-cross-model",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute second: %v", err)
+	}
+	if second.ServerInstance != firstServer {
+		t.Fatalf("second decision=%#v, want same server instance %q across model change", second, firstServer)
+	}
+	if second.Sticky.Assignment != "reused" {
+		t.Fatalf("second sticky evidence=%#v, want reused sticky lease", second.Sticky)
+	}
+	if second.Sticky.Bonus <= 0 {
+		t.Fatalf("second sticky evidence=%#v, want sticky bonus", second.Sticky)
 	}
 }
 
@@ -246,7 +421,7 @@ func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
 		Source:         utilization.SourceLlamaSlots,
 		Freshness:      utilization.FreshnessFresh,
 	})
-	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b", "local", "qwen/qwen3.6"), "local", "desk-b", "qwen/qwen3.6")
+	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b"), "local", "desk-b", "qwen/qwen3.6")
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
 		Harness:       "fiz",
@@ -307,9 +482,9 @@ func TestResolveRouteStickyLeaseIgnoresStaleUtilizationFallback(t *testing.T) {
 		Source:         utilization.SourceLlamaSlots,
 		Freshness:      utilization.FreshnessStale,
 	})
-	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-a", "local", "qwen/qwen3.6"), "local", "desk-a", "qwen/qwen3.6")
-	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b", "local", "qwen/qwen3.6"), "local", "desk-a", "qwen/qwen3.6")
-	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-c", "local", "qwen/qwen3.6"), "local", "desk-b", "qwen/qwen3.6")
+	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-a"), "local", "desk-a", "qwen/qwen3.6")
+	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b"), "local", "desk-a", "qwen/qwen3.6")
+	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-c"), "local", "desk-b", "qwen/qwen3.6")
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
 		Harness:       "fiz",

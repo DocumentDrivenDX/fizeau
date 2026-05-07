@@ -64,6 +64,9 @@ func Replay(path string, w io.Writer) error {
 				if data.Sticky.Reason != "" {
 					fmt.Fprintf(w, " reason=%s", data.Sticky.Reason)
 				}
+				if data.Sticky.Bonus != 0 {
+					fmt.Fprintf(w, " bonus=%.2f", data.Sticky.Bonus)
+				}
 				fmt.Fprintln(w)
 			}
 			if data.Utilization.Source != "" || data.Utilization.Freshness != "" ||

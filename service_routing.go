@@ -77,6 +77,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		ProviderPreference:    providerPreference,
 		EstimatedPromptTokens: req.EstimatedPromptTokens,
 		RequiresTools:         req.RequiresTools,
+		CorrelationID:         req.CorrelationID,
 	}
 	rReq.MinPower, rReq.MaxPower = routePowerBoundsForRequest(req, powerPolicy)
 	s.applyRouteAttemptCooldowns(&in)
@@ -524,15 +525,16 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	}
 	successRate, latencyMS := s.routeMetricSignals(now, s.routeAttemptTTL())
 	return routing.Inputs{
-		Harnesses:                   entries,
-		ProviderSuccessRate:         successRate,
-		ObservedLatencyMS:           latencyMS,
-		ProviderQuotaExhaustedUntil: s.providerQuotaExhaustedUntil(now),
-		CatalogResolver:             serviceRoutingCatalogResolver(cat),
-		CatalogCandidatesResolver:   serviceRoutingCatalogCandidatesResolver(cat),
-		ModelEligibility:            serviceRoutingModelEligibility(cat),
-		ReasoningResolver:           serviceRoutingReasoningResolver(cat),
-		EndpointLoadResolver:        s.routeEndpointLoadsResolver(now),
+		Harnesses:                    entries,
+		ProviderSuccessRate:          successRate,
+		ObservedLatencyMS:            latencyMS,
+		ProviderQuotaExhaustedUntil:  s.providerQuotaExhaustedUntil(now),
+		CatalogResolver:              serviceRoutingCatalogResolver(cat),
+		CatalogCandidatesResolver:    serviceRoutingCatalogCandidatesResolver(cat),
+		ModelEligibility:             serviceRoutingModelEligibility(cat),
+		ReasoningResolver:            serviceRoutingReasoningResolver(cat),
+		EndpointLoadResolver:         s.routeEndpointLoadsResolver(now),
+		StickyServerInstanceResolver: s.routeStickyServerInstanceResolver(now),
 	}
 }
 

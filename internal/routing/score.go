@@ -10,6 +10,8 @@ var costClassRank = map[string]int{
 	"":             2, // unknown = medium
 }
 
+const stickyAffinityBonus = 250.0
+
 // scorePolicy returns a score for a candidate under the named profile.
 // Higher is better.
 //
@@ -116,6 +118,27 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 	// Cooldown demotion: candidate has had recent failures.
 	if cand.InCooldown {
 		base -= 50
+	}
+
+	// Sticky affinity is a bonus after eligibility, not a hard pin.
+	if cand.StickyMatch {
+		base += stickyAffinityBonus
+	}
+
+	// Utilization pressure can outweigh stickiness when the chosen server is
+	// already busy or saturated.
+	if cand.EndpointSaturated {
+		base -= 300
+	}
+	if cand.EndpointLoad > 0 {
+		loadPenalty := cand.EndpointLoad * 10
+		if cand.EndpointLoadFresh {
+			loadPenalty *= 2
+		}
+		if loadPenalty > 60 {
+			loadPenalty = 60
+		}
+		base -= loadPenalty
 	}
 
 	// Provider affinity: explicit provider pins are filtered before scoring;

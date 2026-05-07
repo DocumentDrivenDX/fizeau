@@ -108,10 +108,11 @@ type SessionEndData struct {
 // RoutingStickyState summarizes sticky routing behavior without exposing
 // the raw sticky key.
 type RoutingStickyState struct {
-	KeyPresent     bool   `json:"key_present,omitempty"`
-	Assignment     string `json:"assignment,omitempty"`
-	ServerInstance string `json:"server_instance,omitempty"`
-	Reason         string `json:"reason,omitempty"`
+	KeyPresent     bool    `json:"key_present,omitempty"`
+	Assignment     string  `json:"assignment,omitempty"`
+	ServerInstance string  `json:"server_instance,omitempty"`
+	Reason         string  `json:"reason,omitempty"`
+	Bonus          float64 `json:"bonus"`
 }
 
 // RoutingUtilizationState carries the live endpoint sample that informed a

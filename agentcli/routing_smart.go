@@ -983,6 +983,9 @@ func cmdRouteStatus(workDir string, args []string) int {
 		if out.Sticky.Reason != "" {
 			fmt.Printf(" reason=%s", out.Sticky.Reason)
 		}
+		if out.Sticky.Bonus != 0 {
+			fmt.Printf(" bonus=%.2f", out.Sticky.Bonus)
+		}
 		fmt.Println()
 	}
 	if out.Utilization.Source != "" || out.Utilization.Freshness != "" || out.Utilization.ActiveRequests != nil || out.Utilization.QueuedRequests != nil || out.Utilization.MaxConcurrency != nil || out.Utilization.CachePressure != nil {

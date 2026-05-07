@@ -22,6 +22,7 @@ type Request struct {
 	Reasoning          string // public reasoning scalar
 	Permissions        string // "safe" | "supervised" | "unrestricted"
 	ProviderPreference string // "local-first" | "subscription-first" | "local-only" | "subscription-only"
+	CorrelationID      string // validated sticky route key, when available
 
 	// EstimatedPromptTokens, when > 0, drives context-window gating.
 	EstimatedPromptTokens int
@@ -305,15 +306,16 @@ var ProfileEscalationLadder = []string{"cheap", "standard", "smart"}
 
 // Inputs bundles the engine's external data sources.
 type Inputs struct {
-	Harnesses            []HarnessEntry
-	HistoricalSuccess    map[string]float64 // by harness name; -1 = insufficient data
-	ObservedSpeedTPS     map[string]float64 // by "provider:model"
-	ProviderSuccessRate  map[string]float64 // by ProviderModelKey(provider, endpoint, model)
-	ObservedLatencyMS    map[string]float64 // by ProviderModelKey(provider, endpoint, model)
-	EndpointLoads        map[string]EndpointLoad
-	EndpointLoadResolver func(provider, endpoint, model string) (EndpointLoad, bool)
-	ProviderCooldowns    map[string]time.Time // by provider name
-	CooldownDuration     time.Duration        // 0 = no cooldown enforcement
+	Harnesses                    []HarnessEntry
+	HistoricalSuccess            map[string]float64 // by harness name; -1 = insufficient data
+	ObservedSpeedTPS             map[string]float64 // by "provider:model"
+	ProviderSuccessRate          map[string]float64 // by ProviderModelKey(provider, endpoint, model)
+	ObservedLatencyMS            map[string]float64 // by ProviderModelKey(provider, endpoint, model)
+	EndpointLoads                map[string]EndpointLoad
+	EndpointLoadResolver         func(provider, endpoint, model string) (EndpointLoad, bool)
+	StickyServerInstanceResolver func(stickyKey string) (string, bool)
+	ProviderCooldowns            map[string]time.Time // by provider name
+	CooldownDuration             time.Duration        // 0 = no cooldown enforcement
 
 	// ProviderQuotaExhaustedUntil maps provider name → retry_after time.
 	// A provider with retry_after > Now is treated as quota_exhausted and
@@ -383,6 +385,7 @@ type candidateInternal struct {
 	EndpointLoad          float64
 	EndpointLoadFresh     bool
 	EndpointSaturated     bool
+	StickyMatch           bool
 }
 
 // ProviderModelKey is the metrics key used by routing callers for provider
@@ -795,6 +798,10 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 
 	out := make([]rankedCandidate, 0, len(providers))
 	minCtx := req.MinContextWindow()
+	stickyServerInstance := ""
+	if req.CorrelationID != "" && in.StickyServerInstanceResolver != nil {
+		stickyServerInstance, _ = in.StickyServerInstanceResolver(req.CorrelationID)
+	}
 	for _, p := range providers {
 		model, reason := resolveModel(h, p, req, in)
 		ctxWin := 0
@@ -977,6 +984,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			EndpointLoad:          endpointLoad.NormalizedLoad,
 			EndpointLoadFresh:     endpointLoad.UtilizationFresh,
 			EndpointSaturated:     endpointLoad.UtilizationSaturated,
+			StickyMatch:           stickyServerInstance != "" && serverInstanceMatches(stickyServerInstance, p.ServerInstance, p.EndpointName),
 		}
 		if eligible && ctxWin > 0 && minCtx > 0 {
 			ci.ContextHeadroom = ctxWin - minCtx
@@ -1043,6 +1051,19 @@ func candidateLoadIdentity(h HarnessEntry, p ProviderEntry) (string, string) {
 		endpoint = p.EndpointName
 	}
 	return provider, endpoint
+}
+
+func serverInstanceMatches(stickyServerInstance, candidateServerInstance, candidateEndpoint string) bool {
+	candidateServerInstance = strings.TrimSpace(candidateServerInstance)
+	candidateEndpoint = strings.TrimSpace(candidateEndpoint)
+	stickyServerInstance = strings.TrimSpace(stickyServerInstance)
+	if stickyServerInstance == "" {
+		return false
+	}
+	if candidateServerInstance != "" {
+		return candidateServerInstance == stickyServerInstance
+	}
+	return candidateEndpoint != "" && candidateEndpoint == stickyServerInstance
 }
 
 func candidateCostClass(h HarnessEntry, p ProviderEntry) string {

@@ -460,6 +460,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 			Assignment:     decision.Sticky.Assignment,
 			ServerInstance: decision.Sticky.ServerInstance,
 			Reason:         decision.Sticky.Reason,
+			Bonus:          decision.Sticky.Bonus,
 		},
 		Utilization: ServiceRoutingUtilizationState{
 			Source:         decision.Utilization.Source,
