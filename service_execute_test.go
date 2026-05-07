@@ -645,7 +645,7 @@ func TestExecute_NativeReadToolEmitsToolEvents(t *testing.T) {
 		WorkDir:  workDir,
 		Metadata: map[string]string{
 			"mode":     "replay",
-			"cassette": "agent-native",
+			"cassette": "fiz-native",
 		},
 	})
 	if err != nil {
@@ -673,7 +673,7 @@ func TestExecute_NativeReadToolEmitsToolEvents(t *testing.T) {
 		t.Fatalf("expected tool_call and tool_result events, got %v", eventTypes(events))
 	}
 	for _, ev := range events {
-		if ev.Metadata["mode"] != "replay" || ev.Metadata["cassette"] != "agent-native" {
+		if ev.Metadata["mode"] != "replay" || ev.Metadata["cassette"] != "fiz-native" {
 			t.Fatalf("event metadata not echoed for %s: %#v", ev.Type, ev.Metadata)
 		}
 	}
