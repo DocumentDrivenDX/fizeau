@@ -133,6 +133,113 @@ The only per-run inputs that should change are:
 
 ---
 
+## Evidence Workflow
+
+The benchmark evidence pipeline is: run a benchmark, import the resulting
+artifacts into the evidence ledger, validate and append the records, then ask
+`fiz-bench fhi` for comparative claims.
+
+### 1. Run benchmark jobs
+
+Use the TerminalBench runners to produce the raw matrix or report artifacts:
+
+```bash
+# Harness comparison matrix
+BASELINE=local TIER=wide REPS=1 FORCE_RERUN=1 JOBS=1 \
+  scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
+
+# Compact native-vs-fiz comparison wrapper
+OPENROUTER_API_KEY=sk-or-... \
+  scripts/benchmark/run_medium_model_terminalbench_comparison.sh canary
+
+# Single-run benchmark report
+ANTHROPIC_API_KEY=sk-... ./scripts/benchmark/run_benchmark.sh
+```
+
+Those scripts write their raw outputs under `benchmark-results/`, which stays
+gitignored. Large logs, model outputs, tarballs, and upstream artifacts belong
+there, not in git.
+
+### 2. Import benchmark evidence
+
+Project the source artifacts into normalized JSONL evidence with the bench CLI:
+
+```bash
+go run ./cmd/bench evidence import-terminalbench \
+  --matrix cmd/bench/testdata/terminalbench-matrix \
+  --out benchmark-results/evidence/terminalbench.jsonl
+
+go run ./cmd/bench evidence import-beadbench \
+  --report cmd/bench/testdata/beadbench-report/report.json \
+  --out benchmark-results/evidence/beadbench.jsonl
+
+go run ./cmd/bench evidence import-external \
+  --source cmd/bench/testdata/external-benchmarks/rapid-mlx-mhi.md \
+  --out benchmark-results/evidence/external.jsonl
+```
+
+`import-external` is the path for curated external benchmark snapshots,
+including Rapid-MLX MHI, SkillsBench, SWE-bench, and HumanEval fixtures.
+Beadbench and other local runs enter the ledger through their importer paths,
+not by hand-editing the schema.
+
+### 3. Validate and append to the ledger
+
+```bash
+go run ./cmd/bench evidence validate benchmark-results/evidence/terminalbench.jsonl
+go run ./cmd/bench evidence append \
+  --in benchmark-results/evidence/terminalbench.jsonl \
+  --ledger benchmark-results/evidence/ledger.jsonl
+```
+
+Append-only ledgers keep the normalized records and their source hashes or
+source URLs together. Checked-in curated snapshots, when approved, live under
+`scripts/benchmark/evidence/<snapshot-id>.jsonl` and must contain normalized
+records only. Raw artifacts stay in `benchmark-results/`; curated snapshots or
+source hashes are the committed evidence.
+
+### 4. Generate FHI claims
+
+Use `fiz-bench fhi delta` for pairwise benchmark claims and `fiz-bench fhi
+rank` for cross-benchmark FHI rankings:
+
+```bash
+go run ./cmd/bench fhi delta \
+  --ledger benchmark-results/evidence/ledger.jsonl \
+  --left terminalbench-delta-left-opus-claude-code \
+  --right terminalbench-delta-right-opus-claude-code
+
+go run ./cmd/bench fhi rank \
+  --ledger benchmark-results/evidence/ledger.jsonl
+```
+
+The command surface is covered by the `cmd/bench` tests, and `go run ./cmd/bench
+<subcommand> --help` exposes the documented flags.
+
+### Claim axes
+
+Harness-vs-harness claims must pin the benchmark axes and vary only the harness.
+For a TerminalBench comparison, that means keeping the model, provider,
+benchmark version, subset id/version, scorer, evidence window, denominator
+policy, and run environment fixed while comparing two harness rows such as
+`fiz-native` and `claude-code`.
+
+Local-vs-frontier claims must pin the same formula version, evidence window,
+benchmark set, and denominator rules on both sides. The local row also needs the
+deployment-class facts that make the environment auditable:
+
+- runtime/server name and version
+- model artifact id or checksum when available
+- quantization and precision
+- hardware class, memory, accelerator backend, and OS/architecture
+- endpoint type and provider surface
+- context limit and the reasoning/sampling controls actually applied
+
+The frontier row should carry the same benchmark and formula pins, plus the
+provider and model snapshot/version captured by the source.
+
+---
+
 ## Vidar Qwen3.6 Harness Matrix
 
 `run_vidar_qwen36_terminalbench_baseline.sh` runs the shared Vidar oMLX
@@ -306,6 +413,10 @@ should be derived from normalized raw evidence keyed by model, harness,
 provider, and benchmark. New importers should project source reports into the
 schema at `scripts/benchmark/benchmark-evidence.schema.json`; see
 `docs/helix/02-design/solution-designs/SD-012-benchmark-evidence-ledger.md`.
+The relevant command surface is `go run ./cmd/bench evidence import-terminalbench`,
+`go run ./cmd/bench evidence import-beadbench`, `go run ./cmd/bench evidence
+import-external`, `go run ./cmd/bench evidence append`, and `go run ./cmd/bench
+fhi delta|rank`.
 
 Curated external snapshots can be imported with:
 
