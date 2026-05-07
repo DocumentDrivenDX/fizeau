@@ -142,7 +142,7 @@ The benchmark evidence pipeline is:
 3. Validate the imported evidence and append it to an append-only ledger.
 4. Generate benchmark-specific or cross-benchmark claims from the ledger.
 
-The canonical operator loop is:
+The canonical operator loop for a TerminalBench matrix is:
 
 ```bash
 # 1) produce raw matrix artifacts
@@ -167,6 +167,11 @@ and the benchmark resource notes for
 [SkillsBench](../../docs/resources/skillsbench-2026-05-06.md),
 [SWE-bench](../../docs/resources/swebench-2026-05-06.md), and
 [HumanEval](../../docs/resources/humaneval-2026-05-06.md).
+
+Beadbench enters the same ledger path through `evidence import-beadbench` from
+its `report.json` output, and curated external snapshots enter through
+`evidence import-external`. For a concrete beadbench source-run example, see
+[the OMLX Qwen reasoning sweep note](../../docs/research/beadbench-omlx-qwen-reasoning-sweep-2026-04-24.md).
 
 Use the command family below for the full evidence loop:
 
