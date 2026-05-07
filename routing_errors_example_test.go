@@ -53,7 +53,7 @@ func ExampleErrProfilePinConflict() {
 func ExampleRouteDecision_candidates() {
 	decision := &fizeau.RouteDecision{
 		Candidates: []fizeau.RouteCandidate{
-			{Harness: "agent", Provider: "local", Model: "qwen", Eligible: false, Reason: "provider is in cooldown"},
+			{Harness: "fiz", Provider: "local", Model: "qwen", Eligible: false, Reason: "provider is in cooldown"},
 			{Harness: "codex", Model: "gpt-5.4", Eligible: true, Reason: "score=71.2"},
 		},
 	}
@@ -67,6 +67,6 @@ func ExampleRouteDecision_candidates() {
 	}
 
 	// Output:
-	// agent/qwen eligible=false reason=provider is in cooldown
+	// fiz/qwen eligible=false reason=provider is in cooldown
 	// codex/gpt-5.4 eligible=true reason=score=71.2
 }

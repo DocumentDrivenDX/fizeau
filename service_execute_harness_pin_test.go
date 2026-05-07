@@ -180,7 +180,7 @@ func TestExecuteExplicitAgentHarnessNoLongerAliasesNative(t *testing.T) {
 	}
 	final := readFinalEvent(t, ch, 5*time.Second)
 	if final.Status != "failed" || !strings.Contains(final.Error, `unknown harness "agent"`) {
-		t.Fatalf("final = %#v, want unknown harness for agent", final)
+		t.Fatalf("final = %#v, want unknown harness for legacy agent input", final)
 	}
 }
 
