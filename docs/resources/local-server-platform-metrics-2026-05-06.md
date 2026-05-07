@@ -361,6 +361,9 @@ Capture implications:
 - Poll `/api/ps` for loaded-model inventory, context length, and VRAM size,
   but do not expect per-request queue depth, active request progress, or cache
   hit details from the documented API.
+- Because Ollama does not expose a documented queue/cache utilization probe in
+  this surface, routing should treat missing or failed `/api/ps` samples as
+  unknown rather than reusing older values.
 - Ollama request metrics are reliable and simple. Live utilization is shallower
   than oMLX/Rapid-MLX unless Fizeau supplements it with external process/GPU
   telemetry.
