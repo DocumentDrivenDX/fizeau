@@ -20,7 +20,7 @@ var codexModelPattern = regexp.MustCompile(`\bgpt-[A-Za-z0-9][A-Za-z0-9._-]*\b`)
 func DefaultCodexModelDiscovery() harnesses.ModelDiscoverySnapshot {
 	return harnesses.ModelDiscoverySnapshot{
 		CapturedAt:      time.Now().UTC(),
-		Models:          []string{"gpt", "gpt-5", "gpt-5.4", "gpt-5.4-mini"},
+		Models:          []string{"gpt", "gpt-5", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"},
 		ReasoningLevels: []string{"low", "medium", "high", "xhigh", "max"},
 		Source:          "compatibility-table:codex-cli",
 		FreshnessWindow: CodexModelDiscoveryFreshnessWindow.String(),

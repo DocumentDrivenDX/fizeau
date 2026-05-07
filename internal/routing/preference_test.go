@@ -353,11 +353,48 @@ func TestQuotaSignalsConsideredInScoring(t *testing.T) {
 	}
 
 	// Fresh/healthy claude should beat stale/exhausting codex.
-	// smart base for codex: 100 + 40 (cr=2) + 5 (quota) - 15 (stale) - 40 (exhausting) - 30 (95% used) = 60
-	// smart base for claude: 100 + 40 (cr=2) + 5 (quota) + 10 (healthy) = 155
-	// claude should win.
 	if dec.Harness != "claude" {
 		t.Errorf("quota signals: expected claude (fresh/healthy), got %q", dec.Harness)
+	}
+}
+
+func TestQuotaHeadroomContinuouslyAffectsSubscriptionScoring(t *testing.T) {
+	in := newTestRoutingEngine()
+
+	for i, h := range in.Harnesses {
+		switch h.Name {
+		case "claude":
+			in.Harnesses[i].QuotaStale = false
+			in.Harnesses[i].QuotaTrend = QuotaTrendHealthy
+			in.Harnesses[i].QuotaPercentUsed = 30
+			in.Harnesses[i].QuotaOK = true
+		case "codex":
+			in.Harnesses[i].QuotaStale = false
+			in.Harnesses[i].QuotaTrend = QuotaTrendHealthy
+			in.Harnesses[i].QuotaPercentUsed = 60
+			in.Harnesses[i].QuotaOK = true
+		}
+	}
+
+	dec, err := Resolve(Request{Profile: "smart"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Harness != "claude" {
+		t.Fatalf("lower used quota should win among otherwise comparable harnesses, got %q", dec.Harness)
+	}
+
+	var claudeScore, codexScore float64
+	for _, c := range dec.Candidates {
+		switch c.Harness {
+		case "claude":
+			claudeScore = c.Score
+		case "codex":
+			codexScore = c.Score
+		}
+	}
+	if claudeScore <= codexScore {
+		t.Fatalf("quota headroom score ordering: claude %.1f codex %.1f", claudeScore, codexScore)
 	}
 }
 

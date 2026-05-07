@@ -135,9 +135,11 @@ func scoreComponents(profile string, cand candidateInternal) map[string]float64 
 			add("quota_health", 10)
 		}
 
-		// Quota near-limit penalty (>= 80% used).
-		if cand.QuotaPercentUsed >= 80 {
-			penalty := float64(cand.QuotaPercentUsed-80) * 2
+		// Continuous quota pressure: subscription harnesses should start
+		// yielding before they are nearly exhausted, with steeper demotion
+		// once headroom drops below 50% and again below 20%.
+		if cand.QuotaPercentUsed > 0 {
+			penalty := quotaPressurePenalty(cand.QuotaPercentUsed)
 			base -= penalty
 			add("quota_health", -penalty)
 		}
@@ -282,4 +284,18 @@ func scoreComponents(profile string, cand candidateInternal) map[string]float64 
 	// same total as scorePolicy's legacy behavior.
 	components["base"] = base - (components["cost"] + components["deployment_locality"] + components["quota_health"] + components["sticky_affinity"] + components["utilization"] + components["power"] + components["context_headroom"] + components["performance"])
 	return components
+}
+
+func quotaPressurePenalty(percentUsed int) float64 {
+	if percentUsed <= 0 {
+		return 0
+	}
+	penalty := float64(percentUsed) * 0.5
+	if percentUsed > 50 {
+		penalty += float64(percentUsed-50) * 1.5
+	}
+	if percentUsed > 80 {
+		penalty += float64(percentUsed-80) * 3
+	}
+	return penalty
 }

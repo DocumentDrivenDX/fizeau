@@ -131,8 +131,8 @@ func TestResolveExecuteRouteNormalizesSubprocessAliases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve codex gpt alias: %v", err)
 	}
-	if codexDecision.Model != "gpt-5.4" {
-		t.Fatalf("codex gpt alias resolved to %q, want gpt-5.4", codexDecision.Model)
+	if codexDecision.Model != "gpt-5.5" {
+		t.Fatalf("codex gpt alias resolved to %q, want gpt-5.5", codexDecision.Model)
 	}
 
 	geminiDecision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{Harness: "gemini", Model: "gemini"})

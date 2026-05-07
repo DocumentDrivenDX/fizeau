@@ -18,7 +18,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 		},
 		PromptMode:          "arg",
 		DefaultModel:        "gpt-5.4",
-		Models:              []string{"gpt", "gpt-5", "gpt-5.4", "gpt-5.4-mini"}, // refreshed by Codex PTY model-discovery cassettes
+		Models:              []string{"gpt", "gpt-5", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"}, // refreshed by Codex PTY model-discovery cassettes
 		ReasoningLevels:     []string{"low", "medium", "high", "xhigh", "max"},
 		ModelFlag:           "-m",
 		WorkDirFlag:         "-C",
