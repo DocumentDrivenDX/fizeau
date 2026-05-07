@@ -10,7 +10,9 @@ var costClassRank = map[string]int{
 	"":             2, // unknown = medium
 }
 
-const stickyAffinityBonus = 250.0
+const StickyAffinityBonus = 250.0
+const unknownUtilizationPenalty = 0.0
+const unknownPerformancePenalty = 0.0
 
 // scorePolicy returns a score for a candidate under the named profile.
 // Higher is better.
@@ -122,11 +124,13 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 
 	// Sticky affinity is a bonus after eligibility, not a hard pin.
 	if cand.StickyMatch {
-		base += stickyAffinityBonus
+		base += StickyAffinityBonus
 	}
 
 	// Utilization pressure can outweigh stickiness when the chosen server is
 	// already busy or saturated.
+	// Unknown or stale utilization is treated explicitly. Current policy is
+	// neutral rather than a hidden zero-value bonus.
 	if cand.EndpointSaturated {
 		base -= 300
 	}
@@ -134,11 +138,15 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 		loadPenalty := cand.EndpointLoad * 10
 		if cand.EndpointLoadFresh {
 			loadPenalty *= 2
+		} else {
+			loadPenalty += unknownUtilizationPenalty
 		}
 		if loadPenalty > 60 {
 			loadPenalty = 60
 		}
 		base -= loadPenalty
+	} else if !cand.EndpointLoadFresh {
+		base -= unknownUtilizationPenalty
 	}
 
 	// Provider affinity: explicit provider pins are filtered before scoring;
@@ -182,14 +190,21 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 	}
 
 	// Observation-derived perf bias.
+	havePerfSignal := false
 	if cand.ObservedTokensPerSec > 0 {
 		// Small additive bonus, scaled.
 		base += cand.ObservedTokensPerSec / 100.0
+		havePerfSignal = true
 	}
 	if cand.ObservedLatencyMS > 0 {
 		// Latency is a tiebreaker-scale signal: faster endpoints gain a small
 		// bonus while very slow endpoints receive little benefit.
 		base += 1000.0 / cand.ObservedLatencyMS
+		havePerfSignal = true
+	}
+	if !havePerfSignal {
+		// Missing performance data is deliberate; current policy is neutral.
+		base -= unknownPerformancePenalty
 	}
 	if cand.CostClass == "experimental" {
 		base -= 75

@@ -190,11 +190,13 @@ type Candidate struct {
 	SuccessRate     float64
 	CostClass       string
 	SpeedTPS        float64
+	Utilization     float64
 	ContextHeadroom int
 
 	QuotaOK          bool
 	QuotaPercentUsed int
 	QuotaTrend       string
+	StickyAffinity   float64
 }
 
 // FilterReason categorizes why a routing candidate was disqualified.
@@ -956,6 +958,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			}
 		}
 
+		stickyMatch := stickyServerInstance != "" && serverInstanceMatches(stickyServerInstance, p.ServerInstance, p.EndpointName)
 		ci := candidateInternal{
 			Harness:               h.Name,
 			Provider:              p.Name,
@@ -984,7 +987,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			EndpointLoad:          endpointLoad.NormalizedLoad,
 			EndpointLoadFresh:     endpointLoad.UtilizationFresh,
 			EndpointSaturated:     endpointLoad.UtilizationSaturated,
-			StickyMatch:           stickyServerInstance != "" && serverInstanceMatches(stickyServerInstance, p.ServerInstance, p.EndpointName),
+			StickyMatch:           stickyMatch,
 		}
 		if eligible && ctxWin > 0 && minCtx > 0 {
 			ci.ContextHeadroom = ctxWin - minCtx
@@ -1008,10 +1011,17 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				SuccessRate:        providerSuccessRate,
 				CostClass:          candidateCostClass(h, p),
 				SpeedTPS:           obs,
+				Utilization:        endpointLoad.NormalizedLoad,
 				ContextHeadroom:    ci.ContextHeadroom,
 				QuotaOK:            h.QuotaOK,
 				QuotaPercentUsed:   h.QuotaPercentUsed,
 				QuotaTrend:         h.QuotaTrend,
+				StickyAffinity: func() float64 {
+					if stickyMatch {
+						return StickyAffinityBonus
+					}
+					return 0
+				}(),
 			},
 			internal:                 ci,
 			quotaExhaustedRetryAfter: quotaExhaustedRetryAfter,

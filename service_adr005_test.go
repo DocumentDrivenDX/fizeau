@@ -95,11 +95,17 @@ func TestRouteCandidateExposesComponentScores(t *testing.T) {
 	if got.Components.Cost != 0.012 {
 		t.Errorf("Components.Cost=%v, want 0.012", got.Components.Cost)
 	}
+	if got.Components.Utilization != 0 {
+		t.Errorf("Components.Utilization=%v, want 0 for unknown", got.Components.Utilization)
+	}
 	if got.Components.LatencyMS != 150 {
 		t.Errorf("Components.LatencyMS=%v, want 150", got.Components.LatencyMS)
 	}
 	if got.Components.SuccessRate != 0.95 {
 		t.Errorf("Components.SuccessRate=%v, want 0.95", got.Components.SuccessRate)
+	}
+	if got.Components.StickyAffinity != 0 {
+		t.Errorf("Components.StickyAffinity=%v, want 0 when no sticky match exists", got.Components.StickyAffinity)
 	}
 	if got.Components.Capability == 0 {
 		t.Errorf("Components.Capability=0; want non-zero for cheap class")
@@ -186,11 +192,13 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 				CostClass:        "local",
 				LatencyMS:        120,
 				SpeedTPS:         40,
+				Utilization:      0.25,
 				SuccessRate:      0.9,
 				QuotaOK:          true,
 				QuotaPercentUsed: 20,
 				QuotaTrend:       routing.QuotaTrendHealthy,
 				Capability:       1,
+				StickyAffinity:   250,
 			},
 		},
 		{
@@ -214,6 +222,9 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 	}
 	if out[0].Components.Power != 7 || out[0].Components.SpeedTPS != 40 || out[0].Components.QuotaTrend != routing.QuotaTrendHealthy {
 		t.Errorf("first candidate Components=%#v, want power/speed/quota carried through", out[0].Components)
+	}
+	if out[0].Components.Utilization != 0.25 || out[0].Components.StickyAffinity != 250 {
+		t.Errorf("first candidate Components=%#v, want utilization/sticky affinity carried through", out[0].Components)
 	}
 	if out[0].FilterReason != "" {
 		t.Errorf("eligible candidate event FilterReason=%q, want empty", out[0].FilterReason)
