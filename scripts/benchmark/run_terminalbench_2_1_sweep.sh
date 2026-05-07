@@ -456,10 +456,48 @@ prepare_env_keys() {
   export OMLX_API_KEY="${OMLX_API_KEY:-local}"
   export VLLM_API_KEY="${VLLM_API_KEY:-local}"
   export RAPID_MLX_API_KEY="${RAPID_MLX_API_KEY:-local}"
-  if [[ "${PHASE}" != "local-qwen" && -z "${OPENROUTER_API_KEY:-}" ]]; then
+  if [[ -z "${OPENROUTER_API_KEY:-}" ]] && selected_plan_requires_key "OPENROUTER_API_KEY"; then
     echo "OPENROUTER_API_KEY is required for selected OpenRouter lanes" >&2
     exit 1
   fi
+  if [[ -z "${OPENAI_API_KEY:-}" ]] && selected_plan_requires_key "OPENAI_API_KEY"; then
+    echo "OPENAI_API_KEY is required for selected OpenAI lanes" >&2
+    exit 1
+  fi
+}
+
+selected_plan_requires_key() {
+  local key="$1"
+  python3 - "${SWEEP_PLAN}" "${PHASE}" "${key}" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+plan = yaml.safe_load(Path(sys.argv[1]).read_text())
+phase_id = sys.argv[2]
+key = sys.argv[3]
+
+phases = plan.get("phases") or []
+if phase_id == "all":
+    selected_phases = phases
+else:
+    selected_phases = [p for p in phases if p.get("id") == phase_id]
+
+selected_lane_ids = {
+    lane_id
+    for phase in selected_phases
+    for lane_id in (phase.get("lanes") or [])
+}
+lanes = plan.get("lanes") or []
+for lane in lanes:
+    if lane.get("id") not in selected_lane_ids:
+        continue
+    env = lane.get("fizeau_env") or {}
+    if env.get("FIZEAU_API_KEY_ENV") == key:
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 append_optional_sweep_args() {
