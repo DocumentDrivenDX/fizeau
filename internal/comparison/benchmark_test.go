@@ -44,7 +44,7 @@ func TestRunBenchmarkWithMockRunner(t *testing.T) {
 		Name:    "test-suite",
 		Version: "0.1",
 		Arms: []BenchmarkArm{
-			{Label: "agent-test", Harness: "agent", Tier: "smart"},
+			{Label: "fiz-test", Harness: "fiz", Tier: "smart"},
 			{Label: "virtual-test", Harness: "virtual"},
 		},
 		Prompts: []BenchmarkPrompt{
@@ -65,10 +65,10 @@ func TestRunBenchmarkWithMockRunner(t *testing.T) {
 	assert.Equal(t, 2, result.Summary.TotalPrompts)
 	assert.Len(t, result.Summary.Arms, 2)
 
-	agentStats := result.Summary.Arms[0]
-	assert.Equal(t, "agent-test", agentStats.Label)
-	assert.Equal(t, 2, agentStats.Completed)
-	assert.Equal(t, 0, agentStats.Failed)
+	fizStats := result.Summary.Arms[0]
+	assert.Equal(t, "fiz-test", fizStats.Label)
+	assert.Equal(t, 2, fizStats.Completed)
+	assert.Equal(t, 0, fizStats.Failed)
 }
 
 func TestSummarizeBenchmark(t *testing.T) {

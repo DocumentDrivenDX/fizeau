@@ -55,7 +55,7 @@ func TestCompareBasic(t *testing.T) {
 	record, err := RunCompare(successRun(), CompareOptions{
 		Prompt:    "do something",
 		WorkDir:   repo,
-		Harnesses: []string{"agent", "virtual"},
+		Harnesses: []string{"fiz", "virtual"},
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, record.ID)
@@ -66,7 +66,7 @@ func TestCompareBasic(t *testing.T) {
 	for _, arm := range record.Arms {
 		harnesses[arm.Harness] = true
 	}
-	assert.True(t, harnesses["agent"])
+	assert.True(t, harnesses["fiz"])
 	assert.True(t, harnesses["virtual"])
 }
 
@@ -77,7 +77,7 @@ func TestCompareSandboxIsolation(t *testing.T) {
 	record, err := RunCompare(successRun(), CompareOptions{
 		Prompt:    "create new_file.txt",
 		WorkDir:   repo,
-		Harnesses: []string{"agent"},
+		Harnesses: []string{"fiz"},
 		Sandbox:   true,
 	})
 	require.NoError(t, err)
@@ -88,14 +88,14 @@ func TestCompareSandboxIsolation(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "sandbox should not modify original repo")
 }
 
-// C-03: Side-effect diff is captured when agent modifies files.
+// C-03: Side-effect diff is captured when fiz modifies files.
 func TestCompareCapturesDiff(t *testing.T) {
 	repo := setupTestRepo(t)
 
 	// A RunFunc that writes README.md in the work directory.
 	writeRun := func(harness, model, prompt string) RunResult {
 		// The RunFunc receives control — it can write files in the worktree.
-		// In the real integration, the agent does this; in tests we simulate it.
+		// In the real integration, fiz does this; in tests we simulate it.
 		return RunResult{
 			Harness:  harness,
 			Model:    "test-model",
@@ -106,7 +106,7 @@ func TestCompareCapturesDiff(t *testing.T) {
 	record, err := RunCompare(writeRun, CompareOptions{
 		Prompt:    "add readme",
 		WorkDir:   repo,
-		Harnesses: []string{"agent"},
+		Harnesses: []string{"fiz"},
 		Sandbox:   true,
 	})
 	require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestCompareEmptyDiff(t *testing.T) {
 	record, err := RunCompare(successRun(), CompareOptions{
 		Prompt:    "review the code",
 		WorkDir:   repo,
-		Harnesses: []string{"agent"},
+		Harnesses: []string{"fiz"},
 		Sandbox:   true,
 	})
 	require.NoError(t, err)
@@ -137,7 +137,7 @@ func TestCompareCleansUpWorktrees(t *testing.T) {
 	record, err := RunCompare(successRun(), CompareOptions{
 		Prompt:    "test",
 		WorkDir:   repo,
-		Harnesses: []string{"agent"},
+		Harnesses: []string{"fiz"},
 		Sandbox:   true,
 	})
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestCompareKeepSandbox(t *testing.T) {
 	record, err := RunCompare(successRun(), CompareOptions{
 		Prompt:      "test",
 		WorkDir:     repo,
-		Harnesses:   []string{"agent"},
+		Harnesses:   []string{"fiz"},
 		Sandbox:     true,
 		KeepSandbox: true,
 	})
@@ -187,7 +187,7 @@ func TestCompareRecordSchema(t *testing.T) {
 	record, err := RunCompare(successRun(), CompareOptions{
 		Prompt:    "schema test",
 		WorkDir:   repo,
-		Harnesses: []string{"agent"},
+		Harnesses: []string{"fiz"},
 	})
 	require.NoError(t, err)
 
@@ -200,7 +200,7 @@ func TestCompareRecordSchema(t *testing.T) {
 	assert.False(t, decoded.Timestamp.IsZero())
 	assert.Equal(t, "schema test", decoded.Prompt)
 	require.Len(t, decoded.Arms, 1)
-	assert.Equal(t, "agent", decoded.Arms[0].Harness)
+	assert.Equal(t, "fiz", decoded.Arms[0].Harness)
 	assert.Equal(t, "test-model", decoded.Arms[0].Model)
 	assert.Equal(t, 100, decoded.Arms[0].InputTokens)
 	assert.Equal(t, 20, decoded.Arms[0].OutputTokens)
@@ -220,22 +220,22 @@ func TestCompareArmFailure(t *testing.T) {
 	record, err := RunCompare(partialRun, CompareOptions{
 		Prompt:    "partial failure",
 		WorkDir:   repo,
-		Harnesses: []string{"agent", "codex"},
+		Harnesses: []string{"fiz", "codex"},
 	})
 	require.NoError(t, err)
 	assert.Len(t, record.Arms, 2)
 
-	var agentArm, codexArm *ComparisonArm
+	var fizArm, codexArm *ComparisonArm
 	for i := range record.Arms {
 		switch record.Arms[i].Harness {
-		case "agent":
-			agentArm = &record.Arms[i]
+		case "fiz":
+			fizArm = &record.Arms[i]
 		case "codex":
 			codexArm = &record.Arms[i]
 		}
 	}
-	require.NotNil(t, agentArm)
+	require.NotNil(t, fizArm)
 	require.NotNil(t, codexArm)
-	assert.Equal(t, 0, agentArm.ExitCode)
+	assert.Equal(t, 0, fizArm.ExitCode)
 	assert.Equal(t, 1, codexArm.ExitCode)
 }
