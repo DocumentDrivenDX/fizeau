@@ -69,7 +69,7 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 	}))
 
 	first, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness:       "agent",
+		Harness:       "fiz",
 		Model:         "qwen/qwen3.6",
 		CorrelationID: "bead-sticky",
 	})
@@ -104,7 +104,7 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 	}))
 
 	second, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness:       "agent",
+		Harness:       "fiz",
 		Model:         "qwen/qwen3.6",
 		CorrelationID: "bead-sticky",
 	})
@@ -170,7 +170,7 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 	})
 
 	first, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness:       "agent",
+		Harness:       "fiz",
 		Model:         "qwen/qwen3.6",
 		CorrelationID: "bead-new-a",
 	})
@@ -188,7 +188,7 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 	}
 
 	second, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness:       "agent",
+		Harness:       "fiz",
 		Model:         "qwen/qwen3.6",
 		CorrelationID: "bead-new-b",
 	})
@@ -249,7 +249,7 @@ func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
 	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b", "local", "qwen/qwen3.6"), "local", "desk-b", "qwen/qwen3.6")
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness:       "agent",
+		Harness:       "fiz",
 		Model:         "qwen/qwen3.6",
 		CorrelationID: "saturated-load-key",
 	})
@@ -312,7 +312,7 @@ func TestResolveRouteStickyLeaseIgnoresStaleUtilizationFallback(t *testing.T) {
 	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-c", "local", "qwen/qwen3.6"), "local", "desk-b", "qwen/qwen3.6")
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness:       "agent",
+		Harness:       "fiz",
 		Model:         "qwen/qwen3.6",
 		CorrelationID: "stale-load-key",
 	})

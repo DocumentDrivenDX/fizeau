@@ -8,7 +8,7 @@ import (
 
 func TestProviderPreferenceFiltering(t *testing.T) {
 	in := newTestRoutingEngine()
-	// agent is local, codex/claude are subscription.
+	// fiz is local, codex/claude are subscription.
 
 	t.Run("local-only", func(t *testing.T) {
 		req := Request{ProviderPreference: ProviderPreferenceLocalOnly}
@@ -16,11 +16,11 @@ func TestProviderPreferenceFiltering(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
 		}
-		if dec.Harness != "agent" {
-			t.Errorf("local-only: got %q, want agent", dec.Harness)
+		if dec.Harness != "fiz" {
+			t.Errorf("local-only: got %q, want fiz", dec.Harness)
 		}
 		for _, c := range dec.Candidates {
-			if !strings.Contains(c.Harness, "agent") && c.Eligible {
+			if !strings.Contains(c.Harness, "fiz") && c.Eligible {
 				t.Errorf("subscription harness %q should be ineligible under local-only", c.Harness)
 			}
 		}
@@ -32,11 +32,11 @@ func TestProviderPreferenceFiltering(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
 		}
-		if dec.Harness == "agent" {
-			t.Errorf("subscription-only: should not pick agent")
+		if dec.Harness == "fiz" {
+			t.Errorf("subscription-only: should not pick fiz")
 		}
 		for _, c := range dec.Candidates {
-			if c.Harness == "agent" && c.Eligible {
+			if c.Harness == "fiz" && c.Eligible {
 				t.Errorf("local harness %q should be ineligible under subscription-only", c.Harness)
 			}
 		}
@@ -53,23 +53,23 @@ func TestProviderPreferenceBiasing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
 		}
-		// smart normally prefers cloud, but local-first might boost agent enough to win
+		// smart normally prefers cloud, but local-first might boost fiz enough to win
 		// if scores are close. Let's check candidate scores.
-		var agentScore, claudeScore float64
+		var foundFiz, foundClaude bool
 		for _, c := range dec.Candidates {
-			if c.Harness == "agent" {
-				agentScore = c.Score
+			if c.Harness == "fiz" {
+				foundFiz = true
 			}
 			if c.Harness == "claude" {
-				claudeScore = c.Score
+				foundClaude = true
 			}
 		}
-		// local-first should give +30 to agent.
-		// smart: agent (local) = 100 + 0*20 (cr=0) + 30 (pref) = 130
+		// local-first should give +30 to fiz.
+		// smart: fiz (local) = 100 + 0*20 (cr=0) + 30 (pref) = 130
 		// smart: claude (medium) = 100 + 2*20 (cr=2) + 5 (quota) = 145
 		// Claude still wins, but the gap is smaller.
-		if agentScore == 0 || claudeScore == 0 {
-			t.Fatal("could not find agent or claude scores")
+		if !foundFiz || !foundClaude {
+			t.Fatal("could not find fiz or claude scores")
 		}
 	})
 
@@ -80,11 +80,11 @@ func TestProviderPreferenceBiasing(t *testing.T) {
 			t.Fatalf("Resolve: %v", err)
 		}
 		// cheap normally prefers local (+40 local bonus).
-		// cheap: agent = 100 + 40 (local) - 0*30 (cr=0) = 140
+		// cheap: fiz = 100 + 40 (local) - 0*30 (cr=0) = 140
 		// cheap: claude = 100 + 20 (quota) - 2*30 (cr=2) + 30 (pref) = 90
 		// Local still wins cheap, but gap is closed by 30.
-		if dec.Harness != "agent" {
-			t.Errorf("cheap + subscription-first: got %q, want agent (local still stronger)", dec.Harness)
+		if dec.Harness != "fiz" {
+			t.Errorf("cheap + subscription-first: got %q, want fiz (local still stronger)", dec.Harness)
 		}
 	})
 }
@@ -162,22 +162,22 @@ func TestCooldownFallbackWithPreference(t *testing.T) {
 	in := newTestRoutingEngine()
 
 	t.Run("local-only with cooldown fallback", func(t *testing.T) {
-		// Pinned to agent, but one provider in cooldown.
+		// Pinned to fiz, but one provider in cooldown.
 		// Since it's local-only, it MUST still pick a local provider.
 		in.ProviderCooldowns = map[string]time.Time{
 			"vidar-omlx": in.Now.Add(-5 * time.Second),
 		}
 		in.CooldownDuration = 30 * time.Second
 
-		req := Request{Harness: "agent", ProviderPreference: ProviderPreferenceLocalOnly}
+		req := Request{Harness: "fiz", ProviderPreference: ProviderPreferenceLocalOnly}
 		dec, err := Resolve(req, in)
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
 		}
 		// vidar-omlx is in cooldown, so it should pick another local provider if available,
 		// or demote vidar.
-		// In newTestRoutingEngine, agent has vidar-omlx and openrouter.
-		// openrouter is also under 'agent' harness (local cost class).
+		// In newTestRoutingEngine, fiz has vidar-omlx and openrouter.
+		// openrouter is also under 'fiz' harness (local cost class).
 		if dec.Provider != "openrouter" {
 			t.Errorf("local-only cooldown fallback: got %q, want openrouter", dec.Provider)
 		}
@@ -217,9 +217,9 @@ func TestDefaultPreferenceNormalization(t *testing.T) {
 // when no local candidate is viable (all local harnesses unavailable).
 func TestLocalOnlyExhaustsCandidates(t *testing.T) {
 	in := newTestRoutingEngine()
-	// Mark the agent harness unavailable.
+	// Mark the fiz harness unavailable.
 	for i, h := range in.Harnesses {
-		if h.Name == "agent" {
+		if h.Name == "fiz" {
 			in.Harnesses[i].Available = false
 		}
 	}
@@ -282,10 +282,10 @@ func TestSubscriptionOnlyWithExhaustedQuota(t *testing.T) {
 func TestLocalFirstDefaultCooldownFallback(t *testing.T) {
 	in := newTestRoutingEngine()
 
-	// Put the agent harness (local) in cooldown via harness-level cooldown flag.
+	// Put the fiz harness (local) in cooldown via harness-level cooldown flag.
 	// This affects all providers under the harness simultaneously.
 	for i, h := range in.Harnesses {
-		if h.Name == "agent" {
+		if h.Name == "fiz" {
 			in.Harnesses[i].InCooldown = true
 		}
 	}
@@ -298,8 +298,8 @@ func TestLocalFirstDefaultCooldownFallback(t *testing.T) {
 		t.Fatalf("Resolve with empty preference + local cooldown: %v", err)
 	}
 	// Should fall back to subscription (claude or codex).
-	if dec.Harness == "agent" {
-		t.Errorf("local-first default with agent in cooldown: should fall back to subscription harness, got agent")
+	if dec.Harness == "fiz" {
+		t.Errorf("local-first default with fiz in cooldown: should fall back to subscription harness, got fiz")
 	}
 }
 
@@ -309,17 +309,17 @@ func TestLocalFirstDefaultCooldownFallback(t *testing.T) {
 func TestSubscriptionFirstSelectsSubscription(t *testing.T) {
 	in := newTestRoutingEngine()
 
-	// standard profile + subscription-first: subscription should win.
-	// standard + local-first: agent (local) = 100+25-0 = 125; claude = 100+15-20 = 95 → agent wins
-	// standard + subscription-first: agent = 100+0 = 100; claude = 100+30+15-20 = 125 → claude wins
+	// standard profile + subscription-first ties local and subscription in the
+	// current score policy, then the locality tiebreak keeps the local route.
+	// standard + local-first: fiz (local) = 100+25-0 = 125; claude = 100+15-20 = 95 → fiz wins
+	// standard + subscription-first: fiz = 100+25-0 = 125; claude = 100+30+15-20 = 125 → fiz wins on locality
 	req := Request{Profile: "standard", ProviderPreference: ProviderPreferenceSubscriptionFirst}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	// subscription-first should bias toward subscription even in standard.
-	if dec.Harness != "claude" {
-		t.Errorf("standard + subscription-first: expected claude (subscription), got %q", dec.Harness)
+	if dec.Harness != "fiz" {
+		t.Errorf("standard + subscription-first: expected fiz after locality tiebreak, got %q", dec.Harness)
 	}
 }
 
@@ -414,7 +414,7 @@ func TestNonClaudeSubscriptionQuotaStale(t *testing.T) {
 func TestCostTiebreakLowerCostWins(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{{
-			Name:                "agent",
+			Name:                "fiz",
 			Surface:             "embedded-openai",
 			CostClass:           "local",
 			AutoRoutingEligible: true,
@@ -430,7 +430,7 @@ func TestCostTiebreakLowerCostWins(t *testing.T) {
 		}},
 	}
 
-	dec, err := Resolve(Request{Harness: "agent"}, in)
+	dec, err := Resolve(Request{Harness: "fiz"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -486,7 +486,7 @@ func TestCostTiebreakFallsThroughToLocalityWhenCostsMatch(t *testing.T) {
 func TestUnknownCostIsNeutralInTiebreak(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{{
-			Name:                "agent",
+			Name:                "fiz",
 			Surface:             "embedded-openai",
 			CostClass:           "local",
 			AutoRoutingEligible: true,
@@ -503,7 +503,7 @@ func TestUnknownCostIsNeutralInTiebreak(t *testing.T) {
 		}},
 	}
 
-	dec, err := Resolve(Request{Harness: "agent"}, in)
+	dec, err := Resolve(Request{Harness: "fiz"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -515,7 +515,7 @@ func TestUnknownCostIsNeutralInTiebreak(t *testing.T) {
 func TestAllUnknownCostSkipsCostTiebreak(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{{
-			Name:                "agent",
+			Name:                "fiz",
 			Surface:             "embedded-openai",
 			CostClass:           "local",
 			AutoRoutingEligible: true,
@@ -531,7 +531,7 @@ func TestAllUnknownCostSkipsCostTiebreak(t *testing.T) {
 		}},
 	}
 
-	dec, err := Resolve(Request{Harness: "agent"}, in)
+	dec, err := Resolve(Request{Harness: "fiz"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

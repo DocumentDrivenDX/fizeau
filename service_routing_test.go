@@ -19,7 +19,7 @@ import (
 
 func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 	candidate := routing.Candidate{
-		Harness:            "agent",
+		Harness:            "fiz",
 		Provider:           "local",
 		Endpoint:           "primary",
 		Model:              "model-a",
@@ -75,7 +75,7 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	})
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness: "agent",
+		Harness: "fiz",
 		Model:   "model-a",
 	})
 	if err != nil {
@@ -84,14 +84,14 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	if dec == nil {
 		t.Fatal("ResolveRoute returned nil decision")
 	}
-	if dec.Harness != "agent" || dec.Provider != "local" || dec.Model != "model-a" {
-		t.Fatalf("decision=%#v, want agent/local/model-a", dec)
+	if dec.Harness != "fiz" || dec.Provider != "local" || dec.Model != "model-a" {
+		t.Fatalf("decision=%#v, want fiz/local/model-a", dec)
 	}
 	if len(dec.Candidates) != 1 {
 		t.Fatalf("Candidates length=%d, want 1: %#v", len(dec.Candidates), dec.Candidates)
 	}
 	candidate := dec.Candidates[0]
-	if !candidate.Eligible || candidate.Harness != "agent" || candidate.Provider != "local" || candidate.Model != "model-a" {
+	if !candidate.Eligible || candidate.Harness != "fiz" || candidate.Provider != "local" || candidate.Model != "model-a" {
 		t.Fatalf("candidate=%#v, want eligible agent/local/model-a", candidate)
 	}
 	if !strings.Contains(candidate.Reason, "score=") {
@@ -262,7 +262,7 @@ func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {
 	var routeErr error
 	go func() {
 		_, routeErr = svc.ResolveRoute(context.Background(), RouteRequest{
-			Harness: "agent",
+			Harness: "fiz",
 		})
 		close(done)
 	}()
@@ -315,9 +315,9 @@ func TestBuildRoutingInputsDisablesAgentWhenLiveProviderDiscoveryEmpty(t *testin
 	}
 
 	inputs := svc.buildRoutingInputsWithCatalog(context.Background(), nil)
-	agentEntry, ok := findRoutingHarnessEntry(inputs.Harnesses, "agent")
+	agentEntry, ok := findRoutingHarnessEntry(inputs.Harnesses, "fiz")
 	if !ok {
-		t.Fatalf("missing agent entry in %#v", inputs.Harnesses)
+		t.Fatalf("missing fiz entry in %#v", inputs.Harnesses)
 	}
 	if agentEntry.Available {
 		t.Fatalf("agent Available=true with no live provider entries: %#v", agentEntry)
@@ -326,12 +326,12 @@ func TestBuildRoutingInputsDisablesAgentWhenLiveProviderDiscoveryEmpty(t *testin
 		t.Fatalf("agent Providers=%#v, want none after failed discovery", agentEntry.Providers)
 	}
 
-	dec, err := routing.Resolve(routing.Request{Harness: "agent"}, inputs)
+	dec, err := routing.Resolve(routing.Request{Harness: "fiz"}, inputs)
 	if err == nil {
 		t.Fatal("Resolve unexpectedly selected providerless agent candidate")
 	}
 	for _, candidate := range dec.Candidates {
-		if candidate.Harness == "agent" && candidate.Provider == "" && candidate.Eligible {
+		if candidate.Harness == "fiz" && candidate.Provider == "" && candidate.Eligible {
 			t.Fatalf("providerless agent candidate was eligible: %#v", candidate)
 		}
 	}
@@ -386,7 +386,7 @@ targets:
 	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 	in := svc.buildRoutingInputs(context.Background())
 
-	got := providerCostsByName(in, "agent")
+	got := providerCostsByName(in, "fiz")
 	assertProviderCost(t, got, "alpha", 0.002, routing.CostSourceCatalog)
 	assertProviderCost(t, got, "beta", 0.003, routing.CostSourceCatalog)
 	assertProviderCost(t, got, "gamma", 0.006, routing.CostSourceCatalog)
@@ -455,14 +455,14 @@ func TestBuildRoutingInputsHonorsLocalCostOption(t *testing.T) {
 	}
 
 	unsetSvc := newTestService(t, ServiceOptions{ServiceConfig: sc})
-	unset := providerCostsByName(unsetSvc.buildRoutingInputs(context.Background()), "agent")
+	unset := providerCostsByName(unsetSvc.buildRoutingInputs(context.Background()), "fiz")
 	assertProviderCost(t, unset, "local", 0, routing.CostSourceUnknown)
 
 	setSvc := &service{
 		opts:     ServiceOptions{ServiceConfig: sc, LocalCostUSDPer1kTokens: 0.0042},
 		registry: harnesses.NewRegistry(),
 	}
-	set := providerCostsByName(setSvc.buildRoutingInputs(context.Background()), "agent")
+	set := providerCostsByName(setSvc.buildRoutingInputs(context.Background()), "fiz")
 	assertProviderCost(t, set, "local", 0.0042, routing.CostSourceUserConfig)
 }
 
@@ -519,7 +519,7 @@ targets:
 		Harnesses: []routing.HarnessEntry{
 			claude,
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "medium",
 				AutoRoutingEligible: true,
@@ -545,15 +545,15 @@ targets:
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dec.Harness != "agent" || dec.Provider != "openrouter" {
-		t.Fatalf("near-quota route selected harness=%q provider=%q, want agent/openrouter", dec.Harness, dec.Provider)
+	if dec.Harness != "fiz" || dec.Provider != "openrouter" {
+		t.Fatalf("near-quota route selected harness=%q provider=%q, want fiz/openrouter", dec.Harness, dec.Provider)
 	}
 	var claudeCandidate, openrouterCandidate routing.Candidate
 	for _, candidate := range dec.Candidates {
 		switch {
 		case candidate.Harness == "claude":
 			claudeCandidate = candidate
-		case candidate.Harness == "agent" && candidate.Provider == "openrouter":
+		case candidate.Harness == "fiz" && candidate.Provider == "openrouter":
 			openrouterCandidate = candidate
 		}
 	}
@@ -703,14 +703,14 @@ func TestResolveRoute_FiltersByEstimatedPromptTokens(t *testing.T) {
 	svc := newGateFixtureService(t, "small-ctx-model")
 
 	dec, _ := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness:               "agent",
+		Harness:               "fiz",
 		Model:                 "small-ctx-model",
 		EstimatedPromptTokens: 1_000_000,
 	})
 	if dec == nil {
 		t.Fatal("ResolveRoute returned nil decision")
 	}
-	candidate := findCandidate(t, dec, "agent", "local")
+	candidate := findCandidate(t, dec, "fiz", "local")
 	if candidate.Eligible {
 		t.Fatalf("candidate eligible with 1M tokens against 4096 context: %#v", candidate)
 	}
@@ -725,14 +725,14 @@ func TestResolveRoute_FiltersByRequiresTools(t *testing.T) {
 	svc := newGateFixtureService(t, "no-tools-model")
 
 	dec, _ := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness:       "agent",
+		Harness:       "fiz",
 		Model:         "no-tools-model",
 		RequiresTools: true,
 	})
 	if dec == nil {
 		t.Fatal("ResolveRoute returned nil decision")
 	}
-	candidate := findCandidate(t, dec, "agent", "local")
+	candidate := findCandidate(t, dec, "fiz", "local")
 	if candidate.Eligible {
 		t.Fatalf("candidate eligible despite no_tools=true: %#v", candidate)
 	}
@@ -750,13 +750,13 @@ func TestResolveRoute_NoOpWhenZero(t *testing.T) {
 	noToolsSvc := newGateFixtureService(t, "no-tools-model")
 
 	smallDec, err := smallCtxSvc.ResolveRoute(context.Background(), RouteRequest{
-		Harness: "agent",
+		Harness: "fiz",
 		Model:   "small-ctx-model",
 	})
 	if err != nil {
 		t.Fatalf("ResolveRoute small-ctx-model: %v", err)
 	}
-	smallCandidate := findCandidate(t, smallDec, "agent", "local")
+	smallCandidate := findCandidate(t, smallDec, "fiz", "local")
 	if !smallCandidate.Eligible {
 		t.Fatalf("small-ctx-model candidate ineligible without EstimatedPromptTokens: %#v", smallCandidate)
 	}
@@ -765,13 +765,13 @@ func TestResolveRoute_NoOpWhenZero(t *testing.T) {
 	}
 
 	noToolsDec, err := noToolsSvc.ResolveRoute(context.Background(), RouteRequest{
-		Harness: "agent",
+		Harness: "fiz",
 		Model:   "no-tools-model",
 	})
 	if err != nil {
 		t.Fatalf("ResolveRoute no-tools-model: %v", err)
 	}
-	noToolsCandidate := findCandidate(t, noToolsDec, "agent", "local")
+	noToolsCandidate := findCandidate(t, noToolsDec, "fiz", "local")
 	if !noToolsCandidate.Eligible {
 		t.Fatalf("no-tools-model candidate ineligible without RequiresTools=true: %#v", noToolsCandidate)
 	}
@@ -798,10 +798,10 @@ func TestBuildRoutingInputsWiresContextWindowsFromCatalog(t *testing.T) {
 	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
 	in := svc.buildRoutingInputs(context.Background())
-	providers := providerCostsByName(in, "agent")
+	providers := providerCostsByName(in, "fiz")
 	provider, ok := providers["local"]
 	if !ok {
-		t.Fatalf("agent/local provider not in inputs: %#v", providers)
+		t.Fatalf("fiz/local provider not in inputs: %#v", providers)
 	}
 	if got := provider.ContextWindows["small-ctx-model"]; got != 4096 {
 		t.Fatalf("ContextWindows[small-ctx-model]=%d, want 4096 (full map=%#v)", got, provider.ContextWindows)
@@ -901,7 +901,7 @@ profiles:
 		// against this fixture, exercising the AC's "real ServiceConfig +
 		// cooldown fixture" requirement.
 		if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-			Harness:  "agent",
+			Harness:  "fiz",
 			Provider: "alpha-medium",
 			Model:    "medium-model",
 			Status:   "failed",
@@ -917,8 +917,8 @@ profiles:
 		if err != nil {
 			t.Fatalf("ResolveRoute: %v", err)
 		}
-		if dec == nil || dec.Harness != "agent" {
-			t.Fatalf("decision=%#v, want agent harness", dec)
+		if dec == nil || dec.Harness != "fiz" {
+			t.Fatalf("decision=%#v, want fiz harness", dec)
 		}
 		if dec.Provider != "beta-high" {
 			t.Fatalf("decision provider=%q, want beta-high (escalated to smart tier)", dec.Provider)
@@ -1055,7 +1055,7 @@ func TestResolveRouteAutoResolvesToTierDefaultBeforeGate(t *testing.T) {
 }
 
 func TestDecisionWithCandidatesCopiesInput(t *testing.T) {
-	candidates := []RouteCandidate{{Harness: "agent", Reason: "original"}}
+	candidates := []RouteCandidate{{Harness: "fiz", Reason: "original"}}
 	err := withRouteCandidates(errors.New("no viable routing candidate"), candidates)
 
 	candidates[0].Reason = "changed"

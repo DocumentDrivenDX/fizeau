@@ -13,7 +13,7 @@ import (
 func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 	ch := make(chan fizeau.ServiceEvent, 7)
 	ch <- serviceEvent(t, fizeau.ServiceEventTypeRoutingDecision, 0, map[string]any{
-		"harness":    "agent",
+		"harness":    "fiz",
 		"provider":   "fake",
 		"model":      "fake-model",
 		"reason":     "test route",
@@ -46,7 +46,7 @@ func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 		"cost_usd":         0.001,
 		"session_log_path": "/tmp/session.jsonl",
 		"routing_actual": map[string]any{
-			"harness": "agent", "provider": "fake", "model": "fake-model",
+			"harness": "fiz", "provider": "fake", "model": "fake-model",
 		},
 	})
 	close(ch)

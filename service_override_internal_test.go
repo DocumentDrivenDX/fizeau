@@ -115,7 +115,7 @@ func TestOverrideEventCoincidentalAgreement(t *testing.T) {
 	// Pin Provider only. Stripped auto resolution still picks "local"
 	// because it is the sole configured provider — coincidental agreement.
 	req := ServiceExecuteRequest{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "local",
 		Model:    "model-a",
 	}
@@ -130,8 +130,8 @@ func TestOverrideEventCoincidentalAgreement(t *testing.T) {
 	if octx.payload.AutoDecision.Provider != "local" {
 		t.Fatalf("auto provider: got %q, want %q", octx.payload.AutoDecision.Provider, "local")
 	}
-	if octx.payload.AutoDecision.Harness != "agent" {
-		t.Fatalf("auto harness: got %q, want %q", octx.payload.AutoDecision.Harness, "agent")
+	if octx.payload.AutoDecision.Harness != "fiz" {
+		t.Fatalf("auto harness: got %q, want %q", octx.payload.AutoDecision.Harness, "fiz")
 	}
 	if octx.payload.AutoDecision.Model != "model-a" {
 		t.Fatalf("auto model: got %q, want %q", octx.payload.AutoDecision.Model, "model-a")
@@ -180,9 +180,9 @@ func TestBuildOverrideContext_AxesIndividuallyAndInCombination(t *testing.T) {
 	}{
 		{
 			name:     "harness_only",
-			req:      ServiceExecuteRequest{Harness: "agent"},
+			req:      ServiceExecuteRequest{Harness: "fiz"},
 			wantAxes: []string{overrideAxisHarness},
-			wantPin:  ServiceOverridePin{Harness: "agent"},
+			wantPin:  ServiceOverridePin{Harness: "fiz"},
 		},
 		{
 			name:     "provider_only",
@@ -198,9 +198,9 @@ func TestBuildOverrideContext_AxesIndividuallyAndInCombination(t *testing.T) {
 		},
 		{
 			name:     "harness_and_provider",
-			req:      ServiceExecuteRequest{Harness: "agent", Provider: "local"},
+			req:      ServiceExecuteRequest{Harness: "fiz", Provider: "local"},
 			wantAxes: []string{overrideAxisHarness, overrideAxisProvider},
-			wantPin:  ServiceOverridePin{Harness: "agent", Provider: "local"},
+			wantPin:  ServiceOverridePin{Harness: "fiz", Provider: "local"},
 		},
 		{
 			name:     "provider_and_model",
@@ -252,7 +252,7 @@ func TestRejectedOverrideOnUnknownProvider(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), ServiceExecuteRequest{
 		Prompt:   "hi",
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "definitely-not-configured",
 	})
 	if err == nil {

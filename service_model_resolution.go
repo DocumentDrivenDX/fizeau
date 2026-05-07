@@ -182,7 +182,7 @@ func modelCandidatesToRouteCandidates(ids []string) []RouteCandidate {
 
 func canonicalHarnessPin(harness string) string {
 	if harness == "local" {
-		return "agent"
+		return "fiz"
 	}
 	return harness
 }

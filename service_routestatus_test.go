@@ -87,7 +87,7 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 		defaultName: "bragi",
 	}
 
-	// Seed registry with the "agent" harness available so routing can resolve.
+	// Seed registry with the "fiz" harness available so routing can resolve.
 	reg := harnesses.NewRegistry()
 	svc := &service{
 		opts:     ServiceOptions{ServiceConfig: sc},
@@ -97,7 +97,7 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	// Inject a decision directly into the cache (simulating a resolved route)
 	// since ResolveRoute may fail without a real provider.
 	dec := &RouteDecision{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "bragi",
 		Endpoint: "desk-a",
 		Model:    "qwen3-27b",
@@ -138,7 +138,7 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 // ResolveRoute → cache write → RouteStatus reads cache.
 func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	// We need the routing engine to actually resolve. The engine picks
-	// harnesses from the registry. "agent" is always in the registry.
+	// harnesses from the registry. "fiz" is always in the registry.
 	// We give it a provider so the engine can build a candidate.
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -154,7 +154,7 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	}
 
 	// ResolveRoute with model="mymodel". The engine resolves against the
-	// "agent" harness + bragi provider.
+	// "fiz" harness + bragi provider.
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
 		Model:    "mymodel",
 		Provider: "bragi",
@@ -202,7 +202,7 @@ func TestRouteStatus_attemptCooldownStateSurfaces(t *testing.T) {
 	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 	recordedAt := time.Now().Add(-time.Second).UTC()
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-		Harness:   "agent",
+		Harness:   "fiz",
 		Provider:  "bragi",
 		Model:     "qwen3-27b",
 		Status:    "failed",

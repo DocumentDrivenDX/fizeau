@@ -661,7 +661,7 @@ type ServiceExecuteRequest struct {
 	NoStream       bool
 	Permissions    string
 	// Tools overrides the built-in native agent tool set when Harness is
-	// "agent". Nil uses the native built-ins for ToolPreset and WorkDir.
+	// "fiz". Nil uses the native built-ins for ToolPreset and WorkDir.
 	Tools []Tool
 	// ToolPreset is passed through to BuiltinToolsForPreset when Tools is nil.
 	// Empty uses the default tool set.
@@ -671,7 +671,7 @@ type ServiceExecuteRequest struct {
 	// before the main native agent loop and injects the response as an
 	// assistant message wrapped in <plan> tags. The benchmark tool preset
 	// auto-enables planning; this flag is the per-request opt-in for other
-	// callers (e.g. the CLI --plan flag). Only honored when Harness=="agent"
+	// callers (e.g. the CLI --plan flag). Only honored when Harness=="fiz"
 	// (the native loop). See internal/core.Request.PlanningMode.
 	PlanningMode bool
 
@@ -702,7 +702,7 @@ type ServiceExecuteRequest struct {
 	IdleTimeout     time.Duration
 	ProviderTimeout time.Duration
 
-	// Optional native-loop overrides used when Harness == "agent". These let
+	// Optional native-loop overrides used when Harness == "fiz". These let
 	// the CLI and other callers route fully-resolved execution settings through
 	// the service path instead of maintaining a divergent direct loop path.
 	MaxIterations           int

@@ -95,7 +95,7 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	dir := t.TempDir()
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:        "hi",
-		Harness:       "agent",
+		Harness:       "fiz",
 		Provider:      "fake",
 		Model:         "fake-model",
 		SessionLogDir: dir,
@@ -114,7 +114,7 @@ func TestExecute_NativeEmitsLLMProgress(t *testing.T) {
 	if start.Phase != "route" || start.State != "start" {
 		t.Fatalf("route start = %#v", start)
 	}
-	if !strings.Contains(start.Message, "route") || !strings.Contains(start.Message, "agent") {
+	if !strings.Contains(start.Message, "route") || !strings.Contains(start.Message, "fiz") {
 		t.Fatalf("route start message = %q", start.Message)
 	}
 	if len(start.Message) > maxProgressMessageLen(start) || len(start.SessionSummary) > 80 {
@@ -208,7 +208,7 @@ func TestExecute_EmitsRouteProgressBeforeHarnessWork(t *testing.T) {
 	dir := t.TempDir()
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:        "route progress",
-		Harness:       "agent",
+		Harness:       "fiz",
 		Provider:      "fake",
 		Model:         "gpt-5.4",
 		SessionLogDir: dir,
@@ -284,7 +284,7 @@ func TestProgressMessages_BoundedUnder80Chars(t *testing.T) {
 	dir := t.TempDir()
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:                  "compact me",
-		Harness:                 "agent",
+		Harness:                 "fiz",
 		Provider:                "fake",
 		Model:                   "fake-model",
 		WorkDir:                 t.TempDir(),
@@ -573,7 +573,7 @@ func TestExecute_NativeEmitsToolProgress(t *testing.T) {
 	dir := t.TempDir()
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:        "run tool",
-		Harness:       "agent",
+		Harness:       "fiz",
 		Provider:      "fake",
 		Model:         "fake-model",
 		WorkDir:       t.TempDir(),
@@ -674,7 +674,7 @@ func TestExecute_NativeEmitsContextProgressOnCompaction(t *testing.T) {
 	dir := t.TempDir()
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:                  "compact me",
-		Harness:                 "agent",
+		Harness:                 "fiz",
 		Provider:                "fake",
 		Model:                   "fake-model",
 		WorkDir:                 t.TempDir(),
@@ -750,7 +750,7 @@ func TestProgressEvent_RedactsUnboundedPayloads(t *testing.T) {
 	dir := t.TempDir()
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:        prompt,
-		Harness:       "agent",
+		Harness:       "fiz",
 		Provider:      "fake",
 		Model:         "fake-model",
 		WorkDir:       t.TempDir(),

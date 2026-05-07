@@ -160,6 +160,30 @@ func TestExecuteExplicitHarnessPinUnknownHarnessFailsWithoutBroaderDispatch(t *t
 	}
 }
 
+func TestExecuteExplicitAgentHarnessNoLongerAliasesNative(t *testing.T) {
+	svc := publicRouteTraceService(&fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"openrouter": {Type: "openrouter"},
+		},
+		names:       []string{"openrouter"},
+		defaultName: "openrouter",
+	})
+
+	ch, err := svc.Execute(context.Background(), ServiceExecuteRequest{
+		Prompt:   "hello",
+		Harness:  "agent",
+		Provider: "openrouter",
+		Model:    "gpt-5.4",
+	})
+	if err != nil {
+		t.Fatalf("Execute: unexpected synchronous error: %v", err)
+	}
+	final := readFinalEvent(t, ch, 5*time.Second)
+	if final.Status != "failed" || !strings.Contains(final.Error, `unknown harness "agent"`) {
+		t.Fatalf("final = %#v, want unknown harness for agent", final)
+	}
+}
+
 func TestExecuteExplicitHarnessPinRejectsUnsupportedCodexCombinationWithoutBroadening(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 4

@@ -209,7 +209,7 @@ func TestResolveRouteExplicitProfilePinConflict(t *testing.T) {
 
 	_, err = svc.ResolveRoute(context.Background(), RouteRequest{
 		Profile: "smart",
-		Harness: "agent",
+		Harness: "fiz",
 	})
 	if err == nil {
 		t.Fatal("expected smart profile to conflict with local agent harness")
@@ -218,7 +218,7 @@ func TestResolveRouteExplicitProfilePinConflict(t *testing.T) {
 	if !errors.As(err, &inverse) {
 		t.Fatalf("errors.As inverse: %T %v", err, err)
 	}
-	if inverse.Profile != "smart" || inverse.ConflictingPin != "Harness=agent" || inverse.ProfileConstraint != "subscription-only" {
+	if inverse.Profile != "smart" || inverse.ConflictingPin != "Harness=fiz" || inverse.ProfileConstraint != "subscription-only" {
 		t.Fatalf("inverse profile conflict=%#v, want smart/Harness=agent/subscription-only", inverse)
 	}
 }

@@ -79,7 +79,7 @@ func structHasField(t *testing.T, file, structName, field string) bool {
 // internal routing engine's per-axis signals.
 func TestRouteCandidateExposesComponentScores(t *testing.T) {
 	cand := routing.Candidate{
-		Harness:            "agent",
+		Harness:            "fiz",
 		Provider:           "local",
 		Model:              "model-a",
 		Score:              42,
@@ -155,7 +155,7 @@ func TestResolveRouteIsInformationalOnly(t *testing.T) {
 	svc := publicRouteTraceService(sc)
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness: "agent",
+		Harness: "fiz",
 		Model:   "model-a",
 	})
 	if err != nil {
@@ -172,7 +172,7 @@ func TestResolveRouteIsInformationalOnly(t *testing.T) {
 func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 	candidates := []RouteCandidate{
 		{
-			Harness:            "agent",
+			Harness:            "fiz",
 			Provider:           "alpha",
 			Model:              "alpha-1",
 			Score:              80,
@@ -194,7 +194,7 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 			},
 		},
 		{
-			Harness:      "agent",
+			Harness:      "fiz",
 			Provider:     "beta",
 			Model:        "beta-1",
 			Eligible:     false,

@@ -49,7 +49,7 @@ func newFakeSvc(t *testing.T, responses []fizeau.FakeResponse) fizeau.FizeauServ
 func stdReq(prompt string) fizeau.ServiceExecuteRequest {
 	return fizeau.ServiceExecuteRequest{
 		Prompt:   prompt,
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "fake",
 		Model:    "fake-model",
 	}

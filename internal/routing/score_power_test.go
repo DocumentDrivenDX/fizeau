@@ -26,8 +26,8 @@ func TestScorePowerPrefersLocalFreeWhenPowerSufficient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dec.Harness != "agent" || dec.Provider != "local" {
-		t.Fatalf("winner=%s/%s, want agent/local", dec.Harness, dec.Provider)
+	if dec.Harness != "fiz" || dec.Provider != "local" {
+		t.Fatalf("winner=%s/%s, want fiz/local", dec.Harness, dec.Provider)
 	}
 	for _, c := range dec.Candidates {
 		if c.Provider == "paid" && c.Eligible && c.Score >= dec.Candidates[0].Score {
@@ -52,12 +52,12 @@ func TestScorePowerMinPowerAndPinsRemainConstraints(t *testing.T) {
 		}
 	}
 
-	dec, err = Resolve(Request{Harness: "agent", Provider: "local", Model: "local-good", MinPower: 9}, in)
+	dec, err = Resolve(Request{Harness: "fiz", Provider: "local", Model: "local-good", MinPower: 9}, in)
 	if err != nil {
 		t.Fatalf("Resolve exact pin: %v", err)
 	}
-	if dec.Harness != "agent" || dec.Provider != "local" || dec.Model != "local-good" {
-		t.Fatalf("exact pin winner=%s/%s/%s, want agent/local/local-good", dec.Harness, dec.Provider, dec.Model)
+	if dec.Harness != "fiz" || dec.Provider != "local" || dec.Model != "local-good" {
+		t.Fatalf("exact pin winner=%s/%s/%s, want fiz/local/local-good", dec.Harness, dec.Provider, dec.Model)
 	}
 
 	dec, err = Resolve(Request{Provider: "local", MinPower: 9}, in)
@@ -78,7 +78,7 @@ func TestProfileStandardKeepsPowerFiveLocalCandidatesEligible(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -124,7 +124,7 @@ func TestProfileStandardDoesNotBroadenExactModelRef(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -165,8 +165,8 @@ func TestProfileStandardDoesNotBroadenExactModelRef(t *testing.T) {
 	if dec.Model != "grendel-5" {
 		t.Fatalf("Model=%q, want exact catalog-reference resolution", dec.Model)
 	}
-	if dec.Harness != "agent" {
-		t.Fatalf("Harness=%q, want agent", dec.Harness)
+	if dec.Harness != "fiz" {
+		t.Fatalf("Harness=%q, want fiz", dec.Harness)
 	}
 }
 
@@ -204,7 +204,7 @@ func scorePowerInputs() Inputs {
 	return Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -274,7 +274,7 @@ func scorePowerInputs() Inputs {
 func tieBreakInputs() Inputs {
 	return Inputs{
 		Harnesses: []HarnessEntry{{
-			Name:                "agent",
+			Name:                "fiz",
 			Surface:             "embedded-openai",
 			CostClass:           "local",
 			IsLocal:             true,

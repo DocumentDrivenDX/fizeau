@@ -135,7 +135,7 @@ func TestResolveConfiguredNativeProviderSelectionOrder(t *testing.T) {
 			defaultName: "bragi",
 		}
 		svc := &service{opts: ServiceOptions{ServiceConfig: sc}}
-		got := svc.resolveConfiguredNativeProvider(ServiceExecuteRequest{Harness: "agent"})
+		got := svc.resolveConfiguredNativeProvider(ServiceExecuteRequest{Harness: "fiz"})
 		if got.Name != "bragi" {
 			t.Fatalf("resolved provider = %q, want default bragi", got.Name)
 		}
@@ -303,7 +303,7 @@ func TestExecuteEndpointFirstRoutingUsesMetricsBeforeConfigOrder(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "slow",
 		Model:    "Qwen3.6-35B-A3B-4bit",
 		Status:   "success",
@@ -312,7 +312,7 @@ func TestExecuteEndpointFirstRoutingUsesMetricsBeforeConfigOrder(t *testing.T) {
 		t.Fatalf("RecordRouteAttempt slow: %v", err)
 	}
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "fast",
 		Model:    "Qwen3.6-35B-A3B-4bit",
 		Status:   "success",

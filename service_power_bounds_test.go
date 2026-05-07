@@ -55,7 +55,7 @@ func TestServiceExecuteRequestRejectsInvalidPowerBounds(t *testing.T) {
 	}
 	ch, err := svc.Execute(context.Background(), ServiceExecuteRequest{
 		Prompt:   "irrelevant",
-		Harness:  "agent",
+		Harness:  "fiz",
 		MinPower: 9,
 		MaxPower: 4,
 	})

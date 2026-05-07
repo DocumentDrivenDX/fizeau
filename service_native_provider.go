@@ -128,7 +128,7 @@ func requestedNativeProviderType(req ServiceExecuteRequest) string {
 		return normalizeServiceProviderType(req.Provider)
 	}
 	switch req.Harness {
-	case "", "agent":
+	case "", "fiz":
 		return ""
 	default:
 		return normalizeServiceProviderType(req.Harness)
@@ -147,7 +147,7 @@ func (s *service) nativeProviderNotConfiguredError(req ServiceExecuteRequest, de
 	available := s.availableProviderTypes()
 	harness := decision.Harness
 	if harness == "" {
-		harness = "agent"
+		harness = "fiz"
 	}
 	return fmt.Sprintf("harness %q: no configured provider matches type %q (available: %s)", harness, wantedType, available)
 }

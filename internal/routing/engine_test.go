@@ -15,7 +15,7 @@ func newTestRoutingEngine() Inputs {
 	return Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -124,8 +124,8 @@ func TestSmellProviderFieldDayOne(t *testing.T) {
 		t.Errorf("provider=vidar-omlx soft pref: got %q, want vidar-omlx", dec.Provider)
 	}
 
-	// Hard pin: Harness=agent + Provider=openrouter constrains routing.
-	hardReq := Request{Harness: "agent", Provider: "openrouter", Model: "qwen/qwen3.6"}
+	// Hard pin: Harness=fiz + Provider=openrouter constrains routing.
+	hardReq := Request{Harness: "fiz", Provider: "openrouter", Model: "qwen/qwen3.6"}
 	dec2, err := Resolve(hardReq, in)
 	if err != nil {
 		t.Fatalf("hard pin Resolve: %v", err)
@@ -139,7 +139,7 @@ func TestExplicitProviderPinDoesNotSubstituteAvailableProvider(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -266,12 +266,12 @@ func TestExplicitModelPinDoesNotSubstituteCloudDefaults(t *testing.T) {
 func TestExplicitHarnessPinDoesNotSubstituteOtherHarness(t *testing.T) {
 	in := newTestRoutingEngine()
 	for i, h := range in.Harnesses {
-		if h.Name == "agent" {
+		if h.Name == "fiz" {
 			in.Harnesses[i].Available = false
 		}
 	}
 
-	dec, err := Resolve(Request{Harness: "agent", Model: "qwen/qwen3.6"}, in)
+	dec, err := Resolve(Request{Harness: "fiz", Model: "qwen/qwen3.6"}, in)
 	if err == nil {
 		t.Fatalf("Resolve selected harness=%q, want no viable candidate", dec.Harness)
 	}
@@ -279,14 +279,14 @@ func TestExplicitHarnessPinDoesNotSubstituteOtherHarness(t *testing.T) {
 		t.Fatal("Resolve returned nil decision")
 	}
 	for _, c := range dec.Candidates {
-		if c.Harness != "agent" {
+		if c.Harness != "fiz" {
 			t.Fatalf("non-pinned harness appeared in candidate list: %#v", c)
 		}
 		if c.Eligible {
 			t.Fatalf("unavailable pinned harness must not be eligible: %#v", c)
 		}
 	}
-	if !strings.Contains(err.Error(), "harness=agent") {
+	if !strings.Contains(err.Error(), "harness=fiz") {
 		t.Fatalf("error=%q, want harness pin detail", err.Error())
 	}
 }
@@ -295,7 +295,7 @@ func TestAutomaticRoutingFiltersCatalogPowerEligibility(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -363,10 +363,10 @@ func TestAutomaticRoutingFiltersCatalogPowerEligibility(t *testing.T) {
 	}
 }
 
-func TestNativeProviderCostClassOverridesAgentHarnessLocalClass(t *testing.T) {
+func TestNativeProviderCostClassOverridesFizHarnessLocalClass(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{{
-			Name:                "agent",
+			Name:                "fiz",
 			Surface:             "embedded-openai",
 			CostClass:           "local",
 			IsLocal:             true,
@@ -400,7 +400,7 @@ func TestAutomaticRoutingFiltersMinMaxPower(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -472,7 +472,7 @@ func TestExactModelPinBypassesCatalogPowerEligibility(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -496,7 +496,7 @@ func TestExactModelPinBypassesCatalogPowerEligibility(t *testing.T) {
 		Now: time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
 	}
 
-	dec, err := Resolve(Request{Harness: "agent", Provider: "lmstudio", Model: "unknown-local", MinPower: 10}, in)
+	dec, err := Resolve(Request{Harness: "fiz", Provider: "lmstudio", Model: "unknown-local", MinPower: 10}, in)
 	if err != nil {
 		t.Fatalf("Resolve exact pin: %v", err)
 	}
@@ -536,7 +536,7 @@ func TestSmellCanonicalFormFuzzyMatcher(t *testing.T) {
 
 	// End-to-end: Model="qwen/qwen3.6" + Provider=vidar-omlx resolves to
 	// the provider-native ID via fuzzy match.
-	req := Request{Provider: "vidar-omlx", Harness: "agent", Model: "qwen/qwen3.6"}
+	req := Request{Provider: "vidar-omlx", Harness: "fiz", Model: "qwen/qwen3.6"}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -549,7 +549,7 @@ func TestSmellCanonicalFormFuzzyMatcher(t *testing.T) {
 func TestModelRefRoutingTriesCatalogCandidatesAgainstLiveDiscovery(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{{
-			Name:                "agent",
+			Name:                "fiz",
 			Surface:             "embedded-openai",
 			CostClass:           "local",
 			IsLocal:             true,
@@ -609,7 +609,7 @@ func TestSmellCapabilityGating(t *testing.T) {
 		// (unknown ctx → not rejected).
 		req := Request{
 			Provider:              "vidar-omlx",
-			Harness:               "agent",
+			Harness:               "fiz",
 			Model:                 "Qwen3.6-35B-A3B-4bit",
 			EstimatedPromptTokens: 80000,
 		}
@@ -638,7 +638,7 @@ func TestSmellCapabilityGating(t *testing.T) {
 		in := newTestRoutingEngine()
 		// Mark vidar-omlx provider as tool-incapable.
 		for i, h := range in.Harnesses {
-			if h.Name == "agent" {
+			if h.Name == "fiz" {
 				for j, p := range h.Providers {
 					if p.Name == "vidar-omlx" {
 						in.Harnesses[i].Providers[j].SupportsTools = false
@@ -724,7 +724,7 @@ func TestSmellProfileAwareEscalation(t *testing.T) {
 	in := newTestRoutingEngine()
 	// Restrict vidar-omlx to qwen3.6 (cheap), nothing for smart.
 	for i, h := range in.Harnesses {
-		if h.Name == "agent" {
+		if h.Name == "fiz" {
 			for j, p := range h.Providers {
 				if p.Name == "vidar-omlx" {
 					// Only the cheap-tier model is discovered.
@@ -733,16 +733,16 @@ func TestSmellProfileAwareEscalation(t *testing.T) {
 			}
 		}
 	}
-	// With Harness=agent+Provider=vidar-omlx pin, escalating to "smart"
+	// With Harness=fiz+Provider=vidar-omlx pin, escalating to "smart"
 	// should fail (the catalog smart→claude-opus surface mismatch + provider
-	// pin means no candidate is viable on the agent harness).
+	// pin means no candidate is viable on the fiz harness).
 	ladder := []string{"cheap", "smart"}
-	req := Request{Harness: "agent", Provider: "vidar-omlx", Profile: "cheap"}
+	req := Request{Harness: "fiz", Provider: "vidar-omlx", Profile: "cheap"}
 	next := EscalateProfileAware("cheap", ladder, req, in)
-	// smart catalog → claude-opus (surface=claude), but Harness=agent pinned,
+	// smart catalog → claude-opus (surface=claude), but Harness=fiz pinned,
 	// so smart isn't viable. EscalateProfileAware should return "" or skip.
 	if next == "smart" {
-		t.Errorf("escalation to smart under Harness=agent+Provider=vidar-omlx should be skipped")
+		t.Errorf("escalation to smart under Harness=fiz+Provider=vidar-omlx should be skipped")
 	}
 }
 
@@ -753,7 +753,7 @@ func TestSmellProfileAwareEscalation(t *testing.T) {
 func TestSmellSingleCooldownAbstraction(t *testing.T) {
 	in := newTestRoutingEngine()
 	// Without cooldown: with provider affinity to vidar-omlx, vidar wins.
-	baseReq := Request{Profile: "cheap", Harness: "agent", Provider: "vidar-omlx", Model: "qwen/qwen3.6"}
+	baseReq := Request{Profile: "cheap", Harness: "fiz", Provider: "vidar-omlx", Model: "qwen/qwen3.6"}
 	dec0, err := Resolve(baseReq, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -772,7 +772,7 @@ func TestSmellSingleCooldownAbstraction(t *testing.T) {
 
 	// Use a cheap-tier request without the hard provider pin so cooldown
 	// demotion is observable.
-	cooldownReq := Request{Profile: "cheap", Harness: "agent", Model: "qwen/qwen3.6"}
+	cooldownReq := Request{Profile: "cheap", Harness: "fiz", Model: "qwen/qwen3.6"}
 	dec, err := Resolve(cooldownReq, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -898,7 +898,7 @@ func TestAutoRoutingEligibilityGate(t *testing.T) {
 	}
 	for _, c := range dec.Candidates {
 		switch c.Harness {
-		case "agent", "codex", "claude":
+		case "fiz", "codex", "claude":
 			// Harnesses marked auto-routing eligible may appear.
 		case "gemini", "opencode", "pi":
 			t.Fatalf("non-full-coverage harness %q leaked into automatic routing candidates", c.Harness)
@@ -999,8 +999,8 @@ func TestCheapPrefersLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dec.Harness != "agent" {
-		t.Errorf("cheap profile: got harness=%q, want agent (local)", dec.Harness)
+	if dec.Harness != "fiz" {
+		t.Errorf("cheap profile: got harness=%q, want fiz (local)", dec.Harness)
 	}
 }
 
@@ -1011,8 +1011,8 @@ func TestSmartPrefersCloud(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dec.Harness == "agent" {
-		t.Errorf("smart profile: got harness=agent (local); should prefer cloud")
+	if dec.Harness == "fiz" {
+		t.Errorf("smart profile: got harness=fiz (local); should prefer cloud")
 	}
 }
 
@@ -1041,8 +1041,8 @@ func TestFirstClassProfileRoutingSemantics(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Resolve local: %v", err)
 				}
-				if dec.Harness != "agent" {
-					t.Fatalf("local profile selected harness=%q provider=%q, want local agent harness", dec.Harness, dec.Provider)
+				if dec.Harness != "fiz" {
+					t.Fatalf("local profile selected harness=%q provider=%q, want local fiz harness", dec.Harness, dec.Provider)
 				}
 			},
 		},
@@ -1052,7 +1052,7 @@ func TestFirstClassProfileRoutingSemantics(t *testing.T) {
 			in: func() Inputs {
 				in := newTestRoutingEngine()
 				for i := range in.Harnesses {
-					if in.Harnesses[i].Name == "agent" {
+					if in.Harnesses[i].Name == "fiz" {
 						in.Harnesses[i].Available = false
 					}
 				}
@@ -1077,7 +1077,7 @@ func TestFirstClassProfileRoutingSemantics(t *testing.T) {
 			req:  Request{Profile: "default", ProviderPreference: ProviderPreferenceLocalFirst},
 			in: Inputs{
 				Harnesses: []HarnessEntry{{
-					Name:                "agent",
+					Name:                "fiz",
 					Surface:             "embedded-openai",
 					CostClass:           "local",
 					IsLocal:             true,
@@ -1104,8 +1104,8 @@ func TestFirstClassProfileRoutingSemantics(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Resolve default: %v", err)
 				}
-				if dec.Harness != "agent" || dec.Provider != "a-local" {
-					t.Fatalf("default tiebreak selected harness=%q provider=%q, want agent/a-local", dec.Harness, dec.Provider)
+				if dec.Harness != "fiz" || dec.Provider != "a-local" {
+					t.Fatalf("default tiebreak selected harness=%q provider=%q, want fiz/a-local", dec.Harness, dec.Provider)
 				}
 			},
 		},
@@ -1214,16 +1214,16 @@ func TestModelRefRejectsUnsupportedSurfaceWithoutModel(t *testing.T) {
 	if c.Model != "" {
 		t.Fatalf("unsupported profile should not produce an empty-model eligible route, got model %q", c.Model)
 	}
-	if !strings.Contains(c.Reason, `profile "smart" not available on surface "gemini"`) {
+	if !strings.Contains(c.Reason, `model ref "smart" not available on surface "gemini"`) {
 		t.Fatalf("unexpected rejection reason: %q", c.Reason)
 	}
 }
 
-func TestSmartDoesNotSelectUnmodeledGeminiOverModeledAgent(t *testing.T) {
+func TestSmartDoesNotSelectUnmodeledGeminiOverModeledFiz(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -1258,8 +1258,8 @@ func TestSmartDoesNotSelectUnmodeledGeminiOverModeledAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dec.Harness != "agent" {
-		t.Fatalf("smart should use modeled agent route, got harness=%q model=%q", dec.Harness, dec.Model)
+	if dec.Harness != "fiz" {
+		t.Fatalf("smart should use modeled fiz route, got harness=%q model=%q", dec.Harness, dec.Model)
 	}
 	for _, c := range dec.Candidates {
 		if c.Harness == "gemini" && c.Eligible {
@@ -1387,7 +1387,7 @@ func TestSmartSelectsGeminiOnlyWhenEligibleBestCandidate(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -1495,8 +1495,8 @@ func TestResolveRoute_GeminiRejectsNonGeminiModel(t *testing.T) {
 		SupportedModels:     []string{"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"},
 		SupportsTools:       true,
 	}
-	agent := HarnessEntry{
-		Name:                "agent",
+	fiz := HarnessEntry{
+		Name:                "fiz",
 		Surface:             "embedded-openai",
 		CostClass:           "local",
 		IsLocal:             true,
@@ -1516,13 +1516,13 @@ func TestResolveRoute_GeminiRejectsNonGeminiModel(t *testing.T) {
 		}},
 	}
 
-	in := Inputs{Harnesses: []HarnessEntry{gemini, agent}}
+	in := Inputs{Harnesses: []HarnessEntry{gemini, fiz}}
 	dec, err := Resolve(Request{Profile: "default", Model: "minimax/minimax-m2.7"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dec.Harness != "agent" || dec.Model != "minimax/minimax-m2.7" {
-		t.Fatalf("got harness=%q model=%q, want agent/minimax", dec.Harness, dec.Model)
+	if dec.Harness != "fiz" || dec.Model != "minimax/minimax-m2.7" {
+		t.Fatalf("got harness=%q model=%q, want fiz/minimax", dec.Harness, dec.Model)
 	}
 	for _, c := range dec.Candidates {
 		if c.Harness == "gemini" && c.Eligible {
@@ -1535,7 +1535,7 @@ func TestResolveRoute_GeminiRejectsNonGeminiModel(t *testing.T) {
 
 	dec, err = Resolve(Request{Profile: "default", Model: "minimax/minimax-m2.7"}, Inputs{Harnesses: []HarnessEntry{gemini}})
 	if err == nil {
-		t.Fatal("expected no viable candidate without agent live endpoint")
+		t.Fatal("expected no viable candidate without fiz live endpoint")
 	}
 	var noViable *NoViableCandidateError
 	if !errors.As(err, &noViable) {
@@ -1603,7 +1603,7 @@ func TestResolveExplicitHarnessModelIncompatible(t *testing.T) {
 // TestResolveExplicitHarnessPiProviderPinAcceptsAnyModel verifies that the
 // pi harness, when paired with an explicit provider pin, accepts any model
 // — pi can route to lmstudio/omlx/openrouter etc. and the pi CLI owns
-// per-provider model validation in that case. The agent-side gate must
+// per-provider model validation in that case. The fiz-side gate must
 // trust the provider pin and defer concrete model-ID checks to pi itself.
 // Mirrors the bypass rule in service_execute.go modelSupportedForHarness.
 func TestResolveExplicitHarnessPiProviderPinAcceptsAnyModel(t *testing.T) {
@@ -1668,22 +1668,22 @@ func TestResolveExplicitProfilePinConflict(t *testing.T) {
 		t.Fatalf("profile conflict=%#v, want local/Harness=claude/local-only", typed)
 	}
 
-	_, err = Resolve(Request{Profile: "smart", Harness: "agent"}, in)
+	_, err = Resolve(Request{Profile: "smart", Harness: "fiz"}, in)
 	if err == nil {
-		t.Fatal("expected smart profile to conflict with local agent harness")
+		t.Fatal("expected smart profile to conflict with local fiz harness")
 	}
 	var inverse *ErrProfilePinConflict
 	if !errors.As(err, &inverse) {
 		t.Fatalf("errors.As inverse: %T %v", err, err)
 	}
-	if inverse.Profile != "smart" || inverse.ConflictingPin != "Harness=agent" || inverse.ProfileConstraint != "subscription-only" {
-		t.Fatalf("inverse profile conflict=%#v, want smart/Harness=agent/subscription-only", inverse)
+	if inverse.Profile != "smart" || inverse.ConflictingPin != "Harness=fiz" || inverse.ProfileConstraint != "subscription-only" {
+		t.Fatalf("inverse profile conflict=%#v, want smart/Harness=fiz/subscription-only", inverse)
 	}
 
 	modelPinInputs := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				Surface:             "embedded-openai",
 				CostClass:           "local",
 				IsLocal:             true,
@@ -1793,15 +1793,15 @@ func TestHarnessOverrideRejectsOthers(t *testing.T) {
 	}
 }
 
-func TestLocalAliasResolvesToAgent(t *testing.T) {
+func TestLocalAliasResolvesToFiz(t *testing.T) {
 	in := newTestRoutingEngine()
 	req := Request{Harness: "local"}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dec.Harness != "agent" {
-		t.Errorf("Harness=local must resolve to agent; got %q", dec.Harness)
+	if dec.Harness != "fiz" {
+		t.Errorf("Harness=local must resolve to fiz; got %q", dec.Harness)
 	}
 }
 

@@ -6,7 +6,7 @@ func TestResolveUsesEndpointLoadToRankEquivalentLocalEndpoints(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
-				Name:                "agent",
+				Name:                "fiz",
 				CostClass:           "local",
 				AutoRoutingEligible: true,
 				Available:           true,
@@ -39,7 +39,7 @@ func TestResolveUsesEndpointLoadToRankEquivalentLocalEndpoints(t *testing.T) {
 		},
 	}
 
-	dec, err := Resolve(Request{Harness: "agent", Model: "model-a"}, in)
+	dec, err := Resolve(Request{Harness: "fiz", Model: "model-a"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

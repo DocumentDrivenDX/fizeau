@@ -57,7 +57,7 @@ func TestPublicServiceAPISmoke(t *testing.T) {
 	}
 
 	if err := svc.RecordRouteAttempt(context.Background(), fizeau.RouteAttempt{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "public-provider",
 		Model:    "public-model",
 		Status:   "success",

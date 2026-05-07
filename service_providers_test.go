@@ -413,8 +413,8 @@ func TestHealthCheck_Provider_NotFound(t *testing.T) {
 
 func TestHealthCheck_Harness_Available(t *testing.T) {
 	svc := newTestService(t, ServiceOptions{})
-	// "agent" is always available (embedded).
-	if err := svc.HealthCheck(context.Background(), HealthTarget{Type: "harness", Name: "agent"}); err != nil {
+	// "fiz" is always available (embedded).
+	if err := svc.HealthCheck(context.Background(), HealthTarget{Type: "harness", Name: "fiz"}); err != nil {
 		t.Errorf("HealthCheck embedded harness: unexpected error: %v", err)
 	}
 }

@@ -29,7 +29,7 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 		return
 	}
 	decision.Sticky.KeyPresent = true
-	if decision.Harness != "agent" || decision.Provider == "" {
+	if decision.Harness != "fiz" || decision.Provider == "" {
 		decision.Sticky.Assignment = "not_applicable"
 		return
 	}

@@ -72,7 +72,7 @@ func harnessCapabilityMatrix(name string, cfg harnesses.HarnessConfig) HarnessCa
 
 func serviceExecuteWired(name string, cfg harnesses.HarnessConfig) bool {
 	switch name {
-	case "agent", "claude", "codex", "gemini", "opencode", "pi", "virtual", "script":
+	case "fiz", "claude", "codex", "gemini", "opencode", "pi", "virtual", "script":
 		return true
 	default:
 		return cfg.IsHTTPProvider
@@ -99,7 +99,7 @@ func modelDiscoveryCapability(name string, cfg harnesses.HarnessConfig) HarnessC
 	if name == "opencode" || name == "pi" {
 		return capOptional("models are discovered from a stable harness CLI command or documented CLI help")
 	}
-	if name == "agent" || cfg.IsHTTPProvider {
+	if name == "fiz" || cfg.IsHTTPProvider {
 		return capOptional("models are discovered through the native provider catalog when configured")
 	}
 	return capUnsupported("subprocess harness exposes no stable model-discovery API")
@@ -119,7 +119,7 @@ func workdirContextCapability(name string, cfg harnesses.HarnessConfig) HarnessC
 	if cfg.TestOnly {
 		return capNotApplicable("test-only harness does not operate on a real workdir")
 	}
-	if name == "agent" || cfg.WorkDirFlag != "" {
+	if name == "fiz" || cfg.WorkDirFlag != "" {
 		return capOptional("harness accepts an explicit workdir/context")
 	}
 	if name == "claude" || name == "gemini" || name == "pi" {
@@ -176,7 +176,7 @@ func finalTextCapability(name string, cfg harnesses.HarnessConfig) HarnessCapabi
 		return capNotApplicable("test-only harness does not expose normalized live response text")
 	}
 	switch name {
-	case "agent", "codex", "claude", "gemini", "opencode", "pi":
+	case "fiz", "codex", "claude", "gemini", "opencode", "pi":
 		return capOptional("final events include normalized final_text when response text is available")
 	default:
 		if cfg.IsHTTPProvider {
@@ -191,7 +191,7 @@ func toolEventsCapability(name string, cfg harnesses.HarnessConfig) HarnessCapab
 		return capNotApplicable("test-only harness does not expose live tool events")
 	}
 	switch name {
-	case "agent", "claude", "codex":
+	case "fiz", "claude", "codex":
 		return capOptional("Service.Execute emits tool_call and tool_result events")
 	default:
 		return capUnsupported("tool-call/tool-result events are not exposed for this harness")

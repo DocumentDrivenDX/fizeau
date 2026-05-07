@@ -198,8 +198,8 @@ type serviceProfileSurface struct {
 
 func serviceProfileSurfaces() []serviceProfileSurface {
 	return []serviceProfileSurface{
-		{name: "native-anthropic", harness: "agent", providerSystem: "anthropic", catalogSurface: modelcatalog.SurfaceAgentAnthropic},
-		{name: "native-openai", harness: "agent", providerSystem: "openai-compatible", catalogSurface: modelcatalog.SurfaceAgentOpenAI},
+		{name: "native-anthropic", harness: "fiz", providerSystem: "anthropic", catalogSurface: modelcatalog.SurfaceAgentAnthropic},
+		{name: "native-openai", harness: "fiz", providerSystem: "openai-compatible", catalogSurface: modelcatalog.SurfaceAgentOpenAI},
 		{name: "codex", harness: "codex", providerSystem: "openai", catalogSurface: modelcatalog.SurfaceCodex},
 		{name: "claude", harness: "claude", providerSystem: "anthropic", catalogSurface: modelcatalog.SurfaceClaudeCode},
 		{name: "gemini", harness: "gemini", providerSystem: "google", catalogSurface: modelcatalog.SurfaceGemini},

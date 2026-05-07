@@ -27,7 +27,7 @@ func TestRecordRouteAttempt_DemotesFailedProviderForAutomaticRouting(t *testing.
 	}
 
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "bragi",
 		Model:    "qwen",
 		Status:   "failed",
@@ -62,7 +62,7 @@ func TestRecordRouteAttempt_DemotesFailedProviderForAutomaticRouting(t *testing.
 func TestRecordRouteAttempt_SuccessClearsFailure(t *testing.T) {
 	svc := routeAttemptTestService(t, 30*time.Second)
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "bragi",
 		Model:    "qwen",
 		Status:   "failed",
@@ -71,7 +71,7 @@ func TestRecordRouteAttempt_SuccessClearsFailure(t *testing.T) {
 		t.Fatalf("RecordRouteAttempt failed: %v", err)
 	}
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "bragi",
 		Model:    "qwen",
 		Status:   "success",
@@ -94,7 +94,7 @@ func TestRecordRouteAttempt_SuccessClearsFailure(t *testing.T) {
 func TestRecordRouteAttempt_TTLExpiryRemovesDemotion(t *testing.T) {
 	svc := routeAttemptTestService(t, 10*time.Millisecond)
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-		Harness:   "agent",
+		Harness:   "fiz",
 		Provider:  "bragi",
 		Model:     "qwen",
 		Status:    "failed",
@@ -119,7 +119,7 @@ func TestRouteStatus_RouteAttemptCooldownSurfaces(t *testing.T) {
 	svc := routeAttemptTestService(t, 30*time.Second)
 	recordedAt := time.Now().Add(-time.Second).UTC()
 	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
-		Harness:   "agent",
+		Harness:   "fiz",
 		Provider:  "bragi",
 		Model:     "qwen",
 		Status:    "failed",
@@ -171,7 +171,7 @@ func TestRouteAttempts_ProviderModelKeying(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		if err := svc.RecordRouteAttempt(ctx, RouteAttempt{
-			Harness:  "agent",
+			Harness:  "fiz",
 			Provider: "providerA",
 			Model:    "modelX",
 			Status:   "failed",
@@ -194,7 +194,7 @@ func TestRouteAttempts_ProviderModelKeying(t *testing.T) {
 	}
 
 	if err := svc.RecordRouteAttempt(ctx, RouteAttempt{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "providerA",
 		Model:    "modelY",
 		Status:   "success",

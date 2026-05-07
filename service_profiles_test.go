@@ -78,8 +78,8 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if nativeOpenAI == nil {
 		t.Fatalf("native-openai surface missing from %#v", resolved.Surfaces)
 	}
-	if nativeOpenAI.Harness != "agent" {
-		t.Fatalf("native-openai Harness: got %q, want agent", nativeOpenAI.Harness)
+	if nativeOpenAI.Harness != "fiz" {
+		t.Fatalf("native-openai Harness: got %q, want fiz", nativeOpenAI.Harness)
 	}
 	if nativeOpenAI.Model == "" {
 		t.Fatalf("native-openai model missing: %#v", nativeOpenAI)

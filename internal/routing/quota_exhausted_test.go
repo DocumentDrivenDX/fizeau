@@ -10,11 +10,11 @@ import (
 func TestResolveExcludesQuotaExhaustedProvider(t *testing.T) {
 	in := newTestRoutingEngine()
 	now := in.Now
-	// Pin both providers under the agent harness; mark vidar-omlx exhausted.
+	// Pin both providers under the fiz harness; mark vidar-omlx exhausted.
 	in.ProviderQuotaExhaustedUntil = map[string]time.Time{
 		"vidar-omlx": now.Add(5 * time.Minute),
 	}
-	req := Request{Profile: "cheap", Harness: "agent"}
+	req := Request{Profile: "cheap", Harness: "fiz"}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -52,7 +52,7 @@ func TestResolveAllProvidersQuotaExhaustedReturnsTypedError(t *testing.T) {
 		"vidar-omlx": retryAfter,
 	}
 
-	req := Request{Profile: "cheap", Harness: "agent"}
+	req := Request{Profile: "cheap", Harness: "fiz"}
 	_, err := Resolve(req, in)
 	if err == nil {
 		t.Fatal("expected ErrAllProvidersQuotaExhausted")
@@ -83,7 +83,7 @@ func TestResolveQuotaExhaustedRetryAfterPickedAsEarliest(t *testing.T) {
 		"vidar-omlx": later,
 		"openrouter": earliest,
 	}
-	req := Request{Profile: "cheap", Harness: "agent"}
+	req := Request{Profile: "cheap", Harness: "fiz"}
 	_, err := Resolve(req, in)
 	var typed *ErrAllProvidersQuotaExhausted
 	if !errors.As(err, &typed) {
@@ -103,7 +103,7 @@ func TestResolvePastRetryAfterIsIgnored(t *testing.T) {
 	in.ProviderQuotaExhaustedUntil = map[string]time.Time{
 		"vidar-omlx": now.Add(-time.Minute), // already recovered
 	}
-	req := Request{Profile: "cheap", Harness: "agent"}
+	req := Request{Profile: "cheap", Harness: "fiz"}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -127,7 +127,7 @@ func TestResolveQuotaExhaustedDoesNotFireWhenOtherFailureExists(t *testing.T) {
 	// Pin a model the provider does not serve — that's a different rejection
 	// (not quota). The quota-exhausted error must not mask the real failure
 	// when there is no candidate that would have been eligible save for quota.
-	req := Request{Harness: "agent", Provider: "vidar-omlx", Model: "model-not-on-vidar"}
+	req := Request{Harness: "fiz", Provider: "vidar-omlx", Model: "model-not-on-vidar"}
 	_, err := Resolve(req, in)
 	if err == nil {
 		t.Fatal("expected error")

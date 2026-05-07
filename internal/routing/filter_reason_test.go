@@ -7,13 +7,13 @@ import (
 // TestCandidateFilterReasonAtRejectionSite verifies that each rejection
 // site in the routing engine sets a typed FilterReason on the produced
 // Candidate at the point the rejection decision is made — not derived
-// later by parsing free-form Reason text (agent-2c55b8a4).
+// later by parsing free-form Reason text (fiz-2c55b8a4).
 func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 	t.Run("context window too small", func(t *testing.T) {
 		in := Inputs{
 			Harnesses: []HarnessEntry{
 				{
-					Name:                "agent",
+					Name:                "fiz",
 					Surface:             "embedded-openai",
 					CostClass:           "local",
 					IsLocal:             true,
@@ -34,7 +34,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 			},
 		}
 		dec, _ := Resolve(Request{
-			Harness:               "agent",
+			Harness:               "fiz",
 			EstimatedPromptTokens: 100_000,
 		}, in)
 		assertRejection(t, dec, FilterReasonContextTooSmall)
@@ -44,7 +44,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 		in := Inputs{
 			Harnesses: []HarnessEntry{
 				{
-					Name:                "agent",
+					Name:                "fiz",
 					Surface:             "embedded-openai",
 					CostClass:           "local",
 					IsLocal:             true,
@@ -60,7 +60,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 				},
 			},
 		}
-		dec, _ := Resolve(Request{Harness: "agent", RequiresTools: true}, in)
+		dec, _ := Resolve(Request{Harness: "fiz", RequiresTools: true}, in)
 		assertRejection(t, dec, FilterReasonNoToolSupport)
 	})
 
@@ -68,7 +68,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 		in := Inputs{
 			Harnesses: []HarnessEntry{
 				{
-					Name:                "agent",
+					Name:                "fiz",
 					Surface:             "embedded-openai",
 					CostClass:           "local",
 					IsLocal:             true,
@@ -85,7 +85,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 				},
 			},
 		}
-		dec, _ := Resolve(Request{Harness: "agent", Reasoning: "high"}, in)
+		dec, _ := Resolve(Request{Harness: "fiz", Reasoning: "high"}, in)
 		assertRejection(t, dec, FilterReasonReasoningUnsupported)
 	})
 
@@ -93,7 +93,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 		in := Inputs{
 			Harnesses: []HarnessEntry{
 				{
-					Name:                "agent",
+					Name:                "fiz",
 					Surface:             "embedded-openai",
 					CostClass:           "local",
 					IsLocal:             true,
@@ -104,7 +104,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 				},
 			},
 		}
-		dec, _ := Resolve(Request{Harness: "agent"}, in)
+		dec, _ := Resolve(Request{Harness: "fiz"}, in)
 		assertRejection(t, dec, FilterReasonUnhealthy)
 	})
 
@@ -159,7 +159,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 		in := Inputs{
 			Harnesses: []HarnessEntry{
 				{
-					Name:                "agent",
+					Name:                "fiz",
 					Surface:             "embedded-openai",
 					CostClass:           "local",
 					IsLocal:             true,
@@ -175,7 +175,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 				},
 			},
 		}
-		dec, err := Resolve(Request{Harness: "agent"}, in)
+		dec, err := Resolve(Request{Harness: "fiz"}, in)
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
 		}

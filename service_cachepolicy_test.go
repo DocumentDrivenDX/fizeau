@@ -30,7 +30,7 @@ func TestServiceExecuteRequestRejectsUnknownCachePolicy(t *testing.T) {
 	}
 	ch, err := svc.Execute(context.Background(), ServiceExecuteRequest{
 		Prompt:      "irrelevant",
-		Harness:     "agent",
+		Harness:     "fiz",
 		CachePolicy: "aggressive",
 	})
 	if err == nil {

@@ -37,7 +37,7 @@ func TestListHarnesses_shape(t *testing.T) {
 
 	// All builtins must appear.
 	expected := []string{
-		"codex", "claude", "gemini", "opencode", "agent",
+		"codex", "claude", "gemini", "opencode", "fiz",
 		"pi", "virtual", "script", "openrouter", "lmstudio", "omlx",
 	}
 	for _, name := range expected {
@@ -103,22 +103,22 @@ func TestListHarnesses_shape(t *testing.T) {
 		_ = h.Quota
 	})
 
-	t.Run("agent_native", func(t *testing.T) {
-		h := byName["agent"]
+	t.Run("fiz_native", func(t *testing.T) {
+		h := byName["fiz"]
 		if h.Type != "native" {
-			t.Errorf("agent Type: want native, got %q", h.Type)
+			t.Errorf("fiz Type: want native, got %q", h.Type)
 		}
 		if !h.IsLocal {
-			t.Errorf("agent IsLocal: want true")
+			t.Errorf("fiz IsLocal: want true")
 		}
 		if !h.AutoRoutingEligible {
-			t.Errorf("agent AutoRoutingEligible: want true")
+			t.Errorf("fiz AutoRoutingEligible: want true")
 		}
 		if h.CostClass != "local" {
-			t.Errorf("agent CostClass: want local, got %q", h.CostClass)
+			t.Errorf("fiz CostClass: want local, got %q", h.CostClass)
 		}
 		if !h.Available {
-			t.Errorf("agent Available: want true (embedded)")
+			t.Errorf("fiz Available: want true (embedded)")
 		}
 		if h.DefaultModel != "" {
 			t.Errorf("agent DefaultModel: want empty, got %q", h.DefaultModel)
@@ -268,7 +268,7 @@ func TestListHarnesses_shape(t *testing.T) {
 				QuotaStatus:     capStatus(fizeau.HarnessCapabilityUnsupported),
 				RecordReplay:    capStatus(fizeau.HarnessCapabilityUnsupported),
 			},
-			"agent": {
+			"fiz": {
 				ExecutePrompt:   capStatus(fizeau.HarnessCapabilityRequired),
 				ModelDiscovery:  capStatus(fizeau.HarnessCapabilityOptional),
 				ModelPinning:    capStatus(fizeau.HarnessCapabilityOptional),

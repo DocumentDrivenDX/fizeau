@@ -210,7 +210,7 @@ func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
 		Profile: "smart",
-		Harness: "agent",
+		Harness: "fiz",
 	})
 	if err == nil {
 		t.Fatal("expected Execute to return typed error")
@@ -228,7 +228,7 @@ func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
 	if !errors.As(err, &typed) {
 		t.Fatalf("errors.As should extract ErrProfilePinConflict: %T %v", err, err)
 	}
-	if typed.Profile != "smart" || typed.ConflictingPin != "Harness=agent" || typed.ProfileConstraint != "subscription-only" {
+	if typed.Profile != "smart" || typed.ConflictingPin != "Harness=fiz" || typed.ProfileConstraint != "subscription-only" {
 		t.Fatalf("typed error=%#v, want smart/Harness=agent/subscription-only", typed)
 	}
 }
@@ -252,7 +252,7 @@ func TestExecute_NativePathWithFakeProvider(t *testing.T) {
 
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "hi",
-		Harness:  "agent",
+		Harness:  "fiz",
 		Model:    "fake-model",
 		Provider: "fake",
 		Metadata: map[string]string{"bead_id": "test-bead-1"},
@@ -282,7 +282,7 @@ func TestExecute_NativePathWithFakeProvider(t *testing.T) {
 	if *payload.Usage.InputTokens != 10 || *payload.Usage.OutputTokens != 5 || *payload.Usage.TotalTokens != 15 {
 		t.Fatalf("usage tokens: got %#v, want input=10 output=5 total=15", payload.Usage)
 	}
-	if payload.RoutingActual == nil || payload.RoutingActual.Harness != "agent" || payload.RoutingActual.Provider != "fake" || payload.RoutingActual.Model != "fake-model" {
+	if payload.RoutingActual == nil || payload.RoutingActual.Harness != "fiz" || payload.RoutingActual.Provider != "fake" || payload.RoutingActual.Model != "fake-model" {
 		t.Fatalf("routing_actual: got %#v", payload.RoutingActual)
 	}
 	// First event is the routing_decision.
@@ -307,7 +307,7 @@ func TestDrainExecute_NativeServiceExecuteWithFakeProvider(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:   "review",
-		Harness:  "agent",
+		Harness:  "fiz",
 		Model:    "fake-model",
 		Provider: "fake",
 	})
@@ -327,7 +327,7 @@ func TestDrainExecute_NativeServiceExecuteWithFakeProvider(t *testing.T) {
 	if result.Usage == nil || result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 12 {
 		t.Fatalf("Usage: got %#v", result.Usage)
 	}
-	if result.RoutingActual == nil || result.RoutingActual.Harness != "agent" {
+	if result.RoutingActual == nil || result.RoutingActual.Harness != "fiz" {
 		t.Fatalf("RoutingActual: got %#v", result.RoutingActual)
 	}
 }
@@ -360,7 +360,7 @@ func TestRequestExecutionDoesNotFetchRemoteManifest(t *testing.T) {
 
 		ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 			Prompt:   "ping",
-			Harness:  "agent",
+			Harness:  "fiz",
 			Provider: "anthropic",
 			Model:    "fake-model",
 		})
@@ -401,7 +401,7 @@ func TestRequestExecutionDoesNotFetchRemoteManifest(t *testing.T) {
 		}
 
 		_, _ = svc.ResolveRoute(context.Background(), fizeau.RouteRequest{
-			Harness: "agent",
+			Harness: "fiz",
 		})
 		if got := hits.Load(); got != 0 {
 			t.Fatalf("remote fetch hits = %d, want 0", got)
@@ -426,7 +426,7 @@ func TestExecute_NativeReasoningForwarded(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:    "hi",
-		Harness:   "agent",
+		Harness:   "fiz",
 		Provider:  "fake",
 		Model:     "fake-model",
 		Reasoning: fizeau.ReasoningOff,
@@ -464,7 +464,7 @@ func TestExecute_NativeSamplingForwarded(t *testing.T) {
 	seed := int64(98765)
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
-		Harness:     "agent",
+		Harness:     "fiz",
 		Provider:    "fake",
 		Model:       "fake-model",
 		Temperature: &temperature,
@@ -508,7 +508,7 @@ func TestExecute_NativeUnrestrictedToolsForwarded(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
-		Harness:     "agent",
+		Harness:     "fiz",
 		Provider:    "fake",
 		Model:       "fake-model",
 		WorkDir:     t.TempDir(),
@@ -530,8 +530,8 @@ func TestExecute_NativeUnrestrictedToolsForwarded(t *testing.T) {
 			t.Fatalf("hook tools missing %q: %v", name, hookTools)
 		}
 	}
-	if hookHarness != "agent" {
-		t.Fatalf("ToolWiringHook harness = %q, want agent", hookHarness)
+	if hookHarness != "fiz" {
+		t.Fatalf("ToolWiringHook harness = %q, want fiz", hookHarness)
 	}
 	if !reflect.DeepEqual(providerTools, hookTools) {
 		t.Fatalf("provider tools and hook tools differ:\nprovider=%v\nhook=%v", providerTools, hookTools)
@@ -555,7 +555,7 @@ func TestExecute_NativeSafePermissionExposesReadOnlyTools(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
-		Harness:     "agent",
+		Harness:     "fiz",
 		Provider:    "fake",
 		Model:       "fake-model",
 		WorkDir:     t.TempDir(),
@@ -592,7 +592,7 @@ func TestExecute_NativeSupervisedPermissionRejected(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "hi",
-		Harness:     "agent",
+		Harness:     "fiz",
 		Provider:    "fake",
 		Model:       "fake-model",
 		Permissions: "supervised",
@@ -639,7 +639,7 @@ func TestExecute_NativeReadToolEmitsToolEvents(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:   "read the fixture",
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "fake",
 		Model:    "fake-model",
 		WorkDir:  workDir,
@@ -735,7 +735,7 @@ func TestExecute_StallPolicy_ReadOnlyTrigger(t *testing.T) {
 	}
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "stall please",
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "fake",
 		Model:    "fake-model",
 		StallPolicy: &fizeau.StallPolicy{
@@ -787,7 +787,7 @@ func TestExecute_StallPolicy_NonMutatingBashCountsAsNoProgress(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:      "stall on bash",
-		Harness:     "agent",
+		Harness:     "fiz",
 		Provider:    "fake",
 		Model:       "fake-model",
 		WorkDir:     t.TempDir(),
@@ -839,7 +839,7 @@ func TestExecute_OrphanModelFails(t *testing.T) {
 	}
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
-		Harness: "agent",
+		Harness: "fiz",
 		Model:   "no-such-model",
 	}
 	ch, err := svc.Execute(context.Background(), req)
@@ -880,7 +880,7 @@ func TestExecute_TimeoutWallClock(t *testing.T) {
 	}
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "hi",
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "fake",
 		Model:    "fake-model",
 		Timeout:  100 * time.Millisecond,
@@ -923,7 +923,7 @@ func TestExecute_MetadataEchoedOnEvents(t *testing.T) {
 	}
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "hi",
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "fake",
 		Model:    "fake-model",
 		Metadata: wantMeta,
@@ -966,7 +966,7 @@ func TestExecute_SessionLogDirOverride(t *testing.T) {
 	dir := t.TempDir()
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:        "hi",
-		Harness:       "agent",
+		Harness:       "fiz",
 		Provider:      "fake",
 		Model:         "fake-model",
 		SessionLogDir: dir,
@@ -993,7 +993,7 @@ func TestExecute_SessionLogDirOverride(t *testing.T) {
 }
 
 // TestExecute_NativeSessionLogPreservesFullTrace locks in the contract that
-// kept-sandbox bundles for the native ("agent") harness preserve a complete
+// kept-sandbox bundles for the native ("fiz") harness preserve a complete
 // session trace — not just session.start + session.end. Benchmark reruns and
 // post-mortem debugging need to see llm.request / llm.response (and tool.call
 // when applicable) to reconstruct what the loop did, so the runNative
@@ -1013,7 +1013,7 @@ func TestExecute_NativeSessionLogPreservesFullTrace(t *testing.T) {
 	dir := t.TempDir()
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:        "hi",
-		Harness:       "agent",
+		Harness:       "fiz",
 		Provider:      "fake",
 		Model:         "fake-model",
 		SessionLogDir: dir,
@@ -1104,7 +1104,7 @@ func TestExecute_OSCancelDuringStreaming(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:   "hi",
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "fake",
 		Model:    "fake-model",
 	}
@@ -1185,7 +1185,7 @@ func firstUserMessageContent(fr fizeau.FakeRequest) string {
 func TestRunNative_BenchmarkPresetEnablesPlanning(t *testing.T) {
 	calls, _ := runNativePlanningCase(t, fizeau.ServiceExecuteRequest{
 		Prompt:       "implement feature X",
-		Harness:      "agent",
+		Harness:      "fiz",
 		Model:        "fake-model",
 		Provider:     "fake",
 		ToolPreset:   "benchmark",
@@ -1210,7 +1210,7 @@ func TestRunNative_BenchmarkPresetEnablesPlanning(t *testing.T) {
 func TestRunNative_PlanningModeFlag(t *testing.T) {
 	calls, _ := runNativePlanningCase(t, fizeau.ServiceExecuteRequest{
 		Prompt:       "implement feature Y",
-		Harness:      "agent",
+		Harness:      "fiz",
 		Model:        "fake-model",
 		Provider:     "fake",
 		ToolPreset:   "default",
@@ -1236,7 +1236,7 @@ func TestRunNative_PlanningModeFlag(t *testing.T) {
 func TestRunNative_NoPlanningByDefault(t *testing.T) {
 	calls, _ := runNativePlanningCase(t, fizeau.ServiceExecuteRequest{
 		Prompt:     "implement feature Z",
-		Harness:    "agent",
+		Harness:    "fiz",
 		Model:      "fake-model",
 		Provider:   "fake",
 		ToolPreset: "default",

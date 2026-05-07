@@ -10,12 +10,12 @@ import (
 
 func TestRouteProgressData_IncludesEconomicsWhenPresent(t *testing.T) {
 	payload := routeProgressData(RouteDecision{
-		Harness:  "agent",
+		Harness:  "fiz",
 		Provider: "alpha",
 		Model:    "model-a",
 		Power:    7,
 		Candidates: []RouteCandidate{{
-			Harness:            "agent",
+			Harness:            "fiz",
 			Provider:           "alpha",
 			Model:              "model-a",
 			CostUSDPer1kTokens: 0.012,
