@@ -233,12 +233,12 @@ func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
 		return filepath.Join(dir, file), nil
 	}
 	svc := &service{opts: ServiceOptions{}, registry: registry}
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Harness: "codex"})
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "smart"})
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
 	}
-	if dec.Harness != "codex" || dec.Model != "gpt-5.4" {
-		t.Fatalf("ResolveRoute: got harness=%q model=%q, want codex gpt-5.4", dec.Harness, dec.Model)
+	if dec.Harness != "codex" || dec.Model != "gpt-5.5" {
+		t.Fatalf("ResolveRoute: got harness=%q model=%q, want codex gpt-5.5", dec.Harness, dec.Model)
 	}
 }
 
@@ -404,9 +404,9 @@ func TestResolveRoute_GeminiProfilesUseCatalogModels(t *testing.T) {
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 
 	for profile, want := range map[string]string{
-		"smart":    "gemini-2.5-flash",
+		"smart":    "gemini-2.5-pro",
 		"standard": "gemini-2.5-flash",
-		"cheap":    "gemini-2.5-flash",
+		"cheap":    "gemini-2.5-flash-lite",
 	} {
 		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Harness: "gemini", Profile: profile})
 		if err != nil {
