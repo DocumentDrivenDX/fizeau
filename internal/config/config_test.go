@@ -118,7 +118,7 @@ max_iterations: 15
 	assert.Equal(t, "qwen3.5-7b", p.Model)
 }
 
-func TestLoad_EndpointOnlyBlocksExpandToProviders(t *testing.T) {
+func TestLoad_EndpointIdentityDerivation(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
 	cfgDir := filepath.Join(dir, ".fizeau")

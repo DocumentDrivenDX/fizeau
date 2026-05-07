@@ -135,6 +135,70 @@ func TestSmellProviderFieldDayOne(t *testing.T) {
 	}
 }
 
+func TestResolveServerInstanceIdentityFlowsThroughDecisionAndLoadResolver(t *testing.T) {
+	var gotProvider, gotEndpoint, gotModel string
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "fiz",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportedReasoning:  []string{"low", "medium", "high"},
+				SupportedPerms:      []string{"safe", "supervised", "unrestricted"},
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{
+						Name:           "local",
+						BaseURL:        "http://grendel:8000/v1",
+						ServerInstance: "shared-grendel",
+						EndpointName:   "primary",
+						DefaultModel:   "model-a",
+						CostClass:      "local",
+						SupportsTools:  true,
+					},
+				},
+			},
+		},
+		ModelEligibility: func(model string) (ModelEligibility, bool) {
+			if model != "model-a" {
+				return ModelEligibility{}, false
+			}
+			return ModelEligibility{Power: 7, AutoRoutable: true}, true
+		},
+		EndpointLoadResolver: func(provider, endpoint, model string) (EndpointLoad, bool) {
+			gotProvider, gotEndpoint, gotModel = provider, endpoint, model
+			return EndpointLoad{NormalizedLoad: 0.25, UtilizationFresh: true}, true
+		},
+		Now: time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{Harness: "fiz", Model: "model-a"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("Resolve returned nil decision")
+	}
+	if dec.ServerInstance != "shared-grendel" {
+		t.Fatalf("decision=%#v, want shared-grendel server instance", dec)
+	}
+	if len(dec.Candidates) != 1 {
+		t.Fatalf("Candidates=%#v, want 1", dec.Candidates)
+	}
+	if dec.Candidates[0].ServerInstance != "shared-grendel" {
+		t.Fatalf("candidate=%#v, want shared-grendel server instance", dec.Candidates[0])
+	}
+	if gotProvider != "local" || gotEndpoint != "shared-grendel" || gotModel != "model-a" {
+		t.Fatalf("EndpointLoadResolver saw %q/%q/%q, want local/shared-grendel/model-a", gotProvider, gotEndpoint, gotModel)
+	}
+}
+
 func TestExplicitProviderPinDoesNotSubstituteAvailableProvider(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
