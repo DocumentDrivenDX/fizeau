@@ -43,4 +43,4 @@ See also:
 
 - [Candidate selection](best-provider.md)
 - [Hard pins](override-precedence.md)
-- [Legacy name surface](profiles.md)
+- [Profiles and power bounds](profiles.md)

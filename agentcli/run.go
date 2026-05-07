@@ -128,7 +128,7 @@ func runWithOptions(opts Options) int {
 	backendFlag := fs.String("backend", "", "Deprecated named backend pool from config")
 	harnessFlag := fs.String("harness", "", "Harness hard pin (selects a specific harness)")
 	model := fs.String("model", "", "Model route key or explicit concrete model override")
-	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target)")
+	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target; deprecated targets fail with replacement guidance)")
 	listModels := fs.Bool("list-models", false, "List available models with routing metadata")
 	minPower := fs.Int("min-power", 0, "Minimum catalog model power for automatic routing")
 	maxPower := fs.Int("max-power", 0, "Maximum catalog model power for automatic routing")

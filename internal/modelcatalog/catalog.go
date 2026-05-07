@@ -202,12 +202,27 @@ func (e *MissingSurfaceError) Error() string {
 
 // DeprecatedTargetError indicates that a deprecated or stale target was resolved in strict mode.
 type DeprecatedTargetError struct {
-	CanonicalID string
-	Status      string
-	Replacement string
+	CanonicalID       string
+	Status            string
+	Replacement       string
+	SuggestedProfile  string
+	SuggestedMinPower int
+	SuggestedMaxPower int
 }
 
 func (e *DeprecatedTargetError) Error() string {
+	if e.SuggestedProfile != "" {
+		if e.SuggestedMinPower > 0 && e.SuggestedMaxPower > 0 {
+			return fmt.Sprintf(
+				"modelcatalog: target %q is %s; use --profile %s or --min-power %d --max-power %d",
+				e.CanonicalID, e.Status, e.SuggestedProfile, e.SuggestedMinPower, e.SuggestedMaxPower,
+			)
+		}
+		return fmt.Sprintf(
+			"modelcatalog: target %q is %s; use --profile %s",
+			e.CanonicalID, e.Status, e.SuggestedProfile,
+		)
+	}
 	if e.Replacement == "" {
 		return fmt.Sprintf("modelcatalog: target %q is %s", e.CanonicalID, e.Status)
 	}
@@ -707,10 +722,14 @@ func (c *Catalog) resolveTarget(ref, profile, targetID string, opts ResolveOptio
 	status := normalizedStatus(target.Status)
 	deprecated := status != statusActive
 	if deprecated && !opts.AllowDeprecated {
+		suggestedProfile, suggestedMinPower, suggestedMaxPower := c.deprecatedRoutingGuidance(targetID, target.Replacement)
 		return ResolvedTarget{}, &DeprecatedTargetError{
-			CanonicalID: targetID,
-			Status:      status,
-			Replacement: target.Replacement,
+			CanonicalID:       targetID,
+			Status:            status,
+			Replacement:       target.Replacement,
+			SuggestedProfile:  suggestedProfile,
+			SuggestedMinPower: suggestedMinPower,
+			SuggestedMaxPower: suggestedMaxPower,
 		}
 	}
 
@@ -855,4 +874,16 @@ func (m ModelEntry) openRouterID() string {
 // model pin when live discovery confirms availability.
 func (m ModelEntry) AutoRoutable() bool {
 	return normalizedStatus(m.Status) == statusActive && m.Power > 0 && !m.ExactPinOnly
+}
+
+func (c *Catalog) deprecatedRoutingGuidance(targetID, replacement string) (string, int, int) {
+	replacement = strings.TrimSpace(replacement)
+	if replacement == "" {
+		return "", 0, 0
+	}
+	profile, ok := c.Profile(replacement)
+	if !ok {
+		return replacement, 0, 0
+	}
+	return profile.Name, profile.MinPower, profile.MaxPower
 }
