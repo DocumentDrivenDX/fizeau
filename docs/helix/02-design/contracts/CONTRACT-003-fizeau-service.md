@@ -78,7 +78,7 @@ type FizeauService interface {
     // levels, supported reasoning values, and live quota when applicable.
     ListHarnesses(ctx context.Context) ([]HarnessInfo, error)
 
-    // ListProviders returns providers known to the native-agent harness with
+    // ListProviders returns providers known to the native `fiz` harness with
     // live status, configured-default markers, and cooldown state.
     ListProviders(ctx context.Context) ([]ProviderInfo, error)
 
@@ -277,7 +277,7 @@ const (
 func ReasoningTokens(n int) Reasoning
 
 // Tool is the native agent tool interface. ExecuteRequest.Tools is only used
-// by the in-process `agent` harness; subprocess harnesses own their tool
+// by the in-process `fiz` harness; subprocess harnesses own their tool
 // policy internally.
 type Tool interface {
     Name() string
@@ -582,14 +582,14 @@ The pointer-vs-zero distinction matters:
 Historical session-log records are not retroactively re-priced; this
 semantics applies to new runs going forward.
 
-Native `agent` permission modes are enforced by tool exposure at the service
+Native `fiz` permission modes are enforced by tool exposure at the service
 boundary:
 
 - `safe` (and empty/default) exposes only read-only built-ins: `read`, `find`,
   `grep`, and `ls`.
 - `unrestricted` exposes the full native built-in tool set for the request's
   `ToolPreset`.
-- `supervised` is rejected for the native `agent` harness until an approval loop
+- `supervised` is rejected for the native `fiz` harness until an approval loop
   exists. Subprocess harnesses may still implement their own supervised modes.
 
 type RouteRequest struct {
@@ -1849,7 +1849,7 @@ The agent owns these execution-time behaviors. Callers do not opt in or out.
   route; the agent does not retry another candidate.
 
 - **Service-owned native routing and provider construction.** For the embedded
-  `agent` harness, `Execute` resolves configured provider candidates,
+  `fiz` harness, `Execute` resolves configured provider candidates,
   constructs the concrete provider adapter, and dispatches one candidate.
   Callers express intent with `Harness`, `Provider`, `Model`, `ModelRef`,
   `MinPower`, or `MaxPower`, plus the optional `EstimatedPromptTokens`/

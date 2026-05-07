@@ -3,14 +3,14 @@
 ## Problem
 
 The existing harness capability matrix is too broad and too permissive. It mixes
-subprocess harnesses, the native `agent` harness, HTTP provider backends, and
+subprocess harnesses, the native `fiz` harness, HTTP provider backends, and
 test-only replay harnesses in one table. It also marks core primary-harness
-behavior as `optional`, which hides critical gaps in `agent`, `codex`, and
+behavior as `optional`, which hides critical gaps in `fiz`, `codex`, and
 `claude`.
 
 This spec defines the confident baseline for the primary harnesses only:
 
-- `agent`
+- `fiz`
 - `codex`
 - `claude`
 - `gemini`
@@ -44,14 +44,14 @@ can exist in a broader matrix, but this primary baseline is deliberately strict.
 
 | Harness | Run | FinalText | ProgressEvents | Cancel | WorkdirContext | PermissionModes | ListModels | SetModel | ListReasoning | SetReasoning | TokenUsage | QuotaStatus | ErrorStatus | RequestMetadata |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| agent | pass | pass | pass | pass | pass | `safe`, `unrestricted` | pass | pass | pass | pass | pass | n/a | pass | pass |
+| fiz | pass | pass | pass | pass | pass | `safe`, `unrestricted` | pass | pass | pass | pass | pass | n/a | pass | pass |
 | codex | pass | pass | pass | pass | pass | `safe`, `supervised`, `unrestricted` | pass | pass | pass | pass | pass | pass | pass | pass |
 | claude | pass | pass | pass | pass | pass | `safe`, `supervised`, `unrestricted` | pass | pass | pass | pass | pass | pass | pass | pass |
 | gemini | pass | pass | pass | pass | pass | `safe`, `supervised`, `unrestricted` | pass | pass | n/a | n/a | pass | pass, auth-gated | pass | pass |
 
-## Native Agent Evidence
+## Native Fiz Evidence
 
-The native `agent` harness is eligible for automatic routing because its core
+The native `fiz` harness is eligible for automatic routing because its core
 capabilities are covered through `Service.Execute` with provider test doubles.
 Current evidence:
 
@@ -172,11 +172,11 @@ The matrix reports the exact supported mode set per primary harness.
 
 Required mode sets:
 
-- `agent`: `safe`, `unrestricted`
+- `fiz`: `safe`, `unrestricted`
 - `codex`: `safe`, `supervised`, `unrestricted`
 - `claude`: `safe`, `supervised`, `unrestricted`
 
-Unsupported modes must be reported explicitly. The native `agent` harness does
+Unsupported modes must be reported explicitly. The native `fiz` harness does
 not pass a three-mode check by hiding `supervised`; it passes only if the
 reported mode set is exactly documented and enforced.
 
@@ -310,7 +310,7 @@ Quota status is required for subscription harnesses:
 - `codex`
 - `claude`
 
-Quota is `n/a` for the native `agent` harness because quota belongs to the
+Quota is `n/a` for the native `fiz` harness because quota belongs to the
 selected provider backend, not to the harness itself.
 
 Minimum quota states:
