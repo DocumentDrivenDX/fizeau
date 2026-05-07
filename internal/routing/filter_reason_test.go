@@ -40,6 +40,46 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 		assertRejection(t, dec, FilterReasonContextTooSmall)
 	})
 
+	t.Run("unknown context window is also too small for estimated prompts", func(t *testing.T) {
+		in := Inputs{
+			Harnesses: []HarnessEntry{
+				{
+					Name:                "fiz",
+					Surface:             "embedded-openai",
+					CostClass:           "local",
+					IsLocal:             true,
+					AutoRoutingEligible: true,
+					ExactPinSupport:     true,
+					Available:           true,
+					QuotaOK:             true,
+					SubscriptionOK:      true,
+					SupportsTools:       true,
+					Providers: []ProviderEntry{
+						{
+							Name:          "local",
+							SupportsTools: true,
+						},
+					},
+				},
+			},
+		}
+		dec, _ := Resolve(Request{
+			Harness:               "fiz",
+			EstimatedPromptTokens: 100_000,
+		}, in)
+		assertRejection(t, dec, FilterReasonContextTooSmall)
+		if len(dec.Candidates) == 0 {
+			t.Fatal("expected at least one candidate in decision")
+		}
+		c := dec.Candidates[0]
+		if c.ContextLength != 0 {
+			t.Fatalf("unknown candidate context length = %d, want 0", c.ContextLength)
+		}
+		if c.ContextSource != "" && c.ContextSource != ContextSourceUnknown {
+			t.Fatalf("unknown candidate context source = %q, want %q or empty", c.ContextSource, ContextSourceUnknown)
+		}
+	})
+
 	t.Run("no tool support", func(t *testing.T) {
 		in := Inputs{
 			Harnesses: []HarnessEntry{
