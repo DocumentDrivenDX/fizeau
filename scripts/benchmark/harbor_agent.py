@@ -326,6 +326,7 @@ class FizeauAgent(BaseInstalledAgent):
             f'mkdir -p "$work_dir/.fizeau" "$HOME/.fizeau"; '
             f'cp {_CONFIG_TARGET} "$work_dir/.fizeau/config.yaml" 2>/dev/null || true; '
             f'cp {_CONFIG_TARGET} "$HOME/.fizeau/config.yaml" 2>/dev/null || true; '
+            f"{self._runtime_fizeau_config_command()}"
             f"mkdir -p {_SESSION_LOG_DIR}; "
             f"{self._wrapped_harness_config_command()}"
             f"env | grep '^FIZEAU_' > {_TARGET_ENV} 2>/dev/null || true; "
@@ -353,6 +354,24 @@ class FizeauAgent(BaseInstalledAgent):
             f"  }} >> {_OUTPUT_LOG}; "
             "fi; "
             'exit "$fiz_rc"'
+        )
+
+    def _runtime_fizeau_config_command(self) -> str:
+        return (
+            'if [ -n "${FIZEAU_PROVIDER:-}" ] && [ -n "${FIZEAU_BASE_URL:-}" ]; then '
+            'api_key_line=""; '
+            'if [ -n "${FIZEAU_API_KEY:-}" ]; then api_key_line="    api_key: ${FIZEAU_API_KEY}"; fi; '
+            'cat > "$work_dir/.fizeau/config.yaml" <<EOF\n'
+            "providers:\n"
+            "  ${FIZEAU_PROVIDER}:\n"
+            "    type: ${FIZEAU_PROVIDER}\n"
+            "    base_url: ${FIZEAU_BASE_URL}\n"
+            "    model: ${FIZEAU_MODEL}\n"
+            "${api_key_line}\n"
+            "default: ${FIZEAU_PROVIDER}\n"
+            "EOF\n"
+            'cp "$work_dir/.fizeau/config.yaml" "$HOME/.fizeau/config.yaml" 2>/dev/null || true; '
+            "fi; "
         )
 
     def _wrapped_harness_config_command(self) -> str:
