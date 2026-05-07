@@ -227,30 +227,52 @@ class FizeauAgent(BaseInstalledAgent):
                 env["FIZEAU_API_KEY"] = api_key_val
         return env
 
-    @with_prompt_template
-    async def run(
-        self,
-        instruction: str,
-        environment: BaseEnvironment,
-        context: AgentContext,
-    ) -> None:
-        del context
+    def _target_metadata(self) -> dict[str, dict[str, str]]:
+        requested = {
+            "harness": os.environ.get("FIZEAU_HARNESS", ""),
+            "provider": os.environ.get("FIZEAU_PROVIDER", ""),
+            "model": os.environ.get("FIZEAU_MODEL", ""),
+            "model_ref": os.environ.get("FIZEAU_MODEL_REF", ""),
+            "reasoning": os.environ.get("FIZEAU_REASONING", ""),
+        }
+        resolved = dict(requested)
+        base_url = os.environ.get("FIZEAU_BASE_URL", "")
+        if requested["provider"] == "openai-compat" and "openrouter" in base_url:
+            resolved["provider"] = "openrouter"
+        return {"requested": requested, "resolved": resolved}
 
-        # fiz writes its session JSONL to <workdir>/.fizeau/sessions/ by
-        # default (DefaultSessionLogDir). Harbor downloads /logs/agent into
-        # the adapter's logs_dir, so we mirror the JSONL files into
-        # /logs/agent/sessions/ after fiz exits; populate_context_post_run
-        # reads that downloaded directory when building trajectory.json.
-        command = (
+    def _build_command(self, env: dict[str, str]) -> str:
+        args = [
+            shlex.quote(_BINARY_TARGET),
+            "--json",
+            "--preset",
+            "default",
+        ]
+        for flag, key in (
+            ("--harness", "FIZEAU_HARNESS"),
+            ("--provider", "FIZEAU_PROVIDER"),
+            ("--model", "FIZEAU_MODEL"),
+            ("--model-ref", "FIZEAU_MODEL_REF"),
+            ("--reasoning", "FIZEAU_REASONING"),
+        ):
+            value = env.get(key, "")
+            if value:
+                args.extend([flag, shlex.quote(value)])
+        args.extend([
+            "--work-dir",
+            '"$work_dir"',
+            "-p",
+            '"$HARBOR_INSTRUCTION"',
+        ])
+
+        return (
             "set -uo pipefail; "
             "cd /testbed 2>/dev/null || cd /workspace 2>/dev/null || true; "
             'work_dir="$(pwd)"; '
             f'cp {_AGENTS_MD_TARGET} "$(pwd)/AGENTS.md" 2>/dev/null || true; '
             f"mkdir -p {_SESSION_LOG_DIR}; "
-            f"{_BINARY_TARGET} --json --preset default "
-            '--work-dir "$work_dir" '
-            '-p "$HARBOR_INSTRUCTION" '
-            f'2>&1 | stdbuf -oL tee {_OUTPUT_LOG}; '
+            f"{' '.join(args)} "
+            f"2>&1 | stdbuf -oL tee {_OUTPUT_LOG}; "
             'fiz_rc=${PIPESTATUS[0]}; '
             'for session_root in "$work_dir/.fizeau/sessions" "$HOME/.fizeau/sessions"; do '
             '  if [ -d "$session_root" ]; then '
@@ -268,10 +290,25 @@ class FizeauAgent(BaseInstalledAgent):
             'exit "$fiz_rc"'
         )
 
+    @with_prompt_template
+    async def run(
+        self,
+        instruction: str,
+        environment: BaseEnvironment,
+        context: AgentContext,
+    ) -> None:
+        del context
+        env = self._run_env(instruction)
+
+        # fiz writes its session JSONL to <workdir>/.fizeau/sessions/ by
+        # default (DefaultSessionLogDir). Harbor downloads /logs/agent into
+        # the adapter's logs_dir, so we mirror the JSONL files into
+        # /logs/agent/sessions/ after fiz exits; populate_context_post_run
+        # reads that downloaded directory when building trajectory.json.
         await self.exec_as_agent(
             environment,
-            command=command,
-            env=self._run_env(instruction),
+            command=self._build_command(env),
+            env=env,
         )
 
     def populate_context_post_run(self, context: AgentContext) -> None:
@@ -406,6 +443,7 @@ class FizeauAgent(BaseInstalledAgent):
                 "version": self.version() or "unknown",
                 "model_name": model_name,
             },
+            "target": self._target_metadata(),
             "steps": steps,
             "final_metrics": {
                 "total_prompt_tokens": total_input,
@@ -463,6 +501,7 @@ class FizeauAgent(BaseInstalledAgent):
                 "version": self.version() or "unknown",
                 "model_name": self.model_name or "",
             },
+            "target": self._target_metadata(),
             "steps": [],
             "final_metrics": {
                 "total_prompt_tokens": 0,
