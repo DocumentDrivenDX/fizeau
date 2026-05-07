@@ -51,8 +51,9 @@ can exist in a broader matrix, but this primary baseline is deliberately strict.
 
 ## Native Fiz Evidence
 
-The native `fiz` harness is eligible for automatic routing because its core
-capabilities are covered through `Service.Execute` with provider test doubles.
+The native `fiz` harness identity is eligible for automatic routing because its
+core capabilities are covered through `Service.Execute` with provider test
+doubles.
 Current evidence:
 
 | Capability | Evidence |
