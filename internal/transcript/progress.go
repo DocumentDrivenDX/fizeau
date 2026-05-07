@@ -10,8 +10,8 @@ import (
 const (
 	DefaultLineLimit         = 80
 	ExceptionalToolLineLimit = 120
-	compactElapsedWidth     = 7
-	compactTurnWidth        = 2
+	compactElapsedWidth      = 7
+	compactTurnWidth         = 2
 )
 
 type ProgressType string

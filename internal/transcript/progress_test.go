@@ -5,11 +5,11 @@ import "testing"
 func TestStatusLineIncludesTaskAndTurn(t *testing.T) {
 	got := StatusLine(StatusLineInput{
 		TaskID:    "ddx-1234",
-		TurnIndex: 22,
+		TurnIndex: 7,
 		Message:   "add test implementation to cli/internal/file.go",
 		Limit:     DefaultLineLimit,
 	})
-	want := "ddx-1234 #22 add test implementation to cli/internal/file.go"
+	want := "ddx-1234 # 7 add test implementation to cli/internal/file.go"
 	if got != want {
 		t.Fatalf("StatusLine()=%q, want %q", got, want)
 	}
@@ -23,7 +23,7 @@ func TestStatusLineIncludesElapsedSincePreviousUpdate(t *testing.T) {
 		SinceLastMS: 31624,
 		Limit:       DefaultLineLimit,
 	})
-	want := "ddx-1234 #22 +32s go test ./cmd/bench"
+	want := "ddx-1234 #22    +32s go test ./cmd/bench"
 	if got != want {
 		t.Fatalf("StatusLine()=%q, want %q", got, want)
 	}
@@ -35,10 +35,10 @@ func TestCompactElapsedUsesSecondGranularityUnderEightChars(t *testing.T) {
 		ms   int64
 		want string
 	}{
-		{name: "subsecond rounds up", ms: 250, want: "+1s"},
-		{name: "seconds", ms: 31_624, want: "+32s"},
-		{name: "minutes", ms: 4_321_000, want: "+1h12m"},
-		{name: "double-digit hours", ms: 36_000_000, want: "+10h"},
+		{name: "subsecond rounds up", ms: 250, want: "    +1s"},
+		{name: "seconds", ms: 31_624, want: "   +32s"},
+		{name: "minutes", ms: 4_321_000, want: " +1h12m"},
+		{name: "double-digit hours", ms: 36_000_000, want: "   +10h"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
