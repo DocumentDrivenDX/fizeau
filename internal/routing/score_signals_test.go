@@ -80,14 +80,14 @@ func TestResolvePenalizesUnknownUtilizationAndPerformance(t *testing.T) {
 	if known.ScoreComponents["utilization"] == 0 {
 		t.Fatalf("known utilization score component=%v, want explicit known-load adjustment", known.ScoreComponents["utilization"])
 	}
-	if unknown.ScoreComponents["utilization"] != 0 {
-		t.Fatalf("unknown utilization score component=%v, want 0 for unknown load", unknown.ScoreComponents["utilization"])
+	if unknown.ScoreComponents["utilization"] >= 0 {
+		t.Fatalf("unknown utilization score component=%v, want explicit penalty", unknown.ScoreComponents["utilization"])
 	}
 	if known.ScoreComponents["performance"] <= 0 {
 		t.Fatalf("known performance score component=%v, want positive known performance", known.ScoreComponents["performance"])
 	}
-	if unknown.ScoreComponents["performance"] != 0 {
-		t.Fatalf("unknown performance score component=%v, want 0 for unknown performance", unknown.ScoreComponents["performance"])
+	if unknown.ScoreComponents["performance"] >= 0 {
+		t.Fatalf("unknown performance score component=%v, want explicit penalty", unknown.ScoreComponents["performance"])
 	}
 	if known.StickyAffinity != 0 || unknown.StickyAffinity != 0 {
 		t.Fatalf("unexpected sticky affinity components: known=%v unknown=%v", known.StickyAffinity, unknown.StickyAffinity)
