@@ -283,10 +283,10 @@ version: 2
 generated_at: 2026-04-10T00:00:00Z
 catalog_version: 2026-04-11.1
 profiles:
-  code-high:
-    target: code-high
+  smart:
+    target: smart
 targets:
-  code-high:
+  smart:
     family: coding-tier
     surfaces:
       agent.openai: gpt-5.4
@@ -298,7 +298,7 @@ targets:
 	cfg := Defaults()
 	catalog, err := cfg.LoadModelCatalog()
 	require.NoError(t, err)
-	resolved, err := catalog.Resolve("code-high", modelcatalog.ResolveOptions{
+	resolved, err := catalog.Resolve("smart", modelcatalog.ResolveOptions{
 		Surface: modelcatalog.SurfaceAgentOpenAI,
 	})
 	require.NoError(t, err)
@@ -522,7 +522,7 @@ func TestResolveProviderConfig_ModelRefOpenAI(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
 	assert.Equal(t, "gpt-5.4-mini", pc.Model)
-	assert.Equal(t, "code-medium", resolved.CanonicalID)
+	assert.Equal(t, "standard", resolved.CanonicalID)
 }
 
 func TestResolveProviderConfig_ModelRefAnthropic(t *testing.T) {
@@ -542,7 +542,7 @@ func TestResolveProviderConfig_ModelRefAnthropic(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
 	assert.Equal(t, "opus-4.7", pc.Model)
-	assert.Equal(t, "code-high", resolved.CanonicalID)
+	assert.Equal(t, "smart", resolved.CanonicalID)
 }
 
 func TestResolveProviderConfig_ExplicitModelBypassesCatalog(t *testing.T) {
@@ -643,7 +643,7 @@ func TestBuildProviderWithOverrides(t *testing.T) {
 	assert.NotNil(t, p)
 	assert.Equal(t, "opus-4.7", pc.Model)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "code-high", resolved.CanonicalID)
+	assert.Equal(t, "smart", resolved.CanonicalID)
 }
 
 func TestResolveProviderConfig_AllowDeprecated(t *testing.T) {
@@ -920,7 +920,7 @@ func TestResolveBackend_WithModelRef(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
 	assert.Equal(t, "opus-4.7", pc.Model)
-	assert.Equal(t, "code-high", resolved.CanonicalID)
+	assert.Equal(t, "smart", resolved.CanonicalID)
 }
 
 func TestResolveBackend_OverrideModelRef(t *testing.T) {

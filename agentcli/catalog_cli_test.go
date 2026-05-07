@@ -577,7 +577,9 @@ func TestCLI_CatalogShow_EmbeddedFallback(t *testing.T) {
 	output := string(out)
 	assert.Contains(t, output, "source: embedded")
 	assert.Contains(t, output, "catalog_version: 2026-04-30.1")
-	assert.Contains(t, output, "code-high:")
+	assert.Contains(t, output, "smart:")
+	assert.Contains(t, output, "standard:")
+	assert.Contains(t, output, "cheap:")
 	assert.Contains(t, output, "agent.openai: gpt-5.5")
 	assert.Contains(t, output, "agent.anthropic: opus-4.7")
 	// ADR-007 §7: catalog show advertises declared sampling profiles so

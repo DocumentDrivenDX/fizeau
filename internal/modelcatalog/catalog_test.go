@@ -26,11 +26,11 @@ func loadFixtureCatalog(t *testing.T) *Catalog {
 version: 1
 generated_at: 2026-04-10T00:00:00Z
 profiles:
-  code-high:
+  smart:
     min_power: 9
     max_power: 10
     compatibility_target: alpha-smart
-  code-medium:
+  standard:
     min_power: 7
     max_power: 8
     compatibility_target: beta-fast
@@ -73,12 +73,12 @@ func TestDefault_LoadsEmbeddedManifest(t *testing.T) {
 	catalog, err := Default()
 	require.NoError(t, err)
 
-	resolved, err := catalog.Current("code-high", ResolveOptions{
+	resolved, err := catalog.Current("smart", ResolveOptions{
 		Surface: SurfaceAgentAnthropic,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "code-high", resolved.Profile)
-	assert.Equal(t, "code-high", resolved.CanonicalID)
+	assert.Equal(t, "smart", resolved.Profile)
+	assert.Equal(t, "smart", resolved.CanonicalID)
 	assert.Equal(t, "opus-4.7", resolved.ConcreteModel)
 	assert.Equal(t, reasoning.ReasoningHigh, resolved.SurfacePolicy.ReasoningDefault)
 	assert.Equal(t, "embedded", resolved.ManifestSource)
@@ -98,9 +98,9 @@ func TestDefault_ReasoningDefaultsByTier(t *testing.T) {
 		{ref: "cheap", want: reasoning.ReasoningOff, min: 5, max: 5},
 		{ref: "code-economy", want: reasoning.ReasoningOff, min: 5, max: 5},
 		{ref: "standard", want: reasoning.ReasoningOff, min: 7, max: 8},
-		{ref: "code-medium", want: reasoning.ReasoningOff, min: 7, max: 8},
 		{ref: "smart", want: reasoning.ReasoningHigh, min: 9, max: 10},
-		{ref: "code-high", want: reasoning.ReasoningHigh, min: 9, max: 10},
+		{ref: "code-fast", want: reasoning.ReasoningOff, min: 7, max: 8},
+		{ref: "code-smart", want: reasoning.ReasoningHigh, min: 9, max: 10},
 	}
 
 	for _, tt := range tests {
@@ -130,10 +130,10 @@ func TestDefault_ProfileProviderPreferences(t *testing.T) {
 		max     int
 		want    string
 	}{
-		{profile: "default", target: "code-medium", min: 7, max: 8, want: providerPreferenceLocalFirst},
+		{profile: "default", target: "standard", min: 7, max: 8, want: providerPreferenceLocalFirst},
 		{profile: "local", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
-		{profile: "standard", target: "code-medium", min: 7, max: 8, want: providerPreferenceLocalFirst},
-		{profile: "smart", target: "code-high", min: 9, max: 10, want: providerPreferenceSubscriptionFirst},
+		{profile: "standard", target: "standard", min: 7, max: 8, want: providerPreferenceLocalFirst},
+		{profile: "smart", target: "smart", min: 9, max: 10, want: providerPreferenceSubscriptionFirst},
 		{profile: "cheap", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalFirst},
 		{profile: "offline", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
 		{profile: "air-gapped", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
@@ -167,11 +167,11 @@ func TestResolveAliasFromFixture(t *testing.T) {
 func TestCurrent_ResolveProfile(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 
-	resolved, err := catalog.Current("code-medium", ResolveOptions{
+	resolved, err := catalog.Current("standard", ResolveOptions{
 		Surface: SurfaceAgentOpenAI,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "code-medium", resolved.Profile)
+	assert.Equal(t, "standard", resolved.Profile)
 	assert.Equal(t, "beta-fast", resolved.CanonicalID)
 	assert.Equal(t, "beta-openai-1", resolved.ConcreteModel)
 }
@@ -357,7 +357,7 @@ func TestLoad_FallbackToEmbedded(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "embedded", resolved.ManifestSource)
-	assert.Equal(t, "code-high", resolved.CanonicalID)
+	assert.Equal(t, "smart", resolved.CanonicalID)
 }
 
 func TestLoad_RequireExternal(t *testing.T) {
@@ -495,10 +495,10 @@ version: 2
 generated_at: 2026-04-10T00:00:00Z
 catalog_version: 2026-04-10.1
 profiles:
-  code-high:
-    target: code-high
+  smart:
+    target: smart
 targets:
-  code-high:
+  smart:
     family: coding-tier
     surfaces:
       agent.openai: gpt-5.4
@@ -513,12 +513,12 @@ targets:
 	})
 	require.NoError(t, err)
 
-	resolved, err := catalog.Current("code-high", ResolveOptions{
+	resolved, err := catalog.Current("smart", ResolveOptions{
 		Surface: SurfaceAgentOpenAI,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "code-high", resolved.Profile)
-	assert.Equal(t, "code-high", resolved.CanonicalID)
+	assert.Equal(t, "smart", resolved.Profile)
+	assert.Equal(t, "smart", resolved.CanonicalID)
 	assert.Equal(t, "gpt-5.4", resolved.ConcreteModel)
 	assert.Equal(t, reasoning.ReasoningHigh, resolved.SurfacePolicy.ReasoningDefault)
 }

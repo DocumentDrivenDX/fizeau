@@ -262,9 +262,9 @@ func TestResolveProviderForRun_ModelRef(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
-	assert.Equal(t, "code-high", selection.Route)
+	assert.Equal(t, "smart", selection.Route)
 	assert.Equal(t, "cloud", selection.Provider)
-	assert.Equal(t, "code-high", selection.ResolvedModelRef)
+	assert.Equal(t, "smart", selection.ResolvedModelRef)
 	assert.Equal(t, "opus-4.7", selection.ResolvedModel)
 	assert.Equal(t, "opus-4.7", pc.Model)
 }
@@ -444,9 +444,9 @@ func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
-	assert.Equal(t, "code-medium", selection.Route)
+	assert.Equal(t, "standard", selection.Route)
 	assert.Equal(t, "code-fast", selection.RequestedModelRef)
-	assert.Equal(t, "code-medium", selection.ResolvedModelRef)
+	assert.Equal(t, "standard", selection.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", selection.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", pc.Model)
 }
@@ -481,7 +481,7 @@ func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.
 	assert.NotNil(t, firstProvider)
 	assert.Equal(t, "code-pool", firstSelection.Route)
 	assert.Equal(t, "vidar", firstSelection.Provider)
-	assert.Equal(t, "code-medium", firstSelection.ResolvedModelRef)
+	assert.Equal(t, "standard", firstSelection.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", firstSelection.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", firstConfig.Model)
 
@@ -490,7 +490,7 @@ func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.
 	assert.NotNil(t, secondProvider)
 	assert.Equal(t, "code-pool", secondSelection.Route)
 	assert.Equal(t, "bragi", secondSelection.Provider)
-	assert.Equal(t, "code-medium", secondSelection.ResolvedModelRef)
+	assert.Equal(t, "standard", secondSelection.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", secondSelection.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", secondConfig.Model)
 }
