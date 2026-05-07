@@ -151,6 +151,8 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 		Eligible:           candidate.Eligible,
 		Reason:             candidate.Reason,
 		FilterReason:       publicFilterReason(candidate),
+		ContextLength:      candidate.ContextLength,
+		ContextSource:      candidate.ContextSource,
 		Components: RouteCandidateComponents{
 			Power:            candidate.Power,
 			Cost:             candidate.CostUSDPer1kTokens,
@@ -162,6 +164,7 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 			QuotaPercentUsed: candidate.QuotaPercentUsed,
 			QuotaTrend:       candidate.QuotaTrend,
 			Capability:       capabilityScoreForCostClass(candidate.CostClass),
+			ContextHeadroom:  candidate.ContextHeadroom,
 		},
 	}
 }
@@ -735,18 +738,22 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 			if len(endpoints) > 1 {
 				routeName = endpointProviderRef(providerName, endpoint.Name)
 			}
+			ctxWindows, ctxSources := buildProviderContextWindows(ctx, pcfg, cat, ids)
 			entry := routing.ProviderEntry{
-				Name:               routeName,
-				BaseURL:            endpoint.BaseURL,
-				ServerInstance:     endpoint.ServerInstance,
-				EndpointName:       endpoint.Name,
-				EndpointBaseURL:    endpoint.BaseURL,
-				DefaultModel:       pcfg.Model,
-				CostClass:          providerRoutingCostClass(pcfg.Type),
-				DiscoveredIDs:      ids,
-				DiscoveryAttempted: true,
-				ContextWindows:     buildProviderContextWindows(cat, pcfg.Model, ids),
-				SupportsTools:      providerSupportsTools(cat, pcfg.Model, ids),
+				Name:                 routeName,
+				BaseURL:              endpoint.BaseURL,
+				ServerInstance:       endpoint.ServerInstance,
+				EndpointName:         endpoint.Name,
+				EndpointBaseURL:      endpoint.BaseURL,
+				DefaultModel:         pcfg.Model,
+				CostClass:            providerRoutingCostClass(pcfg.Type),
+				DiscoveredIDs:        ids,
+				DiscoveryAttempted:   true,
+				ContextWindows:       ctxWindows,
+				ContextWindowSources: ctxSources,
+				ContextWindow:        pcfg.ContextWindow,
+				ContextWindowSource:  contextWindowSourceForProviderConfig(pcfg),
+				SupportsTools:        providerSupportsTools(cat, pcfg.Model, ids),
 			}
 			s.applyEndpointRoutingCost(&entry, pcfg, cat)
 			out = append(out, entry)
@@ -759,9 +766,13 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 		ServerInstance: pcfg.ServerInstance,
 		DefaultModel:   pcfg.Model,
 		CostClass:      providerRoutingCostClass(pcfg.Type),
-		ContextWindows: buildProviderContextWindows(cat, pcfg.Model, nil),
-		SupportsTools:  providerSupportsTools(cat, pcfg.Model, nil),
 	}
+	ctxWindows, ctxSources := buildProviderContextWindows(ctx, pcfg, cat, nil)
+	entry.ContextWindows = ctxWindows
+	entry.ContextWindowSources = ctxSources
+	entry.ContextWindow = pcfg.ContextWindow
+	entry.ContextWindowSource = contextWindowSourceForProviderConfig(pcfg)
+	entry.SupportsTools = providerSupportsTools(cat, pcfg.Model, nil)
 	s.applyEndpointRoutingCost(&entry, pcfg, cat)
 	return []routing.ProviderEntry{entry}
 }
@@ -771,14 +782,13 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 // configured DefaultModel and every DiscoveredID that has a non-zero
 // context_window declared in the catalog. Models the catalog does not know
 // about are omitted (engine treats missing entries as unknown context).
-func buildProviderContextWindows(cat *modelcatalog.Catalog, defaultModel string, discoveredIDs []string) map[string]int {
-	if cat == nil {
-		return nil
-	}
+func buildProviderContextWindows(ctx context.Context, pcfg ServiceProviderEntry, cat *modelcatalog.Catalog, discoveredIDs []string) (map[string]int, map[string]string) {
 	out := make(map[string]int)
-	if defaultModel != "" {
-		if n := cat.ContextWindowForModel(defaultModel); n > 0 {
-			out[defaultModel] = n
+	sources := make(map[string]string)
+	if defaultModel := strings.TrimSpace(pcfg.Model); defaultModel != "" {
+		if length, source := resolveContextEvidence(ctx, pcfg, defaultModel, cat); length > 0 {
+			out[defaultModel] = length
+			sources[defaultModel] = source
 		}
 	}
 	for _, id := range discoveredIDs {
@@ -788,14 +798,22 @@ func buildProviderContextWindows(cat *modelcatalog.Catalog, defaultModel string,
 		if _, exists := out[id]; exists {
 			continue
 		}
-		if n := cat.ContextWindowForModel(id); n > 0 {
-			out[id] = n
+		if length, source := resolveContextEvidence(ctx, pcfg, id, cat); length > 0 {
+			out[id] = length
+			sources[id] = source
 		}
 	}
 	if len(out) == 0 {
-		return nil
+		return nil, nil
 	}
-	return out
+	return out, sources
+}
+
+func contextWindowSourceForProviderConfig(pcfg ServiceProviderEntry) string {
+	if pcfg.ContextWindow > 0 {
+		return ContextSourceProviderConfig
+	}
+	return ""
 }
 
 // providerSupportsTools returns whether the provider should be advertised as

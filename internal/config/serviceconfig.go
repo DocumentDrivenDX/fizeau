@@ -67,7 +67,9 @@ func (c *configServiceConfig) Provider(name string) (fizeau.ServiceProviderEntry
 		ServerInstance:   pc.ServerInstance,
 		Endpoints:        endpoints,
 		APIKey:           pc.APIKey,
+		Headers:          pc.Headers,
 		Model:            pc.Model,
+		ContextWindow:    pc.ContextWindow,
 		ConfigError:      c.cfg.ProviderError(name),
 		DailyTokenBudget: pc.DailyTokenBudget,
 	}, true

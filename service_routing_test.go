@@ -27,6 +27,9 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 		CostUSDPer1kTokens: 0.012,
 		CostSource:         routing.CostSourceCatalog,
 		Power:              7,
+		ContextLength:      200000,
+		ContextSource:      routing.ContextSourceCatalog,
+		ContextHeadroom:    150000,
 		Eligible:           true,
 		Reason:             "profile=cheap; score=42.5",
 		LatencyMS:          123,
@@ -55,6 +58,12 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 	if got.Components.Power != 7 || got.Components.SpeedTPS != 55 || got.Components.QuotaPercentUsed != 25 || got.Components.QuotaTrend != routing.QuotaTrendHealthy {
 		t.Fatalf("components=%#v, want power/speed/quota inputs from candidate", got.Components)
 	}
+	if got.ContextLength != candidate.ContextLength || got.ContextSource != candidate.ContextSource {
+		t.Fatalf("context evidence=%d/%q, want %d/%q", got.ContextLength, got.ContextSource, candidate.ContextLength, candidate.ContextSource)
+	}
+	if got.Components.ContextHeadroom != candidate.ContextHeadroom {
+		t.Fatalf("context headroom=%d, want %d", got.Components.ContextHeadroom, candidate.ContextHeadroom)
+	}
 
 	rejected := candidate
 	rejected.Eligible = false
@@ -75,8 +84,9 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	})
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness: "fiz",
-		Model:   "model-a",
+		Harness:               "fiz",
+		Model:                 "model-a",
+		EstimatedPromptTokens: 1_000,
 	})
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
@@ -99,6 +109,12 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	}
 	if candidate.ServerInstance == "" {
 		t.Fatalf("candidate=%#v, want server_instance", candidate)
+	}
+	if candidate.ContextLength == 0 || candidate.ContextSource != ContextSourceDefault {
+		t.Fatalf("candidate context = %d/%q, want default context evidence", candidate.ContextLength, candidate.ContextSource)
+	}
+	if candidate.Components.ContextHeadroom == 0 {
+		t.Fatalf("candidate context headroom should be populated for eligible candidates: %#v", candidate.Components)
 	}
 	if !strings.Contains(candidate.Reason, "score=") {
 		t.Fatalf("eligible candidate Reason=%q, want scoring reason", candidate.Reason)
@@ -811,6 +827,9 @@ func TestBuildRoutingInputsWiresContextWindowsFromCatalog(t *testing.T) {
 	}
 	if got := provider.ContextWindows["small-ctx-model"]; got != 4096 {
 		t.Fatalf("ContextWindows[small-ctx-model]=%d, want 4096 (full map=%#v)", got, provider.ContextWindows)
+	}
+	if got := provider.ContextWindowSources["small-ctx-model"]; got != routing.ContextSourceCatalog {
+		t.Fatalf("ContextWindowSources[small-ctx-model]=%q, want %q (full map=%#v)", got, routing.ContextSourceCatalog, provider.ContextWindowSources)
 	}
 }
 

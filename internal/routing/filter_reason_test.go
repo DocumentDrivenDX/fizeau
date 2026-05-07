@@ -108,6 +108,31 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 		assertRejection(t, dec, FilterReasonUnhealthy)
 	})
 
+	t.Run("unavailable harness carries unknown context evidence", func(t *testing.T) {
+		in := Inputs{
+			Harnesses: []HarnessEntry{
+				{
+					Name:                "fiz",
+					Surface:             "embedded-openai",
+					CostClass:           "local",
+					IsLocal:             true,
+					AutoRoutingEligible: true,
+					Available:           false,
+					QuotaOK:             true,
+					SubscriptionOK:      true,
+				},
+			},
+		}
+		dec, _ := Resolve(Request{Harness: "fiz"}, in)
+		if dec == nil || len(dec.Candidates) == 0 {
+			t.Fatal("expected at least one candidate in decision")
+		}
+		c := dec.Candidates[0]
+		if c.ContextSource != ContextSourceUnknown || c.ContextLength != 0 {
+			t.Fatalf("unknown candidate context = %d/%q, want 0/%q", c.ContextLength, c.ContextSource, ContextSourceUnknown)
+		}
+	})
+
 	t.Run("subscription quota exhausted is unhealthy", func(t *testing.T) {
 		in := Inputs{
 			Harnesses: []HarnessEntry{

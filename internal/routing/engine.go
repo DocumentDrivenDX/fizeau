@@ -37,6 +37,12 @@ const (
 	ProviderPreferenceSubscriptionFirst = "subscription-first"
 	ProviderPreferenceLocalOnly         = "local-only"
 	ProviderPreferenceSubscriptionOnly  = "subscription-only"
+
+	ContextSourceProviderAPI    = "provider_api"
+	ContextSourceProviderConfig = "provider_config"
+	ContextSourceCatalog        = "catalog"
+	ContextSourceDefault        = "default"
+	ContextSourceUnknown        = "unknown"
 )
 
 // MinContextWindow returns the minimum context window the request requires,
@@ -104,17 +110,20 @@ type HarnessEntry struct {
 
 // ProviderEntry describes one provider available under a harness.
 type ProviderEntry struct {
-	Name               string
-	BaseURL            string
-	ServerInstance     string
-	EndpointName       string
-	EndpointBaseURL    string
-	DefaultModel       string
-	CostClass          string
-	DiscoveredIDs      []string // models discovered via /v1/models or equivalent
-	DiscoveryAttempted bool
-	ContextWindows     map[string]int
-	SupportsTools      bool
+	Name                 string
+	BaseURL              string
+	ServerInstance       string
+	EndpointName         string
+	EndpointBaseURL      string
+	DefaultModel         string
+	CostClass            string
+	DiscoveredIDs        []string // models discovered via /v1/models or equivalent
+	DiscoveryAttempted   bool
+	ContextWindows       map[string]int
+	ContextWindowSources map[string]string
+	ContextWindow        int
+	ContextWindowSource  string
+	SupportsTools        bool
 
 	// CostUSDPer1kTokens is the estimated blended USD cost per 1,000 tokens.
 	// A zero value with CostSourceUnknown means the provider cost is unknown.
@@ -161,6 +170,8 @@ type Candidate struct {
 	CostUSDPer1kTokens float64
 	CostSource         string
 	Power              int
+	ContextLength      int
+	ContextSource      string
 	Eligible           bool
 	Reason             string
 
@@ -174,10 +185,11 @@ type Candidate struct {
 	// LatencyMS, SuccessRate, and CostClass expose the score-component
 	// inputs so callers can render per-axis explanations alongside the
 	// final Score. Zero / negative values mean unknown (see Inputs docs).
-	LatencyMS   float64
-	SuccessRate float64
-	CostClass   string
-	SpeedTPS    float64
+	LatencyMS       float64
+	SuccessRate     float64
+	CostClass       string
+	SpeedTPS        float64
+	ContextHeadroom int
 
 	QuotaOK          bool
 	QuotaPercentUsed int
@@ -352,6 +364,9 @@ type candidateInternal struct {
 	CostUSDPer1kTokens    float64
 	CostSource            string
 	Power                 int
+	ContextLength         int
+	ContextSource         string
+	ContextHeadroom       int
 	IsSubscription        bool
 	QuotaOK               bool
 	QuotaPercentUsed      int
@@ -779,11 +794,33 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 	}
 
 	out := make([]rankedCandidate, 0, len(providers))
+	minCtx := req.MinContextWindow()
 	for _, p := range providers {
 		model, reason := resolveModel(h, p, req, in)
 		ctxWin := 0
+		ctxSrc := ContextSourceUnknown
 		if p.ContextWindows != nil {
-			ctxWin = p.ContextWindows[model]
+			if v, ok := p.ContextWindows[model]; ok {
+				ctxWin = v
+			}
+		}
+		if ctxWin > 0 && p.ContextWindowSources != nil {
+			if src, ok := p.ContextWindowSources[model]; ok && src != "" {
+				ctxSrc = src
+			}
+		}
+		if ctxWin == 0 && p.ContextWindow > 0 {
+			ctxWin = p.ContextWindow
+			if p.ContextWindowSource != "" {
+				ctxSrc = p.ContextWindowSource
+			}
+		}
+		if ctxWin == 0 && model != "" {
+			ctxWin = 131072
+			ctxSrc = ContextSourceDefault
+		}
+		if model == "" {
+			ctxSrc = ContextSourceUnknown
 		}
 		entryCaps := caps
 		entryCaps.ContextWindow = ctxWin
@@ -922,6 +959,8 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
 			CostSource:            normalizeCostSource(p.CostSource),
 			Power:                 power,
+			ContextLength:         ctxWin,
+			ContextSource:         ctxSrc,
 			IsSubscription:        h.IsSubscription,
 			QuotaOK:               h.QuotaOK,
 			QuotaPercentUsed:      h.QuotaPercentUsed,
@@ -939,6 +978,9 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			EndpointLoadFresh:     endpointLoad.UtilizationFresh,
 			EndpointSaturated:     endpointLoad.UtilizationSaturated,
 		}
+		if eligible && ctxWin > 0 && minCtx > 0 {
+			ci.ContextHeadroom = ctxWin - minCtx
+		}
 		out = append(out, rankedCandidate{
 			out: Candidate{
 				Harness:            h.Name,
@@ -949,6 +991,8 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				CostUSDPer1kTokens: p.CostUSDPer1kTokens,
 				CostSource:         normalizeCostSource(p.CostSource),
 				Power:              power,
+				ContextLength:      ctxWin,
+				ContextSource:      ctxSrc,
 				Eligible:           eligible,
 				Reason:             reason,
 				FilterReason:       filterReason,
@@ -956,6 +1000,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				SuccessRate:        providerSuccessRate,
 				CostClass:          candidateCostClass(h, p),
 				SpeedTPS:           obs,
+				ContextHeadroom:    ci.ContextHeadroom,
 				QuotaOK:            h.QuotaOK,
 				QuotaPercentUsed:   h.QuotaPercentUsed,
 				QuotaTrend:         h.QuotaTrend,

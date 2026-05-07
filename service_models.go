@@ -17,11 +17,15 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
 	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/omlx"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/openrouter"
 	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 )
 
@@ -115,7 +119,7 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 			RankPosition:   i,
 		}
 		if cat != nil {
-			info.ContextLength = resolveContextLength(context.Background(), ServiceProviderEntry{}, id, cat)
+			info.ContextLength, info.ContextSource = resolveContextEvidence(context.Background(), ServiceProviderEntry{}, id, cat)
 			info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
 			info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
 		}
@@ -274,8 +278,8 @@ func listModelsForProvider(
 				Available:       true,
 			}
 
-			// Resolve context length: provider API > catalog > 0.
-			info.ContextLength = resolveContextLength(ctx, entry, id, cat)
+			// Resolve context length: provider config > provider API > catalog > default.
+			info.ContextLength, info.ContextSource = resolveContextEvidence(ctx, entry, id, cat)
 
 			// Capabilities from provider type.
 			info.Capabilities = providerCapabilities(entry)
@@ -486,16 +490,52 @@ func catalogRefForModel(cat *modelcatalog.Catalog, modelID string) (string, bool
 	return ref, ok
 }
 
-// resolveContextLength resolves the context window for a model using the
-// precedence chain: catalog > 0 (provider API lookup omitted to keep
-// ListModels non-blocking in the common case).
-func resolveContextLength(_ context.Context, _ ServiceProviderEntry, modelID string, cat *modelcatalog.Catalog) int {
+// resolveContextEvidence resolves the context window for a model using the
+// precedence chain: provider config > provider API > catalog > default.
+func resolveContextEvidence(ctx context.Context, entry ServiceProviderEntry, modelID string, cat *modelcatalog.Catalog) (int, string) {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return 0, ContextSourceUnknown
+	}
+	if entry.ContextWindow > 0 {
+		return entry.ContextWindow, ContextSourceProviderConfig
+	}
+	if limits, source := providerAPIContextEvidence(ctx, entry, modelID); limits > 0 {
+		return limits, source
+	}
 	if cat != nil {
 		if n := cat.ContextWindowForModel(modelID); n > 0 {
-			return n
+			return n, ContextSourceCatalog
 		}
 	}
-	return 0
+	return compaction.DefaultContextWindow, ContextSourceDefault
+}
+
+func providerAPIContextEvidence(ctx context.Context, entry ServiceProviderEntry, modelID string) (int, string) {
+	switch entry.Type {
+	case "lmstudio":
+		if entry.BaseURL == "" {
+			return 0, ""
+		}
+		if limits := lmstudio.LookupModelLimits(ctx, entry.BaseURL, modelID); limits.ContextLength > 0 {
+			return limits.ContextLength, ContextSourceProviderAPI
+		}
+	case "omlx":
+		if entry.BaseURL == "" {
+			return 0, ""
+		}
+		if limits := omlx.LookupModelLimits(ctx, entry.BaseURL, modelID); limits.ContextLength > 0 {
+			return limits.ContextLength, ContextSourceProviderAPI
+		}
+	case "openrouter":
+		if entry.BaseURL == "" {
+			return 0, ""
+		}
+		if limits := openrouter.LookupModelLimits(ctx, entry.BaseURL, entry.APIKey, entry.Headers, modelID); limits.ContextLength > 0 {
+			return limits.ContextLength, ContextSourceProviderAPI
+		}
+	}
+	return 0, ""
 }
 
 // catalogCostAndPerf extracts CostInfo and PerfSignal for a model from the catalog.

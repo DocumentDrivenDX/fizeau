@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 )
@@ -383,6 +384,9 @@ func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T
 	if known.ContextLength != 262144 {
 		t.Errorf("known model context = %d, want 262144", known.ContextLength)
 	}
+	if known.ContextSource != ContextSourceCatalog {
+		t.Errorf("known model context source = %q, want %q", known.ContextSource, ContextSourceCatalog)
+	}
 	if known.PerfSignal.SWEBenchVerified != 59.0 {
 		t.Errorf("known model SWE = %.1f, want 59.0", known.PerfSignal.SWEBenchVerified)
 	}
@@ -400,6 +404,60 @@ func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T
 	if unknown.EndpointName == "" || unknown.EndpointBaseURL == "" {
 		t.Errorf("unknown model endpoint identity missing: %#v", unknown)
 	}
+	if unknown.ContextLength != compaction.DefaultContextWindow {
+		t.Errorf("unknown model context = %d, want default %d", unknown.ContextLength, compaction.DefaultContextWindow)
+	}
+	if unknown.ContextSource != ContextSourceDefault {
+		t.Errorf("unknown model context source = %q, want %q", unknown.ContextSource, ContextSourceDefault)
+	}
+}
+
+func TestListModels_contextSourcePrecedence(t *testing.T) {
+	t.Run("provider config override wins", func(t *testing.T) {
+		ts := fakeModelsServer([]string{"qwen3.5-27b"})
+		defer ts.Close()
+		sc := &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1", Model: "qwen3.5-27b", ContextWindow: 4096},
+			},
+			names:       []string{"bragi"},
+			defaultName: "bragi",
+		}
+		svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+		infos, err := svc.ListModels(context.Background(), ModelFilter{})
+		if err != nil {
+			t.Fatalf("ListModels: %v", err)
+		}
+		if len(infos) != 1 {
+			t.Fatalf("want 1 model, got %d", len(infos))
+		}
+		if infos[0].ContextLength != 4096 || infos[0].ContextSource != ContextSourceProviderConfig {
+			t.Fatalf("provider config context = %d/%q, want 4096/%q", infos[0].ContextLength, infos[0].ContextSource, ContextSourceProviderConfig)
+		}
+	})
+
+	t.Run("default falls back when catalog missing", func(t *testing.T) {
+		ts := fakeModelsServer([]string{"unknown-model-xyz"})
+		defer ts.Close()
+		sc := &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"bragi": {Type: "lmstudio", BaseURL: ts.URL + "/v1"},
+			},
+			names:       []string{"bragi"},
+			defaultName: "bragi",
+		}
+		svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+		infos, err := svc.ListModels(context.Background(), ModelFilter{})
+		if err != nil {
+			t.Fatalf("ListModels: %v", err)
+		}
+		if len(infos) != 1 {
+			t.Fatalf("want 1 model, got %d", len(infos))
+		}
+		if infos[0].ContextLength != compaction.DefaultContextWindow || infos[0].ContextSource != ContextSourceDefault {
+			t.Fatalf("default context = %d/%q, want %d/%q", infos[0].ContextLength, infos[0].ContextSource, compaction.DefaultContextWindow, ContextSourceDefault)
+		}
+	})
 }
 
 func TestListModels_catalogMetadataForSubprocessHarnessModels(t *testing.T) {
