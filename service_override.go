@@ -25,16 +25,10 @@ const (
 // Execute via recordRoutingQualityForRequest); the fan-out goroutine
 // back-writes the outcome onto it when the override event fires so
 // RouteStatus surfaces non-zero outcome aggregates.
-//
-// sl points at the request's session log (set in runExecute after
-// openSessionLog); the fan-out goroutine writes the override event there
-// so UsageReport can recompute routing-quality from persisted session logs
-// across restarts and beyond the in-memory ring's bounded retention.
 type overrideContext struct {
 	payload ServiceOverrideData
 	emitted atomic.Bool
 	record  *routingQualityRecord
-	sl      atomic.Pointer[serviceSessionLog]
 }
 
 // axesOverridden returns the canonical, ordered list of axes the caller

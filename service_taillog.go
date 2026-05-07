@@ -157,12 +157,6 @@ func (h *sessionHub) wrapExecuteWithHub(sessionID string, outer chan ServiceEven
 					// RouteStatus aggregates surface real success/stalled/
 					// failed counts (ADR-006 §5).
 					stampOutcomeOnRecord(ovr.record, payload.Outcome)
-					// Persist the override event to the session log so
-					// UsageReport can recompute routing-quality from
-					// historical sessions across restarts.
-					if sl := ovr.sl.Load(); sl != nil {
-						sl.writeOverrideEvent(ServiceEventTypeOverride, payload)
-					}
 					select {
 					case outer <- overrideEv:
 					case <-time.After(5 * time.Second):

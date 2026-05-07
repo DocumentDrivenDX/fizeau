@@ -1,14 +1,18 @@
 package fizeau_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	fizeau "github.com/DocumentDrivenDX/fizeau"
+	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
 	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
 	"github.com/DocumentDrivenDX/fizeau/internal/session"
 )
@@ -97,6 +101,88 @@ func decodeOverride(t *testing.T, ev *fizeau.ServiceEvent) fizeau.ServiceOverrid
 		t.Fatalf("unmarshal override: %v", err)
 	}
 	return payload
+}
+
+func countEventType(events []fizeau.ServiceEvent, want string) int {
+	count := 0
+	for _, ev := range events {
+		if string(ev.Type) == want {
+			count++
+		}
+	}
+	return count
+}
+
+func drainServiceEvents(t *testing.T, ch <-chan fizeau.ServiceEvent, timeout time.Duration) []fizeau.ServiceEvent {
+	t.Helper()
+	var events []fizeau.ServiceEvent
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				return events
+			}
+			events = append(events, ev)
+		case <-deadline.C:
+			t.Fatalf("timed out after %s waiting for channel close; collected %d events", timeout, len(events))
+			return events
+		}
+	}
+}
+
+func extractSessionIDFromRoutingDecision(t *testing.T, ev fizeau.ServiceEvent) string {
+	t.Helper()
+	if ev.Type != fizeau.ServiceEventTypeRoutingDecision {
+		t.Fatalf("expected routing_decision event, got %q", ev.Type)
+	}
+	var payload struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(ev.Data, &payload); err != nil {
+		t.Fatalf("unmarshal routing_decision: %v", err)
+	}
+	return payload.SessionID
+}
+
+func sessionLogTypes(entries []agent.Event) []string {
+	types := make([]string, len(entries))
+	for i, ev := range entries {
+		types[i] = string(ev.Type)
+	}
+	return types
+}
+
+func indexString(xs []string, want string) int {
+	for i, x := range xs {
+		if x == want {
+			return i
+		}
+	}
+	return -1
+}
+
+func countString(xs []string, want string) int {
+	count := 0
+	for _, x := range xs {
+		if x == want {
+			count++
+		}
+	}
+	return count
+}
+
+func captureServiceLogs(t *testing.T) (*bytes.Buffer, func()) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	slog.SetDefault(logger)
+	return &buf, func() {
+		slog.SetDefault(prev)
+	}
 }
 
 // TestExecuteEmitsNoOverrideEventForUnpinnedRequest covers AC #1: a request
@@ -243,6 +329,91 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 				t.Fatalf("axes_overridden: got %v, want %v", payload.AxesOverridden, tc.wantAxes)
 			}
 		})
+	}
+}
+
+func TestExecuteSessionLogOverrideEventPersistsBeforeClose(t *testing.T) {
+	dir := t.TempDir()
+	logs, restore := captureServiceLogs(t)
+	defer restore()
+
+	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	req := fizeau.ServiceExecuteRequest{
+		Prompt:        "hi",
+		Harness:       "virtual",
+		SessionLogDir: dir,
+		Metadata: map[string]string{
+			"virtual.response": "virtual ok",
+			"virtual.delay_ms": "150",
+		},
+	}
+	ch, err := svc.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	var first fizeau.ServiceEvent
+	select {
+	case firstEv, ok := <-ch:
+		if !ok {
+			t.Fatal("Execute channel closed before routing_decision")
+		}
+		first = firstEv
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for routing_decision")
+	}
+	if first.Type != fizeau.ServiceEventTypeRoutingDecision {
+		t.Fatalf("first event type: want routing_decision, got %q", first.Type)
+	}
+
+	sessionID := extractSessionIDFromRoutingDecision(t, first)
+	tailCh, err := svc.TailSessionLog(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("TailSessionLog: %v", err)
+	}
+
+	execEvents := append([]fizeau.ServiceEvent{first}, drainServiceEvents(t, ch, 5*time.Second)...)
+	tailEvents := drainServiceEvents(t, tailCh, 5*time.Second)
+
+	if countEventType(execEvents, fizeau.ServiceEventTypeFinal) != 1 {
+		t.Fatalf("Execute final count: want 1, got %d (types=%v)", countEventType(execEvents, fizeau.ServiceEventTypeFinal), overrideEventTypes(execEvents))
+	}
+	if countEventType(execEvents, fizeau.ServiceEventTypeOverride) != 1 {
+		t.Fatalf("Execute override count: want 1, got %d (types=%v)", countEventType(execEvents, fizeau.ServiceEventTypeOverride), overrideEventTypes(execEvents))
+	}
+	if countEventType(tailEvents, fizeau.ServiceEventTypeFinal) != 1 {
+		t.Fatalf("Tail final count: want 1, got %d (types=%v)", countEventType(tailEvents, fizeau.ServiceEventTypeFinal), overrideEventTypes(tailEvents))
+	}
+	if countEventType(tailEvents, fizeau.ServiceEventTypeOverride) != 1 {
+		t.Fatalf("Tail override count: want 1, got %d (types=%v)", countEventType(tailEvents, fizeau.ServiceEventTypeOverride), overrideEventTypes(tailEvents))
+	}
+	if overrideIndexEventType(tailEvents, fizeau.ServiceEventTypeOverride) > overrideIndexEventType(tailEvents, fizeau.ServiceEventTypeFinal) {
+		t.Fatalf("Tail override must precede final: types=%v", overrideEventTypes(tailEvents))
+	}
+
+	entries, err := session.ReadEvents(filepath.Join(dir, sessionID+".jsonl"))
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	got := sessionLogTypes(entries)
+	startIdx := indexString(got, "session.start")
+	overrideIdx := indexString(got, "override")
+	endIdx := indexString(got, "session.end")
+	if startIdx < 0 || overrideIdx < 0 || endIdx < 0 {
+		t.Fatalf("session log missing required records: got %v", got)
+	}
+	if !(startIdx < overrideIdx && overrideIdx < endIdx) {
+		t.Fatalf("session log order: want session.start < override < session.end, got %v", got)
+	}
+	if countString(got, "session.start") != 1 || countString(got, "override") != 1 || countString(got, "session.end") != 1 {
+		t.Fatalf("session log counts: want one each of start/override/end, got %v", got)
+	}
+	if strings.Contains(logs.String(), "session logger: write error") {
+		t.Fatalf("unexpected closed-file warning in regression path:\n%s", logs.String())
 	}
 }
 

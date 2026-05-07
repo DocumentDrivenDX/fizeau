@@ -1,7 +1,6 @@
 package fizeau
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -23,6 +22,7 @@ type serviceSessionLog struct {
 	path      string
 	sessionID string
 	decision  RouteDecision
+	override  *overrideContext
 	endOnce   sync.Once
 	endWrote  atomic.Bool
 	closeOnce sync.Once
@@ -173,16 +173,8 @@ func (sl *serviceSessionLog) writeOverrideEvent(eventType string, payload Servic
 	if sl == nil || sl.logger == nil {
 		return
 	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return
-	}
-	sl.logger.Write(agentcore.Event{
-		SessionID: sl.sessionID,
-		Type:      agentcore.EventType(eventType),
-		Timestamp: time.Now().UTC(),
-		Data:      raw,
-	})
+	payload.SessionID = sl.sessionID
+	sl.logger.Emit(agentcore.EventType(eventType), payload)
 }
 
 // close flushes the underlying file. Safe to call multiple times.

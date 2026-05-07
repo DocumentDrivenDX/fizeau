@@ -416,9 +416,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	// the public final event.
 	sl := s.executeSessionLogOpener().openSessionLog(req, decision, sessionID)
 	if overrideCtx != nil {
-		// Stash sl so the fan-out goroutine in wrapExecuteWithHub can
-		// persist override events to the session log (ADR-006 §5).
-		overrideCtx.sl.Store(sl)
+		sl.override = overrideCtx
 	}
 	defer func() {
 		if !sl.endWritten() {
@@ -893,6 +891,9 @@ func finalizeAndEmit(out chan<- ServiceEvent, seq *atomic.Int64, meta map[string
 	// Echo Role + CorrelationID onto the final event Metadata.
 	finalMeta := metaWithRoleAndCorrelation(meta, req.Role, req.CorrelationID)
 	if sl != nil {
+		if ovr := sl.override; ovr != nil && !ovr.emitted.Load() {
+			sl.writeOverrideEvent(ServiceEventTypeOverride, ovr.payload)
+		}
 		sl.writeEnd(req, finalMeta, final)
 	}
 	emitFinal(out, seq, finalMeta, final)
