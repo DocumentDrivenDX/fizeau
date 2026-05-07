@@ -45,6 +45,9 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	cat := serviceRoutingCatalog()
 	profile := req.Profile
 	modelRef := req.ModelRef
+	if modelRef == "" && req.Model == "" && (req.Harness != "" || req.Profile == "smart") {
+		modelRef = req.Profile
+	}
 	providerPreference, err := providerPreferenceForProfile(cat, profile)
 	if err != nil {
 		return &RouteDecision{}, err
