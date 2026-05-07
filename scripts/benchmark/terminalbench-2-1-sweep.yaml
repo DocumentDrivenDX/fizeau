@@ -1,0 +1,592 @@
+# TerminalBench 2.1 Sweep Plan — machine-readable lane/resource specification
+#
+# This file is the implementation contract for the TB-2.1 staged sweep.
+# Human-readable rationale, comparison notes, and caveats are in:
+#   docs/research/terminalbench-2-1-sweep-plan-2026-05-07.md
+#
+# Governing beads:
+#   fizeau-1bbe2973  (this plan)
+#   fizeau-85d36567  (runner implementation — reads this file)
+#   fizeau-c770193a  (full sweep execution)
+#   fizeau-ee77ec7f  (TB-2.1 migration)
+#
+# IMPORTANT: TB-2.0 historical fixtures, subset manifests, and research memos
+# retain their terminal-bench@2.0 labels. This file governs only TB-2.1 work.
+
+spec-id: terminalbench-2.1-sweep-plan-2026-05-07
+created: "2026-05-07"
+dataset: terminal-bench/terminal-bench-2-1
+
+defaults:
+  reps: 3
+  resume: true
+
+# ---------------------------------------------------------------------------
+# Phases
+# ---------------------------------------------------------------------------
+# Phases run in order: canary → local-qwen → sonnet-comparison → gpt-comparison.
+# Each phase can be invoked independently. The runner must produce per-cell
+# report.json artifacts so resume works across phases.
+
+phases:
+  - id: canary
+    description: >-
+      Small TB-2.1 task subset proving every intended lane can start, reach its
+      provider, write session/trajectory artifacts, and classify invalid cells
+      (quota/auth/setup/provider) separately from graded failures. Run this
+      phase first; gate subsequent phases on canary completion.
+    reps: 3
+    subset: terminalbench-2-1-canary   # config file to be created; see profile_inventory below
+    lanes:
+      - fiz-harness-claude-sonnet-4-6
+      - fiz-harness-codex-gpt-5-4-mini
+      - fiz-harness-pi-gpt-5-4-mini
+      - fiz-harness-opencode-gpt-5-4-mini
+      - fiz-openrouter-claude-sonnet-4-6
+      - fiz-openrouter-gpt-5-4-mini
+      - fiz-vidar-omlx-qwen3-6-27b
+      - fiz-bragi-lmstudio-qwen3-6-27b
+      - fiz-bragi-club-vllm-qwen3-6-27b
+    preflight:
+      - "Verify all local endpoints are reachable before starting canary"
+      - "bragi-club-3090 may be excluded if preflight fails; mark cells invalid_provider"
+    parallel_policy: >-
+      Local resource groups serialize (one cell at a time per endpoint).
+      OpenRouter lanes (fiz-harness-*, fiz-openrouter-*) may run in parallel
+      across comparison groups, subject to rg-openrouter rate caps.
+
+  - id: local-qwen
+    description: >-
+      All local Qwen3.6-27B-family providers × fiz native/provider lane.
+      Answers: how does the same model family perform across local inference
+      runtimes, quantization configurations, and servers? Cells are serialized
+      within each resource group; different resource groups may run in parallel.
+    reps: 3
+    subset: terminalbench-2-1-full    # full 2.1 task catalog or a 2.1 expanded subset; see profile_inventory
+    lanes:
+      - fiz-vidar-omlx-qwen3-6-27b
+      - fiz-bragi-lmstudio-qwen3-6-27b
+      - fiz-bragi-club-vllm-qwen3-6-27b
+    parallel_policy: >-
+      Each lane belongs to a distinct resource group; all three may run in
+      parallel since they use different servers/endpoints. Within each resource
+      group max_concurrency=1.
+
+  - id: sonnet-comparison
+    description: >-
+      fiz native/provider path on Sonnet (OpenRouter) versus fiz Claude-harness
+      path on Sonnet. Answers: how much does harness scaffolding (system prompt,
+      tool schema, context handling) change outcomes when the provider surface is
+      held approximately constant?
+    reps: 3
+    subset: terminalbench-2-1-full
+    lanes:
+      - fiz-openrouter-claude-sonnet-4-6
+      - fiz-harness-claude-sonnet-4-6
+    parallel_policy: >-
+      Both lanes use rg-openrouter. May run in parallel if rate caps allow;
+      cap total concurrency at 2 for this phase.
+
+  - id: gpt-comparison
+    description: >-
+      fiz native/provider path on GPT-5.4-mini (OpenRouter) versus fiz
+      Codex-harness path on GPT-5.4-mini. Same question as sonnet-comparison
+      but for the OpenAI model family.
+    reps: 3
+    subset: terminalbench-2-1-full
+    lanes:
+      - fiz-openrouter-gpt-5-4-mini
+      - fiz-harness-codex-gpt-5-4-mini
+    parallel_policy: >-
+      Both lanes use rg-openrouter. May run in parallel if rate caps allow;
+      cap total concurrency at 2 for this phase.
+
+# ---------------------------------------------------------------------------
+# Comparison Groups
+# ---------------------------------------------------------------------------
+# Each group defines a specific experimental question, names the lanes that
+# answer it, and documents the equivalence level so claims cannot overstate it.
+
+comparison_groups:
+  - id: cg-local-qwen-provider-quant
+    type: provider_quant_delta
+    question: >-
+      How does the Qwen3.6-27B model family behave across different local
+      inference providers, runtimes, and quantization configurations?
+    lanes:
+      - fiz-vidar-omlx-qwen3-6-27b
+      - fiz-bragi-lmstudio-qwen3-6-27b
+      - fiz-bragi-club-vllm-qwen3-6-27b
+    equivalence: approximate_same_family
+    equivalence_note: >-
+      NOT a true same-model comparison. Rows share the same weights lineage
+      (Qwen3.6-27B Instruct) but differ in quantization method (MLX-8bit vs
+      Q4_K_M GGUF vs autoround GPTQ), runtime (oMLX vs llama.cpp vs vLLM),
+      and server hardware (Apple M-class vs RTX 5090 vs RTX 3090). Published
+      memos must not collapse these into a single "local-qwen" number without
+      reporting per-row breakdowns.
+    metadata_required:
+      - model_family
+      - model_id          # exact model string served (from /v1/models)
+      - quant_label
+      - provider_surface
+      - endpoint
+      - runtime           # omlx / lmstudio / vllm
+      - hardware_label    # vidar-apple-m / bragi-5090 / bragi-club-3090
+
+  - id: cg-sonnet-harness-fiz
+    type: harness_delta
+    subtype: frontier_harness_vs_fiz
+    question: >-
+      How does fiz's native provider path compare to fiz's Claude-harness
+      path when both route to the same OpenRouter Sonnet endpoint?
+    lanes:
+      - fiz-openrouter-claude-sonnet-4-6   # fiz native/provider lane
+      - fiz-harness-claude-sonnet-4-6      # fiz Claude-harness lane
+    equivalence: approximate_same_provider_surface
+    equivalence_note: >-
+      Both lanes use the same model ID (anthropic/claude-sonnet-4.6) and the
+      same base_url (https://openrouter.ai/api/v1). They are NOT a pure model
+      control: the Claude-harness lane delegates to claude-code which adds its
+      own system prompt, tool schema, permission semantics, context compaction,
+      and quota handling. Results compare (fiz native scaffolding) vs (fiz +
+      claude-code scaffolding) over the same model API, not pure harness skill.
+    same_model_control: false   # harness scaffolding differs
+
+  - id: cg-gpt-harness-fiz
+    type: harness_delta
+    subtype: frontier_harness_vs_fiz
+    question: >-
+      How does fiz's native provider path compare to fiz's Codex-harness
+      path when both route to the same OpenRouter GPT-5.4-mini endpoint?
+    lanes:
+      - fiz-openrouter-gpt-5-4-mini        # fiz native/provider lane
+      - fiz-harness-codex-gpt-5-4-mini     # fiz Codex-harness lane
+    equivalence: approximate_same_provider_surface
+    equivalence_note: >-
+      Same model ID (openai/gpt-5.4-mini) and base_url (openrouter) for both
+      lanes, but the Codex-harness lane delegates to Codex CLI which adds its
+      own scaffolding. Same caveat as cg-sonnet-harness-fiz: not a pure model
+      control. Published memos must state this caveat per the fiz-wrapper
+      comparison decision (terminalbench-fiz-wrapper-comparison-2026-05-06).
+    same_model_control: false
+
+# ---------------------------------------------------------------------------
+# Resource Groups
+# ---------------------------------------------------------------------------
+# Groups local model servers by server/base_url to enforce serialization.
+# The runner must honor max_concurrency per group across all active cells.
+
+resource_groups:
+  - id: rg-vidar-omlx
+    server: vidar
+    base_url: "http://vidar:1235/v1"
+    provider_type: omlx
+    hardware: "Apple Silicon M-class"
+    max_concurrency: 1
+    notes: >-
+      Single-model oMLX server; serialize all cells. No API key required
+      (oMLX serves without auth; OMLX_API_KEY may be any non-empty string).
+
+  - id: rg-bragi-lmstudio
+    server: bragi
+    base_url: "http://bragi:1234/v1"
+    provider_type: lmstudio
+    hardware: "RTX 5090-mobile (bragi), 24 GB VRAM"
+    max_concurrency: 1
+    notes: >-
+      LM Studio (llama.cpp) single-model server. Serialize all cells.
+      Loaded context length: 101770 tokens (verified 2026-05-01).
+
+  - id: rg-bragi-club-vllm
+    server: bragi-club
+    base_url: "http://bragi-club:8000/v1"   # provisional; default vLLM port
+    provider_type: openai-compat
+    hardware: "RTX 3090 (bragi-club host)"
+    max_concurrency: 1
+    status: requires_preflight
+    preflight_command: >-
+      curl -sf http://bragi-club:8000/v1/models | python3 -m json.tool
+    notes: >-
+      vLLM with autoround quantization. Endpoint and model ID are provisional;
+      run preflight_command before any cell. If host is unreachable, mark all
+      cells in this group invalid_provider and proceed with remaining lanes.
+      Update bragi-club-3090-vllm-qwen3-6-27b.yaml after verification.
+
+  - id: rg-openrouter
+    base_url: "https://openrouter.ai/api/v1"
+    provider_type: openrouter
+    max_concurrency: 4
+    rate_limit_rpm: 500
+    rate_limit_tpm: 200000
+    budget:
+      per_run_usd_cap: 5.00
+      per_phase_usd_cap: 50.00
+      per_sweep_usd_cap: 150.00
+    notes: >-
+      Managed cloud provider. Lanes in different comparison groups or phases
+      may run in parallel within the rate and budget caps above. Within a
+      single phase, cap concurrency at 2 for sonnet-comparison and
+      gpt-comparison; canary may use full max_concurrency since it exercises
+      all six official lanes. Honor Retry-After headers on 429 responses.
+
+# ---------------------------------------------------------------------------
+# Lane Definitions
+# ---------------------------------------------------------------------------
+# Each lane has a unique id, its profile YAML, the FIZEAU_* environment inputs,
+# model metadata, and the resource group that gates concurrency.
+#
+# lane_type:
+#   fiz_provider_native   — fiz routes directly to the provider; no FIZEAU_HARNESS
+#   fiz_harness_pinned    — fiz delegates to a harness subprocess via FIZEAU_HARNESS
+
+lanes:
+  # --- Official fiz harness-pinned lanes ---
+
+  - id: fiz-harness-claude-sonnet-4-6
+    profile_id: fiz-harness-claude-sonnet-4-6
+    lane_type: fiz_harness_pinned
+    phases: [canary, sonnet-comparison]
+    comparison_groups: [cg-sonnet-harness-fiz]
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_HARNESS: claude
+      FIZEAU_MODEL: "anthropic/claude-sonnet-4.6"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: claude-sonnet-4
+    model_id: "anthropic/claude-sonnet-4.6"
+    quant_label: cloud-hosted
+    provider_surface: openrouter
+    sampling:
+      temperature: 0.0
+    equivalence_note: >-
+      Harness-controlled lane. fiz delegates to claude-code which selects model
+      and manages auth independently. Same base OpenRouter endpoint as
+      fiz-openrouter-claude-sonnet-4-6 but different scaffolding; the comparison
+      is approximate_same_provider_surface (see cg-sonnet-harness-fiz).
+
+  - id: fiz-harness-codex-gpt-5-4-mini
+    profile_id: fiz-harness-codex-gpt-5-4-mini
+    lane_type: fiz_harness_pinned
+    phases: [canary, gpt-comparison]
+    comparison_groups: [cg-gpt-harness-fiz]
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_HARNESS: codex
+      FIZEAU_MODEL: "openai/gpt-5.4-mini"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: gpt-5-mini
+    model_id: "openai/gpt-5.4-mini"
+    quant_label: cloud-hosted
+    provider_surface: openrouter
+    sampling:
+      temperature: 0.0
+      reasoning: medium
+
+  - id: fiz-harness-pi-gpt-5-4-mini
+    profile_id: fiz-harness-pi-gpt-5-4-mini
+    lane_type: fiz_harness_pinned
+    phases: [canary]
+    comparison_groups: []   # canary coverage only; no primary comparison question in 2.1 plan
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_HARNESS: pi
+      FIZEAU_MODEL: "openai/gpt-5.4-mini"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: gpt-5-mini
+    model_id: "openai/gpt-5.4-mini"
+    quant_label: cloud-hosted
+    provider_surface: openrouter
+    sampling:
+      temperature: 0.0
+      reasoning: medium
+
+  - id: fiz-harness-opencode-gpt-5-4-mini
+    profile_id: fiz-harness-opencode-gpt-5-4-mini
+    lane_type: fiz_harness_pinned
+    phases: [canary]
+    comparison_groups: []
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_HARNESS: opencode
+      FIZEAU_MODEL: "openai/gpt-5.4-mini"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: gpt-5-mini
+    model_id: "openai/gpt-5.4-mini"
+    quant_label: cloud-hosted
+    provider_surface: openrouter
+    sampling:
+      temperature: 0.0
+      reasoning: medium
+
+  # --- Official fiz native/provider lanes ---
+
+  - id: fiz-openrouter-claude-sonnet-4-6
+    profile_id: fiz-openrouter-claude-sonnet-4-6
+    lane_type: fiz_provider_native
+    phases: [canary, sonnet-comparison]
+    comparison_groups: [cg-sonnet-harness-fiz]
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_PROVIDER: openrouter
+      FIZEAU_MODEL: "anthropic/claude-sonnet-4.6"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: claude-sonnet-4
+    model_id: "anthropic/claude-sonnet-4.6"
+    quant_label: cloud-hosted
+    provider_surface: openrouter
+    sampling:
+      temperature: 0.0
+
+  - id: fiz-openrouter-gpt-5-4-mini
+    profile_id: fiz-openrouter-gpt-5-4-mini
+    lane_type: fiz_provider_native
+    phases: [canary, gpt-comparison]
+    comparison_groups: [cg-gpt-harness-fiz]
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_PROVIDER: openrouter
+      FIZEAU_MODEL: "openai/gpt-5.4-mini"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: gpt-5-mini
+    model_id: "openai/gpt-5.4-mini"
+    quant_label: cloud-hosted
+    provider_surface: openrouter
+    sampling:
+      temperature: 0.0
+      reasoning: medium
+
+  # --- Local Qwen fiz native/provider lanes ---
+
+  - id: fiz-vidar-omlx-qwen3-6-27b
+    profile_id: vidar-qwen3-6-27b
+    lane_type: fiz_provider_native
+    phases: [canary, local-qwen]
+    comparison_groups: [cg-local-qwen-provider-quant]
+    resource_group: rg-vidar-omlx
+    fizeau_env:
+      FIZEAU_PROVIDER: omlx
+      FIZEAU_MODEL: "Qwen3.6-27B-MLX-8bit"
+      FIZEAU_BASE_URL: "http://vidar:1235/v1"
+      FIZEAU_API_KEY_ENV: OMLX_API_KEY
+    model_family: qwen3-6-27b
+    model_id: "Qwen3.6-27B-MLX-8bit"
+    quant_label: mlx-8bit
+    provider_surface: vidar-omlx
+    runtime: omlx
+    hardware_label: vidar-apple-m
+    endpoint: "http://vidar:1235/v1"
+    sampling:
+      temperature: 0.6
+      reasoning: low
+      top_p: 0.95
+      top_k: 20
+    equivalence_note: >-
+      Apple Silicon M-class, MLX 8-bit quantization. Local free tier.
+      Same weights lineage as bragi-lmstudio and bragi-club-vllm lanes but
+      different quant and runtime — approximate_same_family only.
+
+  - id: fiz-bragi-lmstudio-qwen3-6-27b
+    profile_id: bragi-qwen3-6-27b
+    lane_type: fiz_provider_native
+    phases: [canary, local-qwen]
+    comparison_groups: [cg-local-qwen-provider-quant]
+    resource_group: rg-bragi-lmstudio
+    fizeau_env:
+      FIZEAU_PROVIDER: lmstudio
+      FIZEAU_MODEL: "qwen/qwen3.6-27b"
+      FIZEAU_BASE_URL: "http://bragi:1234/v1"
+      FIZEAU_API_KEY_ENV: LMSTUDIO_API_KEY
+    model_family: qwen3-6-27b
+    model_id: "qwen/qwen3.6-27b"
+    quant_label: q4-k-m-gguf
+    provider_surface: bragi-lmstudio
+    runtime: lmstudio
+    hardware_label: bragi-5090
+    endpoint: "http://bragi:1234/v1"
+    sampling:
+      temperature: 0.6
+      reasoning: low
+      top_p: 0.95
+      top_k: 20
+    equivalence_note: >-
+      RTX 5090-mobile, llama.cpp Q4_K_M GGUF. Local free tier. Different
+      quant and runtime from vidar-omlx; same weights lineage.
+
+  - id: fiz-bragi-club-vllm-qwen3-6-27b
+    profile_id: bragi-club-3090-vllm-qwen3-6-27b
+    lane_type: fiz_provider_native
+    phases: [canary, local-qwen]
+    comparison_groups: [cg-local-qwen-provider-quant]
+    resource_group: rg-bragi-club-vllm
+    status: requires_preflight
+    fizeau_env:
+      FIZEAU_PROVIDER: openai-compat
+      FIZEAU_MODEL: "<qwen3.6-27b-autoround-model-id>"   # fill in after preflight
+      FIZEAU_BASE_URL: "http://bragi-club:8000/v1"       # confirm before use
+      FIZEAU_API_KEY_ENV: VLLM_API_KEY
+    model_family: qwen3-6-27b
+    model_id: "<qwen3.6-27b-autoround-model-id>"
+    quant_label: vllm-autoround
+    provider_surface: bragi-club-vllm
+    runtime: vllm
+    hardware_label: bragi-club-3090
+    endpoint: "http://bragi-club:8000/v1"   # provisional
+    sampling:
+      temperature: 0.6
+      reasoning: low
+      top_p: 0.95
+      top_k: 20
+    equivalence_note: >-
+      RTX 3090, vLLM with autoround quantization. Endpoint and model ID are
+      provisional. If preflight fails, exclude from sweep and mark cells
+      invalid_provider; do not block remaining local-qwen lanes.
+
+# ---------------------------------------------------------------------------
+# Resume Policy
+# ---------------------------------------------------------------------------
+resume_policy:
+  default_mode: resume
+  skip_statuses:
+    - graded_pass
+    - graded_fail
+    - install_fail_permanent
+    - budget_halted
+  retry_statuses:
+    - install_fail_transient
+    - timeout
+    - harness_crash
+    - ran_ungraded
+    - harness_refused
+  force_rerun: false
+  notes: >-
+    Never rerun a cell whose final_status is in skip_statuses unless
+    force_rerun=true is explicitly set. Missing cells (no report.json) are
+    always run. The force_rerun flag must be explicit and auditable in the
+    sweep command so reruns of previously-graded cells are intentional.
+
+# ---------------------------------------------------------------------------
+# Metrics Required for Model-Selection Calculus
+# ---------------------------------------------------------------------------
+metrics:
+  per_run:
+    - name: reward
+      type: int_or_null   # 1=pass, 0=fail, null=ungraded
+    - name: final_status
+      type: string        # graded_pass | graded_fail | invalid_* | ...
+    - name: invalid_class
+      type: string_or_null  # invalid_quota | invalid_auth | invalid_setup | invalid_provider
+    - name: wall_time_seconds
+      type: float
+    - name: input_tokens
+      type: int_or_null
+    - name: output_tokens
+      type: int_or_null
+    - name: cached_input_tokens
+      type: int_or_null
+    - name: retried_input_tokens
+      type: int_or_null
+    - name: cost_usd
+      type: float_or_null  # derived from pricing × tokens
+    - name: session_log_path
+      type: string_or_null  # fiz JSONL session log for trajectory provenance
+    - name: trajectory_path
+      type: string_or_null  # ATIF trajectory artifact
+
+  per_cell:
+    - name: mean_reward
+      type: float_or_null   # mean over valid (graded) runs; null if n_valid=0
+    - name: reward_sd
+      type: float_or_null
+    - name: n_runs
+      type: int
+    - name: n_valid
+      type: int             # runs classified as graded_pass or graded_fail
+    - name: n_invalid
+      type: int
+    - name: invalid_class_counts
+      type: object          # {invalid_quota: N, invalid_auth: N, ...}
+    - name: total_cost_usd
+      type: float_or_null
+    - name: effective_cost_per_valid_run
+      type: float_or_null   # total_cost_usd / n_valid
+    - name: effective_cost_per_pass
+      type: float_or_null   # total_cost_usd / n_pass (null if n_pass=0)
+
+  per_cell_metadata:
+    - lane_id
+    - profile_id
+    - comparison_group     # list of comparison group ids
+    - phase
+    - model_family
+    - model_id             # exact string served (from /v1/models or profile)
+    - quant_label
+    - provider_surface
+    - runtime              # omlx | lmstudio | vllm | openrouter
+    - hardware_label       # for local lanes
+    - endpoint             # base_url used
+    - resource_group
+    - sampling_params      # temperature, top_p, top_k, reasoning
+    - context_window       # from profile limits.context_tokens
+    - fizeau_env           # the FIZEAU_* pins used (redact API key values)
+
+# ---------------------------------------------------------------------------
+# Profile Inventory
+# ---------------------------------------------------------------------------
+profile_inventory:
+  existing_reusable:
+    - id: fiz-harness-claude-sonnet-4-6
+      path: scripts/benchmark/profiles/fiz-harness-claude-sonnet-4-6.yaml
+      used_in_phases: [canary, sonnet-comparison]
+    - id: fiz-harness-codex-gpt-5-4-mini
+      path: scripts/benchmark/profiles/fiz-harness-codex-gpt-5-4-mini.yaml
+      used_in_phases: [canary, gpt-comparison]
+    - id: fiz-harness-pi-gpt-5-4-mini
+      path: scripts/benchmark/profiles/fiz-harness-pi-gpt-5-4-mini.yaml
+      used_in_phases: [canary]
+    - id: fiz-harness-opencode-gpt-5-4-mini
+      path: scripts/benchmark/profiles/fiz-harness-opencode-gpt-5-4-mini.yaml
+      used_in_phases: [canary]
+    - id: fiz-openrouter-claude-sonnet-4-6
+      path: scripts/benchmark/profiles/fiz-openrouter-claude-sonnet-4-6.yaml
+      used_in_phases: [canary, sonnet-comparison]
+    - id: fiz-openrouter-gpt-5-4-mini
+      path: scripts/benchmark/profiles/fiz-openrouter-gpt-5-4-mini.yaml
+      used_in_phases: [canary, gpt-comparison]
+    - id: vidar-qwen3-6-27b
+      path: scripts/benchmark/profiles/vidar-qwen3-6-27b.yaml
+      used_in_phases: [canary, local-qwen]
+    - id: bragi-qwen3-6-27b
+      path: scripts/benchmark/profiles/bragi-qwen3-6-27b.yaml
+      used_in_phases: [canary, local-qwen]
+
+  new_required:
+    - id: bragi-club-3090-vllm-qwen3-6-27b
+      path: scripts/benchmark/profiles/bragi-club-3090-vllm-qwen3-6-27b.yaml
+      status: created_provisional   # file exists; model_id and endpoint must be updated after preflight
+      used_in_phases: [canary, local-qwen]
+      action_needed: >-
+        Run rg-bragi-club-vllm preflight_command; update model field and
+        base_url if they differ from placeholders; update versioning.snapshot.
+    - id: terminalbench-2-1-canary
+      path: scripts/benchmark/task-subset-tb21-canary.yaml   # to be created
+      status: missing
+      action_needed: >-
+        Create a 3-5 task canary subset from the TB-2.1 task catalog
+        (terminal-bench/terminal-bench-2-1). Use the same selection criteria
+        as the existing TB-2.0 canary: small, deterministic, covers at least
+        one SE task, one data-processing task, and preferably a quick smoke
+        task. Do NOT reuse task-subset-v2.yaml — that is a TB-2.0 artifact.
+    - id: terminalbench-2-1-full
+      path: scripts/benchmark/task-subset-tb21-full.yaml     # to be created
+      status: missing
+      action_needed: >-
+        Generate a full or expanded TB-2.1 subset from the terminal-bench/terminal-bench-2-1
+        catalog using the same stratified selection criteria as task-subset-v2.yaml.
+        File separately from the TB-2.0 subset; do not overwrite or relabel it.
