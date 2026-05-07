@@ -67,7 +67,10 @@ type ServiceProviderEntry struct {
 	ServerInstance string
 	Endpoints      []ServiceProviderEndpoint
 	APIKey         string
+	Headers        map[string]string
 	Model          string // configured default model (may be empty)
+	// ContextWindow is the configured provider-side context override.
+	ContextWindow int
 	// ConfigError marks this provider entry invalid while allowing the rest of
 	// the service config to load. Invalid providers are reported in status
 	// surfaces and excluded from routing.
@@ -295,6 +298,7 @@ type ModelInfo struct {
 	EndpointBaseURL string
 	ServerInstance  string
 	ContextLength   int
+	ContextSource   string
 	Capabilities    []string
 	Cost            CostInfo
 	PerfSignal      PerfSignal
@@ -505,6 +509,10 @@ type RouteCandidate struct {
 	// FilterReason names the gate that disqualified an ineligible candidate.
 	// Empty when Eligible. See the FilterReason* constants.
 	FilterReason string
+	// ContextLength is the resolved maximum context window for the candidate.
+	ContextLength int
+	// ContextSource records where ContextLength came from.
+	ContextSource string
 	// Components carries the per-axis score inputs (power, cost, latency,
 	// success rate, quota, capability) that fed the final Score. Consumers use these to
 	// explain rankings without parsing the free-form Reason.
@@ -553,7 +561,18 @@ type RouteCandidateComponents struct {
 	// Capability is a coarse capability score derived from the candidate's
 	// cost class / surface (higher = more capable).
 	Capability float64
+	// ContextHeadroom is the remaining context after subtracting the request's
+	// minimum required prompt window. Zero means unknown or no spare room.
+	ContextHeadroom int
 }
+
+const (
+	ContextSourceProviderAPI    = "provider_api"
+	ContextSourceProviderConfig = "provider_config"
+	ContextSourceCatalog        = "catalog"
+	ContextSourceDefault        = "default"
+	ContextSourceUnknown        = "unknown"
+)
 
 // RouteStickyState describes sticky routing evidence without exposing the
 // underlying key.

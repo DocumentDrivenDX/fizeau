@@ -475,10 +475,11 @@ providers:
 	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
 	type component struct {
-		Cost        float64 `json:"cost"`
-		LatencyMS   float64 `json:"latency_ms"`
-		SuccessRate float64 `json:"success_rate"`
-		Capability  float64 `json:"capability"`
+		Cost            float64 `json:"cost"`
+		LatencyMS       float64 `json:"latency_ms"`
+		SuccessRate     float64 `json:"success_rate"`
+		Capability      float64 `json:"capability"`
+		ContextHeadroom int     `json:"context_headroom"`
 	}
 	type sticky struct {
 		KeyPresent bool   `json:"key_present"`
@@ -494,16 +495,18 @@ providers:
 		CachePressure  *float64 `json:"cache_pressure"`
 	}
 	type candidate struct {
-		Harness      string      `json:"harness"`
-		Provider     string      `json:"provider"`
-		Endpoint     string      `json:"endpoint"`
-		Model        string      `json:"model"`
-		Score        float64     `json:"score"`
-		Components   component   `json:"components"`
-		Utilization  utilization `json:"utilization"`
-		Eligible     bool        `json:"eligible"`
-		FilterReason string      `json:"filter_reason"`
-		Winner       bool        `json:"winner"`
+		Harness       string      `json:"harness"`
+		Provider      string      `json:"provider"`
+		Endpoint      string      `json:"endpoint"`
+		Model         string      `json:"model"`
+		Score         float64     `json:"score"`
+		ContextLength int         `json:"context_length"`
+		ContextSource string      `json:"context_source"`
+		Components    component   `json:"components"`
+		Utilization   utilization `json:"utilization"`
+		Eligible      bool        `json:"eligible"`
+		FilterReason  string      `json:"filter_reason"`
+		Winner        bool        `json:"winner"`
 	}
 	var parsed struct {
 		Model            string      `json:"model"`
@@ -530,6 +533,11 @@ providers:
 	if _, ok := candidateGeneric[0]["utilization"]; !ok {
 		t.Fatalf("missing candidate utilization in route-status JSON: %s", out.stdout)
 	}
+	for _, key := range []string{"context_length", "context_source"} {
+		if _, ok := candidateGeneric[0][key]; !ok {
+			t.Fatalf("missing candidate %q in route-status JSON: %s", key, out.stdout)
+		}
+	}
 
 	// Each candidate carries the new structured shape from
 	// service.ResolveRoute: provider, model, score, components, eligible bool,
@@ -551,6 +559,8 @@ providers:
 		}
 		// Components is always present; its zero value is meaningful (unknown).
 		_ = c.Components
+		_ = c.ContextLength
+		_ = c.ContextSource
 		if !c.Eligible {
 			assert.NotEmpty(t, c.FilterReason, "ineligible candidate must carry a filter_reason: %+v", c)
 		}
@@ -619,21 +629,24 @@ providers:
 	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
 	type component struct {
-		Cost        float64 `json:"cost"`
-		LatencyMS   float64 `json:"latency_ms"`
-		SuccessRate float64 `json:"success_rate"`
-		Capability  float64 `json:"capability"`
+		Cost            float64 `json:"cost"`
+		LatencyMS       float64 `json:"latency_ms"`
+		SuccessRate     float64 `json:"success_rate"`
+		Capability      float64 `json:"capability"`
+		ContextHeadroom int     `json:"context_headroom"`
 	}
 	type candidate struct {
-		Harness      string    `json:"harness"`
-		Provider     string    `json:"provider"`
-		Model        string    `json:"model"`
-		Score        float64   `json:"score"`
-		Components   component `json:"components"`
-		Eligible     bool      `json:"eligible"`
-		FilterReason string    `json:"filter_reason"`
-		Reason       string    `json:"reason"`
-		Winner       bool      `json:"winner"`
+		Harness       string    `json:"harness"`
+		Provider      string    `json:"provider"`
+		Model         string    `json:"model"`
+		Score         float64   `json:"score"`
+		ContextLength int       `json:"context_length"`
+		ContextSource string    `json:"context_source"`
+		Components    component `json:"components"`
+		Eligible      bool      `json:"eligible"`
+		FilterReason  string    `json:"filter_reason"`
+		Reason        string    `json:"reason"`
+		Winner        bool      `json:"winner"`
 	}
 	var parsed struct {
 		Profile     string `json:"profile"`
@@ -669,6 +682,9 @@ providers:
 		_ = c.Components.LatencyMS
 		_ = c.Components.SuccessRate
 		_ = c.Components.Capability
+		_ = c.Components.ContextHeadroom
+		_ = c.ContextLength
+		_ = c.ContextSource
 		if !c.Eligible {
 			sawIneligible = true
 			if c.FilterReason != "" {

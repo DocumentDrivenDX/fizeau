@@ -766,21 +766,24 @@ type routeStatusComponents struct {
 	QuotaPercentUsed int     `json:"quota_percent_used"`
 	QuotaTrend       string  `json:"quota_trend,omitempty"`
 	Capability       float64 `json:"capability"`
+	ContextHeadroom  int     `json:"context_headroom"`
 }
 
 type routeStatusCandidate struct {
-	Harness      string                           `json:"harness,omitempty"`
-	Provider     string                           `json:"provider"`
-	Endpoint     string                           `json:"endpoint,omitempty"`
-	Model        string                           `json:"model"`
-	Score        float64                          `json:"score"`
-	Components   routeStatusComponents            `json:"components"`
-	Utilization  rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
-	Eligible     bool                             `json:"eligible"`
-	FilterReason string                           `json:"filter_reason"`
-	Reason       string                           `json:"reason,omitempty"`
-	CostSource   string                           `json:"cost_source,omitempty"`
-	Winner       bool                             `json:"winner"`
+	Harness       string                           `json:"harness,omitempty"`
+	Provider      string                           `json:"provider"`
+	Endpoint      string                           `json:"endpoint,omitempty"`
+	Model         string                           `json:"model"`
+	Score         float64                          `json:"score"`
+	ContextLength int                              `json:"context_length,omitempty"`
+	ContextSource string                           `json:"context_source,omitempty"`
+	Components    routeStatusComponents            `json:"components"`
+	Utilization   rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
+	Eligible      bool                             `json:"eligible"`
+	FilterReason  string                           `json:"filter_reason"`
+	Reason        string                           `json:"reason,omitempty"`
+	CostSource    string                           `json:"cost_source,omitempty"`
+	Winner        bool                             `json:"winner"`
 }
 
 type routeStatusPowerPolicy struct {
@@ -897,16 +900,18 @@ func cmdRouteStatus(workDir string, args []string) int {
 		winnerSet := decision.Harness != "" || decision.Provider != "" || decision.Model != ""
 		for _, c := range decision.Candidates {
 			entry := routeStatusCandidate{
-				Harness:      c.Harness,
-				Provider:     c.Provider,
-				Endpoint:     c.Endpoint,
-				Model:        c.Model,
-				Score:        c.Score,
-				Eligible:     c.Eligible,
-				FilterReason: c.FilterReason,
-				Reason:       c.Reason,
-				CostSource:   c.CostSource,
-				Utilization:  c.Utilization,
+				Harness:       c.Harness,
+				Provider:      c.Provider,
+				Endpoint:      c.Endpoint,
+				Model:         c.Model,
+				Score:         c.Score,
+				ContextLength: c.ContextLength,
+				ContextSource: c.ContextSource,
+				Eligible:      c.Eligible,
+				FilterReason:  c.FilterReason,
+				Reason:        c.Reason,
+				CostSource:    c.CostSource,
+				Utilization:   c.Utilization,
 				Components: routeStatusComponents{
 					Power:            c.Components.Power,
 					Cost:             c.Components.Cost,
@@ -918,6 +923,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 					QuotaPercentUsed: c.Components.QuotaPercentUsed,
 					QuotaTrend:       c.Components.QuotaTrend,
 					Capability:       c.Components.Capability,
+					ContextHeadroom:  c.Components.ContextHeadroom,
 				},
 			}
 			if winnerSet && out.Winner == nil &&
