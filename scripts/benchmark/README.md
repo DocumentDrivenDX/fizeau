@@ -238,9 +238,9 @@ tasks at the pinned dataset commit. It is intentionally separate from the
 historical `termbench-subset.json`, which still contains five task IDs that are
 not present in the pinned TB-2 tree.
 
-### Medium-model reference comparison
+### Medium-model fiz-wrapper comparison
 
-Use the dedicated entrypoint for the medium-cost native-vs-fiz comparison:
+Use the dedicated entrypoint for the medium-cost fiz-wrapper comparison:
 
 ```bash
 OPENROUTER_API_KEY=sk-or-... \
@@ -259,10 +259,12 @@ OPENROUTER_API_KEY=sk-or-... \
 
 Cells included:
 
-- Claude Code native: `sonnet-4.6`
-- Codex native: `gpt-5.4-mini`
-- fiz via OpenRouter: `anthropic/claude-sonnet-4.6`
-- fiz via OpenRouter: `openai/gpt-5.4-mini`
+- `fiz-harness-claude-sonnet-4-6`
+- `fiz-harness-codex-gpt-5-4-mini`
+- `fiz-harness-pi-gpt-5-4-mini`
+- `fiz-harness-opencode-gpt-5-4-mini`
+- `fiz-openrouter-claude-sonnet-4-6`
+- `fiz-openrouter-gpt-5-4-mini`
 
 ### Bootstrap Subset Selection
 
@@ -384,13 +386,13 @@ BASELINE=frontier TIER=canary REPS=1 FORCE_RERUN=1 JOBS=1 \
 Do not commit those tarballs or benchmark-result artifacts.
 
 To compare `fiz` against the same medium-cost model families through
-OpenRouter, run separate `fiz` cells with the OpenRouter profiles:
+OpenRouter, run separate `fiz` cells with the official OpenRouter profiles:
 
 ```bash
-TIER=canary HARNESSES=fiz PROFILE=gpt-5-4-mini-openrouter REPS=1 FORCE_RERUN=1 JOBS=1 \
+TIER=canary HARNESSES=fiz PROFILE=fiz-openrouter-gpt-5-4-mini REPS=1 FORCE_RERUN=1 JOBS=1 \
   scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
 
-TIER=canary HARNESSES=fiz PROFILE=claude-sonnet-4-6 REPS=1 FORCE_RERUN=1 JOBS=1 \
+TIER=canary HARNESSES=fiz PROFILE=fiz-openrouter-claude-sonnet-4-6 REPS=1 FORCE_RERUN=1 JOBS=1 \
   scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh
 ```
 

@@ -35,6 +35,13 @@ func TestLoadDir_AllShippedProfilesValidate(t *testing.T) {
 	require.Contains(t, ids, "noop")
 	// Phase A.1 anchor: gpt-5-mini via OpenRouter.
 	require.Contains(t, ids, "gpt-5-mini")
+	// TerminalBench medium comparison lanes.
+	require.Contains(t, ids, "fiz-harness-claude-sonnet-4-6")
+	require.Contains(t, ids, "fiz-harness-codex-gpt-5-4-mini")
+	require.Contains(t, ids, "fiz-harness-pi-gpt-5-4-mini")
+	require.Contains(t, ids, "fiz-harness-opencode-gpt-5-4-mini")
+	require.Contains(t, ids, "fiz-openrouter-claude-sonnet-4-6")
+	require.Contains(t, ids, "fiz-openrouter-gpt-5-4-mini")
 }
 
 func TestLoad_GPT5MiniAnchorProfile(t *testing.T) {
