@@ -142,6 +142,24 @@ The benchmark evidence pipeline is:
 3. Validate the imported evidence and append it to an append-only ledger.
 4. Ask `fiz-bench fhi delta|rank` for benchmark-specific or cross-benchmark claims.
 
+The canonical operator loop is:
+
+```bash
+# 1) produce raw benchmark artifacts
+scripts/benchmark/run_benchmark.sh
+
+# 2) project raw artifacts into normalized evidence
+go run ./cmd/bench evidence import-terminalbench --matrix <matrix-dir> --out benchmark-results/evidence/terminalbench.jsonl
+
+# 3) validate and append to the ledger
+go run ./cmd/bench evidence validate benchmark-results/evidence/terminalbench.jsonl
+go run ./cmd/bench evidence append --in benchmark-results/evidence/terminalbench.jsonl --ledger benchmark-results/evidence/ledger.jsonl
+
+# 4) emit benchmark claims from the ledger
+go run ./cmd/bench fhi delta --ledger benchmark-results/evidence/ledger.jsonl --left <record_id> --right <record_id>
+go run ./cmd/bench fhi rank --ledger benchmark-results/evidence/ledger.jsonl
+```
+
 This workflow is anchored by [SD-012](../../docs/helix/02-design/solution-designs/SD-012-benchmark-evidence-ledger.md)
 and the benchmark resource notes for
 [Rapid-MLX MHI](../../docs/resources/rapid-mlx-mhi-2026-05-06.md),
@@ -230,6 +248,68 @@ go run ./cmd/bench fhi delta \
 go run ./cmd/bench fhi rank \
   --ledger benchmark-results/evidence/ledger.jsonl
 ```
+
+Pinned axes:
+
+- `fhi delta` compares only two records on the same benchmark axis. Keep the
+  benchmark, subset, scorer, formula version, and denominator policy fixed;
+  vary only the subject axis you are measuring.
+- `fhi rank` compares subjects across the same evidence window and formula.
+  Keep the included benchmark set fixed so local-stack rows and frontier rows
+  are scored against the same ledger window.
+
+Harness-vs-harness example:
+
+```text
+TerminalBench tb2-wide@903487e82ad1998f0c20b721a7df66ec815ea673
+model=opus-4.7, provider=anthropic, subset=tb2-wide, scorer=verifier
+
+fiz-native       81.0 ± 2.1
+claude-code      81.7 ± 1.8
+delta            -0.7
+```
+
+Required pins for this claim:
+
+- same model and model snapshot
+- same provider surface
+- same benchmark version, dataset commit, and subset/version
+- same scorer and denominator rule
+- only `subject.harness` changes
+
+Local-vs-frontier example:
+
+```text
+FHI formula=fhi/v1, evidence window=2026-Q2
+benchmarks=terminalbench-wide, beadbench-v1, skillsbench-import
+
+local stack:
+  fiz=0.10
+  harness=fiz-native
+  provider=omlx
+  provider_version=0.8.10
+  model=Qwen 3.6 27B MLX 8-bit
+  quantization=8-bit
+  hardware=Mac Studio M3 Ultra 512GB
+
+frontier baseline:
+  harness=fiz-native
+  provider=anthropic
+  model=Opus 4.7
+
+Qwen 3.6 27B 8-bit via oMLX    FHI 50
+Opus 4.7 via Anthropic          FHI 56
+delta                           -6
+```
+
+Required pins for this claim:
+
+- same FHI formula version and evidence window
+- same included benchmark set and denominator rule
+- same claim generator version
+- local rows must include runtime, quantization, hardware, and endpoint facts
+- frontier rows must include provider surface and capture timestamp when no
+  explicit provider version exists
 
 The command surface is covered by the `cmd/bench` tests:
 
