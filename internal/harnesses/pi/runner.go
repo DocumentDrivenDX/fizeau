@@ -19,8 +19,8 @@ import (
 const defaultEventBuffer = 64
 
 // Runner is the subprocess-backed pi harness. It launches pi in
-// --mode json --print mode, parses each JSONL line into harness Events, and
-// emits a final Event when the subprocess exits.
+// JSON print mode, parses each JSONL line into harness Events, and emits a
+// final Event when the subprocess exits.
 //
 // Pi emits JSONL where each line is a JSON object. The relevant event types:
 //   - type=text_end or type=text_delta carries message.usage or partial.usage
@@ -31,7 +31,7 @@ type Runner struct {
 	Binary string
 
 	// BaseArgs is prepended to the per-request argument list.
-	// Pi default: ["--mode", "json", "--print"]
+	// Pi default: defaultBaseArgs.
 	BaseArgs []string
 
 	// PromptMode controls how the prompt is delivered:
@@ -170,7 +170,7 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan harnesses.Event, seq *int64) (agg *streamAggregate, exitCode int, stderr string, runErr error, status string) {
 	base := r.BaseArgs
 	if base == nil {
-		base = []string{"--mode", "json", "--print"}
+		base = defaultBaseArgs
 	}
 	args := append([]string{}, base...)
 
@@ -308,6 +308,16 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 		return parseAgg, 0, stderr, parseErr, "failed"
 	}
 	return parseAgg, 0, stderr, nil, "success"
+}
+
+var defaultBaseArgs = []string{
+	"--mode", "json",
+	"--print",
+	"--no-session",
+	"--no-extensions",
+	"--no-skills",
+	"--no-prompt-templates",
+	"--no-themes",
 }
 
 type stringBuilderWriter struct {

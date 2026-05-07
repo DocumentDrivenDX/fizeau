@@ -1739,49 +1739,52 @@ func TestResolveExplicitHarnessModelIncompatible(t *testing.T) {
 	}
 }
 
-// TestResolveExplicitHarnessPiProviderPinAcceptsAnyModel verifies that the
-// pi harness, when paired with an explicit provider pin, accepts any model
-// — pi can route to lmstudio/omlx/openrouter etc. and the pi CLI owns
-// per-provider model validation in that case. The fiz-side gate must
-// trust the provider pin and defer concrete model-ID checks to pi itself.
-// Mirrors the bypass rule in service_execute.go modelSupportedForHarness.
-func TestResolveExplicitHarnessPiProviderPinAcceptsAnyModel(t *testing.T) {
-	pi := HarnessEntry{
-		Name:                "pi",
-		Surface:             "pi",
-		CostClass:           "medium",
-		AutoRoutingEligible: true,
-		ExactPinSupport:     true,
-		Available:           true,
-		QuotaOK:             true,
-		DefaultModel:        "gemini-2.5-flash",
-		SupportedModels:     []string{"gemini-2.5-flash", "gemini-2.5-pro"},
-		Providers: []ProviderEntry{
-			{Name: "omlx-vidar-1235", DefaultModel: "Qwen3.6-27B-MLX-8bit"},
-		},
-		SupportsTools: true,
-	}
+// TestResolveExplicitProviderRoutedHarnessProviderPinAcceptsAnyModel verifies
+// that provider-routed subprocess harnesses accept provider-pinned local model
+// IDs. The harness CLI owns concrete per-provider validation in that case.
+func TestResolveExplicitProviderRoutedHarnessProviderPinAcceptsAnyModel(t *testing.T) {
+	for _, harness := range []struct {
+		name            string
+		defaultModel    string
+		supportedModels []string
+	}{
+		{name: "pi", defaultModel: "gemini-2.5-flash", supportedModels: []string{"gemini-2.5-flash", "gemini-2.5-pro"}},
+		{name: "opencode", defaultModel: "opencode/gpt-5.4", supportedModels: []string{"opencode/gpt-5.4", "opencode/claude-sonnet-4-6"}},
+	} {
+		t.Run(harness.name, func(t *testing.T) {
+			entry := HarnessEntry{
+				Name:                harness.name,
+				Surface:             harness.name,
+				CostClass:           "medium",
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				DefaultModel:        harness.defaultModel,
+				SupportedModels:     harness.supportedModels,
+				Providers: []ProviderEntry{
+					{Name: "omlx-vidar-1235", DefaultModel: "Qwen3.6-27B-MLX-8bit"},
+				},
+				SupportsTools: true,
+			}
 
-	// Without provider pin: model must be in SupportedModels — same as before.
-	_, err := Resolve(Request{Harness: "pi", Model: "Qwen3.6-27B-MLX-8bit"}, Inputs{Harnesses: []HarnessEntry{pi}})
-	if err == nil {
-		t.Fatal("expected pi+Qwen without provider pin to fail model validation")
-	}
-	if !errors.Is(err, ErrHarnessModelIncompatible{}) {
-		t.Fatalf("errors.Is should match ErrHarnessModelIncompatible without provider pin: %T %v", err, err)
-	}
+			_, err := Resolve(Request{Harness: harness.name, Model: "Qwen3.6-27B-MLX-8bit"}, Inputs{Harnesses: []HarnessEntry{entry}})
+			if err == nil {
+				t.Fatalf("expected %s+Qwen without provider pin to fail model validation", harness.name)
+			}
+			if !errors.Is(err, ErrHarnessModelIncompatible{}) {
+				t.Fatalf("errors.Is should match ErrHarnessModelIncompatible without provider pin: %T %v", err, err)
+			}
 
-	// With provider pin: pi accepts any model; pi CLI defers validation.
-	// Resolve may still fail downstream for other reasons (no eligible
-	// candidate matches), but it must not fail with
-	// ErrHarnessModelIncompatible specifically.
-	_, err = Resolve(Request{
-		Harness:  "pi",
-		Provider: "omlx-vidar-1235",
-		Model:    "Qwen3.6-27B-MLX-8bit",
-	}, Inputs{Harnesses: []HarnessEntry{pi}})
-	if errors.Is(err, ErrHarnessModelIncompatible{}) {
-		t.Fatalf("pi+provider-pin must NOT yield ErrHarnessModelIncompatible: %T %v", err, err)
+			_, err = Resolve(Request{
+				Harness:  harness.name,
+				Provider: "omlx-vidar-1235",
+				Model:    "Qwen3.6-27B-MLX-8bit",
+			}, Inputs{Harnesses: []HarnessEntry{entry}})
+			if errors.Is(err, ErrHarnessModelIncompatible{}) {
+				t.Fatalf("%s+provider-pin must NOT yield ErrHarnessModelIncompatible: %T %v", harness.name, err, err)
+			}
+		})
 	}
 }
 

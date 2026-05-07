@@ -16,7 +16,7 @@ cd "${REPO_ROOT}"
 
 PHASE="all"
 OUT=""
-TASKS_DIR="${REPO_ROOT}/scripts/benchmark/external/terminal-bench-2-1"
+TASKS_DIR="${REPO_ROOT}/benchmark-results/external/terminal-bench-2-1"
 SWEEP_PLAN="${REPO_ROOT}/scripts/benchmark/terminalbench-2-1-sweep.yaml"
 DRY_RUN=0
 PREPARE_ONLY=0
@@ -109,6 +109,7 @@ abs_path() {
 }
 
 TASKS_DIR="$(abs_path "${TASKS_DIR}")"
+SOURCE_TASKS_DIR="${TASKS_DIR}"
 SWEEP_PLAN="$(abs_path "${SWEEP_PLAN}")"
 if [[ -z "${OUT}" ]]; then
   OUT="${REPO_ROOT}/benchmark-results/sweep-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -146,20 +147,21 @@ goarch_from_machine() {
 }
 
 container_goarch() {
+  if [[ -n "${BENCHMARK_CONTAINER_GOARCH:-}" ]]; then
+    goarch_from_machine "${BENCHMARK_CONTAINER_GOARCH}"
+    return
+  fi
+  if [[ -n "${HARBOR_CONTAINER_GOARCH:-}" ]]; then
+    goarch_from_machine "${HARBOR_CONTAINER_GOARCH}"
+    return
+  fi
+
   local arch
   arch="$(docker info --format '{{.Architecture}}' 2>/dev/null || true)"
   if [[ -z "${arch}" ]]; then
     arch="$(uname -m)"
   fi
   goarch_from_machine "${arch}"
-}
-
-container_node_arch() {
-  case "${CONTAINER_GOARCH:-$(container_goarch)}" in
-    amd64) echo "x64" ;;
-    arm64) echo "arm64" ;;
-    *) echo "${CONTAINER_GOARCH}" ;;
-  esac
 }
 
 build_artifacts() {
@@ -191,57 +193,6 @@ require_file() {
   fi
 }
 
-ensure_node_tarball() {
-  if [[ -n "${HARBOR_NODE_TARBALL:-}" ]]; then
-    require_file "${HARBOR_NODE_TARBALL}" "set HARBOR_NODE_TARBALL to an existing Node.js Linux tarball"
-    return
-  fi
-
-  local arch version path url
-  arch="$(container_node_arch)"
-  version="${HARBOR_NODE_VERSION:-20.19.2}"
-  path="${REPO_ROOT}/benchmark-results/bin/node-v${version}-linux-${arch}.tar.gz"
-  if [[ ! -f "${path}" ]]; then
-    need curl
-    mkdir -p "$(dirname "${path}")"
-    url="https://nodejs.org/dist/v${version}/node-v${version}-linux-${arch}.tar.gz"
-    echo "Preparing Node.js for Harbor harness install: ${url}"
-    curl -fsSL "${url}" -o "${path}"
-  fi
-  export HARBOR_NODE_TARBALL="${path}"
-}
-
-npm_pack_once() {
-  local package_spec="$1"
-  local out_dir="$2"
-  local match_prefix="$3"
-  local expected_version="${4:-}"
-  mkdir -p "${out_dir}"
-  local existing
-  if [[ -n "${expected_version}" ]]; then
-    existing="$(find "${out_dir}" -maxdepth 1 -type f -name "${match_prefix}-${expected_version}.tgz" | sort | tail -n 1 || true)"
-  else
-    existing="$(find "${out_dir}" -maxdepth 1 -type f -name "${match_prefix}-*.tgz" | sort | tail -n 1 || true)"
-  fi
-  if [[ -n "${existing}" ]]; then
-    printf '%s\n' "${existing}"
-    return
-  fi
-  need npm
-  echo "Packing ${package_spec} for Harbor harness install" >&2
-  npm pack "${package_spec}" --pack-destination "${out_dir}" >/dev/null
-  if [[ -n "${expected_version}" ]]; then
-    existing="$(find "${out_dir}" -maxdepth 1 -type f -name "${match_prefix}-${expected_version}.tgz" | sort | tail -n 1 || true)"
-  else
-    existing="$(find "${out_dir}" -maxdepth 1 -type f -name "${match_prefix}-*.tgz" | sort | tail -n 1 || true)"
-  fi
-  if [[ -z "${existing}" ]]; then
-    echo "npm pack did not create ${match_prefix}-*.tgz in ${out_dir}" >&2
-    exit 1
-  fi
-  printf '%s\n' "${existing}"
-}
-
 installed_claude_version() {
   if command -v claude >/dev/null 2>&1; then
     claude --version 2>/dev/null | awk '{print $1; exit}'
@@ -251,12 +202,6 @@ installed_claude_version() {
 installed_codex_version() {
   if command -v codex >/dev/null 2>&1; then
     codex --version 2>/dev/null | awk '{print $2; exit}'
-  fi
-}
-
-installed_opencode_binary() {
-  if command -v opencode >/dev/null 2>&1; then
-    readlink -f "$(command -v opencode)"
   fi
 }
 
@@ -300,91 +245,31 @@ prepare_home_tarball() {
   export "${env_name}=${out_path}"
 }
 
-prepare_claude_package_tarball() {
-  ensure_node_tarball
-  if [[ -n "${HARBOR_CLAUDE_PACKAGE_TARBALL:-}" ]]; then
-    require_file "${HARBOR_CLAUDE_PACKAGE_TARBALL}" "set HARBOR_CLAUDE_PACKAGE_TARBALL to an existing Claude Code package tarball"
-    return
-  fi
-  local version spec
-  version="${HARBOR_CLAUDE_VERSION:-$(installed_claude_version)}"
-  spec="@anthropic-ai/claude-code${version:+@${version}}"
-  export HARBOR_CLAUDE_PACKAGE_TARBALL="$(npm_pack_once "${spec}" "${REPO_ROOT}/benchmark-results/bin/npm-packages" "anthropic-ai-claude-code" "${version}")"
-}
-
-prepare_codex_package_tarball() {
-  ensure_node_tarball
-  if [[ -n "${HARBOR_CODEX_PACKAGE_TARBALL:-}" ]]; then
-    require_file "${HARBOR_CODEX_PACKAGE_TARBALL}" "set HARBOR_CODEX_PACKAGE_TARBALL to an existing Codex package tarball"
-    return
-  fi
-  local version spec
-  version="${HARBOR_CODEX_VERSION:-$(installed_codex_version)}"
-  spec="@openai/codex${version:+@${version}}"
-  export HARBOR_CODEX_PACKAGE_TARBALL="$(npm_pack_once "${spec}" "${REPO_ROOT}/benchmark-results/bin/npm-packages" "openai-codex" "${version}")"
-}
-
-prepare_pi_harness_artifact() {
-  ensure_node_tarball
-  if [[ -n "${HARBOR_PI_PACKAGE_TARBALL:-}" ]]; then
-    require_file "${HARBOR_PI_PACKAGE_TARBALL}" "set HARBOR_PI_PACKAGE_TARBALL to an existing pi package tarball"
-    return
-  fi
-  local existing version spec
-  existing="${REPO_ROOT}/benchmark-results/bin/pi-coding-agent-0.67.1/package.tgz"
-  if [[ -f "${existing}" ]]; then
-    export HARBOR_PI_PACKAGE_TARBALL="${existing}"
-    return
-  fi
-  version="${HARBOR_PI_VERSION:-0.67.1}"
-  spec="@mariozechner/pi-coding-agent@${version}"
-  export HARBOR_PI_PACKAGE_TARBALL="$(npm_pack_once "${spec}" "${REPO_ROOT}/benchmark-results/bin/npm-packages" "mariozechner-pi-coding-agent" "${version}")"
-}
-
-prepare_opencode_harness_artifact() {
-  if [[ -n "${HARBOR_OPENCODE_ARTIFACT:-}" ]]; then
-    require_file "${HARBOR_OPENCODE_ARTIFACT}" "set HARBOR_OPENCODE_ARTIFACT to an existing OpenCode Linux binary"
-    return
-  fi
-  local installed_binary fallback
-  installed_binary="$(installed_opencode_binary)"
-  if [[ -n "${installed_binary}" && -f "${installed_binary}" ]] && file "${installed_binary}" | grep -q "ELF"; then
-    export HARBOR_OPENCODE_ARTIFACT="${installed_binary}"
-    return
-  fi
-  fallback="${REPO_ROOT}/benchmark-results/bin/opencode-1.3.17-linux-$(container_node_arch)/opencode"
-  if [[ -f "${fallback}" ]]; then
-    export HARBOR_OPENCODE_ARTIFACT="${fallback}"
-    return
-  fi
-  echo "OpenCode Linux binary not found. Set HARBOR_OPENCODE_ARTIFACT or install opencode on the host." >&2
-  exit 1
-}
-
 prepare_agent_runtime_bundle() {
-  prepare_claude_package_tarball
-  prepare_codex_package_tarball
-  prepare_pi_harness_artifact
-  prepare_opencode_harness_artifact
-
-  local context_dir image tag container_id tmp_bundle_dir
+  local context_dir image tag container_id tmp_bundle_dir node_version claude_version codex_version pi_version opencode_version
   context_dir="${REPO_ROOT}/benchmark-results/bin/agent-runtime-context-${CONTAINER_GOARCH}"
   HARBOR_AGENT_RUNTIME_BUNDLE="${REPO_ROOT}/benchmark-results/bin/agent-runtime-linux-${CONTAINER_GOARCH}.tgz"
   image="fizeau/terminalbench-agent-runtime"
   tag="${image}:$(git rev-parse --short HEAD 2>/dev/null || echo local)-${CONTAINER_GOARCH}"
+  node_version="${HARBOR_NODE_VERSION:-20.19.2}"
+  claude_version="${HARBOR_CLAUDE_VERSION:-$(installed_claude_version)}"
+  codex_version="${HARBOR_CODEX_VERSION:-$(installed_codex_version)}"
+  pi_version="${HARBOR_PI_VERSION:-0.67.1}"
+  opencode_version="${HARBOR_OPENCODE_VERSION:-1.3.17}"
 
   rm -rf "${context_dir}"
   mkdir -p "${context_dir}"
   cp "${FIZ_ARTIFACT}" "${context_dir}/fiz"
-  cp "${HARBOR_OPENCODE_ARTIFACT}" "${context_dir}/opencode"
-  cp "${HARBOR_NODE_TARBALL}" "${context_dir}/node.tgz"
-  cp "${HARBOR_CLAUDE_PACKAGE_TARBALL}" "${context_dir}/claude-code.tgz"
-  cp "${HARBOR_CODEX_PACKAGE_TARBALL}" "${context_dir}/codex.tgz"
-  cp "${HARBOR_PI_PACKAGE_TARBALL}" "${context_dir}/pi.tgz"
 
   echo "Building cached agent runtime image: ${tag}"
   docker build \
+    --platform "linux/${CONTAINER_GOARCH}" \
     --build-arg "TARGETARCH=${CONTAINER_GOARCH}" \
+    --build-arg "NODE_VERSION=${node_version}" \
+    --build-arg "CLAUDE_CODE_VERSION=${claude_version}" \
+    --build-arg "CODEX_VERSION=${codex_version}" \
+    --build-arg "PI_VERSION=${pi_version}" \
+    --build-arg "OPENCODE_VERSION=${opencode_version}" \
     -f "${REPO_ROOT}/scripts/benchmark/Dockerfile.agent-runtime" \
     -t "${tag}" \
     "${context_dir}"
@@ -468,6 +353,103 @@ validate_tasks() {
       printf '%s\t%s\t%s\n' "${phase}" "${id}" "${resolved}" >> "${TARGET_TASKS_FILE}"
     done < <(task_ids_from_subset "${subset}")
   done < <(phases_to_validate | sort -u)
+}
+
+task_docker_image() {
+  python3 - "$1" <<'PY'
+import pathlib
+import sys
+import tomllib
+
+task = pathlib.Path(sys.argv[1])
+data = tomllib.loads(task.read_text())
+environment = data.get("environment") if isinstance(data.get("environment"), dict) else {}
+image = data.get("docker_image") or environment.get("docker_image")
+if not isinstance(image, str) or not image:
+    raise SystemExit(f"{task}: missing docker_image")
+print(image)
+PY
+}
+
+rewrite_task_docker_image() {
+  python3 - "$1" "$2" <<'PY'
+import pathlib
+import re
+import sys
+
+task = pathlib.Path(sys.argv[1])
+image = sys.argv[2]
+text = task.read_text()
+new, count = re.subn(
+    r'(?m)^docker_image\s*=\s*"[^"]*"\s*$',
+    f'docker_image = "{image}"',
+    text,
+    count=1,
+)
+if count != 1:
+    raise SystemExit(f"{task}: expected exactly one docker_image assignment")
+task.write_text(new)
+PY
+}
+
+safe_task_image_name() {
+  printf '%s' "$1" | tr -c 'A-Za-z0-9_.-' '-'
+}
+
+prepare_local_task_images() {
+  local overlay unique_file id src rel dest dockerfile original_image digest digest_short safe_id tag build_args
+  overlay="${OUT}/task-images/terminal-bench-2-1-${CONTAINER_GOARCH}"
+  unique_file="$(mktemp)"
+  awk -F '\t' '!seen[$2]++ {print $2 "\t" $3}' "${TARGET_TASKS_FILE}" > "${unique_file}"
+
+  rm -rf "${overlay}"
+  mkdir -p "${overlay}"
+  echo "Building selected TerminalBench task images locally for linux/${CONTAINER_GOARCH}"
+
+  while IFS=$'\t' read -r id src; do
+    [[ -n "${id}" ]] || continue
+    dockerfile="${src}/environment/Dockerfile"
+    if [[ ! -f "${dockerfile}" ]]; then
+      echo "TB-2.1 task ${id} has no environment/Dockerfile; refusing to fall back to registry image" >&2
+      echo "source task: ${src}" >&2
+      rm -f "${unique_file}"
+      exit 1
+    fi
+
+    rel="${src#${SOURCE_TASKS_DIR}/}"
+    if [[ "${rel}" = "${src}" ]]; then
+      echo "internal error: task ${id} did not resolve under ${SOURCE_TASKS_DIR}: ${src}" >&2
+      rm -f "${unique_file}"
+      exit 1
+    fi
+    dest="${overlay}/${rel}"
+    mkdir -p "$(dirname "${dest}")"
+    rm -rf "${dest}"
+    cp -a "${src}" "${dest}"
+
+    original_image="$(task_docker_image "${src}/task.toml")"
+    digest="$(basename "${src}")"
+    digest_short="${digest:0:12}"
+    safe_id="$(safe_task_image_name "${id}")"
+    tag="fizeau/tb21-${safe_id}:${digest_short}-${CONTAINER_GOARCH}"
+    build_args=(
+      build
+      --platform "linux/${CONTAINER_GOARCH}"
+      -t "${tag}"
+      -f "${dockerfile}"
+    )
+    if [[ "${BENCHMARK_FORCE_TASK_IMAGE_BUILD:-0}" = "1" ]]; then
+      build_args+=(--no-cache)
+    fi
+    build_args+=("${src}/environment")
+
+    echo "  ${id}: ${original_image} -> ${tag}"
+    docker "${build_args[@]}"
+    rewrite_task_docker_image "${dest}/task.toml" "${tag}"
+  done < "${unique_file}"
+
+  rm -f "${unique_file}"
+  TASKS_DIR="${overlay}"
 }
 
 prepare_env_keys() {
@@ -554,7 +536,8 @@ print_summary() {
   echo "TerminalBench 2.1 sweep target"
   echo "  phase:              ${PHASE}"
   echo "  output:             ${OUT}"
-  echo "  tasks:              ${TASKS_DIR}"
+  echo "  tasks source:       ${SOURCE_TASKS_DIR}"
+  echo "  tasks runtime:      ${TASKS_DIR}"
   echo "  sweep plan:         ${SWEEP_PLAN}"
   echo "  bench runner:       ${BENCH_BIN}"
   echo "  Harbor artifact:    ${HARBOR_AGENT_ARTIFACT}"
@@ -587,6 +570,7 @@ build_artifacts
 prepare_agent_runtime_bundle
 ensure_tasks
 validate_tasks
+prepare_local_task_images
 prepare_env_keys
 print_summary
 

@@ -606,10 +606,10 @@ func explicitPinError(req Request, in Inputs) error {
 	if canonicalHarness == "" || req.Model == "" {
 		return nil
 	}
-	// Pi can route any provider-pinned model (lmstudio, omlx, openrouter,
-	// etc.); the pi CLI owns concrete model validation in that case.
-	// Mirrors the bypass in service_execute.go validateExplicitHarnessModel.
-	if canonicalHarness == "pi" && req.Provider != "" {
+	// Provider-routed subprocess harnesses can route any provider-pinned
+	// model (lmstudio, omlx, openrouter, etc.); the harness CLI owns
+	// concrete model validation in that case.
+	if providerRoutedHarnessAcceptsProviderPinnedModel(canonicalHarness) && req.Provider != "" {
 		return nil
 	}
 	h, ok := findHarness(in.Harnesses, canonicalHarness)
@@ -620,6 +620,15 @@ func explicitPinError(req Request, in Inputs) error {
 		Harness:         canonicalHarness,
 		Model:           req.Model,
 		SupportedModels: append([]string(nil), h.SupportedModels...),
+	}
+}
+
+func providerRoutedHarnessAcceptsProviderPinnedModel(harness string) bool {
+	switch harness {
+	case "pi", "opencode":
+		return true
+	default:
+		return false
 	}
 }
 

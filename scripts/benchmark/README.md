@@ -426,43 +426,31 @@ Before running, make sure the local model endpoint is reachable from Harbor task
 containers as `http://vidar:1235/v1`. The script sets `OMLX_API_KEY=local` by
 default because the local OpenAI-compatible endpoint only needs a non-empty key.
 
-The `benchmark-results/` tree is ignored by git, so the pinned in-container
-artifacts must be staged locally before a run. Defaults are:
+The one-shot `./benchmark` entrypoint now builds a cached runtime image for the
+task containers. That Docker build installs Node.js plus Claude Code, Codex,
+Pi, and OpenCode inside the image, then exports `/installed-agent` as the Harbor
+runtime bundle. Host state is limited to the Fiz binary plus data/config
+tarballs such as `.claude` and `.codex`; provider binaries are not copied from
+the host.
 
-- `benchmark-results/bin/opencode-1.3.17-linux-x64/opencode`
-- `benchmark-results/bin/node-v20.19.2-linux-x64.tar.gz`
-- `benchmark-results/bin/pi-coding-agent-0.67.1/package.tgz`
+The same entrypoint also rebuilds the selected TerminalBench 2.1 task images
+locally from each task's `environment/Dockerfile`. It writes a per-run overlay
+task tree under `benchmark-results/.../task-images/` and rewrites `docker_image`
+there to point at the local tags. This keeps the sweep on the Docker host
+architecture by default and fails during preflight if a selected task cannot be
+built for that architecture. The downloaded TB-2.1 task tree also defaults to
+`benchmark-results/external/terminal-bench-2-1`, not the scripts directory.
 
-You can override those with `HARBOR_OPENCODE_ARTIFACT`, `HARBOR_NODE_TARBALL`,
-and `HARBOR_PI_PACKAGE_TARBALL`.
+Version overrides are build args exposed as environment variables:
 
-One reproducible way to prepare the artifacts:
-
-```bash
-mkdir -p benchmark-results/bin
-
-curl -fL \
-  https://nodejs.org/dist/v20.19.2/node-v20.19.2-linux-x64.tar.gz \
-  -o benchmark-results/bin/node-v20.19.2-linux-x64.tar.gz
-
-docker run --rm --platform linux/amd64 \
-  -v "$PWD/benchmark-results/bin:/out" \
-  debian:bookworm-slim \
-  sh -lc 'apt-get update >/dev/null &&
-    apt-get install -y curl ca-certificates unzip >/dev/null &&
-    curl -fsSL https://opencode.ai/install | VERSION=1.3.17 bash &&
-    mkdir -p /out/opencode-1.3.17-linux-x64 &&
-    cp /root/.opencode/bin/opencode /out/opencode-1.3.17-linux-x64/opencode &&
-    chmod 755 /out/opencode-1.3.17-linux-x64/opencode'
-
-docker run --rm --platform linux/amd64 \
-  -v "$PWD/benchmark-results/bin:/out" \
-  node:20-bookworm-slim \
-  sh -lc 'npm install -g @mariozechner/pi-coding-agent@0.67.1 >/dev/null &&
-    mkdir -p /out/pi-coding-agent-0.67.1 &&
-    tar -C /usr/local/lib/node_modules/@mariozechner \
-      -czf /out/pi-coding-agent-0.67.1/package.tgz pi-coding-agent'
-```
+- `BENCHMARK_CONTAINER_GOARCH` or `HARBOR_CONTAINER_GOARCH` (defaults to the
+  Docker host architecture)
+- `HARBOR_NODE_VERSION`
+- `HARBOR_CLAUDE_VERSION`
+- `HARBOR_CODEX_VERSION`
+- `HARBOR_PI_VERSION`
+- `HARBOR_OPENCODE_VERSION`
+- `BENCHMARK_FORCE_TASK_IMAGE_BUILD=1` to rebuild task images without cache
 
 For fair timings against a single local provider, run one harness at a time and
 wait for it to finish before starting the next. Do not run separate matrix

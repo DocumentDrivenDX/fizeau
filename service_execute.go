@@ -354,6 +354,11 @@ func modelSupportedForHarness(name string, cfg harnesses.HarnessConfig, model, p
 		// in that case, so the agent-side gate trusts the provider pin and
 		// defers concrete model-ID checks to pi --list-models / pi itself.
 		return provider != ""
+	case "opencode":
+		// OpenCode can route to configured provider/model pairs when the
+		// provider is pinned; the generated opencode config and CLI own the
+		// concrete model validation in that case.
+		return provider != ""
 	default:
 		return len(cfg.Models) == 0
 	}

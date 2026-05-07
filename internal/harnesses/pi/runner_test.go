@@ -100,11 +100,16 @@ EOF
 		"ARG[0]=--mode",
 		"ARG[1]=json",
 		"ARG[2]=--print",
-		"ARG[3]=--model",
-		"ARG[4]=gemini-2.5-flash",
-		"ARG[5]=--thinking",
-		"ARG[6]=high",
-		"ARG[7]=hello prompt",
+		"ARG[3]=--no-session",
+		"ARG[4]=--no-extensions",
+		"ARG[5]=--no-skills",
+		"ARG[6]=--no-prompt-templates",
+		"ARG[7]=--no-themes",
+		"ARG[8]=--model",
+		"ARG[9]=gemini-2.5-flash",
+		"ARG[10]=--thinking",
+		"ARG[11]=high",
+		"ARG[12]=hello prompt",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("capture missing %q:\n%s", want, got)
@@ -162,13 +167,13 @@ EOF
 	}
 	got := string(raw)
 	for _, want := range []string{
-		"ARG[3]=--provider",
-		"ARG[4]=lmstudio",
-		"ARG[5]=--model",
-		"ARG[6]=qwen3.6-27b",
-		"ARG[7]=--thinking",
-		"ARG[8]=medium",
-		"ARG[9]=hello",
+		"ARG[8]=--provider",
+		"ARG[9]=lmstudio",
+		"ARG[10]=--model",
+		"ARG[11]=qwen3.6-27b",
+		"ARG[12]=--thinking",
+		"ARG[13]=medium",
+		"ARG[14]=hello",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("capture missing %q:\n%s", want, got)

@@ -320,6 +320,8 @@ class FizeauAgent(BaseInstalledAgent):
     def _build_command(self, env: dict[str, str]) -> str:
         return (
             "set -uo pipefail; "
+            f"export HOME={shlex.quote(_HOME_DIR)}; "
+            f"export PATH={shlex.quote(_INSTALL_ROOT)}:{shlex.quote(_INSTALL_ROOT)}/node/bin:$PATH; "
             "cd /testbed 2>/dev/null || cd /workspace 2>/dev/null || true; "
             'work_dir="$(pwd)"; '
             f'cp {_AGENTS_MD_TARGET} "$(pwd)/AGENTS.md" 2>/dev/null || true; '

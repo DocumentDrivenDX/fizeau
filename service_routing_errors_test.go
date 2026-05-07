@@ -65,37 +65,46 @@ func TestValidateExplicitHarnessModelAcceptsClaudeDiscoveredFamilyVersion(t *tes
 	}
 }
 
-func TestValidateExplicitHarnessModelPiAcceptsLocalProviderPin(t *testing.T) {
+func TestValidateExplicitHarnessModelProviderRoutedHarnessesAcceptLocalProviderPin(t *testing.T) {
 	registry := harnesses.NewRegistry()
-	cfg, ok := registry.Get("pi")
+
+	for _, name := range []string{"pi", "opencode"} {
+		t.Run(name, func(t *testing.T) {
+			cfg, ok := registry.Get(name)
+			if !ok {
+				t.Fatalf("missing %s registry entry", name)
+			}
+
+			// With an explicit provider pin, a local model ID must be accepted:
+			// the harness itself owns per-provider model validation.
+			if err := validateExplicitHarnessModel(name, cfg, "qwen3.6-27b", "lmstudio"); err != nil {
+				t.Fatalf("%s+lmstudio+qwen should be accepted: %v", name, err)
+			}
+			if err := validateExplicitHarnessModel(name, cfg, "qwen3.6-27b", "omlx"); err != nil {
+				t.Fatalf("%s+omlx+qwen should be accepted: %v", name, err)
+			}
+
+			// Without a provider pin, the harness's static model gate still applies.
+			err := validateExplicitHarnessModel(name, cfg, "qwen3.6-27b", "")
+			if err == nil {
+				t.Fatalf("expected %s to reject non-default model without provider pin", name)
+			}
+			var typed *ErrHarnessModelIncompatible
+			if !errors.As(err, &typed) {
+				t.Fatalf("expected ErrHarnessModelIncompatible, got %T %v", err, err)
+			}
+		})
+	}
+
+	piCfg, ok := registry.Get("pi")
 	if !ok {
 		t.Fatal("missing pi registry entry")
 	}
-
-	// With an explicit provider pin, a non-Gemini model ID must be accepted:
-	// pi itself owns per-provider model validation.
-	if err := validateExplicitHarnessModel("pi", cfg, "qwen3.6-27b", "lmstudio"); err != nil {
-		t.Fatalf("pi+lmstudio+qwen should be accepted: %v", err)
-	}
-	if err := validateExplicitHarnessModel("pi", cfg, "qwen3.6-27b", "omlx"); err != nil {
-		t.Fatalf("pi+omlx+qwen should be accepted: %v", err)
-	}
-
-	// Without a provider pin, the strict Gemini-only gate still applies.
-	err := validateExplicitHarnessModel("pi", cfg, "qwen3.6-27b", "")
-	if err == nil {
-		t.Fatal("expected pi to reject non-Gemini model without provider pin")
-	}
-	var typed *ErrHarnessModelIncompatible
-	if !errors.As(err, &typed) {
-		t.Fatalf("expected ErrHarnessModelIncompatible, got %T %v", err, err)
-	}
-
-	// Regression: Gemini defaults still validate cleanly.
-	if err := validateExplicitHarnessModel("pi", cfg, "gemini-2.5-flash", ""); err != nil {
+	// Regression: Pi Gemini defaults still validate cleanly.
+	if err := validateExplicitHarnessModel("pi", piCfg, "gemini-2.5-flash", ""); err != nil {
 		t.Fatalf("gemini-2.5-flash must remain valid for pi: %v", err)
 	}
-	if err := validateExplicitHarnessModel("pi", cfg, "gemini-2.5-pro", ""); err != nil {
+	if err := validateExplicitHarnessModel("pi", piCfg, "gemini-2.5-pro", ""); err != nil {
 		t.Fatalf("gemini-2.5-pro must remain valid for pi: %v", err)
 	}
 }
