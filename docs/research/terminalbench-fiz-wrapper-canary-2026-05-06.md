@@ -14,9 +14,9 @@ Exit status: `0`
 
 The wrapper wrote artifacts to:
 
-- `benchmark-results/matrix-medium-model-canary-20260507T035122Z/matrix.json`
-- `benchmark-results/matrix-medium-model-canary-20260507T035122Z/matrix.md`
-- `benchmark-results/matrix-medium-model-canary-20260507T035122Z/costs.json`
+- `benchmark-results/matrix-medium-model-canary-20260507T035806Z/matrix.json`
+- `benchmark-results/matrix-medium-model-canary-20260507T035806Z/matrix.md`
+- `benchmark-results/matrix-medium-model-canary-20260507T035806Z/costs.json`
 
 ## Official Lanes
 
@@ -66,7 +66,7 @@ Evidence:
 
 No per-agent logs were produced in the final artifact directory:
 
-- `find benchmark-results/matrix-medium-model-canary-20260507T035122Z -path '*/logs/agent/*' -type f | wc -l` returned `0`
+- `find benchmark-results/matrix-medium-model-canary-20260507T035806Z -path '*/logs/agent/*' -type f | wc -l` returned `0`
 
 Interpretation:
 
