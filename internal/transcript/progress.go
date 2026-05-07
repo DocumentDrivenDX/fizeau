@@ -10,6 +10,8 @@ import (
 const (
 	DefaultLineLimit         = 80
 	ExceptionalToolLineLimit = 120
+	compactElapsedWidth     = 7
+	compactTurnWidth        = 2
 )
 
 type ProgressType string
@@ -114,18 +116,37 @@ func CompactElapsed(ms int64) string {
 	if ms <= 0 {
 		return ""
 	}
-	return "+" + (time.Duration(ms) * time.Millisecond).String()
+	seconds := int64((time.Duration(ms)*time.Millisecond + 500*time.Millisecond) / time.Second)
+	if seconds <= 0 {
+		seconds = 1
+	}
+	var raw string
+	switch {
+	case seconds < 60:
+		raw = fmt.Sprintf("+%ds", seconds)
+	case seconds < 3600:
+		raw = fmt.Sprintf("+%dm%02ds", seconds/60, seconds%60)
+	default:
+		hours := seconds / 3600
+		minutes := (seconds % 3600) / 60
+		if hours < 10 {
+			raw = fmt.Sprintf("+%dh%02dm", hours, minutes)
+		} else {
+			raw = fmt.Sprintf("+%dh", hours)
+		}
+	}
+	return fmt.Sprintf("%*s", compactElapsedWidth, raw)
 }
 
 func CompactIdentity(taskID string, turnIndex int) string {
 	taskID = CompactTaskID(taskID)
 	switch {
 	case taskID != "" && turnIndex > 0:
-		return fmt.Sprintf("%s #%d", taskID, turnIndex)
+		return fmt.Sprintf("%s #%*d", taskID, compactTurnWidth, turnIndex)
 	case taskID != "":
 		return taskID
 	case turnIndex > 0:
-		return fmt.Sprintf("#%d", turnIndex)
+		return fmt.Sprintf("#%*d", compactTurnWidth, turnIndex)
 	default:
 		return ""
 	}

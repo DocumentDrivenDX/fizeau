@@ -23,9 +23,33 @@ func TestStatusLineIncludesElapsedSincePreviousUpdate(t *testing.T) {
 		SinceLastMS: 31624,
 		Limit:       DefaultLineLimit,
 	})
-	want := "ddx-1234 #22 +31.624s go test ./cmd/bench"
+	want := "ddx-1234 #22 +32s go test ./cmd/bench"
 	if got != want {
 		t.Fatalf("StatusLine()=%q, want %q", got, want)
+	}
+}
+
+func TestCompactElapsedUsesSecondGranularityUnderEightChars(t *testing.T) {
+	cases := []struct {
+		name string
+		ms   int64
+		want string
+	}{
+		{name: "subsecond rounds up", ms: 250, want: "+1s"},
+		{name: "seconds", ms: 31_624, want: "+32s"},
+		{name: "minutes", ms: 4_321_000, want: "+1h12m"},
+		{name: "double-digit hours", ms: 36_000_000, want: "+10h"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CompactElapsed(tc.ms)
+			if got != tc.want {
+				t.Fatalf("CompactElapsed(%d)=%q, want %q", tc.ms, got, tc.want)
+			}
+			if len(got) >= 8 {
+				t.Fatalf("CompactElapsed(%d)=%q has len %d, want <8", tc.ms, got, len(got))
+			}
+		})
 	}
 }
 
