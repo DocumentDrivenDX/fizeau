@@ -147,6 +147,17 @@ func scorePolicy(profile string, cand candidateInternal) float64 {
 		base += 20
 	}
 
+	// Context headroom is a ranking signal for otherwise eligible candidates.
+	// A larger spare window gives the model more room for completion and tool
+	// overhead, so reward it modestly without overpowering the primary policy.
+	if cand.ContextHeadroom > 0 {
+		headroomBonus := float64(cand.ContextHeadroom) / 1000.0
+		if headroomBonus > 30 {
+			headroomBonus = 30
+		}
+		base += headroomBonus
+	}
+
 	// Observation-derived perf bias.
 	if cand.ObservedTokensPerSec > 0 {
 		// Small additive bonus, scaled.

@@ -775,8 +775,8 @@ type routeStatusCandidate struct {
 	Endpoint      string                           `json:"endpoint,omitempty"`
 	Model         string                           `json:"model"`
 	Score         float64                          `json:"score"`
-	ContextLength int                              `json:"context_length,omitempty"`
-	ContextSource string                           `json:"context_source,omitempty"`
+	ContextLength int                              `json:"context_length"`
+	ContextSource string                           `json:"context_source"`
 	Components    routeStatusComponents            `json:"components"`
 	Utilization   rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
 	Eligible      bool                             `json:"eligible"`
