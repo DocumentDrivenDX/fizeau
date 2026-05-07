@@ -761,12 +761,14 @@ type routeStatusComponents struct {
 	CostClass        string  `json:"cost_class,omitempty"`
 	LatencyMS        float64 `json:"latency_ms"`
 	SpeedTPS         float64 `json:"speed_tps"`
+	Utilization      float64 `json:"utilization"`
 	SuccessRate      float64 `json:"success_rate"`
 	QuotaOK          bool    `json:"quota_ok"`
 	QuotaPercentUsed int     `json:"quota_percent_used"`
 	QuotaTrend       string  `json:"quota_trend,omitempty"`
 	Capability       float64 `json:"capability"`
 	ContextHeadroom  int     `json:"context_headroom"`
+	StickyAffinity   float64 `json:"sticky_affinity"`
 }
 
 type routeStatusCandidate struct {
@@ -918,12 +920,14 @@ func cmdRouteStatus(workDir string, args []string) int {
 					CostClass:        c.Components.CostClass,
 					LatencyMS:        c.Components.LatencyMS,
 					SpeedTPS:         c.Components.SpeedTPS,
+					Utilization:      c.Components.Utilization,
 					SuccessRate:      c.Components.SuccessRate,
 					QuotaOK:          c.Components.QuotaOK,
 					QuotaPercentUsed: c.Components.QuotaPercentUsed,
 					QuotaTrend:       c.Components.QuotaTrend,
 					Capability:       c.Components.Capability,
 					ContextHeadroom:  c.Components.ContextHeadroom,
+					StickyAffinity:   c.Components.StickyAffinity,
 				},
 			}
 			if winnerSet && out.Winner == nil &&

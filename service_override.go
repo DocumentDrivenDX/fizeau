@@ -142,11 +142,13 @@ func (s *service) resolveAutoDecisionForOverride(ctx context.Context, req Servic
 				CostClass:        c.Components.CostClass,
 				LatencyMS:        c.Components.LatencyMS,
 				SpeedTPS:         c.Components.SpeedTPS,
+				Utilization:      c.Components.Utilization,
 				SuccessRate:      c.Components.SuccessRate,
 				QuotaOK:          c.Components.QuotaOK,
 				QuotaPercentUsed: c.Components.QuotaPercentUsed,
 				QuotaTrend:       c.Components.QuotaTrend,
 				Capability:       c.Components.Capability,
+				StickyAffinity:   c.Components.StickyAffinity,
 			}
 		}
 	}

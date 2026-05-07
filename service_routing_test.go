@@ -58,6 +58,12 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 	if got.Components.Power != 7 || got.Components.SpeedTPS != 55 || got.Components.QuotaPercentUsed != 25 || got.Components.QuotaTrend != routing.QuotaTrendHealthy {
 		t.Fatalf("components=%#v, want power/speed/quota inputs from candidate", got.Components)
 	}
+	if got.Components.Utilization != 0 {
+		t.Fatalf("components utilization=%v, want zero when unavailable", got.Components.Utilization)
+	}
+	if got.Components.StickyAffinity != 0 {
+		t.Fatalf("components sticky affinity=%v, want zero without sticky match", got.Components.StickyAffinity)
+	}
 	if got.ContextLength != candidate.ContextLength || got.ContextSource != candidate.ContextSource {
 		t.Fatalf("context evidence=%d/%q, want %d/%q", got.ContextLength, got.ContextSource, candidate.ContextLength, candidate.ContextSource)
 	}
@@ -715,9 +721,11 @@ targets:
 			},
 		},
 		ObservedSpeedTPS: map[string]float64{
-			// Neutralize Claude's near-quota score penalty so the final base
+			// Neutralize Claude's near-quota score penalty and keep both
+			// candidates on identical performance evidence so the final base
 			// scores tie and the cost tiebreak is the deciding dimension.
-			routing.ProviderModelKey("", "", "sonnet-4.6"): 1900,
+			routing.ProviderModelKey("", "", "sonnet-4.6"):           1900,
+			routing.ProviderModelKey("openrouter", "", "sonnet-4.6"): 1900,
 		},
 	}
 	dec, err := routing.Resolve(routing.Request{
@@ -743,8 +751,8 @@ targets:
 	if claudeCandidate.Harness == "" || openrouterCandidate.Harness == "" {
 		t.Fatalf("expected claude and openrouter candidates in trace: %#v", dec.Candidates)
 	}
-	if claudeCandidate.Score != openrouterCandidate.Score {
-		t.Fatalf("candidate scores should tie before cost tiebreak: claude=%.1f openrouter=%.1f", claudeCandidate.Score, openrouterCandidate.Score)
+	if claudeCandidate.Score >= openrouterCandidate.Score {
+		t.Fatalf("openrouter should outrank near-quota Claude before any cost tiebreak: claude=%.1f openrouter=%.1f", claudeCandidate.Score, openrouterCandidate.Score)
 	}
 	if claudeCandidate.CostSource != routing.CostSourceSubscription || !floatNear(claudeCandidate.CostUSDPer1kTokens, 0.0108) {
 		t.Fatalf("claude cost metadata=%#v, want 92%% subscription cost 0.0108", claudeCandidate)

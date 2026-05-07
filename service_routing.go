@@ -162,12 +162,14 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 			CostClass:        candidate.CostClass,
 			LatencyMS:        candidate.LatencyMS,
 			SpeedTPS:         candidate.SpeedTPS,
+			Utilization:      candidate.Utilization,
 			SuccessRate:      candidate.SuccessRate,
 			QuotaOK:          candidate.QuotaOK,
 			QuotaPercentUsed: candidate.QuotaPercentUsed,
 			QuotaTrend:       candidate.QuotaTrend,
 			Capability:       capabilityScoreForCostClass(candidate.CostClass),
 			ContextHeadroom:  candidate.ContextHeadroom,
+			StickyAffinity:   candidate.StickyAffinity,
 		},
 	}
 }

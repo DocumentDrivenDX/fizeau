@@ -477,9 +477,11 @@ providers:
 	type component struct {
 		Cost            float64 `json:"cost"`
 		LatencyMS       float64 `json:"latency_ms"`
+		Utilization     float64 `json:"utilization"`
 		SuccessRate     float64 `json:"success_rate"`
 		Capability      float64 `json:"capability"`
 		ContextHeadroom int     `json:"context_headroom"`
+		StickyAffinity  float64 `json:"sticky_affinity"`
 	}
 	type sticky struct {
 		KeyPresent bool   `json:"key_present"`
@@ -538,6 +540,13 @@ providers:
 			t.Fatalf("missing candidate %q in route-status JSON: %s", key, out.stdout)
 		}
 	}
+	var componentGeneric map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(candidateGeneric[0]["components"], &componentGeneric))
+	for _, key := range []string{"cost", "latency_ms", "utilization", "success_rate", "capability", "context_headroom", "sticky_affinity"} {
+		if _, ok := componentGeneric[key]; !ok {
+			t.Fatalf("missing candidate component %q in route-status JSON: %s", key, out.stdout)
+		}
+	}
 
 	// Each candidate carries the new structured shape from
 	// service.ResolveRoute: provider, model, score, components, eligible bool,
@@ -559,6 +568,8 @@ providers:
 		}
 		// Components is always present; its zero value is meaningful (unknown).
 		_ = c.Components
+		_ = c.Components.Utilization
+		_ = c.Components.StickyAffinity
 		_ = c.ContextLength
 		_ = c.ContextSource
 		if !c.Eligible {
@@ -631,9 +642,11 @@ providers:
 	type component struct {
 		Cost            float64 `json:"cost"`
 		LatencyMS       float64 `json:"latency_ms"`
+		Utilization     float64 `json:"utilization"`
 		SuccessRate     float64 `json:"success_rate"`
 		Capability      float64 `json:"capability"`
 		ContextHeadroom int     `json:"context_headroom"`
+		StickyAffinity  float64 `json:"sticky_affinity"`
 	}
 	type candidate struct {
 		Harness       string    `json:"harness"`
@@ -676,13 +689,15 @@ providers:
 		if c.Eligible {
 			assert.NotEmpty(t, c.Model, "eligible candidate must name a concrete model: %+v", c)
 		}
-		// Components is structured (not free-form); reading the four named
-		// axes proves the wire shape matches AC §2.
+		// Components is structured (not free-form); reading the named axes
+		// proves the wire shape matches AC §2.
 		_ = c.Components.Cost
 		_ = c.Components.LatencyMS
+		_ = c.Components.Utilization
 		_ = c.Components.SuccessRate
 		_ = c.Components.Capability
 		_ = c.Components.ContextHeadroom
+		_ = c.Components.StickyAffinity
 		_ = c.ContextLength
 		_ = c.ContextSource
 		if !c.Eligible {
@@ -727,10 +742,12 @@ providers:
 	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
 	type component struct {
-		Power     int     `json:"power"`
-		Cost      float64 `json:"cost"`
-		CostClass string  `json:"cost_class"`
-		SpeedTPS  float64 `json:"speed_tps"`
+		Power          int     `json:"power"`
+		Cost           float64 `json:"cost"`
+		CostClass      string  `json:"cost_class"`
+		SpeedTPS       float64 `json:"speed_tps"`
+		Utilization    float64 `json:"utilization"`
+		StickyAffinity float64 `json:"sticky_affinity"`
 	}
 	type candidate struct {
 		Harness      string    `json:"harness"`

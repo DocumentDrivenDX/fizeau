@@ -550,6 +550,9 @@ type RouteCandidateComponents struct {
 	// SpeedTPS is the observed output speed in tokens per second. Zero when
 	// no observations are available.
 	SpeedTPS float64
+	// Utilization is the normalized load signal used to bias ranking. Zero
+	// means unknown or not contributing.
+	Utilization float64
 	// SuccessRate is the observed success rate (0–1) for this candidate.
 	// Negative means insufficient data; zero means unknown.
 	SuccessRate float64
@@ -564,6 +567,9 @@ type RouteCandidateComponents struct {
 	// ContextHeadroom is the remaining context after subtracting the request's
 	// minimum required prompt window. Zero means unknown or no spare room.
 	ContextHeadroom int
+	// StickyAffinity is the bonus applied when the candidate matches the
+	// request's sticky server-instance assignment. Zero means no match.
+	StickyAffinity float64
 }
 
 const (
