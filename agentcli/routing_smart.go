@@ -783,6 +783,12 @@ type routeStatusCandidate struct {
 	Winner       bool                             `json:"winner"`
 }
 
+type routeStatusPowerPolicy struct {
+	Profile  string `json:"profile,omitempty"`
+	MinPower int    `json:"min_power,omitempty"`
+	MaxPower int    `json:"max_power,omitempty"`
+}
+
 type routeStatusOutput struct {
 	Profile          string                           `json:"profile,omitempty"`
 	Model            string                           `json:"model,omitempty"`
@@ -791,6 +797,7 @@ type routeStatusOutput struct {
 	Harness          string                           `json:"harness,omitempty"`
 	MinPower         int                              `json:"min_power,omitempty"`
 	MaxPower         int                              `json:"max_power,omitempty"`
+	PowerPolicy      routeStatusPowerPolicy           `json:"power_policy,omitempty"`
 	SelectedEndpoint string                           `json:"selected_endpoint,omitempty"`
 	Sticky           rootfizeau.RouteStickyState      `json:"sticky,omitempty"`
 	Utilization      rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
@@ -861,13 +868,18 @@ func cmdRouteStatus(workDir string, args []string) int {
 	})
 
 	out := routeStatusOutput{
-		Profile:    *profile,
-		Model:      *model,
-		ModelRef:   *modelRef,
-		Provider:   *provider,
-		Harness:    *harness,
-		MinPower:   *minPower,
-		MaxPower:   *maxPower,
+		Profile:  *profile,
+		Model:    *model,
+		ModelRef: *modelRef,
+		Provider: *provider,
+		Harness:  *harness,
+		MinPower: *minPower,
+		MaxPower: *maxPower,
+		PowerPolicy: routeStatusPowerPolicy{
+			Profile:  *profile,
+			MinPower: *minPower,
+			MaxPower: *maxPower,
+		},
 		Candidates: []routeStatusCandidate{},
 	}
 	if resolveErr != nil {
@@ -877,6 +889,11 @@ func cmdRouteStatus(workDir string, args []string) int {
 		out.SelectedEndpoint = decision.Endpoint
 		out.Sticky = decision.Sticky
 		out.Utilization = decision.Utilization
+		out.PowerPolicy = routeStatusPowerPolicy{
+			Profile:  decision.PowerPolicy.Profile,
+			MinPower: decision.PowerPolicy.MinPower,
+			MaxPower: decision.PowerPolicy.MaxPower,
+		}
 		winnerSet := decision.Harness != "" || decision.Provider != "" || decision.Model != ""
 		for _, c := range decision.Candidates {
 			entry := routeStatusCandidate{
@@ -926,6 +943,16 @@ func cmdRouteStatus(workDir string, args []string) int {
 
 	if out.Profile != "" {
 		fmt.Printf("Profile: %s\n", out.Profile)
+	}
+	if out.PowerPolicy.Profile != "" || out.PowerPolicy.MinPower > 0 || out.PowerPolicy.MaxPower > 0 {
+		fmt.Printf("Power policy: profile=%s", labelOrUnknown(out.PowerPolicy.Profile))
+		if out.PowerPolicy.MinPower > 0 {
+			fmt.Printf(" min=%d", out.PowerPolicy.MinPower)
+		}
+		if out.PowerPolicy.MaxPower > 0 {
+			fmt.Printf(" max=%d", out.PowerPolicy.MaxPower)
+		}
+		fmt.Println()
 	}
 	if out.Model != "" {
 		fmt.Printf("Model: %s\n", out.Model)

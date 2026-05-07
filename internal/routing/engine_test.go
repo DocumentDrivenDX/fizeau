@@ -546,7 +546,7 @@ func TestSmellCanonicalFormFuzzyMatcher(t *testing.T) {
 	}
 }
 
-func TestProfileRoutingTriesCatalogCandidatesAgainstLiveDiscovery(t *testing.T) {
+func TestModelRefRoutingTriesCatalogCandidatesAgainstLiveDiscovery(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{{
 			Name:                "agent",
@@ -588,7 +588,7 @@ func TestProfileRoutingTriesCatalogCandidatesAgainstLiveDiscovery(t *testing.T) 
 		},
 	}
 
-	dec, err := Resolve(Request{Profile: "cheap", ProviderPreference: ProviderPreferenceLocalFirst}, in)
+	dec, err := Resolve(Request{ModelRef: "cheap", ProviderPreference: ProviderPreferenceLocalFirst}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -1111,7 +1111,7 @@ func TestFirstClassProfileRoutingSemantics(t *testing.T) {
 		},
 		{
 			name: "standard prefers lower known cost",
-			req:  Request{Profile: "standard", ProviderPreference: ProviderPreferenceLocalFirst},
+			req:  Request{Profile: "standard", ModelRef: "standard", ProviderPreference: ProviderPreferenceLocalFirst},
 			in: Inputs{
 				Harnesses: []HarnessEntry{
 					{
@@ -1180,7 +1180,7 @@ func TestFirstClassProfileRoutingSemantics(t *testing.T) {
 	}
 }
 
-func TestProfileRejectsUnsupportedSurfaceWithoutModel(t *testing.T) {
+func TestModelRefRejectsUnsupportedSurfaceWithoutModel(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
@@ -1200,7 +1200,7 @@ func TestProfileRejectsUnsupportedSurfaceWithoutModel(t *testing.T) {
 		},
 	}
 
-	dec, err := Resolve(Request{Profile: "smart"}, in)
+	dec, err := Resolve(Request{ModelRef: "smart"}, in)
 	if err == nil {
 		t.Fatal("expected unsupported profile surface to be rejected")
 	}
@@ -1268,7 +1268,7 @@ func TestSmartDoesNotSelectUnmodeledGeminiOverModeledAgent(t *testing.T) {
 	}
 }
 
-func TestGeminiProfileRoutingResolvesConcreteModels(t *testing.T) {
+func TestGeminiModelRefRoutingResolvesConcreteModels(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
@@ -1307,12 +1307,12 @@ func TestGeminiProfileRoutingResolvesConcreteModels(t *testing.T) {
 		"standard": "gemini-2.5-flash",
 		"cheap":    "gemini-2.5-flash-lite",
 	} {
-		dec, err := Resolve(Request{Profile: profile}, in)
+		dec, err := Resolve(Request{ModelRef: profile}, in)
 		if err != nil {
-			t.Fatalf("Resolve profile=%s: %v", profile, err)
+			t.Fatalf("Resolve modelRef=%s: %v", profile, err)
 		}
 		if dec.Harness != "gemini" || dec.Model != wantModel {
-			t.Fatalf("profile=%s: got harness=%q model=%q, want gemini/%s", profile, dec.Harness, dec.Model, wantModel)
+			t.Fatalf("modelRef=%s: got harness=%q model=%q, want gemini/%s", profile, dec.Harness, dec.Model, wantModel)
 		}
 	}
 }
