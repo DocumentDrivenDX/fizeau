@@ -20,8 +20,8 @@ and may change without notice.
 
 Consumers (DDx CLI, future HELIX/Dun integrations, the standalone `fiz`
 binary, anything else) interact only through this surface. **They do not import
-agent internal packages.** When new behavior is needed, consumers file an issue or
-PR against this contract; agent maintainers decide whether the surface grows.
+Fizeau internal packages.** When new behavior is needed, consumers file an issue or
+PR against this contract; Fizeau maintainers decide whether the surface grows.
 
 The native in-process Fizeau harness identity is `fiz`. The term `agent` is
 reserved for real external AI-agent concepts or historical artifact names; it is
@@ -65,7 +65,7 @@ import (
 
 // FizeauService is the entire public Go surface of the fiz module.
 type FizeauService interface {
-    // Execute runs an agent task in-process; emits Events on the channel until
+    // Execute runs a fiz task in-process; emits Events on the channel until
     // the task terminates (channel closes). The final event (type=final) carries
     // status, normalized final_text, usage, cost, session log path, optional
     // message history, and routing_actual (the resolved fallback chain that fired).
@@ -238,7 +238,7 @@ surface:
 ```go
 type Options struct {
     ConfigPath string    // optional override; default $XDG_CONFIG_HOME/fizeau/config.yaml
-    Logger     io.Writer // optional; agent writes structured session logs internally regardless
+    Logger     io.Writer // optional; fiz writes structured session logs internally regardless
 
     // SessionLogDir overrides the directory used by the historical session-log
     // projections (UsageReport, ListSessionLogs, WriteSessionLog,
@@ -263,8 +263,8 @@ type Options struct {
 //
 // The root package may re-export this type, constants, and helper from a shared
 // leaf package such as internal/reasoning. Internal packages such as
-// internal/modelcatalog import the leaf package, not root agent, to avoid
-// root-agent/internal-modelcatalog import cycles.
+// internal/modelcatalog import the leaf package, not root fiz, to avoid
+// root-fiz/internal-modelcatalog import cycles.
 type Reasoning string
 
 const (
@@ -280,7 +280,7 @@ const (
 
 func ReasoningTokens(n int) Reasoning
 
-// Tool is the native agent tool interface. ExecuteRequest.Tools is only used
+// Tool is the native fiz tool interface. ExecuteRequest.Tools is only used
 // by the in-process `fiz` harness; subprocess harnesses own their tool
 // policy internally.
 type Tool interface {
@@ -298,7 +298,7 @@ type Tool interface {
 
 type ExecuteRequest struct {
     Prompt       string  // required
-    SystemPrompt string  // optional; agent supplies a sane default if empty
+    SystemPrompt string  // optional; fiz supplies a sane default if empty
     Model        string  // optional; resolved via ResolveRoute if empty
     Provider     string  // optional hard pin; empty = router decides
     Harness      string  // optional preference (hard); empty = router decides
@@ -322,7 +322,7 @@ type ExecuteRequest struct {
     Reasoning    Reasoning // optional; auto|off|low|medium|high|minimal|xhigh|max|<tokens>
     Permissions  string  // "safe" | "supervised" | "unrestricted"; default "safe"
     WorkDir      string  // required when the chosen harness uses tools
-    Tools        []Tool  // optional native-agent override; nil = built-in tools
+    Tools        []Tool  // optional native-fiz override; nil = built-in tools
     ToolPreset   string  // optional native built-in selector; "benchmark" excludes task
 
     // Auto-selection inputs. When the caller pins no concrete model/provider,
@@ -346,14 +346,14 @@ type ExecuteRequest struct {
     //                     duration of no events from the model. 0 = use harness
     //                     default (typically 60s).
     //   ProviderTimeout — per-HTTP-request cap to the provider; longer requests
-    //                     fail the attempted route. Agent does not retry another
+    //                     fail the attempted route. Fiz does not retry another
     //                     route. 0 = use provider default.
     Timeout         time.Duration
     IdleTimeout     time.Duration
     ProviderTimeout time.Duration
 
-    // Optional stall policy. When non-nil, agent enforces and ends execution
-    // with Status="stalled" if any limit hits. The agent also derives an
+    // Optional stall policy. When non-nil, fiz enforces and ends execution
+    // with Status="stalled" if any limit hits. The service also derives an
     // implicit MaxIterations ceiling from StallPolicy (typically 2× the
     // ReadOnly limit) — caller does not configure MaxIterations directly.
     StallPolicy *StallPolicy
@@ -442,7 +442,7 @@ the routing engine enforces:
    bounds and optional ranking preferences before candidate filtering. It never
    broadens or overrides hard harness/provider/model pins.
 6. **`MinPower` / `MaxPower`** — routing strength bounds. Higher power means
-   stronger for agent tasks. These bounds filter candidate models before
+   stronger for fiz tasks. These bounds filter candidate models before
    scoring; they apply only to unpinned automatic routing and never override
    hard harness/provider/model pins. When a profile is also supplied, numeric
    bounds further constrain the profile's effective policy.
@@ -1179,7 +1179,7 @@ to present, validate, or route by strength call:
 Migration rule: any consumer currently reading `~/.config/agent/models.yaml`,
 model-catalog manifests, or hard-coded surface strings to discover power,
 placement, or candidate policy must switch to the service methods above. Direct
-YAML reads are allowed only inside the agent service and model-catalog
+YAML reads are allowed only inside the fiz service and model-catalog
 implementation.
 
 Catalog power is required for automatic routing. The current embedded v4
@@ -1299,14 +1299,14 @@ Closed union of event types. Every harness backend emits these identically.
 // type=routing_decision
 // (Emitted at start of execution.)
 {
-  "harness": "agent",
+  "harness": "fiz",
   "provider": "lmstudio",
   "endpoint": "bragi",
   "model": "qwen/qwen3.6-35b-a3b",
   "reason": "power 7 match; endpoint reachable; 256K context",
   "candidates": [
     {
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "lmstudio",
       "endpoint": "http://bragi:1234/v1",
       "model": "qwen/qwen3.6-35b-a3b",
@@ -1332,7 +1332,7 @@ Closed union of event types. Every harness backend emits these identically.
   // on routed failure:
   // "routing_failure": {
   //   "failure_class": "provider-transient",
-  //   "attempted": {"harness": "agent", "provider": "lmstudio", "endpoint": "bragi", "model": "qwen/qwen3.6-35b-a3b", "power": 7}
+  //   "attempted": {"harness": "fiz", "provider": "lmstudio", "endpoint": "bragi", "model": "qwen/qwen3.6-35b-a3b", "power": 7}
   // },
   "final_text": "user-facing final response text, stripped of harness stream envelopes",
   "duration_ms": 12345,
@@ -1362,11 +1362,11 @@ Closed union of event types. Every harness backend emits these identically.
   "session_log_path": "/path/to/session.jsonl",
   "messages": [...],   // optional history continuation
   "routing_actual": {
-    "harness": "agent",
+    "harness": "fiz",
     "provider": "lmstudio",
     "endpoint": "bragi",
     "model": "qwen/qwen3.6",
-    "fallback_chain_fired": []  // legacy field; agent does not retry candidate 2
+    "fallback_chain_fired": []  // legacy field; fiz does not retry candidate 2
   }
 }
 ```
@@ -1480,7 +1480,7 @@ type FakeResponse struct {
 }
 
 // PromptAssertionHook is called once per Execute, with the system+user prompt
-// the agent actually sent to the model. Used by tests that verify prompt
+// the harness actually sent to the model. Used by tests that verify prompt
 // construction/compaction without running a real provider.
 type PromptAssertionHook func(systemPrompt, userPrompt string, contextFiles []string)
 
@@ -1564,7 +1564,7 @@ rules that govern future additions to this contract surface.
 
 ## Bead Execution Policy
 
-DDx bead implementation owns retry policy. The agent service selects the best
+DDx bead implementation owns retry policy. The fiz service selects the best
 candidate inside one request's power bounds, hard pins, and auto-selection
 inputs; it does not decide that a failed low-power attempt should become a
 high-power attempt. When DDx wants to escalate, it issues a new `Execute`
@@ -1577,11 +1577,11 @@ likely to help. Exact `Model`, `Provider`, or `Harness` pins remain hard
 constraints and are not widened by escalation.
 
 Power retry is eligible when the first pass produced semantic evidence outside
-agent routing: model capability looked insufficient, reasoning quality was
-poor, post-implementation tests failed, or review blocked after the agent had a
+fiz routing: model capability looked insufficient, reasoning quality was
+poor, post-implementation tests failed, or review blocked after the fiz had a
 valid checkout and attempted the bead. This evidence belongs to DDx and may be
 submitted to the catalog/power-maintenance process, but it does not flow through
-agent route-health feedback and does not cause the agent to retry.
+fiz route-health feedback and does not cause fiz to retry.
 
 Power retry is not eligible for deterministic setup failures: dirty-worktree or
 merge conflicts, missing repository checkout, invalid bead metadata, unresolved
@@ -1590,13 +1590,13 @@ setup failures, or command-not-found/toolchain setup failures. These failures
 should stop with actionable evidence instead of spending a stronger attempt.
 
 Cost caps, timeout limits, permission policy, and determinism controls apply
-across both passes as one execution budget. The agent-side contract defines the
+across both passes as one execution budget. The fiz-side contract defines the
 fields and semantics; the DDx execute-loop implementation is tracked in the
 paired DDx repo bead `ddx-785d02f7`.
 
 ## Route Attempt Feedback
 
-The agent service owns provider availability feedback for model selection.
+The fiz service owns provider availability feedback for model selection.
 `Execute` records only the selected candidate's service-observed dispatch
 result: transport errors, auth/quota/rate limits, 5xx responses, stream loss,
 subprocess exit, timeout, malformed protocol output, and capability mismatch.
@@ -1631,7 +1631,7 @@ Failure classes control what gets penalized:
 
 ## Provider Quota State
 
-The agent owns a per-provider **quota state machine** that is distinct from the
+The fiz service owns a per-provider **quota state machine** that is distinct from the
 per-request route-attempt feedback above. Route-attempt feedback demotes one
 `(Harness, ProviderSource, Endpoint, Model)` candidate inside a process-local
 TTL window. Quota state operates one level up — at the **provider** granularity
@@ -1826,7 +1826,7 @@ default and replay supporting realtime, scaled, and collapsed timing modes.
 
 ## Behaviors the contract guarantees
 
-The agent owns these execution-time behaviors. Callers do not opt in or out.
+The fiz service owns these execution-time behaviors. Callers do not opt in or out.
 
 - **Explicit model resolution.** `Execute` and `ResolveRoute` use the same
   raw-`Model` resolution semantics. A unique normalized match becomes the
@@ -1850,7 +1850,7 @@ The agent owns these execution-time behaviors. Callers do not opt in or out.
 - **Provider request deadline wrapping.** Every HTTP call to a provider is
   wrapped with `ProviderTimeout`. Per-request failures classified as
   transport/auth/upstream are reported on the final event with the attempted
-  route; the agent does not retry another candidate.
+  route; the fiz service does not retry another candidate.
 
 - **Service-owned native routing and provider construction.** For the embedded
   `fiz` harness, `Execute` resolves configured provider candidates,
@@ -1877,7 +1877,7 @@ The agent owns these execution-time behaviors. Callers do not opt in or out.
   Real compaction failures such as `ErrCompactionStuck` and
   `ErrCompactionNoFit` remain fatal execution errors.
 
-- **OS-level subprocess cleanup.** On `ctx.Done()`, agent reaps PTY and
+- **OS-level subprocess cleanup.** On `ctx.Done()`, fiz reaps PTY and
   orphan processes for subprocess harnesses. Tested and guaranteed.
 
 - **Session-log persistence ownership.** When session logging is enabled,
