@@ -11,8 +11,8 @@ var costClassRank = map[string]int{
 }
 
 const StickyAffinityBonus = 250.0
-const unknownUtilizationPenalty = 0.0
-const unknownPerformancePenalty = 0.0
+const unknownUtilizationPenalty = 5.0
+const unknownPerformancePenalty = 5.0
 
 // scorePolicy returns a score for a candidate under the named profile.
 // Higher is better.
@@ -179,8 +179,9 @@ func scoreComponents(profile string, cand candidateInternal) map[string]float64 
 
 	// Utilization pressure can outweigh stickiness when the chosen server is
 	// already busy or saturated.
-	// Unknown or stale utilization is treated explicitly. Current policy is
-	// neutral rather than a hidden zero-value bonus.
+	// Unknown or stale utilization is treated explicitly. Missing data gets a
+	// small penalty so it cannot outrank a peer with real healthy evidence by
+	// accident.
 	if cand.EndpointSaturated {
 		base -= 300
 		add("utilization", -300)
@@ -267,7 +268,8 @@ func scoreComponents(profile string, cand candidateInternal) map[string]float64 
 		havePerfSignal = true
 	}
 	if !havePerfSignal {
-		// Missing performance data is deliberate; current policy is neutral.
+		// Missing performance data is deliberate and mildly penalized rather
+		// than treated as a hidden zero-value bonus.
 		base -= unknownPerformancePenalty
 		add("performance", -unknownPerformancePenalty)
 	}

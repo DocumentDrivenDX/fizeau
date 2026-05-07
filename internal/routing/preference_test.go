@@ -65,7 +65,7 @@ func TestProviderPreferenceBiasing(t *testing.T) {
 			}
 		}
 		// local-first should give +30 to fiz.
-		// smart: fiz (local) = 100 + 0*20 (cr=0) + 30 (pref) = 130
+		// smart: fiz (local) = 100 + 0*20 (cr=0) + 30 (pref) - 5 (unknown utilization) - 5 (unknown performance) = 120
 		// smart: claude (medium) = 100 + 2*20 (cr=2) + 5 (quota) = 145
 		// Claude still wins, but the gap is smaller.
 		if !foundFiz || !foundClaude {
@@ -127,9 +127,10 @@ func TestQuotaSignalsScoring(t *testing.T) {
 		for _, c := range dec.Candidates {
 			if c.Harness == "claude" {
 				// Base smart: 100 + 40 (cr=2) + 5 (quota) = 145.
-				// Stale penalty: -15 -> 130.
-				if c.Score != 130 {
-					t.Errorf("stale quota: got score %.1f, want 130.0", c.Score)
+				// Stale penalty: -15 and explicit unknown-signal penalties
+				// (-5 utilization, -5 performance) -> 120.
+				if c.Score != 120 {
+					t.Errorf("stale quota: got score %.1f, want 120.0", c.Score)
 				}
 			}
 		}
@@ -399,15 +400,16 @@ func TestNonClaudeSubscriptionQuotaStale(t *testing.T) {
 	}
 
 	// Find the codex candidate and verify the score includes the stale penalty.
-	// smart base for codex: 100 + 40 (cr=2) + 5 (quota) - 15 (stale) = 130.
+	// smart base for codex: 100 + 40 (cr=2) + 5 (quota) - 15 (stale)
+	// - 5 (unknown utilization) - 5 (unknown performance) = 120.
 	var codexScore float64
 	for _, c := range dec.Candidates {
 		if c.Harness == "codex" {
 			codexScore = c.Score
 		}
 	}
-	if codexScore != 130 {
-		t.Errorf("codex stale quota score: got %.1f, want 130.0", codexScore)
+	if codexScore != 120 {
+		t.Errorf("codex stale quota score: got %.1f, want 120.0", codexScore)
 	}
 }
 
