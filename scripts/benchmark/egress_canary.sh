@@ -6,6 +6,16 @@
 # cheapest tool-capable OpenAI-compat smoke model and a single concrete
 # TB-2 task that actually exists at the pinned commit (fix-git).
 #
+# TB-2.0 ONLY — COMPATIBILITY NOTE:
+#   This script validates provider egress using a local terminal-bench@2.0
+#   task directory (scripts/benchmark/external/terminal-bench-2/). It is NOT
+#   a TB-2.1 preflight. Running it with FIZEAU_BENCH_DATASET set to a TB-2.1
+#   identifier (e.g. terminal-bench/terminal-bench-2-1) will mix a TB-2.0
+#   local task directory with a TB-2.1 Harbor dataset reference, producing a
+#   misleading canary result. Use the TB-2.1 sweep's canary phase instead:
+#     fiz-bench sweep --phase canary --dry-run   # plan
+#     fiz-bench sweep --phase canary             # run
+#
 # This replaces an earlier "hello-world" formulation: terminal-bench@2.0 at
 # commit 53ff2b87 has no hello-world task, so the canary now targets
 # fix-git (easy / software-engineering, ~5 min expert time).
@@ -103,13 +113,30 @@ require_task_exists() {
     fi
 }
 
-echo "=== fiz egress canary ==="
+# Compatibility guard: this script validates against a local TB-2.0 task
+# directory. If DATASET is set to anything other than terminal-bench@2.0,
+# the local task directory check (TB-2.0) and the Harbor dataset reference
+# diverge — results are not comparable to a true TB-2.1 preflight.
+warn_dataset_mismatch() {
+    if [[ "${DATASET}" != "terminal-bench@2.0" ]]; then
+        echo "WARNING: DATASET='${DATASET}' is not terminal-bench@2.0."
+        echo "         This script validates a local TB-2.0 task directory."
+        echo "         To preflight the TB-2.1 Harbor dataset, use instead:"
+        echo "           fiz-bench sweep --phase canary --dry-run  # plan"
+        echo "           fiz-bench sweep --phase canary            # run"
+        echo ""
+    fi
+}
+
+echo "=== fiz egress canary (TB-2.0 local task-dir mode) ==="
 echo "Repo:      ${REPO_ROOT}"
-echo "Task:      ${CANARY_TASK}  (TB-2 @ pinned commit)"
+echo "Task:      ${CANARY_TASK}  (TB-2.0 @ pinned commit)"
+echo "Dataset:   ${DATASET}"
 echo "Model:     ${PROVIDER_MODEL}"
 echo "Archive:   ${ARCHIVE_DIR}"
 echo ""
 
+warn_dataset_mismatch
 require_task_exists
 
 # Step 1: binary

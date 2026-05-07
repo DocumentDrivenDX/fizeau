@@ -1,6 +1,11 @@
 # Fixed benchmark subset for fizeau — v2 (2026-04-10)
 # Evidence-grade comparison subset with real Terminal-Bench 2.0 task IDs.
 #
+# TB-2.0-ONLY: This manifest uses task IDs from terminal-bench@2.0 at commit
+# 53ff2b87d621bdb97b455671f2bd9728b7d86c11. Do NOT use it for TB-2.1 runs —
+# task IDs may not exist in terminal-bench/terminal-bench-2-1. For TB-2.1 work
+# use task-subset-tb21-canary.yaml or task-subset-tb21-full.yaml instead.
+#
 # Preserve task-subset-v1.yaml as the historical placeholder artifact from the
 # initial benchmark design. v2 is the first manifest suitable for before/after
 # comparison runs.
