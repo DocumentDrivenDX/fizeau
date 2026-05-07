@@ -60,11 +60,34 @@ func TestResolvePenalizesUnknownUtilizationAndPerformance(t *testing.T) {
 	if known.Score <= unknown.Score {
 		t.Fatalf("known score %.1f should beat unknown score %.1f", known.Score, unknown.Score)
 	}
+	if known.ScoreComponents == nil || unknown.ScoreComponents == nil {
+		t.Fatalf("score components must be populated: known=%v unknown=%v", known.ScoreComponents, unknown.ScoreComponents)
+	}
+	for _, key := range []string{"base", "cost", "deployment_locality", "quota_health", "utilization", "performance", "power", "context_headroom", "sticky_affinity"} {
+		if _, ok := known.ScoreComponents[key]; !ok {
+			t.Fatalf("known score components missing %q: %+v", key, known.ScoreComponents)
+		}
+		if _, ok := unknown.ScoreComponents[key]; !ok {
+			t.Fatalf("unknown score components missing %q: %+v", key, unknown.ScoreComponents)
+		}
+	}
 	if known.Utilization <= 0 {
 		t.Fatalf("known utilization component=%v, want positive known load", known.Utilization)
 	}
 	if unknown.Utilization != 0 {
 		t.Fatalf("unknown utilization component=%v, want 0 for unknown load", unknown.Utilization)
+	}
+	if known.ScoreComponents["utilization"] == 0 {
+		t.Fatalf("known utilization score component=%v, want explicit known-load adjustment", known.ScoreComponents["utilization"])
+	}
+	if unknown.ScoreComponents["utilization"] != 0 {
+		t.Fatalf("unknown utilization score component=%v, want 0 for unknown load", unknown.ScoreComponents["utilization"])
+	}
+	if known.ScoreComponents["performance"] <= 0 {
+		t.Fatalf("known performance score component=%v, want positive known performance", known.ScoreComponents["performance"])
+	}
+	if unknown.ScoreComponents["performance"] != 0 {
+		t.Fatalf("unknown performance score component=%v, want 0 for unknown performance", unknown.ScoreComponents["performance"])
 	}
 	if known.StickyAffinity != 0 || unknown.StickyAffinity != 0 {
 		t.Fatalf("unexpected sticky affinity components: known=%v unknown=%v", known.StickyAffinity, unknown.StickyAffinity)
@@ -132,6 +155,9 @@ func TestResolveReportsStickyAffinityComponentWhenStickyKeyMatches(t *testing.T)
 	}
 	if sticky.StickyAffinity != StickyAffinityBonus {
 		t.Fatalf("sticky affinity component=%v, want %v", sticky.StickyAffinity, StickyAffinityBonus)
+	}
+	if sticky.ScoreComponents["sticky_affinity"] != StickyAffinityBonus {
+		t.Fatalf("sticky score component=%v, want %v", sticky.ScoreComponents["sticky_affinity"], StickyAffinityBonus)
 	}
 	if sticky.Utilization <= 0 {
 		t.Fatalf("sticky utilization component=%v, want positive load", sticky.Utilization)

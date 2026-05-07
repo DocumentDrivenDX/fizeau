@@ -90,6 +90,24 @@ func TestResolveStickyServerInstanceAcrossModelChanges(t *testing.T) {
 	if second.Candidates[0].ServerInstance != "server-a" {
 		t.Fatalf("sticky top candidate=%#v, want server-a", second.Candidates[0])
 	}
+	var sticky, nonSticky Candidate
+	for _, c := range second.Candidates {
+		switch c.ServerInstance {
+		case "server-a":
+			sticky = c
+		case "server-b":
+			nonSticky = c
+		}
+	}
+	if sticky.ServerInstance != "server-a" || nonSticky.ServerInstance != "server-b" {
+		t.Fatalf("second candidates=%#v, want both server-a and server-b", second.Candidates)
+	}
+	if nonSticky.Utilization >= sticky.Utilization {
+		t.Fatalf("non-sticky utilization=%v, want lower than sticky utilization=%v", nonSticky.Utilization, sticky.Utilization)
+	}
+	if sticky.Score <= nonSticky.Score {
+		t.Fatalf("sticky score=%.2f should beat the merely better non-sticky score=%.2f", sticky.Score, nonSticky.Score)
+	}
 
 	controlInputs := baseInputs
 	controlInputs.StickyServerInstanceResolver = nil
@@ -127,5 +145,23 @@ func TestResolveStickyServerInstanceAcrossModelChanges(t *testing.T) {
 	}
 	if saturated.Candidates[0].ServerInstance != "server-b" {
 		t.Fatalf("saturated top candidate=%#v, want server-b", saturated.Candidates[0])
+	}
+	var saturatedSticky, saturatedNonSticky Candidate
+	for _, c := range saturated.Candidates {
+		switch c.ServerInstance {
+		case "server-a":
+			saturatedSticky = c
+		case "server-b":
+			saturatedNonSticky = c
+		}
+	}
+	if !saturatedSticky.Eligible || !saturatedNonSticky.Eligible {
+		t.Fatalf("saturated candidates must remain eligible for score comparison: %+v", saturated.Candidates)
+	}
+	if saturatedSticky.ScoreComponents["utilization"] >= saturatedNonSticky.ScoreComponents["utilization"] {
+		t.Fatalf("saturated sticky utilization component=%v, want worse than non-sticky=%v", saturatedSticky.ScoreComponents["utilization"], saturatedNonSticky.ScoreComponents["utilization"])
+	}
+	if saturatedSticky.Score >= saturatedNonSticky.Score {
+		t.Fatalf("saturated sticky score=%.2f should lose to non-sticky score=%.2f", saturatedSticky.Score, saturatedNonSticky.Score)
 	}
 }

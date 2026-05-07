@@ -173,6 +173,7 @@ type Candidate struct {
 	Power              int
 	ContextLength      int
 	ContextSource      string
+	ScoreComponents    map[string]float64
 	Eligible           bool
 	Reason             string
 
@@ -448,6 +449,7 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 			continue
 		}
 		ranked[i].out.Score = scorePolicy(req.Profile, ranked[i].internal)
+		ranked[i].out.ScoreComponents = scoreComponents(req.Profile, ranked[i].internal)
 		ranked[i].out.Reason = fmt.Sprintf("profile=%s; score=%.1f", req.Profile, ranked[i].out.Score)
 	}
 	neutralCost, hasKnownCost := neutralKnownCost(ranked)
