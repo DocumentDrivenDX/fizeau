@@ -182,7 +182,7 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 
 	// Model flag: -m <model>
 	if req.Model != "" {
-		args = append(args, "-m", req.Model)
+		args = append(args, "-m", opencodeModelArg(req.Provider, req.Model))
 	}
 
 	// Reasoning flag: --variant <reasoning>
@@ -305,6 +305,15 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 		return parseAgg, 0, stderr, parseErr, "failed"
 	}
 	return parseAgg, 0, stderr, nil, "success"
+}
+
+func opencodeModelArg(provider, model string) string {
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	if provider == "" || model == "" || strings.Contains(model, "/") {
+		return model
+	}
+	return provider + "/" + model
 }
 
 type stringBuilderWriter struct {

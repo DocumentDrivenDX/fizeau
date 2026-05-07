@@ -45,6 +45,25 @@ func TestMatrixNoopDumbScriptProducesValidMatrix(t *testing.T) {
 	}
 }
 
+func TestResolveMatrixTaskPathHarborDownloadLayout(t *testing.T) {
+	root := t.TempDir()
+	taskDir := filepath.Join(root, "terminal-bench", "fix-git", "abcdef")
+	if err := os.MkdirAll(taskDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(taskDir, "task.toml"), []byte("schema_version = \"1.1\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := resolveMatrixTaskPath(root, "fix-git")
+	if err != nil {
+		t.Fatalf("resolveMatrixTaskPath returned error: %v", err)
+	}
+	if got != taskDir {
+		t.Fatalf("resolveMatrixTaskPath = %q, want %q", got, taskDir)
+	}
+}
+
 func TestMatrixResumeSkipsTerminalReport(t *testing.T) {
 	repoRoot := benchRepoRoot(t)
 	outDir := t.TempDir()

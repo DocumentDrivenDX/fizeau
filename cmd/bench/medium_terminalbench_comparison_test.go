@@ -12,8 +12,6 @@ import (
 var officialMediumFizProfiles = []string{
 	"fiz-harness-claude-sonnet-4-6",
 	"fiz-harness-codex-gpt-5-4-mini",
-	"fiz-harness-pi-gpt-5-4-mini",
-	"fiz-harness-opencode-gpt-5-4-mini",
 	"fiz-openrouter-claude-sonnet-4-6",
 	"fiz-openrouter-gpt-5-4-mini",
 }

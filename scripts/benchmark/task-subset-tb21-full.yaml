@@ -17,95 +17,91 @@
 #
 # Quotas: SE=5, security=3, file-ops=2, sysadmin=2, data-processing=2, debugging=1
 #
-# NOTE: Task IDs are placeholders from the TB-2.1 naming convention.
-# Replace with actual IDs from terminal-bench/terminal-bench-2-1 once the
-# submodule is initialized. Do NOT overwrite or relabel task-subset-v2.yaml.
-
 version: "1"
 captured: "2026-05-07"
 dataset: terminal-bench/terminal-bench-2-1
 dataset_repo: https://github.com/laude-institute/terminal-bench-2-1
-dataset_commit: ""
+dataset_commit: "harbor-registry"
 selection_rule: "filtered TB-2.1 tasks with fixed category quotas SE=5 security=3 file-ops=2 sysadmin=2 data-processing=2 debugging=1; difficulty-desc then id-asc"
 
 tasks:
   # software-engineering (5)
-  - id: fix-concurrent-cache
+  - id: cancel-async-tasks
     category: software-engineering
     difficulty: hard
-    rationale: SE task from canary; stresses concurrent code fix and test validation loop.
+    rationale: Async/debug-heavy code fix; exercises read, edit, and test loops.
 
-  - id: refactor-async-pipeline
-    category: software-engineering
-    difficulty: hard
-    rationale: Multi-step async refactor with type-check and test gate; exercises structured edit discipline.
-
-  - id: implement-retry-backoff
+  - id: build-pmars
     category: software-engineering
     difficulty: medium
-    rationale: Bounded implementation task with deterministic grader; exercises code generation and verification.
+    rationale: Build-oriented task that stresses shell discipline and targeted fixes.
 
-  - id: patch-build-script
+  - id: code-from-image
     category: software-engineering
     difficulty: medium
-    rationale: Build-oriented fix; exercises shell + targeted file edits.
+    rationale: Mixed extraction and coding workflow; broadens beyond plain text edits.
 
-  - id: add-cli-flag
+  - id: git-leak-recovery
     category: software-engineering
-    difficulty: easy
-    rationale: Smaller SE task as a baseline for capability floor; quick to run.
+    difficulty: medium
+    rationale: Git-oriented remediation task aligned with repository tooling workflows.
+
+  - id: headless-terminal
+    category: software-engineering
+    difficulty: medium
+    rationale: Terminal-centric task that can expose shell exploration anti-patterns.
 
   # security (3)
-  - id: remediate-injection-flaw
+  - id: fix-code-vulnerability
     category: security
     difficulty: hard
     rationale: High-signal secure-editing task; exercises read-understand-fix pattern under verifier pressure.
 
-  - id: rotate-leaked-secret
+  - id: password-recovery
+    category: security
+    difficulty: hard
+    rationale: Troubleshooting-heavy security task with file and shell interaction.
+
+  - id: break-filter-js-from-html
     category: security
     difficulty: medium
-    rationale: Git + file manipulation task; aligned with repository security workflows.
-
-  - id: harden-file-permissions
-    category: security
-    difficulty: easy
-    rationale: Targeted chmod/chown task; quick grader, good invalid-class signal.
+    rationale: Smaller security task that helps detect regressions on easier remediation work.
 
   # file-operations (2)
-  - id: parse-csv-to-sql
-    category: data-processing
-    difficulty: medium
-    rationale: From canary; quick data transformation with byte-diffable output.
-
-  - id: extract-archive-contents
+  - id: db-wal-recovery
     category: file-operations
     difficulty: medium
-    rationale: Archive handling task; stresses targeted reads over search.
+    rationale: Recovery task with binary/file handling and verification pressure.
+
+  - id: extract-elf
+    category: file-operations
+    difficulty: medium
+    rationale: File-inspection task that stresses targeted reads over shell thrash.
 
   # system-administration (2)
-  - id: configure-env-paths
+  - id: configure-git-webserver
     category: system-administration
-    difficulty: easy
-    rationale: From canary; quick smoke task verifying provider connectivity.
+    difficulty: hard
+    rationale: Short but high-signal config task that exercises precise shell usage.
 
-  - id: setup-cron-job
+  - id: git-multibranch
     category: system-administration
     difficulty: medium
-    rationale: Crontab + shell task; exercises precise config editing.
+    rationale: Multi-branch git workflow useful for navigation and command discipline.
 
   # data-processing (2)
-  - id: summarize-log-ranges
+  - id: log-summary-date-ranges
     category: data-processing
     difficulty: medium
     rationale: Text-processing/report task aligned with read-edit-run loops.
 
-  - id: merge-json-sources
+  - id: multi-source-data-merger
     category: data-processing
     difficulty: medium
     rationale: Multi-input merge task; stresses structured reasoning over bash search.
 
   # debugging (1)
-  - id: debug-python-import-error
-    category: debugging
+  - id: qemu-startup
+    category: system-administration
     difficulty: medium
-    rationale: Build/debug task; checks diagnosis quality and fix verification.
+    rationale: VM startup/debug task; preserves a debugging-style slot with a TB-2.1 task ID.

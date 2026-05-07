@@ -36,8 +36,6 @@ Use `canary` for the 3-task preflight:
 Official lanes:
   fiz-harness-claude-sonnet-4-6
   fiz-harness-codex-gpt-5-4-mini
-  fiz-harness-pi-gpt-5-4-mini
-  fiz-harness-opencode-gpt-5-4-mini
   fiz-openrouter-claude-sonnet-4-6
   fiz-openrouter-gpt-5-4-mini
 
@@ -71,8 +69,6 @@ RUNNER="scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh"
 OFFICIAL_PROFILES=(
   fiz-harness-claude-sonnet-4-6
   fiz-harness-codex-gpt-5-4-mini
-  fiz-harness-pi-gpt-5-4-mini
-  fiz-harness-opencode-gpt-5-4-mini
   fiz-openrouter-claude-sonnet-4-6
   fiz-openrouter-gpt-5-4-mini
 )

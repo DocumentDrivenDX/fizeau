@@ -1,0 +1,30 @@
+FROM debian:bookworm-slim
+
+ARG TARGETARCH
+
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates \
+    gzip \
+    tar \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /runtime-input
+
+COPY fiz /installed-agent/fiz
+COPY opencode /installed-agent/opencode
+COPY node.tgz claude-code.tgz codex.tgz pi.tgz /runtime-input/
+
+RUN set -eux; \
+  chmod 755 /installed-agent/fiz /installed-agent/opencode; \
+  tar -xzf /runtime-input/node.tgz -C /installed-agent; \
+  mv /installed-agent/node-v* /installed-agent/node; \
+  ln -sf /installed-agent/node/bin/node /usr/local/bin/node; \
+  export PATH=/installed-agent/node/bin:$PATH; \
+  /installed-agent/node/bin/npm install -g /runtime-input/claude-code.tgz /runtime-input/codex.tgz; \
+  ln -sf /installed-agent/node/bin/claude /installed-agent/claude; \
+  ln -sf /installed-agent/node/bin/codex /installed-agent/codex; \
+  mkdir -p /installed-agent/pi-agent; \
+  tar -xzf /runtime-input/pi.tgz -C /installed-agent/pi-agent --strip-components=1; \
+  printf '%s\n' '#!/bin/sh' 'exec /installed-agent/node/bin/node /installed-agent/pi-agent/dist/cli.js "$@"' > /installed-agent/pi; \
+  chmod 755 /installed-agent/pi /installed-agent/pi-agent/dist/cli.js

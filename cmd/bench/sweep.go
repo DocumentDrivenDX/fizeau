@@ -502,6 +502,9 @@ func buildSweepMatrixArgs(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, 
 	if opts.tasksDir != "" {
 		args = append(args, "--tasks-dir", opts.tasksDir)
 	}
+	for _, key := range sortedMapKeys(lane.FizeauEnv) {
+		args = append(args, "--env", key+"="+lane.FizeauEnv[key])
+	}
 	if opts.budgetUSD > 0 {
 		args = append(args, "--budget-usd", fmt.Sprintf("%g", opts.budgetUSD))
 	}
@@ -512,6 +515,15 @@ func buildSweepMatrixArgs(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, 
 		args = append(args, "--per-run-budget-usd", fmt.Sprintf("%g", opts.perRunBudgetUSD))
 	}
 	return args
+}
+
+func sortedMapKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func buildSweepLaneMeta(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, rg *sweepResourceGroup, subsetPath, laneOutDir string, reps int, matrixArgs []string) sweepLaneMeta {

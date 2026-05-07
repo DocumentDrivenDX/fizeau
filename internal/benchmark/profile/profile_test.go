@@ -38,10 +38,9 @@ func TestLoadDir_AllShippedProfilesValidate(t *testing.T) {
 	// TerminalBench medium comparison lanes.
 	require.Contains(t, ids, "fiz-harness-claude-sonnet-4-6")
 	require.Contains(t, ids, "fiz-harness-codex-gpt-5-4-mini")
-	require.Contains(t, ids, "fiz-harness-pi-gpt-5-4-mini")
-	require.Contains(t, ids, "fiz-harness-opencode-gpt-5-4-mini")
 	require.Contains(t, ids, "fiz-openrouter-claude-sonnet-4-6")
 	require.Contains(t, ids, "fiz-openrouter-gpt-5-4-mini")
+	require.Contains(t, ids, "vidar-qwen3-6-27b")
 }
 
 func TestLoad_GPT5MiniAnchorProfile(t *testing.T) {

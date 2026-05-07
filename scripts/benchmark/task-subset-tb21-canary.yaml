@@ -8,33 +8,28 @@
 # Dataset: terminal-bench/terminal-bench-2-1
 # Spec:    terminalbench-2.1-sweep-plan-2026-05-07 (phase: canary)
 #
-# NOTE: Task IDs are placeholders derived from the TB-2.1 catalog naming
-# convention. Replace with actual IDs from terminal-bench/terminal-bench-2-1
-# once the submodule is initialized. Do NOT reuse task-subset-v2.yaml —
-# that is a TB-2.0 artifact.
-
 version: "1"
 captured: "2026-05-07"
 dataset: terminal-bench/terminal-bench-2-1
 dataset_repo: https://github.com/laude-institute/terminal-bench-2-1
-dataset_commit: ""
+dataset_commit: "harbor-registry"
 selection_rule: "3-5 task canary covering SE, data-processing, and system-administration; one task per category; deterministic sort by difficulty desc then id asc"
 
 tasks:
   # software-engineering (1) — exercises edit + test loop
-  - id: fix-concurrent-cache
+  - id: cancel-async-tasks
     category: software-engineering
     difficulty: hard
-    rationale: Short SE task with deterministic grader; stresses read-edit-test discipline. Selected first in its category by difficulty desc, id asc.
+    rationale: Async/debug-heavy code fix with deterministic grader; stresses read-edit-test discipline.
 
   # data-processing (1) — quick transform with verifiable output
-  - id: parse-csv-to-sql
+  - id: log-summary-date-ranges
     category: data-processing
     difficulty: medium
-    rationale: Bounded transformation task whose output can be byte-diffed. Quick to execute, high signal for provider connectivity.
+    rationale: Bounded text-processing task. Quick to execute, high signal for provider connectivity.
 
   # system-administration (1) — smoke for environment setup
-  - id: configure-env-paths
+  - id: configure-git-webserver
     category: system-administration
-    difficulty: easy
-    rationale: Quick smoke task that verifies the provider can run shell commands and write output. Canary gate for all lanes.
+    difficulty: hard
+    rationale: Short config task that verifies the provider can run shell commands and write output.

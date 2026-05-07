@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
+	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 )
 
 const (
@@ -121,6 +122,20 @@ type matrixLock struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
+type repeatStringFlag []string
+
+func (f *repeatStringFlag) String() string {
+	return strings.Join(*f, ",")
+}
+
+func (f *repeatStringFlag) Set(value string) error {
+	value = strings.TrimSpace(value)
+	if value != "" {
+		*f = append(*f, value)
+	}
+	return nil
+}
+
 func cmdMatrix(args []string) int {
 	fs := flagSet("matrix")
 	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")
@@ -136,6 +151,8 @@ func cmdMatrix(args []string) int {
 	perRunBudgetUSD := fs.Float64("per-run-budget-usd", 0, "Per-run budget cap in USD (0 = no per-run cap)")
 	tasksDir := fs.String("tasks-dir", "", "Path to TB-2 tasks directory; when set, harbor run is used for grading")
 	jobs := fs.Int("jobs", 1, "Number of tuple runs to execute concurrently (default: 1)")
+	var extraEnv repeatStringFlag
+	fs.Var(&extraEnv, "env", "Extra KEY=VALUE environment pair to pass to Harbor/Fizeau; may be repeated")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -268,6 +285,7 @@ func cmdMatrix(args []string) int {
 				retryBudgetHalted: *retryBudgetHalted,
 				tasksDir:          resolvedTasksDir,
 				harborBin:         harborBin,
+				extraEnv:          extraEnvMap(extraEnv),
 			})
 
 			mu.Lock()
@@ -335,6 +353,7 @@ type matrixTupleOptions struct {
 	retryBudgetHalted bool
 	tasksDir          string // when set, use harbor run for grading
 	harborBin         string // path to harbor binary
+	extraEnv          map[string]string
 }
 
 func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
@@ -390,11 +409,11 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 	}
 
 	if opts.harborBin != "" {
-		taskPath := filepath.Join(opts.tasksDir, opts.task.ID)
-		if _, err := os.Stat(taskPath); err != nil {
+		taskPath, err := resolveMatrixTaskPath(opts.tasksDir, opts.task.ID)
+		if err != nil {
 			report.ProcessOutcome = "install_fail_permanent"
 			report.GradingOutcome = "ungraded"
-			report.Error = fmt.Sprintf("task directory not found: %s", taskPath)
+			report.Error = err.Error()
 		} else {
 			harborResult, err := runMatrixHarbor(harborRunOpts{
 				harborBin: opts.harborBin,
@@ -404,6 +423,7 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 				jobsDir:   cellDir,
 				jobName:   fmt.Sprintf("%s-%s-rep%d", opts.harness, opts.task.ID, opts.rep),
 				repoRoot:  opts.workDir,
+				extraEnv:  opts.extraEnv,
 			})
 			if err != nil {
 				report.ProcessOutcome = "harness_crash"
@@ -414,6 +434,16 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 				report.Error = harborResult.errText
 				seconds := harborResult.wallSeconds
 				report.WallSeconds = &seconds
+				if harborResult.inputTokens != nil {
+					report.InputTokens = harborResult.inputTokens
+				}
+				if harborResult.outputTokens != nil {
+					report.OutputTokens = harborResult.outputTokens
+				}
+				if harborResult.turns != nil {
+					report.Turns = harborResult.turns
+				}
+				report.CostUSD = harborResult.costUSD
 				if harborResult.reward != nil {
 					report.Reward = harborResult.reward
 					report.GradingOutcome = "graded"
@@ -474,6 +504,47 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 	return report, false, nil
 }
 
+func resolveMatrixTaskPath(tasksDir, taskID string) (string, error) {
+	candidates := []string{
+		filepath.Join(tasksDir, taskID),
+		filepath.Join(tasksDir, "terminal-bench", taskID),
+	}
+	for _, candidate := range candidates {
+		if isMatrixTaskDir(candidate) {
+			return candidate, nil
+		}
+	}
+
+	nestedRoot := filepath.Join(tasksDir, "terminal-bench", taskID)
+	entries, err := os.ReadDir(nestedRoot)
+	if err == nil {
+		var matches []string
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			path := filepath.Join(nestedRoot, entry.Name())
+			if isMatrixTaskDir(path) {
+				matches = append(matches, path)
+			}
+		}
+		if len(matches) == 1 {
+			return matches[0], nil
+		}
+		if len(matches) > 1 {
+			sort.Strings(matches)
+			return "", fmt.Errorf("multiple task digests found for %s under %s", taskID, nestedRoot)
+		}
+	}
+
+	return "", fmt.Errorf("task directory not found for %s under %s", taskID, tasksDir)
+}
+
+func isMatrixTaskDir(path string) bool {
+	info, err := os.Stat(filepath.Join(path, "task.toml"))
+	return err == nil && !info.IsDir()
+}
+
 type harborRunOpts struct {
 	harborBin string
 	taskPath  string
@@ -482,13 +553,18 @@ type harborRunOpts struct {
 	jobsDir   string
 	jobName   string
 	repoRoot  string
+	extraEnv  map[string]string
 }
 
 type harborRunResult struct {
-	reward      *int
-	exitCode    int
-	wallSeconds float64
-	errText     string
+	reward       *int
+	exitCode     int
+	wallSeconds  float64
+	errText      string
+	inputTokens  *int
+	outputTokens *int
+	turns        *int
+	costUSD      float64
 }
 
 // harborAgentArgs returns the agent selection args for harbor run.
@@ -513,7 +589,10 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	started := time.Now()
 
 	apiKeyEnv := opts.profile.Provider.APIKeyEnv
-	apiKeyVal := os.Getenv(apiKeyEnv)
+	if override := strings.TrimSpace(opts.extraEnv["FIZEAU_API_KEY_ENV"]); override != "" {
+		apiKeyEnv = override
+	}
+	apiKeyVal := resolveMatrixAPIKey(opts.repoRoot, opts.profile, apiKeyEnv)
 
 	args := []string{"run", "--yes", "--path", opts.taskPath}
 	args = append(args, harborAgentArgs(opts.harness)...)
@@ -540,6 +619,9 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	if apiKeyVal != "" {
 		args = append(args, "--ae", "FIZEAU_API_KEY="+apiKeyVal)
 	}
+	for _, kv := range envPairs(opts.extraEnv) {
+		args = append(args, "--ae", kv)
+	}
 	// Forward sampling params so fiz reads them via FIZEAU_* env overrides.
 	for _, kv := range samplingEnvPairs(opts.profile) {
 		args = append(args, "--ae", kv)
@@ -561,6 +643,26 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	}
 	if pythonPath != "" {
 		env = append(env, "PYTHONPATH="+pythonPath)
+	}
+	env = append(env,
+		"FIZEAU_BASE_URL="+opts.profile.Provider.BaseURL,
+		"FIZEAU_MODEL="+opts.profile.Provider.Model,
+		"FIZEAU_PROVIDER="+fizeauProviderEnv(opts.profile),
+	)
+	if apiKeyEnv != "" && apiKeyVal != "" {
+		env = append(env, apiKeyEnv+"="+apiKeyVal)
+	}
+	if apiKeyVal != "" {
+		env = append(env, "FIZEAU_API_KEY="+apiKeyVal)
+	}
+	for _, kv := range envPairs(opts.extraEnv) {
+		env = append(env, kv)
+	}
+	for _, kv := range samplingEnvPairs(opts.profile) {
+		env = append(env, kv)
+	}
+	if harness := strings.TrimSpace(opts.extraEnv["FIZEAU_HARNESS"]); harness != "" {
+		env = append(env, "HARBOR_FIZEAU_HARNESS="+harness)
 	}
 	cmd.Env = env
 	cmd.Dir = opts.repoRoot
@@ -604,12 +706,55 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 			errText = errText[:2000]
 		}
 	}
+	inputTokens, outputTokens, turns, costUSD := readHarborTrajectoryMetrics(jobOutDir)
 	return harborRunResult{
-		reward:      reward,
-		exitCode:    exitCode,
-		wallSeconds: wall,
-		errText:     errText,
+		reward:       reward,
+		exitCode:     exitCode,
+		wallSeconds:  wall,
+		errText:      errText,
+		inputTokens:  inputTokens,
+		outputTokens: outputTokens,
+		turns:        turns,
+		costUSD:      costUSD,
 	}, nil
+}
+
+func readHarborTrajectoryMetrics(jobOutDir string) (*int, *int, *int, float64) {
+	var inputTokens, outputTokens, turns *int
+	var costUSD float64
+	_ = filepath.WalkDir(jobOutDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Base(path) != "trajectory.json" {
+			return nil
+		}
+		data, err := os.ReadFile(path) // #nosec G304 -- path is under runner-owned output dir
+		if err != nil {
+			return nil
+		}
+		var trajectory struct {
+			Steps        []any `json:"steps"`
+			FinalMetrics struct {
+				TotalPromptTokens     int     `json:"total_prompt_tokens"`
+				TotalCompletionTokens int     `json:"total_completion_tokens"`
+				TotalCostUSD          float64 `json:"total_cost_usd"`
+				TotalSteps            int     `json:"total_steps"`
+			} `json:"final_metrics"`
+		}
+		if json.Unmarshal(data, &trajectory) != nil {
+			return nil
+		}
+		in := trajectory.FinalMetrics.TotalPromptTokens
+		out := trajectory.FinalMetrics.TotalCompletionTokens
+		stepCount := trajectory.FinalMetrics.TotalSteps
+		if stepCount == 0 && len(trajectory.Steps) > 0 {
+			stepCount = len(trajectory.Steps)
+		}
+		inputTokens = &in
+		outputTokens = &out
+		turns = &stepCount
+		costUSD = trajectory.FinalMetrics.TotalCostUSD
+		return filepath.SkipAll
+	})
+	return inputTokens, outputTokens, turns, costUSD
 }
 
 func runMatrixAdapter(repoRoot, module string, prof *profile.Profile, prompt, taskID, workDir string) (matrixAdapterResult, error) {
@@ -724,6 +869,67 @@ func splitCSV(raw string) []string {
 		}
 	}
 	return out
+}
+
+func extraEnvMap(values []string) map[string]string {
+	out := make(map[string]string, len(values))
+	for _, raw := range values {
+		key, val, ok := strings.Cut(raw, "=")
+		key = strings.TrimSpace(key)
+		if !ok || key == "" {
+			continue
+		}
+		out[key] = val
+	}
+	return out
+}
+
+func envPairs(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, key+"="+values[key])
+	}
+	return out
+}
+
+func resolveMatrixAPIKey(workDir string, p *profile.Profile, apiKeyEnv string) string {
+	if apiKeyEnv != "" {
+		if val := os.Getenv(apiKeyEnv); val != "" {
+			return val
+		}
+	}
+	cfg, err := agentConfig.Load(workDir)
+	if err != nil || cfg == nil {
+		return ""
+	}
+	for _, pc := range cfg.Providers {
+		if matrixProviderMatchesProfile(pc, p) && pc.APIKey != "" {
+			return pc.APIKey
+		}
+	}
+	return ""
+}
+
+func matrixProviderMatchesProfile(pc agentConfig.ProviderConfig, p *profile.Profile) bool {
+	if p == nil {
+		return false
+	}
+	pcType := strings.TrimSpace(strings.ToLower(pc.Type))
+	profileType := strings.TrimSpace(strings.ToLower(string(p.Provider.Type)))
+	if pcType != "" && profileType != "" && pcType != profileType {
+		return false
+	}
+	pcBase := strings.TrimRight(strings.TrimSpace(pc.BaseURL), "/")
+	profileBase := strings.TrimRight(strings.TrimSpace(p.Provider.BaseURL), "/")
+	if pcBase != "" && profileBase != "" && pcBase != profileBase {
+		return false
+	}
+	return pcType != "" || pcBase != ""
 }
 
 func matrixTupleDir(outDir, harness, profileID string, rep int, taskID string) string {

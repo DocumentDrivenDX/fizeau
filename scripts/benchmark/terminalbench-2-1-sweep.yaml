@@ -53,24 +53,21 @@ phases:
     lanes:
       - fiz-harness-claude-sonnet-4-6
       - fiz-harness-codex-gpt-5-4-mini
-      - fiz-harness-pi-gpt-5-4-mini
-      - fiz-harness-opencode-gpt-5-4-mini
+      - fiz-harness-pi-vidar-qwen3-6-27b
+      - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-openrouter-claude-sonnet-4-6
       - fiz-openrouter-gpt-5-4-mini
       - fiz-vidar-omlx-qwen3-6-27b
-      - fiz-grendel-rapid-mlx-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
       - fiz-sindri-club-3090-qwen3-6-27b
-      - fiz-bragi-lmstudio-qwen3-6-27b
     preflight:
       - "Verify all local endpoints are reachable before starting canary"
-      - "Verified 2026-05-07: vidar:1235, grendel:8000, bragi:8020, sindri:8020 all reachable"
-      - "bragi-lmstudio may be excluded if preflight fails; mark cells invalid_provider"
+      - "Active 2026-05-07 targets: vidar:1235, bragi:8020, sindri:8020. Grendel is held out until laptop resource tuning is stable."
     parallel_policy: >-
       Local resource groups serialize (one cell at a time per endpoint).
-      OpenRouter lanes (fiz-harness-*, fiz-openrouter-*) may run in parallel
-      across comparison groups, subject to rg-openrouter rate caps. The canary
-      may run all local provider groups in parallel because each endpoint has
+      OpenRouter and subscription harness lanes may run in parallel across
+      comparison groups, subject to rg-openrouter rate caps. The canary may run
+      all local provider groups in parallel because each endpoint has
       max_concurrency=1 and the groups are independent.
 
   - id: local-qwen
@@ -83,22 +80,23 @@ phases:
     subset: terminalbench-2-1-full    # full 2.1 task catalog or a 2.1 expanded subset; see profile_inventory
     lanes:
       - fiz-vidar-omlx-qwen3-6-27b
-      - fiz-grendel-rapid-mlx-qwen3-6-27b
+      - fiz-harness-pi-vidar-qwen3-6-27b
+      - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
       - fiz-sindri-club-3090-qwen3-6-27b
-      - fiz-bragi-lmstudio-qwen3-6-27b
     parallel_policy: >-
       Each lane belongs to a distinct resource group (rg-vidar-omlx,
-      rg-grendel-rapid-mlx, rg-bragi-club-3090, rg-sindri-club-3090,
-      rg-bragi-lmstudio); all five may run in parallel since they use
-      different servers/endpoints. Within each resource group max_concurrency=1.
+      rg-bragi-club-3090, rg-sindri-club-3090);
+      all three may run in parallel since they use different servers/endpoints.
+      Within each resource group max_concurrency=1.
 
   - id: sonnet-comparison
     description: >-
-      fiz native/provider path on Sonnet (OpenRouter) versus fiz Claude-harness
-      path on Sonnet. Answers: how much does harness scaffolding (system prompt,
-      tool schema, context handling) change outcomes when the provider surface is
-      held approximately constant?
+      fiz native/provider path on Sonnet through OpenRouter versus fiz
+      Claude-harness path on the authenticated Claude Code subscription.
+      Answers: how much does subscription harness scaffolding (system prompt,
+      tool schema, context handling, auth/session state) change outcomes
+      compared with fiz's native provider surface?
     reps: 3
     subset: terminalbench-2-1-full
     lanes:
@@ -112,8 +110,8 @@ phases:
   - id: gpt-comparison
     description: >-
       fiz native/provider path on GPT-5.4-mini (OpenRouter) versus fiz
-      Codex-harness path on GPT-5.4-mini. Same question as sonnet-comparison
-      but for the OpenAI model family.
+      Codex-harness path on the authenticated Codex subscription. Same question
+      as sonnet-comparison but for the OpenAI model family.
     reps: 3
     subset: terminalbench-2-1-full
     lanes:
@@ -138,16 +136,14 @@ comparison_groups:
       inference providers, runtimes, and quantization configurations?
     lanes:
       - fiz-vidar-omlx-qwen3-6-27b
-      - fiz-grendel-rapid-mlx-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
       - fiz-sindri-club-3090-qwen3-6-27b
-      - fiz-bragi-lmstudio-qwen3-6-27b
     equivalence: approximate_same_family
     equivalence_note: >-
       NOT a true same-model comparison. Rows share the same weights lineage
       (Qwen3.6-27B Instruct) but differ in quantization method (MLX-8bit vs
-      Q4_K_M GGUF vs autoround GPTQ), runtime (oMLX vs llama.cpp vs vLLM),
-      and server hardware (Apple M-class vs RTX 5090 vs RTX 3090). Published
+      autoround GPTQ), runtime (oMLX vs Rapid-MLX vs vLLM), and server hardware
+      (Apple M-class vs RTX 3090). Published
       memos must not collapse these into a single "local-qwen" number without
       reporting per-row breakdowns.
     metadata_required:
@@ -164,18 +160,19 @@ comparison_groups:
     subtype: frontier_harness_vs_fiz
     question: >-
       How does fiz's native provider path compare to fiz's Claude-harness
-      path when both route to the same OpenRouter Sonnet endpoint?
+      path when Claude Code uses its authenticated subscription session?
     lanes:
       - fiz-openrouter-claude-sonnet-4-6   # fiz native/provider lane
       - fiz-harness-claude-sonnet-4-6      # fiz Claude-harness lane
-    equivalence: approximate_same_provider_surface
+    equivalence: approximate_same_model_family
     equivalence_note: >-
-      Both lanes use the same model ID (anthropic/claude-sonnet-4.6) and the
-      same base_url (https://openrouter.ai/api/v1). They are NOT a pure model
-      control: the Claude-harness lane delegates to claude-code which adds its
+      Native lane routes through OpenRouter. Harness lane delegates to
+      Claude Code and uses the mounted authenticated Claude subscription home.
+      This is NOT a same-provider or pure model control: Claude Code adds its
       own system prompt, tool schema, permission semantics, context compaction,
-      and quota handling. Results compare (fiz native scaffolding) vs (fiz +
-      claude-code scaffolding) over the same model API, not pure harness skill.
+      auth/session state, and quota behavior. Results compare (fiz native
+      OpenRouter scaffolding) vs (fiz + Claude Code subscription scaffolding),
+      not pure harness skill.
     same_model_control: false   # harness scaffolding differs
 
   - id: cg-gpt-harness-fiz
@@ -183,17 +180,37 @@ comparison_groups:
     subtype: frontier_harness_vs_fiz
     question: >-
       How does fiz's native provider path compare to fiz's Codex-harness
-      path when both route to the same OpenRouter GPT-5.4-mini endpoint?
+      path when Codex uses its authenticated subscription session?
     lanes:
       - fiz-openrouter-gpt-5-4-mini        # fiz native/provider lane
       - fiz-harness-codex-gpt-5-4-mini     # fiz Codex-harness lane
+    equivalence: approximate_same_model_family
+    equivalence_note: >-
+      Native lane routes through OpenRouter. Harness lane delegates to Codex
+      CLI and uses the mounted authenticated Codex subscription home. This is
+      NOT a same-provider or pure model control: Codex adds its own system
+      prompt, tool schema, permission semantics, context handling, auth/session
+      state, and quota behavior. Published memos must state this caveat per the
+      fiz-wrapper comparison decision
+      (terminalbench-fiz-wrapper-comparison-2026-05-06).
+    same_model_control: false
+
+  - id: cg-local-qwen-harness-delta
+    type: harness_delta
+    subtype: local_harness_wrapped_by_fiz
+    question: >-
+      How do Pi and OpenCode behave when driven through fiz against the same
+      local Vidar oMLX Qwen endpoint used by fiz's native provider lane?
+    lanes:
+      - fiz-vidar-omlx-qwen3-6-27b
+      - fiz-harness-pi-vidar-qwen3-6-27b
+      - fiz-harness-opencode-vidar-qwen3-6-27b
     equivalence: approximate_same_provider_surface
     equivalence_note: >-
-      Same model ID (openai/gpt-5.4-mini) and base_url (openrouter) for both
-      lanes, but the Codex-harness lane delegates to Codex CLI which adds its
-      own scaffolding. Same caveat as cg-sonnet-harness-fiz: not a pure model
-      control. Published memos must state this caveat per the fiz-wrapper
-      comparison decision (terminalbench-fiz-wrapper-comparison-2026-05-06).
+      All three lanes route through the fiz command surface and target the
+      same local Vidar oMLX endpoint/model. They are not pure model controls:
+      the Pi and OpenCode lanes add their subprocess harness scaffolding,
+      config parsing, model aliases, and tool semantics.
     same_model_control: false
 
 # ---------------------------------------------------------------------------
@@ -212,16 +229,6 @@ resource_groups:
     notes: >-
       Single-model oMLX server; serialize all cells. No API key required
       (oMLX serves without auth; OMLX_API_KEY may be any non-empty string).
-
-  - id: rg-bragi-lmstudio
-    server: bragi
-    base_url: "http://bragi:1234/v1"
-    provider_type: lmstudio
-    hardware: "RTX 5090-mobile (bragi), 24 GB VRAM"
-    max_concurrency: 1
-    notes: >-
-      LM Studio (llama.cpp) single-model server. Serialize all cells.
-      Loaded context length: 101770 tokens (verified 2026-05-01).
 
   - id: rg-bragi-club-3090
     server: bragi
@@ -292,20 +299,23 @@ lanes:
     resource_group: rg-openrouter
     fizeau_env:
       FIZEAU_HARNESS: claude
-      FIZEAU_MODEL: "anthropic/claude-sonnet-4.6"
+      FIZEAU_PROVIDER: openrouter
+      FIZEAU_MODEL: "claude-sonnet-4-6"
       FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
       FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
     model_family: claude-sonnet-4
     model_id: "anthropic/claude-sonnet-4.6"
     quant_label: cloud-hosted
-    provider_surface: openrouter
+    provider_surface: claude-code-subscription
     sampling:
       temperature: 0.0
     equivalence_note: >-
-      Harness-controlled lane. fiz delegates to claude-code which selects model
-      and manages auth independently. Same base OpenRouter endpoint as
-      fiz-openrouter-claude-sonnet-4-6 but different scaffolding; the comparison
-      is approximate_same_provider_surface (see cg-sonnet-harness-fiz).
+      Harness-controlled lane. fiz delegates to Claude Code, which uses the
+      mounted authenticated Claude subscription home and manages auth/session
+      state independently. The OpenRouter provider and API key are supplied as
+      fiz bootstrap inputs so --provider openrouter can resolve cleanly before
+      dispatching to the harness; the model execution path is Claude Code
+      subscription.
 
   - id: fiz-harness-codex-gpt-5-4-mini
     profile_id: fiz-harness-codex-gpt-5-4-mini
@@ -315,54 +325,74 @@ lanes:
     resource_group: rg-openrouter
     fizeau_env:
       FIZEAU_HARNESS: codex
-      FIZEAU_MODEL: "openai/gpt-5.4-mini"
+      FIZEAU_PROVIDER: openrouter
+      FIZEAU_MODEL: "gpt-5.4-mini"
       FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
       FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    equivalence_note: >-
+      Harness-controlled lane. fiz delegates to Codex CLI, which uses the
+      mounted authenticated Codex subscription home and manages auth/session
+      state independently. The OpenRouter provider and API key are supplied as
+      fiz bootstrap inputs so --provider openrouter can resolve cleanly before
+      dispatching to the harness; the model execution path is Codex
+      subscription.
     model_family: gpt-5-mini
     model_id: "openai/gpt-5.4-mini"
     quant_label: cloud-hosted
-    provider_surface: openrouter
+    provider_surface: codex-subscription
     sampling:
       temperature: 0.0
       reasoning: medium
 
-  - id: fiz-harness-pi-gpt-5-4-mini
-    profile_id: fiz-harness-pi-gpt-5-4-mini
+  - id: fiz-harness-pi-vidar-qwen3-6-27b
+    profile_id: vidar-qwen3-6-27b
     lane_type: fiz_harness_pinned
-    phases: [canary]
-    comparison_groups: []   # canary coverage only; no primary comparison question in 2.1 plan
-    resource_group: rg-openrouter
+    phases: [canary, local-qwen]
+    comparison_groups: [cg-local-qwen-harness-delta]
+    resource_group: rg-vidar-omlx
     fizeau_env:
       FIZEAU_HARNESS: pi
-      FIZEAU_MODEL: "openai/gpt-5.4-mini"
-      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
-      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
-    model_family: gpt-5-mini
-    model_id: "openai/gpt-5.4-mini"
-    quant_label: cloud-hosted
-    provider_surface: openrouter
+      FIZEAU_PROVIDER: omlx
+      FIZEAU_MODEL: "Qwen3.6-27B-MLX-8bit"
+      FIZEAU_BASE_URL: "http://vidar:1235/v1"
+      FIZEAU_API_KEY_ENV: OMLX_API_KEY
+    model_family: qwen3-6-27b
+    model_id: "Qwen3.6-27B-MLX-8bit"
+    quant_label: mlx-8bit
+    provider_surface: fiz-pi-on-vidar-omlx
+    runtime: pi-plus-omlx
+    hardware_label: vidar-apple-m
+    endpoint: "http://vidar:1235/v1"
     sampling:
-      temperature: 0.0
-      reasoning: medium
+      temperature: 0.6
+      reasoning: low
+      top_p: 0.95
+      top_k: 20
 
-  - id: fiz-harness-opencode-gpt-5-4-mini
-    profile_id: fiz-harness-opencode-gpt-5-4-mini
+  - id: fiz-harness-opencode-vidar-qwen3-6-27b
+    profile_id: vidar-qwen3-6-27b
     lane_type: fiz_harness_pinned
-    phases: [canary]
-    comparison_groups: []
-    resource_group: rg-openrouter
+    phases: [canary, local-qwen]
+    comparison_groups: [cg-local-qwen-harness-delta]
+    resource_group: rg-vidar-omlx
     fizeau_env:
       FIZEAU_HARNESS: opencode
-      FIZEAU_MODEL: "openai/gpt-5.4-mini"
-      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
-      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
-    model_family: gpt-5-mini
-    model_id: "openai/gpt-5.4-mini"
-    quant_label: cloud-hosted
-    provider_surface: openrouter
+      FIZEAU_PROVIDER: omlx
+      FIZEAU_MODEL: "Qwen3.6-27B-MLX-8bit"
+      FIZEAU_BASE_URL: "http://vidar:1235/v1"
+      FIZEAU_API_KEY_ENV: OMLX_API_KEY
+    model_family: qwen3-6-27b
+    model_id: "Qwen3.6-27B-MLX-8bit"
+    quant_label: mlx-8bit
+    provider_surface: fiz-opencode-on-vidar-omlx
+    runtime: opencode-plus-omlx
+    hardware_label: vidar-apple-m
+    endpoint: "http://vidar:1235/v1"
     sampling:
-      temperature: 0.0
-      reasoning: medium
+      temperature: 0.6
+      reasoning: low
+      top_p: 0.95
+      top_k: 20
 
   # --- Official fiz native/provider lanes ---
 
@@ -430,35 +460,8 @@ lanes:
       top_k: 20
     equivalence_note: >-
       Apple Silicon M-class, MLX 8-bit quantization. Local free tier.
-      Same weights lineage as bragi-lmstudio and bragi-club-vllm lanes but
-      different quant and runtime — approximate_same_family only.
-
-  - id: fiz-bragi-lmstudio-qwen3-6-27b
-    profile_id: bragi-qwen3-6-27b
-    lane_type: fiz_provider_native
-    phases: [canary, local-qwen]
-    comparison_groups: [cg-local-qwen-provider-quant]
-    resource_group: rg-bragi-lmstudio
-    fizeau_env:
-      FIZEAU_PROVIDER: lmstudio
-      FIZEAU_MODEL: "qwen/qwen3.6-27b"
-      FIZEAU_BASE_URL: "http://bragi:1234/v1"
-      FIZEAU_API_KEY_ENV: LMSTUDIO_API_KEY
-    model_family: qwen3-6-27b
-    model_id: "qwen/qwen3.6-27b"
-    quant_label: q4-k-m-gguf
-    provider_surface: bragi-lmstudio
-    runtime: lmstudio
-    hardware_label: bragi-5090
-    endpoint: "http://bragi:1234/v1"
-    sampling:
-      temperature: 0.6
-      reasoning: low
-      top_p: 0.95
-      top_k: 20
-    equivalence_note: >-
-      RTX 5090-mobile, llama.cpp Q4_K_M GGUF. Local free tier. Different
-      quant and runtime from vidar-omlx; same weights lineage.
+      Same weights lineage as bragi-club-vllm lanes but different quant and
+      runtime — approximate_same_family only.
 
   - id: fiz-bragi-club-3090-qwen3-6-27b
     profile_id: bragi-club-3090
@@ -643,12 +646,6 @@ profile_inventory:
     - id: fiz-harness-codex-gpt-5-4-mini
       path: scripts/benchmark/profiles/fiz-harness-codex-gpt-5-4-mini.yaml
       used_in_phases: [canary, gpt-comparison]
-    - id: fiz-harness-pi-gpt-5-4-mini
-      path: scripts/benchmark/profiles/fiz-harness-pi-gpt-5-4-mini.yaml
-      used_in_phases: [canary]
-    - id: fiz-harness-opencode-gpt-5-4-mini
-      path: scripts/benchmark/profiles/fiz-harness-opencode-gpt-5-4-mini.yaml
-      used_in_phases: [canary]
     - id: fiz-openrouter-claude-sonnet-4-6
       path: scripts/benchmark/profiles/fiz-openrouter-claude-sonnet-4-6.yaml
       used_in_phases: [canary, sonnet-comparison]
@@ -658,10 +655,6 @@ profile_inventory:
     - id: vidar-qwen3-6-27b
       path: scripts/benchmark/profiles/vidar-qwen3-6-27b.yaml
       used_in_phases: [canary, local-qwen]
-    - id: bragi-qwen3-6-27b
-      path: scripts/benchmark/profiles/bragi-qwen3-6-27b.yaml
-      used_in_phases: [canary, local-qwen]
-
   new_required:
     - id: bragi-club-3090
       path: scripts/benchmark/profiles/bragi-club-3090.yaml

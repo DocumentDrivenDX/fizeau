@@ -26,9 +26,18 @@ from harbor.models.agent.context import AgentContext
 _INSTALL_ROOT = "/installed-agent"
 _BINARY_TARGET = f"{_INSTALL_ROOT}/fiz"
 _AGENTS_MD_TARGET = f"{_INSTALL_ROOT}/AGENTS.md"
+_CONFIG_TARGET = f"{_INSTALL_ROOT}/fizeau-config.yaml"
 _HOME_DIR = f"{_INSTALL_ROOT}/home"
+_CODEX_HOME = f"{_HOME_DIR}/.codex"
+_PI_DIR = f"{_INSTALL_ROOT}/pi-agent"
+_OPENCODE_CONFIG_DIR = f"{_HOME_DIR}/.config/opencode"
+_OPENCODE_DATA_DIR = f"{_HOME_DIR}/.local/share/opencode"
 _SESSION_LOG_DIR = "/logs/agent/sessions"
 _OUTPUT_LOG = "/logs/agent/fiz.txt"
+_TARGET_ENV = "/logs/agent/target.env"
+_RUNTIME_BUNDLE_TARGET = f"{_INSTALL_ROOT}/agent-runtime.tgz"
+_CLAUDE_HOME_TARBALL_TARGET = f"{_INSTALL_ROOT}/claude-home.tgz"
+_CODEX_HOME_TARBALL_TARGET = f"{_INSTALL_ROOT}/codex-home.tgz"
 
 logger = logging.getLogger(__name__)
 
@@ -83,14 +92,17 @@ class FizeauAgent(BaseInstalledAgent):
         return "fiz"
 
     async def install(self, environment: BaseEnvironment) -> None:
+        runtime_bundle = os.environ.get("HARBOR_AGENT_RUNTIME_BUNDLE", "")
+        runtime_bundle_src = Path(runtime_bundle) if runtime_bundle else Path()
         binary_artifact = os.environ.get("HARBOR_AGENT_ARTIFACT", "")
         binary_src = Path(binary_artifact) if binary_artifact else Path()
-        if not binary_artifact or not binary_src.is_file():
+        if (not runtime_bundle_src.is_file()) and (not binary_artifact or not binary_src.is_file()):
             binary_src = Path(__file__).parent / "fiz-linux-amd64"
-        if not binary_src.is_file():
+        if not runtime_bundle_src.is_file() and not binary_src.is_file():
             raise FileNotFoundError(
-                f"fiz binary not found. Expected {binary_src} or set "
-                "HARBOR_AGENT_ARTIFACT to the host binary path."
+                "agent runtime bundle or fiz binary not found. Set "
+                "HARBOR_AGENT_RUNTIME_BUNDLE to the exported runtime bundle "
+                "or HARBOR_AGENT_ARTIFACT to the host fiz binary path."
             )
 
         await self.exec_as_root(
@@ -155,14 +167,31 @@ class FizeauAgent(BaseInstalledAgent):
             ),
         )
 
-        await environment.upload_file(binary_src, _BINARY_TARGET)
-        await self.exec_as_root(
-            environment, command=f"chmod 755 {_BINARY_TARGET}"
-        )
+        if runtime_bundle_src.is_file():
+            await environment.upload_file(runtime_bundle_src, _RUNTIME_BUNDLE_TARGET)
+            await self.exec_as_root(
+                environment,
+                command=(
+                    "set -e; "
+                    f"tar -xzf {shlex.quote(_RUNTIME_BUNDLE_TARGET)} -C {shlex.quote(_INSTALL_ROOT)}; "
+                    f"chmod 755 {shlex.quote(_BINARY_TARGET)} 2>/dev/null || true"
+                ),
+            )
+        else:
+            await environment.upload_file(binary_src, _BINARY_TARGET)
+            await self.exec_as_root(
+                environment, command=f"chmod 755 {_BINARY_TARGET}"
+            )
 
         agents_md_src = Path(__file__).parent / "AGENTS.md"
         if agents_md_src.exists():
             await environment.upload_file(agents_md_src, _AGENTS_MD_TARGET)
+        config_env = os.environ.get("HARBOR_FIZEAU_CONFIG", "")
+        config_src = Path(config_env) if config_env else Path.cwd() / ".fizeau" / "config.yaml"
+        if config_src.exists():
+            await environment.upload_file(config_src, _CONFIG_TARGET)
+
+        await self._install_runtime_credentials(environment)
 
         # Harbor task Docker Compose networks use isolated DNS that doesn't
         # inherit the host's Tailscale DNS. Resolve any FIZEAU_BASE_URL
@@ -177,6 +206,29 @@ class FizeauAgent(BaseInstalledAgent):
                 for host, ip in hosts_entries.items()
             )
             await self.exec_as_root(environment, command=entries_cmd)
+
+    async def _install_runtime_credentials(self, environment: BaseEnvironment) -> None:
+        claude_home = os.environ.get("HARBOR_CLAUDE_HOME_TARBALL", "")
+        if claude_home and Path(claude_home).is_file():
+            await environment.upload_file(Path(claude_home), _CLAUDE_HOME_TARBALL_TARGET)
+            await self.exec_as_root(
+                environment,
+                command=(
+                    f"tar -xzf {shlex.quote(_CLAUDE_HOME_TARBALL_TARGET)} -C {_HOME_DIR} && "
+                    f"chown -R agent:agent {_HOME_DIR}/.claude 2>/dev/null || true"
+                ),
+            )
+
+        codex_home = os.environ.get("HARBOR_CODEX_HOME_TARBALL", "")
+        if codex_home and Path(codex_home).is_file():
+            await environment.upload_file(Path(codex_home), _CODEX_HOME_TARBALL_TARGET)
+            await self.exec_as_root(
+                environment,
+                command=(
+                    f"tar -xzf {shlex.quote(_CODEX_HOME_TARBALL_TARGET)} -C {_HOME_DIR} && "
+                    f"chown -R agent:agent {_CODEX_HOME} 2>/dev/null || true"
+                ),
+            )
 
     @staticmethod
     def _find_host_ca_bundle() -> Path | None:
@@ -207,6 +259,12 @@ class FizeauAgent(BaseInstalledAgent):
         env: dict[str, str] = {
             "HARBOR_INSTRUCTION": instruction,
             "HOME": _HOME_DIR,
+            "CODEX_HOME": _CODEX_HOME,
+            "PI_CODING_AGENT_DIR": _PI_DIR,
+            "OPENCODE_DISABLE_AUTOUPDATE": "1",
+            "OPENCODE_CONFIG_DIR": _OPENCODE_CONFIG_DIR,
+            "OPENCODE_DATA_DIR": _OPENCODE_DATA_DIR,
+            "PATH": f"{_INSTALL_ROOT}:{_INSTALL_ROOT}/node/bin:" + os.environ.get("PATH", ""),
         }
         # Forward all FIZEAU_* vars from the process env into the container.
         # FIZEAU_BASE_URL, FIZEAU_MODEL, FIZEAU_PROVIDER, FIZEAU_API_KEY_ENV,
@@ -225,54 +283,61 @@ class FizeauAgent(BaseInstalledAgent):
             api_key_val = os.environ.get(api_key_env, "")
             if api_key_val:
                 env["FIZEAU_API_KEY"] = api_key_val
+        if "FIZEAU_API_KEY" not in env:
+            for fallback in ("OMLX_API_KEY", "VLLM_API_KEY", "RAPID_MLX_API_KEY", "OPENROUTER_API_KEY"):
+                api_key_val = os.environ.get(fallback, "")
+                if api_key_val:
+                    env["FIZEAU_API_KEY"] = api_key_val
+                    break
         return env
 
     def _target_metadata(self) -> dict[str, dict[str, str]]:
+        env = self._target_env_from_log()
         requested = {
-            "harness": os.environ.get("FIZEAU_HARNESS", ""),
-            "provider": os.environ.get("FIZEAU_PROVIDER", ""),
-            "model": os.environ.get("FIZEAU_MODEL", ""),
-            "model_ref": os.environ.get("FIZEAU_MODEL_REF", ""),
-            "reasoning": os.environ.get("FIZEAU_REASONING", ""),
+            "harness": env.get("FIZEAU_HARNESS", os.environ.get("FIZEAU_HARNESS", "")),
+            "provider": env.get("FIZEAU_PROVIDER", os.environ.get("FIZEAU_PROVIDER", "")),
+            "model": env.get("FIZEAU_MODEL", os.environ.get("FIZEAU_MODEL", "")),
+            "model_ref": env.get("FIZEAU_MODEL_REF", os.environ.get("FIZEAU_MODEL_REF", "")),
+            "reasoning": env.get("FIZEAU_REASONING", os.environ.get("FIZEAU_REASONING", "")),
         }
         resolved = dict(requested)
-        base_url = os.environ.get("FIZEAU_BASE_URL", "")
+        base_url = env.get("FIZEAU_BASE_URL", os.environ.get("FIZEAU_BASE_URL", ""))
         if requested["provider"] == "openai-compat" and "openrouter" in base_url:
             resolved["provider"] = "openrouter"
         return {"requested": requested, "resolved": resolved}
 
-    def _build_command(self, env: dict[str, str]) -> str:
-        args = [
-            shlex.quote(_BINARY_TARGET),
-            "--json",
-            "--preset",
-            "default",
-        ]
-        for flag, key in (
-            ("--harness", "FIZEAU_HARNESS"),
-            ("--provider", "FIZEAU_PROVIDER"),
-            ("--model", "FIZEAU_MODEL"),
-            ("--model-ref", "FIZEAU_MODEL_REF"),
-            ("--reasoning", "FIZEAU_REASONING"),
-        ):
-            value = env.get(key, "")
-            if value:
-                args.extend([flag, shlex.quote(value)])
-        args.extend([
-            "--work-dir",
-            '"$work_dir"',
-            "-p",
-            '"$HARBOR_INSTRUCTION"',
-        ])
+    def _target_env_from_log(self) -> dict[str, str]:
+        path = self.logs_dir / "target.env"
+        if not path.is_file():
+            return {}
+        out: dict[str, str] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            key, sep, val = line.partition("=")
+            if sep and key.startswith("FIZEAU_"):
+                out[key] = val
+        return out
 
+    def _build_command(self, env: dict[str, str]) -> str:
         return (
             "set -uo pipefail; "
             "cd /testbed 2>/dev/null || cd /workspace 2>/dev/null || true; "
             'work_dir="$(pwd)"; '
             f'cp {_AGENTS_MD_TARGET} "$(pwd)/AGENTS.md" 2>/dev/null || true; '
+            f'mkdir -p "$work_dir/.fizeau" "$HOME/.fizeau"; '
+            f'cp {_CONFIG_TARGET} "$work_dir/.fizeau/config.yaml" 2>/dev/null || true; '
+            f'cp {_CONFIG_TARGET} "$HOME/.fizeau/config.yaml" 2>/dev/null || true; '
             f"mkdir -p {_SESSION_LOG_DIR}; "
-            f"{' '.join(args)} "
-            f"2>&1 | stdbuf -oL tee {_OUTPUT_LOG}; "
+            f"{self._wrapped_harness_config_command()}"
+            f"env | grep '^FIZEAU_' > {_TARGET_ENV} 2>/dev/null || true; "
+            f'cmd=({shlex.quote(_BINARY_TARGET)} --json --preset default); '
+            'append_arg() { if [ -n "${2:-}" ]; then cmd+=("$1" "$2"); fi; }; '
+            'append_arg --harness "${FIZEAU_HARNESS:-}"; '
+            'append_arg --provider "${FIZEAU_PROVIDER:-}"; '
+            'append_arg --model "${FIZEAU_MODEL:-}"; '
+            'append_arg --model-ref "${FIZEAU_MODEL_REF:-}"; '
+            'append_arg --reasoning "${FIZEAU_REASONING:-}"; '
+            'cmd+=(--work-dir "$work_dir" -p "$HARBOR_INSTRUCTION"); '
+            f'"${{cmd[@]}}" 2>&1 | stdbuf -oL tee {_OUTPUT_LOG}; '
             'fiz_rc=${PIPESTATUS[0]}; '
             'for session_root in "$work_dir/.fizeau/sessions" "$HOME/.fizeau/sessions"; do '
             '  if [ -d "$session_root" ]; then '
@@ -288,6 +353,30 @@ class FizeauAgent(BaseInstalledAgent):
             f"  }} >> {_OUTPUT_LOG}; "
             "fi; "
             'exit "$fiz_rc"'
+        )
+
+    def _wrapped_harness_config_command(self) -> str:
+        return (
+            'if [ "${FIZEAU_HARNESS:-}" = "pi" ]; then '
+            f'mkdir -p {shlex.quote(_PI_DIR)}; '
+            f'cat > {shlex.quote(_PI_DIR)}/models.json <<EOF\n'
+            '{"providers":{"${FIZEAU_PROVIDER:-openai-compat}":{"baseUrl":"${FIZEAU_BASE_URL}",'
+            '"apiKey":"FIZEAU_API_KEY","models":[{"id":"${FIZEAU_MODEL}",'
+            '"api":"openai-completions","reasoning":true,"contextWindow":128000,'
+            '"maxTokens":32768,"compat":{"supportsUsageInStreaming":true,'
+            '"maxTokensField":"max_tokens","thinkingFormat":"qwen"}}]}}}\n'
+            "EOF\n"
+            "fi; "
+            'if [ "${FIZEAU_HARNESS:-}" = "opencode" ]; then '
+            f'mkdir -p {shlex.quote(_OPENCODE_CONFIG_DIR)} {shlex.quote(_OPENCODE_DATA_DIR)}; '
+            f'cat > {shlex.quote(_OPENCODE_CONFIG_DIR)}/opencode.json <<EOF\n'
+            '{"provider":{"${FIZEAU_PROVIDER:-openai-compat}":{"npm":"@ai-sdk/openai-compatible",'
+            '"name":"${FIZEAU_PROVIDER:-openai-compat}","options":{"baseURL":"${FIZEAU_BASE_URL}",'
+            '"apiKey":"{env:FIZEAU_API_KEY}","temperature":0.6},'
+            '"models":{"${FIZEAU_MODEL}":{"limit":{"context":128000,"output":32768}}}}}}\n'
+            "EOF\n"
+            f'export OPENCODE_CONFIG_CONTENT="$(cat {shlex.quote(_OPENCODE_CONFIG_DIR)}/opencode.json)"; '
+            "fi; "
         )
 
     @with_prompt_template

@@ -544,14 +544,13 @@ Cells included in the official comparison:
 
 - `fiz-harness-claude-sonnet-4-6`
 - `fiz-harness-codex-gpt-5-4-mini`
-- `fiz-harness-pi-gpt-5-4-mini`
-- `fiz-harness-opencode-gpt-5-4-mini`
 - `fiz-openrouter-claude-sonnet-4-6`
 - `fiz-openrouter-gpt-5-4-mini`
 
 The raw Harbor Claude/Codex/pi/opencode adapters remain diagnostics only. The
-official claims use the six `fiz-*` lanes routed through `FizeauAgent`, not the
-native Harbor adapter rows.
+official claims use `fiz-*` lanes routed through `FizeauAgent`, not native
+Harbor adapter rows. Pi/OpenCode wrapped local-model coverage now lives in the
+TerminalBench 2.1 sweep plan.
 
 Artifacts are written under
 `benchmark-results/matrix-medium-model-<tier>-<UTC>/`:

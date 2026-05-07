@@ -121,12 +121,13 @@ class FizeauAgentTest(unittest.TestCase):
                 asyncio.run(agent.run("solve task", object(), AgentContext()))
 
                 command = agent.exec_as_agent.await_args.kwargs["command"]
-                self.assertIn(f"--harness {harness}", command)
+                self.assertIn('append_arg --harness "${FIZEAU_HARNESS:-}"', command)
                 self.assertIn("--preset default", command)
-                self.assertIn("--provider openrouter", command)
-                self.assertIn("--model qwen/qwen3.6-plus", command)
-                self.assertIn("--model-ref qwen/qwen3.6-plus@latest", command)
-                self.assertIn("--reasoning high", command)
+                self.assertIn('append_arg --provider "${FIZEAU_PROVIDER:-}"', command)
+                self.assertIn('append_arg --model "${FIZEAU_MODEL:-}"', command)
+                self.assertIn('append_arg --model-ref "${FIZEAU_MODEL_REF:-}"', command)
+                self.assertIn('append_arg --reasoning "${FIZEAU_REASONING:-}"', command)
+                self.assertIn("target.env", command)
                 self.assertNotIn("harbor_adapters/claude.py", command)
                 self.assertNotIn("harbor_adapters/codex.py", command)
                 self.assertNotIn("harbor_adapters/pi.py", command)
@@ -148,14 +149,27 @@ class FizeauAgentTest(unittest.TestCase):
             asyncio.run(self.agent.run("solve task", object(), AgentContext()))
 
         command = self.agent.exec_as_agent.await_args.kwargs["command"]
-        self.assertIn("--provider openrouter", command)
-        self.assertIn("--model qwen/qwen3.6-plus", command)
-        self.assertIn("--model-ref qwen/qwen3.6-plus@2026-05-06", command)
-        self.assertIn("--reasoning medium", command)
+        self.assertIn('append_arg --provider "${FIZEAU_PROVIDER:-}"', command)
+        self.assertIn('append_arg --model "${FIZEAU_MODEL:-}"', command)
+        self.assertIn('append_arg --model-ref "${FIZEAU_MODEL_REF:-}"', command)
+        self.assertIn('append_arg --reasoning "${FIZEAU_REASONING:-}"', command)
 
     def test_populate_context_post_run_records_target_metadata(self) -> None:
         sessions_dir = self.agent.logs_dir / "sessions"
         sessions_dir.mkdir(parents=True, exist_ok=True)
+        (self.agent.logs_dir / "target.env").write_text(
+            "\n".join(
+                [
+                    "FIZEAU_HARNESS=pi",
+                    "FIZEAU_PROVIDER=openai-compat",
+                    "FIZEAU_MODEL=qwen/qwen3.6-plus",
+                    "FIZEAU_MODEL_REF=qwen/qwen3.6-plus@2026-05-06",
+                    "FIZEAU_REASONING=low",
+                    "FIZEAU_BASE_URL=https://openrouter.ai/api/v1",
+                ]
+            ),
+            encoding="utf-8",
+        )
         session_log = sessions_dir / "svc-123.jsonl"
         session_log.write_text(
             "\n".join(

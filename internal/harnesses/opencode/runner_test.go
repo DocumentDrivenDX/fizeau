@@ -102,6 +102,26 @@ printf 'controlled response\n'
 	}
 }
 
+func TestOpenCodeModelArgPrefixesProviderForBareModels(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		model    string
+		want     string
+	}{
+		{name: "bare local model", provider: "omlx", model: "Qwen3.6-27B-MLX-8bit", want: "omlx/Qwen3.6-27B-MLX-8bit"},
+		{name: "already qualified", provider: "omlx", model: "openrouter/gpt-5.4-mini", want: "openrouter/gpt-5.4-mini"},
+		{name: "no provider", provider: "", model: "opencode/gpt-5.4", want: "opencode/gpt-5.4"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := opencodeModelArg(tt.provider, tt.model); got != tt.want {
+				t.Fatalf("opencodeModelArg(%q, %q) = %q, want %q", tt.provider, tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRunner_Execute_StdinPromptMode(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not available")

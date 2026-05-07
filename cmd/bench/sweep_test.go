@@ -38,7 +38,7 @@ func TestLoadSweepPlanParsesAllPhases(t *testing.T) {
 	}
 }
 
-// TestLoadSweepPlanHasAllLanes verifies all 11 official lanes are parsed.
+// TestLoadSweepPlanHasAllLanes verifies all supported sweep lanes are parsed.
 func TestLoadSweepPlanHasAllLanes(t *testing.T) {
 	plan, err := loadSweepPlan(sweepPlanPath(t))
 	if err != nil {
@@ -47,12 +47,9 @@ func TestLoadSweepPlanHasAllLanes(t *testing.T) {
 	wantLanes := []string{
 		"fiz-harness-claude-sonnet-4-6",
 		"fiz-harness-codex-gpt-5-4-mini",
-		"fiz-harness-pi-gpt-5-4-mini",
-		"fiz-harness-opencode-gpt-5-4-mini",
 		"fiz-openrouter-claude-sonnet-4-6",
 		"fiz-openrouter-gpt-5-4-mini",
 		"fiz-vidar-omlx-qwen3-6-27b",
-		"fiz-bragi-lmstudio-qwen3-6-27b",
 		"fiz-bragi-club-3090-qwen3-6-27b",
 		"fiz-grendel-rapid-mlx-qwen3-6-27b",
 		"fiz-sindri-club-3090-qwen3-6-27b",
@@ -72,7 +69,7 @@ func TestLoadSweepPlanResourceGroupsAllPresent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	localGroups := []string{"rg-vidar-omlx", "rg-bragi-lmstudio", "rg-bragi-club-3090", "rg-grendel-rapid-mlx", "rg-sindri-club-3090"}
+	localGroups := []string{"rg-vidar-omlx", "rg-bragi-club-3090", "rg-grendel-rapid-mlx", "rg-sindri-club-3090"}
 	rgByID := sweepRGMap(plan)
 	for _, id := range localGroups {
 		rg, ok := rgByID[id]
@@ -101,8 +98,8 @@ func TestSweepCGByLanePopulatesCorrectly(t *testing.T) {
 	}
 	cgByLane := sweepCGByLane(plan)
 
-	// Local Qwen lanes should belong to cg-local-qwen-provider-quant.
-	for _, id := range []string{"fiz-vidar-omlx-qwen3-6-27b", "fiz-bragi-lmstudio-qwen3-6-27b", "fiz-bragi-club-3090-qwen3-6-27b"} {
+	// Active local Qwen lanes should belong to cg-local-qwen-provider-quant.
+	for _, id := range []string{"fiz-vidar-omlx-qwen3-6-27b", "fiz-bragi-club-3090-qwen3-6-27b", "fiz-sindri-club-3090-qwen3-6-27b"} {
 		cgs := cgByLane[id]
 		found := false
 		for _, cg := range cgs {
@@ -112,12 +109,6 @@ func TestSweepCGByLanePopulatesCorrectly(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("lane %s not in cg-local-qwen-provider-quant", id)
-		}
-	}
-	// fiz-harness-pi and opencode have no comparison groups (canary only).
-	for _, id := range []string{"fiz-harness-pi-gpt-5-4-mini", "fiz-harness-opencode-gpt-5-4-mini"} {
-		if cgs := cgByLane[id]; len(cgs) != 0 {
-			t.Errorf("lane %s has unexpected comparison groups: %v", id, cgs)
 		}
 	}
 }
@@ -443,6 +434,43 @@ func TestSweepBuildMatrixArgsIncludesResumeAndBudget(t *testing.T) {
 	}
 	if !strings.Contains(argStr, "--harnesses fiz") {
 		t.Error("matrix args missing --harnesses fiz")
+	}
+}
+
+func TestSweepBuildMatrixArgsIncludesLaneFizeauEnv(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+	wd := benchRepoRoot(t)
+	opts := sweepRunOpts{
+		plan:     plan,
+		wd:       wd,
+		outDir:   t.TempDir(),
+		rgByID:   sweepRGMap(plan),
+		laneByID: sweepLaneMap(plan),
+	}
+	lane := opts.laneByID["fiz-harness-claude-sonnet-4-6"]
+	if lane == nil {
+		t.Fatal("harness lane not found")
+	}
+	rg := opts.rgByID[lane.ResourceGroup]
+	phase := plan.Phases[0]
+	subsetPath := sweepResolveSubsetPath(wd, phase.Subset)
+	laneOutDir := filepath.Join(opts.outDir, phase.ID, lane.ID)
+
+	args := buildSweepMatrixArgs(opts, phase, lane, rg, subsetPath, laneOutDir, 1)
+	argStr := strings.Join(args, " ")
+
+	for _, want := range []string{
+		"--env FIZEAU_HARNESS=claude",
+		"--env FIZEAU_PROVIDER=openrouter",
+		"--env FIZEAU_MODEL=claude-sonnet-4-6",
+		"--env FIZEAU_API_KEY_ENV=OPENROUTER_API_KEY",
+	} {
+		if !strings.Contains(argStr, want) {
+			t.Errorf("matrix args missing %q\nargs: %s", want, argStr)
+		}
 	}
 }
 
