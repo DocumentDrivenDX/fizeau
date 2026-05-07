@@ -302,7 +302,8 @@ fi
 export OMLX_API_KEY="${OMLX_API_KEY:-local}"
 
 mkdir -p "$(dirname "${FIZ_ARTIFACT}")"
-GOOS="${GOOS:-linux}" GOARCH="${GOARCH:-${HOST_GOARCH}}" go build -o "${FIZ_ARTIFACT}" ./cmd/fiz
+rm -f "${FIZ_ARTIFACT}"
+GOOS="${GOOS:-linux}" GOARCH="${GOARCH:-${HOST_GOARCH}}" go build -buildvcs=false -o "${FIZ_ARTIFACT}" ./cmd/fiz
 export HARBOR_AGENT_ARTIFACT="${HARBOR_AGENT_ARTIFACT:-${ROOT}/${FIZ_ARTIFACT}}"
 
 run_matrix() {
