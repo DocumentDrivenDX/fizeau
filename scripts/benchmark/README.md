@@ -135,9 +135,12 @@ The only per-run inputs that should change are:
 
 ## Evidence Workflow
 
-The benchmark evidence pipeline is: run a benchmark, import the resulting
-artifacts into the evidence ledger, validate and append the records, then ask
-`fiz-bench fhi` for comparative claims.
+The benchmark evidence pipeline is:
+
+1. Run a benchmark job and keep the raw artifacts in `benchmark-results/`.
+2. Import the resulting run, report, or curated snapshot into JSONL evidence.
+3. Validate the imported evidence and append it to an append-only ledger.
+4. Ask `fiz-bench fhi delta|rank` for benchmark-specific or cross-benchmark claims.
 
 This workflow is anchored by [SD-012](../../docs/helix/02-design/solution-designs/SD-012-benchmark-evidence-ledger.md)
 and the benchmark resource notes for
@@ -185,13 +188,18 @@ go run ./cmd/bench evidence import-external \
   --out benchmark-results/evidence/external.jsonl
 ```
 
-`import-external` is the path for curated external benchmark snapshots,
-including Rapid-MLX MHI, SkillsBench, SWE-bench, and HumanEval fixtures.
-Beadbench and other local runs enter the ledger through their importer paths,
-not by hand-editing the schema.
+`import-terminalbench` is the path for Harbor matrix outputs, `import-beadbench`
+is the path for beadbench `report.json`, and `import-external` is the path for
+curated external benchmark snapshots, including Rapid-MLX MHI, SkillsBench,
+SWE-bench, and HumanEval fixtures. Beadbench and other local runs enter the
+ledger through their importer paths, not by hand-editing the schema.
+
 Raw benchmark artifacts remain in the gitignored `benchmark-results/` tree.
 Only curated snapshots or source hashes that have been normalized into ledger
-records should be committed.
+records should be committed. Checked-in curated snapshots, when approved, live
+under `scripts/benchmark/evidence/<snapshot-id>.jsonl`, and the small source
+fixtures used by importer tests live under
+`cmd/bench/testdata/external-benchmarks/`.
 
 ### 3. Validate and append to the ledger
 
@@ -223,16 +231,25 @@ go run ./cmd/bench fhi rank \
   --ledger benchmark-results/evidence/ledger.jsonl
 ```
 
-The command surface is covered by the `cmd/bench` tests, and `go run ./cmd/bench
-<subcommand> --help` exposes the documented flags.
+The command surface is covered by the `cmd/bench` tests:
+
+- `cmd/bench/evidence_test.go`
+- `cmd/bench/terminalbench_import_test.go`
+- `cmd/bench/beadbench_import_test.go`
+- `cmd/bench/external_import_test.go`
+- `cmd/bench/fhi_test.go`
+- `cmd/bench/main_test.go`
+
+`go run ./cmd/bench <subcommand> --help` exposes the documented flags for the
+command families above.
 
 ### Claim axes
 
-Harness-vs-harness claims must pin the benchmark axes and vary only the harness.
-For a TerminalBench comparison, that means keeping the model, provider,
-benchmark version, subset id/version, scorer, evidence window, denominator
-policy, and run environment fixed while comparing two harness rows such as
-`fiz-native` and `claude-code`.
+Harness-vs-harness claims must pin the benchmark axes and vary only the
+harness. For a TerminalBench comparison, keep the model, provider, benchmark
+version, subset id/version, scorer, evidence window, denominator policy, and
+run environment fixed while comparing two harness rows such as `fiz-native`
+and `claude-code`.
 
 Example harness-vs-harness claim:
 
@@ -246,6 +263,16 @@ fiz-native     81.0 ± 2.1
 claude-code    81.7 ± 1.8
 delta         -0.7
 ```
+
+Pinned axes:
+
+- formula version
+- evidence window
+- benchmark name, version, dataset commit, subset id, subset version, and scorer
+- model raw name and canonical model id when known
+- provider name and provider surface
+- denominator rule and run environment
+- only the harness row changes
 
 Local-vs-frontier claims must pin the same formula version, evidence window,
 benchmark set, and denominator rules on both sides. The local row also needs the
@@ -266,6 +293,11 @@ Example local-vs-frontier claim:
 ```text
 FHI formula=fhi/v1, evidence window=2026-Q2
 benchmarks=terminal-bench, beadbench-v1, skillsbench-import
+dataset_commit=903487e82ad1998f0c20b721a7df66ec815ea673
+subset_id=tb2-wide
+subset_version=v2
+scorer=verifier
+denominator_rule=count_valid_tasks
 
 local stack:
   fiz=0.10
@@ -275,10 +307,12 @@ local stack:
   model=Qwen3.6-27B-MLX-8bit
   quantization=8-bit
   hardware=Mac Studio
+  runtime=omlx-0.8.10
 
 frontier stack:
   harness=claude-code
   provider=anthropic
+  provider_surface=messages
   model=Opus 4.7
   snapshot=anthropic/claude-4.7-20260501
 ```
