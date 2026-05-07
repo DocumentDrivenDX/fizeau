@@ -13,25 +13,27 @@ import (
 	fizeau "github.com/DocumentDrivenDX/fizeau"
 	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/external/termbench"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
-// termbenchSubsetEntry is one row from scripts/beadbench/external/termbench-subset.json.
+// termbenchSubsetEntry is one row from scripts/beadbench/external/termbench-subset.json
+// or a YAML subset file under scripts/benchmark/.
 type termbenchSubsetEntry struct {
-	ID         string   `json:"id"`
-	Category   string   `json:"category,omitempty"`
-	Difficulty string   `json:"difficulty,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
-	Rationale  string   `json:"rationale,omitempty"`
+	ID         string   `json:"id"         yaml:"id"`
+	Category   string   `json:"category,omitempty"   yaml:"category,omitempty"`
+	Difficulty string   `json:"difficulty,omitempty" yaml:"difficulty,omitempty"`
+	Tags       []string `json:"tags,omitempty"       yaml:"tags,omitempty"`
+	Rationale  string   `json:"rationale,omitempty"  yaml:"rationale,omitempty"`
 }
 
 type termbenchSubset struct {
-	Version       string                 `json:"version"`
-	Captured      string                 `json:"captured"`
-	Dataset       string                 `json:"dataset"`
-	DatasetRepo   string                 `json:"dataset_repo"`
-	DatasetCommit string                 `json:"dataset_commit"`
-	SelectionRule string                 `json:"selection_rule"`
-	Tasks         []termbenchSubsetEntry `json:"tasks"`
+	Version       string                 `json:"version"        yaml:"version"`
+	Captured      string                 `json:"captured"       yaml:"captured"`
+	Dataset       string                 `json:"dataset"        yaml:"dataset"`
+	DatasetRepo   string                 `json:"dataset_repo"   yaml:"dataset_repo"`
+	DatasetCommit string                 `json:"dataset_commit" yaml:"dataset_commit"`
+	SelectionRule string                 `json:"selection_rule" yaml:"selection_rule"`
+	Tasks         []termbenchSubsetEntry `json:"tasks"          yaml:"tasks"`
 }
 
 // termbenchTaskRunSummary is one row in benchmark-results/termbench/<run>/results.json.
@@ -290,8 +292,15 @@ func loadTermbenchSubset(path string) (*termbenchSubset, error) {
 		return nil, err
 	}
 	var s termbenchSubset
-	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, fmt.Errorf("parse subset: %w", err)
+	lower := strings.ToLower(path)
+	if strings.HasSuffix(lower, ".yaml") || strings.HasSuffix(lower, ".yml") {
+		if err := yaml.Unmarshal(data, &s); err != nil {
+			return nil, fmt.Errorf("parse subset: %w", err)
+		}
+	} else {
+		if err := json.Unmarshal(data, &s); err != nil {
+			return nil, fmt.Errorf("parse subset: %w", err)
+		}
 	}
 	if len(s.Tasks) == 0 {
 		return nil, fmt.Errorf("subset has no tasks")
