@@ -123,10 +123,10 @@ func TestSeamToolWiringHook(t *testing.T) {
 		t.Fatal("ToolWiringHook should not be nil")
 	}
 
-	opts.ToolWiringHook("agent", []string{"bash", "read_file", "write_file"})
+	opts.ToolWiringHook("fiz", []string{"bash", "read_file", "write_file"})
 
-	if gotHarness != "agent" {
-		t.Fatalf("expected harness=agent, got %q", gotHarness)
+	if gotHarness != "fiz" {
+		t.Fatalf("expected harness=fiz, got %q", gotHarness)
 	}
 	if len(gotTools) != 3 {
 		t.Fatalf("expected 3 tools, got %d: %v", len(gotTools), gotTools)

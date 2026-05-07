@@ -3,7 +3,7 @@
   "session_id": "terminalbench-fix-git-valid",
   "task_id": "fix-git",
   "agent": {
-    "name": "fiz-native",
+    "name": "fiz",
     "version": "1.0.0",
     "model_name": "Qwen3.6-27B-MLX-8bit"
   },

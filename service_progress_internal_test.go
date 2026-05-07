@@ -33,7 +33,7 @@ func TestRouteProgressData_IncludesEconomicsWhenPresent(t *testing.T) {
 	if payload.Message == "" {
 		t.Fatal("route progress message is empty")
 	}
-	for _, want := range []string{"agent/alpha/model-a", "power=", "speed=", "cost=", "cost_source="} {
+	for _, want := range []string{"fiz/alpha/model-a", "power=", "speed=", "cost=", "cost_source="} {
 		if !strings.Contains(payload.Message, want) {
 			t.Fatalf("route progress message %q missing %q", payload.Message, want)
 		}

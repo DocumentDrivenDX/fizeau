@@ -219,7 +219,7 @@ func TestResolveRouteExplicitProfilePinConflict(t *testing.T) {
 		t.Fatalf("errors.As inverse: %T %v", err, err)
 	}
 	if inverse.Profile != "smart" || inverse.ConflictingPin != "Harness=fiz" || inverse.ProfileConstraint != "subscription-only" {
-		t.Fatalf("inverse profile conflict=%#v, want smart/Harness=agent/subscription-only", inverse)
+		t.Fatalf("inverse profile conflict=%#v, want smart/Harness=fiz/subscription-only", inverse)
 	}
 }
 

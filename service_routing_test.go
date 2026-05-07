@@ -95,7 +95,7 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	}
 	candidate := dec.Candidates[0]
 	if !candidate.Eligible || candidate.Harness != "fiz" || candidate.Provider != "local" || candidate.Model != "model-a" {
-		t.Fatalf("candidate=%#v, want eligible agent/local/model-a", candidate)
+		t.Fatalf("candidate=%#v, want eligible fiz/local/model-a", candidate)
 	}
 	if candidate.ServerInstance == "" {
 		t.Fatalf("candidate=%#v, want server_instance", candidate)

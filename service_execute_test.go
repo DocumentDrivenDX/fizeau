@@ -229,7 +229,7 @@ func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
 		t.Fatalf("errors.As should extract ErrProfilePinConflict: %T %v", err, err)
 	}
 	if typed.Profile != "smart" || typed.ConflictingPin != "Harness=fiz" || typed.ProfileConstraint != "subscription-only" {
-		t.Fatalf("typed error=%#v, want smart/Harness=agent/subscription-only", typed)
+		t.Fatalf("typed error=%#v, want smart/Harness=fiz/subscription-only", typed)
 	}
 }
 
