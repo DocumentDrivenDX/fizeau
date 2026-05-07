@@ -439,7 +439,7 @@ profiles:
   default:
     min_power: 7
     max_power: 8
-    compatibility_target: code-medium
+    compatibility_target: standard
     provider_preference: local-first
   local:
     min_power: 5
@@ -456,40 +456,30 @@ profiles:
     max_power: 5
     compatibility_target: code-economy
     provider_preference: local-only
-  code-high:
+  smart:
     min_power: 9
     max_power: 10
-    compatibility_target: code-high
+    compatibility_target: smart
     provider_preference: subscription-first
   code-smart:
     min_power: 9
     max_power: 10
-    compatibility_target: code-high
+    compatibility_target: smart
     provider_preference: subscription-first
-  smart:
-    min_power: 9
-    max_power: 10
-    compatibility_target: code-high
-    provider_preference: subscription-first
-  code-medium:
+  standard:
     min_power: 7
     max_power: 8
-    compatibility_target: code-medium
+    compatibility_target: standard
     provider_preference: local-first
   code-fast:
     min_power: 7
     max_power: 8
-    compatibility_target: code-medium
+    compatibility_target: standard
     provider_preference: local-first
   fast:
     min_power: 7
     max_power: 8
-    compatibility_target: code-medium
-    provider_preference: local-first
-  standard:
-    min_power: 7
-    max_power: 8
-    compatibility_target: code-medium
+    compatibility_target: standard
     provider_preference: local-first
   code-economy:
     min_power: 5
@@ -503,7 +493,7 @@ profiles:
     provider_preference: local-first
 
 targets:
-  code-high:
+  smart:
     family: coding-tier
     aliases:
       - high
@@ -529,11 +519,61 @@ targets:
         max_input_cost_per_mtok_usd: 2
         failure_policy: auth-gated
 
-  code-medium:
+  standard:
     family: coding-tier
     aliases:
       - medium
     status: active
+    context_window_min: 1000000
+    swe_bench_min: 77.0
+    candidates: [sonnet-4.6, gpt-5.4-mini, gemini-2.5-flash]
+    surface_policy:
+      agent.anthropic:
+        reasoning_default: medium
+      claude-code:
+        reasoning_default: medium
+      agent.openai:
+        reasoning_default: off
+        placement_order: [subscription, local]
+        max_input_cost_per_mtok_usd: 5
+        failure_policy: ordered-failover
+      codex:
+        reasoning_default: off
+      gemini:
+        reasoning_default: off
+        placement_order: [subscription]
+        max_input_cost_per_mtok_usd: 1
+        failure_policy: auth-gated
+
+  code-high:
+    family: coding-tier
+    status: deprecated
+    replacement: smart
+    context_window_min: 1000000
+    swe_bench_min: 80.0
+    candidates: [opus-4.7, gpt-5.5, gemini-2.5-pro]
+    surface_policy:
+      agent.anthropic:
+        reasoning_default: high
+      claude-code:
+        reasoning_default: high
+      agent.openai:
+        reasoning_default: high
+        placement_order: [subscription, local]
+        max_input_cost_per_mtok_usd: 20
+        failure_policy: ordered-failover
+      codex:
+        reasoning_default: high
+      gemini:
+        reasoning_default: off
+        placement_order: [subscription]
+        max_input_cost_per_mtok_usd: 2
+        failure_policy: auth-gated
+
+  code-medium:
+    family: coding-tier
+    status: deprecated
+    replacement: standard
     context_window_min: 1000000
     swe_bench_min: 77.0
     candidates: [sonnet-4.6, gpt-5.4-mini, gemini-2.5-flash]
@@ -585,7 +625,7 @@ targets:
       - claude-sonnet
       - sonnet-legacy
     status: deprecated
-    replacement: code-medium
+    replacement: standard
     deprecated_at: 2026-04-10
     candidates: [claude-sonnet-4-20250514]
     surfaces:
@@ -596,7 +636,7 @@ targets:
     aliases:
       - claude-3.7-sonnet
     status: deprecated
-    replacement: code-medium
+    replacement: standard
     deprecated_at: 2026-04-10
     candidates: [claude-3-7-sonnet-20250219]
     surfaces:

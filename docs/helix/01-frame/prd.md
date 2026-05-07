@@ -162,10 +162,10 @@ task the same: spawn a process, send to cloud, parse the result.
 9. **Conversation compaction** — auto-summarize long conversation histories
    to fit within model context windows — **Implemented**
 10. **Shared model catalog** — an agent-owned catalog and publishable
-    updateable manifest for model aliases, tiers/profiles (`code-high`,
-    `code-medium`, `code-economy`, with compatibility aliases such as
-    `smart`, `fast`, `cheap`), canonical policy targets, and deprecation
-    metadata, kept separate from prompt presets
+    updateable manifest for model aliases, tiers/profiles (`smart`,
+    `standard`, `cheap`, with compatibility aliases such as `code-high`,
+    `code-medium`, `code-economy`), canonical policy targets, and
+    deprecation metadata, kept separate from prompt presets
 
 ### Nice to Have (P2)
 

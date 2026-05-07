@@ -21,10 +21,10 @@ func TestServiceProfiles_ListResolveAliases(t *testing.T) {
 	for _, profile := range profiles {
 		byName[profile.Name] = profile
 	}
-	if byName["smart"].AliasOf != "code-high" {
-		t.Fatalf("smart AliasOf: got %q, want code-high", byName["smart"].AliasOf)
+	if byName["smart"].AliasOf != "" {
+		t.Fatalf("smart AliasOf: got %q, want empty", byName["smart"].AliasOf)
 	}
-	if byName["smart"].CompatibilityTarget != "code-high" || byName["smart"].MinPower != 9 || byName["smart"].MaxPower != 10 {
+	if byName["smart"].CompatibilityTarget != "smart" || byName["smart"].MinPower != 9 || byName["smart"].MaxPower != 10 {
 		t.Fatalf("smart profile policy: %#v", byName["smart"])
 	}
 	if byName["cheap"].CompatibilityTarget != "code-economy" || byName["cheap"].MinPower != 5 || byName["cheap"].MaxPower != 5 {
@@ -33,28 +33,43 @@ func TestServiceProfiles_ListResolveAliases(t *testing.T) {
 	if byName["standard"].CatalogVersion == "" {
 		t.Fatal("CatalogVersion should be populated")
 	}
-	if byName["default"].CompatibilityTarget != "code-medium" || byName["default"].ProviderPreference != "local-first" {
-		t.Fatalf("default profile: %#v, want compatibility target code-medium/local-first", byName["default"])
+	if byName["default"].CompatibilityTarget != "standard" || byName["default"].ProviderPreference != "local-first" {
+		t.Fatalf("default profile: %#v, want compatibility target standard/local-first", byName["default"])
 	}
 	if byName["local"].CompatibilityTarget != "code-economy" || byName["local"].ProviderPreference != "local-only" {
 		t.Fatalf("local profile: %#v, want compatibility target code-economy/local-only", byName["local"])
 	}
+	if byName["code-smart"].AliasOf != "smart" || byName["code-smart"].CompatibilityTarget != "smart" {
+		t.Fatalf("code-smart profile: %#v", byName["code-smart"])
+	}
+	if byName["code-fast"].AliasOf != "standard" || byName["code-fast"].CompatibilityTarget != "standard" {
+		t.Fatalf("code-fast profile: %#v", byName["code-fast"])
+	}
+	if _, ok := byName["code-high"]; ok {
+		t.Fatal("code-high should not be listed as a primary profile")
+	}
+	if _, ok := byName["code-medium"]; ok {
+		t.Fatal("code-medium should not be listed as a primary profile")
+	}
 	if !byName["claude-sonnet"].Deprecated {
 		t.Fatal("claude-sonnet should be listed as a deprecated alias")
 	}
-	if byName["claude-sonnet"].Replacement != "code-medium" {
-		t.Fatalf("claude-sonnet Replacement: got %q, want code-medium", byName["claude-sonnet"].Replacement)
+	if byName["claude-sonnet"].Replacement != "standard" {
+		t.Fatalf("claude-sonnet Replacement: got %q, want standard", byName["claude-sonnet"].Replacement)
 	}
 
 	aliases, err := svc.ProfileAliases(context.Background())
 	if err != nil {
 		t.Fatalf("ProfileAliases: %v", err)
 	}
-	if aliases["smart"] != "code-high" {
-		t.Fatalf("smart alias: got %q, want code-high", aliases["smart"])
+	if aliases["code-smart"] != "smart" {
+		t.Fatalf("code-smart alias: got %q, want smart", aliases["code-smart"])
 	}
-	if aliases["claude-sonnet"] != "code-medium" {
-		t.Fatalf("deprecated claude-sonnet alias: got %q, want code-medium", aliases["claude-sonnet"])
+	if aliases["code-fast"] != "standard" {
+		t.Fatalf("code-fast alias: got %q, want standard", aliases["code-fast"])
+	}
+	if aliases["claude-sonnet"] != "standard" {
+		t.Fatalf("deprecated claude-sonnet alias: got %q, want standard", aliases["claude-sonnet"])
 	}
 }
 
@@ -68,7 +83,7 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveProfile: %v", err)
 	}
-	if resolved.Target != "code-high" || resolved.CompatibilityTarget != "code-high" || resolved.MinPower != 9 || resolved.MaxPower != 10 {
+	if resolved.Target != "smart" || resolved.CompatibilityTarget != "smart" || resolved.MinPower != 9 || resolved.MaxPower != 10 {
 		t.Fatalf("profile policy: %#v", resolved)
 	}
 	if len(resolved.Surfaces) == 0 {
@@ -125,8 +140,8 @@ func TestServiceProfiles_ResolveDeprecatedAliasAndUnknown(t *testing.T) {
 	if !deprecated.Deprecated {
 		t.Fatal("deprecated alias should resolve with Deprecated=true")
 	}
-	if deprecated.Replacement != "code-medium" {
-		t.Fatalf("Replacement: got %q, want code-medium", deprecated.Replacement)
+	if deprecated.Replacement != "standard" {
+		t.Fatalf("Replacement: got %q, want standard", deprecated.Replacement)
 	}
 
 	if _, err := svc.ResolveProfile(context.Background(), "does-not-exist"); err == nil {

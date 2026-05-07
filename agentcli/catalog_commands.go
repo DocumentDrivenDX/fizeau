@@ -77,7 +77,7 @@ func cmdCatalogShow(workDir string, args []string) int {
 		fmt.Printf("sampling_profiles: (none — using server defaults; run '%s catalog update' if missing)\n", productinfo.BinaryName)
 	}
 
-	for _, ref := range []string{"code-high", "code-medium", "code-economy"} {
+	for _, ref := range []string{"smart", "standard", "cheap"} {
 		fmt.Printf("%s:\n", ref)
 		printResolvedSurface(catalog, ref, modelcatalog.SurfaceAgentAnthropic)
 		printResolvedSurface(catalog, ref, modelcatalog.SurfaceAgentOpenAI)

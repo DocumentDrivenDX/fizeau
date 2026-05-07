@@ -11,7 +11,7 @@ func TestEmbeddedManifestAutomaticTargetCandidatesHavePower(t *testing.T) {
 	catalog, err := Default()
 	require.NoError(t, err)
 
-	for _, target := range []string{"code-high", "code-medium", "code-economy"} {
+	for _, target := range []string{"smart", "standard", "code-economy"} {
 		t.Run(target, func(t *testing.T) {
 			candidates := catalog.AllModelsInTier(target)
 			require.NotEmpty(t, candidates)
