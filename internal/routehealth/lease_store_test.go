@@ -11,7 +11,7 @@ func TestLeaseStoreAcquireRefreshAndExpire(t *testing.T) {
 	now := time.Date(2026, 5, 2, 10, 0, 0, 0, time.UTC)
 	key := NormalizeLeaseKey("bead-1")
 
-	first := store.Acquire(now, time.Minute, key, "agent", "desk-a", "model-a")
+	first := store.Acquire(now, time.Minute, key, "fiz", "desk-a", "model-a")
 	if first.AcquiredAt != now || first.RefreshedAt != now {
 		t.Fatalf("first lease timestamps=%#v, want acquired/refreshed at now", first)
 	}
@@ -19,7 +19,7 @@ func TestLeaseStoreAcquireRefreshAndExpire(t *testing.T) {
 		t.Fatalf("first lease expires=%v, want %v", first.ExpiresAt, now.Add(time.Minute))
 	}
 
-	refreshed := store.Acquire(now.Add(10*time.Second), time.Minute, key, "agent", "desk-a", "model-a")
+	refreshed := store.Acquire(now.Add(10*time.Second), time.Minute, key, "fiz", "desk-a", "model-a")
 	if refreshed.AcquiredAt != now {
 		t.Fatalf("refreshed lease acquired_at=%v, want %v", refreshed.AcquiredAt, now)
 	}
@@ -46,7 +46,7 @@ func TestLeaseStoreInvalidateRecordsReason(t *testing.T) {
 	now := time.Date(2026, 5, 2, 10, 0, 0, 0, time.UTC)
 	key := NormalizeLeaseKey("bead-2")
 
-	store.Acquire(now, time.Minute, key, "agent", "desk-b", "model-a")
+	store.Acquire(now, time.Minute, key, "fiz", "desk-b", "model-a")
 	inv, ok := store.Invalidate(now.Add(5*time.Second), key, "endpoint disappeared")
 	if !ok {
 		t.Fatal("Invalidate returned false")
@@ -57,7 +57,7 @@ func TestLeaseStoreInvalidateRecordsReason(t *testing.T) {
 	if live, ok := store.Live(now.Add(5*time.Second), key); ok || live != (Lease{}) {
 		t.Fatalf("invalidated lease still live: %#v ok=%v", live, ok)
 	}
-	if got := store.InvalidateEndpoint(now.Add(6*time.Second), "agent", "desk-b", "model-a", "model unavailable"); len(got) != 0 {
+	if got := store.InvalidateEndpoint(now.Add(6*time.Second), "fiz", "desk-b", "model-a", "model unavailable"); len(got) != 0 {
 		t.Fatalf("InvalidateEndpoint should not match removed lease, got %#v", got)
 	}
 	if inv2, ok := store.LastInvalidation(key); !ok || inv2.Reason != "endpoint disappeared" {
@@ -78,16 +78,16 @@ func TestLeaseStoreDistinctStickyKeysCanCoexistConcurrently(t *testing.T) {
 			if i%2 == 1 {
 				endpoint = "desk-b"
 			}
-			store.Acquire(now.Add(time.Duration(i)*time.Second), time.Minute, key, "agent", endpoint, "model-a")
+			store.Acquire(now.Add(time.Duration(i)*time.Second), time.Minute, key, "fiz", endpoint, "model-a")
 		}(i)
 	}
 	wg.Wait()
 
-	leases := store.LiveByScope(now.Add(30*time.Second), "agent", "model-a")
+	leases := store.LiveByScope(now.Add(30*time.Second), "fiz", "model-a")
 	if len(leases) != 32 {
 		t.Fatalf("live leases=%d, want 32", len(leases))
 	}
-	counts := store.LeaseCounts(now.Add(30*time.Second), "agent", "model-a")
+	counts := store.LeaseCounts(now.Add(30*time.Second), "fiz", "model-a")
 	if counts["desk-a"] == 0 || counts["desk-b"] == 0 {
 		t.Fatalf("counts=%#v, want both endpoints represented", counts)
 	}

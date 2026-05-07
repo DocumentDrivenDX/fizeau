@@ -5,6 +5,9 @@
 # Build artifacts
 /dist/
 /benchscore/
+/.cache/
+/.gocache/
+/.tmp/
 
 # Session logs
 .agent/sessions/

@@ -11,7 +11,7 @@ func TestStoreRecordAttemptSuccessClearsMatchingFailure(t *testing.T) {
 	store := NewStore()
 	now := time.Date(2026, 5, 2, 10, 0, 0, 0, time.UTC)
 	if err := store.RecordAttempt(Attempt{
-		Harness:   "agent",
+		Harness:   "fiz",
 		Provider:  "bragi",
 		Model:     "qwen",
 		Status:    "failed",
@@ -24,7 +24,7 @@ func TestStoreRecordAttemptSuccessClearsMatchingFailure(t *testing.T) {
 	}
 
 	if err := store.RecordAttempt(Attempt{
-		Harness:   "agent",
+		Harness:   "fiz",
 		Provider:  "bragi",
 		Model:     "qwen",
 		Status:    "success",
@@ -41,7 +41,7 @@ func TestStoreActiveAttemptsExpiresFailures(t *testing.T) {
 	store := NewStore()
 	now := time.Date(2026, 5, 2, 10, 0, 0, 0, time.UTC)
 	if err := store.RecordAttempt(Attempt{
-		Harness:   "agent",
+		Harness:   "fiz",
 		Provider:  "bragi",
 		Model:     "qwen",
 		Status:    "failed",
@@ -62,7 +62,7 @@ func TestStoreMetricSignalsAreProviderModelKeyed(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		if err := store.RecordAttempt(Attempt{
-			Harness:   "agent",
+			Harness:   "fiz",
 			Provider:  "providerA",
 			Model:     "modelX",
 			Status:    "failed",
@@ -73,7 +73,7 @@ func TestStoreMetricSignalsAreProviderModelKeyed(t *testing.T) {
 		}
 	}
 	if err := store.RecordAttempt(Attempt{
-		Harness:   "agent",
+		Harness:   "fiz",
 		Provider:  "providerA",
 		Model:     "modelY",
 		Status:    "success",

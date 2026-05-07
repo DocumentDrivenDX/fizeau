@@ -6,7 +6,7 @@
   "arms": [
     {
       "id": "agent-openrouter-gpt54",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "openrouter",
       "model": "gpt-5.4",
       "effort": "medium",
@@ -30,7 +30,7 @@
     },
     {
       "id": "agent-vidar-omlx-qwen36-27b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.6-27B-MLX-8bit",
       "effort": "medium",
@@ -39,7 +39,7 @@
     },
     {
       "id": "agent-bragi-lmstudio-qwen36-35b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "bragi",
       "model": "qwen/qwen3.6-35b-a3b",
       "effort": "medium",
@@ -48,7 +48,7 @@
     },
     {
       "id": "agent-vidar-omlx-qwen36-27b-low",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.6-27B-MLX-8bit",
       "effort": "low",
@@ -57,7 +57,7 @@
     },
     {
       "id": "agent-vidar-omlx-qwen36-27b-high",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.6-27B-MLX-8bit",
       "effort": "high",
@@ -66,7 +66,7 @@
     },
     {
       "id": "agent-vidar-omlx-qwen36-35b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.6-35B-A3B-4bit",
       "effort": "medium",
@@ -75,7 +75,7 @@
     },
     {
       "id": "agent-vidar-omlx-gptoss20b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "gpt-oss-20b-MXFP4-Q8",
       "tier": "research",
@@ -84,7 +84,7 @@
     },
     {
       "id": "agent-bragi-lmstudio-qwen36-35b-low",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "bragi",
       "model": "qwen/qwen3.6-35b-a3b",
       "effort": "low",
@@ -109,7 +109,7 @@
     },
     {
       "id": "agent-openrouter-sonnet46",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "openrouter",
       "model": "anthropic/claude-sonnet-4.6",
       "effort": "medium",
@@ -142,7 +142,7 @@
     },
     {
       "id": "agent-openrouter-haiku45",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "openrouter",
       "model": "anthropic/claude-haiku-4.5",
       "tier": "cost-control",
@@ -150,7 +150,7 @@
     },
     {
       "id": "agent-openrouter-minimax-m27",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "openrouter",
       "model": "minimax/minimax-m2.7",
       "tier": "research",
@@ -158,7 +158,7 @@
     },
     {
       "id": "agent-omlx-vidar-qwen36",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.6-27B-MLX-8bit",
       "effort": "off",
@@ -180,7 +180,7 @@
     },
     {
       "id": "agent-omlx-vidar-qwen35-27b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.5-27B-4bit",
       "effort": "off",
@@ -191,7 +191,7 @@
     },
     {
       "id": "agent-bragi-lmstudio-qwen35-27b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "bragi",
       "model": "qwen3.5-27b",
       "effort": "off",
@@ -202,7 +202,7 @@
     },
     {
       "id": "agent-omlx-vidar-qwen35-27b-recommended",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx-qwen-recommended",
       "model": "Qwen3.5-27B-4bit",
       "effort": "off",
@@ -214,7 +214,7 @@
     },
     {
       "id": "agent-omlx-vidar-qwen35-27b-claude-distilled",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit",
       "effort": "off",
@@ -225,7 +225,7 @@
     },
     {
       "id": "agent-omlx-vidar-qwen36-27b-8bit",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.6-27B-MLX-8bit",
       "effort": "off",
@@ -236,7 +236,7 @@
     },
     {
       "id": "agent-omlx-vidar-qwen36-35b-a3b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.6-35B-A3B-4bit",
       "effort": "off",
@@ -247,7 +247,7 @@
     },
     {
       "id": "agent-openrouter-qwen35-27b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "openrouter",
       "model": "qwen/qwen3.5-27b",
       "effort": "off",
@@ -258,7 +258,7 @@
     },
     {
       "id": "agent-bragi-lucebox-qwen36",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "lucebox",
       "model": "Qwen3.6-27B-Q4_K_M",
       "effort": "off",
@@ -269,7 +269,7 @@
     },
     {
       "id": "agent-bragi-lmstudio-qwen36-27b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "bragi",
       "model": "qwen/qwen3.6-27b",
       "effort": "off",
@@ -280,7 +280,7 @@
     },
     {
       "id": "agent-openrouter-qwen36plus",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "openrouter",
       "model": "qwen/qwen3.6-plus",
       "effort": "off",
