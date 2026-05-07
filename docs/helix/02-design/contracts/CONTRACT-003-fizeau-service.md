@@ -23,7 +23,7 @@ binary, anything else) interact only through this surface. **They do not import
 Fizeau internal packages.** When new behavior is needed, consumers file an issue or
 PR against this contract; Fizeau maintainers decide whether the surface grows.
 
-The native in-process harness identity is `fiz`. The term `agent` is reserved
+The native Fizeau harness identity is `fiz`. The term `agent` is reserved
 for real external AI-agent concepts or historical references that cannot be
 changed safely; it is not a public alias for the native `fiz` route.
 
