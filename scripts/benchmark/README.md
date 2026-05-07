@@ -145,10 +145,11 @@ The benchmark evidence pipeline is:
 The canonical operator loop is:
 
 ```bash
-# 1) produce raw benchmark artifacts
-scripts/benchmark/run_benchmark.sh
+# 1) produce raw matrix artifacts
+OPENROUTER_API_KEY=sk-or-... \
+  scripts/benchmark/run_medium_model_terminalbench_comparison.sh canary
 
-# 2) project raw artifacts into normalized evidence
+# 2) project raw matrix artifacts into normalized evidence
 go run ./cmd/bench evidence import-terminalbench --matrix <matrix-dir> --out benchmark-results/evidence/terminalbench.jsonl
 
 # 3) validate and append to the ledger
