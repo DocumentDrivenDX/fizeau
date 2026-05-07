@@ -1,0 +1,6 @@
+verification_command: rg -n "fiz-harness-claude-sonnet-4-6|fiz-harness-codex-gpt-5-4-mini|fiz-harness-pi-gpt-5-4-mini|fiz-harness-opencode-gpt-5-4-mini|fiz-openrouter-claude-sonnet-4-6|fiz-openrouter-gpt-5-4-mini" docs scripts/benchmark && go test ./cmd/bench
+
+The current documentation already satisfies the bead contract:
+- `scripts/benchmark/run_medium_model_terminalbench_comparison.sh --help` shows the single operator command, official lanes, artifact paths, and invalid classifications.
+- `scripts/benchmark/README.md` and `docs/helix/02-design/terminalbench-fiz-wrapper-comparison-2026-05-06.md` document the same lane set, raw Harbor diagnostics caveat, output artifacts, and denominator handling.
+- No Go source or generated docs needed to change, so the accepted evidence is the existing docs plus the passing `go test ./cmd/bench` check.
