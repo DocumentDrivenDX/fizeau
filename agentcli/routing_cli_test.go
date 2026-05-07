@@ -591,21 +591,20 @@ providers:
 
 // TestRouteStatus_ShowsEligibleCandidatesPerIntent asserts that
 // `fiz route-status --profile <p>` calls service.ResolveRoute and
-// renders the engine's full candidate trace — every catalog candidate that
-// matches the profile's tier+capability filter, with score components and a
-// filter_reason for ineligible ones. Per ADR-005 §5.
+// renders the engine's full candidate trace for the requested policy
+// profile, including the structured power-policy evidence and candidate
+// score components. Per ADR-005 §5.
 func TestRouteStatus_ShowsEligibleCandidatesPerIntent(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
 	home := t.TempDir()
 
-	// Discover a smart-tier model so the agent harness has at least one
-	// eligible candidate. The catalog's `smart` profile resolves to
-	// "gpt-5.5" on the embedded-openai surface; subscription harnesses also
-	// surface candidates but go ineligible without quota state, exercising
-	// both eligible and ineligible code paths.
-	healthy := newCountedOpenAIServer(t, http.StatusOK, "gpt-5.5", "ok")
-	healthy.setModels("gpt-5.5")
+	// Discover a local power-5 model so the agent harness has at least one
+	// eligible candidate under the balanced profile. Subscription harnesses
+	// also surface candidates but go ineligible without quota state,
+	// exercising both eligible and ineligible code paths.
+	healthy := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
+	healthy.setModels("qwen3.5-27b")
 
 	writeTempConfig(t, workDir, `
 providers:
@@ -613,13 +612,11 @@ providers:
     type: lmstudio
     base_url: `+healthy.baseURL()+`
     api_key: test
+    model: qwen3.5-27b
 `)
 
-	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--profile", "smart", "--json")
-	// ResolveRoute may surface a non-zero exit if the smart profile cannot be
-	// satisfied without a winner, but the JSON payload must still carry the
-	// structured candidate trace.
-	require.NotEmpty(t, out.stdout, "stderr=%s", out.stderr)
+	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--profile", "standard", "--json")
+	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
 	type component struct {
 		Cost        float64 `json:"cost"`
@@ -639,12 +636,18 @@ providers:
 		Winner       bool      `json:"winner"`
 	}
 	var parsed struct {
-		Profile    string      `json:"profile"`
+		Profile     string `json:"profile"`
+		PowerPolicy struct {
+			Profile  string `json:"profile"`
+			MinPower int    `json:"min_power"`
+			MaxPower int    `json:"max_power"`
+		} `json:"power_policy"`
 		Winner     *candidate  `json:"winner"`
 		Candidates []candidate `json:"candidates"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
-	assert.Equal(t, "smart", parsed.Profile)
+	assert.Equal(t, "standard", parsed.Profile)
+	assert.Equal(t, "standard", parsed.PowerPolicy.Profile)
 	require.NotEmpty(t, parsed.Candidates, "engine must surface its candidate trace; stdout=%s", out.stdout)
 
 	// Every candidate carries the score-component bundle (cost, latency_ms,

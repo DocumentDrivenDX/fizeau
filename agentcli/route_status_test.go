@@ -12,6 +12,25 @@ import (
 	"github.com/DocumentDrivenDX/fizeau"
 )
 
+func TestRouteStatusOutputIncludesPowerPolicy(t *testing.T) {
+	out := routeStatusOutput{
+		Profile: "standard",
+		PowerPolicy: routeStatusPowerPolicy{
+			Profile: "standard",
+		},
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"power_policy"`) {
+		t.Fatalf("JSON missing power_policy field: %s", data)
+	}
+	if !strings.Contains(string(data), `"profile":"standard"`) {
+		t.Fatalf("JSON missing profile evidence: %s", data)
+	}
+}
+
 // TestRouteStatusOverridesSinceFilter verifies that --since trims the
 // breakdown window. Three session logs are written: one 1h ago (inside
 // every window), one 48h ago (inside 7d but outside 24h), one 30d ago

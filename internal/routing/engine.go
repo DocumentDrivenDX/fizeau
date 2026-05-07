@@ -710,8 +710,6 @@ func requestedModelIntent(req Request) string {
 		return req.Model
 	case req.ModelRef != "":
 		return req.ModelRef
-	case req.Profile != "":
-		return req.Profile
 	default:
 		return ""
 	}
@@ -1111,46 +1109,6 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 		}
 		// No catalog: pass the ref through.
 		return req.ModelRef, ""
-	}
-
-	// 3. Profile.
-	if req.Profile != "" {
-		if len(p.DiscoveredIDs) > 0 && in.CatalogCandidatesResolver != nil {
-			if candidates, ok := in.CatalogCandidatesResolver(req.Profile, h.Surface); ok {
-				for _, candidate := range candidates {
-					if matched := FuzzyMatch(candidate, p.DiscoveredIDs); matched != "" {
-						return matched, ""
-					}
-				}
-				return "", fmt.Sprintf("profile %q has no candidate served by provider %q", req.Profile, p.Name)
-			}
-		}
-		if in.CatalogResolver != nil {
-			if concrete, ok := in.CatalogResolver(req.Profile, h.Surface); ok {
-				// If discovery is available, verify the resolved model exists.
-				if len(p.DiscoveredIDs) > 0 {
-					if matched := FuzzyMatch(concrete, p.DiscoveredIDs); matched != "" {
-						return matched, ""
-					}
-					// Also try the original profile ref (handles bare-leaf refs
-					// against discovery). Fixes ddx-2f5a2284.
-					if matched := FuzzyMatch(req.Profile, p.DiscoveredIDs); matched != "" {
-						return matched, ""
-					}
-					return "", fmt.Sprintf("profile %q resolves to %q but provider %q does not serve it", req.Profile, concrete, p.Name)
-				}
-				return concrete, ""
-			}
-			// No catalog mapping for this surface — fall through to defaults
-			// only if defaults exist; otherwise reject so escalation skips
-			// this candidate (fixes ddx-3c5ba7cc).
-			if p.DefaultModel == "" && h.DefaultModel == "" {
-				return "", fmt.Sprintf("profile %q not available on surface %q", req.Profile, h.Surface)
-			}
-		} else if p.DefaultModel == "" && h.DefaultModel == "" {
-			return "", fmt.Sprintf("profile %q not available on surface %q", req.Profile, h.Surface)
-		}
-		// No catalog hit; fall through to default.
 	}
 
 	// 4. Provider default → harness default. Empty default is acceptable

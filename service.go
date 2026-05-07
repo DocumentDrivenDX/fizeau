@@ -430,6 +430,12 @@ func ValidatePowerBounds(minPower, maxPower int) error {
 
 // RouteDecision is the result of ResolveRoute.
 type RouteDecision struct {
+	// RequestedProfile is the caller-supplied profile policy, when any.
+	RequestedProfile string
+	// PowerPolicy records the effective policy inputs used for this
+	// resolution. It stays separate from the chosen model so operator
+	// surfaces can explain policy without re-deriving it.
+	PowerPolicy RoutePowerPolicy
 	// Harness is the selected harness name.
 	Harness string
 	// Provider is the selected provider for native agent routes.
@@ -455,6 +461,14 @@ type RouteDecision struct {
 	// Candidates is the full ranked decision trace, including rejected
 	// candidates and their rejection reasons.
 	Candidates []RouteCandidate
+}
+
+// RoutePowerPolicy captures the numeric power-policy inputs associated with
+// one ResolveRoute call.
+type RoutePowerPolicy struct {
+	Profile  string
+	MinPower int
+	MaxPower int
 }
 
 // RouteCandidate is one routing candidate evaluated by ResolveRoute.

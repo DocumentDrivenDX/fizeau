@@ -44,10 +44,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
 	profile := req.Profile
-	if profile == "" {
-		profile = reqProfileFromModelRef(cat, req.ModelRef)
-	}
-	modelRef := reqModelRefStripProfile(cat, req.ModelRef)
+	modelRef := req.ModelRef
 	providerPreference, err := providerPreferenceForProfile(cat, profile)
 	if err != nil {
 		return &RouteDecision{}, err
@@ -99,6 +96,12 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	s.annotateRouteDecisionEvidence(result)
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
+		result.RequestedProfile = req.Profile
+		result.PowerPolicy = RoutePowerPolicy{
+			Profile:  req.Profile,
+			MinPower: req.MinPower,
+			MaxPower: req.MaxPower,
+		}
 		result.Model = resolveSubprocessModelAlias(result.Harness, result.Model)
 		result.Power = catalogPowerForModel(cat, result.Model)
 	}
@@ -411,30 +414,6 @@ func (s *service) routeAttemptTTL() time.Duration {
 		return defaultRouteAttemptCooldown
 	}
 	return ttl
-}
-
-// reqProfileFromModelRef returns ref when ref is a known profile alias,
-// or "" otherwise. The contract puts ModelRef and Profile in the same field.
-func reqProfileFromModelRef(cat *modelcatalog.Catalog, ref string) string {
-	if cat == nil {
-		return ""
-	}
-	if _, ok := cat.Profile(ref); ok {
-		return ref
-	}
-	return ""
-}
-
-// reqModelRefStripProfile returns "" when ref is a known profile alias,
-// or ref otherwise.
-func reqModelRefStripProfile(cat *modelcatalog.Catalog, ref string) string {
-	if cat == nil {
-		return ref
-	}
-	if _, ok := cat.Profile(ref); ok {
-		return ""
-	}
-	return ref
 }
 
 // buildRoutingInputs assembles routing.Inputs from the service's registry

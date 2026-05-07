@@ -74,6 +74,102 @@ func TestScorePowerMinPowerAndPinsRemainConstraints(t *testing.T) {
 	}
 }
 
+func TestProfileStandardKeepsPowerFiveLocalCandidatesEligible(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{Name: "grendel", DefaultModel: "grendel-5", DiscoveredIDs: []string{"grendel-5"}, DiscoveryAttempted: true, SupportsTools: true},
+					{Name: "vidar", DefaultModel: "vidar-5", DiscoveredIDs: []string{"vidar-5"}, DiscoveryAttempted: true, SupportsTools: true},
+					{Name: "sindri", DefaultModel: "sindri-5", DiscoveredIDs: []string{"sindri-5"}, DiscoveryAttempted: true, SupportsTools: true},
+				},
+			},
+		},
+		ModelEligibility: testPowerLookup(map[string]int{
+			"grendel-5": 5,
+			"vidar-5":   5,
+			"sindri-5":  5,
+		}),
+		Now: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{Profile: "standard"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(dec.Candidates) != 3 {
+		t.Fatalf("Candidates len=%d, want 3: %#v", len(dec.Candidates), dec.Candidates)
+	}
+	for _, c := range dec.Candidates {
+		if !c.Eligible {
+			t.Fatalf("candidate unexpectedly ineligible under standard: %#v", c)
+		}
+		if c.Power != 5 {
+			t.Fatalf("candidate power=%d, want 5: %#v", c.Power, c)
+		}
+	}
+}
+
+func TestProfileStandardDoesNotBroadenExactModelRef(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "agent",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{Name: "grendel", DefaultModel: "grendel-5", DiscoveredIDs: []string{"grendel-5"}, DiscoveryAttempted: true, SupportsTools: true},
+					{Name: "vidar", DefaultModel: "vidar-5", DiscoveredIDs: []string{"vidar-5"}, DiscoveryAttempted: true, SupportsTools: true},
+				},
+			},
+		},
+		CatalogResolver: func(ref, surface string) (string, bool) {
+			switch ref {
+			case "standard":
+				return "grendel-5", true
+			case "grendel-5":
+				return "grendel-5", true
+			default:
+				return "", false
+			}
+		},
+		ModelEligibility: testPowerLookup(map[string]int{
+			"grendel-5": 5,
+			"vidar-5":   5,
+			"sindri-5":  5,
+		}),
+		Now: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{Profile: "standard", ModelRef: "standard"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Model != "grendel-5" {
+		t.Fatalf("Model=%q, want exact catalog-reference resolution", dec.Model)
+	}
+	if dec.Harness != "agent" {
+		t.Fatalf("Harness=%q, want agent", dec.Harness)
+	}
+}
+
 func TestScorePowerCostAndSpeedBreakTies(t *testing.T) {
 	t.Run("cost", func(t *testing.T) {
 		in := tieBreakInputs()
