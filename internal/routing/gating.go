@@ -89,8 +89,13 @@ func CheckGating(cap Capabilities, req Request) (string, FilterReason) {
 	// Context window gating: if the request declares prompt size or an effort
 	// that implies a minimum context, reject candidates that can't fit.
 	minCtx := req.MinContextWindow()
-	if minCtx > 0 && cap.ContextWindow > 0 && cap.ContextWindow < minCtx {
-		return fmt.Sprintf("context window %d < required %d", cap.ContextWindow, minCtx), FilterReasonContextTooSmall
+	if minCtx > 0 {
+		if cap.ContextWindow <= 0 {
+			return fmt.Sprintf("context window unknown < required %d", minCtx), FilterReasonContextTooSmall
+		}
+		if cap.ContextWindow < minCtx {
+			return fmt.Sprintf("context window %d < required %d", cap.ContextWindow, minCtx), FilterReasonContextTooSmall
+		}
 	}
 
 	// Tool-calling support gating.
