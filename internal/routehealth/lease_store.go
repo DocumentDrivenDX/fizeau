@@ -14,8 +14,6 @@ const DefaultLeaseTTL = 5 * time.Minute
 // LeaseKey identifies one sticky lease scope.
 type LeaseKey struct {
 	StickyKey string
-	Provider  string
-	Model     string
 }
 
 // Lease describes one sticky endpoint assignment.
@@ -55,13 +53,9 @@ func NewLeaseStore() *LeaseStore {
 	}
 }
 
-// NormalizeLeaseKey trims whitespace from the lease dimensions.
-func NormalizeLeaseKey(stickyKey, provider, model string) LeaseKey {
-	return LeaseKey{
-		StickyKey: strings.TrimSpace(stickyKey),
-		Provider:  strings.TrimSpace(provider),
-		Model:     strings.TrimSpace(model),
-	}
+// NormalizeLeaseKey trims whitespace from the sticky key.
+func NormalizeLeaseKey(stickyKey string) LeaseKey {
+	return LeaseKey{StickyKey: strings.TrimSpace(stickyKey)}
 }
 
 // Live returns the current lease for key when it has not expired.
@@ -90,7 +84,7 @@ func (s *LeaseStore) Acquire(now time.Time, ttl time.Duration, key LeaseKey, pro
 	if ttl <= 0 {
 		ttl = DefaultLeaseTTL
 	}
-	key = NormalizeLeaseKey(key.StickyKey, key.Provider, key.Model)
+	key = NormalizeLeaseKey(key.StickyKey)
 	provider = strings.TrimSpace(provider)
 	endpoint = strings.TrimSpace(endpoint)
 	model = strings.TrimSpace(model)
@@ -124,7 +118,7 @@ func (s *LeaseStore) Invalidate(now time.Time, key LeaseKey, reason string) (Lea
 		return LeaseInvalidation{}, false
 	}
 	now = normalizeLeaseNow(now)
-	key = NormalizeLeaseKey(key.StickyKey, key.Provider, key.Model)
+	key = NormalizeLeaseKey(key.StickyKey)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -242,7 +236,7 @@ func (s *LeaseStore) LastInvalidation(key LeaseKey) (LeaseInvalidation, bool) {
 	if s == nil {
 		return LeaseInvalidation{}, false
 	}
-	key = NormalizeLeaseKey(key.StickyKey, key.Provider, key.Model)
+	key = NormalizeLeaseKey(key.StickyKey)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

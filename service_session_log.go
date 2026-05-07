@@ -61,6 +61,7 @@ func (s *service) openSessionLog(req ServiceExecuteRequest, decision RouteDecisi
 			Assignment:     decision.Sticky.Assignment,
 			ServerInstance: decision.Sticky.ServerInstance,
 			Reason:         decision.Sticky.Reason,
+			Bonus:          decision.Sticky.Bonus,
 		},
 		Utilization: session.RoutingUtilizationState{
 			Source:         decision.Utilization.Source,
@@ -111,6 +112,7 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 				Assignment:     sl.decision.Sticky.Assignment,
 				ServerInstance: sl.decision.Sticky.ServerInstance,
 				Reason:         sl.decision.Sticky.Reason,
+				Bonus:          sl.decision.Sticky.Bonus,
 			},
 			Utilization: session.RoutingUtilizationState{
 				Source:         sl.decision.Utilization.Source,

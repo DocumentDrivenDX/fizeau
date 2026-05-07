@@ -9,6 +9,7 @@ import (
 )
 
 const stickyRouteLeaseTTL = routehealth.DefaultLeaseTTL
+const stickyRouteAffinityBonus = 250.0
 
 func (s *service) routeLeaseStore() *routehealth.LeaseStore {
 	if s.routeLeases == nil {
@@ -44,107 +45,41 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 		return
 	}
 
-	key := routehealth.NormalizeLeaseKey(stickyKey, baseProvider, decision.Model)
-	if lease, ok := store.Live(now, key); ok {
-		if candidate, found := stickyLeaseCandidate(decision.Candidates, decision.Harness, baseProvider, decision.Model, lease.Endpoint); found && candidate.Eligible {
-			store.Acquire(now, stickyRouteLeaseTTL, key, baseProvider, lease.Endpoint, decision.Model)
-			decision.Provider = candidate.Provider
-			decision.Endpoint = candidate.Endpoint
-			decision.ServerInstance = candidate.ServerInstance
-			decision.Sticky.Assignment = "reused"
-			decision.Sticky.ServerInstance = candidate.ServerInstance
-			decision.Sticky.Reason = "live sticky lease reused"
-			return
-		}
-		reason := "endpoint disappeared"
-		if candidate, found := stickyLeaseCandidate(decision.Candidates, decision.Harness, baseProvider, decision.Model, lease.Endpoint); found {
-			reason = candidate.Reason
-			if reason == "" {
-				reason = "sticky endpoint became ineligible"
-			}
-		} else if candidate, found := stickyLeaseAnyEndpoint(decision.Candidates, decision.Harness, baseProvider, lease.Endpoint); found {
-			reason = candidate.Reason
-			if reason == "" {
-				reason = "sticky endpoint became ineligible"
-			}
-		}
-		store.Invalidate(now, key, reason)
+	key := routehealth.NormalizeLeaseKey(stickyKey)
+	selectedServerInstance := strings.TrimSpace(decision.ServerInstance)
+	if selectedServerInstance == "" {
+		selectedServerInstance = strings.TrimSpace(decision.Endpoint)
 	}
-	if decision.Provider == "" && decision.Endpoint == "" {
+	if selectedServerInstance == "" {
+		_, selectedServerInstance, _ = splitEndpointProviderRef(decision.Provider)
+	}
+	if selectedServerInstance == "" {
+		selectedServerInstance = decision.Provider
+	}
+	lease, ok := store.Live(now, key)
+	if ok && lease.Endpoint == selectedServerInstance {
+		decision.Sticky.Assignment = "reused"
+		decision.Sticky.ServerInstance = selectedServerInstance
+		decision.Sticky.Bonus = stickyRouteAffinityBonus
+		decision.Sticky.Reason = "live sticky lease reused"
+	} else if ok {
+		decision.Sticky.Assignment = "moved"
+		decision.Sticky.ServerInstance = selectedServerInstance
+		decision.Sticky.Bonus = 0
+		decision.Sticky.Reason = "sticky server instance lost to a stronger candidate"
+	} else {
+		decision.Sticky.Assignment = "acquired"
+		decision.Sticky.ServerInstance = selectedServerInstance
+		decision.Sticky.Bonus = 0
+		if decision.Sticky.Reason == "" {
+			decision.Sticky.Reason = "new sticky lease acquired"
+		}
+	}
+	if selectedServerInstance == "" {
 		decision.Sticky.Assignment = "none"
 		return
 	}
-	chosenEndpoint := decision.ServerInstance
-	if chosenEndpoint == "" {
-		chosenEndpoint = decision.Endpoint
-	}
-	if chosenEndpoint == "" {
-		_, chosenEndpoint, _ = splitEndpointProviderRef(decision.Provider)
-	}
-	if chosenEndpoint == "" {
-		chosenEndpoint = decision.Provider
-	}
-	if chosenEndpoint == "" {
-		return
-	}
-	store.Acquire(now, stickyRouteLeaseTTL, key, baseProvider, chosenEndpoint, decision.Model)
-	decision.Sticky.Assignment = "acquired"
-	decision.Sticky.ServerInstance = chosenEndpoint
-	if decision.Sticky.Reason == "" {
-		decision.Sticky.Reason = "new sticky lease acquired"
-	}
-}
-
-func stickyLeaseCandidate(candidates []RouteCandidate, harness, provider, model, endpoint string) (RouteCandidate, bool) {
-	for _, candidate := range candidates {
-		if !candidate.Eligible || candidate.Harness != harness || candidate.Model != model {
-			continue
-		}
-		baseProvider, candidateEndpoint, _ := splitEndpointProviderRef(candidate.Provider)
-		if baseProvider == "" {
-			baseProvider = candidate.Provider
-		}
-		if baseProvider != provider {
-			continue
-		}
-		candidateInstance := candidate.ServerInstance
-		if candidateEndpoint == "" {
-			candidateEndpoint = candidate.Endpoint
-		}
-		if candidateInstance == "" {
-			candidateInstance = candidateEndpoint
-		}
-		if candidateInstance == endpoint || candidateEndpoint == endpoint {
-			return candidate, true
-		}
-	}
-	return RouteCandidate{}, false
-}
-
-func stickyLeaseAnyEndpoint(candidates []RouteCandidate, harness, provider, endpoint string) (RouteCandidate, bool) {
-	for _, candidate := range candidates {
-		if candidate.Harness != harness {
-			continue
-		}
-		baseProvider, candidateEndpoint, _ := splitEndpointProviderRef(candidate.Provider)
-		if baseProvider == "" {
-			baseProvider = candidate.Provider
-		}
-		if baseProvider != provider {
-			continue
-		}
-		candidateInstance := candidate.ServerInstance
-		if candidateEndpoint == "" {
-			candidateEndpoint = candidate.Endpoint
-		}
-		if candidateInstance == "" {
-			candidateInstance = candidateEndpoint
-		}
-		if candidateInstance == endpoint || candidateEndpoint == endpoint {
-			return candidate, true
-		}
-	}
-	return RouteCandidate{}, false
+	store.Acquire(now, stickyRouteLeaseTTL, key, baseProvider, selectedServerInstance, decision.Model)
 }
 
 func (s *service) routeEndpointLoadsResolver(now time.Time) func(provider, endpoint, model string) (routing.EndpointLoad, bool) {
@@ -173,5 +108,25 @@ func (s *service) routeEndpointLoadsResolver(now time.Time) func(provider, endpo
 			UtilizationFresh:     load.UtilizationFresh,
 			UtilizationSaturated: load.UtilizationSaturated,
 		}, true
+	}
+}
+
+func (s *service) routeStickyServerInstanceResolver(now time.Time) func(stickyKey string) (string, bool) {
+	if s == nil {
+		return nil
+	}
+	store := s.routeLeaseStore()
+	return func(stickyKey string) (string, bool) {
+		if strings.TrimSpace(stickyKey) == "" {
+			return "", false
+		}
+		lease, ok := store.Live(now, routehealth.NormalizeLeaseKey(stickyKey))
+		if !ok {
+			return "", false
+		}
+		if lease.Endpoint == "" {
+			return "", false
+		}
+		return lease.Endpoint, true
 	}
 }

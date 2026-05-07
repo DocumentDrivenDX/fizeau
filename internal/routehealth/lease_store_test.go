@@ -9,7 +9,7 @@ import (
 func TestLeaseStoreAcquireRefreshAndExpire(t *testing.T) {
 	store := NewLeaseStore()
 	now := time.Date(2026, 5, 2, 10, 0, 0, 0, time.UTC)
-	key := NormalizeLeaseKey("bead-1", "agent", "model-a")
+	key := NormalizeLeaseKey("bead-1")
 
 	first := store.Acquire(now, time.Minute, key, "agent", "desk-a", "model-a")
 	if first.AcquiredAt != now || first.RefreshedAt != now {
@@ -44,7 +44,7 @@ func TestLeaseStoreAcquireRefreshAndExpire(t *testing.T) {
 func TestLeaseStoreInvalidateRecordsReason(t *testing.T) {
 	store := NewLeaseStore()
 	now := time.Date(2026, 5, 2, 10, 0, 0, 0, time.UTC)
-	key := NormalizeLeaseKey("bead-2", "agent", "model-a")
+	key := NormalizeLeaseKey("bead-2")
 
 	store.Acquire(now, time.Minute, key, "agent", "desk-b", "model-a")
 	inv, ok := store.Invalidate(now.Add(5*time.Second), key, "endpoint disappeared")
@@ -73,7 +73,7 @@ func TestLeaseStoreDistinctStickyKeysCanCoexistConcurrently(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			key := NormalizeLeaseKey(string(rune('a'+i)), "agent", "model-a")
+			key := NormalizeLeaseKey(string(rune('a' + i)))
 			endpoint := "desk-a"
 			if i%2 == 1 {
 				endpoint = "desk-b"
