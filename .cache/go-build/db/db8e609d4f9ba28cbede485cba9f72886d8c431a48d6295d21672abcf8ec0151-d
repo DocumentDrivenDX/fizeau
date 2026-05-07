@@ -1,0 +1,5 @@
+./client.go
+./debug.go
+./discovery.go
+./sse_classify.go
+./sse_filter.go

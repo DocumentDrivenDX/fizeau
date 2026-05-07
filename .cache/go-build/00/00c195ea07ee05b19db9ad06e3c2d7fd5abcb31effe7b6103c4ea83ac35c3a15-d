@@ -1,0 +1,5 @@
+./auth.go
+./models.go
+./picompat.go
+./settings.go
+./translate.go

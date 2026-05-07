@@ -1,0 +1,9 @@
+./catalog_commands.go
+./corpus_commands.go
+./mount.go
+./route_status.go
+./routing_provider.go
+./routing_scorer.go
+./routing_smart.go
+./run.go
+./update.go
