@@ -185,6 +185,36 @@ func TestLogger_Close_NilFile(t *testing.T) {
 	assert.NoError(t, err) // Should not error on nil file
 }
 
+func TestLoggerClosePreventsLateClosedFileWriteWarning(t *testing.T) {
+	dir := t.TempDir()
+	l := NewLogger(dir, "close-no-warning")
+	require.NotNil(t, l)
+
+	l.Emit(agent.EventSessionStart, SessionStartData{
+		Provider: "test-provider",
+		Model:    "test-model",
+		Prompt:   "prompt",
+	})
+	require.NoError(t, l.Close())
+	require.Nil(t, l.file)
+
+	logs, restore := captureLoggerLogs(t)
+	defer restore()
+
+	l.Write(agent.Event{
+		SessionID: "close-no-warning",
+		Type:      agent.EventSessionEnd,
+		Data:      []byte(`{"status":"success"}`),
+	})
+
+	assert.NotContains(t, logs.String(), "session logger: write error")
+
+	events, err := ReadEvents(filepath.Join(dir, "close-no-warning.jsonl"))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, agent.EventSessionStart, events[0].Type)
+}
+
 func TestReadEvents_EmptyFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "empty.jsonl")

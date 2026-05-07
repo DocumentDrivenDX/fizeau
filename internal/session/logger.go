@@ -97,7 +97,9 @@ func (l *Logger) Close() error {
 	if l.file == nil {
 		return nil
 	}
-	return l.file.Close()
+	file := l.file
+	l.file = nil
+	return file.Close()
 }
 
 // ReadEvents reads all events from a session log file.
