@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run the medium-cost native-vs-fiz TerminalBench comparison.
+# Run the medium-cost fiz-wrapper TerminalBench comparison.
 #
 # Defaults:
 #   - tier: wide (15 tasks)
@@ -33,6 +33,15 @@ fi
 
 OUT="benchmark-results/matrix-medium-model-${TIER}-$(date -u +%Y%m%dT%H%M%SZ)"
 RUNNER="scripts/benchmark/run_vidar_qwen36_terminalbench_baseline.sh"
+OFFICIAL_PROFILES=(
+  fiz-harness-claude-sonnet-4-6
+  fiz-harness-codex-gpt-5-4-mini
+  fiz-harness-pi-gpt-5-4-mini
+  fiz-harness-opencode-gpt-5-4-mini
+  fiz-openrouter-claude-sonnet-4-6
+  fiz-openrouter-gpt-5-4-mini
+)
+OFFICIAL_PROFILES_CSV="$(IFS=,; echo "${OFFICIAL_PROFILES[*]}")"
 
 common_env=(
   "TIER=${TIER}"
@@ -48,29 +57,12 @@ echo "  tier: ${TIER}"
 echo "  out:  ${OUT}"
 echo
 
-echo "1/3 Native Claude/Codex reference cells"
-env \
-  "${common_env[@]}" \
-  BASELINE=frontier \
-  HARNESSES=claude,codex \
-  "${RUNNER}"
-
-echo
-echo "2/3 fiz on GPT-5.4 Mini via OpenRouter"
+echo "1/1 fiz wrapper lanes via Harbor"
 env \
   "${common_env[@]}" \
   BASELINE=local \
   HARNESSES=fiz \
-  PROFILE=gpt-5-4-mini-openrouter \
-  "${RUNNER}"
-
-echo
-echo "3/3 fiz on Claude Sonnet 4.6 via OpenRouter"
-env \
-  "${common_env[@]}" \
-  BASELINE=local \
-  HARNESSES=fiz \
-  PROFILE=claude-sonnet-4-6 \
+  PROFILE="${OFFICIAL_PROFILES_CSV}" \
   "${RUNNER}"
 
 echo
