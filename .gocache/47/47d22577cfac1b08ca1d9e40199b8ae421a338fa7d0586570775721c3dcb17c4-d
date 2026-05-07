@@ -1,5 +1,0 @@
-./benchmark.go
-./compare.go
-./condense.go
-./quorum.go
-./types.go

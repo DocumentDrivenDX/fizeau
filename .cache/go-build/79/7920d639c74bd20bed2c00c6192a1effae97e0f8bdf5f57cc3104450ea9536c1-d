@@ -1,8 +1,0 @@
-./exec.go
-./harness.go
-./progress_mirror.go
-./reasoning.go
-./registry.go
-./state.go
-./types.go
-./usage.go

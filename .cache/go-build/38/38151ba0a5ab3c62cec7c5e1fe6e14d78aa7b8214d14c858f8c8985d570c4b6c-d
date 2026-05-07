@@ -1,5 +1,0 @@
-./discovery.go
-./openai.go
-./protocol_support.go
-./reachability.go
-./registration.go
