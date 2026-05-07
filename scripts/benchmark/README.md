@@ -140,7 +140,7 @@ The benchmark evidence pipeline is:
 1. Run a benchmark job and keep the raw artifacts in `benchmark-results/`.
 2. Import the resulting run, report, or curated snapshot into JSONL evidence.
 3. Validate the imported evidence and append it to an append-only ledger.
-4. Ask `fiz-bench fhi delta|rank` for benchmark-specific or cross-benchmark claims.
+4. Generate benchmark-specific or cross-benchmark claims from the ledger with `go run ./cmd/bench fhi delta|rank` or the built `fiz-bench` binary.
 
 The canonical operator loop is:
 
@@ -215,9 +215,10 @@ ledger through their importer paths, not by hand-editing the schema.
 Raw benchmark artifacts remain in the gitignored `benchmark-results/` tree.
 Only curated snapshots or source hashes that have been normalized into ledger
 records should be committed. Checked-in curated snapshots, when approved, live
-under `scripts/benchmark/evidence/<snapshot-id>.jsonl`, and the small source
-fixtures used by importer tests live under
-`cmd/bench/testdata/external-benchmarks/`.
+under `scripts/benchmark/evidence/<snapshot-id>.jsonl`. The currently committed
+source fixtures used by importer tests live under
+`cmd/bench/testdata/external-benchmarks/`, while the repository root keeps the
+operator-facing run outputs in `benchmark-results/`.
 
 ### 3. Validate and append to the ledger
 
@@ -321,7 +322,8 @@ The command surface is covered by the `cmd/bench` tests:
 - `cmd/bench/main_test.go`
 
 `go run ./cmd/bench <subcommand> --help` exposes the documented flags for the
-command families above.
+command families above, so the README commands have matching CLI help even when
+there is not a dedicated fixture-driven test for a particular flag combination.
 
 ### Claim axes
 
