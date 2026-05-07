@@ -105,6 +105,115 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	}
 }
 
+func TestResolveRouteExpandsProfilePowerPolicyBeforeFiltering(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-04-10T00:00:00Z
+profiles:
+  standard:
+    min_power: 7
+    max_power: 8
+    provider_preference: local-first
+models:
+  grendel-5:
+    family: grendel
+    tier: local-bundle
+    status: active
+    provider_system: openai
+    deployment_class: local_free
+    power: 5
+    surfaces:
+      embedded-openai: grendel-5
+  vidar-5:
+    family: vidar
+    tier: local-bundle
+    status: active
+    provider_system: openai
+    deployment_class: local_free
+    power: 5
+    surfaces:
+      embedded-openai: vidar-5
+  sindri-7:
+    family: sindri
+    tier: local-bundle
+    status: active
+    provider_system: openai
+    deployment_class: local_free
+    power: 7
+    surfaces:
+      embedded-openai: sindri-7
+targets:
+  local-bundle:
+    family: local
+    status: active
+    candidates: [grendel-5, vidar-5, sindri-7]
+    surfaces:
+      embedded-openai:
+        candidates: [grendel-5, vidar-5, sindri-7]
+`)
+	restore := replaceRoutingCatalogForTest(t, catalog)
+	defer restore()
+
+	registry := harnesses.NewRegistry()
+	registry.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	svc := &service{
+		opts: ServiceOptions{
+			ServiceConfig: &fakeServiceConfig{
+				providers: map[string]ServiceProviderEntry{
+					"grendel": {Type: "test", Model: "grendel-5"},
+					"vidar":   {Type: "test", Model: "vidar-5"},
+					"sindri":  {Type: "test", Model: "sindri-7"},
+				},
+				names:       []string{"grendel", "vidar", "sindri"},
+				defaultName: "grendel",
+			},
+		},
+		registry: registry,
+		hub:      newSessionHub(),
+	}
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "standard"})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec.PowerPolicy.Profile != "standard" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
+		t.Fatalf("PowerPolicy=%#v, want standard 7..8", dec.PowerPolicy)
+	}
+	if dec.Model != "sindri-7" {
+		t.Fatalf("ResolveRoute selected model=%q, want sindri-7", dec.Model)
+	}
+
+	seenRejectedLowPower := 0
+	for _, c := range dec.Candidates {
+		switch c.Model {
+		case "grendel-5", "vidar-5":
+			if c.Eligible {
+				t.Fatalf("candidate %q unexpectedly eligible under standard: %#v", c.Model, c)
+			}
+			if c.FilterReason != string(routing.FilterReasonBelowMinPower) {
+				t.Fatalf("candidate %q filter_reason=%q, want %q", c.Model, c.FilterReason, routing.FilterReasonBelowMinPower)
+			}
+			seenRejectedLowPower++
+		case "sindri-7":
+			if !c.Eligible {
+				t.Fatalf("candidate sindri-7 unexpectedly rejected: %#v", c)
+			}
+		}
+	}
+	if seenRejectedLowPower != 2 {
+		t.Fatalf("expected both power-5 candidates to participate in the trace, saw %d", seenRejectedLowPower)
+	}
+}
+
+func loadRoutingFixtureCatalog(t *testing.T, contents string) *modelcatalog.Catalog {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "models.yaml")
+	requireNoError(t, os.WriteFile(path, []byte(contents), 0o600))
+	catalog, err := modelcatalog.Load(modelcatalog.LoadOptions{ManifestPath: path, RequireExternal: true})
+	requireNoError(t, err)
+	return catalog
+}
+
 func TestProviderUsesLiveDiscovery_LlamaServer(t *testing.T) {
 	if !providerUsesLiveDiscovery("llama-server") {
 		t.Fatal("expected llama-server to use live discovery")
@@ -586,17 +695,6 @@ func publicRouteTraceService(sc ServiceConfig) *service {
 		registry: harnesses.NewRegistry(),
 		hub:      newSessionHub(),
 	}
-}
-
-func loadRoutingFixtureCatalog(t *testing.T, contents string) *modelcatalog.Catalog {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "models.yaml")
-	requireNoError(t, os.WriteFile(path, []byte(contents), 0o600))
-	catalog, err := modelcatalog.Load(modelcatalog.LoadOptions{ManifestPath: path, RequireExternal: true})
-	if err != nil {
-		t.Fatalf("Load fixture catalog: %v", err)
-	}
-	return catalog
 }
 
 func replaceRoutingCatalogForTest(t *testing.T, catalog *modelcatalog.Catalog) func() {

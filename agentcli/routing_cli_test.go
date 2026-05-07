@@ -599,12 +599,13 @@ func TestRouteStatus_ShowsEligibleCandidatesPerIntent(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 
-	// Discover a local power-5 model so the agent harness has at least one
-	// eligible candidate under the balanced profile. Subscription harnesses
-	// also surface candidates but go ineligible without quota state,
-	// exercising both eligible and ineligible code paths.
+	// Discover a local power-5 model and a standard-profile local/cloud
+	// candidate so the agent harness surfaces both eligible and ineligible
+	// candidates under the expanded profile policy.
 	healthy := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
 	healthy.setModels("qwen3.5-27b")
+	eligible := newCountedOpenAIServer(t, http.StatusOK, "gemini-2.5-flash", "ok")
+	eligible.setModels("gemini-2.5-flash")
 
 	writeTempConfig(t, workDir, `
 providers:
@@ -613,6 +614,11 @@ providers:
     base_url: `+healthy.baseURL()+`
     api_key: test
     model: qwen3.5-27b
+  frontier:
+    type: lmstudio
+    base_url: `+eligible.baseURL()+`
+    api_key: test
+    model: gemini-2.5-flash
 `)
 
 	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--profile", "standard", "--json")
@@ -648,6 +654,8 @@ providers:
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
 	assert.Equal(t, "standard", parsed.Profile)
 	assert.Equal(t, "standard", parsed.PowerPolicy.Profile)
+	assert.Equal(t, 7, parsed.PowerPolicy.MinPower)
+	assert.Equal(t, 8, parsed.PowerPolicy.MaxPower)
 	require.NotEmpty(t, parsed.Candidates, "engine must surface its candidate trace; stdout=%s", out.stdout)
 
 	// Every candidate carries the score-component bundle (cost, latency_ms,
