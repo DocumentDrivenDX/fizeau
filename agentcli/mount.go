@@ -103,7 +103,7 @@ func WithVersion(version, buildTime, gitCommit string) MountOption {
 func MountCLI(opts ...MountOption) *cobra.Command {
 	cfg := mountConfig{
 		use:    productinfo.BinaryName,
-		short:  "Run the DDx agent CLI",
+		short:  "Run the fiz CLI",
 		stdin:  os.Stdin,
 		stdout: os.Stdout,
 		stderr: os.Stderr,

@@ -717,6 +717,7 @@ providers:
 		SpeedTPS  float64 `json:"speed_tps"`
 	}
 	type candidate struct {
+		Harness      string    `json:"harness"`
 		Provider     string    `json:"provider"`
 		Model        string    `json:"model"`
 		Eligible     bool      `json:"eligible"`
@@ -734,6 +735,7 @@ providers:
 	assert.Equal(t, 9, parsed.MinPower)
 	assert.Equal(t, 10, parsed.MaxPower)
 	require.NotNil(t, parsed.Winner)
+	assert.Equal(t, "fiz", parsed.Winner.Harness)
 	assert.Equal(t, "frontier", parsed.Winner.Provider)
 	assert.Equal(t, "gpt-5.5", parsed.Winner.Model)
 	assert.True(t, parsed.Winner.Eligible)

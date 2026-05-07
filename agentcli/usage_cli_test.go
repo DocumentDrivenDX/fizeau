@@ -231,7 +231,7 @@ func buildAgentCLI(t *testing.T) string {
 			buildCLIErr = err
 			return
 		}
-		cmd := exec.Command("go", "build", "-o", exe, "./cmd/fiz")
+		cmd := exec.Command("go", "build", "-buildvcs=false", "-o", exe, "./cmd/fiz")
 		cmd.Dir = filepath.Clean(filepath.Join(wd, ".."))
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 		out, err := cmd.CombinedOutput()

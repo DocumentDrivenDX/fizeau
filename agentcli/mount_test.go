@@ -47,6 +47,16 @@ func TestMountCLI_ReturnsFreshCommandAndInjectedOutput(t *testing.T) {
 	}
 }
 
+func TestMountCLI_DefaultIdentityIsFiz(t *testing.T) {
+	cmd := MountCLI()
+	if cmd.Use != "fiz" {
+		t.Fatalf("Use = %q, want fiz", cmd.Use)
+	}
+	if cmd.Short != "Run the fiz CLI" {
+		t.Fatalf("Short = %q, want fiz help text", cmd.Short)
+	}
+}
+
 func TestMountCLI_ReturnsExitErrorForNonZeroRunnerExit(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd := MountCLI(WithStdout(&stdout), WithStderr(&stderr))

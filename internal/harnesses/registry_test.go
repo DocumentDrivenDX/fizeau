@@ -106,8 +106,15 @@ func TestRegistryFirstAvailableEmbeddedFallback(t *testing.T) {
 func TestResolveHarnessAlias(t *testing.T) {
 	assert.Equal(t, "fiz", ResolveHarnessAlias("local"))
 	assert.Equal(t, "fiz", ResolveHarnessAlias("fiz"))
+	assert.Equal(t, "agent", ResolveHarnessAlias("agent"))
 	assert.Equal(t, "claude", ResolveHarnessAlias("claude"))
 	assert.Equal(t, "unknown", ResolveHarnessAlias("unknown"))
+}
+
+func TestRegistryDoesNotRegisterAgentAsNativeHarness(t *testing.T) {
+	r := NewRegistry()
+	assert.True(t, r.Has("fiz"))
+	assert.False(t, r.Has("agent"))
 }
 
 func TestBuiltinHarnessesPermissionArgs(t *testing.T) {
