@@ -44,19 +44,27 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
 	profile := req.Profile
+	powerPolicy := routePowerPolicyForRequest(cat, req)
 	modelRef := req.ModelRef
 	if modelRef == "" && req.Model == "" && (req.Harness != "" || req.Profile == "smart") {
 		modelRef = req.Profile
 	}
 	providerPreference, err := providerPreferenceForProfile(cat, profile)
 	if err != nil {
-		return &RouteDecision{}, err
+		return &RouteDecision{
+			RequestedProfile: req.Profile,
+			PowerPolicy:      powerPolicy,
+		}, err
 	}
 	in := s.buildRoutingInputsWithCatalog(ctx, cat)
 
 	resolvedModel, modelCandidates, modelErr := s.resolveModelConstraint(req.Harness, req.Provider, req.Model, in, cat)
 	if modelErr != nil {
-		result := &RouteDecision{Candidates: modelCandidates}
+		result := &RouteDecision{
+			RequestedProfile: req.Profile,
+			PowerPolicy:      powerPolicy,
+			Candidates:       modelCandidates,
+		}
 		s.annotateRouteDecisionEvidence(result)
 		return result, publicRoutingError(modelErr, result.Candidates)
 	}
@@ -88,6 +96,8 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		if result == nil {
 			result = &RouteDecision{}
 		}
+		result.RequestedProfile = req.Profile
+		result.PowerPolicy = powerPolicy
 		s.annotateRouteDecisionEvidence(result)
 		return result, publicRoutingError(err, result.Candidates)
 	}
@@ -100,11 +110,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
 		result.RequestedProfile = req.Profile
-		result.PowerPolicy = RoutePowerPolicy{
-			Profile:  req.Profile,
-			MinPower: req.MinPower,
-			MaxPower: req.MaxPower,
-		}
+		result.PowerPolicy = powerPolicy
 		result.Model = resolveSubprocessModelAlias(result.Harness, result.Model)
 		result.Power = catalogPowerForModel(cat, result.Model)
 	}
@@ -1106,4 +1112,26 @@ func providerPreferenceForProfile(cat *modelcatalog.Catalog, profile string) (st
 	default:
 		return "", fmt.Errorf("profile %q has unsupported provider preference %q", profile, info.ProviderPreference)
 	}
+}
+
+func routePowerPolicyForRequest(cat *modelcatalog.Catalog, req RouteRequest) RoutePowerPolicy {
+	policy := RoutePowerPolicy{
+		Profile:  req.Profile,
+		MinPower: req.MinPower,
+		MaxPower: req.MaxPower,
+	}
+	if req.Profile == "" || cat == nil {
+		return policy
+	}
+	profile, ok := cat.Profile(req.Profile)
+	if !ok {
+		return policy
+	}
+	if policy.MinPower == 0 {
+		policy.MinPower = profile.MinPower
+	}
+	if policy.MaxPower == 0 {
+		policy.MaxPower = profile.MaxPower
+	}
+	return policy
 }

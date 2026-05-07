@@ -121,6 +121,67 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	}
 }
 
+func TestResolveRouteProfileReportsEffectivePowerPolicy(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-05-06T00:00:00Z
+catalog_version: test
+models:
+  provider-default:
+    family: example
+    status: active
+    power: 5
+    surfaces:
+      agent.openai: provider-default
+  catalog-smart:
+    family: example
+    status: active
+    power: 9
+    surfaces:
+      agent.openai: catalog-smart
+profiles:
+  standard:
+    min_power: 7
+    max_power: 8
+    compatibility_target: standard
+    provider_preference: local-first
+targets:
+  standard:
+    family: example
+    candidates: [provider-default, catalog-smart]
+    surfaces:
+      agent.openai: provider-default
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := newTestService(t, ServiceOptions{
+		ServiceConfig: &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"local": {Type: "test", BaseURL: "http://127.0.0.1:9999/v1", Model: "provider-default"},
+			},
+			names:       []string{"local"},
+			defaultName: "local",
+		},
+	})
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "standard"})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	if dec.RequestedProfile != "standard" {
+		t.Fatalf("RequestedProfile=%q, want standard", dec.RequestedProfile)
+	}
+	if dec.PowerPolicy.Profile != "standard" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
+		t.Fatalf("PowerPolicy=%#v, want standard 7..8", dec.PowerPolicy)
+	}
+	if dec.Model != "provider-default" {
+		t.Fatalf("Model=%q, want provider-default without treating profile as a model ref", dec.Model)
+	}
+}
+
 func TestProviderUsesLiveDiscovery_LlamaServer(t *testing.T) {
 	if !providerUsesLiveDiscovery("llama-server") {
 		t.Fatal("expected llama-server to use live discovery")
