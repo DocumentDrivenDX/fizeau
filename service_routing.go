@@ -1086,6 +1086,12 @@ func providerPreferenceForProfile(cat *modelcatalog.Catalog, profile string) (st
 	if profile == "" {
 		return routing.ProviderPreferenceLocalFirst, nil
 	}
+	switch profile {
+	case "code-medium":
+		return "", fmt.Errorf("profile %q is deprecated; use --profile standard or --min-power/--max-power", profile)
+	case "code-high":
+		return "", fmt.Errorf("profile %q is deprecated; use --profile smart or --min-power/--max-power", profile)
+	}
 	if cat == nil {
 		return "", &ErrUnknownProfile{Profile: profile}
 	}

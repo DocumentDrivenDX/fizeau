@@ -237,7 +237,7 @@ func nativeRouteStatusCommand() *cobra.Command {
 			return exitError(cmdRouteStatus(rootWorkDir(cmd), routeStatusArgs(cmd, args)))
 		},
 	}
-	cmd.Flags().String("profile", "", "Routing profile")
+	cmd.Flags().String("profile", "", "Routing profile (cheap|standard|smart)")
 	cmd.Flags().String("harness", "", "Pin a specific harness")
 	cmd.Flags().Bool("overrides", false, "Print override_class_breakdown over a time window")
 	cmd.Flags().String("since", "", "Time window for --overrides mode")
