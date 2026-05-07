@@ -68,6 +68,26 @@ Published memos must state that identical model names across lanes are not a
 pure model control. Harnesses still differ in prompt scaffolding, tool schema,
 permission semantics, context handling, and quota surface.
 
+## Reproducible Command
+
+Use the single operator entrypoint documented in
+[scripts/benchmark/README.md](../../../scripts/benchmark/README.md#medium-model-fiz-wrapper-comparison):
+
+```bash
+OPENROUTER_API_KEY=sk-or-... \
+  scripts/benchmark/run_medium_model_terminalbench_comparison.sh
+```
+
+That wrapper is the official medium-model comparison command. It runs the six
+official `fiz-*` lanes through one Harbor-installed `FizeauAgent`, writes the
+matrix artifacts under `benchmark-results/matrix-medium-model-<tier>-<UTC>/`,
+and keeps raw Harbor Claude/Codex/pi/opencode adapters as diagnostics only.
+
+Invalid cells are reported as `invalid_quota`, `invalid_auth`,
+`invalid_setup`, or `invalid_provider`. They remain visible in `matrix.md`
+with their cause and log path, but they are excluded from mean reward and
+denominator calculations.
+
 ## Native Architecture
 
 On arm64 hosts, TerminalBench task images must be built for the native
