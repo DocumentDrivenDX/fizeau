@@ -198,6 +198,9 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	if dec.Endpoint != "" && found.SelectedEndpoint != dec.Endpoint {
 		t.Fatalf("SelectedEndpoint = %q, want %q", found.SelectedEndpoint, dec.Endpoint)
 	}
+	if dec.ServerInstance != "" && found.SelectedServerInstance != dec.ServerInstance {
+		t.Fatalf("SelectedServerInstance = %q, want %q", found.SelectedServerInstance, dec.ServerInstance)
+	}
 }
 
 func TestRouteStatus_attemptCooldownStateSurfaces(t *testing.T) {

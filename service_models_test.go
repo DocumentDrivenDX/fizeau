@@ -10,6 +10,7 @@ import (
 
 	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
 	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 )
 
@@ -357,6 +358,16 @@ func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T
 		defaultName: "bragi",
 	}
 	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+	instance := serverinstance.FromBaseURL(ts.URL + "/v1")
+	svc.routeUtilizationStore().Record("bragi", instance, "qwen3.5-27b", utilization.EndpointUtilization{
+		ActiveRequests: utilization.Int(2),
+		QueuedRequests: utilization.Int(1),
+		Source:         utilization.SourceVLLMMetrics,
+		Freshness:      utilization.FreshnessFresh,
+	})
+	if sample, ok := svc.routeUtilizationStore().Sample("bragi", instance, "qwen3.5-27b"); !ok || sample.Source != utilization.SourceVLLMMetrics {
+		t.Fatalf("route utilization sample not recorded: ok=%v sample=%#v", ok, sample)
+	}
 
 	infos, err := svc.ListModels(context.Background(), ModelFilter{})
 	if err != nil {
@@ -389,6 +400,15 @@ func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T
 	}
 	if known.PerfSignal.SWEBenchVerified != 59.0 {
 		t.Errorf("known model SWE = %.1f, want 59.0", known.PerfSignal.SWEBenchVerified)
+	}
+	if known.Utilization.Source != string(utilization.SourceVLLMMetrics) || known.Utilization.Freshness != string(utilization.FreshnessFresh) {
+		t.Errorf("known model utilization = %#v, want fresh vllm metrics", known.Utilization)
+	}
+	if known.Utilization.ActiveRequests == nil || *known.Utilization.ActiveRequests != 2 {
+		t.Errorf("known model utilization active = %#v, want 2", known.Utilization.ActiveRequests)
+	}
+	if known.Utilization.QueuedRequests == nil || *known.Utilization.QueuedRequests != 1 {
+		t.Errorf("known model utilization queued = %#v, want 1", known.Utilization.QueuedRequests)
 	}
 	if known.EndpointName == "" || known.EndpointBaseURL == "" {
 		t.Errorf("known model endpoint identity missing: %#v", known)

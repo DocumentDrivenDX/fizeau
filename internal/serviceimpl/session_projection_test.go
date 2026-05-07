@@ -43,8 +43,9 @@ func TestWriteAndReplaySessionLog(t *testing.T) {
 	path := filepath.Join(dir, "svc-1.jsonl")
 	logger := session.NewLogger(dir, "svc-1")
 	logger.Emit(agentcore.EventSessionStart, session.SessionStartData{
-		Prompt:           "hello",
-		SelectedEndpoint: "desk-a",
+		Prompt:                 "hello",
+		SelectedEndpoint:       "desk-a",
+		SelectedServerInstance: "desk-a",
 		Sticky: session.RoutingStickyState{
 			KeyPresent: true,
 			Assignment: "acquired",
@@ -56,8 +57,9 @@ func TestWriteAndReplaySessionLog(t *testing.T) {
 		},
 	})
 	logger.Emit(agentcore.EventSessionEnd, session.SessionEndData{
-		Status:           agentcore.StatusSuccess,
-		SelectedEndpoint: "desk-a",
+		Status:                 agentcore.StatusSuccess,
+		SelectedEndpoint:       "desk-a",
+		SelectedServerInstance: "desk-a",
 		Sticky: session.RoutingStickyState{
 			KeyPresent: true,
 			Assignment: "acquired",
@@ -88,6 +90,9 @@ func TestWriteAndReplaySessionLog(t *testing.T) {
 	}
 	if !strings.Contains(replay.String(), "Selected endpoint: desk-a") {
 		t.Fatalf("replay missing selected endpoint: %s", replay.String())
+	}
+	if !strings.Contains(replay.String(), "Selected server instance: desk-a") {
+		t.Fatalf("replay missing selected server instance: %s", replay.String())
 	}
 }
 

@@ -23,9 +23,10 @@ func TestReplay(t *testing.T) {
 	// Write a test session log
 	logger := NewLogger(dir, sessionID)
 	logger.Emit(agent.EventSessionStart, SessionStartData{
-		Provider:         "lmstudio",
-		Model:            "qwen3.5-7b",
-		SelectedEndpoint: "desk-b",
+		Provider:               "lmstudio",
+		Model:                  "qwen3.5-7b",
+		SelectedEndpoint:       "desk-b",
+		SelectedServerInstance: "desk-b",
 		Sticky: RoutingStickyState{
 			KeyPresent: true,
 			Assignment: "reused",
@@ -81,6 +82,7 @@ func TestReplay(t *testing.T) {
 	assert.Contains(t, output, "Session replay-test")
 	assert.Contains(t, output, "qwen3.5-7b")
 	assert.Contains(t, output, "Selected endpoint: desk-b")
+	assert.Contains(t, output, "Selected server instance: desk-b")
 	assert.Contains(t, output, "Sticky: key=present assignment=reused reason=live sticky lease reused")
 	assert.Contains(t, output, "Utilization: source=llama-server.slots freshness=fresh")
 	assert.Contains(t, output, "[System]")
