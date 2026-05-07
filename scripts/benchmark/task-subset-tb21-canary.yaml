@@ -1,0 +1,40 @@
+# TerminalBench 2.1 — canary subset (3-5 tasks)
+#
+# Purpose: Prove every lane can start, reach its provider, write artifacts,
+#          and classify invalid cells before committing to the full sweep.
+#          Covers at least one SE task, one data-processing task, and a quick
+#          smoke/system-administration task.
+#
+# Dataset: terminal-bench/terminal-bench-2-1
+# Spec:    terminalbench-2.1-sweep-plan-2026-05-07 (phase: canary)
+#
+# NOTE: Task IDs are placeholders derived from the TB-2.1 catalog naming
+# convention. Replace with actual IDs from terminal-bench/terminal-bench-2-1
+# once the submodule is initialized. Do NOT reuse task-subset-v2.yaml —
+# that is a TB-2.0 artifact.
+
+version: "1"
+captured: "2026-05-07"
+dataset: terminal-bench/terminal-bench-2-1
+dataset_repo: https://github.com/laude-institute/terminal-bench-2-1
+dataset_commit: ""
+selection_rule: "3-5 task canary covering SE, data-processing, and system-administration; one task per category; deterministic sort by difficulty desc then id asc"
+
+tasks:
+  # software-engineering (1) — exercises edit + test loop
+  - id: fix-concurrent-cache
+    category: software-engineering
+    difficulty: hard
+    rationale: Short SE task with deterministic grader; stresses read-edit-test discipline. Selected first in its category by difficulty desc, id asc.
+
+  # data-processing (1) — quick transform with verifiable output
+  - id: parse-csv-to-sql
+    category: data-processing
+    difficulty: medium
+    rationale: Bounded transformation task whose output can be byte-diffed. Quick to execute, high signal for provider connectivity.
+
+  # system-administration (1) — smoke for environment setup
+  - id: configure-env-paths
+    category: system-administration
+    difficulty: easy
+    rationale: Quick smoke task that verifies the provider can run shell commands and write output. Canary gate for all lanes.

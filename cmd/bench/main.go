@@ -37,6 +37,8 @@ func run(args []string) int {
 		return cmdMatrix(args[1:])
 	case "matrix-aggregate":
 		return cmdMatrixAggregate(args[1:])
+	case "sweep":
+		return cmdSweep(args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return 0
@@ -64,6 +66,7 @@ Commands:
   matrix     Run the SD-010 harness/profile/task matrix
   matrix-aggregate
              Aggregate matrix cell reports into matrix.json, matrix.md, costs.json
+  sweep      Run the TB-2.1 staged sweep with phase and resource-group scheduling
 
 Run '%s <command> -h' for command-specific flags.
 `, benchCommandName(), benchCommandName())

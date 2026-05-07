@@ -1,0 +1,111 @@
+# TerminalBench 2.1 — full sweep subset
+#
+# Used in phases: local-qwen, sonnet-comparison, gpt-comparison.
+# Stratified by category using fixed quotas analogous to task-subset-v2.yaml
+# (the TB-2.0 evidence-grade subset) but drawn from the TB-2.1 catalog.
+#
+# Dataset: terminal-bench/terminal-bench-2-1
+# Spec:    terminalbench-2.1-sweep-plan-2026-05-07 (phases: local-qwen, sonnet-comparison, gpt-comparison)
+#
+# Selection rule:
+#  1. Start from terminal-bench/terminal-bench-2-1 task catalog.
+#  2. Keep tasks with: cpus==1, memory=="2G", verifier_timeout<=1200,
+#     agent_timeout<=1200, expert_time_estimate_min<=180, no no-verified-solution tag.
+#  3. Stratify by category (quotas below). Within category: sort by difficulty
+#     (hard, medium, easy) then task ID; take first N per quota.
+#  4. Canary tasks are included in this subset.
+#
+# Quotas: SE=5, security=3, file-ops=2, sysadmin=2, data-processing=2, debugging=1
+#
+# NOTE: Task IDs are placeholders from the TB-2.1 naming convention.
+# Replace with actual IDs from terminal-bench/terminal-bench-2-1 once the
+# submodule is initialized. Do NOT overwrite or relabel task-subset-v2.yaml.
+
+version: "1"
+captured: "2026-05-07"
+dataset: terminal-bench/terminal-bench-2-1
+dataset_repo: https://github.com/laude-institute/terminal-bench-2-1
+dataset_commit: ""
+selection_rule: "filtered TB-2.1 tasks with fixed category quotas SE=5 security=3 file-ops=2 sysadmin=2 data-processing=2 debugging=1; difficulty-desc then id-asc"
+
+tasks:
+  # software-engineering (5)
+  - id: fix-concurrent-cache
+    category: software-engineering
+    difficulty: hard
+    rationale: SE task from canary; stresses concurrent code fix and test validation loop.
+
+  - id: refactor-async-pipeline
+    category: software-engineering
+    difficulty: hard
+    rationale: Multi-step async refactor with type-check and test gate; exercises structured edit discipline.
+
+  - id: implement-retry-backoff
+    category: software-engineering
+    difficulty: medium
+    rationale: Bounded implementation task with deterministic grader; exercises code generation and verification.
+
+  - id: patch-build-script
+    category: software-engineering
+    difficulty: medium
+    rationale: Build-oriented fix; exercises shell + targeted file edits.
+
+  - id: add-cli-flag
+    category: software-engineering
+    difficulty: easy
+    rationale: Smaller SE task as a baseline for capability floor; quick to run.
+
+  # security (3)
+  - id: remediate-injection-flaw
+    category: security
+    difficulty: hard
+    rationale: High-signal secure-editing task; exercises read-understand-fix pattern under verifier pressure.
+
+  - id: rotate-leaked-secret
+    category: security
+    difficulty: medium
+    rationale: Git + file manipulation task; aligned with repository security workflows.
+
+  - id: harden-file-permissions
+    category: security
+    difficulty: easy
+    rationale: Targeted chmod/chown task; quick grader, good invalid-class signal.
+
+  # file-operations (2)
+  - id: parse-csv-to-sql
+    category: data-processing
+    difficulty: medium
+    rationale: From canary; quick data transformation with byte-diffable output.
+
+  - id: extract-archive-contents
+    category: file-operations
+    difficulty: medium
+    rationale: Archive handling task; stresses targeted reads over search.
+
+  # system-administration (2)
+  - id: configure-env-paths
+    category: system-administration
+    difficulty: easy
+    rationale: From canary; quick smoke task verifying provider connectivity.
+
+  - id: setup-cron-job
+    category: system-administration
+    difficulty: medium
+    rationale: Crontab + shell task; exercises precise config editing.
+
+  # data-processing (2)
+  - id: summarize-log-ranges
+    category: data-processing
+    difficulty: medium
+    rationale: Text-processing/report task aligned with read-edit-run loops.
+
+  - id: merge-json-sources
+    category: data-processing
+    difficulty: medium
+    rationale: Multi-input merge task; stresses structured reasoning over bash search.
+
+  # debugging (1)
+  - id: debug-python-import-error
+    category: debugging
+    difficulty: medium
+    rationale: Build/debug task; checks diagnosis quality and fix verification.
