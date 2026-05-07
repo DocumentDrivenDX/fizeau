@@ -188,6 +188,25 @@ type AttemptMetadata struct {
      model memory used/max into a provider-independent endpoint utilization
      signal. `GET /admin/api/stats` remains an optional admin-only extension
      and is not required for the base utilization probe.
+15g. LM Studio's verified native surfaces are documented, but the live
+     utilization probe is still a gap:
+     - `POST /api/v1/chat` returns a `stats` object with
+       `input_tokens`, `total_output_tokens`, `reasoning_output_tokens`,
+       `tokens_per_second`, `time_to_first_token_seconds`, and optional
+       `model_load_time_seconds`. Treat this as the native performance surface.
+     - `GET /api/v1/models`, `POST /api/v1/models/load`,
+       `POST /api/v1/models/unload`, `POST /api/v1/models/download`, and
+       `GET /api/v1/models/download/status` are the confirmed model-management
+       surfaces.
+     - `lms server status --json` confirms running state and port, but it is a
+       CLI status surface rather than a provider utilization signal.
+     - No verified native cache counter is exposed on the documented LM Studio
+       surfaces, so LM Studio cache pressure remains `unknown` and routing
+       continues to fall back to service-owned in-flight lease counts plus
+       normal health.
+     - Follow-up bead: implement an LM Studio utilization probe that consumes
+       the native chat stats path and any future LM Studio cache/status counters
+       without changing the unknown fallback behavior.
 
 #### Reasoning Configuration
 

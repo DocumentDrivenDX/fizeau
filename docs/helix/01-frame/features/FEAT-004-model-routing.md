@@ -277,7 +277,10 @@ prompt behavior and must not be reused for model policy or routing.
      documented status or metrics surface when available and otherwise reports
      unknown utilization with service-owned lease fallback. A configured
      OpenAI-compatible `base_url` ending in `/v1` is converted to the server
-     root for these probes.
+     root for these probes. LM Studio currently has verified native chat
+     performance and model-management surfaces, but no live utilization probe,
+     so it stays on the unknown/service-owned fallback path until a follow-up
+     probe bead lands.
 31. `agent.Run()` still receives one concrete `Provider` per attempt. `Execute`
     selects and dispatches the top candidate once.
 32. The selected concrete harness, provider source, endpoint, model, requested
