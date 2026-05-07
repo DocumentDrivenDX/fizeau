@@ -19,6 +19,41 @@ cd "${ROOT}"
 
 TIER="${1:-wide}"
 case "${TIER}" in
+  help|-h|--help)
+    cat <<'EOF'
+usage: scripts/benchmark/run_medium_model_terminalbench_comparison.sh [canary|wide]
+
+Run the official medium-model TerminalBench fiz comparison through one Harbor-installed
+FizeauAgent. The wrapper sets the comparison pins internally, so the only manual
+environment variable you normally need is OPENROUTER_API_KEY for the fiz OpenRouter lanes.
+
+Single command:
+  OPENROUTER_API_KEY=sk-or-... scripts/benchmark/run_medium_model_terminalbench_comparison.sh
+
+Use `canary` for the 3-task preflight:
+  OPENROUTER_API_KEY=sk-or-... scripts/benchmark/run_medium_model_terminalbench_comparison.sh canary
+
+Official lanes:
+  fiz-harness-claude-sonnet-4-6
+  fiz-harness-codex-gpt-5-4-mini
+  fiz-harness-pi-gpt-5-4-mini
+  fiz-harness-opencode-gpt-5-4-mini
+  fiz-openrouter-claude-sonnet-4-6
+  fiz-openrouter-gpt-5-4-mini
+
+Artifacts:
+  benchmark-results/matrix-medium-model-<tier>-<UTC>/matrix.json
+  benchmark-results/matrix-medium-model-<tier>-<UTC>/matrix.md
+  benchmark-results/matrix-medium-model-<tier>-<UTC>/costs.json
+
+Invalid cells:
+  invalid_quota, invalid_auth, invalid_setup, and invalid_provider are recorded in matrix.md
+  with their cause and log path. They are excluded from mean reward and denominator handling.
+
+Raw Harbor Claude/Codex/pi/opencode adapters remain diagnostics only.
+EOF
+    exit 0
+    ;;
   canary|wide) ;;
   *)
     echo "usage: $0 [canary|wide]" >&2

@@ -433,17 +433,17 @@ OPENROUTER_API_KEY=sk-or-... \
   scripts/benchmark/run_medium_model_terminalbench_comparison.sh
 ```
 
-By default this runs the 15-task `wide` subset at `REPS=1`, `JOBS=1`, and
-writes one combined matrix under
-`benchmark-results/matrix-medium-model-wide-<UTC>/`. To do only the 3-task
-preflight:
+That single command is the official comparison entrypoint. The wrapper sets
+`TIER=wide`, `REPS=1`, `JOBS=1`, `FORCE_RERUN=1`, `HARBOR_FORCE_BUILD=1`, and
+`HARNESSES=fiz` internally, then runs one Harbor-installed `FizeauAgent`
+against the official profile CSV. To do only the 3-task preflight:
 
 ```bash
 OPENROUTER_API_KEY=sk-or-... \
   scripts/benchmark/run_medium_model_terminalbench_comparison.sh canary
 ```
 
-Cells included:
+Cells included in the official comparison:
 
 - `fiz-harness-claude-sonnet-4-6`
 - `fiz-harness-codex-gpt-5-4-mini`
@@ -451,6 +451,23 @@ Cells included:
 - `fiz-harness-opencode-gpt-5-4-mini`
 - `fiz-openrouter-claude-sonnet-4-6`
 - `fiz-openrouter-gpt-5-4-mini`
+
+The raw Harbor Claude/Codex/pi/opencode adapters remain diagnostics only. The
+official claims use the six `fiz-*` lanes routed through `FizeauAgent`, not the
+native Harbor adapter rows.
+
+Artifacts are written under
+`benchmark-results/matrix-medium-model-<tier>-<UTC>/`:
+
+- `matrix.json`
+- `matrix.md`
+- `costs.json`
+- per-cell logs under `*/logs/agent/`
+
+Invalid cells are classified as `invalid_quota`, `invalid_auth`,
+`invalid_setup`, or `invalid_provider`. They stay visible in `matrix.md` with
+their cause and log path, but they are excluded from mean reward and
+denominator handling when the matrix is aggregated.
 
 ### Bootstrap Subset Selection
 
