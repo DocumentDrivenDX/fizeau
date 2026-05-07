@@ -140,7 +140,7 @@ The benchmark evidence pipeline is:
 1. Run a benchmark job and keep the raw artifacts in `benchmark-results/`.
 2. Import the resulting run, report, or curated snapshot into JSONL evidence.
 3. Validate the imported evidence and append it to an append-only ledger.
-4. Generate benchmark-specific or cross-benchmark claims from the ledger with `go run ./cmd/bench fhi delta|rank` or the built `fiz-bench` binary.
+4. Generate benchmark-specific or cross-benchmark claims from the ledger.
 
 The canonical operator loop is:
 
@@ -167,6 +167,16 @@ and the benchmark resource notes for
 [SkillsBench](../../docs/resources/skillsbench-2026-05-06.md),
 [SWE-bench](../../docs/resources/swebench-2026-05-06.md), and
 [HumanEval](../../docs/resources/humaneval-2026-05-06.md).
+
+Use the command family below for the full evidence loop:
+
+- `go run ./cmd/bench evidence import-terminalbench`
+- `go run ./cmd/bench evidence import-beadbench`
+- `go run ./cmd/bench evidence import-external`
+- `go run ./cmd/bench evidence validate`
+- `go run ./cmd/bench evidence append`
+- `go run ./cmd/bench fhi delta`
+- `go run ./cmd/bench fhi rank`
 
 ### 1. Run benchmark jobs
 
@@ -215,11 +225,10 @@ ledger through their importer paths, not by hand-editing the schema.
 
 Raw benchmark artifacts remain in the gitignored `benchmark-results/` tree.
 Only curated snapshots or source hashes that have been normalized into ledger
-records should be committed. Checked-in curated snapshots, when approved, live
-under `scripts/benchmark/evidence/<snapshot-id>.jsonl`. The currently committed
-source fixtures used by importer tests live under
-`cmd/bench/testdata/external-benchmarks/`, while the repository root keeps the
-operator-facing run outputs in `benchmark-results/`.
+records should be committed. This repo currently keeps importer fixtures in
+`cmd/bench/testdata/external-benchmarks/` and `cmd/bench/testdata/fhi/`.
+Approved checked-in curated snapshots, if added later, should live under
+`scripts/benchmark/evidence/<snapshot-id>.jsonl`.
 
 ### 3. Validate and append to the ledger
 
