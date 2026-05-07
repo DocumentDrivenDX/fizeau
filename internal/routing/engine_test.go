@@ -268,6 +268,81 @@ func TestExplicitProviderPinDoesNotSubstituteAvailableProvider(t *testing.T) {
 	}
 }
 
+func TestResolvePrefersLargerContextHeadroomAmongEligibleCandidates(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "fiz",
+				Surface:             "embedded-openai",
+				CostClass:           "cheap",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{
+						Name:                 "alpha",
+						DefaultModel:         "model-a",
+						SupportsTools:        true,
+						ContextWindows:       map[string]int{"model-a": 4000},
+						ContextWindowSources: map[string]string{"model-a": ContextSourceCatalog},
+					},
+					{
+						Name:                 "zeta",
+						DefaultModel:         "model-a",
+						SupportsTools:        true,
+						ContextWindows:       map[string]int{"model-a": 12000},
+						ContextWindowSources: map[string]string{"model-a": ContextSourceCatalog},
+					},
+				},
+			},
+		},
+		ModelEligibility: func(model string) (ModelEligibility, bool) {
+			if model != "model-a" {
+				return ModelEligibility{}, false
+			}
+			return ModelEligibility{Power: 5, AutoRoutable: true}, true
+		},
+		Now: time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{
+		Harness:               "fiz",
+		Model:                 "model-a",
+		EstimatedPromptTokens: 1000,
+	}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "zeta" {
+		t.Fatalf("winner provider=%q, want zeta; candidates=%+v", dec.Provider, dec.Candidates)
+	}
+	if len(dec.Candidates) != 2 {
+		t.Fatalf("Candidates=%d, want 2", len(dec.Candidates))
+	}
+	var alpha, zeta Candidate
+	for _, c := range dec.Candidates {
+		switch c.Provider {
+		case "alpha":
+			alpha = c
+		case "zeta":
+			zeta = c
+		}
+	}
+	if alpha.Provider != "alpha" || zeta.Provider != "zeta" {
+		t.Fatalf("candidates=%+v, want both alpha and zeta", dec.Candidates)
+	}
+	if alpha.ContextHeadroom >= zeta.ContextHeadroom {
+		t.Fatalf("headroom ordering broken: alpha=%#v zeta=%#v", alpha, zeta)
+	}
+	if alpha.Score >= zeta.Score {
+		t.Fatalf("score should reward headroom: alpha score=%.2f zeta score=%.2f", alpha.Score, zeta.Score)
+	}
+}
+
 func TestExplicitModelPinDoesNotSubstituteCloudDefaults(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
