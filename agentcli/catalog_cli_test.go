@@ -311,7 +311,7 @@ default: local
 
 	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "legacy")
 	require.Error(t, err)
-	assert.Contains(t, string(out), `target "legacy" is deprecated; use "current"`)
+	assert.Contains(t, string(out), `target "legacy" is deprecated; use --profile current`)
 	assert.Equal(t, "", fake.lastModel())
 }
 

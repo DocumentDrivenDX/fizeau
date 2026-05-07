@@ -620,8 +620,8 @@ func TestRouteStatus_ShowsEligibleCandidatesPerIntent(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 
-	// Discover a local power-5 model so the agent harness has at least one
-	// eligible candidate under the balanced profile. Subscription harnesses
+	// Discover a local power-5 model so the native harness has at least one
+	// eligible candidate under the cheap profile. Subscription harnesses
 	// also surface candidates but go ineligible without quota state,
 	// exercising both eligible and ineligible code paths.
 	healthy := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
@@ -636,7 +636,7 @@ providers:
     model: qwen3.5-27b
 `)
 
-	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--profile", "standard", "--json")
+	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--profile", "cheap", "--json")
 	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
 	type component struct {
@@ -672,8 +672,8 @@ providers:
 		Candidates []candidate `json:"candidates"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
-	assert.Equal(t, "standard", parsed.Profile)
-	assert.Equal(t, "standard", parsed.PowerPolicy.Profile)
+	assert.Equal(t, "cheap", parsed.Profile)
+	assert.Equal(t, "cheap", parsed.PowerPolicy.Profile)
 	require.NotEmpty(t, parsed.Candidates, "engine must surface its candidate trace; stdout=%s", out.stdout)
 
 	// Every candidate carries the score-component bundle (cost, latency_ms,
