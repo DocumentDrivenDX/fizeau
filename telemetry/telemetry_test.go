@@ -24,7 +24,7 @@ func TestNewNoop(t *testing.T) {
 	tel := NewNoop()
 
 	ctx, span := tel.StartInvokeAgent(context.Background(), InvokeAgentSpan{
-		HarnessName: "agent",
+		HarnessName: "fizeau",
 		SessionID:   "s-1",
 	})
 	require.NotNil(t, ctx)
@@ -66,7 +66,7 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	tel := New(Config{TracerProvider: tp})
 
 	rootCtx, rootSpan := tel.StartInvokeAgent(context.Background(), InvokeAgentSpan{
-		HarnessName:     "agent",
+		HarnessName:     "fizeau",
 		HarnessVersion:  "1.0.0",
 		SessionID:       "s-1",
 		ParentSessionID: "s-parent",
@@ -104,11 +104,11 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	ended := recorder.Ended()
 	require.Len(t, ended, 3)
 
-	root := findSpan(t, ended, "invoke_agent agent")
+	root := findSpan(t, ended, "invoke_agent fizeau")
 	require.Equal(t, "fizeau", root.InstrumentationScope().Name)
 	require.Equal(t, "fizeau", attrString(t, root.Attributes(), KeyServiceName))
 	require.Equal(t, "invoke_agent", attrString(t, root.Attributes(), KeyOperationName))
-	require.Equal(t, "agent", attrString(t, root.Attributes(), KeyHarnessName))
+	require.Equal(t, "fizeau", attrString(t, root.Attributes(), KeyHarnessName))
 	require.Equal(t, "1.0.0", attrString(t, root.Attributes(), KeyHarnessVersion))
 	require.Equal(t, "s-1", attrString(t, root.Attributes(), KeySessionID))
 	require.Equal(t, "s-parent", attrString(t, root.Attributes(), KeyParentSessionID))
@@ -123,7 +123,7 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	require.Equal(t, root.SpanContext().SpanID(), chat.Parent().SpanID())
 	require.Equal(t, "fizeau", attrString(t, chat.Attributes(), KeyServiceName))
 	require.Equal(t, "chat", attrString(t, chat.Attributes(), KeyOperationName))
-	require.Equal(t, "agent", attrString(t, chat.Attributes(), KeyHarnessName))
+	require.Equal(t, "fizeau", attrString(t, chat.Attributes(), KeyHarnessName))
 	require.Equal(t, "s-1", attrString(t, chat.Attributes(), KeySessionID))
 	require.Equal(t, "c-1", attrString(t, chat.Attributes(), KeyConversationID))
 	require.Equal(t, int64(1), attrInt(t, chat.Attributes(), KeyTurnIndex))
@@ -143,7 +143,7 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	require.Equal(t, chat.SpanContext().SpanID(), tool.Parent().SpanID())
 	require.Equal(t, "fizeau", attrString(t, tool.Attributes(), KeyServiceName))
 	require.Equal(t, "execute_tool", attrString(t, tool.Attributes(), KeyOperationName))
-	require.Equal(t, "agent", attrString(t, tool.Attributes(), KeyHarnessName))
+	require.Equal(t, "fizeau", attrString(t, tool.Attributes(), KeyHarnessName))
 	require.Equal(t, "s-1", attrString(t, tool.Attributes(), KeySessionID))
 	require.Equal(t, "c-1", attrString(t, tool.Attributes(), KeyConversationID))
 	require.Equal(t, int64(1), attrInt(t, tool.Attributes(), KeyTurnIndex))
