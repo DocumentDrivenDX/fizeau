@@ -99,7 +99,7 @@ func TestRegistryFirstAvailableEmbeddedFallback(t *testing.T) {
 	// so FirstAvailable should return the first in preference order.
 	name, ok := r.FirstAvailable()
 	assert.True(t, ok)
-	// openrouter or lmstudio or agent/virtual/script depending on preference order
+	// openrouter or lmstudio or fiz/virtual/script depending on preference order
 	assert.NotEmpty(t, name)
 }
 
