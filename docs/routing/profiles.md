@@ -1,4 +1,4 @@
-# Routing Profiles
+# Routing Profiles and Power Bounds
 
 Profiles are named shorthands for points on the routing power curve. They
 expand to effective power policy, not to a closed set of concrete models.
@@ -12,10 +12,9 @@ Use `fiz --list-models` to inspect numeric power, compatibility metadata, and
 the live routing inventory before selecting a profile or hard pin.
 
 `ModelRef` is separate from profiles. It resolves catalog references for exact
-model identity and migration compatibility. The legacy `code-*` routing names
-are compatibility-only catalog targets, not the primary routing surface. When
-you need their replacement guidance, prefer `--profile smart|standard|cheap`
-or a numeric power range via `--min-power` and `--max-power`.
+model identity and migration compatibility. Deprecated catalog targets are
+compatibility-only references; when they are rejected, the error points at the
+replacement profile or numeric power bounds.
 
 Catalog profile listings expose effective `MinPower`/`MaxPower` along with an
 optional compatibility target for older references. The compatibility target

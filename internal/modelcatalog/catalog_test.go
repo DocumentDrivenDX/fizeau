@@ -2,6 +2,7 @@ package modelcatalog
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -212,6 +213,40 @@ func TestResolveDeprecatedAllowed(t *testing.T) {
 	assert.True(t, resolved.Deprecated)
 	assert.Equal(t, "alpha-smart", resolved.Replacement)
 	assert.Equal(t, "legacy-anthropic-1", resolved.ConcreteModel)
+}
+
+func TestCodeHighAndCodeMediumDeprecationGuidance(t *testing.T) {
+	catalog, err := Default()
+	require.NoError(t, err)
+
+	tests := []struct {
+		ref     string
+		profile string
+		min     int
+		max     int
+	}{
+		{ref: "code-high", profile: "smart", min: 9, max: 10},
+		{ref: "code-medium", profile: "standard", min: 7, max: 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.ref, func(t *testing.T) {
+			_, err := catalog.Resolve(tt.ref, ResolveOptions{
+				Surface: SurfaceAgentOpenAI,
+			})
+			require.Error(t, err)
+
+			var deprecatedErr *DeprecatedTargetError
+			require.True(t, errors.As(err, &deprecatedErr))
+			assert.Equal(t, tt.ref, deprecatedErr.CanonicalID)
+			assert.Equal(t, tt.profile, deprecatedErr.SuggestedProfile)
+			assert.Equal(t, tt.min, deprecatedErr.SuggestedMinPower)
+			assert.Equal(t, tt.max, deprecatedErr.SuggestedMaxPower)
+			assert.Contains(t, deprecatedErr.Error(), "--profile "+tt.profile)
+			assert.Contains(t, deprecatedErr.Error(), fmt.Sprintf("--min-power %d", tt.min))
+			assert.Contains(t, deprecatedErr.Error(), fmt.Sprintf("--max-power %d", tt.max))
+		})
+	}
 }
 
 func TestLoad_ExternalOverride(t *testing.T) {

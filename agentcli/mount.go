@@ -237,7 +237,7 @@ func nativeRouteStatusCommand() *cobra.Command {
 			return exitError(cmdRouteStatus(rootWorkDir(cmd), routeStatusArgs(cmd, args)))
 		},
 	}
-	cmd.Flags().String("profile", "", "Routing profile (cheap|standard|smart)")
+	cmd.Flags().String("profile", "", "Routing profile (named power shortcut; use --min-power / --max-power for exact bounds)")
 	cmd.Flags().String("harness", "", "Pin a specific harness")
 	cmd.Flags().Bool("overrides", false, "Print override_class_breakdown over a time window")
 	cmd.Flags().String("since", "", "Time window for --overrides mode")
@@ -643,7 +643,7 @@ func addLegacyPersistentFlags(cmd *cobra.Command) {
 	flags.String("backend", "", "Deprecated named backend pool from config")
 	flags.String("harness", "", "Harness hard pin (selects a specific harness)")
 	flags.String("model", "", "Model route key or explicit concrete model override")
-	flags.String("model-ref", "", "Model catalog reference")
+	flags.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target; deprecated targets fail with replacement guidance)")
 	flags.Bool("list-models", false, "List available models with routing metadata")
 	flags.Int("min-power", 0, "Minimum catalog model power for automatic routing")
 	flags.Int("max-power", 0, "Maximum catalog model power for automatic routing")

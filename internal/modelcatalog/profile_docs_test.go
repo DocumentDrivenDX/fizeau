@@ -8,9 +8,10 @@ import (
 	"testing"
 )
 
-func TestRoutingLegacyNamesDocPointsToPowerRouting(t *testing.T) {
+func TestProfileDocsAvoidLegacyCodeHighAndCodeMedium(t *testing.T) {
 	doc := readRoutingProfilesDoc(t)
 	required := []string{
+		"--profile",
 		"numeric power",
 		"--min-power",
 		"--max-power",
@@ -19,15 +20,17 @@ func TestRoutingLegacyNamesDocPointsToPowerRouting(t *testing.T) {
 		"--harness",
 		"fiz --list-models",
 		"compatibility metadata",
-		"not the primary routing surface",
+		"compatibility-only references",
 	}
 	for _, text := range required {
 		if !strings.Contains(doc, text) {
 			t.Errorf("docs/routing/profiles.md missing %q", text)
 		}
 	}
-	if strings.Contains(doc, "### `") {
-		t.Fatal("docs/routing/profiles.md must not enumerate legacy routing names")
+	for _, legacy := range []string{"code-high", "code-medium"} {
+		if strings.Contains(doc, legacy) {
+			t.Fatalf("docs/routing/profiles.md must not mention %q", legacy)
+		}
 	}
 }
 

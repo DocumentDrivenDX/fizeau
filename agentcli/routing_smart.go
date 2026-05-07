@@ -816,9 +816,9 @@ type routeStatusOutput struct {
 func cmdRouteStatus(workDir string, args []string) int {
 	fs := flag.NewFlagSet("route-status", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	profile := fs.String("profile", "", "Routing profile (cheap|standard|smart)")
+	profile := fs.String("profile", "", "Routing profile (named power shortcut; use --min-power / --max-power for exact bounds)")
 	model := fs.String("model", "", "Pin a specific model")
-	modelRef := fs.String("model-ref", "", "Model catalog reference")
+	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target; deprecated targets fail with replacement guidance)")
 	provider := fs.String("provider", "", "Pin a specific provider")
 	harness := fs.String("harness", "", "Pin a specific harness")
 	minPower := fs.Int("min-power", 0, "Minimum catalog model power for automatic routing")
