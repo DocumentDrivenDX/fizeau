@@ -772,20 +772,21 @@ type routeStatusComponents struct {
 }
 
 type routeStatusCandidate struct {
-	Harness       string                           `json:"harness,omitempty"`
-	Provider      string                           `json:"provider"`
-	Endpoint      string                           `json:"endpoint,omitempty"`
-	Model         string                           `json:"model"`
-	Score         float64                          `json:"score"`
-	ContextLength int                              `json:"context_length"`
-	ContextSource string                           `json:"context_source"`
-	Components    routeStatusComponents            `json:"components"`
-	Utilization   rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
-	Eligible      bool                             `json:"eligible"`
-	FilterReason  string                           `json:"filter_reason"`
-	Reason        string                           `json:"reason,omitempty"`
-	CostSource    string                           `json:"cost_source,omitempty"`
-	Winner        bool                             `json:"winner"`
+	Harness        string                           `json:"harness,omitempty"`
+	Provider       string                           `json:"provider"`
+	Endpoint       string                           `json:"endpoint,omitempty"`
+	ServerInstance string                           `json:"server_instance,omitempty"`
+	Model          string                           `json:"model"`
+	Score          float64                          `json:"score"`
+	ContextLength  int                              `json:"context_length"`
+	ContextSource  string                           `json:"context_source"`
+	Components     routeStatusComponents            `json:"components"`
+	Utilization    rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
+	Eligible       bool                             `json:"eligible"`
+	FilterReason   string                           `json:"filter_reason"`
+	Reason         string                           `json:"reason,omitempty"`
+	CostSource     string                           `json:"cost_source,omitempty"`
+	Winner         bool                             `json:"winner"`
 }
 
 type routeStatusPowerPolicy struct {
@@ -795,20 +796,21 @@ type routeStatusPowerPolicy struct {
 }
 
 type routeStatusOutput struct {
-	Profile          string                           `json:"profile,omitempty"`
-	Model            string                           `json:"model,omitempty"`
-	ModelRef         string                           `json:"model_ref,omitempty"`
-	Provider         string                           `json:"provider,omitempty"`
-	Harness          string                           `json:"harness,omitempty"`
-	MinPower         int                              `json:"min_power,omitempty"`
-	MaxPower         int                              `json:"max_power,omitempty"`
-	PowerPolicy      routeStatusPowerPolicy           `json:"power_policy,omitempty"`
-	SelectedEndpoint string                           `json:"selected_endpoint,omitempty"`
-	Sticky           rootfizeau.RouteStickyState      `json:"sticky,omitempty"`
-	Utilization      rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
-	Winner           *routeStatusCandidate            `json:"winner,omitempty"`
-	Candidates       []routeStatusCandidate           `json:"candidates"`
-	Error            string                           `json:"error,omitempty"`
+	Profile                string                           `json:"profile,omitempty"`
+	Model                  string                           `json:"model,omitempty"`
+	ModelRef               string                           `json:"model_ref,omitempty"`
+	Provider               string                           `json:"provider,omitempty"`
+	Harness                string                           `json:"harness,omitempty"`
+	MinPower               int                              `json:"min_power,omitempty"`
+	MaxPower               int                              `json:"max_power,omitempty"`
+	PowerPolicy            routeStatusPowerPolicy           `json:"power_policy,omitempty"`
+	SelectedEndpoint       string                           `json:"selected_endpoint,omitempty"`
+	SelectedServerInstance string                           `json:"selected_server_instance,omitempty"`
+	Sticky                 rootfizeau.RouteStickyState      `json:"sticky,omitempty"`
+	Utilization            rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
+	Winner                 *routeStatusCandidate            `json:"winner,omitempty"`
+	Candidates             []routeStatusCandidate           `json:"candidates"`
+	Error                  string                           `json:"error,omitempty"`
 }
 
 // cmdRouteStatus reports the routing engine's eligible-candidate trace for a
@@ -892,6 +894,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 	}
 	if decision != nil {
 		out.SelectedEndpoint = decision.Endpoint
+		out.SelectedServerInstance = decision.ServerInstance
 		out.Sticky = decision.Sticky
 		out.Utilization = decision.Utilization
 		out.PowerPolicy = routeStatusPowerPolicy{
@@ -902,18 +905,19 @@ func cmdRouteStatus(workDir string, args []string) int {
 		winnerSet := decision.Harness != "" || decision.Provider != "" || decision.Model != ""
 		for _, c := range decision.Candidates {
 			entry := routeStatusCandidate{
-				Harness:       c.Harness,
-				Provider:      c.Provider,
-				Endpoint:      c.Endpoint,
-				Model:         c.Model,
-				Score:         c.Score,
-				ContextLength: c.ContextLength,
-				ContextSource: c.ContextSource,
-				Eligible:      c.Eligible,
-				FilterReason:  c.FilterReason,
-				Reason:        c.Reason,
-				CostSource:    c.CostSource,
-				Utilization:   c.Utilization,
+				Harness:        c.Harness,
+				Provider:       c.Provider,
+				Endpoint:       c.Endpoint,
+				ServerInstance: c.ServerInstance,
+				Model:          c.Model,
+				Score:          c.Score,
+				ContextLength:  c.ContextLength,
+				ContextSource:  c.ContextSource,
+				Eligible:       c.Eligible,
+				FilterReason:   c.FilterReason,
+				Reason:         c.Reason,
+				CostSource:     c.CostSource,
+				Utilization:    c.Utilization,
 				Components: routeStatusComponents{
 					Power:            c.Components.Power,
 					Cost:             c.Components.Cost,
@@ -981,6 +985,9 @@ func cmdRouteStatus(workDir string, args []string) int {
 	}
 	if out.SelectedEndpoint != "" {
 		fmt.Printf("Selected endpoint: %s\n", out.SelectedEndpoint)
+	}
+	if out.SelectedServerInstance != "" {
+		fmt.Printf("Selected server instance: %s\n", out.SelectedServerInstance)
 	}
 	if out.Sticky.KeyPresent || out.Sticky.Assignment != "" || out.Sticky.Reason != "" {
 		fmt.Printf("Sticky: key=%s assignment=%s", stickyLabel(out.Sticky.KeyPresent), labelOrUnknown(out.Sticky.Assignment))

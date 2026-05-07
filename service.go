@@ -299,6 +299,7 @@ type ModelInfo struct {
 	ServerInstance  string
 	ContextLength   int
 	ContextSource   string
+	Utilization     RouteUtilizationState
 	Capabilities    []string
 	Cost            CostInfo
 	PerfSignal      PerfSignal

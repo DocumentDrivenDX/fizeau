@@ -497,32 +497,34 @@ providers:
 		CachePressure  *float64 `json:"cache_pressure"`
 	}
 	type candidate struct {
-		Harness       string      `json:"harness"`
-		Provider      string      `json:"provider"`
-		Endpoint      string      `json:"endpoint"`
-		Model         string      `json:"model"`
-		Score         float64     `json:"score"`
-		ContextLength int         `json:"context_length"`
-		ContextSource string      `json:"context_source"`
-		Components    component   `json:"components"`
-		Utilization   utilization `json:"utilization"`
-		Eligible      bool        `json:"eligible"`
-		FilterReason  string      `json:"filter_reason"`
-		Winner        bool        `json:"winner"`
+		Harness        string      `json:"harness"`
+		Provider       string      `json:"provider"`
+		Endpoint       string      `json:"endpoint"`
+		ServerInstance string      `json:"server_instance"`
+		Model          string      `json:"model"`
+		Score          float64     `json:"score"`
+		ContextLength  int         `json:"context_length"`
+		ContextSource  string      `json:"context_source"`
+		Components     component   `json:"components"`
+		Utilization    utilization `json:"utilization"`
+		Eligible       bool        `json:"eligible"`
+		FilterReason   string      `json:"filter_reason"`
+		Winner         bool        `json:"winner"`
 	}
 	var parsed struct {
-		Model            string      `json:"model"`
-		SelectedEndpoint string      `json:"selected_endpoint"`
-		Sticky           sticky      `json:"sticky"`
-		Utilization      utilization `json:"utilization"`
-		Winner           *candidate  `json:"winner"`
-		Candidates       []candidate `json:"candidates"`
+		Model                  string      `json:"model"`
+		SelectedEndpoint       string      `json:"selected_endpoint"`
+		SelectedServerInstance string      `json:"selected_server_instance"`
+		Sticky                 sticky      `json:"sticky"`
+		Utilization            utilization `json:"utilization"`
+		Winner                 *candidate  `json:"winner"`
+		Candidates             []candidate `json:"candidates"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
 	assert.Equal(t, "qwen3.5-27b", parsed.Model)
 	var generic map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &generic), "stdout=%s", out.stdout)
-	for _, key := range []string{"selected_endpoint", "sticky", "utilization"} {
+	for _, key := range []string{"selected_endpoint", "selected_server_instance", "sticky", "utilization"} {
 		if _, ok := generic[key]; !ok {
 			t.Fatalf("missing %q in route-status JSON: %s", key, out.stdout)
 		}
@@ -534,6 +536,9 @@ providers:
 	}
 	if _, ok := candidateGeneric[0]["utilization"]; !ok {
 		t.Fatalf("missing candidate utilization in route-status JSON: %s", out.stdout)
+	}
+	if _, ok := candidateGeneric[0]["server_instance"]; !ok {
+		t.Fatalf("missing candidate server_instance in route-status JSON: %s", out.stdout)
 	}
 	for _, key := range []string{"context_length", "context_source"} {
 		if _, ok := candidateGeneric[0][key]; !ok {
@@ -592,6 +597,7 @@ providers:
 	assert.True(t, parsed.Winner.Eligible)
 	assert.Empty(t, parsed.Winner.FilterReason, "winner must have an empty filter_reason")
 	assert.Equal(t, parsed.Winner.Endpoint, parsed.SelectedEndpoint)
+	assert.NotEmpty(t, parsed.SelectedServerInstance)
 	assert.False(t, parsed.Sticky.KeyPresent, "no correlation id was supplied, so sticky key should be absent")
 
 	// The winner must also appear inside the candidates array and be flagged.

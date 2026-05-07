@@ -1340,17 +1340,24 @@ type cliModelInventoryRow struct {
 	EndpointName      string  `json:"endpoint_name,omitempty"`
 	EndpointBaseURL   string  `json:"endpoint_base_url,omitempty"`
 	Endpoint          string  `json:"endpoint,omitempty"`
+	ServerInstance    string  `json:"server_instance,omitempty"`
 	Power             int     `json:"power"`
 	AutoRoutable      bool    `json:"auto_routable"`
 	ExactPinOnly      bool    `json:"exact_pin_only"`
 	CostInputPerMTok  float64 `json:"cost_input_per_mtok,omitempty"`
 	CostOutputPerMTok float64 `json:"cost_output_per_mtok,omitempty"`
+	ContextSource     string  `json:"context_source,omitempty"`
 	SpeedTokensPerSec float64 `json:"speed_tokens_per_sec,omitempty"`
 	SWEBenchVerified  float64 `json:"swe_bench_verified,omitempty"`
 	ContextLength     int     `json:"context_length,omitempty"`
-	Available         bool    `json:"available"`
-	CatalogRef        string  `json:"catalog_ref,omitempty"`
-	RankPosition      int     `json:"rank_position"`
+	PerfSignal        struct {
+		SpeedTokensPerSec float64 `json:"speed_tokens_per_sec,omitempty"`
+		SWEBenchVerified  float64 `json:"swe_bench_verified,omitempty"`
+	} `json:"perf_signal,omitempty"`
+	Utilization  fizeau.RouteUtilizationState `json:"utilization,omitempty"`
+	Available    bool                         `json:"available"`
+	CatalogRef   string                       `json:"catalog_ref,omitempty"`
+	RankPosition int                          `json:"rank_position"`
 }
 
 func cmdListModels(workDir string, jsonOutput bool, filter fizeau.ModelFilter) int {
@@ -1416,17 +1423,27 @@ func modelInventoryRows(models []fizeau.ModelInfo) []cliModelInventoryRow {
 			EndpointName:      model.EndpointName,
 			EndpointBaseURL:   model.EndpointBaseURL,
 			Endpoint:          modelInventoryEndpoint(model),
+			ServerInstance:    model.ServerInstance,
 			Power:             model.Power,
 			AutoRoutable:      model.AutoRoutable,
 			ExactPinOnly:      model.ExactPinOnly,
 			CostInputPerMTok:  model.Cost.InputPerMTok,
 			CostOutputPerMTok: model.Cost.OutputPerMTok,
+			ContextSource:     model.ContextSource,
 			SpeedTokensPerSec: model.PerfSignal.SpeedTokensPerSec,
 			SWEBenchVerified:  model.PerfSignal.SWEBenchVerified,
 			ContextLength:     model.ContextLength,
-			Available:         model.Available,
-			CatalogRef:        model.CatalogRef,
-			RankPosition:      model.RankPosition,
+			PerfSignal: struct {
+				SpeedTokensPerSec float64 `json:"speed_tokens_per_sec,omitempty"`
+				SWEBenchVerified  float64 `json:"swe_bench_verified,omitempty"`
+			}{
+				SpeedTokensPerSec: model.PerfSignal.SpeedTokensPerSec,
+				SWEBenchVerified:  model.PerfSignal.SWEBenchVerified,
+			},
+			Utilization:  model.Utilization,
+			Available:    model.Available,
+			CatalogRef:   model.CatalogRef,
+			RankPosition: model.RankPosition,
 		}
 		rows = append(rows, row)
 	}

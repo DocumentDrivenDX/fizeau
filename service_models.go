@@ -78,7 +78,7 @@ func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelIn
 			}
 
 			isDefaultProvider := providerName == defaultProviderName
-			models := listModelsForProvider(ctx, providerName, entry, isDefaultProvider, sc, cat)
+			models := listModelsForProvider(ctx, providerName, entry, isDefaultProvider, sc, cat, s.routeUtilizationEvidence)
 			results[idx] = indexedModels{idx: idx, models: models}
 		}(i, name)
 	}
@@ -123,6 +123,7 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 			info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
 			info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
 		}
+		info.Utilization = s.routeUtilizationEvidence(name, info.ServerInstance, info.EndpointName, id)
 		out = append(out, info)
 	}
 	return out
@@ -233,6 +234,7 @@ func listModelsForProvider(
 	isDefaultProvider bool,
 	sc ServiceConfig,
 	cat *modelcatalog.Catalog,
+	utilizationEvidence func(provider, serverInstance, endpoint, model string) RouteUtilizationState,
 ) []ModelInfo {
 	if entry.ConfigError != "" {
 		return nil
@@ -295,6 +297,9 @@ func listModelsForProvider(
 				// Try direct model lookup by ID even without a catalog ref.
 				info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
 				info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
+			}
+			if utilizationEvidence != nil {
+				info.Utilization = utilizationEvidence(providerName, info.ServerInstance, info.EndpointName, id)
 			}
 
 			// IsDefault: provider is default AND this model is the configured default model.

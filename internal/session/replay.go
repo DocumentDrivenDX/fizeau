@@ -57,6 +57,9 @@ func Replay(path string, w io.Writer) error {
 			if data.SelectedEndpoint != "" {
 				fmt.Fprintf(w, "Selected endpoint: %s\n", data.SelectedEndpoint)
 			}
+			if data.SelectedServerInstance != "" {
+				fmt.Fprintf(w, "Selected server instance: %s\n", data.SelectedServerInstance)
+			}
 			if data.Sticky.KeyPresent || data.Sticky.Assignment != "" || data.Sticky.Reason != "" {
 				fmt.Fprintf(w, "Sticky: key=%s assignment=%s",
 					routingStickyLabel(data.Sticky.KeyPresent),
@@ -140,6 +143,9 @@ func Replay(path string, w io.Writer) error {
 			}
 			if data.SelectedEndpoint != "" {
 				fmt.Fprintf(w, "Selected endpoint: %s\n", data.SelectedEndpoint)
+			}
+			if data.SelectedServerInstance != "" {
+				fmt.Fprintf(w, "Selected server instance: %s\n", data.SelectedServerInstance)
 			}
 			fmt.Fprintf(w, "Duration: %dms | Tokens: %d in / %d out",
 				data.DurationMs, data.Tokens.Input, data.Tokens.Output)

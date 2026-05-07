@@ -17,15 +17,29 @@ type listModelsJSONRow struct {
 	ProviderType      string  `json:"provider_type"`
 	EndpointName      string  `json:"endpoint_name"`
 	Endpoint          string  `json:"endpoint"`
+	ServerInstance    string  `json:"server_instance"`
 	Power             int     `json:"power"`
 	AutoRoutable      bool    `json:"auto_routable"`
 	ExactPinOnly      bool    `json:"exact_pin_only"`
 	CostInputPerMTok  float64 `json:"cost_input_per_mtok"`
 	CostOutputPerMTok float64 `json:"cost_output_per_mtok"`
+	ContextSource     string  `json:"context_source"`
 	SWEBenchVerified  float64 `json:"swe_bench_verified"`
 	ContextLength     int     `json:"context_length"`
-	Available         bool    `json:"available"`
-	CatalogRef        string  `json:"catalog_ref"`
+	PerfSignal        struct {
+		SpeedTokensPerSec float64 `json:"speed_tokens_per_sec"`
+		SWEBenchVerified  float64 `json:"swe_bench_verified"`
+	} `json:"perf_signal"`
+	Utilization struct {
+		Source         string   `json:"source"`
+		Freshness      string   `json:"freshness"`
+		ActiveRequests *int     `json:"active_requests"`
+		QueuedRequests *int     `json:"queued_requests"`
+		MaxConcurrency *int     `json:"max_concurrency"`
+		CachePressure  *float64 `json:"cache_pressure"`
+	} `json:"utilization"`
+	Available  bool   `json:"available"`
+	CatalogRef string `json:"catalog_ref"`
 }
 
 func TestCLI_ListModels_TableShowsPowerCostEndpoint(t *testing.T) {
@@ -81,6 +95,8 @@ default: studio
 
 	var rows []listModelsJSONRow
 	require.NoError(t, json.Unmarshal([]byte(res.stdout), &rows), "stdout=%s", res.stdout)
+	var generic []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &generic), "stdout=%s", res.stdout)
 
 	known := findListModelsRow(rows, "qwen3.5-27b")
 	require.NotNil(t, known, "rows=%s", res.stdout)
@@ -89,14 +105,24 @@ default: studio
 	assert.Equal(t, "lmstudio", known.ProviderType)
 	assert.Equal(t, "vidar", known.EndpointName)
 	assert.True(t, strings.HasPrefix(known.Endpoint, "vidar@"))
+	assert.NotEmpty(t, known.ServerInstance)
 	assert.Equal(t, 5, known.Power)
 	assert.True(t, known.AutoRoutable)
 	assert.False(t, known.ExactPinOnly)
 	assert.Equal(t, 0.10, known.CostInputPerMTok)
 	assert.Equal(t, 0.30, known.CostOutputPerMTok)
+	assert.Equal(t, "catalog", known.ContextSource)
 	assert.Equal(t, 59.0, known.SWEBenchVerified)
 	assert.Equal(t, 262144, known.ContextLength)
+	assert.NotZero(t, known.PerfSignal)
 	assert.NotEmpty(t, known.CatalogRef)
+	assert.Empty(t, known.Utilization.Source)
+	knownGeneric := findListModelsGenericRow(t, generic, "qwen3.5-27b", res.stdout)
+	for _, key := range []string{"server_instance", "context_source", "perf_signal", "utilization"} {
+		if _, ok := knownGeneric[key]; !ok {
+			t.Fatalf("missing %q in list-models JSON: %s", key, res.stdout)
+		}
+	}
 
 	unknown := findListModelsRow(rows, "unknown-local")
 	require.NotNil(t, unknown, "rows=%s", res.stdout)
@@ -113,5 +139,20 @@ func findListModelsRow(rows []listModelsJSONRow, model string) *listModelsJSONRo
 			return &rows[i]
 		}
 	}
+	return nil
+}
+
+func findListModelsGenericRow(t *testing.T, rows []map[string]json.RawMessage, model, stdout string) map[string]json.RawMessage {
+	t.Helper()
+	for _, row := range rows {
+		var got string
+		if err := json.Unmarshal(row["model"], &got); err != nil {
+			t.Fatalf("decode model from %s: %v", stdout, err)
+		}
+		if got == model {
+			return row
+		}
+	}
+	t.Fatalf("generic row for %q not found: %s", model, stdout)
 	return nil
 }
