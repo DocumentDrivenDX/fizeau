@@ -20,7 +20,7 @@
   "arms": [
     {
       "id": "agent-openrouter-gpt54",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "openrouter",
       "model": "gpt-5.4",
       "effort": "medium",
@@ -35,7 +35,7 @@
     },
     {
       "id": "agent-vidar-omlx-qwen36-27b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "vidar-omlx",
       "model": "Qwen3.6-27B-MLX-8bit",
       "effort": "medium",
@@ -43,7 +43,7 @@
     },
     {
       "id": "agent-bragi-lmstudio-qwen36-35b",
-      "harness": "agent",
+      "harness": "fiz",
       "provider": "bragi",
       "model": "qwen/qwen3.6-35b-a3b",
       "effort": "medium",
@@ -64,7 +64,7 @@
       "arm_id": "agent-openrouter-gpt54",
       "arm": {
         "id": "agent-openrouter-gpt54",
-        "harness": "agent",
+        "harness": "fiz",
         "provider": "openrouter",
         "model": "gpt-5.4",
         "effort": "medium"
@@ -166,7 +166,7 @@
       "arm_id": "agent-vidar-omlx-qwen36-27b",
       "arm": {
         "id": "agent-vidar-omlx-qwen36-27b",
-        "harness": "agent",
+        "harness": "fiz",
         "provider": "vidar-omlx",
         "model": "Qwen3.6-27B-MLX-8bit",
         "effort": "medium"
@@ -211,7 +211,7 @@
       "arm_id": "agent-bragi-lmstudio-qwen36-35b",
       "arm": {
         "id": "agent-bragi-lmstudio-qwen36-35b",
-        "harness": "agent",
+        "harness": "fiz",
         "provider": "bragi",
         "model": "qwen/qwen3.6-35b-a3b",
         "effort": "medium"

@@ -44,7 +44,7 @@ func TestBeadBenchReportImport(t *testing.T) {
 	assertString(t, success, "benchmark.version", "1")
 	assertString(t, success, "source.type", "imported_report")
 	assertString(t, success, "source.artifact_path", fixture)
-	assertString(t, success, "subject.harness", "agent")
+	assertString(t, success, "subject.harness", "fiz")
 	assertString(t, success, "subject.provider", "openrouter")
 	assertString(t, success, "subject.reasoning", "medium")
 	assertString(t, success, "components.bead_id", "agent-37aeb88e")
