@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ProviderType enumerates the four provider client paths supported by the
+// ProviderType enumerates the provider client paths supported by the
 // matrix runner. SD-010 §3 forbids silent override; the adapter selects its
 // client path by exact match on this field.
 type ProviderType string
@@ -27,12 +27,14 @@ const (
 	ProviderLMStudio     ProviderType = "lmstudio"
 	ProviderOllama       ProviderType = "ollama"
 	ProviderGoogle       ProviderType = "google"
+	ProviderRapidMLX     ProviderType = "rapid-mlx"
+	ProviderVLLM         ProviderType = "vllm"
 )
 
 func (p ProviderType) valid() bool {
 	switch p {
 	case ProviderAnthropic, ProviderOpenAI, ProviderOpenAICompat, ProviderOpenRouter,
-		ProviderOMLX, ProviderLMStudio, ProviderOllama, ProviderGoogle:
+		ProviderOMLX, ProviderLMStudio, ProviderOllama, ProviderGoogle, ProviderRapidMLX, ProviderVLLM:
 		return true
 	}
 	return false
@@ -159,7 +161,7 @@ func (p *Profile) Validate() error {
 		return fmt.Errorf("id is required")
 	}
 	if !p.Provider.Type.valid() {
-		return fmt.Errorf("provider.type %q is not one of anthropic|openai|openrouter|omlx|lmstudio|ollama|google", p.Provider.Type)
+		return fmt.Errorf("provider.type %q is not one of anthropic|openai|openrouter|omlx|lmstudio|ollama|google|rapid-mlx|vllm", p.Provider.Type)
 	}
 	if strings.TrimSpace(p.Provider.Model) == "" {
 		return fmt.Errorf("provider.model is required")
