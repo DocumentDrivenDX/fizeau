@@ -277,10 +277,16 @@ prompt behavior and must not be reused for model policy or routing.
      documented status or metrics surface when available and otherwise reports
      unknown utilization with service-owned lease fallback. A configured
      OpenAI-compatible `base_url` ending in `/v1` is converted to the server
-     root for these probes. LM Studio currently has verified native chat
-     performance and model-management surfaces, but no live utilization probe,
-     so it stays on the unknown/service-owned fallback path until a follow-up
-     probe bead lands.
+     root for these probes. Ollama's documented native surfaces expose request
+     timing on `POST /api/chat` or `POST /api/generate` via
+     `total_duration`, `load_duration`, `prompt_eval_count`,
+     `prompt_eval_duration`, `eval_count`, and `eval_duration`; loaded-model
+     inventory and allocated `context_length` come from `GET /api/ps`.
+     Ollama's native surfaces do not expose a verified cache-pressure counter,
+     so cache remains unknown unless a future probe adds it. LM Studio
+     currently has verified native chat performance and model-management
+     surfaces, but no live utilization probe, so it stays on the
+     unknown/service-owned fallback path until a follow-up probe bead lands.
 31. `agent.Run()` still receives one concrete `Provider` per attempt. `Execute`
     selects and dispatches the top candidate once.
 32. The selected concrete harness, provider source, endpoint, model, requested
@@ -360,7 +366,8 @@ prompt behavior and must not be reused for model policy or routing.
   in that request.
 - **Utilization probe unavailable or stale**: keep the endpoint eligible if
   normal model discovery and health checks pass. Use service-owned route leases
-  as the load signal and mark utilization source/freshness in route evidence.
+  as the load signal and mark utilization source/freshness as unknown or stale
+  in route evidence.
 - **Sticky server instance unavailable or ineligible**: invalidate or demote
   that sticky assignment and resolve from the currently eligible candidate set.
   Record the reason.
