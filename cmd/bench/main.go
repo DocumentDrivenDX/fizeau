@@ -29,6 +29,8 @@ func run(args []string) int {
 		return cmdReport(args[1:])
 	case "profiles":
 		return cmdProfiles(args[1:])
+	case "fhi":
+		return cmdFHI(args[1:])
 	case "evidence":
 		return cmdEvidence(args[1:])
 	case "matrix":
@@ -57,6 +59,7 @@ Commands:
   run        Run corpus against discovered candidates
   report     Render a results file as table, json, or markdown
   profiles   Manage v7 benchmark profiles (subcommand: list)
+  fhi        Generate benchmark-specific deltas or cross-benchmark FHI claims
   evidence   Validate and append benchmark evidence records, including curated external imports
   matrix     Run the SD-010 harness/profile/task matrix
   matrix-aggregate
