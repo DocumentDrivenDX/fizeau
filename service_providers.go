@@ -243,7 +243,7 @@ func codexQuotaCacheComplete(snap *codexharness.CodexQuotaSnapshot) bool {
 		strings.TrimSpace(snap.Account.PlanType) != ""
 }
 
-// ListProviders returns providers known to the native-agent harness with live
+// ListProviders returns providers known to the native fiz harness with live
 // status, configured-default markers, and cooldown state.
 func (s *service) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
 	sc := s.opts.ServiceConfig

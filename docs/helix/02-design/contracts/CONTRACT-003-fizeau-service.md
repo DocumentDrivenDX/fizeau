@@ -23,6 +23,10 @@ binary, anything else) interact only through this surface. **They do not import
 agent internal packages.** When new behavior is needed, consumers file an issue or
 PR against this contract; agent maintainers decide whether the surface grows.
 
+The native in-process Fizeau harness identity is `fiz`. The term `agent` is
+reserved for real external AI-agent concepts or historical artifact names; it is
+not a public alias for the native Fizeau route.
+
 Implementation ownership and package boundaries are governed by
 [ADR-008: Service Package and Transcript Boundaries](../adr/ADR-008-service-package-and-transcript-boundaries.md).
 That ADR makes this contract the public facade, assigns transcript/progress
@@ -1208,7 +1212,7 @@ test-only harnesses, and current provider-backend rows. It is not the
 authoritative health signal for the primary harnesses. Primary harness health is
 specified separately in
 `docs/helix/02-design/primary-harness-capability-baseline.md` and covers only
-`agent`, `codex`, and `claude`.
+`fiz`, `codex`, and `claude`.
 
 Primary-harness baseline capabilities are strict: `Run`, `FinalText`,
 `ProgressEvents`, `Cancel`, `WorkdirContext`, `PermissionModes`, `ListModels`,
@@ -1228,7 +1232,7 @@ Current builtin matrix:
 | claude | required | unsupported | optional | optional | optional | optional | required | optional | optional | optional | optional | unsupported |
 | gemini | required | optional | optional | optional | unsupported | optional | required | optional | optional | unsupported | unsupported | optional |
 | opencode | required | unsupported | optional | optional | optional | optional | required | optional | optional | unsupported | unsupported | unsupported |
-| agent | required | optional | optional | optional | optional | optional | required | optional | optional | optional | not_applicable | unsupported |
+| fiz | required | optional | optional | optional | optional | optional | required | optional | optional | optional | not_applicable | unsupported |
 | pi | required | unsupported | optional | optional | optional | unsupported | required | optional | optional | unsupported | unsupported | unsupported |
 | virtual | required | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | required | optional | optional | not_applicable | not_applicable | required |
 | script | required | not_applicable | not_applicable | not_applicable | not_applicable | not_applicable | required | optional | optional | not_applicable | not_applicable | required |

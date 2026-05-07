@@ -78,7 +78,7 @@ Patterned on pi's CLI interface (`pi -p "prompt"`) and DDx's config conventions
 
 #### DDx Harness Integration
 
-18. When invoked as `fiz` by DDx (`ddx agent run --harness=agent`), the CLI
+18. When invoked as `fiz` by DDx (`ddx run --harness=fiz`), the CLI
     accepts prompt via stdin or final argument (matching DDx's `PromptMode`)
 19. DDx passes model intent (`model_ref` or exact pin) to the embedded runtime;
     DDx does not name inner provider routes.

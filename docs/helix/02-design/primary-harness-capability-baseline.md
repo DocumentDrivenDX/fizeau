@@ -97,7 +97,7 @@ Current status:
 
 | Harness | Auto-routing status | Reason |
 |---|---|---|
-| agent | eligible | Native service evidence covers the baseline rows above. |
+| fiz | eligible | Native service evidence covers the baseline rows above. |
 | codex | eligible, conditional on fresh subsidized account/quota evidence | Codex runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; `internal/harnesses/codex/account_test.go` and quota-cache tests prove account metadata is extracted from Codex auth state and API-key-only or missing account evidence is not enough for auto-routing; `service_route_attempts_test.go:TestResolveRoute_CodexUsesDurableQuotaCache` proves automatic routing consumes fresh durable quota state. |
 | claude | eligible, conditional on fresh complete account/quota evidence | Claude runner tests cover request controls, final text, progress, usage, and cancellation/error behavior; PTY cassette tests cover model/reasoning discovery and quota evidence; quota-cache and PTY tests now reject incomplete account, source, session, or weekly-window evidence; foreground routing consumes the durable Claude quota decision before automatic selection. |
 | gemini | secondary; not auto-routed by default, but quota-gated when promoted | Gemini runner tests cover request controls, final text, progress, usage, cancellation/error behavior, and model discovery fixtures. A PTY quota probe in `internal/harnesses/gemini/quota_pty.go` drives Gemini CLI `/model manage`, and the parser in `internal/harnesses/gemini/quota_parse.go` extracts per-tier (Flash, Flash Lite, Pro) used-percent and reset-time evidence. Results persist to a durable cache in `internal/harnesses/gemini/quota_cache.go` (`$XDG_STATE_HOME/<config-dir>/gemini-quota.json`, default 15-minute freshness). Auth/account evidence is still surfaced for diagnostic purposes but is no longer accepted as quota status. Automatic routing consumes `ReadGeminiQuotaRoutingDecision` — missing, stale, or all-exhausted snapshots keep Gemini out of auto-routing; exhausted tiers (e.g. Pro at 100% used) surface as `exhausting` quota trend. Promotion to `AutoRoutingEligible=true` remains out of scope for this bead and requires a subsequent explicit promotion decision. |
@@ -206,7 +206,7 @@ or `blocked`, not optional.
 
 Evidence:
 
-- test that `ListModels(... Harness: "agent")` returns configured/provider
+- test that `ListModels(... Harness: "fiz")` returns configured/provider
   models
 - test that `ListModels(... Harness: "codex")` returns a non-empty model list
   with source metadata
@@ -390,7 +390,7 @@ to these fields as evidence.
 The service must expose a primary-harness baseline report that is separate from
 the broad harness/provider capability matrix. The report must:
 
-- include only `agent`, `codex`, and `claude`
+- include only `fiz`, `codex`, and `claude`
 - exclude HTTP provider backends such as `openrouter`, `lmstudio`, and `omlx`
 - avoid `optional` for baseline capabilities
 - show `gap` or `blocked` for missing primary requirements
@@ -407,7 +407,7 @@ passes in both live record mode and credential-free playback mode.
 ## Acceptance Criteria
 
 1. A primary-harness baseline report exists and renders as a compact table for
-   `agent`, `codex`, and `claude`.
+   `fiz`, `codex`, and `claude`.
 2. The report includes all baseline capabilities in this spec.
 3. `ListModels` is required for all primary harnesses and cannot be reported as
    optional.

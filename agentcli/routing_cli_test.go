@@ -537,7 +537,7 @@ providers:
 	require.NotEmpty(t, parsed.Candidates)
 	for _, c := range parsed.Candidates {
 		// Subscription harnesses (claude/codex/gemini) surface harness-level
-		// candidates with no Provider; native agent harness candidates do
+		// candidates with no Provider; native fiz harness candidates do
 		// carry a Provider. Either way the routing identity (Harness or
 		// Provider) must be populated.
 		assert.True(t, c.Harness != "" || c.Provider != "", "candidate must carry a harness or provider: %+v", c)
