@@ -55,6 +55,9 @@ func TestExecuteRouteEvidenceNoRetryAfterSelectedDispatchFailure(t *testing.T) {
 	if final.RoutingActual.Provider != "alpha" || final.RoutingActual.Model != "route-model" {
 		t.Fatalf("policy_statement=%q: routing_actual=%#v, want attempted alpha/route-model", policyStatement, final.RoutingActual)
 	}
+	if final.RoutingActual.ServerInstance == "" {
+		t.Fatalf("policy_statement=%q: routing_actual server instance should be populated", policyStatement)
+	}
 	if final.RoutingActual.FailureClass != "transport" {
 		t.Fatalf("policy_statement=%q: failure_class=%q, want transport", policyStatement, final.RoutingActual.FailureClass)
 	}

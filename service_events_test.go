@@ -13,11 +13,12 @@ import (
 func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 	ch := make(chan fizeau.ServiceEvent, 7)
 	ch <- serviceEvent(t, fizeau.ServiceEventTypeRoutingDecision, 0, map[string]any{
-		"harness":    "fiz",
-		"provider":   "fake",
-		"model":      "fake-model",
-		"reason":     "test route",
-		"session_id": "svc-test",
+		"harness":         "fiz",
+		"provider":        "fake",
+		"server_instance": "fake-instance",
+		"model":           "fake-model",
+		"reason":          "test route",
+		"session_id":      "svc-test",
 	})
 	ch <- serviceEvent(t, fizeau.ServiceEventTypeTextDelta, 1, map[string]any{"text": "APPROVE\n"})
 	ch <- serviceEvent(t, fizeau.ServiceEventTypeToolCall, 2, map[string]any{
@@ -46,7 +47,7 @@ func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 		"cost_usd":         0.001,
 		"session_log_path": "/tmp/session.jsonl",
 		"routing_actual": map[string]any{
-			"harness": "fiz", "provider": "fake", "model": "fake-model",
+			"harness": "fiz", "provider": "fake", "server_instance": "fake-instance", "model": "fake-model",
 		},
 	})
 	close(ch)
@@ -79,8 +80,14 @@ func TestDrainExecute_DecodesTypedResult(t *testing.T) {
 	if result.RoutingDecision == nil || result.RoutingDecision.SessionID != "svc-test" {
 		t.Fatalf("RoutingDecision: got %#v", result.RoutingDecision)
 	}
+	if result.RoutingDecision.ServerInstance != "fake-instance" {
+		t.Fatalf("RoutingDecision.ServerInstance: got %q", result.RoutingDecision.ServerInstance)
+	}
 	if result.RoutingActual == nil || result.RoutingActual.Provider != "fake" {
 		t.Fatalf("RoutingActual: got %#v", result.RoutingActual)
+	}
+	if result.RoutingActual.ServerInstance != "fake-instance" {
+		t.Fatalf("RoutingActual.ServerInstance: got %q", result.RoutingActual.ServerInstance)
 	}
 	if result.SessionLogPath != "/tmp/session.jsonl" {
 		t.Fatalf("SessionLogPath: got %q", result.SessionLogPath)

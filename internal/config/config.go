@@ -29,17 +29,19 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
 	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
 	"github.com/DocumentDrivenDX/fizeau/internal/sampling"
+	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 	"github.com/DocumentDrivenDX/fizeau/telemetry"
 	"gopkg.in/yaml.v3"
 )
 
 // ProviderConfig describes a single named provider.
 type ProviderConfig struct {
-	Type      string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", or "anthropic"
-	BaseURL   string             `yaml:"base_url,omitempty"` // shorthand for one endpoint
-	Endpoints []ProviderEndpoint `yaml:"endpoints,omitempty"`
-	APIKey    string             `yaml:"api_key,omitempty"`
-	Model     string             `yaml:"model,omitempty"`
+	Type           string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", or "anthropic"
+	BaseURL        string             `yaml:"base_url,omitempty"` // shorthand for one endpoint
+	ServerInstance string             `yaml:"server_instance,omitempty"`
+	Endpoints      []ProviderEndpoint `yaml:"endpoints,omitempty"`
+	APIKey         string             `yaml:"api_key,omitempty"`
+	Model          string             `yaml:"model,omitempty"`
 	// ModelPattern is a case-insensitive regex applied to auto-discovered model
 	// IDs when Model is empty. The first matching model returned by /v1/models
 	// is used. If the pattern matches nothing, the first available model is
@@ -74,22 +76,24 @@ type SamplingProfile = sampling.Profile
 // ProviderEndpoint describes one serving endpoint for providers that can run
 // across multiple host:port locations.
 type ProviderEndpoint struct {
-	Name    string `yaml:"name,omitempty"`
-	BaseURL string `yaml:"base_url"`
+	Name           string `yaml:"name,omitempty"`
+	BaseURL        string `yaml:"base_url"`
+	ServerInstance string `yaml:"server_instance,omitempty"`
 }
 
 // EndpointConfig describes one endpoint-first serving target. Unlike
 // ProviderConfig, endpoint blocks do not require a user-facing provider name
 // or a configured model; routing discovers live model IDs from /v1/models.
 type EndpointConfig struct {
-	Name      string              `yaml:"name,omitempty"`
-	Type      string              `yaml:"type"`
-	Host      string              `yaml:"host,omitempty"`
-	Port      int                 `yaml:"port,omitempty"`
-	BaseURL   string              `yaml:"base_url,omitempty"`
-	APIKey    string              `yaml:"api_key,omitempty"`
-	Headers   map[string]string   `yaml:"headers,omitempty"`
-	Reasoning reasoning.Reasoning `yaml:"reasoning,omitempty"`
+	Name           string              `yaml:"name,omitempty"`
+	Type           string              `yaml:"type"`
+	Host           string              `yaml:"host,omitempty"`
+	Port           int                 `yaml:"port,omitempty"`
+	BaseURL        string              `yaml:"base_url,omitempty"`
+	ServerInstance string              `yaml:"server_instance,omitempty"`
+	APIKey         string              `yaml:"api_key,omitempty"`
+	Headers        map[string]string   `yaml:"headers,omitempty"`
+	Reasoning      reasoning.Reasoning `yaml:"reasoning,omitempty"`
 }
 
 // ImportMetadata records the last import source for drift detection.
@@ -1017,11 +1021,13 @@ func providerConfigFromEndpoint(endpoint EndpointConfig, ordinal int) (ProviderC
 		name = generatedEndpointProviderName(endpoint, providerType, baseURL, ordinal)
 	}
 	return ProviderConfig{
-		Type:    providerType,
-		BaseURL: baseURL,
+		Type:           providerType,
+		BaseURL:        baseURL,
+		ServerInstance: serverinstance.Normalize(baseURL, endpoint.ServerInstance),
 		Endpoints: []ProviderEndpoint{{
-			Name:    "default",
-			BaseURL: baseURL,
+			Name:           "default",
+			BaseURL:        baseURL,
+			ServerInstance: serverinstance.Normalize(baseURL, endpoint.ServerInstance),
 		}},
 		APIKey:    endpoint.APIKey,
 		Headers:   endpoint.Headers,
@@ -1104,9 +1110,11 @@ func uniqueEndpointProviderName(name string, used map[string]bool) string {
 func normalizeProviderConfig(pc ProviderConfig) ProviderConfig {
 	pc.Type = strings.ToLower(strings.TrimSpace(pc.Type))
 	pc.BaseURL = strings.TrimSpace(pc.BaseURL)
+	pc.ServerInstance = serverinstance.Normalize(pc.BaseURL, pc.ServerInstance)
 	for i := range pc.Endpoints {
 		pc.Endpoints[i].Name = strings.TrimSpace(pc.Endpoints[i].Name)
 		pc.Endpoints[i].BaseURL = strings.TrimSpace(pc.Endpoints[i].BaseURL)
+		pc.Endpoints[i].ServerInstance = serverinstance.Normalize(pc.Endpoints[i].BaseURL, pc.Endpoints[i].ServerInstance)
 	}
 	if pc.BaseURL == "" && len(pc.Endpoints) > 0 {
 		pc.BaseURL = pc.Endpoints[0].BaseURL
@@ -1153,7 +1161,17 @@ func normalizeProviderConfig(pc ProviderConfig) ProviderConfig {
 		}
 	}
 	if pc.BaseURL != "" && len(pc.Endpoints) == 0 && providerUsesEndpoint(pc.Type) {
-		pc.Endpoints = []ProviderEndpoint{{Name: "default", BaseURL: pc.BaseURL}}
+		pc.Endpoints = []ProviderEndpoint{{Name: "default", BaseURL: pc.BaseURL, ServerInstance: pc.ServerInstance}}
+	}
+	if pc.ServerInstance == "" {
+		pc.ServerInstance = serverinstance.FromBaseURL(pc.BaseURL)
+	}
+	if len(pc.Endpoints) > 0 {
+		for i := range pc.Endpoints {
+			if pc.Endpoints[i].ServerInstance == "" {
+				pc.Endpoints[i].ServerInstance = serverinstance.FromBaseURL(pc.Endpoints[i].BaseURL)
+			}
+		}
 	}
 	return pc
 }

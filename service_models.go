@@ -22,6 +22,7 @@ import (
 	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 )
 
 // ListModels returns models matching the filter, with full metadata.
@@ -102,15 +103,16 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 	out := make([]ModelInfo, 0, len(modelIDs))
 	for i, id := range modelIDs {
 		info := ModelInfo{
-			ID:           id,
-			Provider:     name,
-			Harness:      name,
-			EndpointName: name,
-			Capabilities: []string{"streaming", "tool_use"},
-			Available:    true,
-			IsDefault:    cfg.DefaultModel != "" && id == cfg.DefaultModel,
-			CatalogRef:   catalogRefs[id],
-			RankPosition: i,
+			ID:             id,
+			Provider:       name,
+			Harness:        name,
+			EndpointName:   name,
+			ServerInstance: name,
+			Capabilities:   []string{"streaming", "tool_use"},
+			Available:      true,
+			IsDefault:      cfg.DefaultModel != "" && id == cfg.DefaultModel,
+			CatalogRef:     catalogRefs[id],
+			RankPosition:   i,
 		}
 		if cat != nil {
 			info.ContextLength = resolveContextLength(context.Background(), ServiceProviderEntry{}, id, cat)
@@ -268,6 +270,7 @@ func listModelsForProvider(
 				Harness:         "fiz",
 				EndpointName:    discovery.EndpointName,
 				EndpointBaseURL: discovery.EndpointBaseURL,
+				ServerInstance:  discovery.ServerInstance,
 				Available:       true,
 			}
 
@@ -309,6 +312,7 @@ func listModelsForProvider(
 type discoveredModelSet struct {
 	EndpointName    string
 	EndpointBaseURL string
+	ServerInstance  string
 	IDs             []string
 	Ranked          []scoredModel
 }
@@ -331,6 +335,7 @@ func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat 
 			out = append(out, discoveredModelSet{
 				EndpointName:    endpoint.Name,
 				EndpointBaseURL: endpoint.BaseURL,
+				ServerInstance:  endpoint.ServerInstance,
 				IDs:             ids,
 				Ranked:          rankModelsInline(ids, cat),
 			})
@@ -350,6 +355,7 @@ func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat 
 			return []discoveredModelSet{{
 				EndpointName:    "default",
 				EndpointBaseURL: entry.BaseURL,
+				ServerInstance:  serverinstance.Normalize(entry.BaseURL, entry.ServerInstance),
 				IDs:             []string{entry.Model},
 				Ranked:          []scoredModel{sm},
 			}}
@@ -362,8 +368,9 @@ func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat 
 }
 
 type modelDiscoveryEndpoint struct {
-	Name    string
-	BaseURL string
+	Name           string
+	BaseURL        string
+	ServerInstance string
 }
 
 func modelDiscoveryEndpoints(entry ServiceProviderEntry) []modelDiscoveryEndpoint {
@@ -374,8 +381,9 @@ func modelDiscoveryEndpoints(entry ServiceProviderEntry) []modelDiscoveryEndpoin
 				continue
 			}
 			out = append(out, modelDiscoveryEndpoint{
-				Name:    endpointDisplayName(ep.Name, ep.BaseURL),
-				BaseURL: ep.BaseURL,
+				Name:           endpointDisplayName(ep.Name, ep.BaseURL),
+				BaseURL:        ep.BaseURL,
+				ServerInstance: serverinstance.Normalize(ep.BaseURL, ep.ServerInstance),
 			})
 		}
 		return out
@@ -384,8 +392,9 @@ func modelDiscoveryEndpoints(entry ServiceProviderEntry) []modelDiscoveryEndpoin
 		return nil
 	}
 	return []modelDiscoveryEndpoint{{
-		Name:    endpointDisplayName("default", entry.BaseURL),
-		BaseURL: entry.BaseURL,
+		Name:           endpointDisplayName("default", entry.BaseURL),
+		BaseURL:        entry.BaseURL,
+		ServerInstance: serverinstance.Normalize(entry.BaseURL, entry.ServerInstance),
 	}}
 }
 

@@ -34,19 +34,21 @@ var nativeReadOnlyTools = map[string]bool{
 
 // NativeDecision is the API-neutral routing data needed by the native runner.
 type NativeDecision struct {
-	Harness    string
-	Provider   string
-	Model      string
-	Candidates []NativeRouteCandidate
+	Harness        string
+	Provider       string
+	ServerInstance string
+	Model          string
+	Candidates     []NativeRouteCandidate
 }
 
 // NativeRouteCandidate is the API-neutral subset of root RouteCandidate used
 // by the native failover provider.
 type NativeRouteCandidate struct {
-	Provider string
-	Endpoint string
-	Model    string
-	Eligible bool
+	Provider       string
+	Endpoint       string
+	ServerInstance string
+	Model          string
+	Eligible       bool
 }
 
 // NativeRequest is the API-neutral request data needed by the native runner.
@@ -138,9 +140,10 @@ func RunNative(ctx context.Context, req NativeRequest, cb NativeCallbacks) {
 			Error:      providerNotConfiguredError(cb.ProviderNotConfiguredError, req, req.Decision),
 			DurationMS: time.Since(req.Started).Milliseconds(),
 			RoutingActual: &harnesses.RoutingActual{
-				Harness:  actualHarness,
-				Provider: actualProvider,
-				Model:    actualModel,
+				Harness:        actualHarness,
+				Provider:       actualProvider,
+				ServerInstance: req.Decision.ServerInstance,
+				Model:          actualModel,
 			},
 		})
 		return
@@ -152,9 +155,10 @@ func RunNative(ctx context.Context, req NativeRequest, cb NativeCallbacks) {
 			Error:      permissionErr.Error(),
 			DurationMS: time.Since(req.Started).Milliseconds(),
 			RoutingActual: &harnesses.RoutingActual{
-				Harness:  actualHarness,
-				Provider: actualProvider,
-				Model:    actualModel,
+				Harness:        actualHarness,
+				Provider:       actualProvider,
+				ServerInstance: req.Decision.ServerInstance,
+				Model:          actualModel,
 			},
 		})
 		return
@@ -277,6 +281,7 @@ func RunNative(ctx context.Context, req NativeRequest, cb NativeCallbacks) {
 		RoutingActual: &harnesses.RoutingActual{
 			Harness:            actualHarness,
 			Provider:           finalProvider,
+			ServerInstance:     req.Decision.ServerInstance,
 			Model:              finalModel,
 			FallbackChainFired: append([]string(nil), result.AttemptedProviders...),
 		},

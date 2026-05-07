@@ -68,9 +68,10 @@ func DispatchExecuteRun(ctx context.Context, req ExecuteDispatchRequest, cb Exec
 			Error:      fmt.Sprintf("harness %q dispatch not yet wired in service.Execute", req.Decision.Harness),
 			DurationMS: time.Since(req.Started).Milliseconds(),
 			RoutingActual: &harnesses.RoutingActual{
-				Harness:  req.Decision.Harness,
-				Provider: req.Decision.Provider,
-				Model:    req.Decision.Model,
+				Harness:        req.Decision.Harness,
+				Provider:       req.Decision.Provider,
+				ServerInstance: req.Decision.ServerInstance,
+				Model:          req.Decision.Model,
 			},
 		})
 	}

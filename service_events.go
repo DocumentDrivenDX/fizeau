@@ -149,6 +149,7 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 			Harness:            c.Harness,
 			Provider:           c.Provider,
 			Endpoint:           c.Endpoint,
+			ServerInstance:     c.ServerInstance,
 			Model:              c.Model,
 			Score:              c.Score,
 			CostUSDPer1kTokens: c.CostUSDPer1kTokens,
@@ -186,6 +187,7 @@ type ServiceRoutingDecisionData struct {
 	Harness          string                         `json:"harness"`
 	Provider         string                         `json:"provider,omitempty"`
 	Endpoint         string                         `json:"endpoint,omitempty"`
+	ServerInstance   string                         `json:"server_instance,omitempty"`
 	Model            string                         `json:"model"`
 	Reason           string                         `json:"reason"`
 	Sticky           ServiceRoutingStickyState      `json:"sticky,omitempty"`
@@ -208,6 +210,7 @@ type ServiceRoutingDecisionCandidate struct {
 	Harness            string                           `json:"harness"`
 	Provider           string                           `json:"provider,omitempty"`
 	Endpoint           string                           `json:"endpoint,omitempty"`
+	ServerInstance     string                           `json:"server_instance,omitempty"`
 	Model              string                           `json:"model,omitempty"`
 	Score              float64                          `json:"score"`
 	CostUSDPer1kTokens float64                          `json:"cost_usd_per_1k_tokens,omitempty"`
@@ -234,9 +237,10 @@ type ServiceRoutingDecisionComponents struct {
 }
 
 type ServiceRoutingStickyState struct {
-	KeyPresent bool   `json:"key_present,omitempty"`
-	Assignment string `json:"assignment,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	KeyPresent     bool   `json:"key_present,omitempty"`
+	Assignment     string `json:"assignment,omitempty"`
+	ServerInstance string `json:"server_instance,omitempty"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 type ServiceRoutingUtilizationState struct {
@@ -322,6 +326,7 @@ type ServiceUsageTokenCounts struct {
 type ServiceRoutingActual struct {
 	Harness            string   `json:"harness"`
 	Provider           string   `json:"provider,omitempty"`
+	ServerInstance     string   `json:"server_instance,omitempty"`
 	Model              string   `json:"model"`
 	FallbackChainFired []string `json:"fallback_chain_fired,omitempty"`
 	FailureClass       string   `json:"failure_class,omitempty"`

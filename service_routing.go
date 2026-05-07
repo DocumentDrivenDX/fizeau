@@ -114,12 +114,13 @@ func routeDecisionFromInternal(dec *routing.Decision) *RouteDecision {
 		return nil
 	}
 	return &RouteDecision{
-		Harness:    dec.Harness,
-		Provider:   dec.Provider,
-		Endpoint:   dec.Endpoint,
-		Model:      dec.Model,
-		Reason:     dec.Reason,
-		Candidates: routeCandidatesFromInternal(dec.Candidates),
+		Harness:        dec.Harness,
+		Provider:       dec.Provider,
+		Endpoint:       dec.Endpoint,
+		ServerInstance: dec.ServerInstance,
+		Model:          dec.Model,
+		Reason:         dec.Reason,
+		Candidates:     routeCandidatesFromInternal(dec.Candidates),
 	}
 }
 
@@ -139,6 +140,7 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 		Harness:            candidate.Harness,
 		Provider:           candidate.Provider,
 		Endpoint:           candidate.Endpoint,
+		ServerInstance:     candidate.ServerInstance,
 		Model:              candidate.Model,
 		Score:              candidate.Score,
 		CostUSDPer1kTokens: candidate.CostUSDPer1kTokens,
@@ -165,21 +167,23 @@ func (s *service) annotateRouteDecisionEvidence(decision *RouteDecision) {
 	if s == nil || decision == nil {
 		return
 	}
-	decision.Utilization = s.routeUtilizationEvidence(decision.Provider, decision.Endpoint, decision.Model)
+	decision.Utilization = s.routeUtilizationEvidence(decision.Provider, decision.ServerInstance, decision.Endpoint, decision.Model)
 	for i := range decision.Candidates {
 		decision.Candidates[i].Utilization = s.routeUtilizationEvidence(
 			decision.Candidates[i].Provider,
+			decision.Candidates[i].ServerInstance,
 			decision.Candidates[i].Endpoint,
 			decision.Candidates[i].Model,
 		)
 	}
 }
 
-func (s *service) routeUtilizationEvidence(provider, endpoint, model string) RouteUtilizationState {
+func (s *service) routeUtilizationEvidence(provider, serverInstance, endpoint, model string) RouteUtilizationState {
 	if s == nil || s.routeUtilization == nil {
 		return RouteUtilizationState{}
 	}
 	keyProvider := strings.TrimSpace(provider)
+	keyServerInstance := strings.TrimSpace(serverInstance)
 	keyEndpoint := strings.TrimSpace(endpoint)
 	if base, ep, ok := splitEndpointProviderRef(keyProvider); ok {
 		keyProvider = base
@@ -187,7 +191,13 @@ func (s *service) routeUtilizationEvidence(provider, endpoint, model string) Rou
 			keyEndpoint = ep
 		}
 	}
-	sample, ok := s.routeUtilization.Sample(keyProvider, keyEndpoint, model)
+	if keyServerInstance == "" {
+		keyServerInstance = keyEndpoint
+	}
+	sample, ok := s.routeUtilization.Sample(keyProvider, keyServerInstance, model)
+	if !ok && keyEndpoint != "" && keyEndpoint != keyServerInstance {
+		sample, ok = s.routeUtilization.Sample(keyProvider, keyEndpoint, model)
+	}
 	if !ok {
 		return RouteUtilizationState{}
 	}
@@ -725,6 +735,7 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 			entry := routing.ProviderEntry{
 				Name:               routeName,
 				BaseURL:            endpoint.BaseURL,
+				ServerInstance:     endpoint.ServerInstance,
 				EndpointName:       endpoint.Name,
 				EndpointBaseURL:    endpoint.BaseURL,
 				DefaultModel:       pcfg.Model,
@@ -742,6 +753,7 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 	entry := routing.ProviderEntry{
 		Name:           providerName,
 		BaseURL:        pcfg.BaseURL,
+		ServerInstance: pcfg.ServerInstance,
 		DefaultModel:   pcfg.Model,
 		CostClass:      providerRoutingCostClass(pcfg.Type),
 		ContextWindows: buildProviderContextWindows(cat, pcfg.Model, nil),

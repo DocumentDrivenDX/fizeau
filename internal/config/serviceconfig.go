@@ -56,13 +56,15 @@ func (c *configServiceConfig) Provider(name string) (fizeau.ServiceProviderEntry
 	endpoints := make([]fizeau.ServiceProviderEndpoint, 0, len(pc.Endpoints))
 	for _, endpoint := range pc.Endpoints {
 		endpoints = append(endpoints, fizeau.ServiceProviderEndpoint{
-			Name:    endpoint.Name,
-			BaseURL: endpoint.BaseURL,
+			Name:           endpoint.Name,
+			BaseURL:        endpoint.BaseURL,
+			ServerInstance: endpoint.ServerInstance,
 		})
 	}
 	return fizeau.ServiceProviderEntry{
 		Type:             pc.Type,
 		BaseURL:          pc.BaseURL,
+		ServerInstance:   pc.ServerInstance,
 		Endpoints:        endpoints,
 		APIKey:           pc.APIKey,
 		Model:            pc.Model,

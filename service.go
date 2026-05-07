@@ -62,11 +62,12 @@ type ServiceConfig interface {
 
 // ServiceProviderEntry carries the minimal provider data the service needs.
 type ServiceProviderEntry struct {
-	Type      string // "openai" | "openrouter" | "lmstudio" | "llama-server" | "omlx" | "lucebox" | "vllm" | "rapid-mlx" | "ollama" | "anthropic"
-	BaseURL   string
-	Endpoints []ServiceProviderEndpoint
-	APIKey    string
-	Model     string // configured default model (may be empty)
+	Type           string // "openai" | "openrouter" | "lmstudio" | "llama-server" | "omlx" | "lucebox" | "vllm" | "rapid-mlx" | "ollama" | "anthropic"
+	BaseURL        string
+	ServerInstance string
+	Endpoints      []ServiceProviderEndpoint
+	APIKey         string
+	Model          string // configured default model (may be empty)
 	// ConfigError marks this provider entry invalid while allowing the rest of
 	// the service config to load. Invalid providers are reported in status
 	// surfaces and excluded from routing.
@@ -79,8 +80,9 @@ type ServiceProviderEntry struct {
 
 // ServiceProviderEndpoint is one configured provider serving endpoint.
 type ServiceProviderEndpoint struct {
-	Name    string
-	BaseURL string
+	Name           string
+	BaseURL        string
+	ServerInstance string
 }
 
 // ServiceOptions configures a FizeauService instance.
@@ -207,16 +209,17 @@ type UsageWindow struct {
 
 // EndpointStatus describes one configured provider endpoint probe.
 type EndpointStatus struct {
-	Name          string
-	BaseURL       string
-	ProbeURL      string
-	Status        string // connected|unreachable|unauthenticated|error|unknown
-	Source        string
-	CapturedAt    time.Time
-	Fresh         bool
-	LastSuccessAt time.Time
-	ModelCount    int
-	LastError     *StatusError
+	Name           string
+	BaseURL        string
+	ServerInstance string
+	ProbeURL       string
+	Status         string // connected|unreachable|unauthenticated|error|unknown
+	Source         string
+	CapturedAt     time.Time
+	Fresh          bool
+	LastSuccessAt  time.Time
+	ModelCount     int
+	LastError      *StatusError
 }
 
 // HarnessInfo describes a registered harness as defined in CONTRACT-003.
@@ -290,6 +293,7 @@ type ModelInfo struct {
 	Harness         string
 	EndpointName    string
 	EndpointBaseURL string
+	ServerInstance  string
 	ContextLength   int
 	Capabilities    []string
 	Cost            CostInfo
@@ -443,6 +447,9 @@ type RouteDecision struct {
 	// Endpoint is the selected named endpoint when the provider exposes more
 	// than one endpoint.
 	Endpoint string
+	// ServerInstance is the normalized server identity used for sticky
+	// affinity and route evidence.
+	ServerInstance string
 	// Model is the selected concrete model.
 	Model string
 	// Reason summarizes why the selected candidate won.
@@ -479,6 +486,8 @@ type RouteCandidate struct {
 	Provider string
 	// Endpoint is the provider endpoint name when applicable.
 	Endpoint string
+	// ServerInstance is the normalized server identity for the candidate.
+	ServerInstance string
 	// Model is the candidate concrete model.
 	Model string
 	// Score is the routing score assigned before final ordering.
@@ -549,9 +558,10 @@ type RouteCandidateComponents struct {
 // RouteStickyState describes sticky routing evidence without exposing the
 // underlying key.
 type RouteStickyState struct {
-	KeyPresent bool   `json:"key_present,omitempty"`
-	Assignment string `json:"assignment,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	KeyPresent     bool   `json:"key_present,omitempty"`
+	Assignment     string `json:"assignment,omitempty"`
+	ServerInstance string `json:"server_instance,omitempty"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 // RouteUtilizationState summarizes the live utilization sample associated
@@ -605,13 +615,14 @@ const RouteStatusRoutingQualityWindow = 100
 
 // RouteStatusEntry describes the live provider candidates serving one model.
 type RouteStatusEntry struct {
-	Model            string
-	Strategy         string // informational; route tables are not user-authored
-	SelectedEndpoint string
-	Sticky           RouteStickyState
-	Candidates       []RouteCandidateStatus
-	LastDecision     *RouteDecision // most recent ResolveRoute result for this key (cached)
-	LastDecisionAt   time.Time
+	Model                  string
+	Strategy               string // informational; route tables are not user-authored
+	SelectedEndpoint       string
+	SelectedServerInstance string
+	Sticky                 RouteStickyState
+	Candidates             []RouteCandidateStatus
+	LastDecision           *RouteDecision // most recent ResolveRoute result for this key (cached)
+	LastDecisionAt         time.Time
 }
 
 // RouteCandidateStatus describes a single live provider/model candidate.
@@ -624,6 +635,7 @@ type RouteStatusEntry struct {
 type RouteCandidateStatus struct {
 	Provider                string
 	Model                   string
+	ServerInstance          string
 	Priority                int
 	Healthy                 bool
 	Cooldown                *CooldownState

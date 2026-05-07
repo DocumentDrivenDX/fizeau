@@ -66,9 +66,10 @@ func RunSubprocess(ctx context.Context, req SubprocessRequest, runner harnesses.
 			Error:      err.Error(),
 			DurationMS: time.Since(req.Started).Milliseconds(),
 			RoutingActual: &harnesses.RoutingActual{
-				Harness:  req.Decision.Harness,
-				Provider: req.Decision.Provider,
-				Model:    req.Decision.Model,
+				Harness:        req.Decision.Harness,
+				Provider:       req.Decision.Provider,
+				ServerInstance: req.Decision.ServerInstance,
+				Model:          req.Decision.Model,
 			},
 		})
 		return
@@ -155,9 +156,10 @@ func stampSubprocessFinalRouting(ev harnesses.Event, decision ExecuteRunnerDecis
 	}
 	if final.RoutingActual == nil {
 		final.RoutingActual = &harnesses.RoutingActual{
-			Harness:  decision.Harness,
-			Provider: decision.Provider,
-			Model:    decision.Model,
+			Harness:        decision.Harness,
+			Provider:       decision.Provider,
+			ServerInstance: decision.ServerInstance,
+			Model:          decision.Model,
 		}
 	}
 	raw, err := json.Marshal(final)

@@ -449,15 +449,17 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	// reserved keys).
 	routingMeta := metaWithRoleAndCorrelation(meta, req.Role, req.CorrelationID)
 	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, routingMeta, ServiceRoutingDecisionData{
-		Harness:  decision.Harness,
-		Provider: decision.Provider,
-		Endpoint: decision.Endpoint,
-		Model:    decision.Model,
-		Reason:   decision.Reason,
+		Harness:        decision.Harness,
+		Provider:       decision.Provider,
+		Endpoint:       decision.Endpoint,
+		ServerInstance: decision.ServerInstance,
+		Model:          decision.Model,
+		Reason:         decision.Reason,
 		Sticky: ServiceRoutingStickyState{
-			KeyPresent: decision.Sticky.KeyPresent,
-			Assignment: decision.Sticky.Assignment,
-			Reason:     decision.Sticky.Reason,
+			KeyPresent:     decision.Sticky.KeyPresent,
+			Assignment:     decision.Sticky.Assignment,
+			ServerInstance: decision.Sticky.ServerInstance,
+			Reason:         decision.Sticky.Reason,
 		},
 		Utilization: ServiceRoutingUtilizationState{
 			Source:         decision.Utilization.Source,
@@ -520,9 +522,10 @@ func executeRunnerRequest(req ServiceExecuteRequest, decision RouteDecision, met
 		Prompt:   req.Prompt,
 		Metadata: meta,
 		Decision: serviceimpl.ExecuteRunnerDecision{
-			Harness:  decision.Harness,
-			Provider: decision.Provider,
-			Model:    decision.Model,
+			Harness:        decision.Harness,
+			Provider:       decision.Provider,
+			ServerInstance: decision.ServerInstance,
+			Model:          decision.Model,
 		},
 		Started: start,
 	}
@@ -670,18 +673,20 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 
 func nativeDecision(decision RouteDecision) serviceimpl.NativeDecision {
 	return serviceimpl.NativeDecision{
-		Harness:    decision.Harness,
-		Provider:   decision.Provider,
-		Model:      decision.Model,
-		Candidates: nativeRouteCandidates(decision.Candidates),
+		Harness:        decision.Harness,
+		Provider:       decision.Provider,
+		ServerInstance: decision.ServerInstance,
+		Model:          decision.Model,
+		Candidates:     nativeRouteCandidates(decision.Candidates),
 	}
 }
 
 func routeDecision(decision serviceimpl.NativeDecision) RouteDecision {
 	return RouteDecision{
-		Harness:  decision.Harness,
-		Provider: decision.Provider,
-		Model:    decision.Model,
+		Harness:        decision.Harness,
+		Provider:       decision.Provider,
+		ServerInstance: decision.ServerInstance,
+		Model:          decision.Model,
 	}
 }
 
@@ -692,10 +697,11 @@ func nativeRouteCandidates(in []RouteCandidate) []serviceimpl.NativeRouteCandida
 	out := make([]serviceimpl.NativeRouteCandidate, len(in))
 	for i, candidate := range in {
 		out[i] = serviceimpl.NativeRouteCandidate{
-			Provider: candidate.Provider,
-			Endpoint: candidate.Endpoint,
-			Model:    candidate.Model,
-			Eligible: candidate.Eligible,
+			Provider:       candidate.Provider,
+			Endpoint:       candidate.Endpoint,
+			ServerInstance: candidate.ServerInstance,
+			Model:          candidate.Model,
+			Eligible:       candidate.Eligible,
 		}
 	}
 	return out

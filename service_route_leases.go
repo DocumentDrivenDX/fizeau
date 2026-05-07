@@ -50,7 +50,9 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 			store.Acquire(now, stickyRouteLeaseTTL, key, baseProvider, lease.Endpoint, decision.Model)
 			decision.Provider = candidate.Provider
 			decision.Endpoint = candidate.Endpoint
+			decision.ServerInstance = candidate.ServerInstance
 			decision.Sticky.Assignment = "reused"
+			decision.Sticky.ServerInstance = candidate.ServerInstance
 			decision.Sticky.Reason = "live sticky lease reused"
 			return
 		}
@@ -72,7 +74,10 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 		decision.Sticky.Assignment = "none"
 		return
 	}
-	chosenEndpoint := decision.Endpoint
+	chosenEndpoint := decision.ServerInstance
+	if chosenEndpoint == "" {
+		chosenEndpoint = decision.Endpoint
+	}
 	if chosenEndpoint == "" {
 		_, chosenEndpoint, _ = splitEndpointProviderRef(decision.Provider)
 	}
@@ -84,6 +89,7 @@ func (s *service) applyStickyRouteLease(stickyKey string, decision *RouteDecisio
 	}
 	store.Acquire(now, stickyRouteLeaseTTL, key, baseProvider, chosenEndpoint, decision.Model)
 	decision.Sticky.Assignment = "acquired"
+	decision.Sticky.ServerInstance = chosenEndpoint
 	if decision.Sticky.Reason == "" {
 		decision.Sticky.Reason = "new sticky lease acquired"
 	}
@@ -101,10 +107,14 @@ func stickyLeaseCandidate(candidates []RouteCandidate, harness, provider, model,
 		if baseProvider != provider {
 			continue
 		}
+		candidateInstance := candidate.ServerInstance
 		if candidateEndpoint == "" {
 			candidateEndpoint = candidate.Endpoint
 		}
-		if candidateEndpoint == endpoint {
+		if candidateInstance == "" {
+			candidateInstance = candidateEndpoint
+		}
+		if candidateInstance == endpoint || candidateEndpoint == endpoint {
 			return candidate, true
 		}
 	}
@@ -123,10 +133,14 @@ func stickyLeaseAnyEndpoint(candidates []RouteCandidate, harness, provider, endp
 		if baseProvider != provider {
 			continue
 		}
+		candidateInstance := candidate.ServerInstance
 		if candidateEndpoint == "" {
 			candidateEndpoint = candidate.Endpoint
 		}
-		if candidateEndpoint == endpoint {
+		if candidateInstance == "" {
+			candidateInstance = candidateEndpoint
+		}
+		if candidateInstance == endpoint || candidateEndpoint == endpoint {
 			return candidate, true
 		}
 	}

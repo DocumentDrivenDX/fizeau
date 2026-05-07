@@ -14,9 +14,10 @@ import (
 // ExecuteRunnerDecision is the API-neutral routing data needed by internal
 // virtual/script runner implementations.
 type ExecuteRunnerDecision struct {
-	Harness  string
-	Provider string
-	Model    string
+	Harness        string
+	Provider       string
+	ServerInstance string
+	Model          string
 }
 
 // ExecuteRunnerRequest is the API-neutral request data needed by internal
@@ -66,9 +67,10 @@ func RunVirtual(ctx context.Context, req ExecuteRunnerRequest) ExecuteRunnerResu
 	final := harnesses.FinalData{
 		DurationMS: durationMS(req.Started),
 		RoutingActual: &harnesses.RoutingActual{
-			Harness:  req.Decision.Harness,
-			Provider: req.Decision.Provider,
-			Model:    metaValue(meta, "virtual.model", req.Decision.Model),
+			Harness:        req.Decision.Harness,
+			Provider:       req.Decision.Provider,
+			ServerInstance: req.Decision.ServerInstance,
+			Model:          metaValue(meta, "virtual.model", req.Decision.Model),
 		},
 	}
 	if err != nil {
@@ -117,9 +119,10 @@ func RunScript(ctx context.Context, req ExecuteRunnerRequest) ExecuteRunnerResul
 		FinalText:  text,
 		DurationMS: durationMS(req.Started),
 		RoutingActual: &harnesses.RoutingActual{
-			Harness:  req.Decision.Harness,
-			Provider: req.Decision.Provider,
-			Model:    req.Decision.Model,
+			Harness:        req.Decision.Harness,
+			Provider:       req.Decision.Provider,
+			ServerInstance: req.Decision.ServerInstance,
+			Model:          req.Decision.Model,
 		},
 	}
 	if exitCode != 0 {
@@ -143,9 +146,10 @@ func failedOrCancelledFinal(req ExecuteRunnerRequest, status, msg string) harnes
 		Error:      msg,
 		DurationMS: durationMS(req.Started),
 		RoutingActual: &harnesses.RoutingActual{
-			Harness:  req.Decision.Harness,
-			Provider: req.Decision.Provider,
-			Model:    req.Decision.Model,
+			Harness:        req.Decision.Harness,
+			Provider:       req.Decision.Provider,
+			ServerInstance: req.Decision.ServerInstance,
+			Model:          req.Decision.Model,
 		},
 	}
 }

@@ -106,6 +106,7 @@ type HarnessEntry struct {
 type ProviderEntry struct {
 	Name               string
 	BaseURL            string
+	ServerInstance     string
 	EndpointName       string
 	EndpointBaseURL    string
 	DefaultModel       string
@@ -140,12 +141,13 @@ const (
 // Decision is the routing engine's output: the picked candidate plus the
 // full ranked list (including rejected ones with rejection reasons).
 type Decision struct {
-	Harness    string
-	Provider   string
-	Endpoint   string
-	Model      string
-	Reason     string
-	Candidates []Candidate
+	Harness        string
+	Provider       string
+	Endpoint       string
+	ServerInstance string
+	Model          string
+	Reason         string
+	Candidates     []Candidate
 }
 
 // Candidate is one ranked routing option.
@@ -153,6 +155,7 @@ type Candidate struct {
 	Harness            string
 	Provider           string
 	Endpoint           string
+	ServerInstance     string
 	Model              string
 	Score              float64
 	CostUSDPer1kTokens float64
@@ -343,6 +346,7 @@ type candidateInternal struct {
 	Harness               string
 	Provider              string
 	EndpointName          string
+	ServerInstance        string
 	Model                 string
 	CostClass             string
 	CostUSDPer1kTokens    float64
@@ -480,12 +484,13 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 	for i := range out {
 		if out[i].Eligible {
 			return &Decision{
-				Harness:    out[i].Harness,
-				Provider:   out[i].Provider,
-				Endpoint:   out[i].Endpoint,
-				Model:      out[i].Model,
-				Reason:     fmt.Sprintf("profile=%s; score=%.1f", req.Profile, out[i].Score),
-				Candidates: out,
+				Harness:        out[i].Harness,
+				Provider:       out[i].Provider,
+				Endpoint:       out[i].Endpoint,
+				ServerInstance: out[i].ServerInstance,
+				Model:          out[i].Model,
+				Reason:         fmt.Sprintf("profile=%s; score=%.1f", req.Profile, out[i].Score),
+				Candidates:     out,
 			}, nil
 		}
 	}
@@ -911,6 +916,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			Harness:               h.Name,
 			Provider:              p.Name,
 			EndpointName:          p.EndpointName,
+			ServerInstance:        p.ServerInstance,
 			Model:                 model,
 			CostClass:             candidateCostClass(h, p),
 			CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
@@ -938,6 +944,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				Harness:            h.Name,
 				Provider:           p.Name,
 				Endpoint:           p.EndpointName,
+				ServerInstance:     p.ServerInstance,
 				Model:              model,
 				CostUSDPer1kTokens: p.CostUSDPer1kTokens,
 				CostSource:         normalizeCostSource(p.CostSource),
@@ -980,12 +987,15 @@ func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
 
 func candidateLoadIdentity(h HarnessEntry, p ProviderEntry) (string, string) {
 	provider := candidateProviderIdentity(h, p)
-	endpoint := p.EndpointName
+	endpoint := p.ServerInstance
 	if base, ep, ok := strings.Cut(provider, "@"); ok && base != "" {
 		provider = base
 		if endpoint == "" {
 			endpoint = ep
 		}
+	}
+	if endpoint == "" {
+		endpoint = p.EndpointName
 	}
 	return provider, endpoint
 }
