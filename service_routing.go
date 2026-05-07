@@ -49,6 +49,17 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	if err != nil {
 		return &RouteDecision{}, err
 	}
+	powerPolicy := RoutePowerPolicy{
+		Profile:  profile,
+		MinPower: req.MinPower,
+		MaxPower: req.MaxPower,
+	}
+	if req.Model == "" && req.Provider == "" && req.Harness == "" {
+		powerPolicy, err = effectiveRoutePowerPolicy(cat, profile, req.MinPower, req.MaxPower)
+		if err != nil {
+			return &RouteDecision{}, err
+		}
+	}
 	in := s.buildRoutingInputsWithCatalog(ctx, cat)
 
 	resolvedModel, modelCandidates, modelErr := s.resolveModelConstraint(req.Harness, req.Provider, req.Model, in, cat)
@@ -69,8 +80,8 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		ProviderPreference:    providerPreference,
 		EstimatedPromptTokens: req.EstimatedPromptTokens,
 		RequiresTools:         req.RequiresTools,
-		MinPower:              req.MinPower,
-		MaxPower:              req.MaxPower,
+		MinPower:              powerPolicy.MinPower,
+		MaxPower:              powerPolicy.MaxPower,
 	}
 	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
@@ -97,11 +108,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
 		result.RequestedProfile = req.Profile
-		result.PowerPolicy = RoutePowerPolicy{
-			Profile:  req.Profile,
-			MinPower: req.MinPower,
-			MaxPower: req.MaxPower,
-		}
+		result.PowerPolicy = powerPolicy
 		result.Model = resolveSubprocessModelAlias(result.Harness, result.Model)
 		result.Power = catalogPowerForModel(cat, result.Model)
 	}
@@ -1079,4 +1086,31 @@ func providerPreferenceForProfile(cat *modelcatalog.Catalog, profile string) (st
 	default:
 		return "", fmt.Errorf("profile %q has unsupported provider preference %q", profile, info.ProviderPreference)
 	}
+}
+
+func effectiveRoutePowerPolicy(cat *modelcatalog.Catalog, profile string, minPower, maxPower int) (RoutePowerPolicy, error) {
+	policy := RoutePowerPolicy{
+		Profile:  profile,
+		MinPower: minPower,
+		MaxPower: maxPower,
+	}
+	if profile == "" {
+		return policy, nil
+	}
+	if cat == nil {
+		return policy, &ErrUnknownProfile{Profile: profile}
+	}
+	info, ok := cat.Profile(profile)
+	if !ok {
+		return policy, &ErrUnknownProfile{Profile: profile}
+	}
+	policy.MinPower = info.MinPower
+	policy.MaxPower = info.MaxPower
+	if minPower > policy.MinPower {
+		policy.MinPower = minPower
+	}
+	if maxPower > 0 && (policy.MaxPower == 0 || maxPower < policy.MaxPower) {
+		policy.MaxPower = maxPower
+	}
+	return policy, nil
 }
