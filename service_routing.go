@@ -46,9 +46,6 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	profile := req.Profile
 	powerPolicy := routePowerPolicyForRequest(cat, req)
 	modelRef := req.ModelRef
-	if modelRef == "" && req.Model == "" && (req.Harness != "" || req.Profile == "smart") {
-		modelRef = req.Profile
-	}
 	providerPreference, err := providerPreferenceForProfile(cat, profile)
 	if err != nil {
 		return &RouteDecision{
@@ -80,9 +77,8 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		ProviderPreference:    providerPreference,
 		EstimatedPromptTokens: req.EstimatedPromptTokens,
 		RequiresTools:         req.RequiresTools,
-		MinPower:              req.MinPower,
-		MaxPower:              req.MaxPower,
 	}
+	rReq.MinPower, rReq.MaxPower = routePowerBoundsForRequest(req, powerPolicy)
 	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
 	if err != nil {
@@ -1127,11 +1123,25 @@ func routePowerPolicyForRequest(cat *modelcatalog.Catalog, req RouteRequest) Rou
 	if !ok {
 		return policy
 	}
-	if policy.MinPower == 0 {
-		policy.MinPower = profile.MinPower
+	if profile.MinPower > 0 {
+		if policy.MinPower == 0 || profile.MinPower > policy.MinPower {
+			policy.MinPower = profile.MinPower
+		}
 	}
-	if policy.MaxPower == 0 {
-		policy.MaxPower = profile.MaxPower
+	if profile.MaxPower > 0 {
+		if policy.MaxPower == 0 || profile.MaxPower < policy.MaxPower {
+			policy.MaxPower = profile.MaxPower
+		}
 	}
 	return policy
+}
+
+func routePowerBoundsForRequest(req RouteRequest, policy RoutePowerPolicy) (int, int) {
+	// Exact model references remain exact catalog-reference narrowing. The
+	// profile still reports its effective power policy for evidence, but it
+	// does not widen or override a hard model identity pin.
+	if req.Model != "" || req.ModelRef != "" {
+		return req.MinPower, req.MaxPower
+	}
+	return policy.MinPower, policy.MaxPower
 }

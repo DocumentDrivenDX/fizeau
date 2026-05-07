@@ -130,7 +130,7 @@ models:
   provider-default:
     family: example
     status: active
-    power: 5
+    power: 7
     surfaces:
       agent.openai: provider-default
   catalog-smart:
@@ -179,6 +179,106 @@ targets:
 	}
 	if dec.Model != "provider-default" {
 		t.Fatalf("Model=%q, want provider-default without treating profile as a model ref", dec.Model)
+	}
+}
+
+func TestResolveRouteProfileAppliesEffectivePowerPolicyBeforeFiltering(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-05-06T00:00:00Z
+catalog_version: test
+models:
+  power-5:
+    family: example
+    status: active
+    power: 5
+    surfaces:
+      agent.openai: power-5
+  power-7:
+    family: example
+    status: active
+    power: 7
+    surfaces:
+      agent.openai: power-7
+  power-9:
+    family: example
+    status: active
+    power: 9
+    surfaces:
+      agent.openai: power-9
+profiles:
+  standard:
+    min_power: 7
+    max_power: 8
+    compatibility_target: standard
+    provider_preference: local-first
+targets:
+  standard:
+    family: example
+    candidates: [power-5, power-7, power-9]
+    surfaces:
+      agent.openai: power-5
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := newTestService(t, ServiceOptions{
+		ServiceConfig: &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"power-5": {Type: "test", BaseURL: "http://127.0.0.1:1111/v1", Model: "power-5"},
+				"power-7": {Type: "test", BaseURL: "http://127.0.0.1:2222/v1", Model: "power-7"},
+				"power-9": {Type: "test", BaseURL: "http://127.0.0.1:3333/v1", Model: "power-9"},
+			},
+			names:       []string{"power-5", "power-7", "power-9"},
+			defaultName: "power-7",
+		},
+	})
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Profile: "standard",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	if dec.Model != "power-7" {
+		t.Fatalf("decision=%#v, want power-7 winner", dec)
+	}
+	if dec.RequestedProfile != "standard" {
+		t.Fatalf("RequestedProfile=%q, want standard", dec.RequestedProfile)
+	}
+	if dec.PowerPolicy.Profile != "standard" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
+		t.Fatalf("PowerPolicy=%#v, want standard 7..8", dec.PowerPolicy)
+	}
+
+	var sawBelowMin, sawAboveMax bool
+	for _, candidate := range dec.Candidates {
+		switch candidate.Model {
+		case "power-5":
+			if candidate.Eligible {
+				t.Fatalf("power-5 candidate should be ineligible under standard: %#v", candidate)
+			}
+			if candidate.FilterReason != string(routing.FilterReasonBelowMinPower) {
+				t.Fatalf("power-5 FilterReason=%q, want %q", candidate.FilterReason, routing.FilterReasonBelowMinPower)
+			}
+			sawBelowMin = true
+		case "power-7":
+			if !candidate.Eligible {
+				t.Fatalf("power-7 candidate should remain eligible under standard: %#v", candidate)
+			}
+		case "power-9":
+			if candidate.Eligible {
+				t.Fatalf("power-9 candidate should be ineligible under standard: %#v", candidate)
+			}
+			if candidate.FilterReason != string(routing.FilterReasonAboveMaxPower) {
+				t.Fatalf("power-9 FilterReason=%q, want %q", candidate.FilterReason, routing.FilterReasonAboveMaxPower)
+			}
+			sawAboveMax = true
+		}
+	}
+	if !sawBelowMin || !sawAboveMax {
+		t.Fatalf("decision candidates did not cover the full power-policy trace: %#v", dec.Candidates)
 	}
 }
 
