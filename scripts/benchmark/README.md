@@ -435,10 +435,12 @@ the host.
 
 The same entrypoint also rebuilds the selected TerminalBench 2.1 task images
 locally from each task's `environment/Dockerfile`. It writes a per-run overlay
-task tree under `benchmark-results/.../task-images/` and rewrites `docker_image`
-there to point at the local tags. This keeps the sweep on the Docker host
-architecture by default and fails during preflight if a selected task cannot be
-built for that architecture. The downloaded TB-2.1 task tree also defaults to
+task tree under `benchmark-results/.../task-images/`, removes `docker_image`
+from that overlay, and lets Harbor build from the task Dockerfiles with Docker
+layer caching. This avoids depending on shared local image tags, which Harbor
+removes during trial cleanup. It keeps the sweep on the Docker host architecture
+by default and fails during preflight if a selected task cannot be built for
+that architecture. The downloaded TB-2.1 task tree also defaults to
 `benchmark-results/external/terminal-bench-2-1`, not the scripts directory.
 
 Version overrides are build args exposed as environment variables:

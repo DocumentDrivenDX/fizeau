@@ -371,18 +371,17 @@ print(image)
 PY
 }
 
-rewrite_task_docker_image() {
-  python3 - "$1" "$2" <<'PY'
+remove_task_docker_image() {
+  python3 - "$1" <<'PY'
 import pathlib
 import re
 import sys
 
 task = pathlib.Path(sys.argv[1])
-image = sys.argv[2]
 text = task.read_text()
 new, count = re.subn(
     r'(?m)^docker_image\s*=\s*"[^"]*"\s*$',
-    f'docker_image = "{image}"',
+    '# docker_image intentionally omitted; Harbor builds environment/Dockerfile locally.',
     text,
     count=1,
 )
@@ -404,7 +403,7 @@ prepare_local_task_images() {
 
   rm -rf "${overlay}"
   mkdir -p "${overlay}"
-  echo "Building selected TerminalBench task images locally for linux/${CONTAINER_GOARCH}"
+  echo "Preflight-building selected TerminalBench task images locally for linux/${CONTAINER_GOARCH}"
 
   while IFS=$'\t' read -r id src; do
     [[ -n "${id}" ]] || continue
@@ -431,7 +430,7 @@ prepare_local_task_images() {
     digest="$(basename "${src}")"
     digest_short="${digest:0:12}"
     safe_id="$(safe_task_image_name "${id}")"
-    tag="fizeau/tb21-${safe_id}:${digest_short}-${CONTAINER_GOARCH}"
+    tag="fizeau/tb21-preflight-${safe_id}:${digest_short}-${CONTAINER_GOARCH}"
     build_args=(
       build
       --platform "linux/${CONTAINER_GOARCH}"
@@ -443,13 +442,14 @@ prepare_local_task_images() {
     fi
     build_args+=("${src}/environment")
 
-    echo "  ${id}: ${original_image} -> ${tag}"
+    echo "  ${id}: ${original_image} -> local Dockerfile build cache (${tag})"
     docker "${build_args[@]}"
-    rewrite_task_docker_image "${dest}/task.toml" "${tag}"
+    remove_task_docker_image "${dest}/task.toml"
   done < "${unique_file}"
 
   rm -f "${unique_file}"
   TASKS_DIR="${overlay}"
+  export DOCKER_DEFAULT_PLATFORM="linux/${CONTAINER_GOARCH}"
 }
 
 prepare_env_keys() {
