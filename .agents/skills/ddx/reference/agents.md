@@ -1,65 +1,68 @@
-# Agents — Harness, Profile, Persona Dispatch
+# Task Dispatch — Power, Persona, Passthrough
 
-`ddx agent run` is the unified interface for invoking an AI coding
-agent through any of DDx's harnesses. Routing decisions (which
-harness, which model, which effort level) should flow from
-**intent**, not from hand-picking implementation details.
+> **Debugging routing?** Routing lives entirely in Fizeau. See `CONTRACT-003-fizeau-service` (in the agent repo, `docs/helix/02-design/contracts/`) for the public surface; routing internals are inside that module.
 
-## Profile-first routing
+DDx invokes task execution through the upstream Fizeau service. DDx does not
+choose harnesses, providers, endpoints, or models on the normal work path. It
+describes the work, requests an abstract power level, and lets Fizeau route.
 
-Default to profile:
+## Power bounds
 
-```bash
-ddx agent run --profile smart --prompt task.md
-```
-
-The three profiles:
-
-- `cheap` — low-cost routing. Picks the smallest capable model for
-  the task. Use for high-volume work, exploratory prompts, and
-  anywhere cost matters more than latency or accuracy.
-- `fast` — low-latency routing. Picks the fastest capable model.
-  Use for interactive loops, code reviews that block other work.
-- `smart` (default) — balanced. Picks a model that's generally
-  capable across tasks; the right default when you don't have a
-  specific reason to override.
-
-Profiles are the portable intent signal. DDx resolves them to a
-concrete harness + model + effort level per the project's
-`.ddx/config.yaml` and the model catalog.
-
-## Explicit overrides
-
-Override routing only when you have a reason:
+Normal execution should use power bounds:
 
 ```bash
-ddx agent run --harness codex --prompt task.md    # force a harness
-ddx agent run --model qwen3.6 --prompt task.md    # exact model pin
-ddx agent run --effort high --prompt task.md      # effort override
+ddx run --min-power 10 --prompt task.md
 ```
 
-Don't stack `--profile` and `--model` together unintentionally —
-`--model` is an override that supersedes the profile. If you want
-"smart profile but pinned to this model", that's the model; drop
-the profile flag.
+Power is an integer scale exposed by the Fizeau contract. DDx passes
+`MinPower` and optional `MaxPower` bounds and treats them as ordering
+constraints, not as model identities. Fizeau reports what it actually used:
 
-**Reasons to override:**
+```text
+running with qwen 3.6-27b (power 10)
+```
 
-- Reproducing a bug specific to one harness or model.
-- Controlled A/B tests between harnesses.
-- Provider-specific features (e.g., Claude extended thinking).
-- Cost/quota management on a specific provider.
+DDx owns bead retry policy. It decides whether an attempt succeeded using DDx
+evidence: commits, no-changes rationale, merge/preserve result, gates, review
+verdicts, and cooldowns. If a retry is allowed, DDx may raise `MinPower`.
 
-**Reasons NOT to override:**
+Fizeau owns route selection within those requested bounds. DDx may query the
+available model/power catalog to choose a `MinPower` threshold such as "top
+models only", but it must not pin a concrete model/provider on the normal work
+path.
 
-- "This harness is my favorite." Use the profile and let routing
-  decide.
-- "I don't trust the routing." File a bug; don't work around it.
+## Passthrough constraints
+
+`--harness`, `--provider`, and `--model` are allowed only as passthrough
+constraints:
+
+```bash
+ddx run --min-power 10 --model qwen3.6-27b --prompt task.md
+```
+
+DDx sends these values to Fizeau unchanged. DDx does not validate them,
+score them, use them for queue policy, rewrite them on retry, or use them as a
+fallback mechanism. If the values conflict with requested power bounds or
+availability, Fizeau owns the typed error or actual route. DDx stops on
+hard-pin exhaustion; it does not remove pins, widen pins, call `ResolveRoute`,
+or retry in a loop.
+
+## Execution layering
+
+The intended command layering is:
+
+- `ddx run` — one Fizeau `Execute` call with requested `MinPower`/`MaxPower`.
+  No `ResolveRoute`.
+- `ddx try <bead>` — one bead attempt layered over `run`.
+- `ddx work` — queue drain and retry policy layered over `try`.
+
+`ResolveRoute` is status/debug-only. Do not use it in `run`, `try`, or `work`,
+and never feed a `RouteDecision` back into `Execute`.
 
 ## Personas
 
 Personas are reusable AI personality templates. DDx injects a
-persona's body as a system-prompt addendum to `ddx agent run` —
+persona's body as a system-prompt addendum to `ddx run` —
 same persona, same behavior across every harness, because the
 harness sees a flat system prompt, not a persona file.
 
@@ -84,7 +87,7 @@ plugins.
 Directly at invocation time:
 
 ```bash
-ddx agent run --persona code-reviewer --prompt review.md
+ddx run --persona code-reviewer --prompt review.md
 ```
 
 Or by binding a role in `.ddx/config.yaml`:
@@ -109,12 +112,12 @@ ddx persona bindings            # current role → persona map
 
 ## Quorum
 
-For multi-harness review or adversarial checks, use quorum dispatch
-— covered in `reference/review.md`:
+For multi-agent review or adversarial checks, use a workflow skill composition
+such as `compare-prompts`, covered in `reference/review.md`:
 
 ```bash
-ddx agent run --quorum=majority --harnesses=claude,codex \
-  --prompt review.md
+ddx run --persona code-reviewer --prompt review.md
+ddx run --persona architect --prompt review.md
 ```
 
 ## Getting more capabilities
@@ -135,11 +138,12 @@ See the personas README for the authoring quality bar.
 
 ## Anti-patterns
 
-- **Stacking `--profile` and `--model` / `--effort`**. If `--model`
-  is set, `--profile` is moot. Pick one intent signal.
+- **Stacking power bounds and `--model` / `--harness` casually**. Normal DDx
+  work should request `MinPower`. Use passthrough pins only for explicit
+  operator constraints; DDx must not interpret them.
 - **Hardcoding a harness name in a workflow**. Workflow should
-  dispatch by profile or role binding; letting each project choose
-  its harness is the point of DDx's routing layer.
+  dispatch by power or role binding; letting each project route through its
+  agent configuration is the point of DDx's agent boundary.
 - **Persona for everything**. Personas add a system-prompt addendum;
   they don't make a bad prompt good. Start with a clear prompt;
   reach for a persona when you want consistent style/standards
@@ -152,18 +156,17 @@ See the personas README for the authoring quality bar.
 
 ```bash
 # Dispatch
-ddx agent run --profile smart --prompt task.md
-ddx agent run --harness claude --prompt task.md
-ddx agent run --persona code-reviewer --prompt review.md
-ddx agent run --quorum=majority --harnesses=claude,codex --prompt p.md
-ddx agent run --automation=plan|auto|yolo
+ddx run --min-power 10 --prompt task.md
+ddx run --top-power --prompt task.md
+ddx run --min-power 10 --max-power 20 --prompt task.md
+ddx run --min-power 10 --provider openrouter --model qwen3.6-27b --prompt task.md
+ddx run --persona code-reviewer --prompt review.md
 
 # Introspection
-ddx agent list                         # available harnesses
-ddx agent capabilities <harness>       # model + effort options
-ddx agent doctor                       # harness health
-ddx agent log                          # recent invocation metadata
-ddx agent log <session-id>             # one invocation's detail
+ddx doctor                              # environment health
+ddx status                              # project drift / stale docs
+ddx bead status                         # queue state
+# Fizeau diagnostics, if exposed by the project, remain separate from DDx verbs.
 
 # Personas
 ddx persona list
@@ -178,5 +181,5 @@ ddx installed
 ddx uninstall <name>
 ```
 
-Full flag list: `ddx agent run --help`, `ddx persona --help`,
+Full flag list: `ddx run --help`, `ddx persona --help`,
 `ddx install --help`.

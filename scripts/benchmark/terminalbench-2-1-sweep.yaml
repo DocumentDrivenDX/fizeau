@@ -20,6 +20,19 @@ dataset: terminal-bench/terminal-bench-2-1
 defaults:
   reps: 3
   resume: true
+  timeout_policy:
+    local_agent_timeout_multiplier: 4
+    managed_agent_timeout_multiplier: 2
+    local_min_agent_timeout_sec: 3600
+    managed_min_agent_timeout_sec: 1800
+    notes: >-
+      Local Qwen providers are intentionally slow and should not fail due to
+      tight timeout defaults. Pre-release canaries on 2026-05-07 saw
+      fix-git wall times of roughly 94s (bragi-club-3090), 124s
+      (sindri-club-3090), 231s (vidar oMLX), and 642s (grendel Rapid-MLX
+      against terminal-bench/terminal-bench-2-1). Use generous Harbor agent
+      timeout multipliers for local lanes and classify true hangs separately
+      from provider slowness.
 
 # ---------------------------------------------------------------------------
 # Phases
@@ -56,7 +69,9 @@ phases:
     parallel_policy: >-
       Local resource groups serialize (one cell at a time per endpoint).
       OpenRouter lanes (fiz-harness-*, fiz-openrouter-*) may run in parallel
-      across comparison groups, subject to rg-openrouter rate caps.
+      across comparison groups, subject to rg-openrouter rate caps. The canary
+      may run all local provider groups in parallel because each endpoint has
+      max_concurrency=1 and the groups are independent.
 
   - id: local-qwen
     description: >-
@@ -91,7 +106,8 @@ phases:
       - fiz-harness-claude-sonnet-4-6
     parallel_policy: >-
       Both lanes use rg-openrouter. May run in parallel if rate caps allow;
-      cap total concurrency at 2 for this phase.
+      cap total concurrency at 5 for this phase because Claude-harness lanes
+      are heavier than raw provider calls.
 
   - id: gpt-comparison
     description: >-
@@ -105,7 +121,8 @@ phases:
       - fiz-harness-codex-gpt-5-4-mini
     parallel_policy: >-
       Both lanes use rg-openrouter. May run in parallel if rate caps allow;
-      cap total concurrency at 2 for this phase.
+      cap total concurrency at 5 for this phase because Codex-harness lanes
+      are heavier than raw provider calls.
 
 # ---------------------------------------------------------------------------
 # Comparison Groups
@@ -239,7 +256,7 @@ resource_groups:
   - id: rg-openrouter
     base_url: "https://openrouter.ai/api/v1"
     provider_type: openrouter
-    max_concurrency: 4
+    max_concurrency: 10
     rate_limit_rpm: 500
     rate_limit_tpm: 200000
     budget:
@@ -249,9 +266,10 @@ resource_groups:
     notes: >-
       Managed cloud provider. Lanes in different comparison groups or phases
       may run in parallel within the rate and budget caps above. Within a
-      single phase, cap concurrency at 2 for sonnet-comparison and
-      gpt-comparison; canary may use full max_concurrency since it exercises
-      all six official lanes. Honor Retry-After headers on 429 responses.
+      single harness-heavy phase, cap concurrency at 5 for sonnet-comparison
+      and gpt-comparison; raw OpenRouter/fiz provider lanes may use up to 10
+      concurrent cells when budget and rate limits allow. Honor Retry-After
+      headers on 429 responses.
 
 # ---------------------------------------------------------------------------
 # Lane Definitions
