@@ -331,7 +331,7 @@ class FizeauAgent(BaseInstalledAgent):
             f"{self._runtime_fizeau_config_command()}"
             f"mkdir -p {_SESSION_LOG_DIR}; "
             f"{self._wrapped_harness_config_command()}"
-            f"env | grep '^FIZEAU_' > {_TARGET_ENV} 2>/dev/null || true; "
+            f"env | grep '^FIZEAU_' | grep -Ev '(^FIZEAU_API_KEY=|_API_KEY=|_TOKEN=|_SECRET=)' > {_TARGET_ENV} 2>/dev/null || true; "
             f'cmd=({shlex.quote(_BINARY_TARGET)} --json --preset default); '
             'append_arg() { if [ -n "${2:-}" ]; then cmd+=("$1" "$2"); fi; }; '
             'append_arg --harness "${FIZEAU_HARNESS:-}"; '

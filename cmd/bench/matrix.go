@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -607,18 +608,16 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	if multiplier := strings.TrimSpace(os.Getenv("HARBOR_AGENT_TIMEOUT_MULTIPLIER")); multiplier != "" {
 		args = append(args, "--agent-timeout-multiplier", multiplier)
 	}
-	if apiKeyVal != "" {
-		args = append(args, "--ae", apiKeyEnv+"="+apiKeyVal)
-	}
+	// Do not pass actual API key values through Harbor --ae args. Harbor
+	// includes those args in process listings and exception logs. The Fizeau
+	// Harbor agent resolves FIZEAU_API_KEY_ENV from the Harbor process
+	// environment instead.
 	// Pass provider config so Harbor agents can configure the model endpoint.
 	args = append(args,
 		"--ae", "FIZEAU_BASE_URL="+opts.profile.Provider.BaseURL,
 		"--ae", "FIZEAU_MODEL="+opts.profile.Provider.Model,
 		"--ae", "FIZEAU_PROVIDER="+fizeauProviderEnv(opts.profile),
 	)
-	if apiKeyVal != "" {
-		args = append(args, "--ae", "FIZEAU_API_KEY="+apiKeyVal)
-	}
 	for _, kv := range envPairs(opts.extraEnv) {
 		args = append(args, "--ae", kv)
 	}
@@ -699,12 +698,9 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 		}
 	}
 
-	errText := ""
-	if exitCode != 0 || reward == nil {
-		errText = strings.TrimSpace(combined.String())
-		if len(errText) > 2000 {
-			errText = errText[:2000]
-		}
+	errText := harborFailureText(jobOutDir, combined.String())
+	if exitCode == 0 && reward != nil && classifyMatrixInvalidText(errText) == "" {
+		errText = ""
 	}
 	inputTokens, outputTokens, turns, costUSD := readHarborTrajectoryMetrics(jobOutDir)
 	return harborRunResult{
@@ -717,6 +713,62 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 		turns:        turns,
 		costUSD:      costUSD,
 	}, nil
+}
+
+func harborFailureText(jobOutDir, combined string) string {
+	var parts []string
+	if s := strings.TrimSpace(combined); s != "" {
+		parts = append(parts, s)
+	}
+	_ = filepath.WalkDir(jobOutDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		base := filepath.Base(path)
+		if base != "fiz.txt" && base != "exception.txt" {
+			return nil
+		}
+		data, err := os.ReadFile(path) // #nosec G304 -- path is under runner-owned output dir
+		if err != nil {
+			return nil
+		}
+		text := strings.TrimSpace(string(data))
+		if text != "" {
+			parts = append(parts, text)
+		}
+		return nil
+	})
+	text := redactBenchmarkSecrets(strings.Join(parts, "\n"))
+	if len(text) > 4000 {
+		text = text[:4000]
+	}
+	return strings.TrimSpace(text)
+}
+
+func redactBenchmarkSecrets(text string) string {
+	if text == "" {
+		return ""
+	}
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`sk-[A-Za-z0-9_-]+`),
+		regexp.MustCompile(`(?i)(OPENAI_API_KEY|OPENROUTER_API_KEY|FIZEAU_API_KEY|ANTHROPIC_API_KEY)=\S+`),
+		regexp.MustCompile(`(?i)(api_key:\s*)\S+`),
+	}
+	out := text
+	for _, re := range patterns {
+		out = re.ReplaceAllStringFunc(out, func(match string) string {
+			if strings.Contains(match, "=") {
+				key, _, _ := strings.Cut(match, "=")
+				return key + "=<redacted>"
+			}
+			if strings.Contains(match, ":") {
+				key, _, _ := strings.Cut(match, ":")
+				return key + ": <redacted>"
+			}
+			return "<redacted>"
+		})
+	}
+	return out
 }
 
 func readHarborTrajectoryMetrics(jobOutDir string) (*int, *int, *int, float64) {

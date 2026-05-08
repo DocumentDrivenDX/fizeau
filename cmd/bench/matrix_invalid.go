@@ -13,18 +13,15 @@ const (
 )
 
 var (
-	matrixInvalidQuotaPattern    = regexp.MustCompile(`(?i)(api_error_status:\s*429|out_of_credits|credits?\s+exhausted|usage\s+exhausted|rate\s*limit|too many requests|quota\s+exhausted|quota\s+exceeded)`)
+	matrixInvalidQuotaPattern    = regexp.MustCompile(`(?i)(api_error_status:\s*429|insufficient[_\s-]*quota|out_of_credits|credits?\s+exhausted|usage\s+exhausted|rate\s*limit|too many requests|quota\s+exhausted|quota\s+exceeded)`)
 	matrixInvalidAuthPattern     = regexp.MustCompile(`(?i)(unauthori[sz]ed|authentication failed|invalid api key|missing credentials?|not signed in|login required|account .*not .*authenticated|oauth.*failed|credential.*missing|account .*required|access denied)`)
 	matrixInvalidSetupPattern    = regexp.MustCompile(`(?i)(binary not found|no such file or directory|exec format error|cannot execute binary file|wrong architecture|architecture mismatch|task dir not found|submodule not initialized|failed to start|wrapper startup|startup failed|docker.*(failed|error)|container.*(failed|error)|image.*(failed|error|not found)|operation not permitted|permission denied|sandbox.*failed|setup failed|preflight failure)`)
 	matrixInvalidProviderPattern = regexp.MustCompile(`(?i)(connection refused|connection reset|socket hang up|fetch failed|tls handshake|dns|eof|timed out|timeout|stream closed|broken pipe|remote closed|upstream|service unavailable|bad gateway|gateway timeout|failed to connect|provider transport|network error)`)
 )
 
 func classifyMatrixInvalid(report matrixRunReport) string {
-	switch report.FinalStatus {
-	case "graded_pass", "graded_fail", "verifier_fail":
+	if report.FinalStatus == "graded_pass" {
 		return ""
-	case "install_fail_permanent", "install_failed":
-		return matrixInvalidSetup
 	}
 	if isMatrixKnownInvalidClass(report.FinalStatus) {
 		return report.FinalStatus
@@ -32,10 +29,26 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 	if report.InvalidClass != "" {
 		return report.InvalidClass
 	}
+	if class := classifyMatrixInvalidText(matrixInvalidSignalBlob(report)); class != "" {
+		return class
+	}
+	switch report.FinalStatus {
+	case "graded_fail", "verifier_fail":
+		return ""
+	case "install_fail_permanent", "install_failed":
+		return matrixInvalidSetup
+	}
 	if matrixHasMeaningfulAttempt(report) {
 		return ""
 	}
-	blob := matrixInvalidSignalBlob(report)
+	return ""
+}
+
+func classifyMatrixInvalidText(blob string) string {
+	blob = strings.ToLower(strings.TrimSpace(blob))
+	if blob == "" {
+		return ""
+	}
 	switch {
 	case matrixInvalidQuotaPattern.MatchString(blob):
 		return matrixInvalidQuota

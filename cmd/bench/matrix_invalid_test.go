@@ -39,6 +39,35 @@ func TestClassifyMatrixInvalidFromFixtures(t *testing.T) {
 			t.Fatalf("classifyMatrixInvalid(raw install_fail_permanent) = %q, want %q", got, matrixInvalidSetup)
 		}
 	})
+
+	t.Run("quota error overrides bogus graded failure", func(t *testing.T) {
+		report := matrixRunReport{
+			FinalStatus:    "graded_fail",
+			ProcessOutcome: "completed",
+			GradingOutcome: "graded",
+			Reward:         intPtr(0),
+			Turns:          intPtr(6),
+			Error:          `provider error: 429 Too Many Requests {"type":"insufficient_quota","code":"insufficient_quota"}`,
+		}
+		if got := classifyMatrixInvalid(report); got != matrixInvalidQuota {
+			t.Fatalf("classifyMatrixInvalid(quota graded_fail) = %q, want %q", got, matrixInvalidQuota)
+		}
+	})
+}
+
+func TestRedactBenchmarkSecrets(t *testing.T) {
+	input := "OPENAI_API_KEY=sk-proj-secret FIZEAU_API_KEY=sk-local-secret api_key: sk-config-secret bearer sk-or-v1-secret"
+	got := redactBenchmarkSecrets(input)
+	for _, leaked := range []string{"sk-proj-secret", "sk-local-secret", "sk-config-secret", "sk-or-v1-secret"} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("redactBenchmarkSecrets leaked %q in %q", leaked, got)
+		}
+	}
+	for _, want := range []string{"OPENAI_API_KEY=<redacted>", "FIZEAU_API_KEY=<redacted>", "api_key: <redacted>"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("redactBenchmarkSecrets missing %q in %q", want, got)
+		}
+	}
 }
 
 func TestMatrixAggregateIncludesInvalidCountsAndSkipsInvalidDenominators(t *testing.T) {
