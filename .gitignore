@@ -63,3 +63,6 @@ coverage.html
 !/benchmark-results/fiz-v*/indexes/**
 /jobs/
 /bench/results/
+
+# Local root build artifact
+/fiz
