@@ -798,6 +798,39 @@ func TestSamplingProfilePassesThroughSeam(t *testing.T) {
 	}
 }
 
+func TestOpenAIProviderDoesNotSendNonStandardSamplingExtras(t *testing.T) {
+	temp := 0.6
+	topP := 0.95
+	topK := 20
+	minP := 0.05
+	rep := 1.1
+	opts := agent.Options{
+		Temperature:       &temp,
+		TopP:              &topP,
+		TopK:              &topK,
+		MinP:              &minP,
+		RepetitionPenalty: &rep,
+	}
+	body, err := captureOpenAIChatBody(t, "openai", "", opts)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	gotTemp, ok := got["temperature"].(float64)
+	require.True(t, ok, "temperature must be present")
+	assert.InDelta(t, 0.6, gotTemp, 1e-9)
+	gotTopP, ok := got["top_p"].(float64)
+	require.True(t, ok, "top_p must be present")
+	assert.InDelta(t, 0.95, gotTopP, 1e-9)
+
+	_, hasTopK := got["top_k"]
+	assert.False(t, hasTopK, "OpenAI rejects non-standard top_k")
+	_, hasMinP := got["min_p"]
+	assert.False(t, hasMinP, "OpenAI rejects non-standard min_p")
+	_, hasRep := got["repetition_penalty"]
+	assert.False(t, hasRep, "OpenAI rejects non-standard repetition_penalty")
+}
+
 func captureOpenAIChatBody(t *testing.T, providerType string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
 	return captureOpenAIChatBodyWithModel(t, providerType, testModelForProvider(providerType), providerReasoning, opts)
 }
