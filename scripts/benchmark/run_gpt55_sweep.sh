@@ -98,6 +98,8 @@ case "${PROVIDER}" in
     API_KEY_ENV="OPENAI_API_KEY"
     RESOURCE_GROUP="rg-openai-gpt55"
     PROVIDER_SURFACE="openai"
+    REASONING_ENV=""
+    REASONING_SAMPLING=""
     ;;
   openrouter)
     PROFILE_ID="fiz-openrouter-gpt-5-5"
@@ -107,6 +109,8 @@ case "${PROVIDER}" in
     API_KEY_ENV="OPENROUTER_API_KEY"
     RESOURCE_GROUP="rg-openrouter-gpt55"
     PROVIDER_SURFACE="openrouter"
+    REASONING_ENV="      FIZEAU_REASONING: medium"
+    REASONING_SAMPLING="      reasoning: medium"
     ;;
   *)
     echo "unknown --provider ${PROVIDER}; use openai or openrouter" >&2
@@ -198,7 +202,7 @@ lanes:
       FIZEAU_MODEL: "${MODEL_ID}"
       FIZEAU_BASE_URL: "${BASE_URL}"
       FIZEAU_API_KEY_ENV: ${API_KEY_ENV}
-      FIZEAU_REASONING: medium
+${REASONING_ENV}
     model_family: gpt-5
     model_id: "${MODEL_ID}"
     quant_label: cloud-hosted
@@ -206,7 +210,7 @@ lanes:
     runtime: fiz-native-provider
     sampling:
       temperature: 0.0
-      reasoning: medium
+${REASONING_SAMPLING}
 EOF
 
 echo "GPT-5.5 benchmark"

@@ -16,7 +16,6 @@ limits:
   rate_limit_tpm: 500000
 sampling:
   temperature: 0.0
-  reasoning: medium
 versioning:
   resolved_at: "2026-05-07"
   snapshot: "gpt-5.5 via OpenAI API model docs"
