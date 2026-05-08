@@ -8,14 +8,13 @@ import (
 )
 
 // Request is the routing input. All fields are optional except at least
-// one of {Profile, ModelRef, Model, Harness, Provider} should be set
-// (otherwise the engine has nothing to disambiguate on).
+// one of {Policy, Model, Harness, Provider} should be set (otherwise the
+// engine has nothing to disambiguate on).
 //
 // Provider is present from day one (fixes ddx-8610020e — no soft-preference
 // dropping).
 type Request struct {
-	Profile            string // "cheap" | "standard" | "smart"
-	ModelRef           string // catalog alias (e.g. "qwen/qwen3.6")
+	Policy             string // "cheap" | "default" | "smart" | "air-gapped"
 	Model              string // exact concrete model pin
 	Provider           string // exact provider pin; constrains routing to one provider identity
 	Harness            string // hard preference; constrains routing to one harness
@@ -23,6 +22,8 @@ type Request struct {
 	Permissions        string // "safe" | "supervised" | "unrestricted"
 	ProviderPreference string // "local-first" | "subscription-first" | "local-only" | "subscription-only"
 	CorrelationID      string // validated sticky route key, when available
+	AllowLocal         bool
+	Require            []string
 
 	// EstimatedPromptTokens, when > 0, drives context-window gating.
 	EstimatedPromptTokens int
@@ -245,6 +246,9 @@ const (
 	// with retry_after in the future. The candidate would have been eligible
 	// otherwise.
 	FilterReasonQuotaExhausted FilterReason = "quota_exhausted"
+	// FilterReasonPolicyFiltered: candidate was rejected by a hard policy
+	// requirement such as allow_local=false or require=[no_remote].
+	FilterReasonPolicyFiltered FilterReason = "policy_filtered"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -281,31 +285,68 @@ func (e *NoViableCandidateError) Error() string {
 	return fmt.Sprintf("no viable routing candidate: %d candidates rejected", e.Rejected)
 }
 
-// ErrNoLiveProvider reports that profile-tier escalation walked the entire
-// ladder (cheap → standard → smart) without finding a live provider that
+// CandidateRejectionReason is the stable reason vocabulary used when a policy
+// matches candidates but every candidate is rejected before dispatch.
+type CandidateRejectionReason string
+
+const (
+	CandidateRejectionQuotaExhausted   CandidateRejectionReason = "quota_exhausted"
+	CandidateRejectionUnhealthy        CandidateRejectionReason = "unhealthy"
+	CandidateRejectionModelUnavailable CandidateRejectionReason = "model_unavailable"
+	CandidateRejectionHarnessUnhealthy CandidateRejectionReason = "harness_unhealthy"
+	CandidateRejectionPolicyFiltered   CandidateRejectionReason = "policy_filtered"
+)
+
+// CandidateRejection records why a matching candidate could not be used.
+type CandidateRejection struct {
+	Provider string
+	Harness  string
+	Model    string
+	Reason   string
+}
+
+// ErrNoLiveProvider reports that policy escalation walked the entire ladder
+// (cheap → default → smart) without finding a live provider that
 // can serve the request. Callers translate this into a precise user-facing
 // message naming the prompt size and tool requirement so operators know
-// what capability is missing across all tiers.
+// what capability is missing across all policies.
 type ErrNoLiveProvider struct {
 	// PromptTokens is the request's EstimatedPromptTokens at the time
 	// escalation began. Zero means no prompt-token gating was active.
 	PromptTokens int
 	// RequiresTools mirrors the request's RequiresTools flag.
 	RequiresTools bool
-	// StartingTier is the profile name that escalation began from
-	// (the profile in the original request).
-	StartingTier string
+	// StartingPolicy is the policy name that escalation began from.
+	StartingPolicy     string
+	MinPower           int
+	MaxPower           int
+	AllowLocal         bool
+	RejectedCandidates []CandidateRejection
 }
 
 func (e *ErrNoLiveProvider) Error() string {
-	return fmt.Sprintf("no live provider supports prompt of %d tokens with tools=%v at tier ≥ %s",
-		e.PromptTokens, e.RequiresTools, e.StartingTier)
+	if len(e.RejectedCandidates) == 0 {
+		return fmt.Sprintf("no candidates match policy %q (power %d-%d, allow_local=%v); check policy fit and provider configuration",
+			e.StartingPolicy, e.MinPower, e.MaxPower, e.AllowLocal)
+	}
+	counts := map[string]int{}
+	for _, rejected := range e.RejectedCandidates {
+		counts[rejected.Reason]++
+	}
+	return fmt.Sprintf("policy %q has %d candidate(s) matching power %d-%d but all rejected: %d quota-exhausted, %d unhealthy, %d unavailable",
+		e.StartingPolicy,
+		len(e.RejectedCandidates),
+		e.MinPower,
+		e.MaxPower,
+		counts[string(CandidateRejectionQuotaExhausted)],
+		counts[string(CandidateRejectionUnhealthy)]+counts[string(CandidateRejectionHarnessUnhealthy)],
+		counts[string(CandidateRejectionModelUnavailable)])
 }
 
-// ProfileEscalationLadder is the fixed cheap → standard → smart progression
+// PolicyEscalationLadder is the fixed cheap → default → smart progression
 // service.ResolveRoute walks when every candidate at the requested tier is
 // filtered out (unhealthy or capability-rejected).
-var ProfileEscalationLadder = []string{"cheap", "standard", "smart"}
+var PolicyEscalationLadder = []string{"cheap", "default", "smart"}
 
 // Inputs bundles the engine's external data sources.
 type Inputs struct {
@@ -327,17 +368,15 @@ type Inputs struct {
 	// each routing call.
 	ProviderQuotaExhaustedUntil map[string]time.Time
 	Now                         time.Time // injected for deterministic testing; default time.Now()
-	CatalogResolver             func(ref, surface string) (concreteModel string, ok bool)
-	CatalogCandidatesResolver   func(ref, surface string) (concreteModels []string, ok bool)
 	ModelEligibility            func(model string) (ModelEligibility, bool)
 
-	// ReasoningResolver returns the catalog's surface_policy reasoning_default
-	// for a (profile, surface) pair. When set, buildHarnessCandidates uses it
+	// ReasoningResolver returns the catalog's reasoning default for a
+	// (policy, surface) pair. When set, buildHarnessCandidates uses it
 	// to resolve Reasoning=auto to a concrete level before invoking the
 	// capability gate, so candidates that cannot satisfy the resolved level
-	// (e.g. an off-only variant under a profile whose surface default is
+	// (e.g. an off-only variant under a policy whose default is
 	// "high") are correctly disqualified instead of slipping through.
-	ReasoningResolver func(profile, surface string) (resolved string, ok bool)
+	ReasoningResolver func(policy, surface string) (resolved string, ok bool)
 }
 
 // EndpointLoad is the routing engine's normalized view of endpoint load for a
@@ -389,6 +428,8 @@ type candidateInternal struct {
 	EndpointLoadFresh     bool
 	EndpointSaturated     bool
 	StickyMatch           bool
+	MinPower              int
+	MaxPower              int
 }
 
 // ProviderModelKey is the metrics key used by routing callers for provider
@@ -406,7 +447,7 @@ func ProviderModelKey(provider, endpoint, model string) string {
 // The engine:
 //  1. Enumerates (harness, provider, model) candidates from inputs.
 //  2. Applies gating (capability, override, model-pin, surface).
-//  3. Scores per profile policy with cooldown demotion + perf bias.
+//  3. Scores per policy with cooldown demotion + perf bias.
 //  4. Sorts viable → score → cost → locality → name.
 //  5. Returns the top viable candidate with the full ranked list.
 //
@@ -415,10 +456,21 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 	if in.Now.IsZero() {
 		in.Now = time.Now()
 	}
+	policyName, err := canonicalPolicy(req.Policy)
+	if err != nil {
+		return &Decision{}, err
+	}
+	req.Policy = policyName
+	if err := validateRequirements(req); err != nil {
+		return &Decision{}, err
+	}
 
 	canonicalHarness := req.Harness
 	if canonicalHarness == "local" {
 		canonicalHarness = "fiz"
+	}
+	if err := explicitPinError(req, in); err != nil {
+		return &Decision{}, err
 	}
 
 	var ranked []rankedCandidate
@@ -448,9 +500,9 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		if !ranked[i].out.Eligible {
 			continue
 		}
-		ranked[i].out.Score = scorePolicy(req.Profile, ranked[i].internal)
-		ranked[i].out.ScoreComponents = scoreComponents(req.Profile, ranked[i].internal)
-		ranked[i].out.Reason = fmt.Sprintf("profile=%s; score=%.1f", req.Profile, ranked[i].out.Score)
+		ranked[i].out.Score = scorePolicy(req.Policy, ranked[i].internal)
+		ranked[i].out.ScoreComponents = scoreComponents(req.Policy, ranked[i].internal)
+		ranked[i].out.Reason = fmt.Sprintf("policy=%s; score=%.1f", req.Policy, ranked[i].out.Score)
 	}
 	neutralCost, hasKnownCost := neutralKnownCost(ranked)
 
@@ -499,10 +551,6 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		out[i] = ranked[i].out
 	}
 
-	if err := explicitPinError(req, in); err != nil {
-		return &Decision{Candidates: out}, err
-	}
-
 	for i := range out {
 		if out[i].Eligible {
 			return &Decision{
@@ -511,7 +559,7 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 				Endpoint:       out[i].Endpoint,
 				ServerInstance: out[i].ServerInstance,
 				Model:          out[i].Model,
-				Reason:         fmt.Sprintf("profile=%s; score=%.1f", req.Profile, out[i].Score),
+				Reason:         fmt.Sprintf("policy=%s; score=%.1f", req.Policy, out[i].Score),
 				Candidates:     out,
 			}, nil
 		}
@@ -522,11 +570,11 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 	if requested := requestedModelIntent(req); requested != "" && req.Provider == "" && canonicalHarness == "" && hasLiveDiscoveryCandidates(ranked) {
 		return &Decision{Candidates: out}, fmt.Errorf("no live endpoint offers a match for %s", requested)
 	}
-	if missingCapability := missingProfileCapability(req); missingCapability != "" {
-		return &Decision{Candidates: out}, &ErrNoProfileCandidate{
-			Profile:           req.Profile,
-			MissingCapability: missingCapability,
-			Rejected:          len(out),
+	if missingRequirement := missingPolicyRequirement(req, out); missingRequirement != "" {
+		return &Decision{Candidates: out}, &ErrPolicyRequirementUnsatisfied{
+			Policy:      req.Policy,
+			Requirement: missingRequirement,
+			Rejected:    len(out),
 		}
 	}
 	return &Decision{Candidates: out}, noViableCandidateError(req, len(out))
@@ -580,47 +628,75 @@ func noViableCandidateError(req Request, rejected int) *NoViableCandidateError {
 	}
 }
 
+func canonicalPolicy(policy string) (string, error) {
+	if policy == "" {
+		return "default", nil
+	}
+	switch policy {
+	case "cheap", "default", "smart", "air-gapped":
+		return policy, nil
+	default:
+		return "", &ErrUnknownPolicy{Policy: policy}
+	}
+}
+
+func validateRequirements(req Request) error {
+	for _, requirement := range req.Require {
+		if requirement == "no_remote" {
+			continue
+		}
+		return &ErrPolicyRequirementUnsatisfied{
+			Policy:      req.Policy,
+			Requirement: requirement,
+		}
+	}
+	return nil
+}
+
 func explicitPinError(req Request, in Inputs) error {
 	canonicalHarness := canonicalHarnessPin(req.Harness)
-	if req.Profile != "" && (canonicalHarness != "" || req.Model != "") {
-		if constraint, ok := explicitProfileConstraint(req.Profile, req.ProviderPreference); ok {
-			if canonicalHarness != "" {
-				if h, ok := findHarness(in.Harnesses, canonicalHarness); ok && harnessViolatesProfileConstraint(h, constraint) {
-					return &ErrProfilePinConflict{
-						Profile:           req.Profile,
-						ConflictingPin:    "Harness=" + canonicalHarness,
-						ProfileConstraint: constraint,
-					}
-				}
-			}
-			if req.Model != "" && modelPinViolatesProfileConstraint(req.Model, in, constraint) {
-				return &ErrProfilePinConflict{
-					Profile:           req.Profile,
-					ConflictingPin:    "Model=" + req.Model,
-					ProfileConstraint: constraint,
-				}
-			}
+	if requirement, attemptedPin := requirementPinConflict(req, in, canonicalHarness); requirement != "" {
+		return &ErrPolicyRequirementUnsatisfied{
+			Policy:       req.Policy,
+			Requirement:  requirement,
+			AttemptedPin: attemptedPin,
 		}
 	}
 
-	if canonicalHarness == "" || req.Model == "" {
-		return nil
+	if canonicalHarness != "" && req.Provider != "" && !harnessCanReachProvider(in.Harnesses, canonicalHarness, req.Provider) {
+		return &ErrUnsatisfiablePin{
+			Pin:    "harness=" + canonicalHarness + "+provider=" + req.Provider,
+			Reason: "provider is not reachable through harness",
+		}
 	}
-	// Provider-routed subprocess harnesses can route any provider-pinned
-	// model (lmstudio, omlx, openrouter, etc.); the harness CLI owns
-	// concrete model validation in that case.
-	if providerRoutedHarnessAcceptsProviderPinnedModel(canonicalHarness) && req.Provider != "" {
-		return nil
+	if canonicalHarness != "" && req.Model != "" {
+		// Provider-routed subprocess harnesses can route any provider-pinned
+		// model (lmstudio, omlx, openrouter, etc.); the harness CLI owns
+		// concrete model validation in that case.
+		if providerRoutedHarnessAcceptsProviderPinnedModel(canonicalHarness) && req.Provider != "" {
+			return nil
+		}
+		h, ok := findHarness(in.Harnesses, canonicalHarness)
+		if ok && h.SupportedModels != nil && !harnessSupportsModel(h.SupportedModels, req.Model) {
+			return &ErrUnsatisfiablePin{
+				Pin:    "harness=" + canonicalHarness + "+model=" + req.Model,
+				Reason: "model is not supported by harness",
+			}
+		}
+		if ok && h.SupportedModels == nil && !harnessCanServeExactModel(h, req.Model) {
+			return &ErrUnsatisfiablePin{
+				Pin:    "harness=" + canonicalHarness + "+model=" + req.Model,
+				Reason: "model is not supported by harness",
+			}
+		}
 	}
-	h, ok := findHarness(in.Harnesses, canonicalHarness)
-	if !ok || h.SupportedModels == nil || harnessSupportsModel(h.SupportedModels, req.Model) {
-		return nil
+	if req.Provider != "" && req.Model != "" && !providerCanServeModel(in.Harnesses, canonicalHarness, req.Provider, req.Model) {
+		return &ErrUnsatisfiablePin{
+			Pin:    "provider=" + req.Provider + "+model=" + req.Model,
+			Reason: "model is not available on provider",
+		}
 	}
-	return &ErrHarnessModelIncompatible{
-		Harness:         canonicalHarness,
-		Model:           req.Model,
-		SupportedModels: append([]string(nil), h.SupportedModels...),
-	}
+	return nil
 }
 
 func providerRoutedHarnessAcceptsProviderPinnedModel(harness string) bool {
@@ -648,6 +724,22 @@ func findHarness(harnesses []HarnessEntry, name string) (HarnessEntry, bool) {
 	return HarnessEntry{}, false
 }
 
+func harnessCanReachProvider(harnesses []HarnessEntry, harness, provider string) bool {
+	h, ok := findHarness(harnesses, harness)
+	if !ok {
+		return false
+	}
+	if len(h.Providers) == 0 {
+		return h.Name == provider
+	}
+	for _, p := range h.Providers {
+		if candidateProviderIdentity(h, p) == provider {
+			return true
+		}
+	}
+	return false
+}
+
 func harnessSupportsModel(supported []string, model string) bool {
 	for _, candidate := range supported {
 		if candidate == model {
@@ -655,53 +747,6 @@ func harnessSupportsModel(supported []string, model string) bool {
 		}
 	}
 	return false
-}
-
-func explicitProfileConstraint(profile, providerPreference string) (string, bool) {
-	switch providerPreference {
-	case ProviderPreferenceLocalOnly:
-		return ProviderPreferenceLocalOnly, true
-	case ProviderPreferenceSubscriptionOnly:
-		return ProviderPreferenceSubscriptionOnly, true
-	}
-	switch profile {
-	case "local", "offline", "air-gapped":
-		return ProviderPreferenceLocalOnly, true
-	case "smart", "code-smart":
-		return ProviderPreferenceSubscriptionOnly, true
-	default:
-		return "", false
-	}
-}
-
-func harnessViolatesProfileConstraint(h HarnessEntry, constraint string) bool {
-	switch constraint {
-	case ProviderPreferenceLocalOnly:
-		return !h.IsLocal
-	case ProviderPreferenceSubscriptionOnly:
-		return !h.IsSubscription
-	default:
-		return false
-	}
-}
-
-func modelPinViolatesProfileConstraint(model string, in Inputs, constraint string) bool {
-	var constrainedCanServe bool
-	var outsideCanServe bool
-	for _, h := range in.Harnesses {
-		if h.TestOnly || !h.AutoRoutingEligible {
-			continue
-		}
-		if !harnessCanServeExactModel(h, model) {
-			continue
-		}
-		if harnessViolatesProfileConstraint(h, constraint) {
-			outsideCanServe = true
-		} else {
-			constrainedCanServe = true
-		}
-	}
-	return !constrainedCanServe && outsideCanServe
 }
 
 func harnessCanServeExactModel(h HarnessEntry, model string) bool {
@@ -726,9 +771,73 @@ func harnessCanServeExactModel(h HarnessEntry, model string) bool {
 	return false
 }
 
-func missingProfileCapability(req Request) string {
-	if req.Profile == "" {
+func providerCanServeModel(harnesses []HarnessEntry, canonicalHarness, provider, model string) bool {
+	for _, h := range harnesses {
+		if canonicalHarness != "" && h.Name != canonicalHarness {
+			continue
+		}
+		providers := h.Providers
+		if len(providers) == 0 {
+			providers = []ProviderEntry{{Name: ""}}
+		}
+		for _, p := range providers {
+			if candidateProviderIdentity(h, p) != provider {
+				continue
+			}
+			if len(p.DiscoveredIDs) > 0 {
+				return FuzzyMatch(model, p.DiscoveredIDs) != ""
+			}
+			if p.DiscoveryAttempted {
+				return false
+			}
+			return p.DefaultModel == "" || p.DefaultModel == model || harnessCanServeExactModel(h, model)
+		}
+	}
+	return false
+}
+
+func requirementPinConflict(req Request, in Inputs, canonicalHarness string) (string, string) {
+	if !requiresNoRemote(req) {
+		return "", ""
+	}
+	if req.Provider == "" {
+		return "", ""
+	}
+	for _, h := range in.Harnesses {
+		if canonicalHarness != "" && h.Name != canonicalHarness {
+			continue
+		}
+		for _, p := range h.Providers {
+			if candidateProviderIdentity(h, p) == req.Provider && !candidateIsLocal(h, p) {
+				return "no_remote", req.Provider
+			}
+		}
+	}
+	return "", ""
+}
+
+func requiresNoRemote(req Request) bool {
+	for _, requirement := range req.Require {
+		if requirement == "no_remote" {
+			return true
+		}
+	}
+	return false
+}
+
+func requestAllowsLocal(req Request) bool {
+	return req.AllowLocal || req.Policy != "smart"
+}
+
+func missingPolicyRequirement(req Request, candidates []Candidate) string {
+	if req.Policy == "" {
 		return ""
+	}
+	if requiresNoRemote(req) && allCandidatesRejectedFor(candidates, FilterReasonPolicyFiltered) {
+		return "no_remote"
+	}
+	if !requestAllowsLocal(req) && allCandidatesRejectedFor(candidates, FilterReasonPolicyFiltered) {
+		return "allow_local=false"
 	}
 	switch req.ProviderPreference {
 	case ProviderPreferenceLocalOnly:
@@ -740,15 +849,20 @@ func missingProfileCapability(req Request) string {
 	}
 }
 
-func requestedModelIntent(req Request) string {
-	switch {
-	case req.Model != "":
-		return req.Model
-	case req.ModelRef != "":
-		return req.ModelRef
-	default:
-		return ""
+func allCandidatesRejectedFor(candidates []Candidate, reason FilterReason) bool {
+	if len(candidates) == 0 {
+		return false
 	}
+	for _, candidate := range candidates {
+		if candidate.Eligible || candidate.FilterReason != reason {
+			return false
+		}
+	}
+	return true
+}
+
+func requestedModelIntent(req Request) string {
+	return req.Model
 }
 
 func hasLiveDiscoveryCandidates(candidates []rankedCandidate) bool {
@@ -916,6 +1030,19 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 
 		// Hard preference filtering.
 		if eligible {
+			if !requestAllowsLocal(req) && candidateIsLocal(h, p) {
+				eligible = false
+				reason = "policy disallows local candidates"
+				filterReason = FilterReasonPolicyFiltered
+			}
+		}
+		if eligible && requiresNoRemote(req) && !candidateIsLocal(h, p) {
+			eligible = false
+			reason = "policy requires no_remote"
+			filterReason = FilterReasonPolicyFiltered
+		}
+
+		if eligible {
 			switch req.ProviderPreference {
 			case ProviderPreferenceLocalOnly:
 				if !h.IsLocal {
@@ -999,6 +1126,8 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			EndpointLoadFresh:     endpointLoad.UtilizationFresh,
 			EndpointSaturated:     endpointLoad.UtilizationSaturated,
 			StickyMatch:           stickyMatch,
+			MinPower:              req.MinPower,
+			MaxPower:              req.MaxPower,
 		}
 		if eligible && ctxWin > 0 && minCtx > 0 {
 			ci.ContextHeadroom = ctxWin - minCtx
@@ -1057,6 +1186,10 @@ func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
 		return p.Name
 	}
 	return h.Name
+}
+
+func candidateIsLocal(h HarnessEntry, p ProviderEntry) bool {
+	return candidateCostClass(h, p) == "local" || (p.CostClass == "" && h.IsLocal)
 }
 
 func candidateLoadIdentity(h HarnessEntry, p ProviderEntry) (string, string) {
@@ -1171,44 +1304,7 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 		return req.Model, ""
 	}
 
-	// 2. Catalog ref.
-	if req.ModelRef != "" {
-		if len(p.DiscoveredIDs) > 0 && in.CatalogCandidatesResolver != nil {
-			if candidates, ok := in.CatalogCandidatesResolver(req.ModelRef, h.Surface); ok {
-				for _, candidate := range candidates {
-					if matched := FuzzyMatch(candidate, p.DiscoveredIDs); matched != "" {
-						return matched, ""
-					}
-				}
-				return "", fmt.Sprintf("model ref %q not on provider %q", req.ModelRef, p.Name)
-			}
-		}
-		if in.CatalogResolver != nil {
-			if concrete, ok := in.CatalogResolver(req.ModelRef, h.Surface); ok {
-				// If discovery is available, double-check the concrete ID
-				// (or the original ref) appears on this provider.
-				if len(p.DiscoveredIDs) > 0 {
-					if matched := FuzzyMatch(concrete, p.DiscoveredIDs); matched != "" {
-						return matched, ""
-					}
-					// Try the original ref against discovery.
-					if matched := FuzzyMatch(req.ModelRef, p.DiscoveredIDs); matched != "" {
-						return matched, ""
-					}
-					return "", fmt.Sprintf("model ref %q not on provider %q", req.ModelRef, p.Name)
-				}
-				return concrete, ""
-			}
-			return "", fmt.Sprintf("model ref %q not available on surface %q", req.ModelRef, h.Surface)
-		}
-		if p.DiscoveryAttempted {
-			return "", fmt.Sprintf("provider %q has no live discovered models", p.Name)
-		}
-		// No catalog: pass the ref through.
-		return req.ModelRef, ""
-	}
-
-	// 4. Provider default → harness default. Empty default is acceptable
+	// 2. Provider default → harness default. Empty default is acceptable
 	// when no request fields constrained model selection — orphan validation
 	// happens at dispatch time.
 	if p.DefaultModel != "" {
@@ -1226,15 +1322,15 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 	return "", ""
 }
 
-// EscalateProfileAware is a helper for tier escalation. Given a request that
-// failed at one profile, return the next profile to try, restricted to those
-// that have a viable candidate under the current Inputs (i.e., the profile's
+// EscalatePolicyAware is a helper for policy escalation. Given a request that
+// failed at one policy, return the next policy to try, restricted to those
+// that have a viable candidate under the current Inputs (i.e., the policy's
 // resolved concrete model exists on the request's pinned provider, if any).
 //
 // Fixes ddx-3c5ba7cc: tier escalation respects --provider affinity.
 //
-// Returns "" when no further profile is viable.
-func EscalateProfileAware(current string, ladder []string, req Request, in Inputs) string {
+// Returns "" when no further policy is viable.
+func EscalatePolicyAware(current string, ladder []string, req Request, in Inputs) string {
 	startIdx := -1
 	for i, p := range ladder {
 		if p == current {
@@ -1248,7 +1344,7 @@ func EscalateProfileAware(current string, ladder []string, req Request, in Input
 	for i := startIdx + 1; i < len(ladder); i++ {
 		next := ladder[i]
 		probe := req
-		probe.Profile = next
+		probe.Policy = next
 		if dec, err := Resolve(probe, in); err == nil && dec != nil && dec.Harness != "" {
 			return next
 		}

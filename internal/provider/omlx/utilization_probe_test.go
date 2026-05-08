@@ -406,7 +406,7 @@ func startStreamingChat(client *http.Client, baseURL, model, prompt string, maxT
 		Model:        model,
 		Stream:       true,
 		StreamOption: &streamOptionsEnvelope{IncludeUsage: true},
-		Temperature: 0,
+		Temperature:  0,
 	}
 
 	raw, err := json.Marshal(body)

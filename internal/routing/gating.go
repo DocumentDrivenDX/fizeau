@@ -117,7 +117,7 @@ func CheckGating(cap Capabilities, req Request) (string, FilterReason) {
 	}
 
 	// Exact-pin gating: an explicit Model field requires ExactPinSupport.
-	if req.Model != "" && req.ModelRef == "" && !cap.ExactPinSupport {
+	if req.Model != "" && !cap.ExactPinSupport {
 		return "exact model pin not supported", FilterReasonScoredBelowTop
 	}
 
@@ -151,32 +151,26 @@ func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model s
 		}
 		return fmt.Sprintf("model %q is not auto-routable", model), FilterReasonNotAutoRoutable
 	}
-	if req.MinPower > 0 && eligibility.Power < req.MinPower {
-		return fmt.Sprintf("model %q power %d < min_power %d", model, eligibility.Power, req.MinPower), FilterReasonBelowMinPower
-	}
-	if req.MaxPower > 0 && eligibility.Power > req.MaxPower {
-		return fmt.Sprintf("model %q power %d > max_power %d", model, eligibility.Power, req.MaxPower), FilterReasonAboveMaxPower
-	}
 	return "", FilterReasonEligible
 }
 
 // resolveRequestReasoning returns a copy of req with Reasoning resolved to the
-// catalog's surface_policy reasoning_default for the request's profile/surface
+// catalog's reasoning default for the request's policy/surface
 // when the request asks for Reasoning=auto. This must run before CheckGating
 // so candidates that only support a different reasoning level (e.g. an
-// off-only variant under a profile whose surface default is "high") are
+// off-only variant under a policy whose surface default is "high") are
 // correctly disqualified by the capability gate. Other Reasoning values
 // (unset, off, named, numeric) are left untouched, preserving the existing
 // behavior of those code paths.
-func resolveRequestReasoning(req Request, surface string, resolver func(profile, surface string) (string, bool)) Request {
-	if resolver == nil || req.Profile == "" {
+func resolveRequestReasoning(req Request, surface string, resolver func(policy, surface string) (string, bool)) Request {
+	if resolver == nil || req.Policy == "" {
 		return req
 	}
 	policy, err := reasoning.ParseString(req.Reasoning)
 	if err != nil || policy.Kind != reasoning.KindAuto {
 		return req
 	}
-	resolved, ok := resolver(req.Profile, surface)
+	resolved, ok := resolver(req.Policy, surface)
 	if !ok || resolved == "" {
 		return req
 	}

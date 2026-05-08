@@ -789,8 +789,9 @@ providers:
 		_ = c.Components.CostClass
 	}
 	localCandidate := byProvider["local"]
-	assert.False(t, localCandidate.Eligible, "local low-power candidate should be rejected: %+v", localCandidate)
-	assert.Equal(t, "below_min_power", localCandidate.FilterReason)
+	assert.True(t, localCandidate.Eligible, "local low-power candidate should remain eligible under soft power scoring: %+v", localCandidate)
+	assert.Equal(t, "", localCandidate.FilterReason)
+	assert.False(t, localCandidate.Winner)
 	assert.Equal(t, 5, localCandidate.Components.Power)
 }
 

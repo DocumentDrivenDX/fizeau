@@ -8,7 +8,7 @@ import (
 func TestScorePowerSelectsPrepaidFrontierWhenQuotaHealthy(t *testing.T) {
 	in := scorePowerInputs()
 
-	dec, err := Resolve(Request{Profile: "smart"}, in)
+	dec, err := Resolve(Request{Policy: "smart"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -36,7 +36,37 @@ func TestScorePowerPrefersLocalFreeWhenPowerSufficient(t *testing.T) {
 	}
 }
 
-func TestScorePowerMinPowerAndPinsRemainConstraints(t *testing.T) {
+func TestSoftPowerScoring_Power9BeatsPower7WhenHealthy(t *testing.T) {
+	in := softPowerInputs(map[string]int{
+		"power-7": 7,
+		"power-9": 9,
+	})
+
+	dec, err := Resolve(Request{MinPower: 8, MaxPower: 10}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "power-9" {
+		t.Fatalf("Provider=%q, want power-9", dec.Provider)
+	}
+}
+
+func TestSoftPowerScoring_AsymmetricUndershootHeavier(t *testing.T) {
+	in := softPowerInputs(map[string]int{
+		"power-7":  7,
+		"power-11": 11,
+	})
+
+	dec, err := Resolve(Request{MinPower: 8, MaxPower: 10}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "power-11" {
+		t.Fatalf("Provider=%q, want power-11 because undershoot is penalized more heavily than overshoot", dec.Provider)
+	}
+}
+
+func TestScorePowerMinPowerIsSoftAndPinsRemainConstraints(t *testing.T) {
 	in := scorePowerInputs()
 
 	dec, err := Resolve(Request{MinPower: 9}, in)
@@ -47,8 +77,8 @@ func TestScorePowerMinPowerAndPinsRemainConstraints(t *testing.T) {
 		t.Fatalf("MinPower winner=%s/%s, want codex/frontier", dec.Harness, dec.Model)
 	}
 	for _, c := range dec.Candidates {
-		if c.Provider == "local" && c.FilterReason != FilterReasonBelowMinPower {
-			t.Fatalf("local FilterReason=%q, want %q", c.FilterReason, FilterReasonBelowMinPower)
+		if c.Provider == "local" && !c.Eligible {
+			t.Fatalf("local candidate must remain eligible under soft MinPower: %#v", c)
 		}
 	}
 
@@ -74,7 +104,35 @@ func TestScorePowerMinPowerAndPinsRemainConstraints(t *testing.T) {
 	}
 }
 
-func TestProfileStandardKeepsPowerFiveLocalCandidatesEligible(t *testing.T) {
+func softPowerInputs(powers map[string]int) Inputs {
+	providers := make([]ProviderEntry, 0, len(powers))
+	for model := range powers {
+		providers = append(providers, ProviderEntry{
+			Name:          model,
+			CostClass:     "medium",
+			DefaultModel:  model,
+			SupportsTools: true,
+		})
+	}
+	return Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "fiz",
+			Surface:             "embedded-openai",
+			CostClass:           "medium",
+			AutoRoutingEligible: true,
+			ExactPinSupport:     true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			SupportsTools:       true,
+			Providers:           providers,
+		}},
+		ModelEligibility: testPowerLookup(powers),
+		Now:              time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC),
+	}
+}
+
+func TestPolicyDefaultKeepsPowerFiveLocalCandidatesEligible(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
@@ -103,7 +161,7 @@ func TestProfileStandardKeepsPowerFiveLocalCandidatesEligible(t *testing.T) {
 		Now: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	dec, err := Resolve(Request{Profile: "standard"}, in)
+	dec, err := Resolve(Request{Policy: "default"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -112,7 +170,7 @@ func TestProfileStandardKeepsPowerFiveLocalCandidatesEligible(t *testing.T) {
 	}
 	for _, c := range dec.Candidates {
 		if !c.Eligible {
-			t.Fatalf("candidate unexpectedly ineligible under standard: %#v", c)
+			t.Fatalf("candidate unexpectedly ineligible under default: %#v", c)
 		}
 		if c.Power != 5 {
 			t.Fatalf("candidate power=%d, want 5: %#v", c.Power, c)
@@ -120,7 +178,7 @@ func TestProfileStandardKeepsPowerFiveLocalCandidatesEligible(t *testing.T) {
 	}
 }
 
-func TestProfileStandardDoesNotBroadenExactModelRef(t *testing.T) {
+func TestPolicyDefaultDoesNotBroadenExactModelPin(t *testing.T) {
 	in := Inputs{
 		Harnesses: []HarnessEntry{
 			{
@@ -140,16 +198,6 @@ func TestProfileStandardDoesNotBroadenExactModelRef(t *testing.T) {
 				},
 			},
 		},
-		CatalogResolver: func(ref, surface string) (string, bool) {
-			switch ref {
-			case "standard":
-				return "grendel-5", true
-			case "grendel-5":
-				return "grendel-5", true
-			default:
-				return "", false
-			}
-		},
 		ModelEligibility: testPowerLookup(map[string]int{
 			"grendel-5": 5,
 			"vidar-5":   5,
@@ -158,12 +206,12 @@ func TestProfileStandardDoesNotBroadenExactModelRef(t *testing.T) {
 		Now: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
 	}
 
-	dec, err := Resolve(Request{Profile: "standard", ModelRef: "standard"}, in)
+	dec, err := Resolve(Request{Policy: "default", Model: "grendel-5"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if dec.Model != "grendel-5" {
-		t.Fatalf("Model=%q, want exact catalog-reference resolution", dec.Model)
+		t.Fatalf("Model=%q, want exact model pin", dec.Model)
 	}
 	if dec.Harness != "fiz" {
 		t.Fatalf("Harness=%q, want fiz", dec.Harness)

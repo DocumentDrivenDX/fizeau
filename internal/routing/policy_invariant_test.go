@@ -41,12 +41,11 @@ func TestRoutingPolicyInvariants(t *testing.T) {
 			wantModel:       "local-good",
 		},
 		{
-			policyStatement: "if local LLMs are available and satisfy constraints, use them",
+			policyStatement: "soft bounded power can still prefer a healthier subscription route",
 			req:             Request{MinPower: 7, MaxPower: 7},
 			inputs:          policyInputsWithDiscoveredLocalDefault(),
-			wantHarness:     "fiz",
-			wantProvider:    "local",
-			wantModel:       "local-good",
+			wantHarness:     "codex",
+			wantModel:       "cloud-frontier",
 		},
 		{
 			policyStatement: "if local/free is unavailable, fall back to the best viable non-local candidate",
@@ -59,15 +58,11 @@ func TestRoutingPolicyInvariants(t *testing.T) {
 			},
 		},
 		{
-			policyStatement: "if local/free is below requested power, do not select it",
+			policyStatement: "soft min/max power demotes undershoot without filtering candidates",
 			req:             Request{MinPower: 8, MaxPower: 8},
 			inputs:          policyInputsWithDiscoveredLocalDefault(),
-			wantHarness:     "fiz",
-			wantProvider:    "paid",
-			wantModel:       "paid-strong",
-			wantRejected: map[string]FilterReason{
-				"fiz/local": FilterReasonBelowMinPower,
-			},
+			wantHarness:     "codex",
+			wantModel:       "cloud-frontier",
 		},
 		{
 			policyStatement: "an exact model pin overrides local preference",
@@ -176,7 +171,7 @@ func TestRoutingPolicyInvariants(t *testing.T) {
 
 func TestRoutingPolicyNoCandidateCarriesRejectedTrace(t *testing.T) {
 	policyStatement := "no-candidate errors expose rejected candidate reasons for caller retry decisions"
-	dec, err := Resolve(Request{MinPower: 9, MaxPower: 9}, policyBaseInputs())
+	dec, err := Resolve(Request{Provider: "missing-provider"}, policyBaseInputs())
 	if err == nil {
 		t.Fatalf("policy_statement=%q: Resolve succeeded with decision=%#v, want no viable candidate", policyStatement, dec)
 	}
@@ -184,8 +179,8 @@ func TestRoutingPolicyNoCandidateCarriesRejectedTrace(t *testing.T) {
 	if !errors.As(err, &noViable) {
 		t.Fatalf("policy_statement=%q: error=%T %v, want NoViableCandidateError", policyStatement, err, err)
 	}
-	if noViable.MinPower != 9 || noViable.MaxPower != 9 {
-		t.Fatalf("policy_statement=%q: bounds min=%d max=%d, want 9/9", policyStatement, noViable.MinPower, noViable.MaxPower)
+	if noViable.Provider != "missing-provider" {
+		t.Fatalf("policy_statement=%q: provider=%q, want missing-provider", policyStatement, noViable.Provider)
 	}
 	if len(dec.Candidates) == 0 {
 		t.Fatalf("policy_statement=%q: rejected trace is empty", policyStatement)

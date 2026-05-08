@@ -41,11 +41,21 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			return nil, err
 		}
 	}
+	if req.Harness != "" && req.Profile != "" {
+		canonical := harnesses.ResolveHarnessAlias(req.Harness)
+		if !s.registry.Has(canonical) {
+			return nil, fmt.Errorf("unknown harness %q", req.Harness)
+		}
+		cfg, _ := s.registry.Get(canonical)
+		if err := validateExplicitHarnessProfile(canonical, cfg, req.Profile); err != nil {
+			return nil, err
+		}
+	}
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
 	profile := req.Profile
+	policy := routingPolicyForProfile(cat, profile)
 	powerPolicy := routePowerPolicyForRequest(cat, req)
-	modelRef := req.ModelRef
 	providerPreference, err := providerPreferenceForProfile(cat, profile)
 	if err != nil {
 		return &RouteDecision{
@@ -63,12 +73,12 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			Candidates:       modelCandidates,
 		}
 		s.annotateRouteDecisionEvidence(result)
-		return result, publicRoutingError(modelErr, result.Candidates)
+		return result, publicRoutingError(modelErr, result.Candidates, req.Profile)
 	}
+	applyRoutingModelRef(&in, req.ModelRef, cat)
 
 	rReq := routing.Request{
-		Profile:               profile,
-		ModelRef:              modelRef,
+		Policy:                policy,
 		Model:                 resolvedModel,
 		Provider:              req.Provider,
 		Harness:               req.Harness,
@@ -83,7 +93,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
 	if err != nil {
-		if escalated, edec, eerr := escalateProfileLadder(rReq, in, err); escalated {
+		if escalated, edec, eerr := escalatePolicyLadder(rReq, in, err, req.Profile); escalated {
 			dec = edec
 			err = eerr
 		}
@@ -96,7 +106,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		result.RequestedProfile = req.Profile
 		result.PowerPolicy = powerPolicy
 		s.annotateRouteDecisionEvidence(result)
-		return result, publicRoutingError(err, result.Candidates)
+		return result, publicRoutingError(err, result.Candidates, req.Profile)
 	}
 	s.applyStickyRouteLease(req.CorrelationID, result)
 	if result != nil && result.Endpoint == "" {
@@ -279,22 +289,22 @@ func capabilityScoreForCostClass(class string) float64 {
 	}
 }
 
-// escalateProfileLadder walks routing.ProfileEscalationLadder when Resolve
-// returns a "no eligible candidate" error and the request's profile is in
+// escalatePolicyLadder walks routing.PolicyEscalationLadder when Resolve
+// returns a "no eligible candidate" error and the request's policy is in
 // the ladder. Returns (true, decision, nil) when a higher tier resolves to
 // an eligible candidate, or (true, nil, *routing.ErrNoLiveProvider) when
 // the entire remaining ladder is also empty. Returns (false, _, _) when
-// escalation does not apply (hard pin error, profile not in ladder, etc.).
-func escalateProfileLadder(req routing.Request, in routing.Inputs, origErr error) (bool, *routing.Decision, error) {
-	if origErr == nil || req.Profile == "" {
+// escalation does not apply (hard pin error, policy not in ladder, etc.).
+func escalatePolicyLadder(req routing.Request, in routing.Inputs, origErr error, displayProfile string) (bool, *routing.Decision, error) {
+	if origErr == nil || req.Policy == "" {
 		return false, nil, nil
 	}
 	if !shouldEscalateOnError(origErr) {
 		return false, nil, nil
 	}
 	startIdx := -1
-	for i, p := range routing.ProfileEscalationLadder {
-		if p == req.Profile {
+	for i, p := range routing.PolicyEscalationLadder {
+		if p == req.Policy {
 			startIdx = i
 			break
 		}
@@ -302,24 +312,31 @@ func escalateProfileLadder(req routing.Request, in routing.Inputs, origErr error
 	if startIdx < 0 {
 		return false, nil, nil
 	}
-	for i := startIdx + 1; i < len(routing.ProfileEscalationLadder); i++ {
+	for i := startIdx + 1; i < len(routing.PolicyEscalationLadder); i++ {
 		probe := req
-		probe.Profile = routing.ProfileEscalationLadder[i]
+		probe.Policy = routing.PolicyEscalationLadder[i]
 		dec, err := routing.Resolve(probe, in)
 		if err == nil && dec != nil && dec.Harness != "" {
 			return true, dec, nil
 		}
 	}
+	starting := displayProfile
+	if starting == "" {
+		starting = req.Policy
+	}
 	return true, nil, &routing.ErrNoLiveProvider{
-		PromptTokens:  req.EstimatedPromptTokens,
-		RequiresTools: req.RequiresTools,
-		StartingTier:  req.Profile,
+		PromptTokens:   req.EstimatedPromptTokens,
+		RequiresTools:  req.RequiresTools,
+		StartingPolicy: starting,
+		MinPower:       req.MinPower,
+		MaxPower:       req.MaxPower,
+		AllowLocal:     req.AllowLocal,
 	}
 }
 
 // shouldEscalateOnError gates ladder escalation to "no eligible candidate"
 // errors. Hard caller-pin conflicts (ErrHarnessModelIncompatible,
-// ErrProfilePinConflict) are surfaced as-is — escalating past an explicit
+// ErrPolicyRequirementUnsatisfied) are surfaced as-is — escalating past an explicit
 // pin would silently change the caller's intent.
 func shouldEscalateOnError(err error) bool {
 	var modelConstraintAmbiguous *ErrModelConstraintAmbiguous
@@ -334,14 +351,24 @@ func shouldEscalateOnError(err error) bool {
 	if errors.As(err, &modelErr) {
 		return false
 	}
-	var pinErr *routing.ErrProfilePinConflict
+	var pinErr *routing.ErrUnsatisfiablePin
 	if errors.As(err, &pinErr) {
+		return false
+	}
+	var policyErr *routing.ErrPolicyRequirementUnsatisfied
+	if errors.As(err, &policyErr) {
 		return false
 	}
 	return true
 }
 
-func publicRoutingError(err error, candidates []RouteCandidate) error {
+func publicRoutingError(err error, candidates []RouteCandidate, requestedProfile ...string) error {
+	displayProfile := func(policy string) string {
+		if len(requestedProfile) > 0 && requestedProfile[0] != "" {
+			return requestedProfile[0]
+		}
+		return policy
+	}
 	var modelErr *routing.ErrHarnessModelIncompatible
 	if errors.As(err, &modelErr) {
 		return withRouteCandidates(&ErrHarnessModelIncompatible{
@@ -350,20 +377,33 @@ func publicRoutingError(err error, candidates []RouteCandidate) error {
 			SupportedModels: append([]string(nil), modelErr.SupportedModels...),
 		}, candidates)
 	}
-	var profileErr *routing.ErrProfilePinConflict
-	if errors.As(err, &profileErr) {
-		return withRouteCandidates(&ErrProfilePinConflict{
-			Profile:           profileErr.Profile,
-			ConflictingPin:    profileErr.ConflictingPin,
-			ProfileConstraint: profileErr.ProfileConstraint,
+	var policyErr *routing.ErrPolicyRequirementUnsatisfied
+	if errors.As(err, &policyErr) {
+		if policyErr.AttemptedPin != "" {
+			return withRouteCandidates(&ErrProfilePinConflict{
+				Profile:           displayProfile(policyErr.Policy),
+				ConflictingPin:    policyErr.AttemptedPin,
+				ProfileConstraint: policyErr.Requirement,
+			}, candidates)
+		}
+		return withRouteCandidates(&ErrNoProfileCandidate{
+			Profile:           displayProfile(policyErr.Policy),
+			MissingCapability: policyErr.Requirement,
+			Rejected:          policyErr.Rejected,
 		}, candidates)
 	}
-	var noProfileErr *routing.ErrNoProfileCandidate
-	if errors.As(err, &noProfileErr) {
-		return withRouteCandidates(&ErrNoProfileCandidate{
-			Profile:           noProfileErr.Profile,
-			MissingCapability: noProfileErr.MissingCapability,
-			Rejected:          noProfileErr.Rejected,
+	var unknownPolicyErr *routing.ErrUnknownPolicy
+	if errors.As(err, &unknownPolicyErr) {
+		return withRouteCandidates(&ErrUnknownProfile{
+			Profile: displayProfile(unknownPolicyErr.Policy),
+		}, candidates)
+	}
+	var pinErr *routing.ErrUnsatisfiablePin
+	if errors.As(err, &pinErr) {
+		return withRouteCandidates(&ErrProfilePinConflict{
+			Profile:           displayProfile(""),
+			ConflictingPin:    pinErr.Pin,
+			ProfileConstraint: pinErr.Reason,
 		}, candidates)
 	}
 	var noLiveErr *routing.ErrNoLiveProvider
@@ -371,7 +411,7 @@ func publicRoutingError(err error, candidates []RouteCandidate) error {
 		return withRouteCandidates(&ErrNoLiveProvider{
 			PromptTokens:  noLiveErr.PromptTokens,
 			RequiresTools: noLiveErr.RequiresTools,
-			StartingTier:  noLiveErr.StartingTier,
+			StartingTier:  displayProfile(noLiveErr.StartingPolicy),
 		}, candidates)
 	}
 	var quotaErr *routing.ErrAllProvidersQuotaExhausted
@@ -531,8 +571,6 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ProviderSuccessRate:          successRate,
 		ObservedLatencyMS:            latencyMS,
 		ProviderQuotaExhaustedUntil:  s.providerQuotaExhaustedUntil(now),
-		CatalogResolver:              serviceRoutingCatalogResolver(cat),
-		CatalogCandidatesResolver:    serviceRoutingCatalogCandidatesResolver(cat),
 		ModelEligibility:             serviceRoutingModelEligibility(cat),
 		ReasoningResolver:            serviceRoutingReasoningResolver(cat),
 		EndpointLoadResolver:         s.routeEndpointLoadsResolver(now),
@@ -615,6 +653,106 @@ func serviceRoutingCatalog() *modelcatalog.Catalog {
 		return nil
 	}
 	return cat
+}
+
+func routingPolicyForProfile(cat *modelcatalog.Catalog, profile string) string {
+	profile = strings.TrimSpace(profile)
+	switch profile {
+	case "":
+		return ""
+	case "cheap", "default", "smart", "air-gapped":
+		return profile
+	case "standard", "code-fast", "fast":
+		return "default"
+	case "code-smart":
+		return "smart"
+	case "code-economy", "local", "offline":
+		return "cheap"
+	}
+	if cat == nil {
+		return profile
+	}
+	info, ok := cat.Profile(profile)
+	if !ok {
+		return profile
+	}
+	switch info.CompatibilityTarget {
+	case "smart":
+		return "smart"
+	case "standard":
+		return "default"
+	case "code-economy":
+		return "cheap"
+	default:
+		return profile
+	}
+}
+
+func applyRoutingModelRef(in *routing.Inputs, ref string, cat *modelcatalog.Catalog) {
+	if in == nil {
+		return
+	}
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return
+	}
+	for hi := range in.Harnesses {
+		h := &in.Harnesses[hi]
+		if len(h.Providers) == 0 {
+			if model, ok := routingModelRefForSurface(cat, ref, h.Surface, nil, false); ok {
+				h.DefaultModel = model
+			}
+			continue
+		}
+		for pi := range h.Providers {
+			p := &h.Providers[pi]
+			if model, ok := routingModelRefForSurface(cat, ref, h.Surface, p.DiscoveredIDs, p.DiscoveryAttempted); ok {
+				p.DefaultModel = model
+				p.SupportsTools = providerSupportsTools(cat, model, p.DiscoveredIDs)
+			}
+		}
+	}
+}
+
+func routingModelRefForSurface(cat *modelcatalog.Catalog, ref, surface string, discovered []string, discoveryAttempted bool) (string, bool) {
+	if cat == nil {
+		if discoveryAttempted {
+			if matched := routing.FuzzyMatch(ref, discovered); matched != "" {
+				return matched, true
+			}
+		}
+		return ref, true
+	}
+	catalogSurface, ok := serviceRoutingCatalogSurface(surface)
+	if !ok {
+		return "", false
+	}
+	resolved, err := cat.Resolve(ref, modelcatalog.ResolveOptions{
+		Surface:         catalogSurface,
+		AllowDeprecated: true,
+	})
+	if err != nil || resolved.ConcreteModel == "" {
+		return "", false
+	}
+	if len(discovered) == 0 {
+		return resolved.ConcreteModel, true
+	}
+	candidates := cat.CandidatesFor(catalogSurface, resolved.CanonicalID)
+	if len(candidates) == 0 {
+		candidates = []string{resolved.ConcreteModel}
+	}
+	for _, candidate := range candidates {
+		if matched := routing.FuzzyMatch(candidate, discovered); matched != "" {
+			return matched, true
+		}
+	}
+	if matched := routing.FuzzyMatch(resolved.ConcreteModel, discovered); matched != "" {
+		return matched, true
+	}
+	if matched := routing.FuzzyMatch(ref, discovered); matched != "" {
+		return matched, true
+	}
+	return resolved.ConcreteModel, true
 }
 
 func serviceRoutingCatalogResolver(cat *modelcatalog.Catalog) func(ref, surface string) (string, bool) {

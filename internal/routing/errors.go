@@ -8,10 +8,11 @@ import (
 )
 
 var (
-	errHarnessModelIncompatible   = errors.New("routing: harness model incompatible")
-	errProfilePinConflict         = errors.New("routing: profile pin conflict")
-	errNoProfileCandidate         = errors.New("routing: no profile candidate")
-	errAllProvidersQuotaExhausted = errors.New("routing: all providers quota exhausted")
+	errHarnessModelIncompatible     = errors.New("routing: harness model incompatible")
+	errPolicyRequirementUnsatisfied = errors.New("routing: policy requirement unsatisfied")
+	errUnknownPolicy                = errors.New("routing: unknown policy")
+	errUnsatisfiablePin             = errors.New("routing: unsatisfiable pin")
+	errAllProvidersQuotaExhausted   = errors.New("routing: all providers quota exhausted")
 )
 
 // ErrHarnessModelIncompatible reports an explicit Harness+Model pin that the
@@ -42,59 +43,83 @@ func (e ErrHarnessModelIncompatible) Unwrap() error {
 	return errHarnessModelIncompatible
 }
 
-// ErrProfilePinConflict reports an explicit Profile whose placement constraint
-// contradicts another explicit caller pin.
-type ErrProfilePinConflict struct {
-	// Profile is the explicit profile requested by the caller.
-	Profile string
-	// ConflictingPin names the explicit pin that violates the profile, such as
-	// "Harness=claude" or "Model=local-model".
-	ConflictingPin string
-	// ProfileConstraint is a short description of the profile placement rule,
-	// such as "local-only" or "subscription-only".
-	ProfileConstraint string
+// ErrPolicyRequirementUnsatisfied reports a hard policy requirement that no
+// candidate, or an explicit caller pin, can satisfy.
+type ErrPolicyRequirementUnsatisfied struct {
+	Policy       string
+	Requirement  string
+	AttemptedPin string
+	Rejected     int
 }
 
-func (e ErrProfilePinConflict) Error() string {
-	return fmt.Sprintf("profile %q requires %s but conflicts with %s", e.Profile, e.ProfileConstraint, e.ConflictingPin)
+func (e ErrPolicyRequirementUnsatisfied) Error() string {
+	if e.AttemptedPin != "" {
+		return fmt.Sprintf("policy %q requires %s but conflicts with %s", e.Policy, e.Requirement, e.AttemptedPin)
+	}
+	return fmt.Sprintf("policy %q has no candidate satisfying %s: %d candidates rejected", e.Policy, e.Requirement, e.Rejected)
 }
 
-func (e ErrProfilePinConflict) Is(target error) bool {
+func (e ErrPolicyRequirementUnsatisfied) Is(target error) bool {
 	switch target.(type) {
-	case ErrProfilePinConflict, *ErrProfilePinConflict:
+	case ErrPolicyRequirementUnsatisfied, *ErrPolicyRequirementUnsatisfied:
 		return true
 	default:
-		return errors.Is(errProfilePinConflict, target)
+		return errors.Is(errPolicyRequirementUnsatisfied, target)
 	}
 }
 
-func (e ErrProfilePinConflict) Unwrap() error {
-	return errProfilePinConflict
+func (e ErrPolicyRequirementUnsatisfied) Unwrap() error {
+	return errPolicyRequirementUnsatisfied
 }
 
-// ErrNoProfileCandidate reports that a profile's hard placement requirement
-// could not be satisfied by any routed candidate.
-type ErrNoProfileCandidate struct {
-	Profile           string
-	MissingCapability string
-	Rejected          int
+// ErrUnknownPolicy reports a policy name outside the routing engine's
+// canonical v0.11 policy vocabulary.
+type ErrUnknownPolicy struct {
+	Policy string
 }
 
-func (e ErrNoProfileCandidate) Error() string {
-	return fmt.Sprintf("profile %q has no candidate satisfying %s: %d candidates rejected", e.Profile, e.MissingCapability, e.Rejected)
+func (e ErrUnknownPolicy) Error() string {
+	return fmt.Sprintf("unknown policy %q", e.Policy)
 }
 
-func (e ErrNoProfileCandidate) Is(target error) bool {
+func (e ErrUnknownPolicy) Is(target error) bool {
 	switch target.(type) {
-	case ErrNoProfileCandidate, *ErrNoProfileCandidate:
+	case ErrUnknownPolicy, *ErrUnknownPolicy:
 		return true
 	default:
-		return errors.Is(errNoProfileCandidate, target)
+		return errors.Is(errUnknownPolicy, target)
 	}
 }
 
-func (e ErrNoProfileCandidate) Unwrap() error {
-	return errNoProfileCandidate
+func (e ErrUnknownPolicy) Unwrap() error {
+	return errUnknownPolicy
+}
+
+// ErrUnsatisfiablePin reports explicit caller pins that cannot all be true at
+// once, such as a harness/model pair where the harness cannot serve the model.
+type ErrUnsatisfiablePin struct {
+	Pin    string
+	Reason string
+}
+
+func (e ErrUnsatisfiablePin) Error() string {
+	if e.Reason == "" {
+		return fmt.Sprintf("unsatisfiable pin %s", e.Pin)
+	}
+	return fmt.Sprintf("unsatisfiable pin %s: %s", e.Pin, e.Reason)
+}
+
+func (e ErrUnsatisfiablePin) Is(target error) bool {
+	switch target.(type) {
+	case ErrUnsatisfiablePin, *ErrUnsatisfiablePin:
+		return true
+	default:
+		return errors.Is(errUnsatisfiablePin, target)
+	}
+}
+
+func (e ErrUnsatisfiablePin) Unwrap() error {
+	return errUnsatisfiablePin
 }
 
 // ErrAllProvidersQuotaExhausted reports that every routing candidate that

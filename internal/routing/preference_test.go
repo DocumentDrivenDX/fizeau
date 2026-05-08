@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -48,7 +49,7 @@ func TestProviderPreferenceBiasing(t *testing.T) {
 	// baseline: cheap prefers local.
 
 	t.Run("local-first bias", func(t *testing.T) {
-		req := Request{Profile: "smart", ProviderPreference: ProviderPreferenceLocalFirst}
+		req := Request{Policy: "smart", ProviderPreference: ProviderPreferenceLocalFirst}
 		dec, err := Resolve(req, in)
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
@@ -74,7 +75,7 @@ func TestProviderPreferenceBiasing(t *testing.T) {
 	})
 
 	t.Run("subscription-first bias", func(t *testing.T) {
-		req := Request{Profile: "cheap", ProviderPreference: ProviderPreferenceSubscriptionFirst}
+		req := Request{Policy: "cheap", ProviderPreference: ProviderPreferenceSubscriptionFirst}
 		dec, err := Resolve(req, in)
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
@@ -99,7 +100,7 @@ func TestQuotaSignalsScoring(t *testing.T) {
 				in.Harnesses[i].QuotaOK = false
 			}
 		}
-		req := Request{Profile: "smart"}
+		req := Request{Policy: "smart"}
 		dec, err := Resolve(req, in)
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
@@ -118,7 +119,7 @@ func TestQuotaSignalsScoring(t *testing.T) {
 				in.Harnesses[i].QuotaStale = true
 			}
 		}
-		req := Request{Profile: "smart"}
+		req := Request{Policy: "smart"}
 		dec, err := Resolve(req, in)
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
@@ -147,7 +148,7 @@ func TestQuotaSignalsScoring(t *testing.T) {
 				in.Harnesses[i].QuotaTrend = QuotaTrendBurning
 			}
 		}
-		req := Request{Profile: "smart"}
+		req := Request{Policy: "smart"}
 		dec, err := Resolve(req, in)
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
@@ -196,8 +197,8 @@ func TestDefaultPreferenceNormalization(t *testing.T) {
 	// We test this at the routing engine level.
 	in := newTestRoutingEngine()
 
-	emptyReq := Request{Profile: "cheap", ProviderPreference: ""}
-	localReq := Request{Profile: "cheap", ProviderPreference: ProviderPreferenceLocalFirst}
+	emptyReq := Request{Policy: "cheap", ProviderPreference: ""}
+	localReq := Request{Policy: "cheap", ProviderPreference: ProviderPreferenceLocalFirst}
 
 	decEmpty, errEmpty := Resolve(emptyReq, in)
 	decLocal, errLocal := Resolve(localReq, in)
@@ -231,8 +232,9 @@ func TestLocalOnlyExhaustsCandidates(t *testing.T) {
 	if err == nil {
 		t.Fatal("local-only with no viable local harness: expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "no viable") {
-		t.Errorf("error should mention 'no viable': %v", err)
+	var policyErr *ErrPolicyRequirementUnsatisfied
+	if !errors.As(err, &policyErr) {
+		t.Errorf("error should be policy requirement failure: %T %v", err, err)
 	}
 	// All candidates should be ineligible.
 	if dec != nil {
@@ -262,8 +264,9 @@ func TestSubscriptionOnlyWithExhaustedQuota(t *testing.T) {
 	if err == nil {
 		t.Fatal("subscription-only with all quotas exhausted: expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "no viable") {
-		t.Errorf("error should mention 'no viable': %v", err)
+	var policyErr *ErrPolicyRequirementUnsatisfied
+	if !errors.As(err, &policyErr) {
+		t.Errorf("error should be policy requirement failure: %T %v", err, err)
 	}
 	// Subscription harnesses should be ineligible due to QuotaOK=false.
 	if dec != nil {
@@ -292,8 +295,8 @@ func TestLocalFirstDefaultCooldownFallback(t *testing.T) {
 	}
 
 	// Default/empty preference: should fall back to subscription when local is down.
-	// Use smart profile so cooldown demotion (140-50=90) falls below subscription (100).
-	req := Request{Profile: "smart", ProviderPreference: ""}
+	// Use smart policy so cooldown demotion (140-50=90) falls below subscription (100).
+	req := Request{Policy: "smart", ProviderPreference: ""}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve with empty preference + local cooldown: %v", err)
@@ -306,21 +309,21 @@ func TestLocalFirstDefaultCooldownFallback(t *testing.T) {
 
 // TestSubscriptionFirstSelectsSubscription verifies that subscription-first
 // selects a subscription harness over a local harness when both are viable,
-// for a profile that would otherwise prefer local.
+// for a policy that would otherwise prefer local.
 func TestSubscriptionFirstSelectsSubscription(t *testing.T) {
 	in := newTestRoutingEngine()
 
-	// standard profile + subscription-first ties local and subscription in the
+	// default policy + subscription-first ties local and subscription in the
 	// current score policy, then the locality tiebreak keeps the local route.
-	// standard + local-first: fiz (local) = 100+25-0 = 125; claude = 100+15-20 = 95 → fiz wins
-	// standard + subscription-first: fiz = 100+25-0 = 125; claude = 100+30+15-20 = 125 → fiz wins on locality
-	req := Request{Profile: "standard", ProviderPreference: ProviderPreferenceSubscriptionFirst}
+	// default + local-first: fiz (local) = 100+25-0 = 125; claude = 100+15-20 = 95 → fiz wins
+	// default + subscription-first: fiz = 100+25-0 = 125; claude = 100+30+15-20 = 125 → fiz wins on locality
+	req := Request{Policy: "default", ProviderPreference: ProviderPreferenceSubscriptionFirst}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if dec.Harness != "fiz" {
-		t.Errorf("standard + subscription-first: expected fiz after locality tiebreak, got %q", dec.Harness)
+		t.Errorf("default + subscription-first: expected fiz after locality tiebreak, got %q", dec.Harness)
 	}
 }
 
@@ -346,7 +349,7 @@ func TestQuotaSignalsConsideredInScoring(t *testing.T) {
 		}
 	}
 
-	req := Request{Profile: "smart"}
+	req := Request{Policy: "smart"}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -376,7 +379,7 @@ func TestQuotaHeadroomContinuouslyAffectsSubscriptionScoring(t *testing.T) {
 		}
 	}
 
-	dec, err := Resolve(Request{Profile: "smart"}, in)
+	dec, err := Resolve(Request{Policy: "smart"}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -425,7 +428,7 @@ func TestNonClaudeSubscriptionQuotaStale(t *testing.T) {
 		Harnesses: []HarnessEntry{codexEntry},
 		Now:       time.Now(),
 	}
-	req := Request{Profile: "smart", ProviderPreference: ProviderPreferenceLocalFirst}
+	req := Request{Policy: "smart", ProviderPreference: ProviderPreferenceLocalFirst}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -513,7 +516,7 @@ func TestCostTiebreakFallsThroughToLocalityWhenCostsMatch(t *testing.T) {
 		},
 	}
 
-	dec, err := Resolve(Request{Profile: "smart", ProviderPreference: ProviderPreferenceLocalFirst}, in)
+	dec, err := Resolve(Request{Policy: "default", ProviderPreference: ProviderPreferenceLocalFirst}, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

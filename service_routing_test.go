@@ -258,32 +258,32 @@ targets:
 		t.Fatalf("PowerPolicy=%#v, want standard 7..8", dec.PowerPolicy)
 	}
 
-	var sawBelowMin, sawAboveMax bool
+	var sawBelowTarget, sawAboveTarget bool
 	for _, candidate := range dec.Candidates {
 		switch candidate.Model {
 		case "power-5":
-			if candidate.Eligible {
-				t.Fatalf("power-5 candidate should be ineligible under standard: %#v", candidate)
+			if !candidate.Eligible {
+				t.Fatalf("power-5 candidate should remain eligible under soft power scoring: %#v", candidate)
 			}
-			if candidate.FilterReason != string(routing.FilterReasonBelowMinPower) {
-				t.Fatalf("power-5 FilterReason=%q, want %q", candidate.FilterReason, routing.FilterReasonBelowMinPower)
+			if candidate.FilterReason != "" {
+				t.Fatalf("power-5 FilterReason=%q, want empty under soft power scoring", candidate.FilterReason)
 			}
-			sawBelowMin = true
+			sawBelowTarget = true
 		case "power-7":
 			if !candidate.Eligible {
 				t.Fatalf("power-7 candidate should remain eligible under standard: %#v", candidate)
 			}
 		case "power-9":
-			if candidate.Eligible {
-				t.Fatalf("power-9 candidate should be ineligible under standard: %#v", candidate)
+			if !candidate.Eligible {
+				t.Fatalf("power-9 candidate should remain eligible under soft power scoring: %#v", candidate)
 			}
-			if candidate.FilterReason != string(routing.FilterReasonAboveMaxPower) {
-				t.Fatalf("power-9 FilterReason=%q, want %q", candidate.FilterReason, routing.FilterReasonAboveMaxPower)
+			if candidate.FilterReason != "" {
+				t.Fatalf("power-9 FilterReason=%q, want empty under soft power scoring", candidate.FilterReason)
 			}
-			sawAboveMax = true
+			sawAboveTarget = true
 		}
 	}
-	if !sawBelowMin || !sawAboveMax {
+	if !sawBelowTarget || !sawAboveTarget {
 		t.Fatalf("decision candidates did not cover the full power-policy trace: %#v", dec.Candidates)
 	}
 }
@@ -729,7 +729,7 @@ targets:
 		},
 	}
 	dec, err := routing.Resolve(routing.Request{
-		Profile:            "standard",
+		Policy:             "default",
 		Model:              "sonnet-4.6",
 		ProviderPreference: routing.ProviderPreferenceSubscriptionFirst,
 	}, in)
@@ -1188,7 +1188,7 @@ func TestResolveRouteAutoResolvesToTierDefaultBeforeGate(t *testing.T) {
 
 	t.Run("cheap_resolves_to_off_gate_passes", func(t *testing.T) {
 		dec, err := routing.Resolve(routing.Request{
-			Profile:   "cheap",
+			Policy:    "cheap",
 			Reasoning: "auto",
 		}, routing.Inputs{
 			Harnesses:         []routing.HarnessEntry{offOnly()},
@@ -1204,7 +1204,7 @@ func TestResolveRouteAutoResolvesToTierDefaultBeforeGate(t *testing.T) {
 
 	t.Run("smart_resolves_to_high_gate_rejects", func(t *testing.T) {
 		dec, err := routing.Resolve(routing.Request{
-			Profile:   "smart",
+			Policy:    "smart",
 			Reasoning: "auto",
 		}, routing.Inputs{
 			Harnesses:         []routing.HarnessEntry{offOnly()},
@@ -1234,7 +1234,7 @@ func TestResolveRouteAutoResolvesToTierDefaultBeforeGate(t *testing.T) {
 		// "no requirement" behavior — only Reasoning=auto triggers
 		// surface_policy resolution.
 		dec, err := routing.Resolve(routing.Request{
-			Profile: "smart",
+			Policy: "smart",
 		}, routing.Inputs{
 			Harnesses:         []routing.HarnessEntry{offOnly()},
 			ReasoningResolver: resolver,

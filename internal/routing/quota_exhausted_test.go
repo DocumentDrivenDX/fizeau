@@ -14,7 +14,7 @@ func TestResolveExcludesQuotaExhaustedProvider(t *testing.T) {
 	in.ProviderQuotaExhaustedUntil = map[string]time.Time{
 		"vidar-omlx": now.Add(5 * time.Minute),
 	}
-	req := Request{Profile: "cheap", Harness: "fiz"}
+	req := Request{Policy: "cheap", Harness: "fiz"}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -52,7 +52,7 @@ func TestResolveAllProvidersQuotaExhaustedReturnsTypedError(t *testing.T) {
 		"vidar-omlx": retryAfter,
 	}
 
-	req := Request{Profile: "cheap", Harness: "fiz"}
+	req := Request{Policy: "cheap", Harness: "fiz"}
 	_, err := Resolve(req, in)
 	if err == nil {
 		t.Fatal("expected ErrAllProvidersQuotaExhausted")
@@ -83,7 +83,7 @@ func TestResolveQuotaExhaustedRetryAfterPickedAsEarliest(t *testing.T) {
 		"vidar-omlx": later,
 		"openrouter": earliest,
 	}
-	req := Request{Profile: "cheap", Harness: "fiz"}
+	req := Request{Policy: "cheap", Harness: "fiz"}
 	_, err := Resolve(req, in)
 	var typed *ErrAllProvidersQuotaExhausted
 	if !errors.As(err, &typed) {
@@ -103,7 +103,7 @@ func TestResolvePastRetryAfterIsIgnored(t *testing.T) {
 	in.ProviderQuotaExhaustedUntil = map[string]time.Time{
 		"vidar-omlx": now.Add(-time.Minute), // already recovered
 	}
-	req := Request{Profile: "cheap", Harness: "fiz"}
+	req := Request{Policy: "cheap", Harness: "fiz"}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)

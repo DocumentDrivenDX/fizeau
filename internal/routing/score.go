@@ -14,26 +14,26 @@ const StickyAffinityBonus = 250.0
 const unknownUtilizationPenalty = 5.0
 const unknownPerformancePenalty = 5.0
 
-// scorePolicy returns a score for a candidate under the named profile.
+// scorePolicy returns a score for a candidate under the named policy.
 // Higher is better.
 //
 // Routing priority policy (ported from DDx routing.go):
 //   - cheap: local + low-cost preferred; subscription-within-quota next.
-//   - standard: balanced; light local/subscription preference to avoid spend.
+//   - default: balanced; light local/subscription preference to avoid spend.
 //   - smart: quality first; cloud capability wins; no local bonus.
 //
-// The policy is profile-aware AND provider-aware via providerBias hooks
+// The policy is policy-aware AND provider-aware via providerBias hooks
 // supplied by the caller (cooldown demotion, observation perf bias,
 // provider-affinity bias).
-func scorePolicy(profile string, cand candidateInternal) float64 {
+func scorePolicy(policy string, cand candidateInternal) float64 {
 	total := 0.0
-	for _, component := range scoreComponents(profile, cand) {
+	for _, component := range scoreComponents(policy, cand) {
 		total += component
 	}
 	return total
 }
 
-func scoreComponents(profile string, cand candidateInternal) map[string]float64 {
+func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 	components := map[string]float64{
 		"base":                100,
 		"cost":                0,
@@ -48,6 +48,7 @@ func scoreComponents(profile string, cand candidateInternal) map[string]float64 
 	base := 100.0
 	cr := costClassRank[cand.CostClass]
 	withinQuota := cand.IsSubscription && cand.QuotaOK
+	hasPowerBounds := cand.MinPower > 0 || cand.MaxPower > 0
 	add := func(name string, value float64) {
 		if value == 0 {
 			return
@@ -55,62 +56,66 @@ func scoreComponents(profile string, cand candidateInternal) map[string]float64 
 		components[name] += value
 	}
 
-	switch profile {
-	case "cheap":
-		if cand.CostClass == "local" {
-			base += 40
-			add("deployment_locality", 40)
-		} else if withinQuota {
-			base += 20
-			add("quota_health", 20)
-		}
-		base -= float64(cr) * 30
-		add("cost", -float64(cr)*30)
+	if !hasPowerBounds {
+		switch policy {
+		case "cheap":
+			if cand.CostClass == "local" {
+				base += 40
+				add("deployment_locality", 40)
+			} else if withinQuota {
+				base += 20
+				add("quota_health", 20)
+			}
+			base -= float64(cr) * 30
+			add("cost", -float64(cr)*30)
 
-	case "standard":
-		if cand.CostClass == "local" {
-			base += 25
-			add("deployment_locality", 25)
-		} else if withinQuota {
-			base += 15
-			add("quota_health", 15)
-		}
-		base -= float64(cr) * 10
-		add("cost", -float64(cr)*10)
+		case "default":
+			if cand.CostClass == "local" {
+				base += 25
+				add("deployment_locality", 25)
+			} else if withinQuota {
+				base += 15
+				add("quota_health", 15)
+			}
+			base -= float64(cr) * 10
+			add("cost", -float64(cr)*10)
 
-	case "smart":
-		// Quality first; higher cost rank approximates higher capability.
-		base += float64(cr) * 20
-		add("cost", float64(cr)*20)
-		if withinQuota {
-			base += 5
-			add("quota_health", 5)
-		}
+		case "smart":
+			// Quality first; higher cost rank approximates higher capability.
+			base += float64(cr) * 20
+			add("cost", float64(cr)*20)
+			if withinQuota {
+				base += 5
+				add("quota_health", 5)
+			}
 
-	default:
-		// Treat unspecified as standard.
-		if cand.CostClass == "local" {
-			base += 25
-			add("deployment_locality", 25)
-		} else if withinQuota {
-			base += 15
-			add("quota_health", 15)
+		default:
+			// Treat unspecified as default.
+			if cand.CostClass == "local" {
+				base += 25
+				add("deployment_locality", 25)
+			} else if withinQuota {
+				base += 15
+				add("quota_health", 15)
+			}
+			base -= float64(cr) * 10
+			add("cost", -float64(cr)*10)
 		}
-		base -= float64(cr) * 10
-		add("cost", -float64(cr)*10)
 	}
 
 	// Provider preference bias.
-	switch cand.ProviderPreference {
-	case "local-first", "":
-		if cand.CostClass == "local" {
-			base += 30
-			add("deployment_locality", 30)
-		}
-	case "subscription-first":
-		if cand.IsSubscription && cand.QuotaOK {
-			base += 30
-			add("quota_health", 30)
+	if !hasPowerBounds {
+		switch cand.ProviderPreference {
+		case "local-first", "":
+			if cand.CostClass == "local" {
+				base += 30
+				add("deployment_locality", 30)
+			}
+		case "subscription-first":
+			if cand.IsSubscription && cand.QuotaOK {
+				base += 30
+				add("quota_health", 30)
+			}
 		}
 	}
 
@@ -213,9 +218,21 @@ func scoreComponents(profile string, cand candidateInternal) map[string]float64 
 		add("deployment_locality", 15)
 	}
 
-	if cand.Power > 0 {
+	if cand.Power > 0 && cand.MinPower == 0 && cand.MaxPower == 0 {
 		base += float64(cand.Power) * 12
 		add("power", float64(cand.Power)*12)
+	}
+	if cand.Power > 0 {
+		if cand.MinPower > 0 && cand.Power < cand.MinPower {
+			penalty := float64(cand.MinPower-cand.Power) * 5
+			base -= penalty
+			add("power", -penalty)
+		}
+		if cand.MaxPower > 0 && cand.Power > cand.MaxPower {
+			penalty := float64(cand.Power - cand.MaxPower)
+			base -= penalty
+			add("power", -penalty)
+		}
 	}
 	if cand.Power > 0 && cand.CostUSDPer1kTokens > 0 {
 		costPenalty := cand.CostUSDPer1kTokens * 500
