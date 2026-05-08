@@ -250,7 +250,13 @@ func inspectSmartRouteCandidate(cfg *agentConfig.Config, routeKey, routeModelRef
 	if candidate.Model != "" {
 		overrides.Model = candidate.Model
 	} else if routeModelRef != "" {
-		overrides.ModelRef = routeModelRef
+		resolved, err := resolveProviderModelRef(cfg, candidate.Provider, routeModelRef, allowDeprecated)
+		if err != nil {
+			report.Healthy = false
+			report.Reason = err.Error()
+			return report, candidate
+		}
+		overrides.Model = resolved.ConcreteModel
 	} else {
 		overrides.Model = routeKey
 	}

@@ -815,7 +815,7 @@ providers:
     api_key: test
 backends:
   code-pool:
-    model_ref: code-fast
+    model: gpt-5.4-mini
     providers: [vidar, bragi]
     strategy: round-robin
 default_backend: code-pool
@@ -838,7 +838,7 @@ default_backend: code-pool
 	assert.Equal(t, "success", firstResult.Status)
 	assert.Equal(t, "code-pool", firstResult.SelectedRoute)
 	assert.Equal(t, "vidar", firstResult.SelectedProvider)
-	assert.Equal(t, "standard", firstResult.ResolvedModelRef)
+	assert.Equal(t, "", firstResult.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", firstResult.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", firstResult.Model)
 	assert.Equal(t, "gpt-5.4-mini", vidar.requestedModel())
@@ -849,12 +849,12 @@ default_backend: code-pool
 	firstStart := eventDataByType(t, firstEvents, fizeau.EventSessionStart)
 	assert.Equal(t, "vidar", firstStart["selected_provider"])
 	assert.Equal(t, "code-pool", firstStart["selected_route"])
-	assert.Equal(t, "standard", firstStart["resolved_model_ref"])
+	assert.Empty(t, firstStart["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", firstStart["resolved_model"])
 	firstEnd := eventDataByType(t, firstEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "vidar", firstEnd["selected_provider"])
 	assert.Equal(t, "code-pool", firstEnd["selected_route"])
-	assert.Equal(t, "standard", firstEnd["resolved_model_ref"])
+	assert.Empty(t, firstEnd["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", firstEnd["resolved_model"])
 
 	second := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "-p", "second request")
@@ -864,7 +864,7 @@ default_backend: code-pool
 	assert.Equal(t, "success", secondResult.Status)
 	assert.Equal(t, "code-pool", secondResult.SelectedRoute)
 	assert.Equal(t, "bragi", secondResult.SelectedProvider)
-	assert.Equal(t, "standard", secondResult.ResolvedModelRef)
+	assert.Equal(t, "", secondResult.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", secondResult.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", secondResult.Model)
 	assert.Equal(t, "gpt-5.4-mini", bragi.requestedModel())
@@ -875,12 +875,12 @@ default_backend: code-pool
 	secondStart := eventDataByType(t, secondEvents, fizeau.EventSessionStart)
 	assert.Equal(t, "bragi", secondStart["selected_provider"])
 	assert.Equal(t, "code-pool", secondStart["selected_route"])
-	assert.Equal(t, "standard", secondStart["resolved_model_ref"])
+	assert.Empty(t, secondStart["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", secondStart["resolved_model"])
 	secondEnd := eventDataByType(t, secondEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "bragi", secondEnd["selected_provider"])
 	assert.Equal(t, "code-pool", secondEnd["selected_route"])
-	assert.Equal(t, "standard", secondEnd["resolved_model_ref"])
+	assert.Empty(t, secondEnd["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", secondEnd["resolved_model"])
 
 	assert.Equal(t, 1, vidar.chatCallCount())

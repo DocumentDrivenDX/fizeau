@@ -42,6 +42,12 @@ type ProviderConfig struct {
 	Endpoints      []ProviderEndpoint `yaml:"endpoints,omitempty"`
 	APIKey         string             `yaml:"api_key,omitempty"`
 	Model          string             `yaml:"model,omitempty"`
+	// IncludeByDefault overrides the catalog provider default. Nil means use
+	// the catalog value for this provider type.
+	IncludeByDefault *bool `yaml:"include_by_default,omitempty"`
+	// Billing declares how this provider is paid for. Unknown provider types
+	// must set this to fixed, per_token, or subscription.
+	Billing string `yaml:"billing,omitempty"`
 	// ModelPattern is a case-insensitive regex applied to auto-discovered model
 	// IDs when Model is empty. The first matching model returned by /v1/models
 	// is used. If the pattern matches nothing, the first available model is
@@ -139,12 +145,8 @@ type BashOutputFilterConfig struct {
 // RoutingConfig configures model-first route selection defaults.
 type RoutingConfig struct {
 	// DefaultModel is the default requested model-route key to use when the
-	// caller does not set --model, --model-ref, or --provider.
+	// caller does not set --model or --provider.
 	DefaultModel string `yaml:"default_model,omitempty"`
-
-	// DefaultModelRef resolves through the model catalog to a canonical route
-	// key when no explicit provider or model input is supplied.
-	DefaultModelRef string `yaml:"default_model_ref,omitempty"`
 
 	// HealthCooldown controls how long a failed candidate remains deprioritized
 	// before it is retried.
@@ -180,9 +182,8 @@ type RoutingConfig struct {
 // BackendPoolConfig describes a named routing target that selects one provider
 // before a run using a specified strategy.
 type BackendPoolConfig struct {
-	// ModelRef is the model catalog reference (alias, profile, or canonical
-	// target) attached to this backend pool. Optional.
-	ModelRef string `yaml:"model_ref,omitempty"`
+	// Model is the concrete model override attached to this backend pool.
+	Model string `yaml:"model,omitempty"`
 
 	// Providers is the ordered list of named provider references.
 	Providers []string `yaml:"providers"`
@@ -195,7 +196,6 @@ type BackendPoolConfig struct {
 // ProviderOverrides are per-run overrides applied before building a provider.
 type ProviderOverrides struct {
 	Model           string
-	ModelRef        string
 	AllowDeprecated bool
 }
 
@@ -695,33 +695,9 @@ func (c *Config) ResolveProviderConfig(name string, overrides ProviderOverrides)
 
 	if overrides.Model != "" {
 		pc.Model = overrides.Model
-		return pc, nil, nil
 	}
 
-	if overrides.ModelRef == "" {
-		return pc, nil, nil
-	}
-
-	catalog, err := c.LoadModelCatalog()
-	if err != nil {
-		return ProviderConfig{}, nil, err
-	}
-
-	surface, err := surfaceForProviderType(pc.Type)
-	if err != nil {
-		return ProviderConfig{}, nil, err
-	}
-
-	resolved, err := catalog.Resolve(overrides.ModelRef, modelcatalog.ResolveOptions{
-		Surface:         surface,
-		AllowDeprecated: overrides.AllowDeprecated,
-	})
-	if err != nil {
-		return ProviderConfig{}, nil, err
-	}
-
-	pc.Model = resolved.ConcreteModel
-	return pc, &resolved, nil
+	return pc, nil, nil
 }
 
 // BuildProviderWithOverrides builds a provider after applying per-run overrides.
@@ -748,6 +724,45 @@ func (c *Config) DefaultProvider() (agent.Provider, error) {
 func (c *Config) GetProvider(name string) (ProviderConfig, bool) {
 	pc, ok := c.Providers[name]
 	return pc, ok
+}
+
+// ProviderIncludeByDefault returns the effective default-routing inclusion
+// setting for a configured provider. A user-configured pointer wins; otherwise
+// the catalog provider default is used when available.
+func (c *Config) ProviderIncludeByDefault(name string) bool {
+	if c == nil {
+		return false
+	}
+	pc, ok := c.Providers[name]
+	if !ok {
+		return false
+	}
+	if pc.IncludeByDefault != nil {
+		return *pc.IncludeByDefault
+	}
+	if provider, ok := c.catalogProviderForConfig(name, pc); ok {
+		return provider.IncludeByDefault
+	}
+	switch c.providerBilling(pc) {
+	case modelcatalog.BillingModelFixed, modelcatalog.BillingModelSubscription:
+		return true
+	default:
+		return false
+	}
+}
+
+// ProviderBilling returns the effective billing model for a configured
+// provider: explicit user config, catalog provider metadata, then built-in
+// provider/harness billing tables.
+func (c *Config) ProviderBilling(name string) modelcatalog.BillingModel {
+	if c == nil {
+		return modelcatalog.BillingModelUnknown
+	}
+	pc, ok := c.Providers[name]
+	if !ok {
+		return modelcatalog.BillingModelUnknown
+	}
+	return c.providerBilling(pc)
 }
 
 // GetBackend returns the BackendPoolConfig for a named backend pool.
@@ -833,10 +848,8 @@ func selectProviderIndex(strategy string, counter, numProviders int) int {
 // the number of prior requests against this backend pool. Callers that want
 // stateless first-available behavior can always pass 0.
 //
-// overrides.Model, when set, bypasses the catalog and uses the given concrete
-// model string. overrides.ModelRef, when set, overrides the backend's own
-// model_ref. If neither the backend nor the overrides specify a model, the
-// provider's configured default model is used.
+// Concrete model selection is overrides.Model, then the backend model, then
+// the provider's configured default model.
 func (c *Config) ResolveBackend(name string, counter int, overrides ProviderOverrides) (agent.Provider, ProviderConfig, *modelcatalog.ResolvedTarget, error) {
 	bc, ok := c.Backends[name]
 	if !ok {
@@ -849,11 +862,9 @@ func (c *Config) ResolveBackend(name string, counter int, overrides ProviderOver
 	idx := selectProviderIndex(bc.Strategy, counter, len(bc.Providers))
 	providerName := bc.Providers[idx]
 
-	// Determine the effective model ref: explicit override takes priority over
-	// the backend's own model_ref.
 	effectiveOverrides := overrides
-	if effectiveOverrides.ModelRef == "" && bc.ModelRef != "" {
-		effectiveOverrides.ModelRef = bc.ModelRef
+	if effectiveOverrides.Model == "" && bc.Model != "" {
+		effectiveOverrides.Model = bc.Model
 	}
 
 	p, pc, resolved, err := c.BuildProviderWithOverrides(providerName, effectiveOverrides)
@@ -1110,6 +1121,7 @@ func uniqueEndpointProviderName(name string, used map[string]bool) string {
 func normalizeProviderConfig(pc ProviderConfig) ProviderConfig {
 	pc.Type = strings.ToLower(strings.TrimSpace(pc.Type))
 	pc.BaseURL = strings.TrimSpace(pc.BaseURL)
+	pc.Billing = strings.ToLower(strings.TrimSpace(pc.Billing))
 	pc.ServerInstance = serverinstance.Normalize(pc.BaseURL, pc.ServerInstance)
 	for i := range pc.Endpoints {
 		pc.Endpoints[i].Name = strings.TrimSpace(pc.Endpoints[i].Name)
@@ -1228,6 +1240,51 @@ func (c *Config) LoadModelCatalog() (*modelcatalog.Catalog, error) {
 	})
 }
 
+func (c *Config) providerBilling(pc ProviderConfig) modelcatalog.BillingModel {
+	if billing := modelcatalog.BillingModel(strings.TrimSpace(pc.Billing)); billing != modelcatalog.BillingModelUnknown {
+		return billing
+	}
+	if provider, ok := c.catalogProviderForConfig("", pc); ok && provider.Billing != modelcatalog.BillingModelUnknown {
+		return provider.Billing
+	}
+	if billing := modelcatalog.BillingForProviderSystem(pc.Type); billing != modelcatalog.BillingModelUnknown {
+		return billing
+	}
+	return modelcatalog.BillingForHarness(pc.Type)
+}
+
+func (c *Config) catalogProviderForConfig(name string, pc ProviderConfig) (modelcatalog.Provider, bool) {
+	if c == nil {
+		return modelcatalog.Provider{}, false
+	}
+	cat, err := c.LoadModelCatalog()
+	if err != nil || cat == nil {
+		return modelcatalog.Provider{}, false
+	}
+	name = strings.ToLower(strings.TrimSpace(name))
+	providerType := strings.ToLower(strings.TrimSpace(pc.Type))
+	for _, provider := range cat.Providers() {
+		catalogName := strings.ToLower(strings.TrimSpace(provider.Name))
+		catalogType := strings.ToLower(strings.TrimSpace(provider.Type))
+		if name != "" && catalogName == name {
+			return provider, true
+		}
+		if providerType != "" && (catalogType == providerType || catalogName == providerType) {
+			return provider, true
+		}
+	}
+	return modelcatalog.Provider{}, false
+}
+
+func validBillingModel(billing string) bool {
+	switch modelcatalog.BillingModel(strings.TrimSpace(billing)) {
+	case modelcatalog.BillingModelFixed, modelcatalog.BillingModelPerToken, modelcatalog.BillingModelSubscription:
+		return true
+	default:
+		return false
+	}
+}
+
 // ProviderImplicitGenerationConfig reports whether the inference server
 // behind the given provider type auto-applies the model's HuggingFace
 // generation_config.json when the request omits sampler fields. The CLI
@@ -1244,17 +1301,6 @@ func ProviderImplicitGenerationConfig(providerType string) bool {
 		return vllm.ProtocolCapabilities.ImplicitGenerationConfig
 	default:
 		return false
-	}
-}
-
-func surfaceForProviderType(providerType string) (modelcatalog.Surface, error) {
-	switch providerType {
-	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
-		return modelcatalog.SurfaceAgentOpenAI, nil
-	case "anthropic":
-		return modelcatalog.SurfaceAgentAnthropic, nil
-	default:
-		return "", fmt.Errorf("config: cannot resolve model reference for provider type %q", providerType)
 	}
 }
 
@@ -1307,8 +1353,15 @@ func (c *Config) validateProviders() {
 			c.markProviderError(name, "type openai-compat is no longer supported; use openai, openrouter, lmstudio, llama-server, omlx, rapid-mlx, or ollama")
 			continue
 		}
+		if pc.Billing != "" && !validBillingModel(pc.Billing) {
+			c.markProviderError(name, fmt.Sprintf("invalid billing %q (must be one of fixed, per_token, subscription)", pc.Billing))
+			continue
+		}
+		if pc.Billing == "" && c.providerBilling(pc) == modelcatalog.BillingModelUnknown {
+			c.markProviderError(name, fmt.Sprintf("provider %q: type %q is not catalog-known; declare billing field explicitly (per_token | subscription | fixed)", name, pc.Type))
+			continue
+		}
 		if _, ok := provregistry.Lookup(pc.Type); !ok {
-			c.markProviderError(name, fmt.Sprintf("unknown type %q (registered types: %s)", pc.Type, strings.Join(provregistry.Types(), ", ")))
 			continue
 		}
 		if providerUsesEndpoint(pc.Type) {

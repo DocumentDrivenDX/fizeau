@@ -507,50 +507,7 @@ func TestBuildProvider_RapidMLXDefaultBaseURL(t *testing.T) {
 	assert.Equal(t, 8000, port)
 }
 
-func TestResolveProviderConfig_ModelRefOpenAI(t *testing.T) {
-	isolateHome(t)
-	cfg := Config{
-		ModelCatalog: ModelCatalogConfig{},
-		Providers: map[string]ProviderConfig{
-			"local": {
-				Type:    "lmstudio",
-				BaseURL: "http://localhost:1234/v1",
-				Model:   "old-model",
-			},
-		},
-	}
-
-	pc, resolved, err := cfg.ResolveProviderConfig("local", ProviderOverrides{
-		ModelRef: "code-fast",
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resolved)
-	assert.Equal(t, "gpt-5.4-mini", pc.Model)
-	assert.Equal(t, "standard", resolved.CanonicalID)
-}
-
-func TestResolveProviderConfig_ModelRefAnthropic(t *testing.T) {
-	isolateHome(t)
-	cfg := Config{
-		Providers: map[string]ProviderConfig{
-			"cloud": {
-				Type:   "anthropic",
-				APIKey: "test",
-			},
-		},
-	}
-
-	pc, resolved, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
-		ModelRef: "code-smart",
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resolved)
-	assert.Equal(t, "opus-4.7", pc.Model)
-	assert.Equal(t, "smart", resolved.CanonicalID)
-}
-
-func TestResolveProviderConfig_ExplicitModelBypassesCatalog(t *testing.T) {
-	isolateHome(t)
+func TestResolveProviderConfig_ExplicitModelOverride(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {
@@ -562,77 +519,61 @@ func TestResolveProviderConfig_ExplicitModelBypassesCatalog(t *testing.T) {
 	}
 
 	pc, resolved, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
-		Model:    "exact-model",
-		ModelRef: "code-smart",
+		Model: "exact-model",
 	})
 	require.NoError(t, err)
 	assert.Nil(t, resolved)
 	assert.Equal(t, "exact-model", pc.Model)
 }
 
-func TestResolveProviderConfig_ExternalManifest(t *testing.T) {
-	dir := t.TempDir()
-	manifestPath := filepath.Join(dir, "models.yaml")
-	require.NoError(t, os.WriteFile(manifestPath, []byte(`
-version: 5
-generated_at: 2026-04-09T00:00:00Z
-policies:
-  default:
-    min_power: 7
-    max_power: 8
-models:
-  gpt-smart:
-    family: gpt
-    status: active
-    power: 8
-    surfaces:
-      agent.openai: gpt-4.1
-`), 0o644))
-
+func TestUserProviderIncludeByDefaultOverridesCatalog(t *testing.T) {
+	include := false
 	cfg := Config{
-		ModelCatalog: ModelCatalogConfig{Manifest: manifestPath},
 		Providers: map[string]ProviderConfig{
-			"openrouter": {
-				Type:    "lmstudio",
-				BaseURL: "https://openrouter.ai/api/v1",
-				APIKey:  "test",
-			},
+			"local": {Type: "lmstudio", IncludeByDefault: &include},
 		},
 	}
 
-	pc, resolved, err := cfg.ResolveProviderConfig("openrouter", ProviderOverrides{
-		ModelRef: "gpt-smart",
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resolved)
-	assert.Equal(t, "gpt-4.1", pc.Model)
-	assert.Equal(t, manifestPath, resolved.ManifestSource)
+	require.NoError(t, cfg.finalize())
+	assert.False(t, cfg.ProviderIncludeByDefault("local"))
 }
 
-func TestResolveProviderConfig_MissingSurface(t *testing.T) {
-	isolateHome(t)
+func TestUserProviderUnsetIncludeByDefaultUsesCatalogDefault(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
-			"cloud": {
-				Type:   "anthropic",
-				APIKey: "test",
-			},
+			"local": {Type: "lmstudio"},
 		},
 	}
 
-	_, _, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
-		ModelRef:        "qwen3.6-27b",
-		AllowDeprecated: true,
-	})
-	require.Error(t, err)
+	require.NoError(t, cfg.finalize())
+	assert.True(t, cfg.ProviderIncludeByDefault("local"))
+	assert.Equal(t, modelcatalog.BillingModelFixed, cfg.ProviderBilling("local"))
+}
 
-	var missingSurfaceErr *modelcatalog.MissingSurfaceError
-	require.ErrorAs(t, err, &missingSurfaceErr)
-	assert.Equal(t, modelcatalog.SurfaceAgentAnthropic, missingSurfaceErr.Surface)
+func TestUserProviderUnknownTypeRequiresBilling(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"custom": {Type: "custom-thing"},
+		},
+	}
+
+	require.NoError(t, cfg.finalize())
+	assert.Contains(t, cfg.ProviderError("custom"), `provider "custom": type "custom-thing" is not catalog-known; declare billing field explicitly (per_token | subscription | fixed)`)
+}
+
+func TestUserProviderUnknownTypeWithBillingOK(t *testing.T) {
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"custom": {Type: "custom-thing", Billing: "per_token"},
+		},
+	}
+
+	require.NoError(t, cfg.finalize())
+	assert.Empty(t, cfg.ProviderError("custom"))
+	assert.Equal(t, modelcatalog.BillingModelPerToken, cfg.ProviderBilling("custom"))
 }
 
 func TestBuildProviderWithOverrides(t *testing.T) {
-	isolateHome(t)
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {
@@ -643,39 +584,12 @@ func TestBuildProviderWithOverrides(t *testing.T) {
 	}
 
 	p, pc, resolved, err := cfg.BuildProviderWithOverrides("cloud", ProviderOverrides{
-		ModelRef: "code-smart",
+		Model: "claude-opus-4-1-20250805",
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
-	assert.Equal(t, "opus-4.7", pc.Model)
-	require.NotNil(t, resolved)
-	assert.Equal(t, "smart", resolved.CanonicalID)
-}
-
-func TestResolveProviderConfig_AllowDeprecated(t *testing.T) {
-	isolateHome(t)
-	cfg := Config{
-		Providers: map[string]ProviderConfig{
-			"cloud": {
-				Type:   "anthropic",
-				APIKey: "test",
-			},
-		},
-	}
-
-	_, _, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
-		ModelRef: "claude-sonnet-3.7",
-	})
-	require.Error(t, err)
-
-	pc, resolved, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
-		ModelRef:        "claude-sonnet-3.7",
-		AllowDeprecated: true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resolved)
-	assert.True(t, resolved.Deprecated)
-	assert.Equal(t, "claude-3-7-sonnet-20250219", pc.Model)
+	assert.Equal(t, "claude-opus-4-1-20250805", pc.Model)
+	assert.Nil(t, resolved)
 }
 
 func TestLoad_LegacySaveRoundTripDoesNotReemitLegacyFields(t *testing.T) {
@@ -907,15 +821,14 @@ func TestResolveBackend_RoundRobin_ThreeProviders(t *testing.T) {
 	}
 }
 
-func TestResolveBackend_WithModelRef(t *testing.T) {
-	isolateHome(t)
+func TestResolveBackend_WithModel(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {Type: "anthropic", APIKey: "test"},
 		},
 		Backends: map[string]BackendPoolConfig{
 			"smart": {
-				ModelRef:  "code-smart",
+				Model:     "opus-4.7",
 				Providers: []string{"cloud"},
 				Strategy:  "first-available",
 			},
@@ -924,42 +837,38 @@ func TestResolveBackend_WithModelRef(t *testing.T) {
 
 	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{})
 	require.NoError(t, err)
-	require.NotNil(t, resolved)
+	assert.Nil(t, resolved)
 	assert.Equal(t, "opus-4.7", pc.Model)
-	assert.Equal(t, "smart", resolved.CanonicalID)
 }
 
-func TestResolveBackend_OverrideModelRef(t *testing.T) {
-	isolateHome(t)
+func TestResolveBackend_OverrideModel(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {Type: "anthropic", APIKey: "test"},
 		},
 		Backends: map[string]BackendPoolConfig{
 			"smart": {
-				ModelRef:  "code-smart",
+				Model:     "opus-4.7",
 				Providers: []string{"cloud"},
 				Strategy:  "first-available",
 			},
 		},
 	}
 
-	// overrides.ModelRef takes priority over backend model_ref
-	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{ModelRef: "code-smart"})
+	_, pc, resolved, err := cfg.ResolveBackend("smart", 0, ProviderOverrides{Model: "claude-sonnet-4-20250514"})
 	require.NoError(t, err)
-	require.NotNil(t, resolved)
-	assert.Equal(t, "opus-4.7", pc.Model)
+	assert.Nil(t, resolved)
+	assert.Equal(t, "claude-sonnet-4-20250514", pc.Model)
 }
 
-func TestResolveBackend_ExplicitModelBypassesCatalog(t *testing.T) {
-	isolateHome(t)
+func TestResolveBackend_ExplicitModelOverridesBackendModel(t *testing.T) {
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
 			"cloud": {Type: "anthropic", APIKey: "test", Model: "default-model"},
 		},
 		Backends: map[string]BackendPoolConfig{
 			"smart": {
-				ModelRef:  "code-smart",
+				Model:     "opus-4.7",
 				Providers: []string{"cloud"},
 				Strategy:  "first-available",
 			},
@@ -1048,7 +957,7 @@ providers:
     model: qwen3
 backends:
   local-pool:
-    model_ref: code-fast
+    model: qwen3
     providers: [vidar, bragi]
     strategy: round-robin
 default_backend: local-pool
@@ -1063,7 +972,7 @@ default: vidar
 
 	bc, ok := cfg.GetBackend("local-pool")
 	require.True(t, ok)
-	assert.Equal(t, "code-fast", bc.ModelRef)
+	assert.Equal(t, "qwen3", bc.Model)
 	assert.Equal(t, []string{"vidar", "bragi"}, bc.Providers)
 	assert.Equal(t, "round-robin", bc.Strategy)
 
@@ -1307,11 +1216,9 @@ default: unknown
 
 	cfg, err := Load(dir)
 	require.NoError(t, err)
-	assert.Contains(t, cfg.ProviderError("unknown"), `unknown type`)
+	assert.Contains(t, cfg.ProviderError("unknown"), `provider "unknown": type "" is not catalog-known`)
 	require.NotEmpty(t, cfg.Warnings())
-	assert.Contains(t, cfg.Warnings()[0], `config: provider "unknown" ignored: unknown type ""`)
-	assert.Contains(t, cfg.Warnings()[0], `registered types:`)
-	assert.Contains(t, cfg.Warnings()[0], `rapid-mlx`)
+	assert.Contains(t, cfg.Warnings()[0], `config: provider "unknown" ignored: provider "unknown": type "" is not catalog-known; declare billing field explicitly`)
 
 	_, err = cfg.BuildProvider("unknown")
 	require.Error(t, err)
@@ -1339,7 +1246,7 @@ default: grendel
 	require.NoError(t, err)
 	assert.Contains(t, cfg.ProviderNames(), "broken")
 	assert.Contains(t, cfg.ProviderNames(), "grendel")
-	assert.Contains(t, cfg.ProviderError("broken"), `unknown type "not-a-provider"`)
+	assert.Contains(t, cfg.ProviderError("broken"), `provider "broken": type "not-a-provider" is not catalog-known`)
 	assert.Empty(t, cfg.ProviderError("grendel"))
 
 	p, err := cfg.BuildProvider("grendel")
