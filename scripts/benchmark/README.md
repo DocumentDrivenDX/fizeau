@@ -547,6 +547,22 @@ Cells included in the official comparison:
 - `fiz-openrouter-claude-sonnet-4-6`
 - `fiz-openrouter-gpt-5-4-mini`
 
+To run a cloud-hosted Qwen3.6 comparison lane through the same Fiz native
+provider path, use the dedicated OpenRouter Qwen wrapper:
+
+```bash
+OPENROUTER_API_KEY=sk-or-... \
+  scripts/benchmark/run_openrouter_qwen36_sweep.sh --phase canary
+
+OPENROUTER_API_KEY=sk-or-... \
+  scripts/benchmark/run_openrouter_qwen36_sweep.sh
+```
+
+The default model is `qwen/qwen3.6-27b` (`fiz-openrouter-qwen3-6-27b`), with
+OpenRouter pricing captured in
+`scripts/benchmark/profiles/fiz-openrouter-qwen3-6-27b.yaml`. The full run uses
+the same 15-task TB-2.1 subset and 3 reps as the other full sweep lanes.
+
 The raw Harbor Claude/Codex/pi/opencode adapters remain diagnostics only. The
 official claims use `fiz-*` lanes routed through `FizeauAgent`, not native
 Harbor adapter rows. Pi/OpenCode wrapped local-model coverage now lives in the

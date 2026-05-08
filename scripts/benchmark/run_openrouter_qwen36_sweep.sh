@@ -1,59 +1,58 @@
 #!/usr/bin/env bash
-# Dedicated TB-2.1 sweep for Fiz native/provider + GPT-5.5.
+# Dedicated TB-2.1 sweep for Fiz native/provider + Qwen3.6 27B via OpenRouter.
 #
-# Defaults to direct OpenAI with high parallelism:
-#   scripts/benchmark/run_gpt55_sweep.sh
+# Canary:
+#   scripts/benchmark/run_openrouter_qwen36_sweep.sh --phase canary
 #
-# OpenRouter variant:
-#   scripts/benchmark/run_gpt55_sweep.sh --provider openrouter
+# Full 15-task subset, 3 reps:
+#   scripts/benchmark/run_openrouter_qwen36_sweep.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-PROVIDER="${GPT55_PROVIDER:-openai}"
 PHASE="full"
 OUT=""
-JOBS="${GPT55_MATRIX_JOBS:-16}"
-BUDGET_USD="${GPT55_BUDGET_USD:-50}"
-PER_RUN_BUDGET_USD="${GPT55_PER_RUN_BUDGET_USD:-8}"
+JOBS="${QWEN36_OPENROUTER_JOBS:-10}"
+BUDGET_USD="${QWEN36_OPENROUTER_BUDGET_USD:-10}"
+PER_RUN_BUDGET_USD="${QWEN36_OPENROUTER_PER_RUN_BUDGET_USD:-1}"
 FORCE_RERUN=0
 DRY_RUN=0
 PREPARE_ONLY=0
 CONFIRM_DELAY="${BENCHMARK_CONFIRM_DELAY:-8}"
 
+PROFILE_ID="fiz-openrouter-qwen3-6-27b"
+PROVIDER_TYPE="openrouter"
+MODEL_ID="qwen/qwen3.6-27b"
+BASE_URL="https://openrouter.ai/api/v1"
+API_KEY_ENV="OPENROUTER_API_KEY"
+RESOURCE_GROUP="rg-openrouter-qwen36-27b"
+
 usage() {
   cat <<'EOF'
-Usage: scripts/benchmark/run_gpt55_sweep.sh [flags]
+Usage: scripts/benchmark/run_openrouter_qwen36_sweep.sh [flags]
 
 Flags:
-  --provider openai|openrouter
   --phase canary|full       Run the 3-task canary or 15-task full subset (default: full)
   --out <dir>               Output directory
-  --jobs <n>                Concurrent TerminalBench cells for this lane (default: 16)
-  --budget-usd <n>          Total matrix budget cap (default: 50)
-  --per-run-budget-usd <n>  Per-cell budget cap (default: 8)
+  --jobs <n>                Concurrent TerminalBench cells for this lane (default: 10)
+  --budget-usd <n>          Total matrix budget cap (default: 10)
+  --per-run-budget-usd <n>  Per-cell budget cap (default: 1)
   --force-rerun             Rerun cells even if reports already exist
   --dry-run                 Build/prepare and print plan only
   --prepare-only            Same as --dry-run after runtime/task preparation
 
 Environment:
-  OPENAI_API_KEY            Required for --provider openai
-  OPENROUTER_API_KEY        Required for --provider openrouter
-  GPT55_PROVIDER            Default --provider override
-  GPT55_MATRIX_JOBS         Default --jobs override
-  GPT55_BUDGET_USD          Default --budget-usd override
-  GPT55_PER_RUN_BUDGET_USD  Default --per-run-budget-usd override
+  OPENROUTER_API_KEY                       Required
+  QWEN36_OPENROUTER_JOBS                   Default --jobs override
+  QWEN36_OPENROUTER_BUDGET_USD             Default --budget-usd override
+  QWEN36_OPENROUTER_PER_RUN_BUDGET_USD     Default --per-run-budget-usd override
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --provider)
-      PROVIDER="$2"; shift 2 ;;
-    --provider=*)
-      PROVIDER="${1#*=}"; shift ;;
     --phase)
       PHASE="$2"; shift 2 ;;
     --phase=*)
@@ -89,47 +88,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-case "${PROVIDER}" in
-  openai)
-    PROFILE_ID="fiz-openai-gpt-5-5"
-    PROVIDER_TYPE="openai"
-    MODEL_ID="gpt-5.5"
-    BASE_URL="https://api.openai.com/v1"
-    API_KEY_ENV="OPENAI_API_KEY"
-    RESOURCE_GROUP="rg-openai-gpt55"
-    PROVIDER_SURFACE="openai"
-    REASONING_ENV=""
-    REASONING_SAMPLING=""
-    ;;
-  openrouter)
-    PROFILE_ID="fiz-openrouter-gpt-5-5"
-    PROVIDER_TYPE="openrouter"
-    MODEL_ID="openai/gpt-5.5"
-    BASE_URL="https://openrouter.ai/api/v1"
-    API_KEY_ENV="OPENROUTER_API_KEY"
-    RESOURCE_GROUP="rg-openrouter-gpt55"
-    PROVIDER_SURFACE="openrouter"
-    REASONING_ENV="      FIZEAU_REASONING: medium"
-    REASONING_SAMPLING="      reasoning: medium"
-    ;;
-  *)
-    echo "unknown --provider ${PROVIDER}; use openai or openrouter" >&2
-    exit 2
-    ;;
-esac
-
 case "${PHASE}" in
   canary)
     BENCHMARK_PHASE="canary"
     ESTIMATE_CELLS=9
-    ESTIMATE_LOW="2"
-    ESTIMATE_HIGH="8"
+    ESTIMATE_LOW="0.20"
+    ESTIMATE_HIGH="1.00"
     ;;
   full)
     BENCHMARK_PHASE="gpt-comparison"
     ESTIMATE_CELLS=45
-    ESTIMATE_LOW="10"
-    ESTIMATE_HIGH="40"
+    ESTIMATE_LOW="1.00"
+    ESTIMATE_HIGH="5.00"
     ;;
   *)
     echo "unknown --phase ${PHASE}; use canary or full" >&2
@@ -137,28 +107,24 @@ case "${PHASE}" in
     ;;
 esac
 
-if [[ -z "${!API_KEY_ENV:-}" ]]; then
-  echo "${API_KEY_ENV} is required for --provider ${PROVIDER}" >&2
+if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+  echo "OPENROUTER_API_KEY is required" >&2
   exit 1
 fi
-if [[ "${PROVIDER}" = "openai" && "${!API_KEY_ENV}" == sk-or-v1* ]]; then
-  echo "OPENAI_API_KEY contains an OpenRouter key (sk-or-v1...). Use a native OpenAI API key for --provider openai." >&2
-  exit 1
-fi
-if [[ "${PROVIDER}" = "openrouter" && "${!API_KEY_ENV}" != sk-or-v1* ]]; then
+if [[ "${OPENROUTER_API_KEY}" != sk-or-v1* ]]; then
   echo "warning: OPENROUTER_API_KEY does not look like an OpenRouter key (sk-or-v1...)" >&2
 fi
 
 if [[ -z "${OUT}" ]]; then
-  OUT="${REPO_ROOT}/benchmark-results/gpt55-${PROVIDER}-${PHASE}-$(date -u +%Y%m%dT%H%M%SZ)"
+  OUT="${REPO_ROOT}/benchmark-results/qwen36-openrouter-${PHASE}-$(date -u +%Y%m%dT%H%M%SZ)"
 elif [[ "${OUT}" != /* ]]; then
   OUT="${REPO_ROOT}/${OUT}"
 fi
 mkdir -p "${OUT}"
 
-PLAN="${OUT}/gpt55-${PROVIDER}-sweep.yaml"
+PLAN="${OUT}/qwen36-openrouter-sweep.yaml"
 cat > "${PLAN}" <<EOF
-spec-id: terminalbench-2.1-gpt55-${PROVIDER}-$(date -u +%Y%m%d)
+spec-id: terminalbench-2.1-qwen36-openrouter-$(date -u +%Y%m%d)
 created: "$(date -u +%Y-%m-%d)"
 dataset: terminal-bench/terminal-bench-2-1
 
@@ -168,30 +134,30 @@ defaults:
 
 phases:
   - id: canary
-    description: Fiz native/provider GPT-5.5 ${PROVIDER} canary.
+    description: Fiz native/provider Qwen3.6 27B OpenRouter canary.
     reps: 3
     subset: terminalbench-2-1-canary
     lanes:
       - ${PROFILE_ID}
 
   - id: gpt-comparison
-    description: Fiz native/provider GPT-5.5 ${PROVIDER} full subset.
+    description: Fiz native/provider Qwen3.6 27B OpenRouter full subset.
     reps: 3
     subset: terminalbench-2-1-full
     lanes:
       - ${PROFILE_ID}
 
 comparison_groups:
-  - id: cg-gpt55-${PROVIDER}
-    type: frontier_provider
-    question: How does Fiz native/provider perform on TB-2.1 with GPT-5.5 via ${PROVIDER}?
+  - id: cg-qwen36-openrouter
+    type: openrouter_provider
+    question: How does Fiz native/provider perform on TB-2.1 with Qwen3.6 27B via OpenRouter?
     lanes:
       - ${PROFILE_ID}
 
 resource_groups:
   - id: ${RESOURCE_GROUP}
     base_url: "${BASE_URL}"
-    provider_type: ${PROVIDER_TYPE}
+    provider_type: openrouter
     max_concurrency: ${JOBS}
     budget:
       per_run_usd_cap: ${PER_RUN_BUDGET_USD}
@@ -202,26 +168,28 @@ lanes:
     profile_id: ${PROFILE_ID}
     lane_type: fiz_provider_native
     phases: [canary, gpt-comparison]
-    comparison_groups: [cg-gpt55-${PROVIDER}]
+    comparison_groups: [cg-qwen36-openrouter]
     resource_group: ${RESOURCE_GROUP}
     fizeau_env:
       FIZEAU_PROVIDER: ${PROVIDER_TYPE}
       FIZEAU_MODEL: "${MODEL_ID}"
       FIZEAU_BASE_URL: "${BASE_URL}"
       FIZEAU_API_KEY_ENV: ${API_KEY_ENV}
-${REASONING_ENV}
-    model_family: gpt-5
+      FIZEAU_REASONING: low
+    model_family: qwen3-6-27b
     model_id: "${MODEL_ID}"
     quant_label: cloud-hosted
-    provider_surface: ${PROVIDER_SURFACE}
+    provider_surface: openrouter
     runtime: fiz-native-provider
     sampling:
-      temperature: 0.0
-${REASONING_SAMPLING}
+      temperature: 0.6
+      reasoning: low
+      top_p: 0.95
+      top_k: 20
 EOF
 
-echo "GPT-5.5 benchmark"
-echo "  provider:           ${PROVIDER}"
+echo "OpenRouter Qwen3.6 benchmark"
+echo "  model:              ${MODEL_ID}"
 echo "  phase:              ${PHASE} (${BENCHMARK_PHASE})"
 echo "  output:             ${OUT}"
 echo "  generated plan:     ${PLAN}"

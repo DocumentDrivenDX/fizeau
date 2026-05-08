@@ -1,0 +1,26 @@
+# fiz provider lane through OpenRouter to Qwen3.6 27B.
+# Pricing and model id verified from OpenRouter /api/v1/models on 2026-05-08.
+# Qwen3 thinking-mode recommended sampling: T=0.6, top_p=0.95, top_k=20.
+id: fiz-openrouter-qwen3-6-27b
+provider:
+  type: openrouter
+  model: qwen/qwen3.6-27b
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+pricing:
+  input_usd_per_mtok: 0.32
+  output_usd_per_mtok: 3.20
+  cached_input_usd_per_mtok: 0.32
+limits:
+  max_output_tokens: 32768
+  context_tokens: 262144
+  rate_limit_rpm: 500
+  rate_limit_tpm: 1000000
+sampling:
+  temperature: 0.6
+  reasoning: low
+  top_p: 0.95
+  top_k: 20
+versioning:
+  resolved_at: "2026-05-08"
+  snapshot: "qwen/qwen3.6-27b via OpenRouter /api/v1/models"
