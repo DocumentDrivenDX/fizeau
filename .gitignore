@@ -54,5 +54,12 @@ coverage.html
 
 # Benchmark artifacts
 /benchmark-results/
+!/benchmark-results/
+/benchmark-results/*
+!/benchmark-results/fiz-v*/
+/benchmark-results/fiz-v*/**
+!/benchmark-results/fiz-v*/.fiz-benchmark-version.json
+!/benchmark-results/fiz-v*/indexes/
+!/benchmark-results/fiz-v*/indexes/**
 /jobs/
 /bench/results/

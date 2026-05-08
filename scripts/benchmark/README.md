@@ -72,13 +72,15 @@ The planned canonical model is:
 ```text
 benchmark-results/fiz-<version-or-commit>/
   .fiz-benchmark-version.json
-  cells/terminal-bench-2-1/<task>/<provider>/<model>/<harness>/rep-001/report.json
   indexes/runs.jsonl
   indexes/summary.csv
   indexes/summary.md
 ```
 
-Phase outputs should become views over canonical cells.
+Only the version marker and `indexes/` are intended to be checked in. Raw
+phase output directories and copied `cells/` trees stay gitignored: they are
+large, redundant with the normalized index, and may contain provider secrets in
+Harbor config/result files.
 
 ## Consolidating Existing Results
 
@@ -88,12 +90,14 @@ files and emit a phase-independent index.
 ```bash
 go run ./cmd/bench matrix-index \
   --root benchmark-results \
-  --canonical-out benchmark-results/fiz-dev \
-  --copy
+  --canonical-out benchmark-results/fiz-v0.10.16 \
+  --fiz-version v0.10.16
 ```
 
 The index preserves each row's original `source_path` and marks missing old
-fiz version metadata as `unknown`.
+fiz version metadata as `unknown`. Do not pass `--copy` for committed
+benchmark records; that option is only for local forensic work when a temporary
+canonical raw-artifact tree is useful.
 
 ## Active Config Files
 

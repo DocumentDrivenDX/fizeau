@@ -1,0 +1,34 @@
+| Dataset | Provider | Model | Harness | Profile | Reports | Pass | Fail | Invalid | Crash | Cost ($) |
+|---|---|---|---|---|---:|---:|---:|---:|---:|---:|
+| terminal-bench-2-1 | anthropic | sonnet-4.6 | claude | claude-native-sonnet-4-6 | 15 | 0 | 6 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | lmstudio | qwen/qwen3.6-27b | ddx-agent | bragi-qwen3-6-27b | 267 | 0 | 266 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | lmstudio | qwen/qwen3.6-27b | fiz | bragi-qwen3-6-27b | 117 | 0 | 0 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | ddx-agent | vidar-qwen3-6-27b | 270 | 0 | 268 | 0 | 1 | 0.0000 |
+| terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | fiz | vidar-qwen3-6-27b | 481 | 46 | 84 | 0 | 4 | 0.0000 |
+| terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | opencode | vidar-qwen3-6-27b | 1 | 0 | 0 | 0 | 1 | 0.0000 |
+| terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | pi | vidar-qwen3-6-27b | 1 | 0 | 0 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openai | gpt-5.4-mini | codex | codex-native-gpt-5-4-mini | 15 | 11 | 1 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openai | gpt-5.5 | fiz | fiz-openai-gpt-5-5 | 461 | 85 | 256 | 0 | 0 | 80.3664 |
+| terminal-bench-2-1 | openai | vidar-qwen3-6-27b-openai-compat | fiz | vidar-qwen3-6-27b-openai-compat | 271 | 6 | 264 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openai | vidar-qwen3-6-27b-openai-compat | opencode | vidar-qwen3-6-27b-openai-compat | 166 | 4 | 7 | 0 | 1 | 0.0000 |
+| terminal-bench-2-1 | openai | vidar-qwen3-6-27b-openai-compat | pi | vidar-qwen3-6-27b-openai-compat | 36 | 3 | 28 | 0 | 1 | 0.0000 |
+| terminal-bench-2-1 | openai-compat | gpt-5-nano | dumb_script | smoke | 3 | 1 | 2 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openai-compat | openai/gpt-5-mini | ddx-agent | gpt-5-mini | 21 | 0 | 2 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openai-compat | openai/gpt-5-mini | opencode | gpt-5-mini | 18 | 0 | 0 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openai-compat | openai/gpt-5-mini | pi | gpt-5-mini | 18 | 0 | 0 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openrouter | anthropic/claude-sonnet-4.6 | ddx-agent | claude-sonnet-4-6 | 89 | 0 | 86 | 0 | 2 | 0.0000 |
+| terminal-bench-2-1 | openrouter | anthropic/claude-sonnet-4.6 | fiz | claude-sonnet-4-6 | 40 | 14 | 26 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openrouter | anthropic/claude-sonnet-4.6 | fiz | fiz-openrouter-claude-sonnet-4-6 | 199 | 16 | 56 | 0 | 0 | 8.6057 |
+| terminal-bench-2-1 | openrouter | claude-sonnet-4-6 | claude | fiz-harness-claude-sonnet-4-6 | 202 | 0 | 74 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openrouter | gpt-5.4-mini | codex | fiz-harness-codex-gpt-5-4-mini | 202 | 11 | 61 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openrouter | openai/gpt-5.4-mini | fiz | fiz-openrouter-gpt-5-4-mini | 199 | 5 | 67 | 0 | 0 | 0.7488 |
+| terminal-bench-2-1 | openrouter | openai/gpt-5.4-mini | fiz | gpt-5-4-mini-openrouter | 15 | 7 | 8 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | openrouter | qwen/qwen3.6-27b | fiz | fiz-openrouter-qwen3-6-27b | 276 | 46 | 53 | 0 | 28 | 7.2803 |
+| terminal-bench-2-1 | rapid-mlx | mlx-community/Qwen3.6-27B-8bit | fiz | grendel-rapid-mlx | 178 | 2 | 54 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | unknown | fiz-harness-opencode-gpt-5-4-mini | opencode | fiz-harness-opencode-gpt-5-4-mini | 41 | 0 | 9 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | unknown | fiz-harness-pi-gpt-5-4-mini | pi | fiz-harness-pi-gpt-5-4-mini | 40 | 0 | 9 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | unknown | gpt-5-3-mini | ddx-agent | gpt-5-3-mini | 22 | 0 | 0 | 0 | 9 | 0.0000 |
+| terminal-bench-2-1 | unknown | gpt-5-3-mini | opencode | gpt-5-3-mini | 18 | 0 | 0 | 0 | 9 | 0.0000 |
+| terminal-bench-2-1 | unknown | gpt-5-3-mini | pi | gpt-5-3-mini | 18 | 0 | 0 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | vllm | qwen3.6-27b-autoround | fiz | bragi-club-3090 | 196 | 2 | 66 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | vllm | qwen3.6-27b-autoround | fiz | sindri-club-3090 | 462 | 33 | 71 | 0 | 3 | 0.0000 |
