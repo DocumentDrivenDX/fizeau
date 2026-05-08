@@ -144,15 +144,16 @@ const defaultSweepPlanPath = "scripts/benchmark/terminalbench-2-1-sweep.yaml"
 
 // sweepSubsetPaths maps symbolic subset IDs used in the sweep plan to YAML file paths.
 var sweepSubsetPaths = map[string]string{
-	"terminalbench-2-1-canary": "scripts/benchmark/task-subset-tb21-canary.yaml",
-	"terminalbench-2-1-full":   "scripts/benchmark/task-subset-tb21-full.yaml",
-	"terminalbench-2-1-all":    "scripts/benchmark/task-subset-tb21-all.yaml",
+	"terminalbench-2-1-canary":       "scripts/benchmark/task-subset-tb21-canary.yaml",
+	"terminalbench-2-1-full":         "scripts/benchmark/task-subset-tb21-full.yaml",
+	"terminalbench-2-1-all":          "scripts/benchmark/task-subset-tb21-all.yaml",
+	"terminalbench-2-1-openai-cheap": "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
 }
 
 func cmdSweep(args []string) int {
 	fs := flagSet("sweep")
 	sweepFile := fs.String("sweep-plan", "", "Path to sweep plan YAML (default: scripts/benchmark/terminalbench-2-1-sweep.yaml)")
-	phaseID := fs.String("phase", "all", "Phase to run: canary, local-qwen, sonnet-comparison, gpt-comparison, tb21-all, or all")
+	phaseID := fs.String("phase", "all", "Phase to run: canary, openai-cheap, local-qwen, sonnet-comparison, gpt-comparison, tb21-all, or all")
 	laneFilter := fs.String("lanes", "", "Comma-separated lane IDs to run from the selected phase(s)")
 	dryRun := fs.Bool("dry-run", false, "Print plan without launching Harbor or any matrix run")
 	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")

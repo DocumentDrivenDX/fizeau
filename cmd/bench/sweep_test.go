@@ -27,7 +27,7 @@ func TestLoadSweepPlanParsesAllPhases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	wantPhases := []string{"canary", "local-qwen", "tb21-all", "sonnet-comparison", "gpt-comparison"}
+	wantPhases := []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"}
 	if len(plan.Phases) != len(wantPhases) {
 		t.Fatalf("phases = %d, want %d", len(plan.Phases), len(wantPhases))
 	}
@@ -146,7 +146,7 @@ func TestSelectSweepPhasesSinglePhase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	for _, phaseID := range []string{"canary", "local-qwen", "tb21-all", "sonnet-comparison", "gpt-comparison"} {
+	for _, phaseID := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"} {
 		phases, err := selectSweepPhases(plan, phaseID)
 		if err != nil {
 			t.Errorf("selectSweepPhases(%q): %v", phaseID, err)
@@ -175,9 +175,10 @@ func TestSelectSweepPhasesUnknownReturnsError(t *testing.T) {
 func TestSweepResolveSubsetPathKnownIDs(t *testing.T) {
 	wd := benchRepoRoot(t)
 	cases := map[string]string{
-		"terminalbench-2-1-canary": "scripts/benchmark/task-subset-tb21-canary.yaml",
-		"terminalbench-2-1-full":   "scripts/benchmark/task-subset-tb21-full.yaml",
-		"terminalbench-2-1-all":    "scripts/benchmark/task-subset-tb21-all.yaml",
+		"terminalbench-2-1-canary":       "scripts/benchmark/task-subset-tb21-canary.yaml",
+		"terminalbench-2-1-full":         "scripts/benchmark/task-subset-tb21-full.yaml",
+		"terminalbench-2-1-all":          "scripts/benchmark/task-subset-tb21-all.yaml",
+		"terminalbench-2-1-openai-cheap": "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
 	}
 	for id, rel := range cases {
 		got := sweepResolveSubsetPath(wd, id)
@@ -347,7 +348,7 @@ func TestSweepDryRunAllPhasesContainsAllPhaseHeaders(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("cmdSweep dry-run all exit = %d\noutput:\n%s", code, output)
 	}
-	for _, phase := range []string{"canary", "local-qwen", "tb21-all", "sonnet-comparison", "gpt-comparison"} {
+	for _, phase := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"} {
 		if !strings.Contains(output, "Phase: "+phase) {
 			t.Errorf("dry-run output missing Phase: %s", phase)
 		}

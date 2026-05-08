@@ -33,7 +33,7 @@ usage() {
 Usage: ./benchmark [flags]
 
 Flags:
-  --phase canary|preferred|full|qwen36-gpt55-full|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all
+  --phase canary|openai-cheap|preferred|full|qwen36-gpt55-full|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all
   --lanes <id,id,...>
   --out <dir>
   --tasks-dir <dir>
@@ -153,7 +153,7 @@ if [[ -n "${LANES}" ]]; then
 fi
 
 case "${PHASE}" in
-  canary|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all) ;;
+  canary|openai-cheap|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all) ;;
   *)
     echo "unknown --phase ${PHASE}" >&2
     exit 2 ;;
@@ -359,6 +359,7 @@ ensure_tasks() {
 subset_for_phase() {
   case "$1" in
     canary) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-canary.yaml" ;;
+    openai-cheap) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-openai-cheap.yaml" ;;
     local-qwen|sonnet-comparison|gpt-comparison) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-full.yaml" ;;
     tb21-all) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-all.yaml" ;;
     *) return 1 ;;

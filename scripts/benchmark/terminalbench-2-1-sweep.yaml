@@ -116,6 +116,19 @@ phases:
       cell per endpoint; managed OpenRouter/subscription lanes must obey their
       resource-group caps and budget limits.
 
+  - id: openai-cheap
+    description: >-
+      Cheap native OpenAI GPT-5.5 slice selected from observed GPT-5.5 costs
+      and Qwen3.6 token-count proxies. This is for affordable validation and
+      trend checks, not full-suite claims.
+    reps: 3
+    subset: terminalbench-2-1-openai-cheap
+    lanes:
+      - fiz-openai-gpt-5-5
+    parallel_policy: >-
+      Single managed OpenAI lane. Use --matrix-jobs-managed to increase
+      concurrency subject to account quota and budget caps.
+
   - id: sonnet-comparison
     description: >-
       fiz native/provider path on Sonnet through OpenRouter versus fiz
@@ -460,7 +473,7 @@ lanes:
   - id: fiz-openai-gpt-5-5
     profile_id: fiz-openai-gpt-5-5
     lane_type: fiz_provider_native
-    phases: [tb21-all]
+    phases: [openai-cheap, tb21-all]
     resource_group: rg-openai-gpt55
     fizeau_env:
       FIZEAU_PROVIDER: openai
@@ -760,7 +773,7 @@ profile_inventory:
       used_in_phases: [canary, gpt-comparison]
     - id: fiz-openai-gpt-5-5
       path: scripts/benchmark/profiles/fiz-openai-gpt-5-5.yaml
-      used_in_phases: [tb21-all]
+      used_in_phases: [openai-cheap, tb21-all]
     - id: fiz-openrouter-qwen3-6-27b
       path: scripts/benchmark/profiles/fiz-openrouter-qwen3-6-27b.yaml
       used_in_phases: [tb21-all]
