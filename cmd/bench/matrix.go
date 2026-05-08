@@ -146,6 +146,7 @@ func cmdMatrix(args []string) int {
 	reps := fs.Int("reps", 3, "Repetitions per harness/profile/task")
 	budgetUSD := fs.Float64("budget-usd", 0, "Matrix budget in USD (0 = no cap)")
 	out := fs.String("out", "", "Output directory (default: benchmark-results/matrix-<timestamp> under work-dir)")
+	cellsRoot := fs.String("cells-root", "", "Optional canonical cell root for report/log artifacts; matrix summaries still go under --out")
 	resume := fs.Bool("resume", false, "Skip terminal reports already present under --out")
 	forceRerun := fs.Bool("force-rerun", false, "Rerun every tuple even when a terminal report exists")
 	retryBudgetHalted := fs.Bool("retry-budget-halted", false, "Rerun budget_halted reports while resuming")
@@ -182,6 +183,10 @@ func cmdMatrix(args []string) int {
 		outDir = filepath.Join(wd, "benchmark-results", "matrix-"+time.Now().UTC().Format("20060102T150405Z"))
 	} else if !filepath.IsAbs(outDir) {
 		outDir = filepath.Join(wd, outDir)
+	}
+	cellRootDir := *cellsRoot
+	if cellRootDir != "" && !filepath.IsAbs(cellRootDir) {
+		cellRootDir = filepath.Join(wd, cellRootDir)
 	}
 
 	profileIDs := splitCSV(*profilesCSV)
@@ -274,6 +279,7 @@ func cmdMatrix(args []string) int {
 			report, skipped, err := runMatrixTuple(matrixTupleOptions{
 				workDir:           wd,
 				outDir:            outDir,
+				cellsRoot:         cellRootDir,
 				harness:           spec.harness,
 				profile:           spec.prof,
 				rep:               spec.rep,
@@ -342,6 +348,7 @@ func cmdMatrix(args []string) int {
 type matrixTupleOptions struct {
 	workDir           string
 	outDir            string
+	cellsRoot         string
 	harness           string
 	profile           *profile.Profile
 	rep               int
@@ -358,7 +365,7 @@ type matrixTupleOptions struct {
 }
 
 func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
-	cellDir := matrixTupleDir(opts.outDir, opts.harness, opts.profile.ID, opts.rep, opts.task.ID)
+	cellDir := matrixTupleDirFor(opts.outDir, opts.cellsRoot, opts.harness, opts.profile, opts.rep, opts.task.ID)
 	reportPath := filepath.Join(cellDir, matrixReportName)
 	if !opts.forceRerun {
 		if existing, ok, err := loadExistingMatrixReport(reportPath); err != nil {
@@ -986,6 +993,36 @@ func matrixProviderMatchesProfile(pc agentConfig.ProviderConfig, p *profile.Prof
 
 func matrixTupleDir(outDir, harness, profileID string, rep int, taskID string) string {
 	return filepath.Join(outDir, "cells", safeMatrixSegment(harness), safeMatrixSegment(profileID), fmt.Sprintf("rep-%03d", rep), safeMatrixSegment(taskID))
+}
+
+func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, rep int, taskID string) string {
+	if cellsRoot == "" {
+		return matrixTupleDir(outDir, harness, p.ID, rep, taskID)
+	}
+	return filepath.Join(
+		cellsRoot,
+		"terminal-bench-2-1",
+		safeMatrixSegment(taskID),
+		safeMatrixSegment(fizeauProviderEnv(p)),
+		safeMatrixSegment(p.Provider.Model),
+		safeMatrixSegment(matrixEffectiveHarness(harness, p.ID)),
+		fmt.Sprintf("rep-%03d", rep),
+	)
+}
+
+func matrixEffectiveHarness(harness, profileID string) string {
+	switch {
+	case strings.Contains(profileID, "fiz-harness-codex"):
+		return "codex"
+	case strings.Contains(profileID, "fiz-harness-claude"):
+		return "claude"
+	case strings.Contains(profileID, "fiz-harness-opencode"):
+		return "opencode"
+	case strings.Contains(profileID, "fiz-harness-pi"):
+		return "pi"
+	default:
+		return harness
+	}
 }
 
 func safeMatrixSegment(s string) string {

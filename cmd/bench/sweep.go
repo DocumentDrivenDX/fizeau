@@ -511,6 +511,7 @@ func buildSweepMatrixArgs(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, 
 		"--harnesses", "fiz",
 		"--reps", fmt.Sprintf("%d", reps),
 		"--out", laneOutDir,
+		"--cells-root", filepath.Join(opts.outDir, "cells"),
 	}
 	if opts.resume {
 		args = append(args, "--resume")

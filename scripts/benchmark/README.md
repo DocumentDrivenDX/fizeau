@@ -56,31 +56,26 @@ The sweep plan is `scripts/benchmark/terminalbench-2-1-sweep.yaml`.
 
 ## Output And Resume
 
-Until the version-rooted layout lands, pass an explicit `--out` when you want
-to resume into an existing run:
-
-```bash
-./benchmark --phase openai-cheap --out benchmark-results/openai-cheap-20260508T040410Z
-```
-
-The runner resumes existing `report.json` files under the selected phase/lane
-directory. Existing phase/lane directories are operational artifacts, not the
-analysis model.
-
-The planned canonical model is:
+By default, benchmark runs write to the current fiz version root:
 
 ```text
-benchmark-results/fiz-<version-or-commit>/
+benchmark-results/fiz-<version>/
   .fiz-benchmark-version.json
+  cells/terminal-bench-2-1/<task>/<provider>/<model>/<harness>/rep-001/...
+  <phase>/<lane>/matrix.json
   indexes/runs.jsonl
   indexes/summary.csv
   indexes/summary.md
 ```
 
-Only the version marker and `indexes/` are intended to be checked in. Raw
-phase output directories and copied `cells/` trees stay gitignored: they are
-large, redundant with the normalized index, and may contain provider secrets in
-Harbor config/result files.
+Re-running the same phase/lane combination resumes from existing terminal
+`report.json` files in the version-rooted `cells/` tree. Do not create
+timestamped output directories for ordinary benchmark continuation.
+
+Only the version marker and `indexes/` are intended to be checked in. The raw
+`cells/` tree and phase summary directories stay gitignored: they are large and
+may contain provider secrets in Harbor config/result files. The runner refreshes
+`indexes/` after each completed invocation.
 
 ## Consolidating Existing Results
 

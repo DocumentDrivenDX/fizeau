@@ -6,7 +6,7 @@
 #
 # Common overrides:
 #   scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase canary
-#   scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase all --out benchmark-results/sweep-my-run
+#   scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase all
 #   scripts/benchmark/run_terminalbench_2_1_sweep.sh --dry-run
 set -euo pipefail
 
@@ -206,7 +206,7 @@ TASKS_DIR="$(abs_path "${TASKS_DIR}")"
 SOURCE_TASKS_DIR="${TASKS_DIR}"
 SWEEP_PLAN="$(abs_path "${SWEEP_PLAN}")"
 if [[ -z "${OUT}" ]]; then
-  OUT="${REPO_ROOT}/benchmark-results/sweep-$(date -u +%Y%m%dT%H%M%SZ)"
+  OUT="${REPO_ROOT}/benchmark-results/fiz-$(./fiz version --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version","unknown"))' 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null || echo unknown)"
 else
   OUT="$(abs_path "${OUT}")"
 fi
@@ -652,6 +652,47 @@ run_sweep_phase() {
   "${BENCH_BIN}" "${args[@]}"
 }
 
+write_version_marker() {
+  mkdir -p "${OUT}"
+  if [[ -x "${REPO_ROOT}/fiz" ]]; then
+    "${REPO_ROOT}/fiz" version --json > "${OUT}/.fiz-benchmark-version.json"
+  else
+    python3 - "${OUT}/.fiz-benchmark-version.json" <<'PY'
+import json
+import pathlib
+import subprocess
+import sys
+
+path = pathlib.Path(sys.argv[1])
+version = subprocess.run(["git", "describe", "--tags", "--abbrev=0"], text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.strip() or "unknown"
+commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.strip()
+dirty = subprocess.run(["git", "diff", "--quiet"]).returncode != 0
+path.write_text(json.dumps({"version": version, "commit": commit, "dirty": dirty, "built": ""}) + "\n")
+PY
+  fi
+}
+
+fiz_version_label() {
+  python3 - "${OUT}/.fiz-benchmark-version.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    print(json.load(f).get("version") or "unknown")
+PY
+}
+
+refresh_indexes() {
+  local version
+  version="$(fiz_version_label)"
+  "${BENCH_BIN}" matrix-index \
+    --work-dir "${REPO_ROOT}" \
+    --root "${OUT}" \
+    --out "${OUT}/indexes" \
+    --fiz-version "${version}" \
+    --dataset terminal-bench-2-1
+}
+
 blocking_canary_failures() {
   python3 - "$OUT" <<'PY'
 import json
@@ -732,6 +773,7 @@ TARGET_TASKS_FILE="$(mktemp)"
 trap 'rm -f "${TARGET_TASKS_FILE}"' EXIT
 
 build_artifacts
+write_version_marker
 prepare_agent_runtime_bundle
 ensure_tasks
 validate_tasks
@@ -755,6 +797,8 @@ while IFS= read -r phase_to_run; do
     blocking_canary_failures
   fi
 done < <(run_plan_phases)
+
+refresh_indexes
 
 echo
 echo "Sweep output: ${OUT}"

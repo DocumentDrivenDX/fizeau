@@ -98,6 +98,22 @@ func TestMatrixResumeSkipsTerminalReport(t *testing.T) {
 	}
 }
 
+func TestMatrixTupleDirForCanonicalCellsRoot(t *testing.T) {
+	cellsRoot := t.TempDir()
+	prof := &profile.Profile{
+		ID: "fiz-openrouter-qwen3-6-27b",
+		Provider: profile.Provider{
+			Type:  profile.ProviderOpenRouter,
+			Model: "qwen/qwen3.6-27b",
+		},
+	}
+	got := matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 2, "break-filter-js-from-html")
+	want := filepath.Join(cellsRoot, "terminal-bench-2-1", "break-filter-js-from-html", "openrouter", "qwen_qwen3.6-27b", "fiz", "rep-002")
+	if got != want {
+		t.Fatalf("canonical cell dir = %q, want %q", got, want)
+	}
+}
+
 func TestMatrixLockPreventsDoubleSpend(t *testing.T) {
 	repoRoot := benchRepoRoot(t)
 	outDir := t.TempDir()
