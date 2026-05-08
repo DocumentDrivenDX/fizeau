@@ -443,6 +443,16 @@ by default and fails during preflight if a selected task cannot be built for
 that architecture. The downloaded TB-2.1 task tree also defaults to
 `benchmark-results/external/terminal-bench-2-1`, not the scripts directory.
 
+Provider sampling compatibility is part of the benchmark contract, not an
+operator tweak. Native OpenAI GPT-5-family lanes (`provider.type: openai`, for
+example `fiz-openai-gpt-5-5`) use OpenAI's default sampling controls on the
+wire; the runner must not forward `FIZEAU_TEMPERATURE` or `FIZEAU_TOP_P`, and
+the provider strips those fields if they arrive from config. OpenRouter and
+other OpenAI-compatible lanes keep the profile sampling controls, including
+`temperature`, `top_p`, `top_k`, `min_p`, and `repetition_penalty` where the
+compat provider accepts them. This distinction is covered by `cmd/bench` and
+`internal/provider/openai` tests.
+
 Version overrides are build args exposed as environment variables:
 
 - `BENCHMARK_CONTAINER_GOARCH` or `HARBOR_CONTAINER_GOARCH` (defaults to the

@@ -265,6 +265,12 @@ func (p *Provider) compatRequestOptions(model string, opts agent.Options) (opena
 	if err != nil {
 		return openaicompat.RequestOptions{}, err
 	}
+	temperature := opts.Temperature
+	topP := opts.TopP
+	if nativeOpenAIUsesDefaultSamplingOnly(p.providerSystem, model) {
+		temperature = nil
+		topP = nil
+	}
 	// Non-standard sampling fields (top_k, min_p, repetition_penalty) ride
 	// as top-level body extras on OpenAI-compatible local/provider wires.
 	// OpenAI proper rejects these as unknown parameters, so only send them
@@ -282,8 +288,8 @@ func (p *Provider) compatRequestOptions(model string, opts agent.Options) (opena
 	}
 	return openaicompat.RequestOptions{
 		MaxTokens:         opts.MaxTokens,
-		Temperature:       opts.Temperature,
-		TopP:              opts.TopP,
+		Temperature:       temperature,
+		TopP:              topP,
 		TopK:              opts.TopK,
 		MinP:              opts.MinP,
 		RepetitionPenalty: opts.RepetitionPenalty,
@@ -292,6 +298,13 @@ func (p *Provider) compatRequestOptions(model string, opts agent.Options) (opena
 		ExtraOptions:      extra,
 		CachePolicy:       opts.CachePolicy,
 	}, nil
+}
+
+func nativeOpenAIUsesDefaultSamplingOnly(providerSystem, model string) bool {
+	if providerSystem != "openai" {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(model), "gpt-5")
 }
 
 func (p *Provider) attemptMetadata(requestedModel, responseModel string, cost *agent.CostAttribution) *agent.AttemptMetadata {

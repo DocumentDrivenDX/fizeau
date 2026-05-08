@@ -336,4 +336,6 @@ The runner implementation agent should read `scripts/benchmark/terminalbench-2-1
 
 5. **Local endpoint preflight.** Before any local-provider cell, verify the endpoint is reachable. If it fails, mark all cells in that group `invalid_provider` and continue with other groups.
 
-6. **Evidence import compatibility.** Matrix artifacts must be importable via the existing `go run ./cmd/bench evidence import-terminalbench` workflow. Preserve all fields required by that importer.
+6. **Provider sampling compatibility.** Native OpenAI GPT-5-family lanes (`provider.type: openai`, including `fiz-openai-gpt-5-5`) must use OpenAI's default sampling controls on the wire. The runner must not inject `FIZEAU_TEMPERATURE` or `FIZEAU_TOP_P` for those lanes, and the OpenAI provider must strip those fields if config still supplies them. OpenRouter and other OpenAI-compatible lanes must keep their profile sampling controls, including `temperature`, `top_p`, `top_k`, `min_p`, and `repetition_penalty` when the compatibility provider accepts them. This is a lane/provider compatibility rule, not a per-run operator override.
+
+7. **Evidence import compatibility.** Matrix artifacts must be importable via the existing `go run ./cmd/bench evidence import-terminalbench` workflow. Preserve all fields required by that importer.

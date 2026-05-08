@@ -831,6 +831,71 @@ func TestOpenAIProviderDoesNotSendNonStandardSamplingExtras(t *testing.T) {
 	assert.False(t, hasRep, "OpenAI rejects non-standard repetition_penalty")
 }
 
+func TestNativeOpenAIGPT5DoesNotSendUnsupportedSamplingControls(t *testing.T) {
+	temp := 0.0
+	topP := 0.95
+	topK := 20
+	minP := 0.05
+	rep := 1.1
+	opts := agent.Options{
+		Temperature:       &temp,
+		TopP:              &topP,
+		TopK:              &topK,
+		MinP:              &minP,
+		RepetitionPenalty: &rep,
+	}
+	body, err := captureOpenAIChatBodyWithModel(t, "openai", "gpt-5.5", "", opts)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	_, hasTemp := got["temperature"]
+	assert.False(t, hasTemp, "native OpenAI GPT-5 models reject non-default temperature")
+	_, hasTopP := got["top_p"]
+	assert.False(t, hasTopP, "native OpenAI GPT-5 models reject non-default top_p")
+	_, hasTopK := got["top_k"]
+	assert.False(t, hasTopK, "OpenAI rejects non-standard top_k")
+	_, hasMinP := got["min_p"]
+	assert.False(t, hasMinP, "OpenAI rejects non-standard min_p")
+	_, hasRep := got["repetition_penalty"]
+	assert.False(t, hasRep, "OpenAI rejects non-standard repetition_penalty")
+}
+
+func TestOpenRouterGPT5KeepsOpenAICompatSamplingControls(t *testing.T) {
+	temp := 0.0
+	topP := 0.95
+	topK := 20
+	minP := 0.05
+	rep := 1.1
+	opts := agent.Options{
+		Temperature:       &temp,
+		TopP:              &topP,
+		TopK:              &topK,
+		MinP:              &minP,
+		RepetitionPenalty: &rep,
+	}
+	body, err := captureOpenAIChatBodyWithModel(t, "openrouter", "openai/gpt-5.5", "", opts)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	gotTemp, ok := got["temperature"].(float64)
+	require.True(t, ok, "OpenRouter should keep temperature on OpenAI-compatible wire")
+	assert.InDelta(t, 0.0, gotTemp, 1e-9)
+	gotTopP, ok := got["top_p"].(float64)
+	require.True(t, ok, "OpenRouter should keep top_p on OpenAI-compatible wire")
+	assert.InDelta(t, 0.95, gotTopP, 1e-9)
+	gotTopK, ok := got["top_k"].(float64)
+	require.True(t, ok, "OpenRouter should keep top_k on OpenAI-compatible wire")
+	assert.Equal(t, 20.0, gotTopK)
+	gotMinP, ok := got["min_p"].(float64)
+	require.True(t, ok, "OpenRouter should keep min_p on OpenAI-compatible wire")
+	assert.InDelta(t, 0.05, gotMinP, 1e-9)
+	gotRep, ok := got["repetition_penalty"].(float64)
+	require.True(t, ok, "OpenRouter should keep repetition_penalty on OpenAI-compatible wire")
+	assert.InDelta(t, 1.1, gotRep, 1e-9)
+}
+
 func captureOpenAIChatBody(t *testing.T, providerType string, providerReasoning agent.Reasoning, opts agent.Options) ([]byte, error) {
 	return captureOpenAIChatBodyWithModel(t, providerType, testModelForProvider(providerType), providerReasoning, opts)
 }

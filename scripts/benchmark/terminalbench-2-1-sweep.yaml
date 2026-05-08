@@ -287,6 +287,12 @@ resource_groups:
 # lane_type:
 #   fiz_provider_native   — fiz routes directly to the provider; no FIZEAU_HARNESS
 #   fiz_harness_pinned    — fiz delegates to a harness subprocess via FIZEAU_HARNESS
+#
+# Sampling compatibility:
+#   Native OpenAI GPT-5-family lanes use OpenAI default sampling on the wire.
+#   Do not inject FIZEAU_TEMPERATURE or FIZEAU_TOP_P for provider.type=openai
+#   GPT-5 lanes. OpenRouter/openai-compatible lanes keep profile sampling
+#   controls because those compatibility providers accept them.
 
 lanes:
   # --- Official fiz harness-pinned lanes ---

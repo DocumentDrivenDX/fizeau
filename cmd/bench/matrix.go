@@ -1305,8 +1305,10 @@ func samplingUsedFromProfile(p *profile.Profile) map[string]any {
 // field in the profile, for forwarding via harbor --ae flags.
 func samplingEnvPairs(p *profile.Profile) []string {
 	var pairs []string
-	pairs = append(pairs, fmt.Sprintf("FIZEAU_TEMPERATURE=%g", p.Sampling.Temperature))
-	if p.Sampling.TopP != nil {
+	if !profileUsesNativeOpenAIDefaultSamplingOnly(p) {
+		pairs = append(pairs, fmt.Sprintf("FIZEAU_TEMPERATURE=%g", p.Sampling.Temperature))
+	}
+	if p.Sampling.TopP != nil && !profileUsesNativeOpenAIDefaultSamplingOnly(p) {
 		pairs = append(pairs, fmt.Sprintf("FIZEAU_TOP_P=%g", *p.Sampling.TopP))
 	}
 	if p.Sampling.TopK != nil {
@@ -1316,6 +1318,11 @@ func samplingEnvPairs(p *profile.Profile) []string {
 		pairs = append(pairs, fmt.Sprintf("FIZEAU_MIN_P=%g", *p.Sampling.MinP))
 	}
 	return pairs
+}
+
+func profileUsesNativeOpenAIDefaultSamplingOnly(p *profile.Profile) bool {
+	return p.Provider.Type == profile.ProviderOpenAI &&
+		strings.HasPrefix(strings.ToLower(p.Provider.Model), "gpt-5")
 }
 
 func fizeauProviderEnv(p *profile.Profile) string {

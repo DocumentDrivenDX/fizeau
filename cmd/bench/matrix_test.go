@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -212,6 +213,47 @@ func TestFizeauProviderEnvMapsOpenRouterCompatProfile(t *testing.T) {
 	})
 	if got != string(profile.ProviderOpenRouter) {
 		t.Fatalf("provider env = %q, want %q", got, profile.ProviderOpenRouter)
+	}
+}
+
+func TestSamplingEnvPairsOmitsDefaultOnlyNativeOpenAIGPT5Fields(t *testing.T) {
+	topP := 0.95
+	topK := 20
+	got := samplingEnvPairs(&profile.Profile{
+		Provider: profile.Provider{
+			Type:  profile.ProviderOpenAI,
+			Model: "gpt-5.5",
+		},
+		Sampling: profile.Sampling{
+			Temperature: 0,
+			TopP:        &topP,
+			TopK:        &topK,
+		},
+	})
+	want := []string{"FIZEAU_TOP_K=20"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sampling env pairs = %#v, want %#v", got, want)
+	}
+}
+
+func TestSamplingEnvPairsKeepsOpenRouterGPT5Fields(t *testing.T) {
+	topP := 0.95
+	topK := 20
+	got := samplingEnvPairs(&profile.Profile{
+		Provider: profile.Provider{
+			Type:    profile.ProviderOpenAICompat,
+			Model:   "openai/gpt-5.5",
+			BaseURL: "https://openrouter.ai/api/v1",
+		},
+		Sampling: profile.Sampling{
+			Temperature: 0,
+			TopP:        &topP,
+			TopK:        &topK,
+		},
+	})
+	want := []string{"FIZEAU_TEMPERATURE=0", "FIZEAU_TOP_P=0.95", "FIZEAU_TOP_K=20"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sampling env pairs = %#v, want %#v", got, want)
 	}
 }
 
