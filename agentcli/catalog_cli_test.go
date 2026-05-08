@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 type fakeCatalogServer struct {
@@ -157,7 +158,156 @@ func writeTempConfig(t *testing.T, workDir, configBody string) {
 
 func writeTempManifest(t *testing.T, path, body string) {
 	t.Helper()
+	body = normalizeCatalogFixtureManifest(t, body)
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+}
+
+func normalizeCatalogFixtureManifest(t *testing.T, body string) string {
+	t.Helper()
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(body), &doc); err != nil {
+		t.Fatalf("parse catalog fixture: %v", err)
+	}
+	if version, _ := yamlInt(doc["version"]); version == 5 {
+		return body
+	}
+
+	models, _ := doc["models"].(map[string]any)
+	if models == nil {
+		models = make(map[string]any)
+	}
+	profileTargets := make(map[string]string)
+	if profiles, ok := doc["profiles"].(map[string]any); ok {
+		for profileName, raw := range profiles {
+			entry, _ := raw.(map[string]any)
+			if target, ok := entry["target"].(string); ok && target != "" {
+				profileTargets[target] = profileName
+			}
+		}
+	}
+	if targets, ok := doc["targets"].(map[string]any); ok {
+		for targetName, raw := range targets {
+			target, _ := raw.(map[string]any)
+			modelID := targetName
+			surfaces := make(map[string]any)
+			if targetSurfaces, ok := target["surfaces"].(map[string]any); ok {
+				for surface, rawSurface := range targetSurfaces {
+					if concrete, ok := rawSurface.(string); ok {
+						if _, exists := models[concrete]; exists {
+							modelID = concrete
+						}
+						surfaces[surface] = concrete
+					}
+				}
+			}
+			model, _ := models[modelID].(map[string]any)
+			if model == nil {
+				model = make(map[string]any)
+			}
+			for _, key := range []string{"family", "status"} {
+				if value, ok := target[key]; ok {
+					model[key] = value
+				}
+			}
+			if len(surfaces) > 0 {
+				model["surfaces"] = surfaces
+			}
+			if _, ok := model["status"]; !ok {
+				model["status"] = "active"
+			}
+			if _, ok := model["power"]; !ok {
+				model["power"] = catalogFixturePower(profileTargets[targetName], model["status"])
+			}
+			if policy, ok := target["surface_policy"].(map[string]any); ok {
+				for surface, rawPolicy := range policy {
+					if _, hasSurface := surfaces[surface]; !hasSurface {
+						continue
+					}
+					entry, _ := rawPolicy.(map[string]any)
+					if reasoning, ok := entry["reasoning_default"]; ok {
+						if reasoning == false {
+							reasoning = "off"
+						}
+						model["reasoning_default"] = reasoning
+					}
+				}
+			}
+			models[modelID] = model
+		}
+	}
+	for id, raw := range models {
+		model, _ := raw.(map[string]any)
+		if model == nil {
+			model = make(map[string]any)
+		}
+		if _, ok := model["status"]; !ok {
+			model["status"] = "active"
+		}
+		if _, ok := model["power"]; !ok {
+			model["power"] = 8
+		}
+		if model["reasoning_default"] == false {
+			model["reasoning_default"] = "off"
+		}
+		models[id] = model
+	}
+
+	doc["version"] = 5
+	doc["models"] = models
+	doc["policies"] = catalogFixturePolicies(doc["profiles"])
+	delete(doc, "profiles")
+	delete(doc, "targets")
+
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal catalog fixture: %v", err)
+	}
+	return string(out)
+}
+
+func catalogFixturePolicies(rawProfiles any) map[string]any {
+	policies := map[string]any{
+		"default": map[string]any{"min_power": 7, "max_power": 8, "allow_local": true},
+	}
+	profiles, _ := rawProfiles.(map[string]any)
+	for name := range profiles {
+		switch name {
+		case "smart", "code-smart":
+			policies["smart"] = map[string]any{"min_power": 9, "max_power": 10, "allow_local": true}
+		case "cheap", "code-economy":
+			policies["cheap"] = map[string]any{"min_power": 5, "max_power": 5, "allow_local": true}
+		case "standard", "code-fast", "fast", "default":
+			policies["default"] = map[string]any{"min_power": 7, "max_power": 8, "allow_local": true}
+		}
+	}
+	return policies
+}
+
+func catalogFixturePower(profile, status any) int {
+	if status == "deprecated" || status == "stale" {
+		return 0
+	}
+	switch profile {
+	case "smart", "code-smart":
+		return 9
+	case "cheap", "code-economy":
+		return 5
+	default:
+		return 8
+	}
+}
+
+func yamlInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	default:
+		return 0, false
+	}
 }
 
 func catalogIndexJSON(manifestPath, manifestBody, catalogVersion string, schemaVersion int) string {
@@ -311,7 +461,7 @@ default: local
 
 	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "legacy")
 	require.Error(t, err)
-	assert.Contains(t, string(out), `target "legacy" is deprecated; use --profile current`)
+	assert.Contains(t, string(out), `reference "legacy" is deprecated`)
 	assert.Equal(t, "", fake.lastModel())
 }
 
@@ -576,7 +726,7 @@ func TestCLI_CatalogShow_EmbeddedFallback(t *testing.T) {
 	require.NoError(t, err, string(out))
 	output := string(out)
 	assert.Contains(t, output, "source: embedded")
-	assert.Contains(t, output, "catalog_version: 2026-04-30.1")
+	assert.Contains(t, output, "catalog_version: 2026-05-08.1")
 	assert.Contains(t, output, "smart:")
 	assert.Contains(t, output, "standard:")
 	assert.Contains(t, output, "cheap:")
@@ -591,18 +741,21 @@ func TestCLI_CatalogShow_ReportsAbsentSamplingProfiles(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 
-	// Install a v2 manifest predating ADR-007 (no sampling_profiles section).
+	// Install a v5 manifest without sampling_profiles.
 	configDir := filepath.Join(home, ".config", "fizeau")
 	require.NoError(t, os.MkdirAll(configDir, 0o755))
-	manifest := `version: 2
+	manifest := `version: 5
 generated_at: 2026-04-11T00:00:00Z
 catalog_version: 2026-04-11.1
-profiles:
-  code-high:
-    target: code-high
-targets:
-  code-high:
-    family: coding-tier
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 8
     surfaces:
       agent.openai: gpt-5.4
 `
@@ -623,23 +776,24 @@ func TestCLI_CatalogCheck_ShowsUpdateAvailable(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 	manifest := `
-version: 2
+version: 5
 generated_at: 2026-04-11T00:00:00Z
 catalog_version: 2026-04-11.1
-profiles:
-  code-high:
-    target: code-high
-targets:
-  code-high:
-    family: coding-tier
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 8
+    reasoning_default: high
     surfaces:
       agent.openai: gpt-5.4
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
 `
 	server := newFakeCatalogServer(t, map[string]string{
-		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 2),
+		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 5),
 		"stable/models.yaml": manifest,
 	})
 
@@ -654,23 +808,24 @@ func TestCLI_CatalogUpdate_InstallsVerifiedManifest(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 	manifest := `
-version: 2
+version: 5
 generated_at: 2026-04-11T00:00:00Z
 catalog_version: 2026-04-11.1
-profiles:
-  code-high:
-    target: code-high
-targets:
-  code-high:
-    family: coding-tier
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 8
+    reasoning_default: high
     surfaces:
       agent.openai: gpt-5.4
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
 `
 	server := newFakeCatalogServer(t, map[string]string{
-		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 2),
+		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 5),
 		"stable/models.yaml": manifest,
 	})
 
@@ -728,23 +883,29 @@ func TestCLI_CatalogUpdate_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 	manifest := `
-version: 5
+version: 6
 generated_at: 2026-04-11T00:00:00Z
 catalog_version: 2026-04-11.1
-targets:
-  code-high:
-    family: coding-tier
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 8
     surfaces:
       agent.openai: gpt-5.4
 `
 	server := newFakeCatalogServer(t, map[string]string{
-		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 5),
+		"stable/index.json":  catalogIndexJSON("models.yaml", manifest, "2026-04-11.1", 6),
 		"stable/models.yaml": manifest,
 	})
 
 	out, err := runAgentCLIWithHome(t, home, "--work-dir", workDir, "catalog", "update", "--base-url", server.baseURL())
 	require.Error(t, err)
-	assert.Contains(t, string(out), "unsupported schema version 5")
+	assert.Contains(t, string(out), "manifest schema v5 required")
 
 	_, statErr := os.Stat(filepath.Join(home, ".config", "fizeau", "models.yaml"))
 	assert.Error(t, statErr)

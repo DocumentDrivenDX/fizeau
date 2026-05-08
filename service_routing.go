@@ -672,19 +672,19 @@ func routingPolicyForProfile(cat *modelcatalog.Catalog, profile string) string {
 	if cat == nil {
 		return profile
 	}
-	info, ok := cat.Profile(profile)
+	_, policyName, ok := policyForProfileName(cat, profile)
 	if !ok {
 		return profile
 	}
-	switch info.CompatibilityTarget {
+	switch policyName {
 	case "smart":
 		return "smart"
-	case "standard":
+	case "default":
 		return "default"
-	case "code-economy":
+	case "cheap":
 		return "cheap"
 	default:
-		return profile
+		return policyName
 	}
 }
 
@@ -1239,16 +1239,16 @@ func providerPreferenceForProfile(cat *modelcatalog.Catalog, profile string) (st
 	if cat == nil {
 		return "", &ErrUnknownProfile{Profile: profile}
 	}
-	info, ok := cat.Profile(profile)
-	if !ok {
+	if _, _, ok := policyForProfileName(cat, profile); !ok {
 		return "", &ErrUnknownProfile{Profile: profile}
 	}
-	switch info.ProviderPreference {
+	preference := providerPreferenceForPolicyName(profile)
+	switch preference {
 	case routing.ProviderPreferenceLocalOnly, routing.ProviderPreferenceSubscriptionOnly,
 		routing.ProviderPreferenceLocalFirst, routing.ProviderPreferenceSubscriptionFirst:
-		return info.ProviderPreference, nil
+		return preference, nil
 	default:
-		return "", fmt.Errorf("profile %q has unsupported provider preference %q", profile, info.ProviderPreference)
+		return "", fmt.Errorf("profile %q has unsupported provider preference %q", profile, preference)
 	}
 }
 
@@ -1261,7 +1261,7 @@ func routePowerPolicyForRequest(cat *modelcatalog.Catalog, req RouteRequest) Rou
 	if req.Profile == "" || cat == nil {
 		return policy
 	}
-	profile, ok := cat.Profile(req.Profile)
+	profile, _, ok := policyForProfileName(cat, req.Profile)
 	if !ok {
 		return policy
 	}

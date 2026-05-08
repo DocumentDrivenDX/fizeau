@@ -279,20 +279,24 @@ func TestLoadModelCatalog_UsesDefaultInstalledManifestPath(t *testing.T) {
 	manifestPath := filepath.Join(configDir, "fizeau", "models.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`
-version: 2
+version: 5
 generated_at: 2026-04-10T00:00:00Z
 catalog_version: 2026-04-11.1
-profiles:
+policies:
   smart:
-    target: smart
-targets:
-  smart:
-    family: coding-tier
+    min_power: 9
+    max_power: 10
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 9
+    reasoning_default: high
     surfaces:
       agent.openai: gpt-5.4
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
 `), 0o644))
 
 	cfg := Defaults()
@@ -570,15 +574,17 @@ func TestResolveProviderConfig_ExternalManifest(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := filepath.Join(dir, "models.yaml")
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`
-version: 1
+version: 5
 generated_at: 2026-04-09T00:00:00Z
-profiles:
-  code-smart:
-    target: gpt-4.1
-targets:
-  gpt-4.1:
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  gpt-smart:
     family: gpt
-    aliases: [gpt-smart]
+    status: active
+    power: 8
     surfaces:
       agent.openai: gpt-4.1
 `), 0o644))
@@ -615,7 +621,7 @@ func TestResolveProviderConfig_MissingSurface(t *testing.T) {
 	}
 
 	_, _, err := cfg.ResolveProviderConfig("cloud", ProviderOverrides{
-		ModelRef:        "qwen3-coder-next",
+		ModelRef:        "qwen3.6-27b",
 		AllowDeprecated: true,
 	})
 	require.Error(t, err)

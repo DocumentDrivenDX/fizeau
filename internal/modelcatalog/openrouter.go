@@ -104,8 +104,6 @@ func UpdateManifestPricing(manifestPath string, timeout time.Duration) (int, []s
 	updated := 0
 	var notFound []string
 
-	upgradeManifest(&m)
-
 	modelIDs := make([]string, 0, len(m.Models))
 	for id := range m.Models {
 		modelIDs = append(modelIDs, id)

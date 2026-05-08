@@ -11,18 +11,19 @@ func TestEmbeddedManifestAutomaticTargetCandidatesHavePower(t *testing.T) {
 	catalog, err := Default()
 	require.NoError(t, err)
 
-	for _, target := range []string{"smart", "standard", "code-economy"} {
-		t.Run(target, func(t *testing.T) {
-			candidates := catalog.AllModelsInTier(target)
+	for _, policy := range []string{"smart", "default", "cheap"} {
+		t.Run(policy, func(t *testing.T) {
+			candidates := catalog.CandidatesFor(SurfaceAgentOpenAI, policy)
 			require.NotEmpty(t, candidates)
 
 			for _, candidate := range candidates {
-				entry := candidate.Entry
-				assert.True(t, entry.AutoRoutable(), "%s target candidate %s must be eligible for automatic routing", target, candidate.ID)
-				assert.GreaterOrEqual(t, entry.Power, 1, "%s target candidate %s must have power", target, candidate.ID)
-				assert.LessOrEqual(t, entry.Power, 10, "%s target candidate %s must stay within the catalog power scale", target, candidate.ID)
-				assert.NotEmpty(t, entry.DeploymentClass, "%s target candidate %s must declare deployment class", target, candidate.ID)
-				assert.NotEmpty(t, entry.PowerProvenance.Method, "%s target candidate %s must explain power assignment", target, candidate.ID)
+				entry, ok := catalog.LookupModel(candidate)
+				require.True(t, ok, "%s candidate %s must resolve to a model entry", policy, candidate)
+				assert.True(t, entry.AutoRoutable(), "%s candidate %s must be eligible for automatic routing", policy, candidate)
+				assert.GreaterOrEqual(t, entry.Power, 1, "%s candidate %s must have power", policy, candidate)
+				assert.LessOrEqual(t, entry.Power, 10, "%s candidate %s must stay within the catalog power scale", policy, candidate)
+				assert.NotEmpty(t, entry.DeploymentClass, "%s candidate %s must declare deployment class", policy, candidate)
+				assert.NotEmpty(t, entry.PowerProvenance.Method, "%s candidate %s must explain power assignment", policy, candidate)
 			}
 		})
 	}

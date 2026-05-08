@@ -2,7 +2,6 @@ package modelcatalog
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,45 +23,96 @@ func loadFixtureCatalog(t *testing.T) *Catalog {
 	t.Helper()
 	catalog, err := Load(LoadOptions{
 		ManifestPath: writeFixtureManifest(t, `
-version: 1
-generated_at: 2026-04-10T00:00:00Z
-profiles:
+version: 5
+generated_at: 2026-05-08T00:00:00Z
+catalog_version: 2026-05-08.test
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+    allow_local: true
+  cheap:
+    min_power: 5
+    max_power: 5
+    allow_local: true
   smart:
     min_power: 9
     max_power: 10
-    compatibility_target: alpha-smart
-  standard:
-    min_power: 7
-    max_power: 8
-    compatibility_target: beta-fast
-  code-economy:
+    allow_local: false
+  air-gapped:
     min_power: 5
     max_power: 5
-    compatibility_target: gamma-economy
-targets:
-  alpha-smart:
+    allow_local: true
+    require: [no_remote]
+models:
+  alpha-10:
     family: alpha
-    aliases: [alpha, alpha-alias]
+    status: active
+    provider_system: anthropic
+    deployment_class: managed_cloud_frontier
+    power: 10
+    cost_input_per_m: 5.00
+    cost_output_per_m: 15.00
+    context_window: 1000000
+    swe_bench_verified: 80.0
+    reasoning_default: high
     surfaces:
-      agent.anthropic: alpha-anthropic-1
-      agent.openai: alpha-openai-1
-  beta-fast:
+      agent.openai: alpha-openai-10
+      agent.anthropic: alpha-anthropic-10
+  alpha-9-local:
+    family: alpha
+    status: active
+    provider_system: openai
+    deployment_class: local_free
+    power: 9
+    cost_input_per_m: 0.10
+    cost_output_per_m: 0.30
+    context_window: 262144
+    surfaces:
+      agent.openai: alpha-local-9
+  beta-8:
     family: beta
-    aliases: [beta]
+    status: active
+    provider_system: openai
+    deployment_class: metered_cloud
+    power: 8
+    cost_input_per_m: 1.00
+    cost_output_per_m: 4.00
+    context_window: 200000
+    reasoning_default: off
     surfaces:
-      agent.openai: beta-openai-1
-  gamma-economy:
+      agent.openai: beta-openai-8
+  gamma-5-local:
     family: gamma
-    aliases: [gamma]
+    status: active
+    provider_system: openai
+    deployment_class: local_free
+    power: 5
+    cost_input_per_m: 0.10
+    cost_output_per_m: 0.30
+    context_window: 131072
     surfaces:
-      agent.anthropic: gamma-anthropic-1
-      agent.openai: gamma-openai-1
-  legacy-alpha:
+      agent.openai: gamma-local-5
+  delta-5-remote:
+    family: delta
+    status: active
+    provider_system: google
+    deployment_class: metered_cloud
+    power: 5
+    cost_input_per_m: 0.05
+    cost_output_per_m: 0.20
+    context_window: 131072
+    surfaces:
+      agent.openai: delta-remote-5
+  old-alpha:
     family: alpha
-    status: Deprecated
-    replacement: alpha-smart
+    status: deprecated
+    provider_system: anthropic
+    deployment_class: managed_cloud_frontier
+    power: 0
+    exact_pin_only: true
     surfaces:
-      agent.anthropic: legacy-anthropic-1
+      agent.openai: old-alpha
 `),
 		RequireExternal: true,
 	})
@@ -83,302 +133,183 @@ func TestDefault_LoadsEmbeddedManifest(t *testing.T) {
 	assert.Equal(t, "opus-4.7", resolved.ConcreteModel)
 	assert.Equal(t, reasoning.ReasoningHigh, resolved.SurfacePolicy.ReasoningDefault)
 	assert.Equal(t, "embedded", resolved.ManifestSource)
-	assert.Equal(t, "2026-04-30.1", resolved.CatalogVersion)
+	assert.Equal(t, 5, resolved.ManifestVersion)
+	assert.Equal(t, "2026-05-08.1", resolved.CatalogVersion)
 }
 
-func TestDefault_ReasoningDefaultsByTier(t *testing.T) {
+func TestCatalogPolicyAndPolicies(t *testing.T) {
 	catalog, err := Default()
 	require.NoError(t, err)
 
-	tests := []struct {
-		ref  string
-		want reasoning.Reasoning
-		min  int
-		max  int
-	}{
-		{ref: "cheap", want: reasoning.ReasoningOff, min: 5, max: 5},
-		{ref: "code-economy", want: reasoning.ReasoningOff, min: 5, max: 5},
-		{ref: "standard", want: reasoning.ReasoningOff, min: 7, max: 8},
-		{ref: "smart", want: reasoning.ReasoningHigh, min: 9, max: 10},
-		{ref: "code-fast", want: reasoning.ReasoningOff, min: 7, max: 8},
-		{ref: "code-smart", want: reasoning.ReasoningHigh, min: 9, max: 10},
-	}
+	policies := catalog.Policies()
+	require.Len(t, policies, 4)
+	assert.Equal(t, []string{"air-gapped", "cheap", "default", "smart"}, []string{
+		policies[0].Name,
+		policies[1].Name,
+		policies[2].Name,
+		policies[3].Name,
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.ref, func(t *testing.T) {
-			profile, ok := catalog.Profile(tt.ref)
-			require.True(t, ok)
-			assert.Equal(t, tt.min, profile.MinPower)
-			assert.Equal(t, tt.max, profile.MaxPower)
-			assert.NotEmpty(t, profile.CompatibilityTarget)
-			resolved, err := catalog.Resolve(tt.ref, ResolveOptions{
-				Surface: SurfaceAgentOpenAI,
-			})
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, resolved.SurfacePolicy.ReasoningDefault)
-		})
-	}
+	defaultPolicy, ok := catalog.Policy("default")
+	require.True(t, ok)
+	assert.Equal(t, 7, defaultPolicy.MinPower)
+	assert.Equal(t, 8, defaultPolicy.MaxPower)
+	assert.True(t, defaultPolicy.AllowLocal)
+
+	airGapped, ok := catalog.Policy("air-gapped")
+	require.True(t, ok)
+	assert.Equal(t, []string{"no_remote"}, airGapped.Require)
 }
 
-func TestDefault_ProfileProviderPreferences(t *testing.T) {
+func TestProvidersDeriveBillingModels(t *testing.T) {
 	catalog, err := Default()
 	require.NoError(t, err)
 
-	tests := []struct {
-		profile string
-		target  string
-		min     int
-		max     int
-		want    string
-	}{
-		{profile: "default", target: "standard", min: 7, max: 8, want: providerPreferenceLocalFirst},
-		{profile: "local", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
-		{profile: "standard", target: "standard", min: 7, max: 8, want: providerPreferenceLocalFirst},
-		{profile: "smart", target: "smart", min: 9, max: 10, want: providerPreferenceSubscriptionFirst},
-		{profile: "cheap", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalFirst},
-		{profile: "offline", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
-		{profile: "air-gapped", target: "code-economy", min: 5, max: 5, want: providerPreferenceLocalOnly},
+	byName := make(map[string]Provider)
+	for _, provider := range catalog.Providers() {
+		byName[provider.Name] = provider
 	}
-	for _, tt := range tests {
-		t.Run(tt.profile, func(t *testing.T) {
-			profile, ok := catalog.Profile(tt.profile)
-			require.True(t, ok)
-			assert.Equal(t, tt.profile, profile.Name)
-			assert.Equal(t, tt.target, profile.Target)
-			assert.Equal(t, tt.target, profile.CompatibilityTarget)
-			assert.Equal(t, tt.min, profile.MinPower)
-			assert.Equal(t, tt.max, profile.MaxPower)
-			assert.Equal(t, tt.want, profile.ProviderPreference)
-		})
-	}
+	assert.Equal(t, BillingModelPerToken, byName["openai"].Billing)
+	assert.Equal(t, BillingModelFixed, byName["lmstudio"].Billing)
+	assert.Equal(t, BillingModelSubscription, byName["codex"].Billing)
 }
 
-func TestResolveAliasFromFixture(t *testing.T) {
+func TestResolveCompatibilityPolicyNames(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
-	resolved, err := catalog.Resolve("alpha", ResolveOptions{
-		Surface: SurfaceAgentAnthropic,
-	})
+
+	standard, err := catalog.Resolve("standard", ResolveOptions{Surface: SurfaceAgentOpenAI})
 	require.NoError(t, err)
-	assert.Equal(t, "alpha-smart", resolved.CanonicalID)
-	assert.Equal(t, "alpha-anthropic-1", resolved.ConcreteModel)
-	assert.False(t, resolved.Deprecated)
-	assert.Equal(t, 1, resolved.ManifestVersion)
+	assert.Equal(t, "standard", standard.Profile)
+	assert.Equal(t, "standard", standard.CanonicalID)
+	assert.Equal(t, "beta-openai-8", standard.ConcreteModel)
+
+	codeSmart, err := catalog.Resolve("code-smart", ResolveOptions{Surface: SurfaceAgentOpenAI})
+	require.NoError(t, err)
+	assert.Equal(t, "smart", codeSmart.Profile)
+	assert.Equal(t, "alpha-openai-10", codeSmart.ConcreteModel)
 }
 
-func TestCurrent_ResolveProfile(t *testing.T) {
+func TestResolvePolicyHonorsNoRemoteRequirement(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 
-	resolved, err := catalog.Current("standard", ResolveOptions{
-		Surface: SurfaceAgentOpenAI,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "standard", resolved.Profile)
-	assert.Equal(t, "beta-fast", resolved.CanonicalID)
-	assert.Equal(t, "beta-openai-1", resolved.ConcreteModel)
+	cheap := catalog.CandidatesFor(SurfaceAgentOpenAI, "cheap")
+	assert.Equal(t, []string{"delta-remote-5", "gamma-local-5"}, cheap)
+
+	airGapped := catalog.CandidatesFor(SurfaceAgentOpenAI, "air-gapped")
+	assert.Equal(t, []string{"gamma-local-5"}, airGapped)
 }
 
-func TestResolveCanonicalTarget(t *testing.T) {
+func TestResolvePolicyExcludesLocalWhenDisallowed(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 
-	resolved, err := catalog.Resolve("alpha-smart", ResolveOptions{
-		Surface: SurfaceAgentOpenAI,
-	})
+	candidates := catalog.CandidatesFor(SurfaceAgentOpenAI, "smart")
+	assert.Equal(t, []string{"alpha-openai-10"}, candidates)
+}
+
+func TestResolveCanonicalModel(t *testing.T) {
+	catalog := loadFixtureCatalog(t)
+
+	resolved, err := catalog.Resolve("alpha-10", ResolveOptions{Surface: SurfaceAgentAnthropic})
 	require.NoError(t, err)
-	assert.Equal(t, "alpha-openai-1", resolved.ConcreteModel)
+	assert.Equal(t, "alpha-10", resolved.CanonicalID)
+	assert.Equal(t, "alpha-anthropic-10", resolved.ConcreteModel)
 	assert.Equal(t, "alpha", resolved.Family)
+	assert.Equal(t, reasoning.ReasoningHigh, resolved.SurfacePolicy.ReasoningDefault)
+}
+
+func TestResolveSurfaceModelID(t *testing.T) {
+	catalog := loadFixtureCatalog(t)
+
+	resolved, err := catalog.Resolve("alpha-openai-10", ResolveOptions{Surface: SurfaceAgentOpenAI})
+	require.NoError(t, err)
+	assert.Equal(t, "alpha-10", resolved.CanonicalID)
+	assert.Equal(t, "alpha-openai-10", resolved.ConcreteModel)
 }
 
 func TestResolveDeprecatedStrict(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 
-	_, err := catalog.Resolve("legacy-alpha", ResolveOptions{
-		Surface: SurfaceAgentAnthropic,
+	_, err := catalog.Resolve("old-alpha", ResolveOptions{
+		Surface: SurfaceAgentOpenAI,
 	})
 	require.Error(t, err)
 
 	var deprecatedErr *DeprecatedTargetError
 	require.True(t, errors.As(err, &deprecatedErr))
-	assert.Equal(t, "legacy-alpha", deprecatedErr.CanonicalID)
-	assert.Equal(t, "alpha-smart", deprecatedErr.Replacement)
+	assert.Equal(t, "old-alpha", deprecatedErr.CanonicalID)
+	assert.Equal(t, statusDeprecated, deprecatedErr.Status)
 }
 
 func TestResolveDeprecatedAllowed(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 
-	resolved, err := catalog.Resolve("legacy-alpha", ResolveOptions{
-		Surface:         SurfaceAgentAnthropic,
+	resolved, err := catalog.Resolve("old-alpha", ResolveOptions{
+		Surface:         SurfaceAgentOpenAI,
 		AllowDeprecated: true,
 	})
 	require.NoError(t, err)
 	assert.True(t, resolved.Deprecated)
-	assert.Equal(t, "alpha-smart", resolved.Replacement)
-	assert.Equal(t, "legacy-anthropic-1", resolved.ConcreteModel)
+	assert.Equal(t, "old-alpha", resolved.ConcreteModel)
 }
 
-func TestCodeHighAndCodeMediumDeprecationGuidance(t *testing.T) {
-	catalog, err := Default()
-	require.NoError(t, err)
+func TestResolveMissingSurface(t *testing.T) {
+	catalog := loadFixtureCatalog(t)
 
-	tests := []struct {
-		ref     string
-		profile string
-		min     int
-		max     int
-	}{
-		{ref: "code-high", profile: "smart", min: 9, max: 10},
-		{ref: "code-medium", profile: "standard", min: 7, max: 8},
-	}
+	_, err := catalog.Resolve("default", ResolveOptions{Surface: SurfaceGemini})
+	require.Error(t, err)
 
-	for _, tt := range tests {
-		t.Run(tt.ref, func(t *testing.T) {
-			_, err := catalog.Resolve(tt.ref, ResolveOptions{
-				Surface: SurfaceAgentOpenAI,
-			})
-			require.Error(t, err)
+	var missingSurfaceErr *MissingSurfaceError
+	require.True(t, errors.As(err, &missingSurfaceErr))
+	assert.Equal(t, SurfaceGemini, missingSurfaceErr.Surface)
+}
 
-			var deprecatedErr *DeprecatedTargetError
-			require.True(t, errors.As(err, &deprecatedErr))
-			assert.Equal(t, tt.ref, deprecatedErr.CanonicalID)
-			assert.Equal(t, tt.profile, deprecatedErr.SuggestedProfile)
-			assert.Equal(t, tt.min, deprecatedErr.SuggestedMinPower)
-			assert.Equal(t, tt.max, deprecatedErr.SuggestedMaxPower)
-			assert.Contains(t, deprecatedErr.Error(), "--profile "+tt.profile)
-			assert.Contains(t, deprecatedErr.Error(), fmt.Sprintf("--min-power %d", tt.min))
-			assert.Contains(t, deprecatedErr.Error(), fmt.Sprintf("--max-power %d", tt.max))
-		})
-	}
+func TestResolveUnknownReference(t *testing.T) {
+	catalog := loadFixtureCatalog(t)
+
+	_, err := catalog.Resolve("does-not-exist", ResolveOptions{Surface: SurfaceAgentOpenAI})
+	require.Error(t, err)
+
+	var unknownErr *UnknownReferenceError
+	require.True(t, errors.As(err, &unknownErr))
+	assert.Equal(t, "does-not-exist", unknownErr.Ref)
 }
 
 func TestLoad_ExternalOverride(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := filepath.Join(dir, "models.yaml")
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`
-version: 2
+version: 5
 generated_at: 2026-04-09T00:00:00Z
 catalog_version: 2026-04-10.1
-profiles:
-  code-smart:
-    target: gpt-4.1
-targets:
+policies:
+  default:
+    min_power: 9
+    max_power: 10
+models:
   gpt-4.1:
     family: gpt-4.1
-    aliases: [gpt-smart]
+    status: active
+    provider_system: openai
+    deployment_class: metered_cloud
+    power: 9
+    reasoning_default: medium
+    cost_input_per_m: 1.00
+    cost_output_per_m: 4.00
     surfaces:
       agent.openai: gpt-4.1
-    surface_policy:
-      agent.openai:
-        reasoning_default: medium
-        placement_order: [local, cheap-subscription]
-        max_input_cost_per_mtok_usd: 1.5
-        failure_policy: ordered-failover
 `), 0o644))
 
 	catalog, err := Load(LoadOptions{ManifestPath: manifestPath})
 	require.NoError(t, err)
 
-	resolved, err := catalog.Resolve("gpt-smart", ResolveOptions{
-		Surface: SurfaceAgentOpenAI,
-	})
+	resolved, err := catalog.Resolve("default", ResolveOptions{Surface: SurfaceAgentOpenAI})
 	require.NoError(t, err)
-	assert.Equal(t, "gpt-4.1", resolved.CanonicalID)
+	assert.Equal(t, "default", resolved.CanonicalID)
 	assert.Equal(t, "gpt-4.1", resolved.ConcreteModel)
 	assert.Equal(t, reasoning.ReasoningMedium, resolved.SurfacePolicy.ReasoningDefault)
-	assert.Equal(t, []string{"local", "cheap-subscription"}, resolved.SurfacePolicy.PlacementOrder)
-	if assert.NotNil(t, resolved.SurfacePolicy.MaxInputCostPerMTokUSD) {
-		assert.Equal(t, 1.5, *resolved.SurfacePolicy.MaxInputCostPerMTokUSD)
-	}
-	assert.Equal(t, "ordered-failover", resolved.SurfacePolicy.FailurePolicy)
 	assert.Equal(t, "2026-04-10.1", resolved.CatalogVersion)
 	assert.Equal(t, manifestPath, resolved.ManifestSource)
-	assert.Equal(t, 2, resolved.ManifestVersion)
-}
-
-func TestLoad_SurfacePolicyReasoningDefaultParsing(t *testing.T) {
-	manifestPath := writeFixtureManifest(t, `
-version: 4
-generated_at: 2026-04-10T00:00:00Z
-targets:
-  named-high:
-    family: named
-    aliases: [named]
-    surfaces:
-      agent.openai: named-model
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
-  string-zero:
-    family: zero
-    aliases: [zero-string]
-    surfaces:
-      agent.openai: zero-string-model
-    surface_policy:
-      agent.openai:
-        reasoning_default: "0"
-  numeric-zero:
-    family: zero
-    aliases: [zero-number]
-    surfaces:
-      agent.openai: zero-number-model
-    surface_policy:
-      agent.openai:
-        reasoning_default: 0
-  numeric-budget:
-    family: budget
-    aliases: [budget]
-    surfaces:
-      agent.openai: budget-model
-    surface_policy:
-      agent.openai:
-        reasoning_default: 4096
-`)
-
-	catalog, err := Load(LoadOptions{
-		ManifestPath:    manifestPath,
-		RequireExternal: true,
-	})
-	require.NoError(t, err)
-
-	tests := []struct {
-		ref  string
-		want reasoning.Reasoning
-	}{
-		{ref: "named", want: reasoning.ReasoningHigh},
-		{ref: "zero-string", want: reasoning.ReasoningOff},
-		{ref: "zero-number", want: reasoning.ReasoningOff},
-		{ref: "budget", want: reasoning.ReasoningTokens(4096)},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.ref, func(t *testing.T) {
-			resolved, err := catalog.Resolve(tt.ref, ResolveOptions{
-				Surface: SurfaceAgentOpenAI,
-			})
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, resolved.SurfacePolicy.ReasoningDefault)
-		})
-	}
-}
-
-func TestLoad_SurfacePolicyRequiresReasoningDefault(t *testing.T) {
-	manifestPath := writeFixtureManifest(t, `
-version: 4
-generated_at: 2026-04-10T00:00:00Z
-targets:
-  missing:
-    family: missing
-    surfaces:
-      agent.openai: missing-model
-    surface_policy:
-      agent.openai:
-        {}
-`)
-
-	_, err := Load(LoadOptions{
-		ManifestPath:    manifestPath,
-		RequireExternal: true,
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "reasoning_default")
+	assert.Equal(t, 5, resolved.ManifestVersion)
 }
 
 func TestLoad_FallbackToEmbedded(t *testing.T) {
@@ -405,176 +336,18 @@ func TestLoad_RequireExternal(t *testing.T) {
 }
 
 func TestLoad_InvalidManifest(t *testing.T) {
-	dir := t.TempDir()
-	manifestPath := filepath.Join(dir, "models.yaml")
-	require.NoError(t, os.WriteFile(manifestPath, []byte(`
-version: 1
+	manifestPath := writeFixtureManifest(t, `
+version: 4
 generated_at: 2026-04-09T00:00:00Z
-profiles:
-  code-smart:
-    target: missing
-targets:
-  claude-sonnet-4:
-    family: claude-sonnet
-    aliases: [dup]
-    surfaces:
-      agent.anthropic: claude-sonnet-4-20250514
-  qwen3-coder-next:
-    family: qwen3-coder
-    aliases: [dup]
-    surfaces:
-      agent.openai: qwen/qwen3-coder-next
-`), 0o644))
-
-	_, err := Load(LoadOptions{
-		ManifestPath:    manifestPath,
-		RequireExternal: true,
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "collides")
-}
-
-func TestResolveMissingSurface(t *testing.T) {
-	catalog := loadFixtureCatalog(t)
-
-	_, err := catalog.Resolve("beta-fast", ResolveOptions{
-		Surface: SurfaceAgentAnthropic,
-	})
-	require.Error(t, err)
-
-	var missingSurfaceErr *MissingSurfaceError
-	require.True(t, errors.As(err, &missingSurfaceErr))
-	assert.Equal(t, SurfaceAgentAnthropic, missingSurfaceErr.Surface)
-}
-
-func TestResolveUnknownReference(t *testing.T) {
-	catalog := loadFixtureCatalog(t)
-
-	_, err := catalog.Resolve("does-not-exist", ResolveOptions{
-		Surface: SurfaceAgentOpenAI,
-	})
-	require.Error(t, err)
-
-	var unknownErr *UnknownReferenceError
-	require.True(t, errors.As(err, &unknownErr))
-	assert.Equal(t, "does-not-exist", unknownErr.Ref)
-}
-
-func TestResolveUnknownTarget(t *testing.T) {
-	catalog := loadFixtureCatalog(t)
-	delete(catalog.manifest.Targets, "alpha-smart")
-
-	_, err := catalog.Resolve("alpha", ResolveOptions{
-		Surface: SurfaceAgentAnthropic,
-	})
-	require.Error(t, err)
-
-	var unknownTargetErr *UnknownTargetError
-	require.True(t, errors.As(err, &unknownTargetErr))
-	assert.Equal(t, "alpha-smart", unknownTargetErr.CanonicalID)
-}
-
-func TestLoad_InvalidManifest_ReplacementCycle(t *testing.T) {
-	manifestPath := writeFixtureManifest(t, `
-version: 1
-generated_at: 2026-04-09T00:00:00Z
-targets:
-  a:
-    family: alpha
-    status: deprecated
-    replacement: b
-    surfaces:
-      agent.openai: a
-  b:
-    family: beta
-    status: deprecated
-    replacement: a
-    surfaces:
-      agent.openai: b
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 `)
 
-	_, err := Load(LoadOptions{
-		ManifestPath:    manifestPath,
-		RequireExternal: true,
-	})
+	_, err := Load(LoadOptions{ManifestPath: manifestPath, RequireExternal: true})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cycle")
-}
-
-func TestLoad_InvalidManifest_SurfacePolicyRequiresMatchingSurface(t *testing.T) {
-	manifestPath := writeFixtureManifest(t, `
-version: 2
-generated_at: 2026-04-10T00:00:00Z
-targets:
-  code-high:
-    family: coding-tier
-    surfaces:
-      agent.openai: gpt-5.4
-    surface_policy:
-      codex:
-        reasoning_default: high
-`)
-
-	_, err := Load(LoadOptions{
-		ManifestPath:    manifestPath,
-		RequireExternal: true,
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "surface_policy")
-	assert.Contains(t, err.Error(), "matching surface")
-}
-
-func TestLoad_AllowsProfileWithSameNameAsTarget(t *testing.T) {
-	manifestPath := writeFixtureManifest(t, `
-version: 2
-generated_at: 2026-04-10T00:00:00Z
-catalog_version: 2026-04-10.1
-profiles:
-  smart:
-    target: smart
-targets:
-  smart:
-    family: coding-tier
-    surfaces:
-      agent.openai: gpt-5.4
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
-`)
-
-	catalog, err := Load(LoadOptions{
-		ManifestPath:    manifestPath,
-		RequireExternal: true,
-	})
-	require.NoError(t, err)
-
-	resolved, err := catalog.Current("smart", ResolveOptions{
-		Surface: SurfaceAgentOpenAI,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "smart", resolved.Profile)
-	assert.Equal(t, "smart", resolved.CanonicalID)
-	assert.Equal(t, "gpt-5.4", resolved.ConcreteModel)
-	assert.Equal(t, reasoning.ReasoningHigh, resolved.SurfacePolicy.ReasoningDefault)
-}
-
-func TestLoad_UnsupportedSchemaVersion(t *testing.T) {
-	manifestPath := writeFixtureManifest(t, `
-version: 5
-generated_at: 2026-04-10T00:00:00Z
-targets:
-  code-high:
-    family: coding-tier
-    surfaces:
-      agent.openai: gpt-5.4
-`)
-
-	_, err := Load(LoadOptions{
-		ManifestPath:    manifestPath,
-		RequireExternal: true,
-	})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported schema version 5")
+	assert.Contains(t, err.Error(), "manifest schema v5 required")
 }
 
 func TestResolveEmptyReference(t *testing.T) {
@@ -597,111 +370,20 @@ func TestCurrentEmptyProfile(t *testing.T) {
 	require.True(t, errors.As(err, &unknownErr))
 }
 
-func TestNormalizedStatusCaseInsensitive(t *testing.T) {
-	assert.Equal(t, statusDeprecated, normalizedStatus(" Deprecated "))
-}
-
-// loadV4FixtureCatalog loads a v4 manifest with models: map and candidates: lists.
-func loadV4FixtureCatalog(t *testing.T) *Catalog {
-	t.Helper()
-	catalog, err := Load(LoadOptions{
-		ManifestPath: writeFixtureManifest(t, `
-version: 4
-generated_at: 2026-04-13T00:00:00Z
-catalog_version: 2026-04-13.1
-models:
-  alpha-model-1:
-    family: alpha
-    tier: alpha-smart
-    status: active
-    provider_system: anthropic
-    cost_input_per_m: 3.00
-    cost_output_per_m: 15.00
-    swe_bench_verified: 72.7
-    surfaces:
-      agent.anthropic: alpha-model-1
-  alpha-model-2:
-    family: alpha
-    tier: alpha-smart
-    status: active
-    provider_system: anthropic
-    cost_input_per_m: 0.80
-    cost_output_per_m: 4.00
-    swe_bench_verified: 65.0
-    surfaces:
-      agent.anthropic: alpha-model-2
-  beta-model-1:
-    family: beta
-    tier: beta-fast
-    status: active
-    provider_system: openai
-    cost_input_per_m: 0.10
-    cost_output_per_m: 0.30
-    swe_bench_verified: 59.0
-    context_window: 262144
-    reasoning_max_tokens: 32768
-    reasoning_budgets:
-      low: 2048
-      medium: 8192
-      high: 32768
-    surfaces:
-      agent.openai: beta-model-1
-  beta-model-2:
-    family: beta
-    tier: beta-fast
-    status: active
-    provider_system: openai
-    cost_input_per_m: 0.07
-    cost_output_per_m: 0.20
-    surfaces:
-      agent.openai: beta-model-2
-profiles:
-  code-alpha:
-    target: alpha-smart
-  code-beta:
-    target: beta-fast
-targets:
-  alpha-smart:
-    family: alpha
-    aliases: [alpha]
-    candidates: [alpha-model-1, alpha-model-2, beta-model-1]
-  beta-fast:
-    family: beta
-    aliases: [beta]
-    candidates: [beta-model-1, beta-model-2]
-`),
-		RequireExternal: true,
-	})
-	require.NoError(t, err)
-	return catalog
-}
-
 func TestLookupModel_KnownModel(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
+	catalog := loadFixtureCatalog(t)
 
-	entry, ok := catalog.LookupModel("alpha-model-1")
+	entry, ok := catalog.LookupModel("alpha-10")
 	require.True(t, ok)
 	assert.Equal(t, "alpha", entry.Family)
-	assert.Equal(t, "alpha-smart", entry.Tier)
 	assert.Equal(t, "anthropic", entry.ProviderSystem)
-	assert.Equal(t, 3.00, entry.CostInputPerM)
+	assert.Equal(t, 5.00, entry.CostInputPerM)
 	assert.Equal(t, 15.00, entry.CostOutputPerM)
-	assert.Equal(t, 72.7, entry.SWEBenchVerified)
-}
-
-func TestLookupModel_ReasoningBudgetMetadata(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	entry, ok := catalog.LookupModel("beta-model-1")
-	require.True(t, ok)
-	assert.Equal(t, 32768, entry.ReasoningMaxTokens)
-	assert.Equal(t, 2048, entry.ReasoningBudgets[reasoning.ReasoningLow])
-	assert.Equal(t, 8192, entry.ReasoningBudgets[reasoning.ReasoningMedium])
-	assert.Equal(t, 32768, entry.ReasoningBudgets[reasoning.ReasoningHigh])
+	assert.Equal(t, 80.0, entry.SWEBenchVerified)
 }
 
 func TestLookupModel_UnknownModel(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
+	catalog := loadFixtureCatalog(t)
 
 	_, ok := catalog.LookupModel("does-not-exist")
 	assert.False(t, ok)
@@ -710,26 +392,27 @@ func TestLookupModel_UnknownModel(t *testing.T) {
 func TestModelEligibility_AutoRoutableAndExactPinOnly(t *testing.T) {
 	catalog, err := Load(LoadOptions{
 		ManifestPath: writeFixtureManifest(t, `
-version: 4
+version: 5
 generated_at: 2026-04-30T00:00:00Z
 catalog_version: 2026-04-30.1
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   routable-model:
     family: alpha
-    tier: route-tier
     status: active
     power: 7
     surfaces:
       agent.openai: provider/routable-model
   missing-power-model:
     family: alpha
-    tier: route-tier
     status: active
     surfaces:
       agent.openai: provider/missing-power-model
   exact-only-model:
     family: alpha
-    tier: route-tier
     status: active
     power: 8
     exact_pin_only: true
@@ -737,18 +420,10 @@ models:
       agent.openai: provider/exact-only-model
   stale-model:
     family: alpha
-    tier: route-tier
     status: stale
     power: 6
     surfaces:
       agent.openai: provider/stale-model
-profiles:
-  route:
-    target: route-tier
-targets:
-  route-tier:
-    family: alpha
-    candidates: [routable-model, missing-power-model, exact-only-model, stale-model]
 `),
 		RequireExternal: true,
 	})
@@ -786,46 +461,23 @@ targets:
 	assert.False(t, stale.ExactPinOnly)
 	assert.False(t, stale.AutoRoutable)
 
-	_, ok = catalog.LookupModel("missing-power-model")
-	assert.True(t, ok, "missing-power model remains findable for exact pins")
-
 	_, ok = catalog.ModelEligibility("does-not-exist")
 	assert.False(t, ok)
 }
 
 func TestContextWindowForModel_KnownModel(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
+	catalog := loadFixtureCatalog(t)
 
-	// beta-model-1 has context_window: 262144 in the fixture.
-	assert.Equal(t, 262144, catalog.ContextWindowForModel("beta-model-1"))
-}
-
-func TestContextWindowForModel_ModelWithoutContextWindow(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	// alpha-model-1 exists but has no context_window declared.
-	assert.Equal(t, 0, catalog.ContextWindowForModel("alpha-model-1"))
+	assert.Equal(t, 200000, catalog.ContextWindowForModel("beta-openai-8"))
 }
 
 func TestContextWindowForModel_UnknownModel(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
+	catalog := loadFixtureCatalog(t)
 
 	assert.Equal(t, 0, catalog.ContextWindowForModel("does-not-exist"))
 }
 
-func TestContextWindowForModel_CaseInsensitive(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	// Live servers sometimes present model IDs in mixed case
-	// (e.g. "Qwen3.5-27B-4bit") while the catalog uses lowercase.
-	assert.Equal(t, 262144, catalog.ContextWindowForModel("Beta-Model-1"))
-}
-
 func TestContextWindowForModel_EmbeddedCatalogHasQwenWindow(t *testing.T) {
-	// Regression test for the CLI fallback: the embedded v4 catalog ships with
-	// context_window: 262144 on qwen3.5-27b. If this ever stops resolving,
-	// LM Studio sessions that omit context_length from /v1/models will fall
-	// through to the package default (131072) and compact too aggressively.
 	catalog, err := Default()
 	require.NoError(t, err)
 	assert.Equal(t, 262144, catalog.ContextWindowForModel("qwen3.5-27b"))
@@ -868,67 +520,41 @@ func TestModelEligibility_EmbeddedCatalogMatchesClaudeFamilyDisplayVariants(t *t
 	}
 }
 
-func TestCandidatesFor_CandidatesList(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
+func TestCandidatesFor_ModelReference(t *testing.T) {
+	catalog := loadFixtureCatalog(t)
 
-	// Surface with candidates list
-	candidates := catalog.CandidatesFor(SurfaceAgentAnthropic, "alpha-smart")
-	assert.Equal(t, []string{"alpha-model-1", "alpha-model-2"}, candidates)
+	candidates := catalog.CandidatesFor(SurfaceAgentAnthropic, "alpha-10")
+	assert.Equal(t, []string{"alpha-anthropic-10"}, candidates)
 }
 
-func TestCandidatesFor_SingleStringFormat(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
+func TestCandidatesFor_MissingReference(t *testing.T) {
+	catalog := loadFixtureCatalog(t)
 
-	candidates := catalog.CandidatesFor(SurfaceAgentOpenAI, "alpha-smart")
-	assert.Equal(t, []string{"beta-model-1"}, candidates)
-}
-
-func TestCandidatesFor_MissingTarget(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	candidates := catalog.CandidatesFor(SurfaceAgentAnthropic, "no-such-target")
+	candidates := catalog.CandidatesFor(SurfaceAgentAnthropic, "no-such-policy")
 	assert.Nil(t, candidates)
 }
 
-func TestCandidatesFor_MissingSurface(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	candidates := catalog.CandidatesFor(SurfaceClaudeCode, "alpha-smart")
-	assert.Nil(t, candidates)
-}
-
-// TestPricingForPreservesCacheFieldsFromManifest verifies that PricingFor
-// projects cost_cache_read_per_m / cost_cache_write_per_m from the manifest
-// model entry onto CatalogModelPricing. Bead D (agent-6e2ebcdb) AC#2.
 func TestPricingForPreservesCacheFieldsFromManifest(t *testing.T) {
 	manifestPath := writeFixtureManifest(t, `
-version: 4
+version: 5
 generated_at: 2026-04-25T00:00:00Z
 catalog_version: 2026-04-25.1
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   cache-priced-model:
     family: cached
-    tier: cache-tier
     status: active
     provider_system: anthropic
+    power: 8
     cost_input_per_m: 3.00
     cost_output_per_m: 15.00
     cost_cache_read_per_m: 0.30
     cost_cache_write_per_m: 3.75
     surfaces:
       agent.anthropic: cache-priced-model
-profiles:
-  cache-default:
-    target: cache-tier
-targets:
-  cache-tier:
-    family: cached
-    aliases: []
-    status: active
-    candidates: [cache-priced-model]
-    surfaces:
-      agent.anthropic:
-        candidates: [cache-priced-model]
 `)
 	catalog, err := Load(LoadOptions{ManifestPath: manifestPath, RequireExternal: true})
 	require.NoError(t, err)
@@ -940,93 +566,6 @@ targets:
 	assert.Equal(t, 15.00, p.OutputPerMTok)
 	assert.Equal(t, 0.30, p.CacheReadPerM, "PricingFor must preserve cost_cache_read_per_m")
 	assert.Equal(t, 3.75, p.CacheWritePerM, "PricingFor must preserve cost_cache_write_per_m")
-}
-
-func TestPricingFor_IncludesModelsWithCost(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	pricing := catalog.PricingFor()
-
-	// alpha-model-1 appears in surfaces and models map
-	p, ok := pricing["alpha-model-1"]
-	require.True(t, ok, "expected alpha-model-1 in pricing")
-	assert.Equal(t, 3.00, p.InputPerMTok)
-	assert.Equal(t, 15.00, p.OutputPerMTok)
-
-	// beta-model-2 appears only in candidates list (not as primary surface model in any target)
-	// but is in models map — per-model entry takes precedence
-	_, hasB2 := pricing["beta-model-2"]
-	assert.True(t, hasB2, "expected beta-model-2 in pricing via models map")
-}
-
-func TestAllModelsInTier_ReturnsOrderedModelEntries(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	models := catalog.AllModelsInTier("alpha-smart")
-
-	require.Len(t, models, 3)
-	assert.Equal(t, "alpha-model-1", models[0].ID)
-	assert.Equal(t, "alpha-model-2", models[1].ID)
-	assert.Equal(t, "beta-model-1", models[2].ID)
-	assert.Equal(t, "alpha-smart", models[0].Entry.Tier)
-}
-
-func TestLoad_V3ManifestSynthesizesModelEntries(t *testing.T) {
-	manifestPath := writeFixtureManifest(t, `
-version: 3
-generated_at: 2026-04-12T00:00:00Z
-targets:
-  code-medium:
-    family: coding-tier
-    status: active
-    cost_input_per_m: 3
-    cost_output_per_m: 15
-    cost_cache_read_per_m: 0.30
-    cost_cache_write_per_m: 3.75
-    context_window: 200000
-    swe_bench_verified: 75.5
-    benchmark_as_of: "2026-04-12"
-    openrouter_ref_id: anthropic/claude-sonnet-4.6
-    surfaces:
-      agent.anthropic: sonnet-4.6
-      agent.openai: gpt-5.4-mini
-`)
-
-	catalog, err := Load(LoadOptions{ManifestPath: manifestPath, RequireExternal: true})
-	require.NoError(t, err)
-
-	anthropicModel, ok := catalog.LookupModel("sonnet-4.6")
-	require.True(t, ok)
-	assert.Equal(t, "coding-tier", anthropicModel.Family)
-	assert.Equal(t, "code-medium", anthropicModel.Tier)
-	assert.Equal(t, 3.0, anthropicModel.CostInputPerM)
-	assert.Equal(t, 15.0, anthropicModel.CostOutputPerM)
-	assert.Equal(t, 200000, anthropicModel.ContextWindow)
-	assert.Equal(t, "anthropic/claude-sonnet-4.6", anthropicModel.OpenRouterRefID)
-	assert.Equal(t, "sonnet-4.6", anthropicModel.Surfaces["agent.anthropic"])
-
-	openAIModel, ok := catalog.LookupModel("gpt-5.4-mini")
-	require.True(t, ok)
-	assert.Equal(t, "gpt-5.4-mini", openAIModel.Surfaces["agent.openai"])
-}
-
-func TestDefault_V4TargetsUseModelCandidates(t *testing.T) {
-	catalog, err := Default()
-	require.NoError(t, err)
-
-	target := catalog.manifest.Targets["code-economy"]
-	assert.Empty(t, target.Surfaces)
-	assert.Zero(t, target.CostInputPerM)
-	assert.Empty(t, target.OpenRouterRefID)
-	assert.Equal(t, []string{"claude-haiku-5.5", "lucebox-dflash", "qwen3.6-27b", "qwen3.5-27b", "gemini-2.5-flash-lite"}, target.Candidates)
-
-	models := catalog.AllModelsInTier("code-economy")
-	require.Len(t, models, 5)
-	assert.Equal(t, "claude-haiku-5.5", models[0].ID)
-	assert.Equal(t, "lucebox-dflash", models[1].ID)
-	assert.Equal(t, "qwen3.6-27b", models[2].ID)
-	assert.Equal(t, "qwen3.5-27b", models[3].ID)
-	assert.Equal(t, "gemini-2.5-flash-lite", models[4].ID)
 }
 
 func TestUpdateManifestPricing_UpdatesModelEntries(t *testing.T) {
@@ -1048,29 +587,29 @@ func TestUpdateManifestPricing_UpdatesModelEntries(t *testing.T) {
 	}
 
 	manifestPath := writeFixtureManifest(t, `
-version: 4
+version: 5
 generated_at: 2026-04-13T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   alpha-model:
     family: alpha
-    tier: code-alpha
     status: active
     openrouter_id: provider/alpha
+    power: 8
     cost_input_per_m: 1
     cost_output_per_m: 2
     surfaces:
       agent.openai: alpha-model
   missing-model:
     family: alpha
-    tier: code-alpha
     status: active
     openrouter_id: provider/missing
+    power: 8
     surfaces:
       agent.openai: missing-model
-targets:
-  code-alpha:
-    family: alpha
-    candidates: [alpha-model, missing-model]
 `)
 
 	updated, notFound, err := UpdateManifestPricing(manifestPath, time.Second)
@@ -1087,46 +626,4 @@ targets:
 	assert.Equal(t, 0.5, model.CostCacheReadPerM)
 	assert.Equal(t, 2.5, model.CostCacheWritePerM)
 	assert.Equal(t, 123456, model.ContextWindow)
-}
-
-func TestAllConcreteModels_IncludesCandidates(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	models := catalog.AllConcreteModels(SurfaceAgentAnthropic)
-
-	// Both candidates for alpha-smart should be present
-	assert.Equal(t, "alpha-smart", models["alpha-model-1"])
-	assert.Equal(t, "alpha-smart", models["alpha-model-2"])
-}
-
-func TestAllConcreteModels_SingleStringFormat(t *testing.T) {
-	catalog := loadV4FixtureCatalog(t)
-
-	models := catalog.AllConcreteModels(SurfaceAgentOpenAI)
-
-	// Single-string surface entry
-	assert.Equal(t, "alpha-smart", models["beta-model-1"])
-	// Candidates list on beta-fast
-	assert.Equal(t, "beta-fast", models["beta-model-2"])
-}
-
-func TestV4Manifest_BackwardsCompatibleLoad(t *testing.T) {
-	// Verify that a v4 manifest with mixed old-style (string) and new-style
-	// (candidates) surface values still resolves correctly.
-	catalog := loadV4FixtureCatalog(t)
-
-	resolved, err := catalog.Current("code-alpha", ResolveOptions{
-		Surface: SurfaceAgentAnthropic,
-	})
-	require.NoError(t, err)
-	// Primary candidate is the first in the list
-	assert.Equal(t, "alpha-model-1", resolved.ConcreteModel)
-	assert.Equal(t, "alpha-smart", resolved.CanonicalID)
-
-	// Old-style string surface still resolves
-	resolved2, err := catalog.Resolve("alpha-smart", ResolveOptions{
-		Surface: SurfaceAgentOpenAI,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "beta-model-1", resolved2.ConcreteModel)
 }

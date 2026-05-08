@@ -1,37 +1,15 @@
-version: 4
-generated_at: 2026-04-27T00:00:00Z
-# catalog_version is the user-facing pull signal driven by
-# `fiz catalog check`. Bump it on any change that requires
-# `fiz catalog update` to reach existing installations — including
-# additive schema extensions per ADR-007 §7. Format: YYYY-MM-DD.N
-# (calendar date, increment N for same-day changes).
-catalog_version: 2026-04-30.1
-
-# Sampling profiles (ADR-007 L1 — generic per-task bundles).
-# A field unset here stays nil through the resolver and is omitted from
-# the wire so the server's own default applies — preserving the
-# "let the server handle it" outcome.
+version: 5
+generated_at: '2026-04-27T00:00:00Z'
+catalog_version: 2026-05-08.1
 sampling_profiles:
-  # "code" mirrors Qwen3.6-27B "Best Practices: Thinking Mode — Precise
-  # Coding" recommendation: T=0.6, top_p=0.95, top_k=20. presence_penalty
-  # and repetition_penalty are explicitly omitted because Qwen3.x
-  # recommends them at their no-op defaults (0 / 1.0) for this profile;
-  # leaving them nil here means we don't burn a wire field on the
-  # default value. These values are also non-greedy enough to be safe in
-  # the non-thinking-mode case (slightly off the upstream non-thinking
-  # optimum, but never in the loop-inducing T=0 regime that the Qwen
-  # team's own model cards bold-warn against).
-  # Source: https://huggingface.co/Qwen/Qwen3.6-27B "Best Practices".
   code:
     temperature: 0.6
     top_p: 0.95
     top_k: 20
-
 models:
   opus-4.7:
     family: claude-opus
     display_name: Claude Opus 4.7
-    tier: code-high
     status: active
     provider_system: anthropic
     deployment_class: managed_cloud_frontier
@@ -40,29 +18,33 @@ models:
       method: catalog_bootstrap_cost_recency
       benchmarks:
         swe_bench_verified: 80.8
-      recency: "2026-04-12"
-      cost_input_per_m: 15.00
-      cost_output_per_m: 75.00
+      recency: '2026-04-12'
+      cost_input_per_m: 15.0
+      cost_output_per_m: 75.0
       deployment_class: managed_cloud_frontier
-    cost_input_per_m: 15.00
-    cost_output_per_m: 75.00
-    cost_cache_read_per_m: 1.50
+    cost_input_per_m: 15.0
+    cost_output_per_m: 75.0
+    cost_cache_read_per_m: 1.5
     cost_cache_write_per_m: 18.75
     context_window: 1000000
     swe_bench_verified: 80.8
-    benchmark_as_of: "2026-04-12"
+    benchmark_as_of: '2026-04-12'
     openrouter_id: anthropic/claude-opus-4.7
-    reasoning_levels: [off, low, medium, high, max]
+    reasoning_levels:
+    - 'off'
+    - low
+    - medium
+    - high
+    - max
     reasoning_control: tunable
     reasoning_wire: provider
     surfaces:
       agent.anthropic: opus-4.7
       claude-code: opus-4.7
-
+    reasoning_default: high
   gpt-5.5:
     family: gpt
     display_name: GPT-5.5
-    tier: code-high
     status: active
     provider_system: openai
     deployment_class: managed_cloud_frontier
@@ -71,26 +53,30 @@ models:
       method: catalog_bootstrap_cost_recency
       benchmarks:
         swe_bench_verified: 81.5
-      recency: "2026-04-25"
-      cost_input_per_m: 15.00
-      cost_output_per_m: 60.00
+      recency: '2026-04-25'
+      cost_input_per_m: 15.0
+      cost_output_per_m: 60.0
       deployment_class: managed_cloud_frontier
-    cost_input_per_m: 15.00
-    cost_output_per_m: 60.00
+    cost_input_per_m: 15.0
+    cost_output_per_m: 60.0
     context_window: 1000000
     swe_bench_verified: 81.5
-    benchmark_as_of: "2026-04-25"
-    reasoning_levels: [off, low, medium, high, xhigh]
+    benchmark_as_of: '2026-04-25'
+    reasoning_levels:
+    - 'off'
+    - low
+    - medium
+    - high
+    - xhigh
     reasoning_control: tunable
     reasoning_wire: provider
     surfaces:
       agent.openai: gpt-5.5
       codex: gpt-5.5
-
+    reasoning_default: high
   gpt-5.4:
     family: gpt
     display_name: GPT-5.4
-    tier: code-high
     status: active
     provider_system: openai
     deployment_class: managed_cloud_frontier
@@ -100,48 +86,50 @@ models:
       method: catalog_bootstrap_cost_recency
       benchmarks:
         swe_bench_verified: 80.8
-      recency: "2026-04-12"
-      cost_input_per_m: 15.00
-      cost_output_per_m: 60.00
+      recency: '2026-04-12'
+      cost_input_per_m: 15.0
+      cost_output_per_m: 60.0
       deployment_class: managed_cloud_frontier
-    cost_input_per_m: 15.00
-    cost_output_per_m: 60.00
+    cost_input_per_m: 15.0
+    cost_output_per_m: 60.0
     context_window: 1000000
     swe_bench_verified: 80.8
-    benchmark_as_of: "2026-04-12"
+    benchmark_as_of: '2026-04-12'
     surfaces:
       agent.openai: gpt-5.4
       codex: gpt-5.4
-
+    reasoning_default: high
   gemini-2.5-pro:
     family: gemini
     display_name: Gemini 2.5 Pro
-    tier: code-high
     status: active
     provider_system: google
     deployment_class: metered_cloud
     power: 9
     power_provenance:
       method: catalog_bootstrap_cost_recency
-      recency: "2026-04-21"
+      recency: '2026-04-21'
       cost_input_per_m: 1.25
-      cost_output_per_m: 10.00
+      cost_output_per_m: 10.0
       deployment_class: metered_cloud
     cost_input_per_m: 1.25
-    cost_output_per_m: 10.00
+    cost_output_per_m: 10.0
     cost_cache_read_per_m: 0.125
     context_window: 1000000
-    benchmark_as_of: "2026-04-21"
-    reasoning_levels: [off, low, medium, high]
+    benchmark_as_of: '2026-04-21'
+    reasoning_levels:
+    - 'off'
+    - low
+    - medium
+    - high
     reasoning_control: tunable
     reasoning_wire: provider
     surfaces:
       gemini: gemini-2.5-pro
-
+    reasoning_default: 'off'
   sonnet-4.6:
     family: claude-sonnet
     display_name: Claude Sonnet 4.6
-    tier: code-medium
     status: active
     provider_system: anthropic
     deployment_class: managed_cloud_frontier
@@ -150,29 +138,33 @@ models:
       method: catalog_bootstrap_cost_recency
       benchmarks:
         swe_bench_verified: 79.6
-      recency: "2026-04-12"
-      cost_input_per_m: 3.00
-      cost_output_per_m: 15.00
+      recency: '2026-04-12'
+      cost_input_per_m: 3.0
+      cost_output_per_m: 15.0
       deployment_class: managed_cloud_frontier
-    cost_input_per_m: 3.00
-    cost_output_per_m: 15.00
-    cost_cache_read_per_m: 0.30
+    cost_input_per_m: 3.0
+    cost_output_per_m: 15.0
+    cost_cache_read_per_m: 0.3
     cost_cache_write_per_m: 3.75
     context_window: 1000000
     swe_bench_verified: 79.6
-    benchmark_as_of: "2026-04-12"
+    benchmark_as_of: '2026-04-12'
     openrouter_id: anthropic/claude-sonnet-4.6
-    reasoning_levels: [off, low, medium, high, max]
+    reasoning_levels:
+    - 'off'
+    - low
+    - medium
+    - high
+    - max
     reasoning_control: tunable
     reasoning_wire: provider
     surfaces:
       agent.anthropic: sonnet-4.6
       claude-code: sonnet-4.6
-
+    reasoning_default: medium
   gpt-5.4-mini:
     family: gpt
     display_name: GPT-5.4 Mini
-    tier: code-medium
     status: active
     provider_system: openai
     deployment_class: metered_cloud
@@ -181,48 +173,50 @@ models:
       method: catalog_bootstrap_cost_recency
       benchmarks:
         swe_bench_verified: 77.2
-      recency: "2026-04-12"
-      cost_input_per_m: 3.00
-      cost_output_per_m: 12.00
+      recency: '2026-04-12'
+      cost_input_per_m: 3.0
+      cost_output_per_m: 12.0
       deployment_class: metered_cloud
-    cost_input_per_m: 3.00
-    cost_output_per_m: 12.00
+    cost_input_per_m: 3.0
+    cost_output_per_m: 12.0
     context_window: 1000000
     swe_bench_verified: 77.2
-    benchmark_as_of: "2026-04-12"
+    benchmark_as_of: '2026-04-12'
     surfaces:
       agent.openai: gpt-5.4-mini
       codex: gpt-5.4-mini
-
+    reasoning_default: 'off'
   gemini-2.5-flash:
     family: gemini
     display_name: Gemini 2.5 Flash
-    tier: code-medium
     status: active
     provider_system: google
     deployment_class: metered_cloud
     power: 7
     power_provenance:
       method: catalog_bootstrap_cost_recency
-      recency: "2026-04-21"
-      cost_input_per_m: 0.30
-      cost_output_per_m: 2.50
+      recency: '2026-04-21'
+      cost_input_per_m: 0.3
+      cost_output_per_m: 2.5
       deployment_class: metered_cloud
-    cost_input_per_m: 0.30
-    cost_output_per_m: 2.50
+    cost_input_per_m: 0.3
+    cost_output_per_m: 2.5
     cost_cache_read_per_m: 0.03
     context_window: 1000000
-    benchmark_as_of: "2026-04-21"
-    reasoning_levels: [off, low, medium, high]
+    benchmark_as_of: '2026-04-21'
+    reasoning_levels:
+    - 'off'
+    - low
+    - medium
+    - high
     reasoning_control: tunable
     reasoning_wire: provider
     surfaces:
       gemini: gemini-2.5-flash
-
+    reasoning_default: 'off'
   claude-haiku-5.5:
     family: claude-haiku
     display_name: Claude Haiku 5.5
-    tier: code-economy
     status: active
     provider_system: anthropic
     deployment_class: metered_cloud
@@ -231,54 +225,49 @@ models:
       method: catalog_bootstrap_cost_recency
       benchmarks:
         swe_bench_verified: 73.3
-      recency: "2026-04-12"
-      cost_input_per_m: 0.80
-      cost_output_per_m: 4.00
+      recency: '2026-04-12'
+      cost_input_per_m: 0.8
+      cost_output_per_m: 4.0
       deployment_class: metered_cloud
-    cost_input_per_m: 0.80
-    cost_output_per_m: 4.00
+    cost_input_per_m: 0.8
+    cost_output_per_m: 4.0
     cost_cache_read_per_m: 0.08
-    cost_cache_write_per_m: 1.00
+    cost_cache_write_per_m: 1.0
     context_window: 200000
     swe_bench_verified: 73.3
-    benchmark_as_of: "2026-04-12"
+    benchmark_as_of: '2026-04-12'
     openrouter_id: anthropic/claude-haiku-4.5
-    reasoning_levels: [off, low, medium, high]
+    reasoning_levels:
+    - 'off'
+    - low
+    - medium
+    - high
     reasoning_control: tunable
     reasoning_wire: provider
     surfaces:
       agent.anthropic: haiku-5.5
       claude-code: haiku-5.5
-
+    reasoning_default: medium
   lucebox-dflash:
     family: qwen
     display_name: Lucebox DFlash (Qwen3.5/3.6 27B speculative)
-    tier: code-economy
     status: active
     provider_system: lucebox
     deployment_class: local_free
     power: 5
     power_provenance:
       method: catalog_bootstrap_cost_recency
-      recency: "2026-04-12"
+      recency: '2026-04-12'
       deployment_class: local_free
-      override_reason: "Local accelerated Qwen deployment remains routable because availability and speed can beat generic local OpenAI-compatible endpoints."
-    # Speculative-decoding inference server from lucebox-hub
-    # (https://github.com/Luce-Org/lucebox-hub). Underlying weights are
-    # Qwen3.5-27B-Q4_K_M GGUF (3.6-27B drop-in supported per upstream
-    # README, experimental). Treated like a normal openai-compat local
-    # model so beadbench arms and routing comparisons see it as a peer of
-    # lmstudio / omlx. The server's /v1/models reports the GGUF file name
-    # (e.g., "Qwen3.5-27B-Q4_K_M") rather than this catalog id; this entry
-    # exists for catalog-side routing references.
+      override_reason: Local accelerated Qwen deployment remains routable because availability and speed
+        can beat generic local OpenAI-compatible endpoints.
     context_window: 131072
     surfaces:
       agent.openai: lucebox-dflash
-
+    reasoning_default: 'off'
   qwen3.5-27b:
     family: qwen
     display_name: Qwen3.5 27B
-    tier: code-economy
     status: active
     provider_system: openai
     deployment_class: local_free
@@ -287,30 +276,30 @@ models:
       method: catalog_bootstrap_cost_recency
       benchmarks:
         swe_bench_verified: 59.0
-      recency: "2026-04-12"
-      cost_input_per_m: 0.10
-      cost_output_per_m: 0.30
+      recency: '2026-04-12'
+      cost_input_per_m: 0.1
+      cost_output_per_m: 0.3
       deployment_class: local_free
-    cost_input_per_m: 0.10
-    cost_output_per_m: 0.30
+    cost_input_per_m: 0.1
+    cost_output_per_m: 0.3
     context_window: 262144
     swe_bench_verified: 59.0
-    benchmark_as_of: "2026-04-12"
+    benchmark_as_of: '2026-04-12'
     reasoning_max_tokens: 32768
     reasoning_budgets:
       low: 2048
       medium: 8192
       high: 32768
-    reasoning_levels: [high]
+    reasoning_levels:
+    - high
     reasoning_control: fixed
     reasoning_wire: model_id
     surfaces:
       agent.openai: qwen3.5-27b
-
+    reasoning_default: 'off'
   qwen3.6-27b:
     family: qwen
     display_name: Qwen3.6 27B
-    tier: code-economy
     status: active
     provider_system: openai
     deployment_class: local_free
@@ -319,31 +308,32 @@ models:
       method: catalog_bootstrap_local_successor
       benchmarks:
         swe_bench_verified: 59.0
-      recency: "2026-04-27"
-      cost_input_per_m: 0.10
-      cost_output_per_m: 0.30
+      recency: '2026-04-27'
+      cost_input_per_m: 0.1
+      cost_output_per_m: 0.3
       deployment_class: local_free
-      override_reason: "Local Qwen3.6 27B deployments are treated as the successor to the Qwen3.5 27B local routing tier until a dedicated benchmark lands."
-    cost_input_per_m: 0.10
-    cost_output_per_m: 0.30
+      override_reason: Local Qwen3.6 27B deployments are treated as the successor to the Qwen3.5 27B local
+        routing tier until a dedicated benchmark lands.
+    cost_input_per_m: 0.1
+    cost_output_per_m: 0.3
     context_window: 262144
     swe_bench_verified: 59.0
-    benchmark_as_of: "2026-04-27"
+    benchmark_as_of: '2026-04-27'
     reasoning_max_tokens: 32768
     reasoning_budgets:
       low: 2048
       medium: 8192
       high: 32768
-    reasoning_levels: [high]
+    reasoning_levels:
+    - high
     reasoning_control: fixed
     reasoning_wire: model_id
     surfaces:
       agent.openai: qwen/qwen3.6-27b
-
+    reasoning_default: 'off'
   qwen3.5-7b:
     family: qwen
     display_name: Qwen3.5 7B
-    tier: code-economy
     status: active
     provider_system: openai
     deployment_class: local_free
@@ -353,7 +343,7 @@ models:
       method: catalog_bootstrap_cost_recency
       benchmarks:
         swe_bench_verified: 45.0
-      recency: "2026-04-12"
+      recency: '2026-04-12'
       cost_input_per_m: 0.04
       cost_output_per_m: 0.12
       deployment_class: local_free
@@ -361,7 +351,7 @@ models:
     cost_output_per_m: 0.12
     context_window: 131072
     swe_bench_verified: 45.0
-    benchmark_as_of: "2026-04-12"
+    benchmark_as_of: '2026-04-12'
     reasoning_max_tokens: 16384
     reasoning_budgets:
       low: 1024
@@ -369,36 +359,35 @@ models:
       high: 16384
     surfaces:
       agent.openai: qwen3.5-7b
-
+    reasoning_default: 'off'
   gemini-2.5-flash-lite:
     family: gemini
     display_name: Gemini 2.5 Flash-Lite
-    tier: code-economy
     status: active
     provider_system: google
     deployment_class: metered_cloud
     power: 5
     power_provenance:
       method: catalog_bootstrap_cost_recency
-      recency: "2026-04-21"
-      cost_input_per_m: 0.10
-      cost_output_per_m: 0.40
+      recency: '2026-04-21'
+      cost_input_per_m: 0.1
+      cost_output_per_m: 0.4
       deployment_class: metered_cloud
-    cost_input_per_m: 0.10
-    cost_output_per_m: 0.40
+    cost_input_per_m: 0.1
+    cost_output_per_m: 0.4
     cost_cache_read_per_m: 0.01
     context_window: 1000000
-    benchmark_as_of: "2026-04-21"
-    reasoning_levels: [off]
+    benchmark_as_of: '2026-04-21'
+    reasoning_levels:
+    - 'off'
     reasoning_control: none
     reasoning_wire: none
     surfaces:
       gemini: gemini-2.5-flash-lite
-
+    reasoning_default: 'off'
   claude-sonnet-4-20250514:
     family: claude-sonnet
     display_name: Claude Sonnet 4 Legacy
-    tier: claude-sonnet-4
     status: deprecated
     provider_system: anthropic
     deployment_class: managed_cloud_frontier
@@ -409,16 +398,16 @@ models:
       benchmarks:
         swe_bench_verified: 72.7
       deployment_class: managed_cloud_frontier
-    cost_input_per_m: 3.00
-    cost_output_per_m: 15.00
+    cost_input_per_m: 3.0
+    cost_output_per_m: 15.0
     swe_bench_verified: 72.7
     surfaces:
       agent.anthropic: claude-sonnet-4-20250514
-
+      claude-code: claude-sonnet-4-20250514
+    reasoning_default: medium
   claude-3-7-sonnet-20250219:
     family: claude-sonnet
     display_name: Claude 3.7 Sonnet Legacy
-    tier: claude-sonnet-3.7
     status: deprecated
     provider_system: anthropic
     deployment_class: managed_cloud_frontier
@@ -429,226 +418,72 @@ models:
       benchmarks:
         swe_bench_verified: 70.3
       deployment_class: managed_cloud_frontier
-    cost_input_per_m: 3.00
-    cost_output_per_m: 15.00
+    cost_input_per_m: 3.0
+    cost_output_per_m: 15.0
     swe_bench_verified: 70.3
     surfaces:
       agent.anthropic: claude-3-7-sonnet-20250219
-
-profiles:
+      claude-code: claude-3-7-sonnet-20250219
+    reasoning_default: medium
+policies:
   default:
     min_power: 7
     max_power: 8
-    compatibility_target: standard
-    provider_preference: local-first
-  local:
-    min_power: 5
-    max_power: 5
-    compatibility_target: code-economy
-    provider_preference: local-only
-  offline:
-    min_power: 5
-    max_power: 5
-    compatibility_target: code-economy
-    provider_preference: local-only
-  air-gapped:
-    min_power: 5
-    max_power: 5
-    compatibility_target: code-economy
-    provider_preference: local-only
-  smart:
-    min_power: 9
-    max_power: 10
-    compatibility_target: smart
-    provider_preference: subscription-first
-  code-smart:
-    min_power: 9
-    max_power: 10
-    compatibility_target: smart
-    provider_preference: subscription-first
-  standard:
-    min_power: 7
-    max_power: 8
-    compatibility_target: standard
-    provider_preference: local-first
-  code-fast:
-    min_power: 7
-    max_power: 8
-    compatibility_target: standard
-    provider_preference: local-first
-  fast:
-    min_power: 7
-    max_power: 8
-    compatibility_target: standard
-    provider_preference: local-first
-  code-economy:
-    min_power: 5
-    max_power: 5
-    compatibility_target: code-economy
-    provider_preference: local-first
+    allow_local: true
   cheap:
     min_power: 5
     max_power: 5
-    compatibility_target: code-economy
-    provider_preference: local-first
-
-targets:
+    allow_local: true
   smart:
-    family: coding-tier
-    aliases:
-      - high
-    status: active
-    context_window_min: 1000000
-    swe_bench_min: 80.0
-    candidates: [opus-4.7, gpt-5.5, gemini-2.5-pro]
-    surface_policy:
-      agent.anthropic:
-        reasoning_default: high
-      claude-code:
-        reasoning_default: high
-      agent.openai:
-        reasoning_default: high
-        placement_order: [subscription, local]
-        max_input_cost_per_mtok_usd: 20
-        failure_policy: ordered-failover
-      codex:
-        reasoning_default: high
-      gemini:
-        reasoning_default: off
-        placement_order: [subscription]
-        max_input_cost_per_mtok_usd: 2
-        failure_policy: auth-gated
-
-  standard:
-    family: coding-tier
-    aliases:
-      - medium
-    status: active
-    context_window_min: 1000000
-    swe_bench_min: 77.0
-    candidates: [sonnet-4.6, gpt-5.4-mini, gemini-2.5-flash]
-    surface_policy:
-      agent.anthropic:
-        reasoning_default: medium
-      claude-code:
-        reasoning_default: medium
-      agent.openai:
-        reasoning_default: off
-        placement_order: [subscription, local]
-        max_input_cost_per_mtok_usd: 5
-        failure_policy: ordered-failover
-      codex:
-        reasoning_default: off
-      gemini:
-        reasoning_default: off
-        placement_order: [subscription]
-        max_input_cost_per_mtok_usd: 1
-        failure_policy: auth-gated
-
-  code-high:
-    family: coding-tier
-    status: deprecated
-    replacement: smart
-    context_window_min: 1000000
-    swe_bench_min: 80.0
-    candidates: [opus-4.7, gpt-5.5, gemini-2.5-pro]
-    surface_policy:
-      agent.anthropic:
-        reasoning_default: high
-      claude-code:
-        reasoning_default: high
-      agent.openai:
-        reasoning_default: high
-        placement_order: [subscription, local]
-        max_input_cost_per_mtok_usd: 20
-        failure_policy: ordered-failover
-      codex:
-        reasoning_default: high
-      gemini:
-        reasoning_default: off
-        placement_order: [subscription]
-        max_input_cost_per_mtok_usd: 2
-        failure_policy: auth-gated
-
-  code-medium:
-    family: coding-tier
-    status: deprecated
-    replacement: standard
-    context_window_min: 1000000
-    swe_bench_min: 77.0
-    candidates: [sonnet-4.6, gpt-5.4-mini, gemini-2.5-flash]
-    surface_policy:
-      agent.anthropic:
-        reasoning_default: medium
-      claude-code:
-        reasoning_default: medium
-      agent.openai:
-        reasoning_default: off
-        placement_order: [subscription, local]
-        max_input_cost_per_mtok_usd: 5
-        failure_policy: ordered-failover
-      codex:
-        reasoning_default: off
-      gemini:
-        reasoning_default: off
-        placement_order: [subscription]
-        max_input_cost_per_mtok_usd: 1
-        failure_policy: auth-gated
-
-  code-economy:
-    family: coding-tier
-    aliases:
-      - economy
-    status: active
-    context_window_min: 131072
-    swe_bench_min: 45.0
-    candidates: [claude-haiku-5.5, lucebox-dflash, qwen3.6-27b, qwen3.5-27b, gemini-2.5-flash-lite]
-    surface_policy:
-      agent.anthropic:
-        reasoning_default: medium
-      claude-code:
-        reasoning_default: medium
-      agent.openai:
-        reasoning_default: off
-        placement_order: [local, cheap-subscription]
-        max_input_cost_per_mtok_usd: 1
-        failure_policy: ordered-failover
-      gemini:
-        reasoning_default: off
-        placement_order: [subscription]
-        max_input_cost_per_mtok_usd: 0.25
-        failure_policy: auth-gated
-
-  claude-sonnet-4:
-    family: claude-sonnet
-    aliases:
-      - claude-sonnet
-      - sonnet-legacy
-    status: deprecated
-    replacement: standard
-    deprecated_at: 2026-04-10
-    candidates: [claude-sonnet-4-20250514]
-    surfaces:
-      agent.openai: anthropic/claude-sonnet-4
-
-  claude-sonnet-3.7:
-    family: claude-sonnet
-    aliases:
-      - claude-3.7-sonnet
-    status: deprecated
-    replacement: standard
-    deprecated_at: 2026-04-10
-    candidates: [claude-3-7-sonnet-20250219]
-    surfaces:
-      agent.openai: anthropic/claude-3.7-sonnet
-
-  qwen3-coder-next:
-    family: qwen3-coder
-    aliases:
-      - qwen-coder-next
-      - qwen3-coder
-    status: deprecated
-    replacement: code-economy
-    deprecated_at: 2026-04-10
-    surfaces:
-      agent.openai: qwen/qwen3-coder-next
+    min_power: 9
+    max_power: 10
+    allow_local: false
+  air-gapped:
+    min_power: 5
+    max_power: 5
+    allow_local: true
+    require:
+    - no_remote
+providers:
+  anthropic:
+    type: anthropic
+    include_by_default: false
+  google:
+    type: google
+    include_by_default: false
+  openai:
+    type: openai
+    include_by_default: false
+  openrouter:
+    type: openrouter
+    include_by_default: false
+  lmstudio:
+    type: lmstudio
+    include_by_default: true
+  llama-server:
+    type: llama-server
+    include_by_default: true
+  omlx:
+    type: omlx
+    include_by_default: true
+  vllm:
+    type: vllm
+    include_by_default: true
+  rapid-mlx:
+    type: rapid-mlx
+    include_by_default: true
+  ollama:
+    type: ollama
+    include_by_default: true
+  lucebox:
+    type: lucebox
+    include_by_default: true
+  claude:
+    type: claude
+    include_by_default: true
+  codex:
+    type: codex
+    include_by_default: true
+  gemini:
+    type: gemini
+    include_by_default: true

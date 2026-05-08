@@ -309,9 +309,9 @@ func TestResolveProviderForRun_DeprecatedModelRefAllowed(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
-	assert.Equal(t, "claude-sonnet-3.7", selection.Route)
+	assert.Equal(t, "claude-3-7-sonnet-20250219", selection.Route)
 	assert.Equal(t, "cloud", selection.Provider)
-	assert.Equal(t, "claude-sonnet-3.7", selection.ResolvedModelRef)
+	assert.Equal(t, "claude-3-7-sonnet-20250219", selection.ResolvedModelRef)
 	assert.Equal(t, "claude-3-7-sonnet-20250219", selection.ResolvedModel)
 	assert.Equal(t, "claude-3-7-sonnet-20250219", pc.Model)
 }

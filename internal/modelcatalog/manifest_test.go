@@ -10,12 +10,18 @@ import (
 
 func TestManifestPreservesReasoningCapabilityFields(t *testing.T) {
 	src := `
-version: 4
+version: 5
 generated_at: 2026-04-26T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   tunable-model:
     family: example
     status: active
+    power: 8
+    reasoning_default: high
     reasoning_levels: [off, low, medium, high, max]
     reasoning_control: tunable
     reasoning_wire: provider
@@ -24,6 +30,7 @@ models:
   fixed-variant:
     family: example
     status: active
+    power: 8
     reasoning_levels: [high]
     reasoning_control: fixed
     reasoning_wire: model_id
@@ -32,21 +39,13 @@ models:
   no-reasoning:
     family: example
     status: active
+    power: 8
+    reasoning_default: off
     reasoning_levels: [off]
     reasoning_control: none
     reasoning_wire: none
     surfaces:
       gemini: no-reasoning
-profiles:
-  default:
-    target: example-tier
-targets:
-  example-tier:
-    family: example
-    aliases: [ex]
-    candidates: [tunable-model, fixed-variant, no-reasoning]
-    surfaces:
-      agent.anthropic: tunable-model
 `
 
 	path := writeFixtureManifest(t, src)
@@ -93,8 +92,12 @@ targets:
 
 func TestManifestPreservesPowerEligibilityFields(t *testing.T) {
 	src := `
-version: 4
+version: 5
 generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   route-model:
     family: example
@@ -103,13 +106,6 @@ models:
     exact_pin_only: true
     surfaces:
       agent.openai: provider/route-model
-profiles:
-  default:
-    target: example-tier
-targets:
-  example-tier:
-    family: example
-    candidates: [route-model]
 `
 
 	path := writeFixtureManifest(t, src)
@@ -131,10 +127,123 @@ targets:
 	assert.True(t, roundTrip["route-model"].ExactPinOnly)
 }
 
-func TestManifestRejectsNegativePower(t *testing.T) {
-	src := `
+func TestRejectsLegacySchemaV4(t *testing.T) {
+	path := writeFixtureManifest(t, `
 version: 4
 generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+`)
+
+	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "manifest schema v5 required")
+}
+
+func TestRejectsCatalogWithoutDefaultPolicy(t *testing.T) {
+	path := writeFixtureManifest(t, `
+version: 5
+generated_at: 2026-04-30T00:00:00Z
+policies:
+  smart:
+    min_power: 9
+    max_power: 10
+`)
+
+	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default policy")
+}
+
+func TestRejectsUnknownRequireInvariant(t *testing.T) {
+	path := writeFixtureManifest(t, `
+version: 5
+generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 5
+    max_power: 5
+    require: [no_remote, no_network]
+`)
+
+	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown require invariant")
+}
+
+func TestUserProviderUnknownTypeRequiresBillingField(t *testing.T) {
+	path := writeFixtureManifest(t, `
+version: 5
+generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+providers:
+  custom:
+    type: privately-hosted
+`)
+
+	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires explicit billing field")
+}
+
+func TestUserProviderUnknownTypeAllowsExplicitBillingField(t *testing.T) {
+	path := writeFixtureManifest(t, `
+version: 5
+generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+providers:
+  custom:
+    type: privately-hosted
+    billing: fixed
+`)
+
+	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.NoError(t, err)
+}
+
+func TestManifestRejectsInvalidPolicyBounds(t *testing.T) {
+	tests := []struct {
+		name    string
+		policy  string
+		wantErr string
+	}{
+		{name: "zero min", policy: "min_power: 0\n    max_power: 8", wantErr: "min_power"},
+		{name: "inverted", policy: "min_power: 9\n    max_power: 8", wantErr: "<= max_power"},
+		{name: "above scale", policy: "min_power: 8\n    max_power: 11", wantErr: "<= 10"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeFixtureManifest(t, `
+version: 5
+generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    `+tt.policy+`
+`)
+			_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestManifestRejectsNegativePower(t *testing.T) {
+	path := writeFixtureManifest(t, `
+version: 5
+generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   bad-power:
     family: example
@@ -142,24 +251,20 @@ models:
     power: -1
     surfaces:
       agent.openai: bad-power
-profiles:
-  default:
-    target: example-tier
-targets:
-  example-tier:
-    family: example
-    candidates: [bad-power]
-`
-	path := writeFixtureManifest(t, src)
+`)
 	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "power")
 }
 
 func TestManifestRejectsPowerAboveScale(t *testing.T) {
-	src := `
-version: 4
+	path := writeFixtureManifest(t, `
+version: 5
 generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   bad-power:
     family: example
@@ -167,71 +272,73 @@ models:
     power: 11
     surfaces:
       agent.openai: bad-power
-profiles:
-  default:
-    target: example-tier
-targets:
-  example-tier:
-    family: example
-    candidates: [bad-power]
-`
-	path := writeFixtureManifest(t, src)
+`)
 	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "power")
 }
 
+func TestManifestRejectsInvalidReasoningDefault(t *testing.T) {
+	path := writeFixtureManifest(t, `
+version: 5
+generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  bad-default:
+    family: example
+    status: active
+    power: 8
+    reasoning_default: sideways
+    surfaces:
+      agent.openai: bad-default
+`)
+	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported value")
+}
+
 func TestManifestRejectsInvalidReasoningControl(t *testing.T) {
-	src := `
-version: 4
+	path := writeFixtureManifest(t, `
+version: 5
 generated_at: 2026-04-26T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   bad-control:
     family: example
     status: active
+    power: 8
     reasoning_control: bogus
     surfaces:
       agent.anthropic: bad-control
-profiles:
-  default:
-    target: example-tier
-targets:
-  example-tier:
-    family: example
-    aliases: [ex]
-    candidates: [bad-control]
-    surfaces:
-      agent.anthropic: bad-control
-`
-	path := writeFixtureManifest(t, src)
+`)
 	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reasoning_control")
 }
 
 func TestManifestRejectsInvalidReasoningWire(t *testing.T) {
-	src := `
-version: 4
+	path := writeFixtureManifest(t, `
+version: 5
 generated_at: 2026-04-26T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   bad-wire:
     family: example
     status: active
+    power: 8
     reasoning_wire: bogus
     surfaces:
       agent.anthropic: bad-wire
-profiles:
-  default:
-    target: example-tier
-targets:
-  example-tier:
-    family: example
-    aliases: [ex]
-    candidates: [bad-wire]
-    surfaces:
-      agent.anthropic: bad-wire
-`
-	path := writeFixtureManifest(t, src)
+`)
 	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reasoning_wire")
@@ -239,35 +346,31 @@ targets:
 
 func TestManifestPreservesSamplingProfilesAndControl(t *testing.T) {
 	src := `
-version: 4
+version: 5
 generated_at: 2026-04-27T00:00:00Z
 sampling_profiles:
   code:
     temperature: 0.6
     top_p: 0.95
     top_k: 20
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   client-settable-default:
     family: example
     status: active
+    power: 8
     surfaces:
       agent.anthropic: client-settable-default
   pinned-by-harness:
     family: example
     status: active
+    power: 8
     sampling_control: harness_pinned
     surfaces:
       claude-code: pinned-by-harness
-profiles:
-  default:
-    target: example-tier
-targets:
-  example-tier:
-    family: example
-    aliases: [ex]
-    candidates: [client-settable-default, pinned-by-harness]
-    surfaces:
-      agent.anthropic: client-settable-default
 `
 	path := writeFixtureManifest(t, src)
 	catalog, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
@@ -281,8 +384,8 @@ targets:
 	assert.InDelta(t, 0.95, *codeProfile.TopP, 1e-9)
 	require.NotNil(t, codeProfile.TopK)
 	assert.Equal(t, 20, *codeProfile.TopK)
-	assert.Nil(t, codeProfile.MinP, "min_p unset → nil, distinct from 0")
-	assert.Nil(t, codeProfile.RepetitionPenalty, "rep_penalty unset → nil")
+	assert.Nil(t, codeProfile.MinP, "min_p unset is nil, distinct from 0")
+	assert.Nil(t, codeProfile.RepetitionPenalty, "rep_penalty unset is nil")
 
 	_, ok = catalog.SamplingProfile("nonexistent")
 	assert.False(t, ok)
@@ -296,28 +399,22 @@ targets:
 }
 
 func TestManifestRejectsInvalidSamplingControl(t *testing.T) {
-	src := `
-version: 4
+	path := writeFixtureManifest(t, `
+version: 5
 generated_at: 2026-04-27T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
 models:
   bad-control:
     family: example
     status: active
+    power: 8
     sampling_control: nonsense
     surfaces:
       agent.anthropic: bad-control
-profiles:
-  default:
-    target: example-tier
-targets:
-  example-tier:
-    family: example
-    aliases: [ex]
-    candidates: [bad-control]
-    surfaces:
-      agent.anthropic: bad-control
-`
-	path := writeFixtureManifest(t, src)
+`)
 	_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "sampling_control")

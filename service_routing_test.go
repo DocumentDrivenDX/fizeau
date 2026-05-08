@@ -15,6 +15,7 @@ import (
 	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"gopkg.in/yaml.v3"
 )
 
 func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
@@ -775,6 +776,7 @@ func publicRouteTraceService(sc ServiceConfig) *service {
 
 func loadRoutingFixtureCatalog(t *testing.T, contents string) *modelcatalog.Catalog {
 	t.Helper()
+	contents = normalizeRoutingFixtureManifest(t, contents)
 	path := filepath.Join(t.TempDir(), "models.yaml")
 	requireNoError(t, os.WriteFile(path, []byte(contents), 0o600))
 	catalog, err := modelcatalog.Load(modelcatalog.LoadOptions{ManifestPath: path, RequireExternal: true})
@@ -782,6 +784,85 @@ func loadRoutingFixtureCatalog(t *testing.T, contents string) *modelcatalog.Cata
 		t.Fatalf("Load fixture catalog: %v", err)
 	}
 	return catalog
+}
+
+func normalizeRoutingFixtureManifest(t *testing.T, contents string) string {
+	t.Helper()
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(contents), &doc); err != nil {
+		t.Fatalf("parse fixture manifest: %v", err)
+	}
+	if version, _ := intFromYAML(doc["version"]); version == 5 {
+		return contents
+	}
+	doc["version"] = 5
+
+	if _, ok := doc["policies"]; !ok {
+		policies := make(map[string]any)
+		if profiles, ok := doc["profiles"].(map[string]any); ok {
+			for name, raw := range profiles {
+				entry, _ := raw.(map[string]any)
+				minPower, ok := intFromYAML(entry["min_power"])
+				if !ok || minPower <= 0 {
+					minPower = 1
+				}
+				maxPower, ok := intFromYAML(entry["max_power"])
+				if !ok || maxPower <= 0 {
+					maxPower = 10
+				}
+				policyName := routingFixturePolicyName(name)
+				if _, exists := policies[policyName]; !exists {
+					policies[policyName] = map[string]any{
+						"min_power":   minPower,
+						"max_power":   maxPower,
+						"allow_local": true,
+					}
+				}
+			}
+		}
+		if _, ok := policies["default"]; !ok {
+			policies["default"] = map[string]any{
+				"min_power":   1,
+				"max_power":   10,
+				"allow_local": true,
+			}
+		}
+		doc["policies"] = policies
+	}
+	delete(doc, "profiles")
+	delete(doc, "targets")
+
+	out, err := yaml.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal fixture manifest: %v", err)
+	}
+	return string(out)
+}
+
+func routingFixturePolicyName(name string) string {
+	switch name {
+	case "standard", "code-fast", "fast":
+		return "default"
+	case "code-smart":
+		return "smart"
+	case "code-economy", "local", "offline":
+		return "cheap"
+	default:
+		return name
+	}
+}
+
+func intFromYAML(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	default:
+		return 0, false
+	}
 }
 
 func replaceRoutingCatalogForTest(t *testing.T, catalog *modelcatalog.Catalog) func() {
@@ -1012,8 +1093,21 @@ func TestBuildRoutingInputsWiresContextWindowsFromCatalog(t *testing.T) {
 // "no viable routing candidate" jargon.
 func TestResolveRoute_LivenessEscalation(t *testing.T) {
 	const fixtureCatalog = `
-version: 4
+version: 5
 generated_at: 2026-04-25T00:00:00Z
+policies:
+  default:
+    min_power: 5
+    max_power: 5
+    allow_local: true
+  cheap:
+    min_power: 5
+    max_power: 5
+    allow_local: true
+  smart:
+    min_power: 8
+    max_power: 8
+    allow_local: true
 models:
   medium-model:
     family: tier
@@ -1027,23 +1121,6 @@ models:
     power: 8
     context_window: 200000
     surfaces: {agent.openai: high-model}
-targets:
-  code-medium:
-    family: tier
-    candidates: [medium-model]
-  code-high:
-    family: tier
-    candidates: [high-model]
-profiles:
-  cheap:
-    target: code-medium
-    provider_preference: local-first
-  standard:
-    target: code-medium
-    provider_preference: local-first
-  smart:
-    target: code-high
-    provider_preference: local-first
 `
 
 	newSvc := func(t *testing.T) (*service, func()) {

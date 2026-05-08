@@ -14,20 +14,21 @@ import (
 func TestBuild_WritesStableAndVersionedBundles(t *testing.T) {
 	manifestPath := filepath.Join(t.TempDir(), "models.yaml")
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`
-version: 2
+version: 5
 generated_at: 2026-04-10T00:00:00Z
 catalog_version: 2026-04-10.1
-profiles:
-  code-high:
-    target: code-high
-targets:
-  code-high:
-    family: coding-tier
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 8
+    reasoning_default: high
     surfaces:
       agent.openai: gpt-5.4
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
 `), 0o644))
 
 	outDir := t.TempDir()
@@ -40,7 +41,7 @@ targets:
 		Notes:           "fixture build",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 2, index.SchemaVersion)
+	assert.Equal(t, 5, index.SchemaVersion)
 	assert.Equal(t, "2026-04-10.1", index.CatalogVersion)
 	assert.Equal(t, "stable", index.Channel)
 	assert.Equal(t, "0.2.0", index.MinAgentVersion)
@@ -68,11 +69,17 @@ targets:
 func TestBuild_RejectsManifestWithoutCatalogVersion(t *testing.T) {
 	manifestPath := filepath.Join(t.TempDir(), "models.yaml")
 	require.NoError(t, os.WriteFile(manifestPath, []byte(`
-version: 2
+version: 5
 generated_at: 2026-04-10T00:00:00Z
-targets:
-  code-high:
-    family: coding-tier
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 8
     surfaces:
       agent.openai: gpt-5.4
 `), 0o644))

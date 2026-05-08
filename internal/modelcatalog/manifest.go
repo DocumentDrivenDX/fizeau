@@ -16,12 +16,7 @@ const (
 	statusActive     = "active"
 	statusDeprecated = "deprecated"
 	statusStale      = "stale"
-	maxSchemaVersion = 4
-
-	providerPreferenceLocalFirst        = "local-first"
-	providerPreferenceSubscriptionFirst = "subscription-first"
-	providerPreferenceLocalOnly         = "local-only"
-	providerPreferenceSubscriptionOnly  = "subscription-only"
+	maxSchemaVersion = 5
 )
 
 //go:embed catalog/models.yaml
@@ -33,11 +28,10 @@ type LoadOptions struct {
 	RequireExternal bool
 }
 
-// ModelEntry holds per-model metadata introduced in manifest v4.
+// ModelEntry holds per-model metadata from the v5 manifest.
 type ModelEntry struct {
 	Family             string                      `yaml:"family,omitempty"`
 	DisplayName        string                      `yaml:"display_name,omitempty"`
-	Tier               string                      `yaml:"tier,omitempty"`
 	Status             string                      `yaml:"status,omitempty"`
 	ProviderSystem     string                      `yaml:"provider_system,omitempty"`
 	DeploymentClass    string                      `yaml:"deployment_class,omitempty" json:"deployment_class,omitempty"`
@@ -59,6 +53,7 @@ type ModelEntry struct {
 	Power              int                         `yaml:"power,omitempty" json:"power,omitempty"`
 	ExactPinOnly       bool                        `yaml:"exact_pin_only,omitempty" json:"exact_pin_only,omitempty"`
 	NoTools            bool                        `yaml:"no_tools,omitempty"`
+	ReasoningDefault   reasoning.Reasoning         `yaml:"reasoning_default,omitempty"`
 	ReasoningMaxTokens int                         `yaml:"reasoning_max_tokens,omitempty"`
 	ReasoningBudgets   map[reasoning.Reasoning]int `yaml:"reasoning_budgets,omitempty"`
 	ReasoningLevels    []string                    `yaml:"reasoning_levels,omitempty"`
@@ -105,116 +100,29 @@ const (
 )
 
 type manifest struct {
-	Version        int                     `yaml:"version"`
-	GeneratedAt    string                  `yaml:"generated_at"`
-	CatalogVersion string                  `yaml:"catalog_version,omitempty"`
-	Models         map[string]ModelEntry   `yaml:"models,omitempty"`
-	Profiles       map[string]profileEntry `yaml:"profiles"`
-	Targets        map[string]targetEntry  `yaml:"targets"`
+	Version        int                      `yaml:"version"`
+	GeneratedAt    string                   `yaml:"generated_at"`
+	CatalogVersion string                   `yaml:"catalog_version,omitempty"`
+	Models         map[string]ModelEntry    `yaml:"models,omitempty"`
+	Policies       map[string]policyEntry   `yaml:"policies,omitempty"`
+	Providers      map[string]providerEntry `yaml:"providers,omitempty"`
 	// SamplingProfiles is a map from profile name (e.g., "code") to a named
 	// bundle of sampling-parameter overrides. Profile bundles are the L1
 	// layer of the resolution chain; see ADR-007.
 	SamplingProfiles map[string]sampling.Profile `yaml:"sampling_profiles,omitempty"`
 }
 
-type profileEntry struct {
-	Target              string `yaml:"target,omitempty"`
-	CompatibilityTarget string `yaml:"compatibility_target,omitempty"`
-	MinPower            int    `yaml:"min_power,omitempty"`
-	MaxPower            int    `yaml:"max_power,omitempty"`
-	ProviderPreference  string `yaml:"provider_preference,omitempty"`
+type policyEntry struct {
+	MinPower   int      `yaml:"min_power,omitempty"`
+	MaxPower   int      `yaml:"max_power,omitempty"`
+	AllowLocal bool     `yaml:"allow_local,omitempty"`
+	Require    []string `yaml:"require,omitempty"`
 }
 
-// surfaceValue represents a surface entry that may be a plain model ID string
-// or a struct with a candidates list (v4+).
-type surfaceValue struct {
-	// model is set when the YAML value is a plain string.
-	model string
-	// candidates is set when the YAML value is a struct with a candidates list.
-	candidates []string
-}
-
-// UnmarshalYAML decodes either a scalar string or a mapping with candidates.
-func (s *surfaceValue) UnmarshalYAML(value *yaml.Node) error {
-	switch value.Kind {
-	case yaml.ScalarNode:
-		s.model = value.Value
-		return nil
-	case yaml.MappingNode:
-		var raw struct {
-			Candidates []string `yaml:"candidates"`
-		}
-		if err := value.Decode(&raw); err != nil {
-			return err
-		}
-		s.candidates = raw.Candidates
-		return nil
-	default:
-		return fmt.Errorf("surfaceValue: unexpected YAML node kind %v", value.Kind)
-	}
-}
-
-// primaryModel returns the first/primary concrete model ID for this surface.
-func (s surfaceValue) primaryModel() string {
-	if s.model != "" {
-		return s.model
-	}
-	if len(s.candidates) > 0 {
-		return s.candidates[0]
-	}
-	return ""
-}
-
-// allCandidates returns an ordered list of candidate model IDs.
-func (s surfaceValue) allCandidates() []string {
-	if s.model != "" {
-		return []string{s.model}
-	}
-	out := make([]string, len(s.candidates))
-	copy(out, s.candidates)
-	return out
-}
-
-type targetEntry struct {
-	Family           string                        `yaml:"family"`
-	Aliases          []string                      `yaml:"aliases"`
-	Status           string                        `yaml:"status"`
-	Replacement      string                        `yaml:"replacement,omitempty"`
-	DeprecatedAt     string                        `yaml:"deprecated_at,omitempty"`
-	Candidates       []string                      `yaml:"candidates,omitempty"`
-	Surfaces         map[string]surfaceValue       `yaml:"surfaces"`
-	SurfacePolicy    map[string]surfacePolicyEntry `yaml:"surface_policy,omitempty"`
-	ContextWindowMin int                           `yaml:"context_window_min,omitempty"`
-	SWEBenchMin      float64                       `yaml:"swe_bench_min,omitempty"`
-	// Pricing (USD per 1M tokens, 0 = unknown/free)
-	CostInputPerM      float64 `yaml:"cost_input_per_m,omitempty"`
-	CostOutputPerM     float64 `yaml:"cost_output_per_m,omitempty"`
-	CostCacheReadPerM  float64 `yaml:"cost_cache_read_per_m,omitempty"`
-	CostCacheWritePerM float64 `yaml:"cost_cache_write_per_m,omitempty"`
-	// Context and hardware
-	ContextWindow int `yaml:"context_window,omitempty"` // max tokens
-	// Benchmarks
-	SWEBenchVerified float64 `yaml:"swe_bench_verified,omitempty"` // percent
-	LiveCodeBench    float64 `yaml:"live_code_bench,omitempty"`    // percent
-	BenchmarkAsOf    string  `yaml:"benchmark_as_of,omitempty"`    // YYYY-MM-DD
-	// OpenRouter
-	OpenRouterRefID string `yaml:"openrouter_ref_id,omitempty"` // OR model ID when different from surface model
-}
-
-type surfacePolicyEntry struct {
-	ReasoningDefault       reasoning.Reasoning `yaml:"reasoning_default,omitempty"`
-	PlacementOrder         []string            `yaml:"placement_order,omitempty"`
-	MaxInputCostPerMTokUSD *float64            `yaml:"max_input_cost_per_mtok_usd,omitempty"`
-	FailurePolicy          string              `yaml:"failure_policy,omitempty"`
-}
-
-func (s surfacePolicyEntry) toResolved() SurfacePolicy {
-	return SurfacePolicy{
-		ReasoningDefault:       s.ReasoningDefault,
-		PlacementOrder:         append([]string(nil), s.PlacementOrder...),
-		MaxInputCostPerMTokUSD: s.MaxInputCostPerMTokUSD,
-		FailurePolicy:          s.FailurePolicy,
-	}
+type providerEntry struct {
+	Type             string `yaml:"type,omitempty"`
+	IncludeByDefault bool   `yaml:"include_by_default,omitempty"`
+	Billing          string `yaml:"billing,omitempty"`
 }
 
 // Default loads the embedded default catalog snapshot.
@@ -247,126 +155,73 @@ func loadManifest(data []byte, source string) (*Catalog, error) {
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("modelcatalog: parse manifest %s: %w", source, err)
 	}
-	upgradeManifest(&m)
 	if err := validateManifest(m); err != nil {
 		return nil, fmt.Errorf("modelcatalog: validate manifest %s: %w", source, err)
 	}
-
-	catalog := &Catalog{
-		manifest:       m,
-		manifestSrc:    source,
-		aliasToID:      make(map[string]string),
-		profileEntries: make(map[string]profileEntry),
-	}
-
-	for profile, entry := range m.Profiles {
-		catalog.profileEntries[profile] = entry
-	}
-	for targetID, target := range m.Targets {
-		for _, alias := range target.Aliases {
-			catalog.aliasToID[alias] = targetID
-		}
-	}
-
-	return catalog, nil
+	return &Catalog{
+		manifest:    m,
+		manifestSrc: source,
+	}, nil
 }
 
 func validateManifest(m manifest) error {
-	if m.Version <= 0 {
-		return fmt.Errorf("version must be greater than zero")
+	if m.Version != maxSchemaVersion {
+		return fmt.Errorf("manifest schema v%d required (got v%d); see ADR-009 for v0.11 schema redesign", maxSchemaVersion, m.Version)
 	}
-	if m.Version > maxSchemaVersion {
-		return fmt.Errorf("unsupported schema version %d (max supported %d)", m.Version, maxSchemaVersion)
+	if len(m.Policies) == 0 {
+		return fmt.Errorf("policies must not be empty")
 	}
-	if len(m.Targets) == 0 {
-		return fmt.Errorf("targets must not be empty")
+	if _, ok := m.Policies["default"]; !ok {
+		return fmt.Errorf("default policy must be defined")
 	}
 
-	reserved := make(map[string]string)
-	targetIDs := make([]string, 0, len(m.Targets))
-	for targetID := range m.Targets {
-		targetIDs = append(targetIDs, targetID)
+	policyNames := make([]string, 0, len(m.Policies))
+	for name := range m.Policies {
+		policyNames = append(policyNames, name)
 	}
-	sort.Strings(targetIDs)
+	sort.Strings(policyNames)
+	for _, name := range policyNames {
+		entry := m.Policies[name]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("policy name must not be empty")
+		}
+		if entry.MinPower <= 0 {
+			return fmt.Errorf("policy %q min_power must be > 0", name)
+		}
+		if entry.MaxPower <= 0 {
+			return fmt.Errorf("policy %q max_power must be > 0", name)
+		}
+		if entry.MinPower > entry.MaxPower {
+			return fmt.Errorf("policy %q min_power must be <= max_power", name)
+		}
+		if entry.MaxPower > 10 {
+			return fmt.Errorf("policy %q max_power must be <= 10", name)
+		}
+		for _, requirement := range entry.Require {
+			if !knownPolicyRequirement(requirement) {
+				return fmt.Errorf("policy %q has unknown require invariant %q", name, requirement)
+			}
+		}
+	}
 
-	for _, targetID := range targetIDs {
-		target := m.Targets[targetID]
-		if strings.TrimSpace(targetID) == "" {
-			return fmt.Errorf("target ID must not be empty")
+	providerNames := make([]string, 0, len(m.Providers))
+	for name := range m.Providers {
+		providerNames = append(providerNames, name)
+	}
+	sort.Strings(providerNames)
+	for _, name := range providerNames {
+		entry := m.Providers[name]
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("provider name must not be empty")
 		}
-		if strings.TrimSpace(target.Family) == "" {
-			return fmt.Errorf("target %q must define family", targetID)
+		if strings.TrimSpace(entry.Type) == "" {
+			return fmt.Errorf("provider %q must define type", name)
 		}
-		if len(target.Surfaces) == 0 && len(target.Candidates) == 0 {
-			return fmt.Errorf("target %q must define at least one surface or candidate", targetID)
+		if entry.Billing != "" && !knownBillingModel(BillingModel(entry.Billing)) {
+			return fmt.Errorf("provider %q has invalid billing %q", name, entry.Billing)
 		}
-
-		status := normalizedStatus(target.Status)
-		switch status {
-		case statusActive, statusDeprecated, statusStale:
-		default:
-			return fmt.Errorf("target %q has invalid status %q", targetID, target.Status)
-		}
-
-		if target.Replacement != "" {
-			if _, ok := m.Targets[target.Replacement]; !ok {
-				return fmt.Errorf("target %q replacement %q not found", targetID, target.Replacement)
-			}
-			if replacementCycle := findReplacementCycle(m, targetID); replacementCycle != "" {
-				return fmt.Errorf("target %q replacement chain contains cycle via %q", targetID, replacementCycle)
-			}
-		}
-
-		if owner, exists := reserved[targetID]; exists {
-			return fmt.Errorf("reference %q collides with %s", targetID, owner)
-		}
-		reserved[targetID] = fmt.Sprintf("target %q", targetID)
-
-		for surface, sv := range target.Surfaces {
-			if strings.TrimSpace(surface) == "" {
-				return fmt.Errorf("target %q has empty surface key", targetID)
-			}
-			if strings.TrimSpace(sv.primaryModel()) == "" {
-				return fmt.Errorf("target %q has empty model for surface %q", targetID, surface)
-			}
-		}
-		for surface, policy := range target.SurfacePolicy {
-			if strings.TrimSpace(surface) == "" {
-				return fmt.Errorf("target %q has empty surface_policy key", targetID)
-			}
-			if !targetSupportsSurface(m, target, surface) {
-				return fmt.Errorf("target %q surface_policy %q has no matching surface mapping", targetID, surface)
-			}
-			if policy.ReasoningDefault == "" {
-				return fmt.Errorf("target %q surface_policy %q must define reasoning_default", targetID, surface)
-			}
-		}
-
-		if target.CostInputPerM < 0 {
-			return fmt.Errorf("target %q cost_input_per_m must be >= 0", targetID)
-		}
-		if target.CostOutputPerM < 0 {
-			return fmt.Errorf("target %q cost_output_per_m must be >= 0", targetID)
-		}
-		if target.CostCacheReadPerM < 0 {
-			return fmt.Errorf("target %q cost_cache_read_per_m must be >= 0", targetID)
-		}
-		if target.CostCacheWritePerM < 0 {
-			return fmt.Errorf("target %q cost_cache_write_per_m must be >= 0", targetID)
-		}
-		if target.ContextWindow < 0 {
-			return fmt.Errorf("target %q context_window must be >= 0", targetID)
-		}
-
-		for _, alias := range target.Aliases {
-			alias = strings.TrimSpace(alias)
-			if alias == "" {
-				return fmt.Errorf("target %q has empty alias", targetID)
-			}
-			if owner, exists := reserved[alias]; exists {
-				return fmt.Errorf("alias %q for target %q collides with %s", alias, targetID, owner)
-			}
-			reserved[alias] = fmt.Sprintf("alias for target %q", targetID)
+		if !knownProviderSystem(entry.Type) && strings.TrimSpace(entry.Billing) == "" {
+			return fmt.Errorf("provider %q type %q requires explicit billing field", name, entry.Type)
 		}
 	}
 
@@ -379,11 +234,6 @@ func validateManifest(m manifest) error {
 		case statusActive, statusDeprecated, statusStale:
 		default:
 			return fmt.Errorf("model %q has invalid status %q", modelID, model.Status)
-		}
-		if model.Tier != "" {
-			if _, ok := m.Targets[model.Tier]; !ok {
-				return fmt.Errorf("model %q references unknown tier %q", modelID, model.Tier)
-			}
 		}
 		if model.CostInputPerM < 0 || model.CostInputPerMTok < 0 {
 			return fmt.Errorf("model %q cost_input_per_m must be >= 0", modelID)
@@ -417,6 +267,11 @@ func validateManifest(m manifest) error {
 				return fmt.Errorf("model %q reasoning_budgets %q exceeds reasoning_max_tokens", modelID, level)
 			}
 		}
+		switch model.ReasoningDefault {
+		case "", reasoning.ReasoningOff, reasoning.ReasoningLow, reasoning.ReasoningMedium, reasoning.ReasoningHigh, reasoning.ReasoningMax, reasoning.ReasoningXHigh:
+		default:
+			return fmt.Errorf("model %q has invalid reasoning_default %q", modelID, model.ReasoningDefault)
+		}
 		switch model.ReasoningControl {
 		case "", ReasoningControlTunable, ReasoningControlFixed, ReasoningControlNone:
 		default:
@@ -434,128 +289,16 @@ func validateManifest(m manifest) error {
 		}
 	}
 
-	for targetID, target := range m.Targets {
-		for _, modelID := range target.Candidates {
-			if strings.TrimSpace(modelID) == "" {
-				return fmt.Errorf("target %q has empty candidate", targetID)
-			}
-			if _, ok := m.Models[modelID]; !ok {
-				return fmt.Errorf("target %q references unknown candidate model %q", targetID, modelID)
-			}
-		}
-	}
-
-	profiles := make([]string, 0, len(m.Profiles))
-	for profile := range m.Profiles {
-		profiles = append(profiles, profile)
-	}
-	sort.Strings(profiles)
-
-	for _, profile := range profiles {
-		entry := m.Profiles[profile]
-		if strings.TrimSpace(profile) == "" {
-			return fmt.Errorf("profile name must not be empty")
-		}
-		compatTarget := profileCompatibilityTarget(entry)
-		if strings.TrimSpace(entry.Target) != "" && strings.TrimSpace(compatTarget) != "" && strings.TrimSpace(entry.Target) != strings.TrimSpace(compatTarget) {
-			return fmt.Errorf("profile %q target and compatibility_target must match when both are set", profile)
-		}
-		if entry.MinPower < 0 {
-			return fmt.Errorf("profile %q min_power must be >= 0", profile)
-		}
-		if entry.MaxPower < 0 {
-			return fmt.Errorf("profile %q max_power must be >= 0", profile)
-		}
-		if entry.MinPower > 0 && entry.MaxPower > 0 && entry.MinPower > entry.MaxPower {
-			return fmt.Errorf("profile %q min_power must be <= max_power", profile)
-		}
-		if entry.MinPower == 0 && entry.MaxPower == 0 && compatTarget == "" {
-			return fmt.Errorf("profile %q must define min_power/max_power or compatibility_target", profile)
-		}
-		switch entry.ProviderPreference {
-		case "", providerPreferenceLocalFirst, providerPreferenceSubscriptionFirst, providerPreferenceLocalOnly, providerPreferenceSubscriptionOnly:
-		default:
-			return fmt.Errorf("profile %q has invalid provider_preference %q", profile, entry.ProviderPreference)
-		}
-		if owner, exists := reserved[profile]; exists && profile != compatTarget {
-			return fmt.Errorf("profile %q collides with %s", profile, owner)
-		}
-		reserved[profile] = fmt.Sprintf("profile %q", profile)
-	}
-
 	return nil
 }
 
-func upgradeManifest(m *manifest) {
-	if m.Version >= 4 || len(m.Models) > 0 {
-		return
-	}
-	m.Models = make(map[string]ModelEntry)
-	for targetID, target := range m.Targets {
-		for surface, sv := range target.Surfaces {
-			for _, modelID := range sv.allCandidates() {
-				if modelID == "" {
-					continue
-				}
-				entry := m.Models[modelID]
-				if entry.Family == "" {
-					entry.Family = target.Family
-				}
-				if entry.Tier == "" {
-					entry.Tier = targetID
-				}
-				if entry.Status == "" {
-					entry.Status = normalizedStatus(target.Status)
-				}
-				if entry.CostInputPerM == 0 {
-					entry.CostInputPerM = target.CostInputPerM
-				}
-				if entry.CostOutputPerM == 0 {
-					entry.CostOutputPerM = target.CostOutputPerM
-				}
-				if entry.CostCacheReadPerM == 0 {
-					entry.CostCacheReadPerM = target.CostCacheReadPerM
-				}
-				if entry.CostCacheWritePerM == 0 {
-					entry.CostCacheWritePerM = target.CostCacheWritePerM
-				}
-				if entry.ContextWindow == 0 {
-					entry.ContextWindow = target.ContextWindow
-				}
-				if entry.SWEBenchVerified == 0 {
-					entry.SWEBenchVerified = target.SWEBenchVerified
-				}
-				if entry.LiveCodeBench == 0 {
-					entry.LiveCodeBench = target.LiveCodeBench
-				}
-				if entry.BenchmarkAsOf == "" {
-					entry.BenchmarkAsOf = target.BenchmarkAsOf
-				}
-				if entry.OpenRouterRefID == "" {
-					entry.OpenRouterRefID = target.OpenRouterRefID
-				}
-				if entry.Surfaces == nil {
-					entry.Surfaces = make(map[string]string)
-				}
-				entry.Surfaces[surface] = modelID
-				m.Models[modelID] = entry
-			}
-		}
-	}
-}
-
-func targetSupportsSurface(m manifest, target targetEntry, surface string) bool {
-	if _, ok := target.Surfaces[surface]; ok {
+func knownPolicyRequirement(requirement string) bool {
+	switch strings.TrimSpace(requirement) {
+	case "no_remote":
 		return true
+	default:
+		return false
 	}
-	for _, modelID := range target.Candidates {
-		if model, ok := m.Models[modelID]; ok {
-			if model.Surfaces[surface] != "" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func normalizedStatus(status string) string {
@@ -564,35 +307,4 @@ func normalizedStatus(status string) string {
 		return statusActive
 	}
 	return status
-}
-
-func normalizedProviderPreference(preference string) string {
-	preference = strings.ToLower(strings.TrimSpace(preference))
-	if preference == "" {
-		return providerPreferenceLocalFirst
-	}
-	return preference
-}
-
-func profileCompatibilityTarget(entry profileEntry) string {
-	if target := strings.TrimSpace(entry.CompatibilityTarget); target != "" {
-		return target
-	}
-	return strings.TrimSpace(entry.Target)
-}
-
-func findReplacementCycle(m manifest, start string) string {
-	seen := map[string]bool{start: true}
-	current := start
-	for {
-		next := strings.TrimSpace(m.Targets[current].Replacement)
-		if next == "" {
-			return ""
-		}
-		if seen[next] {
-			return next
-		}
-		seen[next] = true
-		current = next
-	}
 }

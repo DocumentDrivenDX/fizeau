@@ -10,7 +10,7 @@ import (
 	"github.com/DocumentDrivenDX/fizeau/internal/sampling"
 )
 
-// Surface identifies the consumer-specific naming surface for a model target.
+// Surface identifies a consumer-specific concrete model naming surface.
 type Surface string
 
 const (
@@ -21,26 +21,16 @@ const (
 	SurfaceGemini         Surface = "gemini"
 )
 
-// ResolveOptions configures how model references are resolved.
+// ResolveOptions configures compatibility model-reference resolution.
 type ResolveOptions struct {
 	Surface         Surface
 	AllowDeprecated bool
 }
 
-// Catalog resolves logical model references into concrete consumer-specific model IDs.
+// Catalog exposes the loaded v5 model catalog.
 type Catalog struct {
-	manifest       manifest
-	manifestSrc    string
-	aliasToID      map[string]string
-	profileEntries map[string]profileEntry
-}
-
-// SurfacePolicy captures optional routing metadata for a resolved surface.
-type SurfacePolicy struct {
-	ReasoningDefault       reasoning.Reasoning
-	PlacementOrder         []string
-	MaxInputCostPerMTokUSD *float64
-	FailurePolicy          string
+	manifest    manifest
+	manifestSrc string
 }
 
 // Metadata describes the loaded manifest.
@@ -50,56 +40,56 @@ type Metadata struct {
 	CatalogVersion  string
 }
 
-// Profile describes one named catalog profile.
-type Profile struct {
-	Name                string
-	Target              string
-	CompatibilityTarget string
-	MinPower            int
-	MaxPower            int
-	ProviderPreference  string
+// Policy describes one canonical catalog routing policy.
+type Policy struct {
+	Name       string
+	MinPower   int
+	MaxPower   int
+	AllowLocal bool
+	Require    []string
 }
 
-// Alias describes one catalog alias.
-type Alias struct {
-	Name        string
-	Target      string
-	Deprecated  bool
-	Replacement string
+// Provider describes one catalog-declared provider system.
+type Provider struct {
+	Name             string
+	Type             string
+	IncludeByDefault bool
+	Billing          BillingModel
 }
 
-// ResolvedTarget is the resolved output for a model reference.
+// SurfacePolicy is kept as a narrow compatibility container for callers that
+// have not yet moved reasoning defaults from target surfaces to model entries.
+type SurfacePolicy struct {
+	ReasoningDefault       reasoning.Reasoning
+	PlacementOrder         []string
+	MaxInputCostPerMTokUSD *float64
+	FailurePolicy          string
+}
+
+// ResolvedTarget is the compatibility output for model-reference resolution.
+// In v5 CanonicalID is either a policy name or canonical model ID; there is no
+// catalog target or alias concept behind it.
 type ResolvedTarget struct {
-	Ref             string
-	Profile         string
-	Family          string
-	CanonicalID     string
-	ConcreteModel   string
-	SurfacePolicy   SurfacePolicy
-	Deprecated      bool
-	Replacement     string
-	CatalogVersion  string
-	ManifestSource  string
-	ManifestVersion int
-	// Pricing (USD per 1M tokens, 0 = unknown/free)
+	Ref                string
+	Profile            string
+	Family             string
+	CanonicalID        string
+	ConcreteModel      string
+	SurfacePolicy      SurfacePolicy
+	Deprecated         bool
+	Replacement        string
+	CatalogVersion     string
+	ManifestSource     string
+	ManifestVersion    int
 	CostInputPerM      float64
 	CostOutputPerM     float64
 	CostCacheReadPerM  float64
 	CostCacheWritePerM float64
-	// Context
-	ContextWindow int
-	// Benchmarks
-	SWEBenchVerified float64
-	LiveCodeBench    float64
-	BenchmarkAsOf    string
-	// OpenRouter
-	OpenRouterRefID string
-}
-
-// TierModel is one concrete model entry referenced by a catalog tier.
-type TierModel struct {
-	ID    string
-	Entry ModelEntry
+	ContextWindow      int
+	SWEBenchVerified   float64
+	LiveCodeBench      float64
+	BenchmarkAsOf      string
+	OpenRouterRefID    string
 }
 
 // ModelEligibility describes whether a catalog model can participate in
@@ -119,63 +109,59 @@ func (c *Catalog) Metadata() Metadata {
 	}
 }
 
-// Profiles returns all named profiles in deterministic order.
-func (c *Catalog) Profiles() []Profile {
-	names := make([]string, 0, len(c.profileEntries))
-	for name := range c.profileEntries {
+// Policies returns all canonical policies in deterministic order.
+func (c *Catalog) Policies() []Policy {
+	names := make([]string, 0, len(c.manifest.Policies))
+	for name := range c.manifest.Policies {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	out := make([]Profile, 0, len(names))
+	out := make([]Policy, 0, len(names))
 	for _, name := range names {
-		entry := c.profileEntries[name]
-		compatTarget := profileCompatibilityTarget(entry)
-		out = append(out, Profile{
-			Name:                name,
-			Target:              compatTarget,
-			CompatibilityTarget: compatTarget,
-			MinPower:            entry.MinPower,
-			MaxPower:            entry.MaxPower,
-			ProviderPreference:  normalizedProviderPreference(entry.ProviderPreference),
-		})
+		policy, _ := c.Policy(name)
+		out = append(out, policy)
 	}
 	return out
 }
 
-// Profile returns one named profile definition.
-func (c *Catalog) Profile(name string) (Profile, bool) {
-	entry, ok := c.profileEntries[strings.TrimSpace(name)]
+// Policy returns one canonical policy definition.
+func (c *Catalog) Policy(name string) (Policy, bool) {
+	name = strings.TrimSpace(name)
+	entry, ok := c.manifest.Policies[name]
 	if !ok {
-		return Profile{}, false
+		return Policy{}, false
 	}
-	compatTarget := profileCompatibilityTarget(entry)
-	return Profile{
-		Name:                strings.TrimSpace(name),
-		Target:              compatTarget,
-		CompatibilityTarget: compatTarget,
-		MinPower:            entry.MinPower,
-		MaxPower:            entry.MaxPower,
-		ProviderPreference:  normalizedProviderPreference(entry.ProviderPreference),
+	return Policy{
+		Name:       name,
+		MinPower:   entry.MinPower,
+		MaxPower:   entry.MaxPower,
+		AllowLocal: entry.AllowLocal,
+		Require:    append([]string(nil), entry.Require...),
 	}, true
 }
 
-// Aliases returns all target aliases in deterministic order.
-func (c *Catalog) Aliases() []Alias {
-	names := make([]string, 0, len(c.aliasToID))
-	for name := range c.aliasToID {
+// Providers returns all catalog-declared provider systems in deterministic order.
+func (c *Catalog) Providers() []Provider {
+	names := make([]string, 0, len(c.manifest.Providers))
+	for name := range c.manifest.Providers {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	out := make([]Alias, 0, len(names))
+	out := make([]Provider, 0, len(names))
 	for _, name := range names {
-		targetID := c.aliasToID[name]
-		target := c.manifest.Targets[targetID]
-		status := normalizedStatus(target.Status)
-		out = append(out, Alias{
-			Name:        name,
-			Target:      targetID,
-			Deprecated:  status != statusActive,
-			Replacement: target.Replacement,
+		entry := c.manifest.Providers[name]
+		billing := BillingModel(entry.Billing)
+		if billing == BillingModelUnknown {
+			billing = BillingForProviderSystem(entry.Type)
+			if billing == BillingModelUnknown {
+				billing = BillingForHarness(entry.Type)
+			}
+		}
+		out = append(out, Provider{
+			Name:             name,
+			Type:             entry.Type,
+			IncludeByDefault: entry.IncludeByDefault,
+			Billing:          billing,
 		})
 	}
 	return out
@@ -190,17 +176,17 @@ func (e *UnknownReferenceError) Error() string {
 	return fmt.Sprintf("modelcatalog: unknown reference %q", e.Ref)
 }
 
-// MissingSurfaceError indicates that a target cannot be projected to the requested surface.
+// MissingSurfaceError indicates that a model cannot be projected to the requested surface.
 type MissingSurfaceError struct {
 	CanonicalID string
 	Surface     Surface
 }
 
 func (e *MissingSurfaceError) Error() string {
-	return fmt.Sprintf("modelcatalog: target %q has no mapping for surface %q", e.CanonicalID, e.Surface)
+	return fmt.Sprintf("modelcatalog: reference %q has no mapping for surface %q", e.CanonicalID, e.Surface)
 }
 
-// DeprecatedTargetError indicates that a deprecated or stale target was resolved in strict mode.
+// DeprecatedTargetError indicates that a deprecated or stale model was resolved in strict mode.
 type DeprecatedTargetError struct {
 	CanonicalID       string
 	Status            string
@@ -211,117 +197,248 @@ type DeprecatedTargetError struct {
 }
 
 func (e *DeprecatedTargetError) Error() string {
-	if e.SuggestedProfile != "" {
-		if e.SuggestedMinPower > 0 && e.SuggestedMaxPower > 0 {
-			return fmt.Sprintf(
-				"modelcatalog: target %q is %s; use --profile %s or --min-power %d --max-power %d",
-				e.CanonicalID, e.Status, e.SuggestedProfile, e.SuggestedMinPower, e.SuggestedMaxPower,
-			)
-		}
-		return fmt.Sprintf(
-			"modelcatalog: target %q is %s; use --profile %s",
-			e.CanonicalID, e.Status, e.SuggestedProfile,
-		)
-	}
 	if e.Replacement == "" {
-		return fmt.Sprintf("modelcatalog: target %q is %s", e.CanonicalID, e.Status)
+		return fmt.Sprintf("modelcatalog: reference %q is %s", e.CanonicalID, e.Status)
 	}
-	return fmt.Sprintf("modelcatalog: target %q is %s; use %q", e.CanonicalID, e.Status, e.Replacement)
+	return fmt.Sprintf("modelcatalog: reference %q is %s; use %q", e.CanonicalID, e.Status, e.Replacement)
 }
 
-// UnknownTargetError indicates an internal invariant break where a referenced target is absent.
-type UnknownTargetError struct {
-	CanonicalID string
+// Current resolves a policy to its selected concrete model for a surface.
+func (c *Catalog) Current(policy string, opts ResolveOptions) (ResolvedTarget, error) {
+	return c.Resolve(policy, opts)
 }
 
-func (e *UnknownTargetError) Error() string {
-	return fmt.Sprintf("modelcatalog: unknown target %q", e.CanonicalID)
-}
-
-// Current resolves a profile to its current target.
-func (c *Catalog) Current(profile string, opts ResolveOptions) (ResolvedTarget, error) {
-	profile = strings.TrimSpace(profile)
-	if profile == "" {
-		return ResolvedTarget{}, &UnknownReferenceError{Ref: profile}
-	}
-
-	entry, ok := c.profileEntries[profile]
-	if !ok {
-		return ResolvedTarget{}, &UnknownReferenceError{Ref: profile}
-	}
-
-	return c.resolveTarget(profile, profile, profileCompatibilityTarget(entry), opts)
-}
-
-// Resolve resolves a profile, canonical target, or alias to a concrete model ID.
+// Resolve resolves a canonical policy or model ID to a concrete model ID.
 func (c *Catalog) Resolve(ref string, opts ResolveOptions) (ResolvedTarget, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return ResolvedTarget{}, &UnknownReferenceError{Ref: ref}
 	}
-
-	if entry, ok := c.profileEntries[ref]; ok {
-		return c.resolveTarget(ref, ref, profileCompatibilityTarget(entry), opts)
+	if opts.Surface == "" {
+		return ResolvedTarget{}, &MissingSurfaceError{CanonicalID: ref, Surface: opts.Surface}
 	}
-	if _, ok := c.manifest.Targets[ref]; ok {
-		return c.resolveTarget(ref, "", ref, opts)
+	if policy, ok := c.policyForReference(ref); ok {
+		return c.resolvePolicy(ref, policy, opts)
 	}
-	if targetID, ok := c.aliasToID[ref]; ok {
-		return c.resolveTarget(ref, "", targetID, opts)
+	if entry, ok := c.manifest.Models[ref]; ok && surfaceModelID(ref, entry, opts.Surface) == "" {
+		return ResolvedTarget{}, &MissingSurfaceError{CanonicalID: ref, Surface: opts.Surface}
 	}
-
-	return ResolvedTarget{}, &UnknownReferenceError{Ref: ref}
+	if modelID, entry, ok := c.lookupModelVariant(ref); ok && surfaceModelID(modelID, entry, opts.Surface) == "" {
+		return ResolvedTarget{}, &MissingSurfaceError{CanonicalID: modelID, Surface: opts.Surface}
+	}
+	modelID, entry, concrete, ok := c.modelForSurface(ref, opts.Surface)
+	if !ok {
+		return ResolvedTarget{}, &UnknownReferenceError{Ref: ref}
+	}
+	return c.resolvedFromModel(ref, "", modelID, concrete, entry, opts)
 }
 
-// AllConcreteModels returns a map from concrete model ID to catalog target ID
-// for every active target that has a mapping for the given surface. The map is
-// safe to use as a membership set for ranking discovered models.
-// All candidate model IDs (not just the primary) are included.
-// When multiple targets share the same concrete model ID, single-string surface
-// entries take priority over candidates-list entries. Among entries of equal
-// priority, the first target ID in lexicographic order wins.
-func (c *Catalog) AllConcreteModels(surface Surface) map[string]string {
-	// Sort target IDs for deterministic iteration.
-	targetIDs := make([]string, 0, len(c.manifest.Targets))
-	for targetID := range c.manifest.Targets {
-		targetIDs = append(targetIDs, targetID)
+func (c *Catalog) resolvePolicy(ref string, policy Policy, opts ResolveOptions) (ResolvedTarget, error) {
+	displayName := policyDisplayNameForRef(ref, policy.Name)
+	candidates := c.policyCandidates(policy, opts.Surface)
+	if len(candidates) == 0 {
+		return ResolvedTarget{}, &MissingSurfaceError{CanonicalID: displayName, Surface: opts.Surface}
 	}
-	sort.Strings(targetIDs)
+	best := candidates[0]
+	return c.resolvedFromModel(ref, displayName, best.modelID, best.concrete, best.entry, opts)
+}
 
-	out := make(map[string]string)
-	// First pass: single-string legacy surfaces (higher priority).
-	for _, targetID := range targetIDs {
-		entry := c.manifest.Targets[targetID]
-		if normalizedStatus(entry.Status) != statusActive {
+type policyCandidate struct {
+	modelID  string
+	concrete string
+	entry    ModelEntry
+}
+
+func (c *Catalog) policyCandidates(policy Policy, surface Surface) []policyCandidate {
+	ids := make([]string, 0, len(c.manifest.Models))
+	for id := range c.manifest.Models {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]policyCandidate, 0, len(ids))
+	for _, id := range ids {
+		entry := c.manifest.Models[id]
+		if !entry.AutoRoutable() {
 			continue
 		}
-		if sv, ok := entry.Surfaces[string(surface)]; ok && sv.model != "" {
-			if sv.model != "" && out[sv.model] == "" {
-				out[sv.model] = targetID
+		if policy.MinPower > 0 && entry.Power < policy.MinPower {
+			continue
+		}
+		if policy.MaxPower > 0 && entry.Power > policy.MaxPower {
+			continue
+		}
+		if requiresNoRemote(policy) && !isLocalDeployment(entry.DeploymentClass) {
+			continue
+		}
+		if !policy.AllowLocal && isLocalDeployment(entry.DeploymentClass) {
+			continue
+		}
+		concrete := surfaceModelID(id, entry, surface)
+		if concrete == "" {
+			continue
+		}
+		out = append(out, policyCandidate{modelID: id, concrete: concrete, entry: entry})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].entry.Power != out[j].entry.Power {
+			return out[i].entry.Power > out[j].entry.Power
+		}
+		if out[i].entry.CostInputPerM != out[j].entry.CostInputPerM {
+			return out[i].entry.CostInputPerM < out[j].entry.CostInputPerM
+		}
+		return out[i].modelID < out[j].modelID
+	})
+	return out
+}
+
+func requiresNoRemote(policy Policy) bool {
+	for _, requirement := range policy.Require {
+		if requirement == "no_remote" {
+			return true
+		}
+	}
+	return false
+}
+
+func isLocalDeployment(deploymentClass string) bool {
+	switch deploymentClass {
+	case deploymentClassLocalFree, deploymentClassCommunitySelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Catalog) resolvedFromModel(ref, policyName, modelID, concrete string, entry ModelEntry, opts ResolveOptions) (ResolvedTarget, error) {
+	status := normalizedStatus(entry.Status)
+	if status != statusActive && !opts.AllowDeprecated {
+		return ResolvedTarget{}, &DeprecatedTargetError{CanonicalID: modelID, Status: status}
+	}
+	return ResolvedTarget{
+		Ref:                ref,
+		Profile:            policyName,
+		Family:             entry.Family,
+		CanonicalID:        canonicalIDForResolved(policyName, modelID),
+		ConcreteModel:      concrete,
+		SurfacePolicy:      SurfacePolicy{ReasoningDefault: entry.ReasoningDefault},
+		Deprecated:         status != statusActive,
+		CatalogVersion:     c.manifest.CatalogVersion,
+		ManifestSource:     c.manifestSrc,
+		ManifestVersion:    c.manifest.Version,
+		CostInputPerM:      entry.inputCostPerM(),
+		CostOutputPerM:     entry.outputCostPerM(),
+		CostCacheReadPerM:  entry.CostCacheReadPerM,
+		CostCacheWritePerM: entry.CostCacheWritePerM,
+		ContextWindow:      entry.ContextWindow,
+		SWEBenchVerified:   entry.SWEBenchVerified,
+		LiveCodeBench:      entry.LiveCodeBench,
+		BenchmarkAsOf:      entry.BenchmarkAsOf,
+		OpenRouterRefID:    entry.openRouterID(),
+	}, nil
+}
+
+func canonicalIDForResolved(policyName, modelID string) string {
+	if policyName != "" {
+		return policyName
+	}
+	return modelID
+}
+
+func (c *Catalog) modelForSurface(ref string, surface Surface) (string, ModelEntry, string, bool) {
+	if entry, ok := c.manifest.Models[ref]; ok {
+		concrete := surfaceModelID(ref, entry, surface)
+		return ref, entry, concrete, concrete != ""
+	}
+	for modelID, entry := range c.manifest.Models {
+		for _, concrete := range entry.Surfaces {
+			if concrete == ref {
+				return modelID, entry, concrete, true
 			}
 		}
 	}
-	// Second pass: model-level candidates and legacy candidates-list entries
-	// (lower priority, don't overwrite).
-	for _, targetID := range targetIDs {
-		entry := c.manifest.Targets[targetID]
+	if modelID, entry, ok := c.lookupModelVariant(ref); ok {
+		concrete := surfaceModelID(modelID, entry, surface)
+		return modelID, entry, concrete, concrete != ""
+	}
+	return "", ModelEntry{}, "", false
+}
+
+func surfaceModelID(modelID string, entry ModelEntry, surface Surface) string {
+	if surface == "" {
+		return ""
+	}
+	if concrete := entry.Surfaces[string(surface)]; concrete != "" {
+		return concrete
+	}
+	if _, ok := entry.Surfaces[""]; ok {
+		return modelID
+	}
+	return ""
+}
+
+// AllConcreteModels returns a map from concrete model ID to canonical model ID
+// for every active model that has a mapping for the given surface.
+func (c *Catalog) AllConcreteModels(surface Surface) map[string]string {
+	ids := make([]string, 0, len(c.manifest.Models))
+	for id := range c.manifest.Models {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make(map[string]string)
+	for _, id := range ids {
+		entry := c.manifest.Models[id]
 		if normalizedStatus(entry.Status) != statusActive {
 			continue
 		}
-		for _, concrete := range c.concreteModelsForSurface(entry, surface) {
-			if concrete != "" && out[concrete] == "" {
-				out[concrete] = targetID
-			}
-		}
-		if sv, ok := entry.Surfaces[string(surface)]; ok && len(sv.candidates) > 0 {
-			for _, candidate := range sv.candidates {
-				if candidate != "" && out[candidate] == "" {
-					out[candidate] = targetID
-				}
-			}
+		if concrete := surfaceModelID(id, entry, surface); concrete != "" {
+			out[concrete] = id
 		}
 	}
 	return out
+}
+
+// CandidatesFor returns the ordered concrete model IDs for a policy or model.
+func (c *Catalog) CandidatesFor(surface Surface, key string) []string {
+	if policy, ok := c.policyForReference(key); ok {
+		candidates := c.policyCandidates(policy, surface)
+		out := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			out = append(out, candidate.concrete)
+		}
+		return out
+	}
+	if _, _, concrete, ok := c.modelForSurface(key, surface); ok {
+		return []string{concrete}
+	}
+	return nil
+}
+
+func (c *Catalog) policyForReference(ref string) (Policy, bool) {
+	if policy, ok := c.Policy(ref); ok {
+		return policy, true
+	}
+	switch strings.TrimSpace(ref) {
+	case "standard", "code-fast", "fast":
+		return c.Policy("default")
+	case "code-smart":
+		return c.Policy("smart")
+	case "code-economy", "local", "offline":
+		return c.Policy("cheap")
+	}
+	return Policy{}, false
+}
+
+func policyDisplayNameForRef(ref, policyName string) string {
+	switch strings.TrimSpace(ref) {
+	case "standard", "code-fast", "fast":
+		return "standard"
+	case "code-smart":
+		return "smart"
+	case "code-economy", "local", "offline":
+		return "code-economy"
+	default:
+		return policyName
+	}
 }
 
 // SamplingProfile returns the catalog-defined sampling-parameter bundle for
@@ -359,8 +476,7 @@ func (c *Catalog) ModelSamplingControl(modelID string) string {
 	return entry.SamplingControl
 }
 
-// LookupModel returns the ModelEntry for the given model ID from the top-level
-// models: map (manifest v4+). The second return value is false if not found.
+// LookupModel returns the ModelEntry for the given model ID.
 func (c *Catalog) LookupModel(id string) (ModelEntry, bool) {
 	if entry, ok := c.manifest.Models[id]; ok {
 		return entry, true
@@ -372,7 +488,7 @@ func (c *Catalog) LookupModel(id string) (ModelEntry, bool) {
 			}
 		}
 	}
-	if entry, ok := c.lookupModelVariant(id); ok {
+	if _, entry, ok := c.lookupModelVariant(id); ok {
 		return entry, true
 	}
 	return ModelEntry{}, false
@@ -411,26 +527,6 @@ func (c *Catalog) ModelEligibility(id string) (ModelEligibility, bool) {
 		ExactPinOnly: entry.ExactPinOnly,
 		AutoRoutable: entry.AutoRoutable(),
 	}, true
-}
-
-// AllModelsInTier returns the ordered model entries declared as candidates for
-// a target tier. For older manifests, candidates are synthesized from surface
-// mappings during load.
-func (c *Catalog) AllModelsInTier(targetID string) []TierModel {
-	target, ok := c.manifest.Targets[targetID]
-	if !ok {
-		return nil
-	}
-	ids := targetCandidateIDs(target)
-	out := make([]TierModel, 0, len(ids))
-	for _, id := range ids {
-		entry, ok := c.manifest.Models[id]
-		if !ok {
-			continue
-		}
-		out = append(out, TierModel{ID: id, Entry: entry})
-	}
-	return out
 }
 
 // ContextWindowForModel returns the context window in tokens for the given
@@ -482,10 +578,10 @@ func (c *Catalog) SupportsToolsForModel(id string) bool {
 	return true
 }
 
-func (c *Catalog) lookupModelVariant(id string) (ModelEntry, bool) {
+func (c *Catalog) lookupModelVariant(id string) (string, ModelEntry, bool) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return ModelEntry{}, false
+		return "", ModelEntry{}, false
 	}
 	var (
 		best     ModelEntry
@@ -512,9 +608,9 @@ func (c *Catalog) lookupModelVariant(id string) (ModelEntry, bool) {
 		}
 	}
 	if !bestSeen {
-		return ModelEntry{}, false
+		return "", ModelEntry{}, false
 	}
-	return best, true
+	return bestID, best, true
 }
 
 func betterModelVariantMatch(candidate ModelEntry, candidateID string, best ModelEntry, bestID string) bool {
@@ -644,28 +740,6 @@ func catalogModelTokens(s string) []string {
 	return out
 }
 
-// CandidatesFor returns the ordered list of candidate concrete model IDs for
-// the given surface and target key. For old-style single-string surfaces this
-// returns a one-element slice. Returns nil if the target or surface is absent.
-func (c *Catalog) CandidatesFor(surface Surface, targetKey string) []string {
-	target, ok := c.manifest.Targets[targetKey]
-	if !ok {
-		return nil
-	}
-	if len(target.Candidates) > 0 {
-		candidates := c.concreteModelsForSurface(target, surface)
-		if len(candidates) == 0 {
-			return nil
-		}
-		return candidates
-	}
-	sv, ok := target.Surfaces[string(surface)]
-	if !ok {
-		return nil
-	}
-	return sv.allCandidates()
-}
-
 // CatalogModelPricing holds per-million-token costs for a model as sourced from the catalog.
 type CatalogModelPricing struct {
 	InputPerMTok   float64
@@ -674,8 +748,7 @@ type CatalogModelPricing struct {
 	CacheWritePerM float64
 }
 
-// AllModels returns all per-model entries from the top-level models: map
-// (manifest v4+), keyed by model ID. Returns an empty map for older manifests.
+// AllModels returns all per-model entries, keyed by model ID.
 func (c *Catalog) AllModels() map[string]ModelEntry {
 	if len(c.manifest.Models) == 0 {
 		return make(map[string]ModelEntry)
@@ -688,12 +761,8 @@ func (c *Catalog) AllModels() map[string]ModelEntry {
 }
 
 // PricingFor returns pricing for all active concrete models across all surfaces.
-// Per-model entries from the top-level models: map (v4+) take precedence over
-// target-level pricing. Only models/targets with a positive input cost are
-// included.
 func (c *Catalog) PricingFor() map[string]CatalogModelPricing {
 	result := make(map[string]CatalogModelPricing)
-
 	for modelID, entry := range c.manifest.Models {
 		input := entry.inputCostPerM()
 		if input <= 0 {
@@ -706,146 +775,7 @@ func (c *Catalog) PricingFor() map[string]CatalogModelPricing {
 			CacheWritePerM: entry.CostCacheWritePerM,
 		}
 	}
-
 	return result
-}
-
-func (c *Catalog) resolveTarget(ref, profile, targetID string, opts ResolveOptions) (ResolvedTarget, error) {
-	if opts.Surface == "" {
-		return ResolvedTarget{}, &MissingSurfaceError{CanonicalID: targetID, Surface: opts.Surface}
-	}
-
-	target, ok := c.manifest.Targets[targetID]
-	if !ok {
-		return ResolvedTarget{}, &UnknownTargetError{CanonicalID: targetID}
-	}
-	status := normalizedStatus(target.Status)
-	deprecated := status != statusActive
-	if deprecated && !opts.AllowDeprecated {
-		suggestedProfile, suggestedMinPower, suggestedMaxPower := c.deprecatedRoutingGuidance(targetID, target.Replacement)
-		return ResolvedTarget{}, &DeprecatedTargetError{
-			CanonicalID:       targetID,
-			Status:            status,
-			Replacement:       target.Replacement,
-			SuggestedProfile:  suggestedProfile,
-			SuggestedMinPower: suggestedMinPower,
-			SuggestedMaxPower: suggestedMaxPower,
-		}
-	}
-
-	concreteModel, modelEntry, hasModelEntry := c.primaryConcreteModel(target, opts.Surface)
-	if concreteModel == "" {
-		return ResolvedTarget{}, &MissingSurfaceError{
-			CanonicalID: targetID,
-			Surface:     opts.Surface,
-		}
-	}
-	policy := SurfacePolicy{}
-	if target.SurfacePolicy != nil {
-		if entry, ok := target.SurfacePolicy[string(opts.Surface)]; ok {
-			policy = entry.toResolved()
-		}
-	}
-
-	resolved := ResolvedTarget{
-		Ref:                ref,
-		Profile:            profile,
-		Family:             target.Family,
-		CanonicalID:        targetID,
-		ConcreteModel:      concreteModel,
-		SurfacePolicy:      policy,
-		Deprecated:         deprecated,
-		Replacement:        target.Replacement,
-		CatalogVersion:     c.manifest.CatalogVersion,
-		ManifestSource:     c.manifestSrc,
-		ManifestVersion:    c.manifest.Version,
-		CostInputPerM:      target.CostInputPerM,
-		CostOutputPerM:     target.CostOutputPerM,
-		CostCacheReadPerM:  target.CostCacheReadPerM,
-		CostCacheWritePerM: target.CostCacheWritePerM,
-		ContextWindow:      target.ContextWindow,
-		SWEBenchVerified:   target.SWEBenchVerified,
-		LiveCodeBench:      target.LiveCodeBench,
-		BenchmarkAsOf:      target.BenchmarkAsOf,
-		OpenRouterRefID:    target.OpenRouterRefID,
-	}
-	if hasModelEntry {
-		if modelEntry.Family != "" {
-			resolved.Family = modelEntry.Family
-		}
-		resolved.CostInputPerM = modelEntry.inputCostPerM()
-		resolved.CostOutputPerM = modelEntry.outputCostPerM()
-		resolved.CostCacheReadPerM = modelEntry.CostCacheReadPerM
-		resolved.CostCacheWritePerM = modelEntry.CostCacheWritePerM
-		resolved.ContextWindow = modelEntry.ContextWindow
-		resolved.SWEBenchVerified = modelEntry.SWEBenchVerified
-		resolved.LiveCodeBench = modelEntry.LiveCodeBench
-		resolved.BenchmarkAsOf = modelEntry.BenchmarkAsOf
-		resolved.OpenRouterRefID = modelEntry.openRouterID()
-	}
-	return resolved, nil
-}
-
-func (c *Catalog) primaryConcreteModel(target targetEntry, surface Surface) (string, ModelEntry, bool) {
-	if sv, ok := target.Surfaces[string(surface)]; ok {
-		modelID := sv.primaryModel()
-		entry, hasEntry := c.manifest.Models[modelID]
-		return modelID, entry, hasEntry
-	}
-	for _, modelID := range target.Candidates {
-		entry, ok := c.manifest.Models[modelID]
-		if !ok {
-			continue
-		}
-		if concrete := entry.Surfaces[string(surface)]; concrete != "" {
-			return concrete, entry, true
-		}
-	}
-	return "", ModelEntry{}, false
-}
-
-func (c *Catalog) concreteModelsForSurface(target targetEntry, surface Surface) []string {
-	if len(target.Candidates) == 0 {
-		if sv, ok := target.Surfaces[string(surface)]; ok {
-			return sv.allCandidates()
-		}
-		return nil
-	}
-	out := make([]string, 0, len(target.Candidates))
-	for _, modelID := range target.Candidates {
-		entry, ok := c.manifest.Models[modelID]
-		if !ok {
-			continue
-		}
-		if concrete := entry.Surfaces[string(surface)]; concrete != "" {
-			out = append(out, concrete)
-		}
-	}
-	return out
-}
-
-func targetCandidateIDs(target targetEntry) []string {
-	if len(target.Candidates) > 0 {
-		out := make([]string, len(target.Candidates))
-		copy(out, target.Candidates)
-		return out
-	}
-	seen := make(map[string]bool)
-	var out []string
-	keys := make([]string, 0, len(target.Surfaces))
-	for surface := range target.Surfaces {
-		keys = append(keys, surface)
-	}
-	sort.Strings(keys)
-	for _, surface := range keys {
-		for _, modelID := range target.Surfaces[surface].allCandidates() {
-			if modelID != "" && !seen[modelID] {
-				seen[modelID] = true
-				out = append(out, modelID)
-			}
-		}
-	}
-	return out
 }
 
 func (m ModelEntry) inputCostPerM() float64 {
@@ -874,16 +804,4 @@ func (m ModelEntry) openRouterID() string {
 // model pin when live discovery confirms availability.
 func (m ModelEntry) AutoRoutable() bool {
 	return normalizedStatus(m.Status) == statusActive && m.Power > 0 && !m.ExactPinOnly
-}
-
-func (c *Catalog) deprecatedRoutingGuidance(targetID, replacement string) (string, int, int) {
-	replacement = strings.TrimSpace(replacement)
-	if replacement == "" {
-		return "", 0, 0
-	}
-	profile, ok := c.Profile(replacement)
-	if !ok {
-		return replacement, 0, 0
-	}
-	return profile.Name, profile.MinPower, profile.MaxPower
 }

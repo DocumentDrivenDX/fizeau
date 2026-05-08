@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+	"github.com/DocumentDrivenDX/fizeau/internal/routing"
 )
 
 func (s *service) ListProfiles(_ context.Context) ([]ProfileInfo, error) {
@@ -14,68 +16,47 @@ func (s *service) ListProfiles(_ context.Context) ([]ProfileInfo, error) {
 		return nil, err
 	}
 	meta := cat.Metadata()
-	profiles := cat.Profiles()
-	aliases := cat.Aliases()
-	out := make([]ProfileInfo, 0, len(profiles)+len(aliases))
-	seen := make(map[string]struct{}, len(profiles)+len(aliases))
-	for _, profile := range profiles {
-		info := ProfileInfo{
-			Name:                profile.Name,
-			Target:              profile.Target,
-			CompatibilityTarget: profile.CompatibilityTarget,
-			MinPower:            profile.MinPower,
-			MaxPower:            profile.MaxPower,
-			ProviderPreference:  profile.ProviderPreference,
-			CatalogVersion:      meta.CatalogVersion,
-			ManifestSource:      meta.ManifestSource,
-			ManifestVersion:     meta.ManifestVersion,
-		}
-		if profile.CompatibilityTarget != "" && profile.Name != profile.CompatibilityTarget {
-			info.AliasOf = profile.CompatibilityTarget
-		}
-		out = append(out, info)
-		seen[profile.Name] = struct{}{}
+	policies := cat.Policies()
+	out := make([]ProfileInfo, 0, len(policies)+len(profileCompatibilityAliases()))
+
+	for _, policy := range policies {
+		out = append(out, profileInfoFromPolicy(policy, policy.Name, "", meta))
 	}
-	for _, alias := range aliases {
-		if _, ok := seen[alias.Name]; ok {
+	for alias, target := range profileCompatibilityAliases() {
+		policy, ok := cat.Policy(target)
+		if !ok {
 			continue
 		}
-		out = append(out, ProfileInfo{
-			Name:            alias.Name,
-			Target:          alias.Target,
-			AliasOf:         alias.Target,
-			Deprecated:      alias.Deprecated,
-			Replacement:     alias.Replacement,
-			CatalogVersion:  meta.CatalogVersion,
-			ManifestSource:  meta.ManifestSource,
-			ManifestVersion: meta.ManifestVersion,
-		})
+		out = append(out, profileInfoFromPolicy(policy, alias, target, meta))
 	}
+
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].Name < out[j].Name
 	})
 	return out, nil
 }
 
+func profileInfoFromPolicy(policy modelcatalog.Policy, name, aliasOf string, meta modelcatalog.Metadata) ProfileInfo {
+	target := policy.Name
+	return ProfileInfo{
+		Name:                name,
+		Target:              target,
+		CompatibilityTarget: target,
+		AliasOf:             aliasOf,
+		MinPower:            policy.MinPower,
+		MaxPower:            policy.MaxPower,
+		ProviderPreference:  providerPreferenceForPolicyName(name),
+		CatalogVersion:      meta.CatalogVersion,
+		ManifestSource:      meta.ManifestSource,
+		ManifestVersion:     meta.ManifestVersion,
+	}
+}
+
 func (s *service) ProfileAliases(_ context.Context) (map[string]string, error) {
-	cat, err := modelcatalog.Default()
-	if err != nil {
+	if _, err := modelcatalog.Default(); err != nil {
 		return nil, err
 	}
-	out := make(map[string]string)
-	for _, profile := range cat.Profiles() {
-		if profile.CompatibilityTarget != "" && profile.Name != profile.CompatibilityTarget {
-			out[profile.Name] = profile.CompatibilityTarget
-		}
-	}
-	for _, alias := range cat.Aliases() {
-		target := alias.Target
-		if alias.Deprecated && alias.Replacement != "" {
-			target = alias.Replacement
-		}
-		out[alias.Name] = target
-	}
-	return out, nil
+	return profileCompatibilityAliases(), nil
 }
 
 func (s *service) ResolveProfile(_ context.Context, name string) (*ResolvedProfile, error) {
@@ -84,68 +65,23 @@ func (s *service) ResolveProfile(_ context.Context, name string) (*ResolvedProfi
 		return nil, err
 	}
 	meta := cat.Metadata()
-	profile, ok := cat.Profile(name)
-	var compatTarget string
-	var deprecated bool
-	var replacement string
-	if ok {
-		compatTarget = profile.CompatibilityTarget
-		if compatTarget == "" {
-			compatTarget = profile.Target
-		}
-	}
+	policy, target, ok := policyForProfileName(cat, name)
 	if !ok {
-		var aliasTarget string
-		for _, surface := range serviceProfileSurfaces() {
-			target, err := cat.Resolve(name, modelcatalog.ResolveOptions{
-				Surface:         surface.catalogSurface,
-				AllowDeprecated: true,
-			})
-			if err != nil {
-				if _, ok := err.(*modelcatalog.MissingSurfaceError); ok {
-					continue
-				}
-				return nil, err
-			}
-			aliasTarget = target.CanonicalID
-			if target.Deprecated && target.Replacement != "" {
-				deprecated = true
-				replacement = target.Replacement
-				aliasTarget = target.Replacement
-			} else if target.Deprecated {
-				deprecated = true
-			}
-			break
-		}
-		if aliasTarget == "" {
-			return nil, fmt.Errorf("profile %q is not defined in the catalog", name)
-		}
-		if resolvedProfile, ok := cat.Profile(aliasTarget); ok {
-			profile = resolvedProfile
-			compatTarget = profile.CompatibilityTarget
-			if compatTarget == "" {
-				compatTarget = profile.Target
-			}
-		} else {
-			for _, candidate := range cat.Profiles() {
-				if candidate.CompatibilityTarget == aliasTarget || candidate.Target == aliasTarget {
-					profile = candidate
-					compatTarget = candidate.CompatibilityTarget
-					if compatTarget == "" {
-						compatTarget = candidate.Target
-					}
-					break
-				}
-			}
-		}
-	}
-	if compatTarget == "" {
-		return nil, fmt.Errorf("profile %q has no compatibility target", name)
+		return nil, fmt.Errorf("profile %q is not defined in the catalog", name)
 	}
 
-	var resolved *ResolvedProfile
+	resolved := &ResolvedProfile{
+		Name:                name,
+		Target:              target,
+		CompatibilityTarget: target,
+		MinPower:            policy.MinPower,
+		MaxPower:            policy.MaxPower,
+		CatalogVersion:      meta.CatalogVersion,
+		ManifestSource:      meta.ManifestSource,
+		ManifestVersion:     meta.ManifestVersion,
+	}
 	for _, surface := range serviceProfileSurfaces() {
-		target, err := cat.Resolve(compatTarget, modelcatalog.ResolveOptions{
+		targetModel, err := cat.Resolve(target, modelcatalog.ResolveOptions{
 			Surface:         surface.catalogSurface,
 			AllowDeprecated: true,
 		})
@@ -155,38 +91,59 @@ func (s *service) ResolveProfile(_ context.Context, name string) (*ResolvedProfi
 			}
 			return nil, err
 		}
-		if resolved == nil {
-			resolved = &ResolvedProfile{
-				Name:                name,
-				Target:              compatTarget,
-				CompatibilityTarget: compatTarget,
-				MinPower:            profile.MinPower,
-				MaxPower:            profile.MaxPower,
-				Deprecated:          deprecated || target.Deprecated,
-				Replacement:         replacement,
-				CatalogVersion:      meta.CatalogVersion,
-				ManifestSource:      meta.ManifestSource,
-				ManifestVersion:     meta.ManifestVersion,
-			}
-		}
 		resolved.Surfaces = append(resolved.Surfaces, ProfileSurface{
-			Name:                    surface.name,
-			Harness:                 surface.harness,
-			ProviderSystem:          surface.providerSystem,
-			Model:                   target.ConcreteModel,
-			PlacementOrder:          append([]string(nil), target.SurfacePolicy.PlacementOrder...),
-			CostCeilingInputPerMTok: cloneFloat64(target.SurfacePolicy.MaxInputCostPerMTokUSD),
-			ReasoningDefault:        Reasoning(target.SurfacePolicy.ReasoningDefault),
-			FailurePolicy:           target.SurfacePolicy.FailurePolicy,
+			Name:             surface.name,
+			Harness:          surface.harness,
+			ProviderSystem:   surface.providerSystem,
+			Model:            targetModel.ConcreteModel,
+			ReasoningDefault: Reasoning(targetModel.SurfacePolicy.ReasoningDefault),
 		})
 	}
-	if resolved == nil {
+	if len(resolved.Surfaces) == 0 {
 		return nil, fmt.Errorf("profile %q has no service-supported surface", name)
 	}
 	sort.Slice(resolved.Surfaces, func(i, j int) bool {
 		return resolved.Surfaces[i].Name < resolved.Surfaces[j].Name
 	})
 	return resolved, nil
+}
+
+func policyForProfileName(cat *modelcatalog.Catalog, name string) (modelcatalog.Policy, string, bool) {
+	if cat == nil {
+		return modelcatalog.Policy{}, "", false
+	}
+	name = strings.TrimSpace(name)
+	if policy, ok := cat.Policy(name); ok {
+		return policy, policy.Name, true
+	}
+	if target, ok := profileCompatibilityAliases()[name]; ok {
+		policy, ok := cat.Policy(target)
+		return policy, target, ok
+	}
+	return modelcatalog.Policy{}, "", false
+}
+
+func profileCompatibilityAliases() map[string]string {
+	return map[string]string{
+		"standard":     "default",
+		"code-fast":    "default",
+		"fast":         "default",
+		"code-smart":   "smart",
+		"code-economy": "cheap",
+		"local":        "cheap",
+		"offline":      "cheap",
+	}
+}
+
+func providerPreferenceForPolicyName(name string) string {
+	switch strings.TrimSpace(name) {
+	case "local", "offline", "air-gapped":
+		return routing.ProviderPreferenceLocalOnly
+	case "smart", "code-smart":
+		return routing.ProviderPreferenceSubscriptionFirst
+	default:
+		return routing.ProviderPreferenceLocalFirst
+	}
 }
 
 type serviceProfileSurface struct {

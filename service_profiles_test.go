@@ -27,22 +27,22 @@ func TestServiceProfiles_ListResolveAliases(t *testing.T) {
 	if byName["smart"].CompatibilityTarget != "smart" || byName["smart"].MinPower != 9 || byName["smart"].MaxPower != 10 {
 		t.Fatalf("smart profile policy: %#v", byName["smart"])
 	}
-	if byName["cheap"].CompatibilityTarget != "code-economy" || byName["cheap"].MinPower != 5 || byName["cheap"].MaxPower != 5 {
+	if byName["cheap"].CompatibilityTarget != "cheap" || byName["cheap"].MinPower != 5 || byName["cheap"].MaxPower != 5 {
 		t.Fatalf("cheap profile policy: %#v", byName["cheap"])
 	}
-	if byName["standard"].CatalogVersion == "" {
+	if byName["default"].CatalogVersion == "" {
 		t.Fatal("CatalogVersion should be populated")
 	}
-	if byName["default"].CompatibilityTarget != "standard" || byName["default"].ProviderPreference != "local-first" {
-		t.Fatalf("default profile: %#v, want compatibility target standard/local-first", byName["default"])
+	if byName["default"].CompatibilityTarget != "default" || byName["default"].ProviderPreference != "local-first" {
+		t.Fatalf("default profile: %#v, want compatibility target default/local-first", byName["default"])
 	}
-	if byName["local"].CompatibilityTarget != "code-economy" || byName["local"].ProviderPreference != "local-only" {
-		t.Fatalf("local profile: %#v, want compatibility target code-economy/local-only", byName["local"])
+	if byName["local"].AliasOf != "cheap" || byName["local"].CompatibilityTarget != "cheap" || byName["local"].ProviderPreference != "local-only" {
+		t.Fatalf("local profile: %#v, want alias to cheap/local-only", byName["local"])
 	}
 	if byName["code-smart"].AliasOf != "smart" || byName["code-smart"].CompatibilityTarget != "smart" {
 		t.Fatalf("code-smart profile: %#v", byName["code-smart"])
 	}
-	if byName["code-fast"].AliasOf != "standard" || byName["code-fast"].CompatibilityTarget != "standard" {
+	if byName["code-fast"].AliasOf != "default" || byName["code-fast"].CompatibilityTarget != "default" {
 		t.Fatalf("code-fast profile: %#v", byName["code-fast"])
 	}
 	if _, ok := byName["code-high"]; ok {
@@ -51,11 +51,8 @@ func TestServiceProfiles_ListResolveAliases(t *testing.T) {
 	if _, ok := byName["code-medium"]; ok {
 		t.Fatal("code-medium should not be listed as a primary profile")
 	}
-	if !byName["claude-sonnet"].Deprecated {
-		t.Fatal("claude-sonnet should be listed as a deprecated alias")
-	}
-	if byName["claude-sonnet"].Replacement != "standard" {
-		t.Fatalf("claude-sonnet Replacement: got %q, want standard", byName["claude-sonnet"].Replacement)
+	if _, ok := byName["claude-sonnet"]; ok {
+		t.Fatal("target aliases should not be listed after the v5 manifest cutover")
 	}
 
 	aliases, err := svc.ProfileAliases(context.Background())
@@ -65,11 +62,14 @@ func TestServiceProfiles_ListResolveAliases(t *testing.T) {
 	if aliases["code-smart"] != "smart" {
 		t.Fatalf("code-smart alias: got %q, want smart", aliases["code-smart"])
 	}
-	if aliases["code-fast"] != "standard" {
-		t.Fatalf("code-fast alias: got %q, want standard", aliases["code-fast"])
+	if aliases["code-fast"] != "default" {
+		t.Fatalf("code-fast alias: got %q, want default", aliases["code-fast"])
 	}
-	if aliases["claude-sonnet"] != "standard" {
-		t.Fatalf("deprecated claude-sonnet alias: got %q, want standard", aliases["claude-sonnet"])
+	if aliases["local"] != "cheap" {
+		t.Fatalf("local alias: got %q, want cheap", aliases["local"])
+	}
+	if _, ok := aliases["claude-sonnet"]; ok {
+		t.Fatal("target aliases should not be exposed after the v5 manifest cutover")
 	}
 }
 
@@ -105,11 +105,11 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	if nativeOpenAI.ReasoningDefault != fizeau.ReasoningHigh {
 		t.Fatalf("ReasoningDefault: got %q, want high", nativeOpenAI.ReasoningDefault)
 	}
-	if nativeOpenAI.FailurePolicy != "ordered-failover" {
-		t.Fatalf("FailurePolicy: got %q, want ordered-failover", nativeOpenAI.FailurePolicy)
+	if nativeOpenAI.FailurePolicy != "" {
+		t.Fatalf("FailurePolicy: got %q, want empty", nativeOpenAI.FailurePolicy)
 	}
-	if nativeOpenAI.CostCeilingInputPerMTok == nil || *nativeOpenAI.CostCeilingInputPerMTok != 20 {
-		t.Fatalf("CostCeilingInputPerMTok: got %#v, want 20", nativeOpenAI.CostCeilingInputPerMTok)
+	if nativeOpenAI.CostCeilingInputPerMTok != nil {
+		t.Fatalf("CostCeilingInputPerMTok: got %#v, want nil", nativeOpenAI.CostCeilingInputPerMTok)
 	}
 
 	gemini := findProfileSurface(resolved.Surfaces, "gemini")
@@ -127,21 +127,18 @@ func TestServiceProfiles_ResolveProfile(t *testing.T) {
 	}
 }
 
-func TestServiceProfiles_ResolveDeprecatedAliasAndUnknown(t *testing.T) {
+func TestServiceProfiles_ResolveCompatibilityAliasAndUnknown(t *testing.T) {
 	svc, err := fizeau.New(fizeau.ServiceOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	deprecated, err := svc.ResolveProfile(context.Background(), "claude-sonnet")
+	alias, err := svc.ResolveProfile(context.Background(), "standard")
 	if err != nil {
-		t.Fatalf("ResolveProfile deprecated alias: %v", err)
+		t.Fatalf("ResolveProfile compatibility alias: %v", err)
 	}
-	if !deprecated.Deprecated {
-		t.Fatal("deprecated alias should resolve with Deprecated=true")
-	}
-	if deprecated.Replacement != "standard" {
-		t.Fatalf("Replacement: got %q, want standard", deprecated.Replacement)
+	if alias.Target != "default" || alias.CompatibilityTarget != "default" {
+		t.Fatalf("standard alias should resolve to default: %#v", alias)
 	}
 
 	if _, err := svc.ResolveProfile(context.Background(), "does-not-exist"); err == nil {
