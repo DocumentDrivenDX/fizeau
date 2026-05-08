@@ -6,7 +6,7 @@
 # selection uses OpenRouter Qwen3.6 27B token counts priced at GPT-5.5 rates:
 # input=$5/MTok, output=$30/MTok. Avoid known multi-dollar cells.
 #
-# Expected cost at 3 reps, from observed/proxy averages: roughly $25-35. This
+# Expected cost at 5 reps, from observed/proxy averages: roughly $40-60. This
 # is an estimate, not a cap; use --per-run-budget-usd for hard per-cell limits.
 
 version: "1"

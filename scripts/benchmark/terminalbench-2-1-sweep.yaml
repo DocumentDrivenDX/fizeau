@@ -121,7 +121,7 @@ phases:
       Cheap native OpenAI GPT-5.5 slice selected from observed GPT-5.5 costs
       and Qwen3.6 token-count proxies. This is for affordable validation and
       trend checks, not full-suite claims.
-    reps: 3
+    reps: 5
     subset: terminalbench-2-1-openai-cheap
     lanes:
       - fiz-openai-gpt-5-5

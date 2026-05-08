@@ -611,7 +611,9 @@ aliases:
 ./benchmark --phase full --lanes vidar
 ```
 
-For a cheaper OpenAI GPT-5.5 validation slice, use the cheap OpenAI phase:
+For a cheaper OpenAI GPT-5.5 validation slice with the same `k=5` repetition
+count used by the public Terminal-Bench leaderboard, use the cheap OpenAI
+phase:
 
 ```bash
 ./benchmark --phase openai-cheap --matrix-jobs-managed 4
@@ -620,7 +622,7 @@ For a cheaper OpenAI GPT-5.5 validation slice, use the cheap OpenAI phase:
 This uses `scripts/benchmark/task-subset-tb21-openai-cheap.yaml`, a 23-task
 subset selected from observed lower-cost GPT-5.5 runs plus Qwen3.6 token-count
 proxies priced at GPT-5.5 rates. It is for affordable trend checks, not
-full-suite claims.
+full-suite claims. The phase runs 5 reps per task.
 
 Artifacts are written under
 `benchmark-results/matrix-medium-model-<tier>-<UTC>/`:
