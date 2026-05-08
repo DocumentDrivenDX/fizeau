@@ -25,9 +25,7 @@ type FizeauService interface {
 	ListHarnesses(ctx context.Context) ([]HarnessInfo, error)
 	ListProviders(ctx context.Context) ([]ProviderInfo, error)
 	ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
-	ListProfiles(ctx context.Context) ([]ProfileInfo, error)
-	ResolveProfile(ctx context.Context, name string) (*ResolvedProfile, error)
-	ProfileAliases(ctx context.Context) (map[string]string, error)
+	ListPolicies(ctx context.Context) ([]PolicyInfo, error)
 	HealthCheck(ctx context.Context, target HealthTarget) error
 	ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error)
 	RecordRouteAttempt(ctx context.Context, attempt RouteAttempt) error
@@ -318,45 +316,15 @@ type ModelFilter struct {
 	Provider string
 }
 
-type ProfileInfo struct {
-	Name                string
-	Target              string
-	CompatibilityTarget string
-	AliasOf             string
-	MinPower            int
-	MaxPower            int
-	ProviderPreference  string
-	Deprecated          bool
-	Replacement         string
-	CatalogVersion      string
-	ManifestSource      string
-	ManifestVersion     int
-}
-
-type ResolvedProfile struct {
-	Name                string
-	Target              string
-	CompatibilityTarget string
-	MinPower            int
-	MaxPower            int
-	Deprecated          bool
-	Replacement         string
-	CatalogVersion      string
-	ManifestSource      string
-	ManifestVersion     int
-	Surfaces            []ProfileSurface
-}
-
-type ProfileSurface struct {
-	Name                    string
-	Harness                 string
-	ProviderSystem          string
-	Model                   string
-	Candidates              []string
-	PlacementOrder          []string
-	CostCeilingInputPerMTok *float64
-	ReasoningDefault        Reasoning
-	FailurePolicy           string
+type PolicyInfo struct {
+	Name            string
+	MinPower        int
+	MaxPower        int
+	AllowLocal      bool
+	Require         []string
+	CatalogVersion  string
+	ManifestSource  string
+	ManifestVersion int
 }
 
 // HealthTarget identifies what to health-check.
