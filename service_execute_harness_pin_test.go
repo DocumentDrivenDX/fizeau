@@ -253,6 +253,120 @@ targets:
 	}
 }
 
+// TestExecute_ExplicitHarnessEmptyModelWithProfile_RoutesWithinHarness asserts
+// AC4 from ddx-1e516bc9: when Harness is pinned and Model is empty but a
+// routing Profile is provided, the routing engine runs within the harness's
+// eligible models (not the old silent-empty-model path).
+//
+// The core invariant: the old code returned RouteDecision{Model:""} with no
+// error (silent misconfiguration). The fixed code invokes the routing engine —
+// which either returns a non-empty model (success) or a routing error (no
+// viable candidate due to environment quota state). Either outcome proves the
+// engine was called; the old silent-empty-model outcome fails.
+//
+// When the routing engine succeeds, also assert the model is a claude-family
+// alias (opus/sonnet/haiku or claude- prefix), as the catalog maps claude-code
+// surface IDs through claudeCLIExecutableModel normalization.
+func TestExecute_ExplicitHarnessEmptyModelWithProfile_RoutesWithinHarness(t *testing.T) {
+	// Fixture catalog: sonnet-4.6 on the claude-code surface (which the claude
+	// harness uses), plus the code-economy profile so providerPreferenceForProfile
+	// doesn't fail with ErrUnknownProfile.
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 4
+generated_at: 2026-05-08T00:00:00Z
+models:
+  sonnet-4.6:
+    family: claude-sonnet
+    status: active
+    power: 8
+    surfaces:
+      claude-code: sonnet-4.6
+profiles:
+  code-economy:
+    min_power: 5
+    max_power: 6
+    compatibility_target: code-economy
+    provider_preference: subscription-first
+targets:
+  code-economy:
+    family: claude-sonnet
+    candidates: [sonnet-4.6]
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	// No ServiceConfig — subscription harnesses (claude, codex) don't need it.
+	svc := publicRouteTraceService(nil)
+	decision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
+		Prompt:  "hello",
+		Harness: "claude",
+		Profile: "code-economy",
+	})
+
+	// Core invariant: the old code returned (decision.Model=="", err==nil).
+	// The fix must invoke the routing engine — either successfully (model != "")
+	// or with a routing error (no viable candidate). The old silent path is gone.
+	if err == nil && (decision == nil || decision.Model == "") {
+		t.Fatal("old silent-empty-model behavior: routing engine was not invoked (err=nil, model=empty)")
+	}
+
+	// When the routing engine succeeds, assert the model is a claude-family alias.
+	if err == nil && decision != nil && decision.Model != "" {
+		model := decision.Model
+		if !strings.HasPrefix(model, "sonnet") &&
+			!strings.HasPrefix(model, "opus") &&
+			!strings.HasPrefix(model, "haiku") &&
+			!strings.HasPrefix(model, "claude-") {
+			t.Fatalf("resolved model %q is not a claude-family alias", model)
+		}
+		if decision.Harness != "claude" {
+			t.Fatalf("decision.Harness = %q, want claude", decision.Harness)
+		}
+	}
+}
+
+// TestExecute_ExplicitHarnessEmptyModelNoProfile_FailsClearly asserts AC5 from
+// ddx-1e516bc9: when Harness is pinned and Model is empty with no routing
+// inputs (no Profile, no MinPower), the request must fail with a clear
+// "under-specified routing" error rather than silently returning an empty model.
+func TestExecute_ExplicitHarnessEmptyModelNoProfile_FailsClearly(t *testing.T) {
+	svc := publicRouteTraceService(nil)
+
+	_, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
+		Prompt:  "hello",
+		Harness: "claude",
+		// Model, Profile, MinPower all empty — under-specified
+	})
+	if err == nil {
+		t.Fatal("expected under-specified routing error, got nil")
+	}
+	if !strings.Contains(err.Error(), "under-specified routing") {
+		t.Fatalf("error %q should contain 'under-specified routing'", err.Error())
+	}
+}
+
+// TestExecute_Class2HarnessEmptyModelWithProfile_FailsClearly asserts that for
+// Class 2 harnesses (AutoRoutingEligible=false: gemini, opencode, pi), an
+// explicit "no auto-resolution available" error is returned when Model is empty
+// but Profile/MinPower is set — not silent empty Model.
+func TestExecute_Class2HarnessEmptyModelWithProfile_FailsClearly(t *testing.T) {
+	svc := publicRouteTraceService(nil)
+
+	_, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
+		Prompt:  "hello",
+		Harness: "gemini",
+		Profile: "code-economy",
+	})
+	if err == nil {
+		t.Fatal("expected no-auto-resolution error for Class 2 harness, got nil")
+	}
+	if !strings.Contains(err.Error(), "no auto-resolution available") {
+		t.Fatalf("error %q should contain 'no auto-resolution available'", err.Error())
+	}
+	if !strings.Contains(err.Error(), "gemini") {
+		t.Fatalf("error %q should name the harness 'gemini'", err.Error())
+	}
+}
+
 func readFinalEvent(t *testing.T, ch <-chan ServiceEvent, timeout time.Duration) ServiceFinalData {
 	t.Helper()
 	deadline := time.NewTimer(timeout)

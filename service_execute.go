@@ -156,8 +156,10 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 
 // resolveExecuteRoute reduces the request to a concrete RouteDecision.
 // The request is dispatched through the routing engine
-// (internal/routing.Resolve) when under-specified, or accepted verbatim
-// when Harness is set explicitly.
+// (internal/routing.Resolve) when under-specified (Harness == ""), or when
+// Harness is set but Model is empty and routing inputs (Profile or MinPower)
+// are present (engine runs within the harness's eligible models). When Harness
+// is set and Model is also set, the decision is accepted verbatim.
 func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision, error) {
 	// If Harness is omitted, route through the engine. The engine defaults to
 	// local-first and auto-selects from configured endpoints when no other
@@ -170,6 +172,9 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 		return nil, fmt.Errorf("unknown harness %q", req.Harness)
 	}
 	cfg, _ := s.registry.Get(canonical)
+
+	// Run per-field validators first so callers get the most specific error.
+	// Empty-model routing checks run after these, right before model resolution.
 	if err := validateExplicitHarnessProfile(canonical, cfg, req.Profile); err != nil {
 		return nil, err
 	}
@@ -185,6 +190,28 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	if err := validateExplicitHarnessQuota(canonical, cfg); err != nil {
 		return nil, err
 	}
+
+	// Empty-model routing: only applies to subprocess harnesses with concrete
+	// model semantics. TestOnly (virtual/script), HTTP-provider (openrouter/
+	// lmstudio/etc.), and "fiz" harnesses skip this block — they either use
+	// DefaultModel directly or have provider-side model semantics.
+	if !cfg.TestOnly && !cfg.IsHTTPProvider && canonical != "fiz" && req.Model == "" {
+		if req.Profile == "" && req.MinPower == 0 {
+			// Under-specified: no model, no routing inputs → silent empty model
+			// avoided by failing early with a clear diagnostic.
+			return nil, fmt.Errorf("under-specified routing for harness=%q: "+
+				"supply --model, --profile, or --min-power", canonical)
+		}
+		// Profile or MinPower present: run the routing engine within the
+		// harness's eligible models. Class 2 harnesses (AutoRoutingEligible=false:
+		// gemini, opencode, pi) require an explicit --model.
+		if !cfg.AutoRoutingEligible {
+			return nil, fmt.Errorf("no auto-resolution available for harness=%q: "+
+				"harness does not support auto-routing; supply an explicit --model", canonical)
+		}
+		return s.resolveExecuteRouteWithEngine(req)
+	}
+
 	resolvedModel := resolveSubprocessModelAlias(canonical, req.Model)
 	decision := &RouteDecision{
 		Harness:  canonical,
