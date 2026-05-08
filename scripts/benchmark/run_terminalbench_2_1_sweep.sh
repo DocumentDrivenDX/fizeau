@@ -23,7 +23,7 @@ SWEEP_PLAN="${REPO_ROOT}/scripts/benchmark/terminalbench-2-1-sweep.yaml"
 DRY_RUN=0
 PREPARE_ONLY=0
 FORCE_RERUN=0
-MATRIX_JOBS_MANAGED=1
+MATRIX_JOBS_MANAGED="${BENCHMARK_MATRIX_JOBS_MANAGED:-auto}"
 PER_RUN_BUDGET_USD=""
 BUDGET_USD=""
 CONFIRM_DELAY="${BENCHMARK_CONFIRM_DELAY:-8}"
@@ -43,7 +43,7 @@ Flags:
   --force-rerun
   --budget-usd <n>
   --per-run-budget-usd <n>
-  --matrix-jobs-managed <n>
+  --matrix-jobs-managed <n|auto>
 
 The script builds local benchmark artifacts, downloads/validates TB-2.1 tasks,
 prints the exact target plan, waits briefly for Ctrl-C, then runs the sweep.
@@ -118,6 +118,38 @@ case "${PHASE}" in
     ;;
 esac
 
+resolve_matrix_jobs_managed() {
+  case "${MATRIX_JOBS_MANAGED}" in
+    auto|"")
+      case "${PHASE}" in
+        tb21-all|openai-cheap)
+          # Request enough parallelism for managed cloud lanes. The Go sweep
+          # runner clamps each lane to its resource-group cap, so local lanes
+          # still run one cell at a time.
+          MATRIX_JOBS_MANAGED=16
+          ;;
+        sonnet-comparison|gpt-comparison|all)
+          # Harness comparison phases are cloud-backed but heavier and share
+          # subscription/provider state; keep their default below raw provider
+          # full-sweep concurrency.
+          MATRIX_JOBS_MANAGED=5
+          ;;
+        *)
+          MATRIX_JOBS_MANAGED=1
+          ;;
+      esac
+      ;;
+    ''|*[!0-9]*)
+      echo "--matrix-jobs-managed must be a positive integer or auto, got ${MATRIX_JOBS_MANAGED}" >&2
+      exit 2
+      ;;
+  esac
+  if (( MATRIX_JOBS_MANAGED < 1 )); then
+    echo "--matrix-jobs-managed must be >= 1" >&2
+    exit 2
+  fi
+}
+
 expand_lane_alias() {
   case "$1" in
     openai-gpt55|gpt55|openai) echo "fiz-openai-gpt-5-5" ;;
@@ -158,6 +190,8 @@ case "${PHASE}" in
     echo "unknown --phase ${PHASE}" >&2
     exit 2 ;;
 esac
+
+resolve_matrix_jobs_managed
 
 abs_path() {
   local path="$1"
@@ -660,10 +694,11 @@ print_summary() {
   echo "  Harbor artifact:    ${HARBOR_AGENT_ARTIFACT}"
   echo "  runtime bundle:     ${HARBOR_AGENT_RUNTIME_BUNDLE}"
   echo "  Docker arch:        ${CONTAINER_GOARCH}"
+  echo "  managed jobs:       ${MATRIX_JOBS_MANAGED}"
   if [[ -n "${LANES}" ]]; then
-    echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --lanes ${LANES} --out ${OUT}"
+    echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --lanes ${LANES} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
   else
-    echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --out ${OUT}"
+    echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
   fi
   echo
   echo "Resolved tasks:"
