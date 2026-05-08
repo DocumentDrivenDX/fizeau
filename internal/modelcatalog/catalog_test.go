@@ -137,6 +137,13 @@ func TestDefault_LoadsEmbeddedManifest(t *testing.T) {
 	assert.Equal(t, "2026-05-08.1", resolved.CatalogVersion)
 }
 
+func TestEmbeddedCatalogParses(t *testing.T) {
+	catalog, err := Default()
+	require.NoError(t, err)
+	assert.Equal(t, 5, catalog.Metadata().ManifestVersion)
+	assert.Equal(t, "2026-05-08.1", catalog.Metadata().CatalogVersion)
+}
+
 func TestCatalogPolicyAndPolicies(t *testing.T) {
 	catalog, err := Default()
 	require.NoError(t, err)

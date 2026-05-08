@@ -7,7 +7,7 @@ sampling_profiles:
     top_p: 0.95
     top_k: 20
 models:
-  opus-4.7:
+  claude-opus-4.7:
     family: claude-opus
     display_name: Claude Opus 4.7
     status: active
@@ -426,24 +426,24 @@ models:
       claude-code: claude-3-7-sonnet-20250219
     reasoning_default: medium
 policies:
-  default:
-    min_power: 7
-    max_power: 8
-    allow_local: true
-  cheap:
-    min_power: 5
-    max_power: 5
-    allow_local: true
-  smart:
-    min_power: 9
-    max_power: 10
-    allow_local: false
   air-gapped:
     min_power: 5
     max_power: 5
     allow_local: true
     require:
     - no_remote
+  cheap:
+    min_power: 5
+    max_power: 5
+    allow_local: true
+  default:
+    min_power: 7
+    max_power: 8
+    allow_local: true
+  smart:
+    min_power: 9
+    max_power: 10
+    allow_local: false
 providers:
   anthropic:
     type: anthropic
