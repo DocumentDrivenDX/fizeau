@@ -21,13 +21,13 @@ func sweepPlanPath(t *testing.T) string {
 }
 
 // TestLoadSweepPlanParsesAllPhases verifies the sweep plan YAML loads and
-// contains all four expected phases.
+// contains all expected phases.
 func TestLoadSweepPlanParsesAllPhases(t *testing.T) {
 	plan, err := loadSweepPlan(sweepPlanPath(t))
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	wantPhases := []string{"canary", "local-qwen", "sonnet-comparison", "gpt-comparison"}
+	wantPhases := []string{"canary", "local-qwen", "tb21-all", "sonnet-comparison", "gpt-comparison"}
 	if len(plan.Phases) != len(wantPhases) {
 		t.Fatalf("phases = %d, want %d", len(plan.Phases), len(wantPhases))
 	}
@@ -49,6 +49,8 @@ func TestLoadSweepPlanHasAllLanes(t *testing.T) {
 		"fiz-harness-codex-gpt-5-4-mini",
 		"fiz-openrouter-claude-sonnet-4-6",
 		"fiz-openrouter-gpt-5-4-mini",
+		"fiz-openai-gpt-5-5",
+		"fiz-openrouter-qwen3-6-27b",
 		"fiz-vidar-omlx-qwen3-6-27b",
 		"fiz-bragi-club-3090-qwen3-6-27b",
 		"fiz-grendel-rapid-mlx-qwen3-6-27b",
@@ -86,6 +88,16 @@ func TestLoadSweepPlanResourceGroupsAllPresent(t *testing.T) {
 		t.Error("resource group rg-openrouter not found")
 	} else if or.MaxConcurrency < 2 {
 		t.Errorf("rg-openrouter max_concurrency = %d, want >= 2", or.MaxConcurrency)
+	}
+	for _, id := range []string{"rg-openai-gpt55", "rg-openrouter-qwen36-27b"} {
+		rg, ok := rgByID[id]
+		if !ok {
+			t.Errorf("resource group %q not found", id)
+			continue
+		}
+		if rg.MaxConcurrency < 2 {
+			t.Errorf("%s max_concurrency = %d, want >= 2", id, rg.MaxConcurrency)
+		}
 	}
 }
 
@@ -134,7 +146,7 @@ func TestSelectSweepPhasesSinglePhase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	for _, phaseID := range []string{"canary", "local-qwen", "sonnet-comparison", "gpt-comparison"} {
+	for _, phaseID := range []string{"canary", "local-qwen", "tb21-all", "sonnet-comparison", "gpt-comparison"} {
 		phases, err := selectSweepPhases(plan, phaseID)
 		if err != nil {
 			t.Errorf("selectSweepPhases(%q): %v", phaseID, err)
@@ -335,10 +347,100 @@ func TestSweepDryRunAllPhasesContainsAllPhaseHeaders(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("cmdSweep dry-run all exit = %d\noutput:\n%s", code, output)
 	}
-	for _, phase := range []string{"canary", "local-qwen", "sonnet-comparison", "gpt-comparison"} {
+	for _, phase := range []string{"canary", "local-qwen", "tb21-all", "sonnet-comparison", "gpt-comparison"} {
 		if !strings.Contains(output, "Phase: "+phase) {
 			t.Errorf("dry-run output missing Phase: %s", phase)
 		}
+	}
+}
+
+func TestSweepDryRunFullWithLaneFilterPrintsOnlySelectedLanes(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := cmdSweep([]string{
+		"--work-dir", repoRoot,
+		"--phase", "tb21-all",
+		"--lanes", "fiz-sindri-club-3090-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
+		"--dry-run",
+		"--out", outDir,
+	})
+
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	io.Copy(&buf, r) //nolint:errcheck
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("cmdSweep dry-run filtered full exit = %d\noutput:\n%s", code, output)
+	}
+	required := []string{
+		"Phase: tb21-all",
+		"Subset ID:     terminalbench-2-1-all",
+		"Task Count:    89",
+		"Total Cells:   534",
+		"Lane: fiz-sindri-club-3090-qwen3-6-27b",
+		"Lane: fiz-vidar-omlx-qwen3-6-27b",
+	}
+	for _, want := range required {
+		if !strings.Contains(output, want) {
+			t.Errorf("dry-run output missing %q\nfull output:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "Lane: fiz-bragi-club-3090-qwen3-6-27b") {
+		t.Errorf("dry-run output included unselected bragi lane\nfull output:\n%s", output)
+	}
+}
+
+func TestSweepDryRunFourLaneFullShowsManagedJobCaps(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	code := cmdSweep([]string{
+		"--work-dir", repoRoot,
+		"--phase", "tb21-all",
+		"--lanes", "fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-club-3090-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
+		"--matrix-jobs-managed", "16",
+		"--dry-run",
+		"--out", outDir,
+	})
+
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	io.Copy(&buf, r) //nolint:errcheck
+	output := buf.String()
+
+	if code != 0 {
+		t.Fatalf("cmdSweep dry-run four-lane full exit = %d\noutput:\n%s", code, output)
+	}
+	required := []string{
+		"Total Cells:   1068",
+		"Lane: fiz-openai-gpt-5-5",
+		"Lane: fiz-openrouter-qwen3-6-27b",
+		"Lane: fiz-sindri-club-3090-qwen3-6-27b",
+		"Lane: fiz-vidar-omlx-qwen3-6-27b",
+		"--profiles fiz-openai-gpt-5-5",
+		"--profiles fiz-openrouter-qwen3-6-27b",
+		"--jobs 16",
+		"--jobs 10",
+	}
+	for _, want := range required {
+		if !strings.Contains(output, want) {
+			t.Errorf("dry-run output missing %q\nfull output:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "Lane: fiz-bragi-club-3090-qwen3-6-27b") {
+		t.Errorf("dry-run output included unselected bragi lane\nfull output:\n%s", output)
 	}
 }
 

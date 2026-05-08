@@ -15,6 +15,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 PHASE="all"
+LANES=""
+FOUR_FULL_LANES="fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-club-3090-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b"
 OUT=""
 TASKS_DIR="${REPO_ROOT}/benchmark-results/external/terminal-bench-2-1"
 SWEEP_PLAN="${REPO_ROOT}/scripts/benchmark/terminalbench-2-1-sweep.yaml"
@@ -31,7 +33,8 @@ usage() {
 Usage: ./benchmark [flags]
 
 Flags:
-  --phase canary|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all
+  --phase canary|preferred|full|qwen36-gpt55-full|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all
+  --lanes <id,id,...>
   --out <dir>
   --tasks-dir <dir>
   --sweep-plan <file>
@@ -44,6 +47,11 @@ Flags:
 
 The script builds local benchmark artifacts, downloads/validates TB-2.1 tasks,
 prints the exact target plan, waits briefly for Ctrl-C, then runs the sweep.
+`all` means the staged sweep phases; use `full`/`tb21-all` for the 89-task
+catalog.
+
+Short lane aliases:
+  openai-gpt55, openrouter-qwen36, sindri, vidar
 EOF
 }
 
@@ -53,6 +61,10 @@ while [[ $# -gt 0 ]]; do
       PHASE="$2"; shift 2 ;;
     --phase=*)
       PHASE="${1#*=}"; shift ;;
+    --lanes)
+      LANES="$2"; shift 2 ;;
+    --lanes=*)
+      LANES="${1#*=}"; shift ;;
     --out)
       OUT="$2"; shift 2 ;;
     --out=*)
@@ -91,6 +103,54 @@ while [[ $# -gt 0 ]]; do
       exit 2 ;;
   esac
 done
+
+case "${PHASE}" in
+  full) PHASE="tb21-all" ;;
+  preferred) PHASE="local-qwen" ;;
+  qwen36-gpt55-full)
+    PHASE="tb21-all"
+    if [[ -z "${LANES}" ]]; then
+      LANES="${FOUR_FULL_LANES}"
+    fi
+    if [[ "${MATRIX_JOBS_MANAGED}" = "1" ]]; then
+      MATRIX_JOBS_MANAGED=16
+    fi
+    ;;
+esac
+
+expand_lane_alias() {
+  case "$1" in
+    openai-gpt55|gpt55|openai) echo "fiz-openai-gpt-5-5" ;;
+    openrouter-qwen36|or-qwen36|qwen36-or) echo "fiz-openrouter-qwen3-6-27b" ;;
+    sindri) echo "fiz-sindri-club-3090-qwen3-6-27b" ;;
+    vidar) echo "fiz-vidar-omlx-qwen3-6-27b" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+normalize_lanes() {
+  local raw="$1"
+  local out=""
+  local item expanded
+  IFS=',' read -ra items <<< "${raw}"
+  for item in "${items[@]}"; do
+    item="${item#"${item%%[![:space:]]*}"}"
+    item="${item%"${item##*[![:space:]]}"}"
+    if [[ -z "${item}" ]]; then
+      continue
+    fi
+    expanded="$(expand_lane_alias "${item}")"
+    if [[ -n "${out}" ]]; then
+      out+=","
+    fi
+    out+="${expanded}"
+  done
+  echo "${out}"
+}
+
+if [[ -n "${LANES}" ]]; then
+  LANES="$(normalize_lanes "${LANES}")"
+fi
 
 case "${PHASE}" in
   canary|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all) ;;
@@ -469,7 +529,7 @@ prepare_env_keys() {
 
 selected_plan_requires_key() {
   local key="$1"
-  python3 - "${SWEEP_PLAN}" "${PHASE}" "${key}" <<'PY'
+  python3 - "${SWEEP_PLAN}" "${PHASE}" "${key}" "${LANES}" <<'PY'
 import sys
 from pathlib import Path
 
@@ -478,6 +538,7 @@ import yaml
 plan = yaml.safe_load(Path(sys.argv[1]).read_text())
 phase_id = sys.argv[2]
 key = sys.argv[3]
+lane_filter = {item.strip() for item in sys.argv[4].split(",") if item.strip()}
 
 phases = plan.get("phases") or []
 if phase_id == "all":
@@ -490,6 +551,8 @@ selected_lane_ids = {
     for phase in selected_phases
     for lane_id in (phase.get("lanes") or [])
 }
+if lane_filter:
+    selected_lane_ids &= lane_filter
 lanes = plan.get("lanes") or []
 for lane in lanes:
     if lane.get("id") not in selected_lane_ids:
@@ -513,6 +576,9 @@ append_optional_sweep_args() {
   if [[ -n "${BUDGET_USD}" ]]; then
     out_args+=(--budget-usd "${BUDGET_USD}")
   fi
+  if [[ -n "${LANES}" ]]; then
+    out_args+=(--lanes "${LANES}")
+  fi
 }
 
 sweep_args_for_phase() {
@@ -527,6 +593,14 @@ sweep_args_for_phase() {
   )
   append_optional_sweep_args args
   printf '%q ' "${args[@]}"
+}
+
+run_plan_phases() {
+  if [[ "${PHASE}" = "all" ]]; then
+    printf '%s\n' canary local-qwen sonnet-comparison gpt-comparison
+  else
+    printf '%s\n' "${PHASE}"
+  fi
 }
 
 run_sweep_phase() {
@@ -574,6 +648,9 @@ print_summary() {
   echo
   echo "TerminalBench 2.1 sweep target"
   echo "  phase:              ${PHASE}"
+  if [[ -n "${LANES}" ]]; then
+    echo "  lanes:              ${LANES}"
+  fi
   echo "  output:             ${OUT}"
   echo "  tasks source:       ${SOURCE_TASKS_DIR}"
   echo "  tasks runtime:      ${TASKS_DIR}"
@@ -582,20 +659,33 @@ print_summary() {
   echo "  Harbor artifact:    ${HARBOR_AGENT_ARTIFACT}"
   echo "  runtime bundle:     ${HARBOR_AGENT_RUNTIME_BUNDLE}"
   echo "  Docker arch:        ${CONTAINER_GOARCH}"
-  echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --out ${OUT}"
+  if [[ -n "${LANES}" ]]; then
+    echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --lanes ${LANES} --out ${OUT}"
+  else
+    echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --out ${OUT}"
+  fi
   echo
   echo "Resolved tasks:"
   awk '{print "  " $1 ": " $2}' "${TARGET_TASKS_FILE}" | sort -u
   echo
   echo "Dry-run plan:"
-  "${BENCH_BIN}" sweep \
-    --work-dir "${REPO_ROOT}" \
-    --sweep-plan "${SWEEP_PLAN}" \
-    --phase "${PHASE}" \
-    --tasks-dir "${TASKS_DIR}" \
-    --out "${OUT}" \
-    --matrix-jobs-managed "${MATRIX_JOBS_MANAGED}" \
-    --dry-run
+  local dry_phase
+  while IFS= read -r dry_phase; do
+    local dry_args=(
+      sweep
+      --work-dir "${REPO_ROOT}"
+      --sweep-plan "${SWEEP_PLAN}"
+      --phase "${dry_phase}"
+      --tasks-dir "${TASKS_DIR}"
+      --out "${OUT}"
+      --matrix-jobs-managed "${MATRIX_JOBS_MANAGED}"
+    )
+    if [[ -n "${LANES}" ]]; then
+      dry_args+=(--lanes "${LANES}")
+    fi
+    dry_args+=(--dry-run)
+    "${BENCH_BIN}" "${dry_args[@]}"
+  done < <(run_plan_phases)
 }
 
 need docker
@@ -623,15 +713,12 @@ if [[ "${CONFIRM_DELAY}" != "0" ]]; then
   sleep "${CONFIRM_DELAY}"
 fi
 
-if [[ "${PHASE}" = "all" ]]; then
-  run_sweep_phase canary
-  blocking_canary_failures
-  run_sweep_phase local-qwen
-  run_sweep_phase sonnet-comparison
-  run_sweep_phase gpt-comparison
-else
-  run_sweep_phase "${PHASE}"
-fi
+while IFS= read -r phase_to_run; do
+  run_sweep_phase "${phase_to_run}"
+  if [[ "${phase_to_run}" = "canary" && "${PHASE}" = "all" ]]; then
+    blocking_canary_failures
+  fi
+done < <(run_plan_phases)
 
 echo
 echo "Sweep output: ${OUT}"

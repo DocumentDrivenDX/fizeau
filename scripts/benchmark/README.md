@@ -572,6 +572,45 @@ official claims use `fiz-*` lanes routed through `FizeauAgent`, not native
 Harbor adapter rows. Pi/OpenCode wrapped local-model coverage now lives in the
 TerminalBench 2.1 sweep plan.
 
+For local Qwen3.6 full-suite runs, use the local wrapper instead of hand-writing
+a sweep plan:
+
+```bash
+# Real full TB-2.1 run: 89 tasks x 3 reps for Sindri and Vidar.
+scripts/benchmark/run_local_qwen36_sweep.sh
+
+# Same lanes on the older 15-task preferred subset.
+scripts/benchmark/run_local_qwen36_sweep.sh --preferred
+
+# Restrict or expand local lanes by short name.
+scripts/benchmark/run_local_qwen36_sweep.sh --phase full --lanes sindri,vidar
+```
+
+For the four-lane fiz full comparison (OpenAI GPT-5.5, OpenRouter Qwen3.6
+27B, Sindri Qwen3.6 27B, and Vidar Qwen3.6 27B), use the main one-shot runner:
+
+```bash
+./benchmark --phase qwen36-gpt55-full
+```
+
+That preset expands to the full 89-task TB-2.1 catalog with 3 reps and these
+lanes:
+
+- `fiz-openai-gpt-5-5`
+- `fiz-openrouter-qwen3-6-27b`
+- `fiz-sindri-club-3090-qwen3-6-27b`
+- `fiz-vidar-omlx-qwen3-6-27b`
+
+To split it across terminals, keep the same full phase and use short lane
+aliases:
+
+```bash
+./benchmark --phase full --lanes openai-gpt55
+./benchmark --phase full --lanes openrouter-qwen36
+./benchmark --phase full --lanes sindri
+./benchmark --phase full --lanes vidar
+```
+
 Artifacts are written under
 `benchmark-results/matrix-medium-model-<tier>-<UTC>/`:
 

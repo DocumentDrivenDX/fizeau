@@ -38,6 +38,8 @@ defaults:
 # Phases
 # ---------------------------------------------------------------------------
 # Phases run in order: canary → local-qwen → sonnet-comparison → gpt-comparison.
+# User-facing aliases in ./benchmark map preferred → local-qwen and full →
+# tb21-all. Use --lanes to restrict tb21-all to specific targets.
 # Each phase can be invoked independently. The runner must produce per-cell
 # report.json artifacts so resume works across phases.
 
@@ -89,6 +91,30 @@ phases:
       rg-bragi-club-3090, rg-sindri-club-3090);
       all three may run in parallel since they use different servers/endpoints.
       Within each resource group max_concurrency=1.
+
+  - id: tb21-all
+    description: >-
+      Real full TB-2.1 catalog run over all 89 tasks. This phase is intended
+      for targeted lane-filtered runs, for example:
+      ./benchmark --phase full --lanes fiz-sindri-club-3090-qwen3-6-27b.
+    reps: 3
+    subset: terminalbench-2-1-all
+    lanes:
+      - fiz-openai-gpt-5-5
+      - fiz-openrouter-qwen3-6-27b
+      - fiz-vidar-omlx-qwen3-6-27b
+      - fiz-harness-pi-vidar-qwen3-6-27b
+      - fiz-harness-opencode-vidar-qwen3-6-27b
+      - fiz-bragi-club-3090-qwen3-6-27b
+      - fiz-sindri-club-3090-qwen3-6-27b
+      - fiz-openrouter-claude-sonnet-4-6
+      - fiz-openrouter-gpt-5-4-mini
+      - fiz-harness-claude-sonnet-4-6
+      - fiz-harness-codex-gpt-5-4-mini
+    parallel_policy: >-
+      Prefer lane-filtered invocations. Local resource groups serialize at one
+      cell per endpoint; managed OpenRouter/subscription lanes must obey their
+      resource-group caps and budget limits.
 
   - id: sonnet-comparison
     description: >-
@@ -278,6 +304,35 @@ resource_groups:
       concurrent cells when budget and rate limits allow. Honor Retry-After
       headers on 429 responses.
 
+  - id: rg-openrouter-qwen36-27b
+    base_url: "https://openrouter.ai/api/v1"
+    provider_type: openrouter
+    max_concurrency: 10
+    rate_limit_rpm: 500
+    rate_limit_tpm: 1000000
+    budget:
+      per_run_usd_cap: 1.00
+      per_phase_usd_cap: 75.00
+      per_sweep_usd_cap: 75.00
+    notes: >-
+      Managed OpenRouter Qwen3.6-27B lane. Kept separate from rg-openrouter
+      so full Qwen runs do not share a limiter with Claude/GPT harness
+      comparison lanes.
+
+  - id: rg-openai-gpt55
+    base_url: "https://api.openai.com/v1"
+    provider_type: openai
+    max_concurrency: 16
+    rate_limit_rpm: 500
+    rate_limit_tpm: 500000
+    budget:
+      per_run_usd_cap: 8.00
+      per_phase_usd_cap: 300.00
+      per_sweep_usd_cap: 300.00
+    notes: >-
+      Native OpenAI GPT-5.5 lane. GPT-5-family sampling must use OpenAI
+      defaults on the wire; profile pricing is used for cost tracking.
+
 # ---------------------------------------------------------------------------
 # Lane Definitions
 # ---------------------------------------------------------------------------
@@ -401,6 +456,51 @@ lanes:
       top_k: 20
 
   # --- Official fiz native/provider lanes ---
+
+  - id: fiz-openai-gpt-5-5
+    profile_id: fiz-openai-gpt-5-5
+    lane_type: fiz_provider_native
+    phases: [tb21-all]
+    resource_group: rg-openai-gpt55
+    fizeau_env:
+      FIZEAU_PROVIDER: openai
+      FIZEAU_MODEL: "gpt-5.5"
+      FIZEAU_BASE_URL: "https://api.openai.com/v1"
+      FIZEAU_API_KEY_ENV: OPENAI_API_KEY
+    model_family: gpt-5
+    model_id: "gpt-5.5"
+    quant_label: cloud-hosted
+    provider_surface: openai
+    sampling:
+      temperature: 0.0
+    equivalence_note: >-
+      fiz native provider lane through the official OpenAI API. This is a
+      managed frontier baseline, not an OpenRouter or harness comparison.
+
+  - id: fiz-openrouter-qwen3-6-27b
+    profile_id: fiz-openrouter-qwen3-6-27b
+    lane_type: fiz_provider_native
+    phases: [tb21-all]
+    resource_group: rg-openrouter-qwen36-27b
+    fizeau_env:
+      FIZEAU_PROVIDER: openrouter
+      FIZEAU_MODEL: "qwen/qwen3.6-27b"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: qwen3-6-27b
+    model_id: "qwen/qwen3.6-27b"
+    quant_label: cloud-hosted
+    provider_surface: openrouter
+    runtime: openrouter
+    sampling:
+      temperature: 0.6
+      reasoning: low
+      top_p: 0.95
+      top_k: 20
+    equivalence_note: >-
+      fiz native provider lane through OpenRouter's hosted Qwen3.6-27B.
+      Compare against local Sindri/Vidar Qwen lanes as an approximate same
+      family control, not as an identical quant/runtime control.
 
   - id: fiz-openrouter-claude-sonnet-4-6
     profile_id: fiz-openrouter-claude-sonnet-4-6
@@ -658,6 +758,12 @@ profile_inventory:
     - id: fiz-openrouter-gpt-5-4-mini
       path: scripts/benchmark/profiles/fiz-openrouter-gpt-5-4-mini.yaml
       used_in_phases: [canary, gpt-comparison]
+    - id: fiz-openai-gpt-5-5
+      path: scripts/benchmark/profiles/fiz-openai-gpt-5-5.yaml
+      used_in_phases: [tb21-all]
+    - id: fiz-openrouter-qwen3-6-27b
+      path: scripts/benchmark/profiles/fiz-openrouter-qwen3-6-27b.yaml
+      used_in_phases: [tb21-all]
     - id: vidar-qwen3-6-27b
       path: scripts/benchmark/profiles/vidar-qwen3-6-27b.yaml
       used_in_phases: [canary, local-qwen]

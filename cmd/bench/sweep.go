@@ -152,7 +152,8 @@ var sweepSubsetPaths = map[string]string{
 func cmdSweep(args []string) int {
 	fs := flagSet("sweep")
 	sweepFile := fs.String("sweep-plan", "", "Path to sweep plan YAML (default: scripts/benchmark/terminalbench-2-1-sweep.yaml)")
-	phaseID := fs.String("phase", "all", "Phase to run: canary, local-qwen, sonnet-comparison, gpt-comparison, or all")
+	phaseID := fs.String("phase", "all", "Phase to run: canary, local-qwen, sonnet-comparison, gpt-comparison, tb21-all, or all")
+	laneFilter := fs.String("lanes", "", "Comma-separated lane IDs to run from the selected phase(s)")
 	dryRun := fs.Bool("dry-run", false, "Print plan without launching Harbor or any matrix run")
 	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")
 	out := fs.String("out", "", "Output directory (default: benchmark-results/sweep-<timestamp> under work-dir)")
@@ -182,6 +183,11 @@ func cmdSweep(args []string) int {
 	}
 
 	phases, err := selectSweepPhases(plan, *phaseID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s sweep: %v\n", benchCommandName(), err)
+		return 2
+	}
+	phases, err = filterSweepPhasesByLanes(plan, phases, *laneFilter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s sweep: %v\n", benchCommandName(), err)
 		return 2
@@ -278,6 +284,9 @@ func printSweepDryRun(opts sweepRunOpts, phase sweepPhase) int {
 		cgs := opts.cgByLane[laneID]
 		laneOutDir := filepath.Join(opts.outDir, phase.ID, laneID)
 		matrixArgs := buildSweepMatrixArgs(opts, phase, lane, rg, subsetPath, laneOutDir, reps)
+		if jobs := sweepMatrixJobs(opts, rg); jobs > 1 {
+			matrixArgs = append(matrixArgs, "--jobs", fmt.Sprintf("%d", jobs))
+		}
 		cmd := append([]string{benchCommandName(), "matrix"}, matrixArgs...)
 
 		fmt.Printf("  Lane: %s\n", laneID)
@@ -286,7 +295,7 @@ func printSweepDryRun(opts sweepRunOpts, phase sweepPhase) int {
 		if len(cgs) > 0 {
 			fmt.Printf("    Comparison Groups:   %s\n", strings.Join(cgs, ", "))
 		} else {
-			fmt.Printf("    Comparison Groups:   (none — canary coverage only)\n")
+			fmt.Printf("    Comparison Groups:   (none)\n")
 		}
 		fmt.Printf("    Resource Group:      %s (provider=%s, max_concurrency=%d)\n",
 			rg.ID, rg.ProviderType, rg.MaxConcurrency)
@@ -352,10 +361,7 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 			defer func() { <-sem }()
 
 			laneOutDir := filepath.Join(opts.outDir, phase.ID, lane.ID)
-			jobs := 1
-			if rg.MaxConcurrency > 1 && opts.matrixJobsManaged > 1 {
-				jobs = opts.matrixJobsManaged
-			}
+			jobs := sweepMatrixJobs(opts, rg)
 			matrixArgs := buildSweepMatrixArgs(opts, phase, lane, rg, subsetPath, laneOutDir, reps)
 			if jobs > 1 {
 				matrixArgs = append(matrixArgs, "--jobs", fmt.Sprintf("%d", jobs))
@@ -399,6 +405,17 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 		}
 	}
 	return 0
+}
+
+func sweepMatrixJobs(opts sweepRunOpts, rg *sweepResourceGroup) int {
+	jobs := 1
+	if rg.MaxConcurrency > 1 && opts.matrixJobsManaged > 1 {
+		jobs = opts.matrixJobsManaged
+		if jobs > rg.MaxConcurrency {
+			jobs = rg.MaxConcurrency
+		}
+	}
+	return jobs
 }
 
 func printSweepPhaseSummary(phaseID string, outcomes []sweepLaneOutcome) {
@@ -620,6 +637,55 @@ func selectSweepPhases(plan *sweepPlan, phaseID string) ([]sweepPhase, error) {
 		ids = append(ids, p.ID)
 	}
 	return nil, fmt.Errorf("unknown phase %q; valid: %s", phaseID, strings.Join(ids, ", "))
+}
+
+func filterSweepPhasesByLanes(plan *sweepPlan, phases []sweepPhase, laneFilter string) ([]sweepPhase, error) {
+	laneFilter = strings.TrimSpace(laneFilter)
+	if laneFilter == "" {
+		return phases, nil
+	}
+
+	known := sweepLaneMap(plan)
+	wanted := map[string]bool{}
+	var ordered []string
+	for _, raw := range strings.Split(laneFilter, ",") {
+		id := strings.TrimSpace(raw)
+		if id == "" {
+			continue
+		}
+		if _, ok := known[id]; !ok {
+			return nil, fmt.Errorf("lane %q not found in sweep plan", id)
+		}
+		if !wanted[id] {
+			wanted[id] = true
+			ordered = append(ordered, id)
+		}
+	}
+	if len(ordered) == 0 {
+		return nil, fmt.Errorf("--lanes did not include any lane IDs")
+	}
+
+	filtered := make([]sweepPhase, 0, len(phases))
+	for _, phase := range phases {
+		next := phase
+		next.Lanes = nil
+		phaseLaneSet := map[string]bool{}
+		for _, laneID := range phase.Lanes {
+			phaseLaneSet[laneID] = true
+		}
+		for _, laneID := range ordered {
+			if phaseLaneSet[laneID] {
+				next.Lanes = append(next.Lanes, laneID)
+			}
+		}
+		if len(next.Lanes) > 0 {
+			filtered = append(filtered, next)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("none of --lanes %q are present in selected phase(s)", laneFilter)
+	}
+	return filtered, nil
 }
 
 func sweepRGMap(plan *sweepPlan) map[string]*sweepResourceGroup {
