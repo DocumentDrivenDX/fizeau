@@ -617,7 +617,7 @@ For a cheaper OpenAI GPT-5.5 validation slice, use the cheap OpenAI phase:
 ./benchmark --phase openai-cheap --matrix-jobs-managed 4
 ```
 
-This uses `scripts/benchmark/task-subset-tb21-openai-cheap.yaml`, a 17-task
+This uses `scripts/benchmark/task-subset-tb21-openai-cheap.yaml`, a 23-task
 subset selected from observed lower-cost GPT-5.5 runs plus Qwen3.6 token-count
 proxies priced at GPT-5.5 rates. It is for affordable trend checks, not
 full-suite claims.

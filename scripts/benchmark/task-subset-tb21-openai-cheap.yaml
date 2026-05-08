@@ -6,7 +6,7 @@
 # selection uses OpenRouter Qwen3.6 27B token counts priced at GPT-5.5 rates:
 # input=$5/MTok, output=$30/MTok. Avoid known multi-dollar cells.
 #
-# Expected cost at 3 reps, from observed/proxy averages: roughly $15-25. This
+# Expected cost at 3 reps, from observed/proxy averages: roughly $25-35. This
 # is an estimate, not a cap; use --per-run-budget-usd for hard per-cell limits.
 
 version: "1"
@@ -31,6 +31,9 @@ tasks:
     observed_avg_cost_usd: 0.180
   - id: git-leak-recovery
     observed_avg_cost_usd: 0.205
+    qwen36_projected_openai_cost_usd: 0.202
+  - id: fix-git
+    qwen36_projected_openai_cost_usd: 0.234
   - id: multi-source-data-merger
     observed_avg_cost_usd: 0.232
     qwen36_projected_openai_cost_usd: 0.371
@@ -38,20 +41,30 @@ tasks:
     observed_avg_cost_usd: 0.252
   - id: modernize-scientific-stack
     qwen36_projected_openai_cost_usd: 0.268
+  - id: distribution-search
+    qwen36_projected_openai_cost_usd: 0.271
   - id: bn-fit-modify
     observed_avg_cost_usd: 0.324
   - id: pytorch-model-recovery
     observed_avg_cost_usd: 0.346
+  - id: hf-model-inference
+    qwen36_projected_openai_cost_usd: 0.373
   - id: merge-diff-arc-agi-task
     qwen36_projected_openai_cost_usd: 0.336
   - id: headless-terminal
     observed_avg_cost_usd: 0.422
   - id: constraints-scheduling
     qwen36_projected_openai_cost_usd: 0.582
+  - id: sqlite-with-gcov
+    qwen36_projected_openai_cost_usd: 0.447
   - id: extract-elf
     observed_avg_cost_usd: 0.614
   - id: configure-git-webserver
     observed_avg_cost_usd: 0.754
     qwen36_projected_openai_cost_usd: 0.533
+  - id: kv-store-grpc
+    qwen36_projected_openai_cost_usd: 0.697
+  - id: nginx-request-logging
+    qwen36_projected_openai_cost_usd: 0.826
   - id: git-multibranch
     observed_avg_cost_usd: 0.868
