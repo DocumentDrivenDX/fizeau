@@ -141,6 +141,13 @@ if [[ -z "${!API_KEY_ENV:-}" ]]; then
   echo "${API_KEY_ENV} is required for --provider ${PROVIDER}" >&2
   exit 1
 fi
+if [[ "${PROVIDER}" = "openai" && "${!API_KEY_ENV}" == sk-or-v1* ]]; then
+  echo "OPENAI_API_KEY contains an OpenRouter key (sk-or-v1...). Use a native OpenAI API key for --provider openai." >&2
+  exit 1
+fi
+if [[ "${PROVIDER}" = "openrouter" && "${!API_KEY_ENV}" != sk-or-v1* ]]; then
+  echo "warning: OPENROUTER_API_KEY does not look like an OpenRouter key (sk-or-v1...)" >&2
+fi
 
 if [[ -z "${OUT}" ]]; then
   OUT="${REPO_ROOT}/benchmark-results/gpt55-${PROVIDER}-${PHASE}-$(date -u +%Y%m%dT%H%M%SZ)"
