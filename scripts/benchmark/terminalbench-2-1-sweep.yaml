@@ -803,18 +803,14 @@ profile_inventory:
         Verified 2026-05-07: /v1/models lists qwen3.6-27b-autoround at
         http://sindri:8020/v1.
     - id: terminalbench-2-1-canary
-      path: scripts/benchmark/task-subset-tb21-canary.yaml   # to be created
-      status: missing
-      action_needed: >-
-        Create a 3-5 task canary subset from the TB-2.1 task catalog
-        (terminal-bench/terminal-bench-2-1). Use the same selection criteria
-        as the existing TB-2.0 canary: small, deterministic, covers at least
-        one SE task, one data-processing task, and preferably a quick smoke
-        task. Do NOT reuse task-subset-v2.yaml — that is a TB-2.0 artifact.
+      path: scripts/benchmark/task-subset-tb21-canary.yaml
+      status: active
+      notes: >-
+        Small deterministic TB-2.1 canary subset covering easy smoke work and
+        representative software-engineering/data-processing tasks.
     - id: terminalbench-2-1-full
-      path: scripts/benchmark/task-subset-tb21-full.yaml     # to be created
-      status: missing
-      action_needed: >-
-        Generate a full or expanded TB-2.1 subset from the terminal-bench/terminal-bench-2-1
-        catalog using the same stratified selection criteria as task-subset-v2.yaml.
-        File separately from the TB-2.0 subset; do not overwrite or relabel it.
+      path: scripts/benchmark/task-subset-tb21-full.yaml
+      status: active
+      notes: >-
+        Full TB-2.1 subset used for local-qwen, sonnet-comparison, and
+        gpt-comparison phases.

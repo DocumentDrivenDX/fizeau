@@ -255,7 +255,7 @@ func runExternalTermbench(opts externalRunOptions) int {
 	if len(report.Notes) == 0 {
 		report.Notes = []string{
 			"Reward fields are populated only when an upstream Harbor verifier has written /logs/verifier/reward.txt into the per-task output directory.",
-			"To complete grading, run: scripts/benchmark/run_benchmark.sh after this command (Docker required).",
+			"For current TerminalBench 2.1 grading, use the benchmark sweep entrypoint: ./benchmark --phase canary|full.",
 		}
 	}
 

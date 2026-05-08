@@ -5,7 +5,7 @@
   "dataset": "terminal-bench@2.0",
   "dataset_repo": "https://github.com/laude-institute/terminal-bench-2",
   "dataset_commit": "53ff2b87d621bdb97b455671f2bd9728b7d86c11",
-  "selection_rule": "Same selection as scripts/benchmark/task-subset-v2.yaml — filtered TB2 tasks with fixed category quotas (5/3/2/2/2/1) sorted by difficulty then ID. Use this JSON form for cmd/bench --external=termbench; the YAML form is preserved for the evidence-grade comparison script.",
+  "selection_rule": "Historical TB2 evidence-grade selection: filtered TB2 tasks with fixed category quotas (5/3/2/2/2/1) sorted by difficulty then ID. Use this JSON form for cmd/bench --external=termbench.",
   "tasks": [
     {"id": "cancel-async-tasks",        "category": "software-engineering",   "difficulty": "hard",   "rationale": "Async/debug-heavy code fix; exercises read, edit, and test loops."},
     {"id": "build-pmars",               "category": "software-engineering",   "difficulty": "medium", "rationale": "Build-oriented task that stresses shell discipline and targeted fixes."},

@@ -1,8 +1,8 @@
 # TerminalBench 2.1 — full sweep subset
 #
 # Used in phases: local-qwen, sonnet-comparison, gpt-comparison.
-# Stratified by category using fixed quotas analogous to task-subset-v2.yaml
-# (the TB-2.0 evidence-grade subset) but drawn from the TB-2.1 catalog.
+# Stratified by category using fixed quotas analogous to the former TB-2.0
+# evidence-grade subset, but drawn from the TB-2.1 catalog.
 #
 # Dataset: terminal-bench/terminal-bench-2-1
 # Spec:    terminalbench-2.1-sweep-plan-2026-05-07 (phases: local-qwen, sonnet-comparison, gpt-comparison)
