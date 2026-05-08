@@ -556,12 +556,16 @@ OPENROUTER_API_KEY=sk-or-... \
 
 OPENROUTER_API_KEY=sk-or-... \
   scripts/benchmark/run_openrouter_qwen36_sweep.sh
+
+OPENROUTER_API_KEY=sk-or-... \
+  scripts/benchmark/run_openrouter_qwen36_sweep.sh --preferred
 ```
 
 The default model is `qwen/qwen3.6-27b` (`fiz-openrouter-qwen3-6-27b`), with
 OpenRouter pricing captured in
-`scripts/benchmark/profiles/fiz-openrouter-qwen3-6-27b.yaml`. The full run uses
-the same 15-task TB-2.1 subset and 3 reps as the other full sweep lanes.
+`scripts/benchmark/profiles/fiz-openrouter-qwen3-6-27b.yaml`. The default
+`--full` run uses all 89 TB-2.1 tasks and 3 reps. Use `--preferred` for the
+older 15-task stratified subset.
 
 The raw Harbor Claude/Codex/pi/opencode adapters remain diagnostics only. The
 official claims use `fiz-*` lanes routed through `FizeauAgent`, not native

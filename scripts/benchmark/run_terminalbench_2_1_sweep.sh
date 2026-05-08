@@ -31,7 +31,7 @@ usage() {
 Usage: ./benchmark [flags]
 
 Flags:
-  --phase canary|local-qwen|sonnet-comparison|gpt-comparison|all
+  --phase canary|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all
   --out <dir>
   --tasks-dir <dir>
   --sweep-plan <file>
@@ -93,7 +93,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${PHASE}" in
-  canary|local-qwen|sonnet-comparison|gpt-comparison|all) ;;
+  canary|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all) ;;
   *)
     echo "unknown --phase ${PHASE}" >&2
     exit 2 ;;
@@ -300,6 +300,7 @@ subset_for_phase() {
   case "$1" in
     canary) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-canary.yaml" ;;
     local-qwen|sonnet-comparison|gpt-comparison) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-full.yaml" ;;
+    tb21-all) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-all.yaml" ;;
     *) return 1 ;;
   esac
 }

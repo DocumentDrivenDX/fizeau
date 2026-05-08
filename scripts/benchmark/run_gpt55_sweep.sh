@@ -16,7 +16,7 @@ PROVIDER="${GPT55_PROVIDER:-openai}"
 PHASE="full"
 OUT=""
 JOBS="${GPT55_MATRIX_JOBS:-16}"
-BUDGET_USD="${GPT55_BUDGET_USD:-50}"
+BUDGET_USD="${GPT55_BUDGET_USD:-250}"
 PER_RUN_BUDGET_USD="${GPT55_PER_RUN_BUDGET_USD:-8}"
 FORCE_RERUN=0
 DRY_RUN=0
@@ -29,10 +29,13 @@ Usage: scripts/benchmark/run_gpt55_sweep.sh [flags]
 
 Flags:
   --provider openai|openrouter
-  --phase canary|full       Run the 3-task canary or 15-task full subset (default: full)
+  --phase canary|preferred|full
+                            Run canary, 15-task preferred subset, or all 89 tasks (default: full)
+  --preferred               Alias for --phase preferred
+  --full                    Alias for --phase full
   --out <dir>               Output directory
   --jobs <n>                Concurrent TerminalBench cells for this lane (default: 16)
-  --budget-usd <n>          Total matrix budget cap (default: 50)
+  --budget-usd <n>          Total matrix budget cap (default: 250)
   --per-run-budget-usd <n>  Per-cell budget cap (default: 8)
   --force-rerun             Rerun cells even if reports already exist
   --dry-run                 Build/prepare and print plan only
@@ -58,6 +61,10 @@ while [[ $# -gt 0 ]]; do
       PHASE="$2"; shift 2 ;;
     --phase=*)
       PHASE="${1#*=}"; shift ;;
+    --preferred)
+      PHASE="preferred"; shift ;;
+    --full)
+      PHASE="full"; shift ;;
     --out)
       OUT="$2"; shift 2 ;;
     --out=*)
@@ -126,13 +133,19 @@ case "${PHASE}" in
     ESTIMATE_HIGH="8"
     ;;
   full)
+    BENCHMARK_PHASE="tb21-all"
+    ESTIMATE_CELLS=267
+    ESTIMATE_LOW="60"
+    ESTIMATE_HIGH="240"
+    ;;
+  preferred)
     BENCHMARK_PHASE="gpt-comparison"
     ESTIMATE_CELLS=45
     ESTIMATE_LOW="10"
     ESTIMATE_HIGH="40"
     ;;
   *)
-    echo "unknown --phase ${PHASE}; use canary or full" >&2
+    echo "unknown --phase ${PHASE}; use canary, preferred, or full" >&2
     exit 2
     ;;
 esac
@@ -175,9 +188,16 @@ phases:
       - ${PROFILE_ID}
 
   - id: gpt-comparison
-    description: Fiz native/provider GPT-5.5 ${PROVIDER} full subset.
+    description: Fiz native/provider GPT-5.5 ${PROVIDER} preferred 15-task subset.
     reps: 3
     subset: terminalbench-2-1-full
+    lanes:
+      - ${PROFILE_ID}
+
+  - id: tb21-all
+    description: Fiz native/provider GPT-5.5 ${PROVIDER} full 89-task suite.
+    reps: 3
+    subset: terminalbench-2-1-all
     lanes:
       - ${PROFILE_ID}
 

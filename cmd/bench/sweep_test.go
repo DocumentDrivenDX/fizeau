@@ -165,6 +165,7 @@ func TestSweepResolveSubsetPathKnownIDs(t *testing.T) {
 	cases := map[string]string{
 		"terminalbench-2-1-canary": "scripts/benchmark/task-subset-tb21-canary.yaml",
 		"terminalbench-2-1-full":   "scripts/benchmark/task-subset-tb21-full.yaml",
+		"terminalbench-2-1-all":    "scripts/benchmark/task-subset-tb21-all.yaml",
 	}
 	for id, rel := range cases {
 		got := sweepResolveSubsetPath(wd, id)
@@ -222,6 +223,28 @@ func TestTB21FullSubsetLoadsAndHasTasks(t *testing.T) {
 	}
 	if len(full.Tasks) < len(canary.Tasks) {
 		t.Errorf("full subset has %d tasks, fewer than canary %d", len(full.Tasks), len(canary.Tasks))
+	}
+}
+
+func TestTB21AllSubsetLoadsAndHasAllCatalogTasks(t *testing.T) {
+	wd := benchRepoRoot(t)
+	path := filepath.Join(wd, "scripts/benchmark/task-subset-tb21-all.yaml")
+	s, err := loadTermbenchSubset(path)
+	if err != nil {
+		t.Fatalf("loadTermbenchSubset(all): %v", err)
+	}
+	if len(s.Tasks) != 89 {
+		t.Fatalf("all subset has %d tasks, want 89", len(s.Tasks))
+	}
+	seen := map[string]bool{}
+	for _, task := range s.Tasks {
+		if task.ID == "" {
+			t.Fatal("all subset has task with empty ID")
+		}
+		if seen[task.ID] {
+			t.Fatalf("all subset has duplicate task ID %q", task.ID)
+		}
+		seen[task.ID] = true
 	}
 }
 

@@ -146,6 +146,7 @@ const defaultSweepPlanPath = "scripts/benchmark/terminalbench-2-1-sweep.yaml"
 var sweepSubsetPaths = map[string]string{
 	"terminalbench-2-1-canary": "scripts/benchmark/task-subset-tb21-canary.yaml",
 	"terminalbench-2-1-full":   "scripts/benchmark/task-subset-tb21-full.yaml",
+	"terminalbench-2-1-all":    "scripts/benchmark/task-subset-tb21-all.yaml",
 }
 
 func cmdSweep(args []string) int {
