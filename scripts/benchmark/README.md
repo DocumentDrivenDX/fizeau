@@ -46,7 +46,7 @@ Local provider lanes default to non-empty placeholder keys for local endpoints.
 ## Main Phases
 
 - `canary`: 3 small tasks to prove selected lanes start and write artifacts.
-- `openai-cheap`: 23 lower-cost GPT-5.5 tasks at `k=5`, selected from observed
+- `openai-cheap`: 35 lower-cost GPT-5.5 tasks at `k=5`, selected from observed
   GPT-5.5 costs plus Qwen3.6 token-count proxies.
 - `full` / `tb21-all`: all 89 TerminalBench 2.1 tasks.
 - `qwen36-gpt55-full`: full run over OpenAI GPT-5.5, OpenRouter Qwen3.6 27B,

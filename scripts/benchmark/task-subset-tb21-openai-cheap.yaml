@@ -6,7 +6,7 @@
 # selection uses OpenRouter Qwen3.6 27B token counts priced at GPT-5.5 rates:
 # input=$5/MTok, output=$30/MTok. Avoid known multi-dollar cells.
 #
-# Expected cost at 5 reps, from observed/proxy averages: roughly $40-60. This
+# Expected cost at 5 reps, from observed/proxy averages: roughly $60-85. This
 # is an estimate, not a cap; use --per-run-budget-usd for hard per-cell limits.
 
 version: "1"
@@ -14,7 +14,7 @@ captured: "2026-05-08"
 dataset: terminal-bench/terminal-bench-2-1
 dataset_repo: https://github.com/laude-institute/terminal-bench-2-1
 dataset_commit: "harbor-registry"
-selection_rule: "observed native OpenAI GPT-5.5 average cost <= ~$0.90 per run where available; otherwise OpenRouter Qwen3.6 27B token count projected at GPT-5.5 pricing <= ~$0.60 per run; exclude known multi-dollar cells"
+selection_rule: "observed native OpenAI GPT-5.5 average cost <= ~$0.90 per run where available; otherwise OpenRouter Qwen3.6 27B token count projected at GPT-5.5 pricing <= ~$1.00 per run; exclude known multi-dollar cells"
 
 tasks:
   - id: prove-plus-comm
@@ -68,3 +68,27 @@ tasks:
     qwen36_projected_openai_cost_usd: 0.826
   - id: git-multibranch
     observed_avg_cost_usd: 0.868
+  - id: reshard-c4-data
+    qwen36_projected_openai_cost_usd: 0.020
+  - id: dna-assembly
+    qwen36_projected_openai_cost_usd: 0.021
+  - id: regex-chess
+    qwen36_projected_openai_cost_usd: 0.024
+  - id: raman-fitting
+    qwen36_projected_openai_cost_usd: 0.032
+  - id: qemu-alpine-ssh
+    qwen36_projected_openai_cost_usd: 0.401
+  - id: break-filter-js-from-html
+    qwen36_projected_openai_cost_usd: 0.563
+  - id: torch-tensor-parallelism
+    qwen36_projected_openai_cost_usd: 0.577
+  - id: vulnerable-secret
+    qwen36_projected_openai_cost_usd: 0.625
+  - id: polyglot-c-py
+    qwen36_projected_openai_cost_usd: 0.654
+  - id: sqlite-db-truncate
+    qwen36_projected_openai_cost_usd: 0.902
+  - id: code-from-image
+    qwen36_projected_openai_cost_usd: 0.918
+  - id: financial-document-processor
+    qwen36_projected_openai_cost_usd: 0.948
