@@ -4,9 +4,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime/debug"
 
 	"github.com/DocumentDrivenDX/fizeau/agentcli"
+	"github.com/DocumentDrivenDX/fizeau/internal/buildinfo"
 )
 
 // Version info set via -ldflags.
@@ -17,12 +17,12 @@ var (
 )
 
 func main() {
-	version := effectiveVersion(Version)
+	bi := buildinfo.Read(Version, GitCommit, BuildTime)
 	cmd := agentcli.MountCLI(
 		agentcli.WithStdin(os.Stdin),
 		agentcli.WithStdout(os.Stdout),
 		agentcli.WithStderr(os.Stderr),
-		agentcli.WithVersion(version, BuildTime, GitCommit),
+		agentcli.WithVersion(bi.Version, bi.Built, bi.Commit),
 	)
 	args := os.Args[1:]
 	if agentcli.NeedsLegacyPassthrough(args) {
@@ -38,16 +38,8 @@ func main() {
 	}
 }
 
+// effectiveVersion returns version from ldflags when set, otherwise falls back
+// to the module version from runtime build info.
 func effectiveVersion(defaultVersion string) string {
-	if defaultVersion != "" && defaultVersion != "dev" {
-		return defaultVersion
-	}
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return defaultVersion
-	}
-	if info.Main.Version == "" || info.Main.Version == "(devel)" {
-		return defaultVersion
-	}
-	return info.Main.Version
+	return buildinfo.Read(defaultVersion, "", "").Version
 }

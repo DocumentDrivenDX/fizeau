@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau"
+	"github.com/DocumentDrivenDX/fizeau/internal/buildinfo"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
@@ -2254,10 +2255,36 @@ func shouldCheckDrift(source string) bool {
 // cmdVersion shows version with update availability check.
 func cmdVersion(args []string) int {
 	checkOnly := false
+	jsonFlag := false
 	for _, arg := range args {
-		if arg == "--check-only" || arg == "-c" {
+		switch arg {
+		case "--check-only", "-c":
 			checkOnly = true
+		case "--json":
+			jsonFlag = true
 		}
+	}
+
+	if jsonFlag {
+		bi := buildinfo.Read(Version, GitCommit, BuildTime)
+		type versionJSON struct {
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+			Dirty   bool   `json:"dirty"`
+			Built   string `json:"built"`
+		}
+		out, err := json.Marshal(versionJSON{
+			Version: bi.Version,
+			Commit:  bi.Commit,
+			Dirty:   bi.Dirty,
+			Built:   bi.Built,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			return 1
+		}
+		fmt.Println(string(out))
+		return 0
 	}
 
 	fmt.Printf("%s %s (commit %s, built %s)\n", productinfo.BinaryName, Version, GitCommit, BuildTime)

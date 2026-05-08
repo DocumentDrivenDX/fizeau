@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/DocumentDrivenDX/fizeau/agentcli"
+	"github.com/DocumentDrivenDX/fizeau/internal/buildinfo"
 )
 
 // TestRouteStatusCommandJSON verifies that fiz route-status --help documents
@@ -103,6 +104,39 @@ func TestRouteStatusJSONOutputSchema(t *testing.T) {
 func TestEffectiveVersionKeepsStampedVersion(t *testing.T) {
 	if got := effectiveVersion("v1.2.3"); got != "v1.2.3" {
 		t.Fatalf("effectiveVersion(stamped) = %q, want stamped version", got)
+	}
+}
+
+func TestEffectiveVersionDevFallback(t *testing.T) {
+	// "dev" is the sentinel for missing ldflags; the function must return a
+	// non-empty string — either "dev" (no VCS info) or a module version.
+	got := effectiveVersion("dev")
+	if got == "" {
+		t.Fatal("effectiveVersion(dev) returned empty string")
+	}
+}
+
+// TestVersionFlagOutputsNonEmptyCommit verifies that when buildinfo.Read finds
+// a VCS commit (as it does during go run from a git checkout), the --version
+// flag outputs it rather than an empty field. Uses buildinfo.Read directly to
+// simulate what main() does — test binaries may not embed VCS info, so the
+// test skips when no commit is available.
+func TestVersionFlagOutputsNonEmptyCommit(t *testing.T) {
+	bi := buildinfo.Read("dev", "", "")
+	if bi.Commit == "" {
+		t.Skip("no VCS commit info in test binary; skipping (pass with go run)")
+	}
+
+	var stdout bytes.Buffer
+	cmd := agentcli.MountCLI(
+		agentcli.WithStdout(&stdout),
+		agentcli.WithVersion(bi.Version, bi.Built, bi.Commit),
+	)
+	cmd.SetArgs([]string{"--version"})
+	_ = cmd.Execute()
+	out := stdout.String()
+	if strings.Contains(out, "commit ,") {
+		t.Errorf("--version output has empty commit field: %q", out)
 	}
 }
 

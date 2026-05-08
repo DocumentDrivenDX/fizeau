@@ -100,6 +100,7 @@ func TestCLIMainDoesNotImportOrCallInternalCoreRun(t *testing.T) {
 // API. Adding to this list is a deliberate boundary widening — first prove
 // there is no public re-export that would do.
 var approvedProductionInternalImports = []string{
+	"github.com/DocumentDrivenDX/fizeau/internal/buildinfo",
 	"github.com/DocumentDrivenDX/fizeau/internal/config",
 	"github.com/DocumentDrivenDX/fizeau/internal/corpus",
 	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog",
