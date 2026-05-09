@@ -2,6 +2,12 @@
 # Harbor agent fixed at fiz; FIZEAU_HARNESS=codex selects the delegated harness
 # execution path.
 id: fiz-harness-codex-gpt-5-4-mini
+metadata:
+  model_family: gpt-5-mini
+  model_id: openai/gpt-5.4-mini
+  quant_label: cloud-hosted
+  provider_surface: codex-subscription
+
 provider:
   type: openrouter
   model: gpt-5.4-mini

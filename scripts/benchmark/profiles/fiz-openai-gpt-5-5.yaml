@@ -1,5 +1,12 @@
 # fiz provider lane through the native OpenAI API to GPT-5.5.
 id: fiz-openai-gpt-5-5
+metadata:
+  model_family: gpt-5
+  model_id: gpt-5.5
+  quant_label: cloud-hosted
+  provider_surface: openai
+  server: openai
+
 provider:
   type: openai
   model: gpt-5.5

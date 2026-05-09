@@ -2,6 +2,12 @@
 # keeps the Harbor installed agent fixed at fiz; FIZEAU_HARNESS=claude selects
 # the delegated harness execution path.
 id: fiz-harness-claude-sonnet-4-6
+metadata:
+  model_family: claude-sonnet-4
+  model_id: anthropic/claude-sonnet-4.6
+  quant_label: cloud-hosted
+  provider_surface: claude-code-subscription
+
 provider:
   type: openrouter
   model: claude-sonnet-4-6

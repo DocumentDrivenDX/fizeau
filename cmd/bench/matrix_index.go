@@ -58,6 +58,7 @@ type matrixIndexSummaryRow struct {
 type profileProviderInfo struct {
 	Provider string
 	Model    string
+	Metadata profile.Metadata
 }
 
 func cmdMatrixIndex(args []string) int {
@@ -90,7 +91,20 @@ func cmdMatrixIndex(args []string) int {
 		outDir = resolveMaybeAbs(wd, outDir)
 	}
 
-	profiles, _ := loadMatrixIndexProfiles(filepath.Join(wd, defaultProfilesDir))
+	profilesDir := filepath.Join(wd, defaultProfilesDir)
+	profiles, _ := loadMatrixIndexProfiles(profilesDir)
+	if canonicalRoot != "" {
+		// Snapshot the profile catalog into <canonical>/profiles/. This is the
+		// point-in-time source of truth for what each profile_id meant when
+		// these cells were collected; reporting tools join on profile_id to
+		// project arbitrary dimensions (server, quant_label, runtime, etc.).
+		if n, err := snapshotProfileCatalog(canonicalRoot, profilesDir); err != nil {
+			fmt.Fprintf(os.Stderr, "%s matrix-index: snapshot profiles: %v\n", benchCommandName(), err)
+			return 1
+		} else {
+			fmt.Fprintf(os.Stderr, "matrix-index: snapshotted %d profiles to %s/profiles/\n", n, canonicalRoot)
+		}
+	}
 	rows, err := collectMatrixIndexRows(scanRoot, canonicalRoot, *copyCells, *fizVersion, *dataset, profiles)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s matrix-index: %v\n", benchCommandName(), err)
@@ -135,7 +149,11 @@ func loadMatrixIndexProfiles(dir string) (map[string]profileProviderInfo, error)
 		return out, err
 	}
 	for _, p := range profiles {
-		out[p.ID] = profileProviderInfo{Provider: string(p.Provider.Type), Model: p.Provider.Model}
+		out[p.ID] = profileProviderInfo{
+			Provider: string(p.Provider.Type),
+			Model:    p.Provider.Model,
+			Metadata: p.Metadata,
+		}
 	}
 	return out, nil
 }
@@ -190,10 +208,79 @@ func collectMatrixIndexRows(root, canonicalRoot string, copyCells bool, fallback
 				if err := copyMatrixIndexCell(rows[i].SourcePath, rows[i].CanonicalPath); err != nil {
 					return nil, err
 				}
+				// Stamp fiz_tools_version on historical reports that predate
+				// the field. Other dimensions (server, model_family, quant,
+				// runtime) are intentionally NOT stamped here — they live in
+				// the snapshotted profile catalog at <canonical>/profiles/
+				// and are joined on profile_id at query/index time.
+				if err := backfillFizToolsVersion(rows[i].CanonicalPath); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
 	return rows, nil
+}
+
+// backfillFizToolsVersion stamps fiz_tools_version=1 on historical canonical
+// reports that predate the field. Bump the constant in internal/fiztools when
+// agent behavior changes; do NOT retroactively bump historical cells.
+func backfillFizToolsVersion(reportPath string) error {
+	raw, err := os.ReadFile(reportPath) // #nosec G304 -- canonical path under operator-supplied root
+	if err != nil {
+		return err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil
+	}
+	if v, ok := doc["fiz_tools_version"]; ok && v != nil {
+		if f, isFloat := v.(float64); isFloat && f > 0 {
+			return nil
+		}
+	}
+	doc["fiz_tools_version"] = 1
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(reportPath, out, 0o600)
+}
+
+// snapshotProfileCatalog copies all profile YAMLs into <canonical>/profiles/.
+// This is the point-in-time catalog that aggregation/reporting tools join
+// against on profile_id, so the canonical cells tree is self-contained and
+// independent of subsequent mutations to scripts/benchmark/profiles/.
+func snapshotProfileCatalog(canonicalRoot, sourceProfilesDir string) (int, error) {
+	dest := filepath.Join(canonicalRoot, "profiles")
+	if err := os.MkdirAll(dest, 0o750); err != nil {
+		return 0, err
+	}
+	entries, err := os.ReadDir(sourceProfilesDir)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		src := filepath.Join(sourceProfilesDir, e.Name())
+		dst := filepath.Join(dest, e.Name())
+		raw, err := os.ReadFile(src) // #nosec G304 -- source is operator-controlled profiles dir
+		if err != nil {
+			return count, err
+		}
+		if err := os.WriteFile(dst, raw, 0o600); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, nil
 }
 
 func matrixIndexRowFromReport(path string, report matrixRunReport, fallbackVersion, dataset string, profiles map[string]profileProviderInfo) matrixIndexRow {
@@ -298,7 +385,11 @@ func assignMatrixIndexRunIndexes(rows []matrixIndexRow) {
 }
 
 func matrixIndexCanonicalReportPath(root string, row matrixIndexRow) string {
-	return filepath.Join(root, "cells", row.Dataset, slugPath(row.TaskID), slugPath(row.Provider), slugPath(row.Model), slugPath(row.Harness), fmt.Sprintf("rep-%03d", row.RunIndex), matrixReportName)
+	// Canonical layout: <root>/cells/<dataset>/<task>/<profile_id>/rep-NNN/report.json
+	// profile_id is the primary key; per-cell projection dimensions
+	// (server, model_family, quant_label, runtime, fiz_tools_version) are
+	// stamped on report.json for index-time grouping.
+	return filepath.Join(root, "cells", row.Dataset, slugPath(row.TaskID), slugPath(row.ProfileID), fmt.Sprintf("rep-%03d", row.RunIndex), matrixReportName)
 }
 
 func slugPath(value string) string {

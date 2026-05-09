@@ -1,5 +1,12 @@
 # fiz provider lane through OpenRouter to Claude Sonnet 4.6.
 id: fiz-openrouter-claude-sonnet-4-6
+metadata:
+  model_family: claude-sonnet-4
+  model_id: anthropic/claude-sonnet-4.6
+  quant_label: cloud-hosted
+  provider_surface: openrouter
+  server: openrouter
+
 provider:
   type: openrouter
   model: anthropic/claude-sonnet-4.6

@@ -1,6 +1,16 @@
 # Qwen3.6-27B MLX via Rapid-MLX on grendel (port 8000).
 # Verified /v1/models on 2026-05-07: mlx-community/Qwen3.6-27B-8bit.
 id: grendel-rapid-mlx
+metadata:
+  model_family: qwen3-6-27b
+  model_id: mlx-community/Qwen3.6-27B-8bit
+  quant_label: mlx-8bit
+  provider_surface: grendel-rapid-mlx
+  runtime: rapid-mlx
+  hardware_label: grendel-apple-m
+  endpoint: http://grendel:8000/v1
+  server: grendel
+
 provider:
   type: rapid-mlx
   model: mlx-community/Qwen3.6-27B-8bit

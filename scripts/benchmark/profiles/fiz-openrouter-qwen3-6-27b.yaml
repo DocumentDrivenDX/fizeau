@@ -2,6 +2,14 @@
 # Pricing and model id verified from OpenRouter /api/v1/models on 2026-05-08.
 # Qwen3 thinking-mode recommended sampling: T=0.6, top_p=0.95, top_k=20.
 id: fiz-openrouter-qwen3-6-27b
+metadata:
+  model_family: qwen3-6-27b
+  model_id: qwen/qwen3.6-27b
+  quant_label: cloud-hosted
+  provider_surface: openrouter
+  runtime: openrouter
+  server: openrouter
+
 provider:
   type: openrouter
   model: qwen/qwen3.6-27b

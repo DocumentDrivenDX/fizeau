@@ -23,6 +23,7 @@ import (
 
 	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	"github.com/DocumentDrivenDX/fizeau/internal/fiztools"
 )
 
 const (
@@ -36,6 +37,7 @@ type matrixRunReport struct {
 	ProfileID               string                   `json:"profile_id"`
 	ProfilePath             string                   `json:"profile_path"`
 	ProfileSnapshot         string                   `json:"profile_snapshot,omitempty"`
+	FizToolsVersion         int                      `json:"fiz_tools_version"`
 	AdapterModule           string                   `json:"adapter_module"`
 	HarborAgent             string                   `json:"harbor_agent"`
 	Rep                     int                      `json:"rep"`
@@ -390,6 +392,7 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 		ProfileID:       opts.profile.ID,
 		ProfilePath:     opts.profile.Path,
 		ProfileSnapshot: opts.profile.Versioning.Snapshot,
+		FizToolsVersion: fiztools.Version,
 		AdapterModule:   matrixAdapterModule(opts.harness),
 		HarborAgent:     filepath.ToSlash(filepath.Join("scripts", "benchmark", "harness_adapters", moduleFileName(opts.harness))) + ":Agent",
 		Rep:             opts.rep,
@@ -1012,13 +1015,16 @@ func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, re
 	if cellsRoot == "" {
 		return matrixTupleDir(outDir, harness, p.ID, rep, taskID)
 	}
+	// Canonical layout: <cells>/<dataset>/<task>/<profile_id>/rep-NNN/
+	// profile_id uniquely encodes (server, runtime, model, quant, sampling)
+	// by construction, so it's the natural primary key. Per-cell projection
+	// dimensions (server, model_family, quant_label, runtime, harness_class,
+	// fiz_tools_version) are stamped on report.json for index-time grouping.
 	return filepath.Join(
 		cellsRoot,
 		"terminal-bench-2-1",
 		safeMatrixSegment(taskID),
-		safeMatrixSegment(fizeauProviderEnv(p)),
-		safeMatrixSegment(p.Provider.Model),
-		safeMatrixSegment(matrixEffectiveHarness(harness, p.ID)),
+		safeMatrixSegment(p.ID),
 		fmt.Sprintf("rep-%03d", rep),
 	)
 }

@@ -94,9 +94,29 @@ type Versioning struct {
 	Snapshot   string `yaml:"snapshot"`
 }
 
+// Metadata captures the orthogonal benchmark dimensions a profile occupies in
+// the multi-dimensional cells tensor: server, runtime, model family, quant,
+// etc. Stamped on every report.json so cells can be projected/grouped by any
+// of these axes at index time without re-loading profiles.
+//
+// All fields are optional; profiles that don't declare a metadata block (e.g.
+// noop / smoke profiles) get empty strings, which the indexer treats as the
+// "unknown" bucket.
+type Metadata struct {
+	Server          string `yaml:"server,omitempty"`
+	ModelFamily     string `yaml:"model_family,omitempty"`
+	ModelID         string `yaml:"model_id,omitempty"`
+	QuantLabel      string `yaml:"quant_label,omitempty"`
+	ProviderSurface string `yaml:"provider_surface,omitempty"`
+	Runtime         string `yaml:"runtime,omitempty"`
+	HardwareLabel   string `yaml:"hardware_label,omitempty"`
+	Endpoint        string `yaml:"endpoint,omitempty"`
+}
+
 // Profile is the in-memory shape of a frozen v1 profile YAML.
 type Profile struct {
 	ID         string     `yaml:"id"`
+	Metadata   Metadata   `yaml:"metadata,omitempty"`
 	Provider   Provider   `yaml:"provider"`
 	Pricing    Pricing    `yaml:"pricing"`
 	Limits     Limits     `yaml:"limits"`

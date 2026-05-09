@@ -108,7 +108,7 @@ func TestMatrixTupleDirForCanonicalCellsRoot(t *testing.T) {
 		},
 	}
 	got := matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 2, "break-filter-js-from-html")
-	want := filepath.Join(cellsRoot, "terminal-bench-2-1", "break-filter-js-from-html", "openrouter", "qwen_qwen3.6-27b", "fiz", "rep-002")
+	want := filepath.Join(cellsRoot, "terminal-bench-2-1", "break-filter-js-from-html", "fiz-openrouter-qwen3-6-27b", "rep-002")
 	if got != want {
 		t.Fatalf("canonical cell dir = %q, want %q", got, want)
 	}

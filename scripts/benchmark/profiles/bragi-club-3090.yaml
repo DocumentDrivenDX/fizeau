@@ -1,6 +1,16 @@
 # Qwen3.6-27B AutoRound via club-3090 on bragi (vLLM-compatible, port 8020).
 # Verified /v1/models on 2026-05-07: qwen3.6-27b-autoround.
 id: bragi-club-3090
+metadata:
+  model_family: qwen3-6-27b
+  model_id: qwen3.6-27b-autoround
+  quant_label: vllm-autoround
+  provider_surface: bragi-club-vllm
+  runtime: vllm
+  hardware_label: bragi-club-3090
+  endpoint: http://bragi:8020/v1
+  server: bragi
+
 provider:
   type: vllm
   model: qwen3.6-27b-autoround
