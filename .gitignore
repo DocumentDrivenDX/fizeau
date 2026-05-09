@@ -66,5 +66,6 @@ coverage.html
 /jobs/
 /bench/results/
 
-# Local root build artifact
+# Local root build artifacts
 /fiz
+/bench-fixed

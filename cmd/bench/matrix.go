@@ -192,24 +192,23 @@ func cmdMatrix(args []string) int {
 	} else if !filepath.IsAbs(subsetPath) {
 		subsetPath = filepath.Join(wd, subsetPath)
 	}
-	// When neither --out nor --cells-root is specified, default both into
-	// the canonical fiz-version-rooted tree so direct `bench matrix`
-	// invocations join the same tensor as `bench sweep` runs. If --out is
-	// explicitly set (test fixtures, ad-hoc experiments), keep the legacy
-	// in-place layout to preserve isolation.
+	// One-true-way defaults: when --out is unset, place the matrix summary
+	// inside the canonical fiz-tools-v<N>/ root. When --cells-root is unset,
+	// share the canonical /cells subtree. Tests that pass an explicit --out
+	// (typically a t.TempDir()) opt out via --cells-root staying empty,
+	// which falls through to the legacy in-place fallback (matrixTupleDir
+	// under outDir/cells/...). That preserves test isolation without
+	// leaving a stale "benchmark-results/matrix-<timestamp>/" side path
+	// in production runs.
 	outDir := *out
-	useCanonicalDefaults := outDir == "" && *cellsRoot == ""
 	if outDir == "" {
-		if useCanonicalDefaults {
-			outDir = filepath.Join(resolveCanonicalFizRoot(wd), "matrix-runs", "matrix-"+time.Now().UTC().Format("20060102T150405Z"))
-		} else {
-			outDir = filepath.Join(wd, "benchmark-results", "matrix-"+time.Now().UTC().Format("20060102T150405Z"))
-		}
+		outDir = filepath.Join(resolveCanonicalFizRoot(wd), "matrix-runs", "matrix-"+time.Now().UTC().Format("20060102T150405Z"))
 	} else if !filepath.IsAbs(outDir) {
 		outDir = filepath.Join(wd, outDir)
 	}
 	cellRootDir := *cellsRoot
-	if cellRootDir == "" && useCanonicalDefaults {
+	if cellRootDir == "" && *out == "" {
+		// --out and --cells-root both unset: full canonical mode.
 		cellRootDir = filepath.Join(resolveCanonicalFizRoot(wd), "cells")
 	} else if cellRootDir != "" && !filepath.IsAbs(cellRootDir) {
 		cellRootDir = filepath.Join(wd, cellRootDir)
