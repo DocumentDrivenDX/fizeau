@@ -4,7 +4,7 @@
 | terminal-bench-2-1 | lmstudio | qwen/qwen3.6-27b | ddx-agent | bragi-qwen3-6-27b | 267 | 0 | 266 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | lmstudio | qwen/qwen3.6-27b | fiz | bragi-qwen3-6-27b | 9 | 0 | 0 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | ddx-agent | vidar-qwen3-6-27b | 270 | 0 | 268 | 0 | 1 | 0.0000 |
-| terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | fiz | vidar-qwen3-6-27b | 373 | 46 | 84 | 0 | 4 | 0.0000 |
+| terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | fiz | vidar-qwen3-6-27b | 398 | 48 | 87 | 0 | 11 | 0.0000 |
 | terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | opencode | vidar-qwen3-6-27b | 1 | 0 | 0 | 0 | 1 | 0.0000 |
 | terminal-bench-2-1 | omlx | Qwen3.6-27B-MLX-8bit | pi | vidar-qwen3-6-27b | 1 | 0 | 0 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | openai | gpt-5.4-mini | codex | codex-native-gpt-5-4-mini | 15 | 11 | 1 | 0 | 0 | 0.0000 |
@@ -23,12 +23,12 @@
 | terminal-bench-2-1 | openrouter | gpt-5.4-mini | codex | fiz-harness-codex-gpt-5-4-mini | 94 | 11 | 61 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | openrouter | openai/gpt-5.4-mini | fiz | fiz-openrouter-gpt-5-4-mini | 91 | 5 | 67 | 0 | 0 | 0.7488 |
 | terminal-bench-2-1 | openrouter | openai/gpt-5.4-mini | fiz | gpt-5-4-mini-openrouter | 15 | 7 | 8 | 0 | 0 | 0.0000 |
-| terminal-bench-2-1 | openrouter | qwen/qwen3.6-27b | fiz | fiz-openrouter-qwen3-6-27b | 276 | 46 | 53 | 0 | 28 | 7.2803 |
+| terminal-bench-2-1 | openrouter | qwen/qwen3.6-27b | fiz | fiz-openrouter-qwen3-6-27b | 543 | 47 | 55 | 0 | 28 | 7.5036 |
 | terminal-bench-2-1 | rapid-mlx | mlx-community/Qwen3.6-27B-8bit | fiz | grendel-rapid-mlx | 70 | 2 | 54 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | unknown | fiz-harness-opencode-gpt-5-4-mini | opencode | fiz-harness-opencode-gpt-5-4-mini | 23 | 0 | 9 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | unknown | fiz-harness-pi-gpt-5-4-mini | pi | fiz-harness-pi-gpt-5-4-mini | 22 | 0 | 9 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | unknown | gpt-5-3-mini | ddx-agent | gpt-5-3-mini | 14 | 0 | 0 | 0 | 6 | 0.0000 |
 | terminal-bench-2-1 | unknown | gpt-5-3-mini | opencode | gpt-5-3-mini | 12 | 0 | 0 | 0 | 6 | 0.0000 |
 | terminal-bench-2-1 | unknown | gpt-5-3-mini | pi | gpt-5-3-mini | 12 | 0 | 0 | 0 | 0 | 0.0000 |
-| terminal-bench-2-1 | vllm | qwen3.6-27b-autoround | fiz | bragi-club-3090 | 88 | 2 | 66 | 0 | 0 | 0.0000 |
-| terminal-bench-2-1 | vllm | qwen3.6-27b-autoround | fiz | sindri-club-3090 | 354 | 33 | 71 | 0 | 3 | 0.0000 |
+| terminal-bench-2-1 | vllm | qwen3.6-27b-autoround | fiz | bragi-club-3090 | 79 | 2 | 66 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | vllm | qwen3.6-27b-autoround | fiz | sindri-club-3090 | 363 | 33 | 71 | 0 | 7 | 0.0000 |
