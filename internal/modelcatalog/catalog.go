@@ -58,7 +58,7 @@ type Provider struct {
 }
 
 // SurfacePolicy is kept as a narrow compatibility container for callers that
-// have not yet moved reasoning defaults from target surfaces to model entries.
+// have not yet moved reasoning defaults from surface projections to model entries.
 type SurfacePolicy struct {
 	ReasoningDefault       reasoning.Reasoning
 	PlacementOrder         []string
@@ -68,7 +68,7 @@ type SurfacePolicy struct {
 
 // ResolvedTarget is the compatibility output for model-reference resolution.
 // In v5 CanonicalID is either a policy name or canonical model ID; there is no
-// catalog target or alias concept behind it.
+// catalog alias concept behind it.
 type ResolvedTarget struct {
 	Ref                string
 	Profile            string

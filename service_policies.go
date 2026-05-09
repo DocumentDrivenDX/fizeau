@@ -45,9 +45,9 @@ func policyForProfileName(cat *modelcatalog.Catalog, name string) (modelcatalog.
 	if policy, ok := cat.Policy(name); ok {
 		return policy, policy.Name, true
 	}
-	if target, ok := profileCompatibilityAliases()[name]; ok {
-		policy, ok := cat.Policy(target)
-		return policy, target, ok
+	if canonical, ok := profileCompatibilityAliases()[name]; ok {
+		policy, ok := cat.Policy(canonical)
+		return policy, canonical, ok
 	}
 	return modelcatalog.Policy{}, "", false
 }

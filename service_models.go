@@ -502,7 +502,7 @@ func catalogCostAndPerf(cat *modelcatalog.Catalog, modelID string) (CostInfo, Pe
 			}
 	}
 
-	// Fallback: try target-level pricing via PricingFor.
+	// Fallback: try legacy pricing via PricingFor.
 	pricing := cat.PricingFor()
 	if p, ok := pricing[modelID]; ok {
 		return CostInfo{

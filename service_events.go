@@ -125,7 +125,7 @@ type ServiceProgressData struct {
 	ToolCallIndex         int      `json:"tool_call_index,omitempty"`
 	Command               string   `json:"command,omitempty"`
 	Action                string   `json:"action,omitempty"`
-	Target                string   `json:"target,omitempty"`
+	Target                string   `json:"subject,omitempty"`
 	OutputSummary         string   `json:"output_summary,omitempty"`
 	OutputBytes           int      `json:"output_bytes,omitempty"`
 	OutputLines           int      `json:"output_lines,omitempty"`
