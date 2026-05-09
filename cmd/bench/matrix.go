@@ -1075,21 +1075,6 @@ func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, re
 	)
 }
 
-func matrixEffectiveHarness(harness, profileID string) string {
-	switch {
-	case strings.Contains(profileID, "fiz-harness-codex"):
-		return "codex"
-	case strings.Contains(profileID, "fiz-harness-claude"):
-		return "claude"
-	case strings.Contains(profileID, "fiz-harness-opencode"):
-		return "opencode"
-	case strings.Contains(profileID, "fiz-harness-pi"):
-		return "pi"
-	default:
-		return harness
-	}
-}
-
 func safeMatrixSegment(s string) string {
 	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_", " ", "_")
 	return replacer.Replace(s)
