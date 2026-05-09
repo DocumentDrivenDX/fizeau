@@ -95,6 +95,19 @@ func (c *configServiceConfig) WorkDir() string {
 
 func (c *configServiceConfig) SessionLogDir() string {
 	workDir := c.WorkDir()
+	configured := ""
+	if c.cfg != nil {
+		configured = c.cfg.SessionLogDir
+	}
+	if configured != "" {
+		if filepath.IsAbs(configured) {
+			return configured
+		}
+		if workDir == "" {
+			return configured
+		}
+		return filepath.Join(workDir, configured)
+	}
 	if workDir == "" {
 		return ""
 	}

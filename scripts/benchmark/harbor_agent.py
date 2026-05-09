@@ -329,7 +329,19 @@ class FizeauAgent(BaseInstalledAgent):
             f'cp {_CONFIG_TARGET} "$work_dir/.fizeau/config.yaml" 2>/dev/null || true; '
             f'cp {_CONFIG_TARGET} "$HOME/.fizeau/config.yaml" 2>/dev/null || true; '
             f"{self._runtime_fizeau_config_command()}"
+            # Make $work_dir/.fizeau/sessions a symlink to the host-bind-mounted
+            # /logs/agent/sessions so fiz writes session JSONL straight into the
+            # bind mount. Eliminates the post-run cp step that previously raced
+            # with Harbor's container teardown / chown and silently dropped
+            # JSONL files (causing turns:0 / invalid_setup classifications).
+            # Belt-and-suspenders: serviceconfig.SessionLogDir() now also honors
+            # an absolute session_log_dir from config.yaml, but the symlink
+            # works for older fiz binaries too.
             f"mkdir -p {_SESSION_LOG_DIR}; "
+            f'rm -rf "$work_dir/.fizeau/sessions"; '
+            f'ln -s {_SESSION_LOG_DIR} "$work_dir/.fizeau/sessions"; '
+            f'rm -rf "$HOME/.fizeau/sessions"; '
+            f'ln -s {_SESSION_LOG_DIR} "$HOME/.fizeau/sessions"; '
             f"{self._wrapped_harness_config_command()}"
             f"env | grep '^FIZEAU_' | grep -Ev '(^FIZEAU_API_KEY=|_API_KEY=|_TOKEN=|_SECRET=)' > {_TARGET_ENV} 2>/dev/null || true; "
             f'cmd=({shlex.quote(_BINARY_TARGET)} --json --preset default); '
@@ -342,15 +354,8 @@ class FizeauAgent(BaseInstalledAgent):
             'cmd+=(--work-dir "$work_dir" -p "$HARBOR_INSTRUCTION"); '
             f'"${{cmd[@]}}" 2>&1 | stdbuf -oL tee {_OUTPUT_LOG}; '
             'fiz_rc=${PIPESTATUS[0]}; '
-            'for session_root in "$work_dir/.fizeau/sessions" "$HOME/.fizeau/sessions"; do '
-            '  if [ -d "$session_root" ]; then '
-            f'    find "$session_root" -type f -name "*.jsonl" -exec cp -f {{}} {_SESSION_LOG_DIR}/ \\; 2>/dev/null || true; '
-            "  fi; "
-            "done; "
-            f'find {_SESSION_LOG_DIR} -type f -name "*.jsonl" -exec chmod 644 {{}} \\; 2>/dev/null || true; '
-            f"chmod 755 {_SESSION_LOG_DIR} 2>/dev/null || true; "
             f'if ! find {_SESSION_LOG_DIR} -type f -name "*.jsonl" -print -quit | grep -q .; then '
-            f'  {{ echo "warning: no fiz session JSONL found after run; expected $work_dir/.fizeau/sessions or $HOME/.fizeau/sessions, copied into {_SESSION_LOG_DIR}"; '
+            f'  {{ echo "warning: no fiz session JSONL found after run; expected fiz to write to {_SESSION_LOG_DIR} via symlinks at $work_dir/.fizeau/sessions and $HOME/.fizeau/sessions"; '
             '    echo "warning: /logs/agent contents:"; '
             '    find /logs/agent -maxdepth 4 -mindepth 1 -print 2>/dev/null || true; '
             f"  }} >> {_OUTPUT_LOG}; "

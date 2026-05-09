@@ -133,6 +133,31 @@ class FizeauAgentTest(unittest.TestCase):
                 self.assertNotIn("harbor_adapters/pi.py", command)
                 self.assertNotIn("harbor_adapters/opencode.py", command)
 
+    def test_build_command_symlinks_jsonl_into_bind_mount(self) -> None:
+        """Session JSONL must land in /logs/agent/sessions via symlink, not via post-run cp.
+
+        The old cp loop raced with Harbor's container teardown and silently dropped
+        JSONL files when the agent ran as root (causing turns:0 / invalid_setup
+        misclassification). The symlink eliminates the race.
+        """
+        with patch.dict(
+            os.environ,
+            {"FIZEAU_PROVIDER": "vllm", "FIZEAU_BASE_URL": "http://sindri:8020/v1"},
+            clear=False,
+        ):
+            self.agent.exec_as_agent = AsyncMock(return_value=None)
+            asyncio.run(self.agent.run("solve task", object(), AgentContext()))
+
+        command = self.agent.exec_as_agent.await_args.kwargs["command"]
+        # Pre-fiz: symlink both potential session dirs into the bind mount.
+        self.assertIn('ln -s /logs/agent/sessions "$work_dir/.fizeau/sessions"', command)
+        self.assertIn('ln -s /logs/agent/sessions "$HOME/.fizeau/sessions"', command)
+        # No more racy post-run cp loop.
+        self.assertNotIn("for session_root in", command)
+        self.assertNotIn("cp -f", command)
+        # Diagnostic warning still fires if no JSONL appears.
+        self.assertIn("warning: no fiz session JSONL found after run", command)
+
     def test_run_preserves_provider_model_model_ref_and_reasoning_pins(self) -> None:
         with patch.dict(
             os.environ,
