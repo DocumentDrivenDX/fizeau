@@ -136,6 +136,8 @@ func TestCLI_Subcommands(t *testing.T) {
 		{"models", []string{"models"}, ""}, // may succeed or fail
 		{"check", []string{"check", "--work-dir", t.TempDir()}, "error"},
 		{"providers", []string{"providers"}, "NAME"},
+		{"policies", []string{"policies"}, "NAME"},
+		{"harnesses", []string{"harnesses"}, "NAME"},
 	}
 
 	for _, tt := range tests {

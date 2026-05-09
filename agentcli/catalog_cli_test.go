@@ -395,181 +395,18 @@ session_log_dir: sessions
 	assert.Contains(t, string(out), "hello")
 }
 
-func TestCLI_ModelRef_ResolvesThroughExternalManifest(t *testing.T) {
+func TestCLI_ReasoningCatalogMaxOverrides(t *testing.T) {
 	fake := newFakeOpenAIServer(t)
 	workDir := t.TempDir()
 	manifestPath := filepath.Join(workDir, "models.yaml")
-	writeTempManifest(t, manifestPath, `
-version: 1
-generated_at: 2026-04-09T00:00:00Z
-profiles:
-  code-smart:
-    target: external-smart
-targets:
-  external-smart:
-    family: external
-    aliases: [external-alias]
-    surfaces:
-      agent.openai: external-model-v1
-`)
-	writeTempConfig(t, workDir, `
-model_catalog:
-  manifest: `+manifestPath+`
-providers:
-  local:
-    type: omlx
-    base_url: `+fake.baseURL()+`
-    api_key: test
-default: local
-`)
-
-	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "code-smart")
-	require.NoError(t, err, string(out))
-	assert.Contains(t, string(out), "[success]")
-	assert.Equal(t, "external-model-v1", fake.lastModel())
-}
-
-func TestCLI_ModelRef_DeprecatedRejectedByDefault(t *testing.T) {
-	fake := newFakeOpenAIServer(t)
-	workDir := t.TempDir()
-	manifestPath := filepath.Join(workDir, "models.yaml")
-	writeTempManifest(t, manifestPath, `
-version: 1
-generated_at: 2026-04-09T00:00:00Z
-targets:
-  legacy:
-    family: demo
-    status: deprecated
-    replacement: current
-    surfaces:
-      agent.openai: old-model
-  current:
-    family: demo
-    surfaces:
-      agent.openai: new-model
-`)
-	writeTempConfig(t, workDir, `
-model_catalog:
-  manifest: `+manifestPath+`
-providers:
-  local:
-    type: omlx
-    base_url: `+fake.baseURL()+`
-    api_key: test
-default: local
-`)
-
-	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "legacy")
-	require.Error(t, err)
-	assert.Contains(t, string(out), `reference "legacy" is deprecated`)
-	assert.Equal(t, "", fake.lastModel())
-}
-
-func TestCLI_ModelRef_DeprecatedAllowed(t *testing.T) {
-	fake := newFakeOpenAIServer(t)
-	workDir := t.TempDir()
-	manifestPath := filepath.Join(workDir, "models.yaml")
-	writeTempManifest(t, manifestPath, `
-version: 1
-generated_at: 2026-04-09T00:00:00Z
-targets:
-  legacy:
-    family: demo
-    status: deprecated
-    replacement: current
-    surfaces:
-      agent.openai: old-model
-  current:
-    family: demo
-    surfaces:
-      agent.openai: new-model
-`)
-	writeTempConfig(t, workDir, `
-model_catalog:
-  manifest: `+manifestPath+`
-providers:
-  local:
-    type: omlx
-    base_url: `+fake.baseURL()+`
-    api_key: test
-default: local
-`)
-
-	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "legacy", "--allow-deprecated-model")
-	require.NoError(t, err, string(out))
-	assert.Contains(t, string(out), "[success]")
-	assert.Equal(t, "old-model", fake.lastModel())
-}
-
-func TestCLI_ModelRef_ExternalManifestOverridesEmbeddedCatalog(t *testing.T) {
-	fake := newFakeOpenAIServer(t)
-	workDir := t.TempDir()
-	manifestPath := filepath.Join(workDir, "models.yaml")
-	writeTempManifest(t, manifestPath, `
-version: 2
-generated_at: 2026-04-09T00:00:00Z
-profiles:
-  code-fast:
-    target: custom-fast
-targets:
-  custom-fast:
-    family: custom
-    surfaces:
-      agent.openai: override-fast-model
-`)
-	writeTempConfig(t, workDir, `
-model_catalog:
-  manifest: `+manifestPath+`
-providers:
-  local:
-    type: omlx
-    base_url: `+fake.baseURL()+`
-    api_key: test
-default: local
-`)
-
-	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "code-fast")
-	require.NoError(t, err, string(out))
-	assert.Contains(t, string(out), "[success]")
-	assert.Equal(t, "override-fast-model", fake.lastModel())
-}
-
-func TestCLI_ReasoningCatalogDefaultsAndOverrides(t *testing.T) {
-	fake := newFakeOpenAIServer(t)
-	workDir := t.TempDir()
-	manifestPath := filepath.Join(workDir, "models.yaml")
-	// Model ids carry the `qwen-` prefix so the LM Studio provider — which
-	// routes reasoning via the Qwen wire format — still emits reasoning
-	// fields for these synthetic catalog entries. Non-Qwen model names are
-	// correctly treated as reasoning-less and would record a zero budget.
+	// Model ids carry the `qwen-` prefix so the LM Studio provider emits
+	// reasoning fields for these synthetic catalog entries.
 	writeTempManifest(t, manifestPath, `
 version: 4
 generated_at: 2026-04-19T00:00:00Z
 models:
-  qwen-cheap:
-    reasoning_max_tokens: 32768
   qwen-smart:
     reasoning_max_tokens: 32768
-profiles:
-  cheap:
-    target: cheap-target
-  smart:
-    target: smart-target
-targets:
-  cheap-target:
-    family: demo
-    surfaces:
-      agent.openai: qwen-cheap
-    surface_policy:
-      agent.openai:
-        reasoning_default: off
-  smart-target:
-    family: demo
-    surfaces:
-      agent.openai: qwen-smart
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
 `)
 	writeTempConfig(t, workDir, `
 model_catalog:
@@ -582,21 +419,12 @@ providers:
 default: local
 `)
 
-	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "cheap")
-	require.NoError(t, err, string(out))
-	assert.Equal(t, "qwen-cheap", fake.lastModel())
-	assert.Equal(t, 0, fake.lastReasoningBudget())
-
-	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "smart")
+	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model", "qwen-smart", "--reasoning", "8192")
 	require.NoError(t, err, string(out))
 	assert.Equal(t, "qwen-smart", fake.lastModel())
-	assert.Equal(t, 32768, fake.lastReasoningBudget())
-
-	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "smart", "--reasoning", "8192")
-	require.NoError(t, err, string(out))
 	assert.Equal(t, 8192, fake.lastReasoningBudget())
 
-	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "smart", "--reasoning", "max")
+	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model", "qwen-smart", "--reasoning", "max")
 	require.NoError(t, err, string(out))
 	assert.Equal(t, 32768, fake.lastReasoningBudget())
 }
@@ -613,17 +441,6 @@ generated_at: 2026-04-19T00:00:00Z
 models:
   qwen-smart:
     reasoning_max_tokens: 32768
-profiles:
-  smart:
-    target: smart-target
-targets:
-  smart-target:
-    family: demo
-    surfaces:
-      agent.openai: qwen-smart
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
 `)
 			writeTempConfig(t, workDir, `
 model_catalog:
@@ -636,7 +453,7 @@ providers:
 default: local
 `)
 
-			out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "smart", "--reasoning", value)
+			out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model", "qwen-smart", "--reasoning", value)
 			require.NoError(t, err, string(out))
 			assert.Equal(t, 0, fake.lastReasoningBudget())
 		})
@@ -653,17 +470,6 @@ generated_at: 2026-04-19T00:00:00Z
 models:
   smart-model:
     reasoning_max_tokens: 32768
-profiles:
-  smart:
-    target: smart-target
-targets:
-  smart-target:
-    family: demo
-    surfaces:
-      agent.openai: smart-model
-    surface_policy:
-      agent.openai:
-        reasoning_default: high
 `)
 	writeTempConfig(t, workDir, `
 model_catalog:
@@ -676,46 +482,13 @@ providers:
 default: local
 `)
 
-	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "smart", "--reasoning", "bogus")
+	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model", "smart-model", "--reasoning", "bogus")
 	require.Error(t, err)
 	assert.Contains(t, string(out), `unsupported value "bogus"`)
 
-	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "smart", "--reasoning", "99999")
+	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model", "smart-model", "--reasoning", "99999")
 	require.Error(t, err)
 	assert.Contains(t, string(out), "exceeds maximum 32768")
-}
-
-func TestCLI_ModelRef_ExplicitModelBypassesCatalog(t *testing.T) {
-	fake := newFakeOpenAIServer(t)
-	workDir := t.TempDir()
-	manifestPath := filepath.Join(workDir, "models.yaml")
-	writeTempManifest(t, manifestPath, `
-version: 1
-generated_at: 2026-04-09T00:00:00Z
-profiles:
-  code-smart:
-    target: external-smart
-targets:
-  external-smart:
-    family: external
-    surfaces:
-      agent.openai: external-model-v1
-`)
-	writeTempConfig(t, workDir, `
-model_catalog:
-  manifest: `+manifestPath+`
-providers:
-  local:
-    type: lmstudio
-    base_url: `+fake.baseURL()+`
-    api_key: test
-default: local
-`)
-
-	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model-ref", "code-smart", "--model", "explicit-model")
-	require.NoError(t, err, string(out))
-	assert.Contains(t, string(out), "[success]")
-	assert.Equal(t, "explicit-model", fake.lastModel())
 }
 
 func TestCLI_CatalogShow_EmbeddedFallback(t *testing.T) {

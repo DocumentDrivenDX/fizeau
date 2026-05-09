@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeRunSubcommand_NoArgs(t *testing.T) {
@@ -76,6 +77,16 @@ func TestNormalizeRunSubcommand_MultipleFlags(t *testing.T) {
 	isRun, remaining := normalizeRunSubcommand([]string{"run", "--model", "qwen3.5-27b", "--provider", "local", "--max-iter", "10", "Some prompt"})
 	assert.True(t, isRun)
 	assert.Equal(t, []string{"--model", "qwen3.5-27b", "--provider", "local", "--max-iter", "10", "Some prompt"}, remaining)
+}
+
+func TestCLISubcommandsIncludesPoliciesAndHarnesses(t *testing.T) {
+	cmd := MountCLI()
+	for _, name := range []string{"policies", "harnesses"} {
+		child, _, err := cmd.Find([]string{name})
+		require.NoError(t, err)
+		require.NotNil(t, child)
+		assert.Equal(t, name, child.Name())
+	}
 }
 
 func TestNormalizeRunSubcommand_MixedArgsAndFlags(t *testing.T) {

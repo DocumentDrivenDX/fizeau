@@ -5,7 +5,6 @@ package agentcli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -21,7 +20,6 @@ import (
 	"github.com/DocumentDrivenDX/fizeau"
 	"github.com/DocumentDrivenDX/fizeau/internal/buildinfo"
 	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
 	"github.com/DocumentDrivenDX/fizeau/internal/prompt"
 	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
@@ -126,10 +124,9 @@ func runWithOptions(opts Options) int {
 	promptFlag := fs.String("p", "", "Prompt (use @file to read from file)")
 	jsonOutput := fs.Bool("json", false, "Output result as JSON")
 	providerFlag := fs.String("provider", "", "Named provider from config (e.g., vidar, openrouter)")
-	backendFlag := fs.String("backend", "", "Deprecated named backend pool from config")
 	harnessFlag := fs.String("harness", "", "Harness hard pin (selects a specific harness)")
 	model := fs.String("model", "", "Model route key or explicit concrete model override")
-	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target; deprecated targets fail with replacement guidance)")
+	policyFlag := fs.String("policy", "", "Routing policy (cheap, default, smart, or air-gapped)")
 	listModels := fs.Bool("list-models", false, "List available models with routing metadata")
 	minPower := fs.Int("min-power", 0, "Minimum catalog model power for automatic routing")
 	maxPower := fs.Int("max-power", 0, "Maximum catalog model power for automatic routing")
@@ -181,6 +178,10 @@ func runWithOptions(opts Options) int {
 			return cmdCheck(wd, *providerFlag, args[1:])
 		case "providers":
 			return cmdProviders(wd, *jsonOutput)
+		case "policies":
+			return cmdPolicies(wd, *jsonOutput)
+		case "harnesses":
+			return cmdHarnesses(wd, *jsonOutput)
 		case "catalog":
 			return cmdCatalog(wd, args[1:])
 		case "corpus":
@@ -204,9 +205,6 @@ func runWithOptions(opts Options) int {
 	}
 	for _, warning := range cfg.Warnings() {
 		fmt.Fprintf(os.Stderr, "%s: warning: %s\n", productinfo.BinaryName, warning)
-	}
-	if *backendFlag != "" {
-		fmt.Fprintf(os.Stderr, "%s: warning: --backend is deprecated; use --model or --model-ref instead\n", productinfo.BinaryName)
 	}
 
 	// Check for zero-config discovery
@@ -252,7 +250,7 @@ func runWithOptions(opts Options) int {
 		Model:           *model,
 		AllowDeprecated: *allowDeprecatedModel,
 	}
-	selection, _, pc, err := resolveProviderForRun(cfg, wd, *backendFlag, *providerFlag, *modelRef, overrides)
+	selection, _, pc, err := resolveProviderForRun(cfg, wd, *providerFlag, overrides)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
@@ -390,6 +388,7 @@ func runWithOptions(opts Options) int {
 		SelectedRoute:           selection.Route,
 		RequestedModel:          selection.RequestedModel,
 		ResolvedModel:           selection.ResolvedModel,
+		Policy:                  *policyFlag,
 		Harness:                 *harnessFlag,
 		Reasoning:               resolvedReasoning,
 		NoStream:                selection.NoStream,
@@ -466,15 +465,13 @@ func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, se
 	}
 
 	result := cliExecutionResult{
-		Status:            "failed",
-		SelectedProvider:  selection.Provider,
-		SelectedRoute:     selection.Route,
-		RequestedModel:    selection.RequestedModel,
-		RequestedModelRef: selection.RequestedModelRef,
-		ResolvedModelRef:  selection.ResolvedModelRef,
-		ResolvedModel:     selection.ResolvedModel,
-		Model:             selection.ResolvedModel,
-		Reasoning:         req.Reasoning,
+		Status:           "failed",
+		SelectedProvider: selection.Provider,
+		SelectedRoute:    selection.Route,
+		RequestedModel:   selection.RequestedModel,
+		ResolvedModel:    selection.ResolvedModel,
+		Model:            selection.ResolvedModel,
+		Reasoning:        req.Reasoning,
 	}
 	var sawFinal bool
 	for ev := range ch {
@@ -546,6 +543,7 @@ type serviceExecuteRequestParams struct {
 	SelectedRoute           string
 	RequestedModel          string
 	ResolvedModel           string
+	Policy                  string
 	Harness                 string
 	Reasoning               fizeau.Reasoning
 	NoStream                bool
@@ -584,8 +582,6 @@ type cliExecutionResult struct {
 	SelectedProvider   string           `json:"selected_provider,omitempty"`
 	SelectedRoute      string           `json:"selected_route,omitempty"`
 	RequestedModel     string           `json:"requested_model,omitempty"`
-	RequestedModelRef  string           `json:"requested_model_ref,omitempty"`
-	ResolvedModelRef   string           `json:"resolved_model_ref,omitempty"`
 	ResolvedModel      string           `json:"resolved_model,omitempty"`
 	Reasoning          fizeau.Reasoning `json:"reasoning,omitempty"`
 	AttemptedProviders []string         `json:"attempted_providers,omitempty"`
@@ -628,6 +624,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 		Harness:                 harness,
 		Model:                   model,
 		Provider:                provider,
+		Policy:                  params.Policy,
 		WorkDir:                 params.WorkDir,
 		Reasoning:               params.Reasoning,
 		NoStream:                params.NoStream,
@@ -674,14 +671,13 @@ func normalizeRunSubcommand(args []string) (bool, []string) {
 		"version":                true,
 	}
 	valueFlags := map[string]bool{
-		"backend":   true,
 		"harness":   true,
 		"max-power": true,
 		"max-iter":  true,
 		"min-power": true,
 		"model":     true,
-		"model-ref": true,
 		"p":         true,
+		"policy":    true,
 		"preset":    true,
 		"provider":  true,
 		"reasoning": true,
@@ -715,19 +711,16 @@ func normalizeRunSubcommand(args []string) (bool, []string) {
 // resolveProviderForRun selects and builds the provider for a run.
 //
 // Resolution order (matching SD-005):
-//  1. If backendName is non-empty, resolve that backend pool.
-//  2. Else if cfg.DefaultBackend is set and providerName is empty, resolve
+//  1. If cfg.DefaultBackend is set and providerName is empty, resolve
 //     the default backend pool.
-//  3. Else fall back to direct provider selection (providerName or cfg.DefaultName).
+//  2. Else fall back to direct provider selection (providerName or cfg.DefaultName).
 type providerSelection struct {
-	Route             string
-	Provider          string
-	RequestedModel    string
-	RequestedModelRef string
-	ResolvedModelRef  string
-	ResolvedModel     string
-	ReasoningDefault  fizeau.Reasoning
-	NoStream          bool
+	Route            string
+	Provider         string
+	RequestedModel   string
+	ResolvedModel    string
+	ReasoningDefault fizeau.Reasoning
+	NoStream         bool
 }
 
 func resolveRunReasoning(cfg *agentConfig.Config, selection providerSelection, flagValue string) (fizeau.Reasoning, error) {
@@ -773,13 +766,10 @@ func lookupReasoningMaxTokens(cfg *agentConfig.Config, model string) int {
 	return 0
 }
 
-func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, providerName, modelRef string, overrides agentConfig.ProviderOverrides) (providerSelection, any, agentConfig.ProviderConfig, error) {
-	routeKey, routeModelRef, useLegacyBackend, err := resolveRouteTarget(cfg, backendName, providerName, modelRef, overrides)
-	if err != nil {
-		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-	}
+func resolveProviderForRun(cfg *agentConfig.Config, workDir, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, any, agentConfig.ProviderConfig, error) {
+	routeKey, useLegacyBackend := resolveRouteTarget(cfg, providerName, overrides)
 	if routeKey != "" {
-		selection, p, pc, err := buildRouteSelection(cfg, workDir, routeKey, routeModelRef, overrides.AllowDeprecated)
+		selection, p, pc, err := buildRouteSelection(cfg, workDir, routeKey, overrides.AllowDeprecated)
 		if err != nil {
 			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 		}
@@ -790,46 +780,23 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 		if err != nil {
 			counter = 0
 		}
-		backendOverrides := overrides
-		var resolvedRef *modelcatalog.ResolvedTarget
-		if modelRef != "" && backendOverrides.Model == "" {
-			bc, ok := cfg.GetBackend(useLegacyBackend)
-			if !ok || len(bc.Providers) == 0 {
-				return providerSelection{}, nil, agentConfig.ProviderConfig{}, fmt.Errorf("config: backend pool %q has no providers", useLegacyBackend)
-			}
-			idx := selectBackendProviderIndex(bc.Strategy, counter, len(bc.Providers))
-			resolvedRef, err = resolveProviderModelRef(cfg, bc.Providers[idx], modelRef, overrides.AllowDeprecated)
-			if err != nil {
-				return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-			}
-			backendOverrides.Model = resolvedRef.ConcreteModel
-		}
-		p, pc, resolved, err := cfg.ResolveBackend(useLegacyBackend, counter, backendOverrides)
+		p, pc, resolved, err := cfg.ResolveBackend(useLegacyBackend, counter, overrides)
 		if err != nil {
 			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 		}
 		selection := providerSelection{
-			Route:             useLegacyBackend,
-			ResolvedModel:     pc.Model,
-			RequestedModelRef: modelRef,
-			NoStream:          true,
+			Route:         useLegacyBackend,
+			ResolvedModel: pc.Model,
+			NoStream:      true,
 		}
 		if bc, ok := cfg.GetBackend(useLegacyBackend); ok && len(bc.Providers) > 0 {
 			idx := selectBackendProviderIndex(bc.Strategy, counter, len(bc.Providers))
 			selection.Provider = bc.Providers[idx]
 		}
 		if resolved != nil {
-			selection.ResolvedModelRef = resolved.CanonicalID
 			selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
 			if resolved.ConcreteModel != "" {
 				selection.ResolvedModel = resolved.ConcreteModel
-			}
-		}
-		if resolvedRef != nil {
-			selection.ResolvedModelRef = resolvedRef.CanonicalID
-			selection.ReasoningDefault = fizeau.Reasoning(resolvedRef.SurfacePolicy.ReasoningDefault)
-			if resolvedRef.ConcreteModel != "" {
-				selection.ResolvedModel = resolvedRef.ConcreteModel
 			}
 		}
 		return selection, p, pc, nil
@@ -839,71 +806,43 @@ func resolveProviderForRun(cfg *agentConfig.Config, workDir, backendName, provid
 	if providerName == "" {
 		providerName = cfg.DefaultName()
 	}
-	effectiveOverrides := overrides
-	var resolvedRef *modelcatalog.ResolvedTarget
-	if modelRef != "" && effectiveOverrides.Model == "" {
-		resolvedRef, err = resolveProviderModelRef(cfg, providerName, modelRef, overrides.AllowDeprecated)
-		if err != nil {
-			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-		}
-		effectiveOverrides.Model = resolvedRef.ConcreteModel
-	}
-	p, pc, resolved, err := cfg.BuildProviderWithOverrides(providerName, effectiveOverrides)
+	p, pc, resolved, err := cfg.BuildProviderWithOverrides(providerName, overrides)
 	if err != nil {
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}
 	selection := providerSelection{
-		Route:             providerName,
-		Provider:          providerName,
-		RequestedModel:    overrides.Model,
-		RequestedModelRef: modelRef,
-		ResolvedModel:     pc.Model,
+		Route:          providerName,
+		Provider:       providerName,
+		RequestedModel: overrides.Model,
+		ResolvedModel:  pc.Model,
 	}
 	if resolved != nil {
-		selection.ResolvedModelRef = resolved.CanonicalID
 		selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
 		if resolved.ConcreteModel != "" {
 			selection.ResolvedModel = resolved.ConcreteModel
 		}
 	}
-	if resolvedRef != nil {
-		selection.ResolvedModelRef = resolvedRef.CanonicalID
-		selection.ReasoningDefault = fizeau.Reasoning(resolvedRef.SurfacePolicy.ReasoningDefault)
-		if resolvedRef.ConcreteModel != "" {
-			selection.ResolvedModel = resolvedRef.ConcreteModel
-		}
-	}
 	return selection, p, pc, nil
 }
 
-func resolveRouteTarget(cfg *agentConfig.Config, backendName, providerName, modelRef string, overrides agentConfig.ProviderOverrides) (routeKey string, routeModelRef string, legacyBackend string, err error) {
+func resolveRouteTarget(cfg *agentConfig.Config, providerName string, overrides agentConfig.ProviderOverrides) (routeKey string, legacyBackend string) {
 	if providerName != "" {
-		return "", "", "", nil
-	}
-	if backendName != "" {
-		return "", "", backendName, nil
+		return "", ""
 	}
 	if overrides.Model != "" {
-		return overrides.Model, "", "", nil
-	}
-	if modelRef != "" {
-		resolved, err := resolveCanonicalModelRef(cfg, modelRef, overrides.AllowDeprecated)
-		if err != nil {
-			return "", "", "", err
-		}
-		return resolved.CanonicalID, modelRef, "", nil
+		return overrides.Model, ""
 	}
 	if cfg.Routing.DefaultModel != "" {
-		return cfg.Routing.DefaultModel, "", "", nil
+		return cfg.Routing.DefaultModel, ""
 	}
 	if cfg.DefaultBackend != "" {
-		return "", "", cfg.DefaultBackend, nil
+		return "", cfg.DefaultBackend
 	}
-	return "", "", "", nil
+	return "", ""
 }
 
-func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, allowDeprecated bool) (providerSelection, any, agentConfig.ProviderConfig, error) {
-	plan, err := buildSmartRoutePlan(cfg, workDir, routeKey, routeModelRef, allowDeprecated, nil, nil)
+func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey string, allowDeprecated bool) (providerSelection, any, agentConfig.ProviderConfig, error) {
+	plan, err := buildSmartRoutePlan(cfg, workDir, routeKey, allowDeprecated, nil, nil)
 	if err != nil {
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
 	}
@@ -911,14 +850,6 @@ func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 		return providerSelection{}, nil, agentConfig.ProviderConfig{}, fmt.Errorf("config: no route candidates available for %q", routeKey)
 	}
 	selected := plan.Candidates[plan.Order[0]]
-	var resolvedRef *modelcatalog.ResolvedTarget
-	if routeModelRef != "" && (selected.Model == "" || selected.Model == routeKey) {
-		resolvedRef, err = resolveProviderModelRef(cfg, selected.Provider, routeModelRef, allowDeprecated)
-		if err != nil {
-			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-		}
-		selected.Model = resolvedRef.ConcreteModel
-	}
 	p, pc, resolved, err := cfg.BuildProviderWithOverrides(selected.Provider, agentConfig.ProviderOverrides{
 		Model:           selected.Model,
 		AllowDeprecated: allowDeprecated,
@@ -929,103 +860,19 @@ func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 	pc.Model = selected.Model
 
 	selection := providerSelection{
-		Route:             routeKey,
-		Provider:          selected.Provider,
-		RequestedModel:    routeKey,
-		RequestedModelRef: routeModelRef,
-		ResolvedModel:     pc.Model,
-		NoStream:          true,
+		Route:          routeKey,
+		Provider:       selected.Provider,
+		RequestedModel: routeKey,
+		ResolvedModel:  pc.Model,
+		NoStream:       true,
 	}
 	if resolved != nil {
-		selection.ResolvedModelRef = resolved.CanonicalID
 		selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
 		if resolved.ConcreteModel != "" {
 			selection.ResolvedModel = resolved.ConcreteModel
 		}
-	} else if routeModelRef != "" {
-		selection.ResolvedModelRef = routeKey
-	}
-	if resolvedRef != nil {
-		selection.ResolvedModelRef = resolvedRef.CanonicalID
-		selection.ReasoningDefault = fizeau.Reasoning(resolvedRef.SurfacePolicy.ReasoningDefault)
-		if resolvedRef.ConcreteModel != "" {
-			selection.ResolvedModel = resolvedRef.ConcreteModel
-		}
-	}
-	if selection.ReasoningDefault == "" && routeModelRef != "" {
-		if catalogResolved, err := resolveCanonicalModelRef(cfg, routeModelRef, allowDeprecated); err == nil {
-			selection.ReasoningDefault = fizeau.Reasoning(catalogResolved.SurfacePolicy.ReasoningDefault)
-			if selection.ResolvedModelRef == "" || selection.ResolvedModelRef == routeKey {
-				selection.ResolvedModelRef = catalogResolved.CanonicalID
-			}
-		}
 	}
 	return selection, p, pc, nil
-}
-
-func resolveCanonicalModelRef(cfg *agentConfig.Config, ref string, allowDeprecated bool) (*modelcatalog.ResolvedTarget, error) {
-	catalog, err := cfg.LoadModelCatalog()
-	if err != nil {
-		return nil, err
-	}
-	surfaces := []modelcatalog.Surface{
-		modelcatalog.SurfaceAgentOpenAI,
-		modelcatalog.SurfaceAgentAnthropic,
-	}
-	var lastErr error
-	for _, surface := range surfaces {
-		resolved, err := catalog.Resolve(ref, modelcatalog.ResolveOptions{
-			Surface:         surface,
-			AllowDeprecated: allowDeprecated,
-		})
-		if err == nil {
-			return &resolved, nil
-		}
-		var missingSurfaceErr *modelcatalog.MissingSurfaceError
-		if errors.As(err, &missingSurfaceErr) {
-			lastErr = err
-			continue
-		}
-		return nil, err
-	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, fmt.Errorf("config: cannot resolve model reference %q", ref)
-}
-
-func resolveProviderModelRef(cfg *agentConfig.Config, providerName, ref string, allowDeprecated bool) (*modelcatalog.ResolvedTarget, error) {
-	pc, ok := cfg.GetProvider(providerName)
-	if !ok {
-		return nil, fmt.Errorf("config: unknown provider %q", providerName)
-	}
-	catalog, err := cfg.LoadModelCatalog()
-	if err != nil {
-		return nil, err
-	}
-	surface, err := cliCatalogSurfaceForProviderType(pc.Type)
-	if err != nil {
-		return nil, err
-	}
-	resolved, err := catalog.Resolve(ref, modelcatalog.ResolveOptions{
-		Surface:         surface,
-		AllowDeprecated: allowDeprecated,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &resolved, nil
-}
-
-func cliCatalogSurfaceForProviderType(providerType string) (modelcatalog.Surface, error) {
-	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
-		return modelcatalog.SurfaceAgentOpenAI, nil
-	case "anthropic":
-		return modelcatalog.SurfaceAgentAnthropic, nil
-	default:
-		return "", fmt.Errorf("config: cannot resolve model reference for provider type %q", providerType)
-	}
 }
 
 func selectBackendProviderIndex(strategy string, counter, n int) int {

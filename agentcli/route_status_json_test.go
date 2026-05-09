@@ -10,6 +10,31 @@ import (
 	"github.com/DocumentDrivenDX/fizeau"
 )
 
+func TestRouteStatusUsesPolicyKey(t *testing.T) {
+	out := routeStatusOutput{
+		Policy: "cheap",
+		PowerPolicy: routeStatusPowerPolicy{
+			PolicyName: "cheap",
+		},
+	}
+
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	wire := string(data)
+	if !strings.Contains(wire, `"policy":"cheap"`) {
+		t.Fatalf("JSON missing policy key: %s", wire)
+	}
+	if !strings.Contains(wire, `"policy_name":"cheap"`) {
+		t.Fatalf("JSON missing power_policy.policy_name key: %s", wire)
+	}
+	legacyKey := `"` + "pro" + "file" + `"`
+	if strings.Contains(wire, legacyKey) {
+		t.Fatalf("JSON should not contain profile key: %s", wire)
+	}
+}
+
 // TestRouteStatusOverridesJSONStable snapshots the JSON envelope shape so
 // downstream operator tooling (dashboards, alerts) can rely on it. New
 // keys may be added behind a flag — never silently changed.

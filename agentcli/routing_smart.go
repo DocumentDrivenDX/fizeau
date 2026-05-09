@@ -1,7 +1,7 @@
 package agentcli
 
-// routing_smart.go ranks configured providers for a requested model or model
-// reference when the standalone `fiz` CLI needs a local provider selection.
+// routing_smart.go ranks configured providers for a requested model when the
+// standalone `fiz` CLI needs a local provider selection.
 //
 // As of agent-1a486c2e, the canonical cross-harness routing engine lives in
 // `internal/routing` and is reachable via `fizeau.FizeauService.ResolveRoute`. The
@@ -71,13 +71,12 @@ type smartRouteCandidate struct {
 }
 
 type smartRoutePlan struct {
-	RouteKey          string                `json:"route_key"`
-	RequestedModel    string                `json:"requested_model,omitempty"`
-	RequestedModelRef string                `json:"requested_model_ref,omitempty"`
-	Strategy          string                `json:"strategy"`
-	Candidates        []smartRouteCandidate `json:"candidates"`
-	Order             []int                 `json:"-"`
-	scorer            CandidateScorer       `json:"-"`
+	RouteKey       string                `json:"route_key"`
+	RequestedModel string                `json:"requested_model,omitempty"`
+	Strategy       string                `json:"strategy"`
+	Candidates     []smartRouteCandidate `json:"candidates"`
+	Order          []int                 `json:"-"`
+	scorer         CandidateScorer       `json:"-"`
 }
 
 type providerModelProbe struct {
@@ -149,14 +148,13 @@ func routingWeights(cfg *agentConfig.Config) (reliability, performance, load, co
 	return reliability / total, performance / total, load / total, cost / total, capability / total
 }
 
-func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelRef string, allowDeprecated bool, explicitRoute *routePlanConfig, scorer CandidateScorer) (smartRoutePlan, error) {
+func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey string, allowDeprecated bool, explicitRoute *routePlanConfig, scorer CandidateScorer) (smartRoutePlan, error) {
 	now := time.Now().UTC()
 	plan := smartRoutePlan{
-		RouteKey:          routeKey,
-		RequestedModel:    routeKey,
-		RequestedModelRef: routeModelRef,
-		Strategy:          "smart",
-		scorer:            scorer,
+		RouteKey:       routeKey,
+		RequestedModel: routeKey,
+		Strategy:       "smart",
+		scorer:         scorer,
 	}
 
 	var route routePlanConfig
@@ -166,7 +164,7 @@ func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 			plan.Strategy = route.Strategy
 		}
 	} else {
-		route = synthesizeIntentRoute(cfg, routeKey, routeModelRef)
+		route = synthesizeIntentRoute(cfg, routeKey)
 	}
 
 	history, err := readSmartRoutingHistory(sessionLogDir(workDir, cfg), routeKey, now, routingHistoryWindow(cfg))
@@ -189,7 +187,7 @@ func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 	plan.Candidates = make([]smartRouteCandidate, 0, len(route.Candidates))
 	finalCandidates := make([]routePlanCandidate, 0, len(route.Candidates))
 	for _, candidate := range route.Candidates {
-		inspected, resolvedCandidate := inspectSmartRouteCandidate(cfg, routeKey, routeModelRef, allowDeprecated, candidate, history[candidate.Provider], healthState, modelProbeCache, cat, obs)
+		inspected, resolvedCandidate := inspectSmartRouteCandidate(cfg, routeKey, allowDeprecated, candidate, history[candidate.Provider], healthState, modelProbeCache, cat, obs)
 		plan.Candidates = append(plan.Candidates, inspected)
 		finalCandidates = append(finalCandidates, resolvedCandidate)
 	}
@@ -215,16 +213,12 @@ func buildSmartRoutePlan(cfg *agentConfig.Config, workDir, routeKey, routeModelR
 	return plan, nil
 }
 
-func synthesizeIntentRoute(cfg *agentConfig.Config, requestedModel, requestedModelRef string) routePlanConfig {
+func synthesizeIntentRoute(cfg *agentConfig.Config, requestedModel string) routePlanConfig {
 	candidates := make([]routePlanCandidate, 0, len(cfg.ProviderNames()))
 	for _, provider := range cfg.ProviderNames() {
-		model := requestedModel
-		if requestedModelRef != "" {
-			model = ""
-		}
 		candidates = append(candidates, routePlanCandidate{
 			Provider: provider,
-			Model:    model,
+			Model:    requestedModel,
 		})
 	}
 	return routePlanConfig{
@@ -233,7 +227,7 @@ func synthesizeIntentRoute(cfg *agentConfig.Config, requestedModel, requestedMod
 	}
 }
 
-func inspectSmartRouteCandidate(cfg *agentConfig.Config, routeKey, routeModelRef string, allowDeprecated bool, candidate routePlanCandidate, history smartRouteHistory, healthState routeHealthState, modelProbeCache map[string]providerModelProbe, cat *modelcatalog.Catalog, obs *observations.Store) (smartRouteCandidate, routePlanCandidate) {
+func inspectSmartRouteCandidate(cfg *agentConfig.Config, routeKey string, allowDeprecated bool, candidate routePlanCandidate, history smartRouteHistory, healthState routeHealthState, modelProbeCache map[string]providerModelProbe, cat *modelcatalog.Catalog, obs *observations.Store) (smartRouteCandidate, routePlanCandidate) {
 	report := smartRouteCandidate{
 		Provider:         candidate.Provider,
 		Model:            candidate.Model,
@@ -249,14 +243,6 @@ func inspectSmartRouteCandidate(cfg *agentConfig.Config, routeKey, routeModelRef
 	overrides := agentConfig.ProviderOverrides{}
 	if candidate.Model != "" {
 		overrides.Model = candidate.Model
-	} else if routeModelRef != "" {
-		resolved, err := resolveProviderModelRef(cfg, candidate.Provider, routeModelRef, allowDeprecated)
-		if err != nil {
-			report.Healthy = false
-			report.Reason = err.Error()
-			return report, candidate
-		}
-		overrides.Model = resolved.ConcreteModel
 	} else {
 		overrides.Model = routeKey
 	}
@@ -796,15 +782,14 @@ type routeStatusCandidate struct {
 }
 
 type routeStatusPowerPolicy struct {
-	PolicyName string `json:"profile,omitempty"`
+	PolicyName string `json:"policy_name,omitempty"`
 	MinPower   int    `json:"min_power,omitempty"`
 	MaxPower   int    `json:"max_power,omitempty"`
 }
 
 type routeStatusOutput struct {
-	Policy                 string                           `json:"profile,omitempty"`
+	Policy                 string                           `json:"policy,omitempty"`
 	Model                  string                           `json:"model,omitempty"`
-	ModelRef               string                           `json:"model_ref,omitempty"`
 	Provider               string                           `json:"provider,omitempty"`
 	Harness                string                           `json:"harness,omitempty"`
 	MinPower               int                              `json:"min_power,omitempty"`
@@ -826,9 +811,8 @@ type routeStatusOutput struct {
 func cmdRouteStatus(workDir string, args []string) int {
 	fs := flag.NewFlagSet("route-status", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	profile := fs.String("profile", "", "Routing profile (named power shortcut; use --min-power / --max-power for exact bounds)")
+	policy := fs.String("policy", "", "Routing policy (named power shortcut; use --min-power / --max-power for exact bounds)")
 	model := fs.String("model", "", "Pin a specific model")
-	modelRef := fs.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target; deprecated targets fail with replacement guidance)")
 	provider := fs.String("provider", "", "Pin a specific provider")
 	harness := fs.String("harness", "", "Pin a specific harness")
 	minPower := fs.Int("min-power", 0, "Minimum catalog model power for automatic routing")
@@ -870,18 +854,9 @@ func cmdRouteStatus(workDir string, args []string) int {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	resolvedModel := *model
-	if resolvedModel == "" && *modelRef != "" {
-		resolved, err := resolveCanonicalModelRef(cfg, *modelRef, true)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			return 1
-		}
-		resolvedModel = resolved.ConcreteModel
-	}
 	decision, resolveErr := svc.ResolveRoute(ctx, rootfizeau.RouteRequest{
-		Policy:   *profile,
-		Model:    resolvedModel,
+		Policy:   *policy,
+		Model:    *model,
 		Provider: *provider,
 		Harness:  *harness,
 		MinPower: *minPower,
@@ -889,15 +864,14 @@ func cmdRouteStatus(workDir string, args []string) int {
 	})
 
 	out := routeStatusOutput{
-		Policy:   *profile,
+		Policy:   *policy,
 		Model:    *model,
-		ModelRef: *modelRef,
 		Provider: *provider,
 		Harness:  *harness,
 		MinPower: *minPower,
 		MaxPower: *maxPower,
 		PowerPolicy: routeStatusPowerPolicy{
-			PolicyName: *profile,
+			PolicyName: *policy,
 			MinPower:   *minPower,
 			MaxPower:   *maxPower,
 		},
@@ -973,7 +947,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 		fmt.Printf("Policy: %s\n", out.Policy)
 	}
 	if out.PowerPolicy.PolicyName != "" || out.PowerPolicy.MinPower > 0 || out.PowerPolicy.MaxPower > 0 {
-		fmt.Printf("Power policy: profile=%s", labelOrUnknown(out.PowerPolicy.PolicyName))
+		fmt.Printf("Power policy: policy=%s", labelOrUnknown(out.PowerPolicy.PolicyName))
 		if out.PowerPolicy.MinPower > 0 {
 			fmt.Printf(" min=%d", out.PowerPolicy.MinPower)
 		}
@@ -984,9 +958,6 @@ func cmdRouteStatus(workDir string, args []string) int {
 	}
 	if out.Model != "" {
 		fmt.Printf("Model: %s\n", out.Model)
-	}
-	if out.ModelRef != "" {
-		fmt.Printf("Model Ref: %s\n", out.ModelRef)
 	}
 	if out.MinPower > 0 {
 		fmt.Printf("Min Power: %d\n", out.MinPower)

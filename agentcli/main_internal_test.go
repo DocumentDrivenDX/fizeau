@@ -50,12 +50,11 @@ func TestResolveProviderForRun_DefaultProvider(t *testing.T) {
 		Default: "local",
 	}
 
-	selection, p, pc, err := resolveProviderForRun(cfg, "", "", "", "", agentConfig.ProviderOverrides{})
+	selection, p, pc, err := resolveProviderForRun(cfg, "", "", agentConfig.ProviderOverrides{})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
 	assert.Equal(t, "local", selection.Route)
 	assert.Equal(t, "local", selection.Provider)
-	assert.Equal(t, "", selection.ResolvedModelRef)
 	assert.Equal(t, "configured-model", selection.ResolvedModel)
 	assert.Equal(t, "configured-model", pc.Model)
 }
@@ -242,74 +241,6 @@ func toolNames(tools []fizeau.Tool) []string {
 	return names
 }
 
-func TestResolveProviderForRun_ModelRef(t *testing.T) {
-	isolateCatalogHome(t)
-	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
-	cfg := &agentConfig.Config{
-		Providers: map[string]agentConfig.ProviderConfig{
-			"cloud": {
-				Type:   "anthropic",
-				APIKey: "test",
-			},
-		},
-		Default: "cloud",
-	}
-
-	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", "code-smart", agentConfig.ProviderOverrides{})
-	require.NoError(t, err)
-	assert.NotNil(t, p)
-	assert.Equal(t, "smart", selection.Route)
-	assert.Equal(t, "cloud", selection.Provider)
-	assert.Equal(t, "smart", selection.ResolvedModelRef)
-	assert.Equal(t, "opus-4.7", selection.ResolvedModel)
-	assert.Equal(t, "opus-4.7", pc.Model)
-}
-
-func TestResolveProviderForRun_DeprecatedModelRefRejectedByDefault(t *testing.T) {
-	isolateCatalogHome(t)
-	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
-	cfg := &agentConfig.Config{
-		Providers: map[string]agentConfig.ProviderConfig{
-			"cloud": {
-				Type:   "anthropic",
-				APIKey: "test",
-			},
-		},
-		Default: "cloud",
-	}
-
-	_, _, _, err := resolveProviderForRun(cfg, workDir, "", "", "claude-sonnet-3.7", agentConfig.ProviderOverrides{})
-	require.Error(t, err)
-}
-
-func TestResolveProviderForRun_DeprecatedModelRefAllowed(t *testing.T) {
-	isolateCatalogHome(t)
-	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
-	cfg := &agentConfig.Config{
-		Providers: map[string]agentConfig.ProviderConfig{
-			"cloud": {
-				Type:   "anthropic",
-				APIKey: "test",
-			},
-		},
-		Default: "cloud",
-	}
-
-	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", "claude-sonnet-3.7", agentConfig.ProviderOverrides{
-		AllowDeprecated: true,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, p)
-	assert.Equal(t, "claude-3-7-sonnet-20250219", selection.Route)
-	assert.Equal(t, "cloud", selection.Provider)
-	assert.Equal(t, "claude-3-7-sonnet-20250219", selection.ResolvedModelRef)
-	assert.Equal(t, "claude-3-7-sonnet-20250219", selection.ResolvedModel)
-	assert.Equal(t, "claude-3-7-sonnet-20250219", pc.Model)
-}
-
 func TestResolveProviderForRun_ModelIntentWithoutRouteUsesSmartSelection(t *testing.T) {
 	isolateCatalogHome(t)
 	workDir := t.TempDir()
@@ -325,14 +256,13 @@ func TestResolveProviderForRun_ModelIntentWithoutRouteUsesSmartSelection(t *test
 		Default: "cloud",
 	}
 
-	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", "code-smart", agentConfig.ProviderOverrides{
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", agentConfig.ProviderOverrides{
 		Model: "exact-model",
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
 	assert.Equal(t, "exact-model", selection.Route)
 	assert.Equal(t, "cloud", selection.Provider)
-	assert.Equal(t, "", selection.ResolvedModelRef)
 	assert.Equal(t, "exact-model", selection.ResolvedModel)
 	assert.Equal(t, "exact-model", pc.Model)
 }
@@ -352,14 +282,13 @@ func TestResolveProviderForRun_ExplicitProviderStillUsesExactModelPin(t *testing
 		Default: "cloud",
 	}
 
-	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "cloud", "code-smart", agentConfig.ProviderOverrides{
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "cloud", agentConfig.ProviderOverrides{
 		Model: "exact-model",
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
 	assert.Equal(t, "cloud", selection.Route)
 	assert.Equal(t, "cloud", selection.Provider)
-	assert.Equal(t, "", selection.ResolvedModelRef)
 	assert.Equal(t, "exact-model", selection.ResolvedModel)
 	assert.Equal(t, "exact-model", pc.Model)
 }
@@ -380,7 +309,7 @@ func TestResolveProviderForRun_RoutePlanByExplicitModel(t *testing.T) {
 		Default: "bragi",
 	}
 
-	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", "", agentConfig.ProviderOverrides{
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", agentConfig.ProviderOverrides{
 		Model: "qwen3.5-27b",
 	})
 	require.NoError(t, err)
@@ -408,37 +337,13 @@ func TestResolveProviderForRun_DefaultRoutePlanOverridesDefaultProvider(t *testi
 		Default: "openrouter",
 	}
 
-	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", "", agentConfig.ProviderOverrides{})
+	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", agentConfig.ProviderOverrides{})
 	require.NoError(t, err)
 	assert.NotNil(t, p)
 	assert.Equal(t, "qwen3.5-27b", selection.Route)
 	assert.Equal(t, "openrouter", selection.Provider)
 	assert.Equal(t, "qwen/qwen3.5-27b", selection.ResolvedModel)
 	assert.Equal(t, "qwen/qwen3.5-27b", pc.Model)
-}
-
-func TestResolveProviderForRun_ModelRefRouteUsesCanonicalTarget(t *testing.T) {
-	isolateCatalogHome(t)
-	workDir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(workDir, ".fizeau"), 0o755))
-	cfg := &agentConfig.Config{
-		Providers: map[string]agentConfig.ProviderConfig{
-			"cloud": {
-				Type:    "lmstudio",
-				BaseURL: "https://openrouter.ai/api/v1",
-			},
-		},
-		Default: "cloud",
-	}
-
-	selection, p, pc, err := resolveProviderForRun(cfg, workDir, "", "", "code-fast", agentConfig.ProviderOverrides{})
-	require.NoError(t, err)
-	assert.NotNil(t, p)
-	assert.Equal(t, "standard", selection.Route)
-	assert.Equal(t, "code-fast", selection.RequestedModelRef)
-	assert.Equal(t, "standard", selection.ResolvedModelRef)
-	assert.Equal(t, "gpt-5.4-mini", selection.ResolvedModel)
-	assert.Equal(t, "gpt-5.4-mini", pc.Model)
 }
 
 func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.T) {
@@ -466,21 +371,19 @@ func TestResolveProviderForRun_BackendRoundRobinSelectionAttribution(t *testing.
 		DefaultBackend: "code-pool",
 	}
 
-	firstSelection, firstProvider, firstConfig, err := resolveProviderForRun(cfg, workDir, "", "", "", agentConfig.ProviderOverrides{})
+	firstSelection, firstProvider, firstConfig, err := resolveProviderForRun(cfg, workDir, "", agentConfig.ProviderOverrides{})
 	require.NoError(t, err)
 	assert.NotNil(t, firstProvider)
 	assert.Equal(t, "code-pool", firstSelection.Route)
 	assert.Equal(t, "vidar", firstSelection.Provider)
-	assert.Equal(t, "", firstSelection.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", firstSelection.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", firstConfig.Model)
 
-	secondSelection, secondProvider, secondConfig, err := resolveProviderForRun(cfg, workDir, "", "", "", agentConfig.ProviderOverrides{})
+	secondSelection, secondProvider, secondConfig, err := resolveProviderForRun(cfg, workDir, "", agentConfig.ProviderOverrides{})
 	require.NoError(t, err)
 	assert.NotNil(t, secondProvider)
 	assert.Equal(t, "code-pool", secondSelection.Route)
 	assert.Equal(t, "bragi", secondSelection.Provider)
-	assert.Equal(t, "", secondSelection.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", secondSelection.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", secondConfig.Model)
 }

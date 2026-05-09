@@ -617,9 +617,9 @@ providers:
 }
 
 // TestRouteStatus_ShowsEligibleCandidatesPerIntent asserts that
-// `fiz route-status --profile <p>` calls service.ResolveRoute and
+// `fiz route-status --policy <p>` calls service.ResolveRoute and
 // renders the engine's full candidate trace for the requested policy
-// profile, including the structured power-policy evidence and candidate
+// input, including the structured power-policy evidence and candidate
 // score components. Per ADR-005 §5.
 func TestRouteStatus_ShowsEligibleCandidatesPerIntent(t *testing.T) {
 	exe := buildAgentCLI(t)
@@ -627,7 +627,7 @@ func TestRouteStatus_ShowsEligibleCandidatesPerIntent(t *testing.T) {
 	home := t.TempDir()
 
 	// Discover a local power-5 model so the native harness has at least one
-	// eligible candidate under the cheap profile. Subscription harnesses
+	// eligible candidate under the cheap policy. Subscription harnesses
 	// also surface candidates but go ineligible without quota state,
 	// exercising both eligible and ineligible code paths.
 	healthy := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
@@ -642,7 +642,7 @@ providers:
     model: qwen3.5-27b
 `)
 
-	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--profile", "cheap", "--json")
+	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--policy", "cheap", "--json")
 	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
 	type component struct {
@@ -668,9 +668,9 @@ providers:
 		Winner        bool      `json:"winner"`
 	}
 	var parsed struct {
-		Policy      string `json:"profile"`
+		Policy      string `json:"policy"`
 		PowerPolicy struct {
-			PolicyName string `json:"profile"`
+			PolicyName string `json:"policy_name"`
 			MinPower   int    `json:"min_power"`
 			MaxPower   int    `json:"max_power"`
 		} `json:"power_policy"`

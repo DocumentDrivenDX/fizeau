@@ -65,3 +65,31 @@ func TestRun_PassesHarnessPinIntoServiceRequest(t *testing.T) {
 		t.Fatal("request harness was empty")
 	}
 }
+
+func TestRunRejectsModelRefFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd := MountCLI(WithStdout(&stdout), WithStderr(&stderr))
+	cmd.SetArgs([]string{"--model-ref", "x", "run", "hello"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("Execute succeeded; stdout=%s stderr=%s", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(err.Error(), "unknown flag: --model-ref") {
+		t.Fatalf("Execute error = %v, want cobra unknown flag for --model-ref", err)
+	}
+}
+
+func TestRunRejectsProfileFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd := MountCLI(WithStdout(&stdout), WithStderr(&stderr))
+	cmd.SetArgs([]string{"--profile", "x", "run", "hello"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("Execute succeeded; stdout=%s stderr=%s", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(err.Error(), "unknown flag: --profile") {
+		t.Fatalf("Execute error = %v, want cobra unknown flag for --profile", err)
+	}
+}

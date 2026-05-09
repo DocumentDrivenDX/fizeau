@@ -134,7 +134,7 @@ func TestSynthesizeIntentRoute(t *testing.T) {
 		},
 	}
 
-	route := synthesizeIntentRoute(cfg, "qwen3.5-27b", "")
+	route := synthesizeIntentRoute(cfg, "qwen3.5-27b")
 	assert.Equal(t, "smart", route.Strategy)
 	assert.Len(t, route.Candidates, 2)
 
@@ -147,20 +147,6 @@ func TestSynthesizeIntentRoute(t *testing.T) {
 	assert.Contains(t, providerMap, "cloud")
 	assert.Equal(t, "qwen3.5-27b", providerMap["local"])
 	assert.Equal(t, "qwen3.5-27b", providerMap["cloud"])
-}
-
-func TestSynthesizeIntentRoute_WithModelRef(t *testing.T) {
-	cfg := &agentConfig.Config{
-		Providers: map[string]agentConfig.ProviderConfig{
-			"local": {Type: "lmstudio"},
-		},
-	}
-
-	route := synthesizeIntentRoute(cfg, "qwen3.5-27b", "code-fast")
-	assert.Equal(t, "smart", route.Strategy)
-	assert.Len(t, route.Candidates, 1)
-	assert.Equal(t, "local", route.Candidates[0].Provider)
-	assert.Equal(t, "", route.Candidates[0].Model) // Model should be empty when modelRef is set
 }
 
 func TestModelFamily(t *testing.T) {

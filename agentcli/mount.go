@@ -145,6 +145,8 @@ func addMountedSubcommands(root *cobra.Command, cfg mountConfig) {
 	root.AddCommand(nativeReplayCommand())
 	root.AddCommand(nativeUsageCommand())
 	root.AddCommand(nativeProvidersCommand())
+	root.AddCommand(nativePoliciesCommand())
+	root.AddCommand(nativeHarnessesCommand())
 	root.AddCommand(nativeModelsCommand())
 	root.AddCommand(nativeCheckCommand())
 	root.AddCommand(nativeCatalogCommand())
@@ -217,6 +219,8 @@ func mountedSubcommands() []string {
 		"models",
 		"check",
 		"providers",
+		"policies",
+		"harnesses",
 		"catalog",
 		"corpus",
 		"route-status",
@@ -237,7 +241,7 @@ func nativeRouteStatusCommand() *cobra.Command {
 			return exitError(cmdRouteStatus(rootWorkDir(cmd), routeStatusArgs(cmd, args)))
 		},
 	}
-	cmd.Flags().String("profile", "", "Routing profile (named power shortcut; use --min-power / --max-power for exact bounds)")
+	cmd.Flags().String("policy", "", "Routing policy (named power shortcut; use --min-power / --max-power for exact bounds)")
 	cmd.Flags().String("harness", "", "Pin a specific harness")
 	cmd.Flags().Bool("overrides", false, "Print override_class_breakdown over a time window")
 	cmd.Flags().String("since", "", "Time window for --overrides mode")
@@ -253,6 +257,30 @@ func nativeProvidersCommand() *cobra.Command {
 		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return exitError(cmdProviders(rootWorkDir(cmd), rootBool(cmd, "json")))
+		},
+	}
+}
+
+func nativePoliciesCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:           "policies",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdPolicies(rootWorkDir(cmd), rootBool(cmd, "json")))
+		},
+	}
+}
+
+func nativeHarnessesCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:           "harnesses",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdHarnesses(rootWorkDir(cmd), rootBool(cmd, "json")))
 		},
 	}
 }
@@ -531,9 +559,9 @@ func usageArgs(cmd *cobra.Command, args []string) []string {
 
 func routeStatusArgs(cmd *cobra.Command, args []string) []string {
 	out := changedRootBoolFlagArgs(cmd, "json")
-	out = append(out, changedRootFlagArgs(cmd, "model", "model-ref", "provider", "min-power", "max-power")...)
+	out = append(out, changedRootFlagArgs(cmd, "model", "provider", "min-power", "max-power")...)
 	out = append(out, changedBoolFlagArgs(cmd, "overrides")...)
-	out = append(out, changedFlagArgs(cmd, "profile", "harness", "since", "axis")...)
+	out = append(out, changedFlagArgs(cmd, "policy", "harness", "since", "axis")...)
 	return append(out, args...)
 }
 
@@ -587,15 +615,14 @@ func catalogCheckArgs(cmd *cobra.Command, args []string) []string {
 // until the corresponding command path has native pflag definitions.
 func NeedsLegacyPassthrough(args []string) bool {
 	valueFlags := map[string]bool{
-		"--backend":   true,
 		"--harness":   true,
 		"--max-power": true,
 		"--max-iter":  true,
 		"--min-power": true,
 		"--model":     true,
-		"--model-ref": true,
 		"--p":         true,
 		"-p":          true,
+		"--policy":    true,
 		"--preset":    true,
 		"--provider":  true,
 		"--reasoning": true,
@@ -618,7 +645,7 @@ func NeedsLegacyPassthrough(args []string) bool {
 			return false
 		}
 		switch arg {
-		case "log", "replay", "usage", "providers", "models", "check", "route-status", "corpus", "import", "update":
+		case "log", "replay", "usage", "providers", "policies", "harnesses", "models", "check", "route-status", "corpus", "import", "update":
 			return false
 		case "catalog":
 			if i+1 < len(args) {
@@ -640,10 +667,9 @@ func addLegacyPersistentFlags(cmd *cobra.Command) {
 	flags.StringP("p", "p", "", "Prompt (use @file to read from file)")
 	flags.Bool("json", false, "Output result as JSON")
 	flags.String("provider", "", "Named provider from config")
-	flags.String("backend", "", "Deprecated named backend pool from config")
 	flags.String("harness", "", "Harness hard pin (selects a specific harness)")
 	flags.String("model", "", "Model route key or explicit concrete model override")
-	flags.String("model-ref", "", "Model catalog reference (alias, profile, or canonical target; deprecated targets fail with replacement guidance)")
+	flags.String("policy", "", "Routing policy (cheap, default, smart, or air-gapped)")
 	flags.Bool("list-models", false, "List available models with routing metadata")
 	flags.Int("min-power", 0, "Minimum catalog model power for automatic routing")
 	flags.Int("max-power", 0, "Maximum catalog model power for automatic routing")
@@ -670,14 +696,13 @@ func legacyArgs(cmd *cobra.Command, args ...string) []string {
 		}
 	}
 	for _, name := range []string{
-		"backend",
 		"harness",
 		"max-power",
 		"max-iter",
 		"min-power",
 		"model",
-		"model-ref",
 		"p",
+		"policy",
 		"preset",
 		"provider",
 		"reasoning",

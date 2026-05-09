@@ -10,28 +10,15 @@ import (
 
 func TestResolveRouteTarget_ExplicitProvider(t *testing.T) {
 	cfg := &agentConfig.Config{}
-	routeKey, routeModelRef, legacyBackend, err := resolveRouteTarget(cfg, "", "cloud", "", agentConfig.ProviderOverrides{})
-	assert.NoError(t, err)
+	routeKey, legacyBackend := resolveRouteTarget(cfg, "cloud", agentConfig.ProviderOverrides{})
 	assert.Equal(t, "", routeKey)
-	assert.Equal(t, "", routeModelRef)
 	assert.Equal(t, "", legacyBackend)
-}
-
-func TestResolveRouteTarget_ExplicitBackend(t *testing.T) {
-	cfg := &agentConfig.Config{}
-	routeKey, routeModelRef, legacyBackend, err := resolveRouteTarget(cfg, "my-backend", "", "", agentConfig.ProviderOverrides{})
-	assert.NoError(t, err)
-	assert.Equal(t, "", routeKey)
-	assert.Equal(t, "", routeModelRef)
-	assert.Equal(t, "my-backend", legacyBackend)
 }
 
 func TestResolveRouteTarget_ExplicitModel(t *testing.T) {
 	cfg := &agentConfig.Config{}
-	routeKey, routeModelRef, legacyBackend, err := resolveRouteTarget(cfg, "", "", "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
-	assert.NoError(t, err)
+	routeKey, legacyBackend := resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
 	assert.Equal(t, "qwen3.5-27b", routeKey)
-	assert.Equal(t, "", routeModelRef)
 	assert.Equal(t, "", legacyBackend)
 }
 
@@ -39,10 +26,8 @@ func TestResolveRouteTarget_DefaultBackendFallback(t *testing.T) {
 	cfg := &agentConfig.Config{
 		DefaultBackend: "fallback-pool",
 	}
-	routeKey, routeModelRef, legacyBackend, err := resolveRouteTarget(cfg, "", "", "", agentConfig.ProviderOverrides{})
-	assert.NoError(t, err)
+	routeKey, legacyBackend := resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{})
 	assert.Equal(t, "", routeKey)
-	assert.Equal(t, "", routeModelRef)
 	assert.Equal(t, "fallback-pool", legacyBackend)
 }
 
@@ -52,29 +37,16 @@ func TestResolveRouteTarget_RoutingDefaultModel(t *testing.T) {
 			DefaultModel: "qwen3.5-27b",
 		},
 	}
-	routeKey, routeModelRef, legacyBackend, err := resolveRouteTarget(cfg, "", "", "", agentConfig.ProviderOverrides{})
-	assert.NoError(t, err)
+	routeKey, legacyBackend := resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{})
 	assert.Equal(t, "qwen3.5-27b", routeKey)
-	assert.Equal(t, "", routeModelRef)
 	assert.Equal(t, "", legacyBackend)
 }
 
 func TestResolveRouteTarget_ProviderTakesPrecedenceOverModel(t *testing.T) {
 	cfg := &agentConfig.Config{}
-	routeKey, routeModelRef, legacyBackend, err := resolveRouteTarget(cfg, "", "cloud", "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
-	assert.NoError(t, err)
+	routeKey, legacyBackend := resolveRouteTarget(cfg, "cloud", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
 	assert.Equal(t, "", routeKey)
-	assert.Equal(t, "", routeModelRef)
 	assert.Equal(t, "", legacyBackend)
-}
-
-func TestResolveRouteTarget_BackendTakesPrecedenceOverModel(t *testing.T) {
-	cfg := &agentConfig.Config{}
-	routeKey, routeModelRef, legacyBackend, err := resolveRouteTarget(cfg, "my-backend", "", "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
-	assert.NoError(t, err)
-	assert.Equal(t, "", routeKey)
-	assert.Equal(t, "", routeModelRef)
-	assert.Equal(t, "my-backend", legacyBackend)
 }
 
 func TestResolveRouteTarget_PrecedenceOrder(t *testing.T) {
@@ -86,19 +58,15 @@ func TestResolveRouteTarget_PrecedenceOrder(t *testing.T) {
 	}
 
 	// Provider wins
-	routeKey, _, _, _ := resolveRouteTarget(cfg, "", "cloud", "", agentConfig.ProviderOverrides{})
-	assert.Equal(t, "", routeKey)
-
-	// Backend wins over model
-	routeKey, _, _, _ = resolveRouteTarget(cfg, "my-backend", "", "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
+	routeKey, _ := resolveRouteTarget(cfg, "cloud", agentConfig.ProviderOverrides{})
 	assert.Equal(t, "", routeKey)
 
 	// Model wins over routing defaults
-	routeKey, _, _, _ = resolveRouteTarget(cfg, "", "", "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
+	routeKey, _ = resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
 	assert.Equal(t, "qwen3.5-27b", routeKey)
 
 	// Routing default model wins over backend fallback
-	routeKey, _, _, _ = resolveRouteTarget(cfg, "", "", "", agentConfig.ProviderOverrides{})
+	routeKey, _ = resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{})
 	assert.Equal(t, "default-route", routeKey)
 }
 
