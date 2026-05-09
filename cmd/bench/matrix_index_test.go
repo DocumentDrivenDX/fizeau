@@ -14,7 +14,7 @@ func TestMatrixIndexAssignsRunIndexesAndCopiesCanonicalCells(t *testing.T) {
 	writeMatrixIndexFixtureReport(t, root, "run-b", "fix-git", 1, 0)
 
 	canonical := filepath.Join(root, "canonical")
-	rows, err := collectMatrixIndexRows(root, canonical, true, "dev-test", "terminal-bench-2-1", map[string]profileProviderInfo{
+	rows, err := collectMatrixIndexRows(root, canonical, true, 1, "terminal-bench-2-1", map[string]profileProviderInfo{
 		"fiz-openai-gpt-5-5": {Provider: "openai", Model: "gpt-5.5"},
 	})
 	if err != nil {
@@ -45,7 +45,7 @@ func TestMatrixIndexRecordsWrappedHarness(t *testing.T) {
 		ProfileID: "fiz-harness-codex-gpt-5-4-mini",
 		TaskID:    "hello-world",
 	}
-	row := matrixIndexRowFromReport("report.json", report, "dev-test", "terminal-bench-2-1", map[string]profileProviderInfo{})
+	row := matrixIndexRowFromReport("report.json", report, 1, "terminal-bench-2-1", map[string]profileProviderInfo{})
 	if row.Harness != "codex" {
 		t.Fatalf("harness = %q, want codex", row.Harness)
 	}

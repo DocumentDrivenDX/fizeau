@@ -8,34 +8,36 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
+	"github.com/DocumentDrivenDX/fizeau/internal/fiztools"
 )
 
 type matrixIndexRow struct {
-	Dataset       string  `json:"dataset"`
-	TaskID        string  `json:"task_id"`
-	Provider      string  `json:"provider"`
-	Model         string  `json:"model"`
-	Harness       string  `json:"harness"`
-	ProfileID     string  `json:"profile_id"`
-	ProfilePath   string  `json:"profile_path,omitempty"`
-	ProfileSnap   string  `json:"profile_snapshot,omitempty"`
-	OriginalRep   int     `json:"original_rep"`
-	RunIndex      int     `json:"run_index"`
-	FinalStatus   string  `json:"final_status"`
-	Reward        *int    `json:"reward,omitempty"`
-	InputTokens   int     `json:"input_tokens"`
-	OutputTokens  int     `json:"output_tokens"`
-	CostUSD       float64 `json:"cost_usd"`
-	WallSeconds   float64 `json:"wall_seconds"`
-	StartedAt     string  `json:"started_at,omitempty"`
-	FinishedAt    string  `json:"finished_at,omitempty"`
-	FizVersion    string  `json:"fiz_version"`
-	SourcePath    string  `json:"source_path"`
-	CanonicalPath string  `json:"canonical_path,omitempty"`
+	Dataset         string  `json:"dataset"`
+	TaskID          string  `json:"task_id"`
+	Provider        string  `json:"provider"`
+	Model           string  `json:"model"`
+	Harness         string  `json:"harness"`
+	ProfileID       string  `json:"profile_id"`
+	ProfilePath     string  `json:"profile_path,omitempty"`
+	ProfileSnap     string  `json:"profile_snapshot,omitempty"`
+	OriginalRep     int     `json:"original_rep"`
+	RunIndex        int     `json:"run_index"`
+	FinalStatus     string  `json:"final_status"`
+	Reward          *int    `json:"reward,omitempty"`
+	InputTokens     int     `json:"input_tokens"`
+	OutputTokens    int     `json:"output_tokens"`
+	CostUSD         float64 `json:"cost_usd"`
+	WallSeconds     float64 `json:"wall_seconds"`
+	StartedAt       string  `json:"started_at,omitempty"`
+	FinishedAt      string  `json:"finished_at,omitempty"`
+	FizToolsVersion int     `json:"fiz_tools_version"`
+	SourcePath      string  `json:"source_path"`
+	CanonicalPath   string  `json:"canonical_path,omitempty"`
 }
 
 type matrixIndexSummaryRow struct {
@@ -68,7 +70,11 @@ func cmdMatrixIndex(args []string) int {
 	out := fs.String("out", "", "Directory for indexes (default: <canonical-out>/indexes or <root>/indexes)")
 	canonicalOut := fs.String("canonical-out", "", "Optional canonical output root; indexes go under <canonical-out>/indexes by default")
 	copyCells := fs.Bool("copy", false, "Copy each source cell directory into canonical cells/")
-	fizVersion := fs.String("fiz-version", "unknown", "Fiz version label for historical rows missing explicit provenance")
+	// --fiz-tools-version is the canonical flag; --fiz-version is kept as a
+	// backward-compatible alias for shell wrappers / tooling that hasn't
+	// migrated yet.
+	fizVersion := fs.Int("fiz-tools-version", fiztools.Version, "Fiz tools version (agent-behavior identity) to stamp on historical rows missing explicit provenance")
+	fizVersionLegacy := fs.String("fiz-version", "", "DEPRECATED alias for --fiz-tools-version; if set, expected to be \"v<N>\" or \"<N>\"")
 	dataset := fs.String("dataset", "terminal-bench-2-1", "Dataset label to attach to indexed rows")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -105,7 +111,15 @@ func cmdMatrixIndex(args []string) int {
 			fmt.Fprintf(os.Stderr, "matrix-index: snapshotted %d profiles to %s/profiles/\n", n, canonicalRoot)
 		}
 	}
-	rows, err := collectMatrixIndexRows(scanRoot, canonicalRoot, *copyCells, *fizVersion, *dataset, profiles)
+	// Honour the deprecated --fiz-version alias when set; accepts "v<N>" or
+	// "<N>" and falls back to the explicit --fiz-tools-version value.
+	effectiveToolsVersion := *fizVersion
+	if legacy := strings.TrimSpace(strings.TrimPrefix(*fizVersionLegacy, "v")); legacy != "" {
+		if n, err := strconv.Atoi(legacy); err == nil {
+			effectiveToolsVersion = n
+		}
+	}
+	rows, err := collectMatrixIndexRows(scanRoot, canonicalRoot, *copyCells, effectiveToolsVersion, *dataset, profiles)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s matrix-index: %v\n", benchCommandName(), err)
 		return 1
@@ -158,7 +172,7 @@ func loadMatrixIndexProfiles(dir string) (map[string]profileProviderInfo, error)
 	return out, nil
 }
 
-func collectMatrixIndexRows(root, canonicalRoot string, copyCells bool, fallbackVersion, dataset string, profiles map[string]profileProviderInfo) ([]matrixIndexRow, error) {
+func collectMatrixIndexRows(root, canonicalRoot string, copyCells bool, fallbackVersion int, dataset string, profiles map[string]profileProviderInfo) ([]matrixIndexRow, error) {
 	var rows []matrixIndexRow
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -283,7 +297,7 @@ func snapshotProfileCatalog(canonicalRoot, sourceProfilesDir string) (int, error
 	return count, nil
 }
 
-func matrixIndexRowFromReport(path string, report matrixRunReport, fallbackVersion, dataset string, profiles map[string]profileProviderInfo) matrixIndexRow {
+func matrixIndexRowFromReport(path string, report matrixRunReport, fallbackVersion int, dataset string, profiles map[string]profileProviderInfo) matrixIndexRow {
 	provider := ""
 	model := ""
 	if info, ok := profiles[report.ProfileID]; ok {
@@ -293,26 +307,33 @@ func matrixIndexRowFromReport(path string, report matrixRunReport, fallbackVersi
 	if provider == "" || model == "" {
 		provider, model = inferProviderModelFromProfileID(report.ProfileID)
 	}
+	// Prefer the version stamped on the report (post-schema-change runs);
+	// fall back to the operator-supplied label only when the report doesn't
+	// carry one (legacy migrated rows).
+	toolsVersion := report.FizToolsVersion
+	if toolsVersion == 0 {
+		toolsVersion = fallbackVersion
+	}
 	return matrixIndexRow{
-		Dataset:      dataset,
-		TaskID:       report.TaskID,
-		Provider:     provider,
-		Model:        model,
-		Harness:      effectiveMatrixIndexHarness(report),
-		ProfileID:    report.ProfileID,
-		ProfilePath:  report.ProfilePath,
-		ProfileSnap:  report.ProfileSnapshot,
-		OriginalRep:  report.Rep,
-		FinalStatus:  report.FinalStatus,
-		Reward:       report.Reward,
-		InputTokens:  intValue(report.InputTokens),
-		OutputTokens: intValue(report.OutputTokens),
-		CostUSD:      report.CostUSD,
-		WallSeconds:  floatValue(report.WallSeconds),
-		StartedAt:    formatMatrixIndexTime(report.StartedAt),
-		FinishedAt:   formatMatrixIndexTime(report.FinishedAt),
-		FizVersion:   fallbackVersion,
-		SourcePath:   path,
+		Dataset:         dataset,
+		TaskID:          report.TaskID,
+		Provider:        provider,
+		Model:           model,
+		Harness:         effectiveMatrixIndexHarness(report),
+		ProfileID:       report.ProfileID,
+		ProfilePath:     report.ProfilePath,
+		ProfileSnap:     report.ProfileSnapshot,
+		OriginalRep:     report.Rep,
+		FinalStatus:     report.FinalStatus,
+		Reward:          report.Reward,
+		InputTokens:     intValue(report.InputTokens),
+		OutputTokens:    intValue(report.OutputTokens),
+		CostUSD:         report.CostUSD,
+		WallSeconds:     floatValue(report.WallSeconds),
+		StartedAt:       formatMatrixIndexTime(report.StartedAt),
+		FinishedAt:      formatMatrixIndexTime(report.FinishedAt),
+		FizToolsVersion: toolsVersion,
+		SourcePath:      path,
 	}
 }
 

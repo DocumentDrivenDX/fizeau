@@ -104,8 +104,8 @@ files, snapshot the profile catalog, and emit a phase-independent index.
 go run ./cmd/bench matrix-index \
   --copy \
   --root benchmark-results \
-  --canonical-out benchmark-results/fiz-v0.10.16 \
-  --fiz-version v0.10.16
+  --canonical-out benchmark-results/fiz-tools-v1 \
+  --fiz-tools-version 1
 ```
 
 `--copy` migrates each source cell directory into the canonical layout

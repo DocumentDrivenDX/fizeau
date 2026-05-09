@@ -52,15 +52,17 @@ __pycache__/
 coverage.out
 coverage.html
 
-# Benchmark artifacts
+# Benchmark artifacts: only the version-rooted indexes and version marker
+# are committed; cells/, profiles/, and lane-output dirs stay local.
+# Pattern matches fiz-tools-v* (canonical) and the legacy fiz-v* variant.
 /benchmark-results/
 !/benchmark-results/
 /benchmark-results/*
-!/benchmark-results/fiz-v*/
-/benchmark-results/fiz-v*/**
-!/benchmark-results/fiz-v*/.fiz-benchmark-version.json
-!/benchmark-results/fiz-v*/indexes/
-!/benchmark-results/fiz-v*/indexes/**
+!/benchmark-results/fiz-tools-v*/
+/benchmark-results/fiz-tools-v*/**
+!/benchmark-results/fiz-tools-v*/.fiz-benchmark-version.json
+!/benchmark-results/fiz-tools-v*/indexes/
+!/benchmark-results/fiz-tools-v*/indexes/**
 /jobs/
 /bench/results/
 

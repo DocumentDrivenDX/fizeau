@@ -1024,15 +1024,15 @@ func matrixTupleDir(outDir, harness, profileID string, rep int, taskID string) s
 }
 
 // resolveCanonicalFizRoot returns the version-rooted benchmark directory the
-// runner should default --out / --cells-root into. Order of precedence:
-//  1. FIZ_BENCHMARK_ROOT env override (operator escape hatch)
-//  2. The most recent benchmark-results/fiz-v*/ directory present on disk
-//  3. benchmark-results/fiz-unknown/ as a last-resort fallback
+// runner should default --out / --cells-root into. The directory name is
+// keyed on fiztools.Version (the agent-behavior version) so that cells from
+// runs that share an agent identity land in the same tensor regardless of
+// fiz semver / commit, and bumping fiz_tools_version naturally segregates
+// future cells under a new root.
 //
-// We deliberately don't shell out to `git describe` from this hot path; the
-// shell wrapper handles version-marker provenance. This helper just picks a
-// stable canonical root so direct `bench matrix` invocations don't scatter
-// cells under timestamp-rooted dirs.
+// Order of precedence:
+//  1. FIZ_BENCHMARK_ROOT env override (operator escape hatch)
+//  2. benchmark-results/fiz-tools-v<FizToolsVersion>/
 func resolveCanonicalFizRoot(workDir string) string {
 	if env := strings.TrimSpace(os.Getenv("FIZ_BENCHMARK_ROOT")); env != "" {
 		if filepath.IsAbs(env) {
@@ -1040,21 +1040,7 @@ func resolveCanonicalFizRoot(workDir string) string {
 		}
 		return filepath.Join(workDir, env)
 	}
-	resultsDir := filepath.Join(workDir, "benchmark-results")
-	entries, err := os.ReadDir(resultsDir)
-	if err == nil {
-		var candidates []string
-		for _, e := range entries {
-			if e.IsDir() && strings.HasPrefix(e.Name(), "fiz-v") {
-				candidates = append(candidates, e.Name())
-			}
-		}
-		if len(candidates) > 0 {
-			sort.Strings(candidates)
-			return filepath.Join(resultsDir, candidates[len(candidates)-1])
-		}
-	}
-	return filepath.Join(resultsDir, "fiz-unknown")
+	return filepath.Join(workDir, "benchmark-results", fmt.Sprintf("fiz-tools-v%d", fiztools.Version))
 }
 
 func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, rep int, taskID string) string {

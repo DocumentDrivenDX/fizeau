@@ -206,7 +206,13 @@ TASKS_DIR="$(abs_path "${TASKS_DIR}")"
 SOURCE_TASKS_DIR="${TASKS_DIR}"
 SWEEP_PLAN="$(abs_path "${SWEEP_PLAN}")"
 if [[ -z "${OUT}" ]]; then
-  OUT="${REPO_ROOT}/benchmark-results/fiz-$(./fiz version --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version","unknown"))' 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null || echo unknown)"
+  # Canonical root is keyed on fiz_tools_version (agent-behavior identity),
+  # not fiz semver. The constant lives in internal/fiztools/version.go; the
+  # shell wrapper extracts it so it agrees with cmd/bench's
+  # resolveCanonicalFizRoot. Bumping FizToolsVersion in Go routes new sweeps
+  # into a fresh canonical root automatically.
+  FIZ_TOOLS_VERSION="$(grep -oE 'const Version = [0-9]+' "${REPO_ROOT}/internal/fiztools/version.go" 2>/dev/null | grep -oE '[0-9]+$' || echo 1)"
+  OUT="${REPO_ROOT}/benchmark-results/fiz-tools-v${FIZ_TOOLS_VERSION}"
 else
   OUT="$(abs_path "${OUT}")"
 fi
@@ -481,8 +487,11 @@ new, count = re.subn(
     text,
     count=1,
 )
-if count != 1:
-    raise SystemExit(f"{task}: expected exactly one docker_image assignment")
+if count == 0:
+    # Idempotent: task.toml is already mutated (cached preflight reuse).
+    if 'docker_image intentionally omitted' in text:
+        sys.exit(0)
+    raise SystemExit(f"{task}: no docker_image assignment found and not pre-mutated")
 task.write_text(new)
 PY
 }
@@ -493,13 +502,21 @@ safe_task_image_name() {
 
 prepare_local_task_images() {
   local overlay unique_file id src rel dest dockerfile original_image digest digest_short safe_id tag build_args
-  overlay="${OUT}/task-images/terminal-bench-2-1-${CONTAINER_GOARCH}"
+  # Single canonical preflight overlay shared across sweeps. The mutation we
+  # apply (commenting out docker_image so Harbor builds from the bundled
+  # Dockerfile) is deterministic on task content, so it's safe to reuse
+  # across runs of the same fiz_tools_version. Set
+  # BENCHMARK_FORCE_TASK_IMAGE_BUILD=1 to force a rebuild from scratch.
+  overlay="${REPO_ROOT}/benchmark-results/external/terminal-bench-2-1-${CONTAINER_GOARCH}-preflight"
   unique_file="$(mktemp)"
   awk -F '\t' '!seen[$2]++ {print $2 "\t" $3}' "${TARGET_TASKS_FILE}" > "${unique_file}"
 
-  rm -rf "${overlay}"
+  if [[ "${BENCHMARK_FORCE_TASK_IMAGE_BUILD:-0}" = "1" ]]; then
+    rm -rf "${overlay}"
+  fi
   mkdir -p "${overlay}"
   echo "Preflight-building selected TerminalBench task images locally for linux/${CONTAINER_GOARCH}"
+  echo "  overlay: ${overlay}"
 
   while IFS=$'\t' read -r id src; do
     [[ -n "${id}" ]] || continue
@@ -518,9 +535,15 @@ prepare_local_task_images() {
       exit 1
     fi
     dest="${overlay}/${rel}"
-    mkdir -p "$(dirname "${dest}")"
-    rm -rf "${dest}"
-    cp -a "${src}" "${dest}"
+    if [[ -d "${dest}" && -f "${dest}/task.toml" && "${BENCHMARK_FORCE_TASK_IMAGE_BUILD:-0}" != "1" ]]; then
+      # Preflight already built for this task content. Skip the cp+mutate;
+      # docker build below is a no-op cache hit if image layers exist.
+      :
+    else
+      mkdir -p "$(dirname "${dest}")"
+      rm -rf "${dest}"
+      cp -a "${src}" "${dest}"
+    fi
 
     original_image="$(task_docker_image "${src}/task.toml")"
     digest="$(basename "${src}")"
@@ -683,13 +706,14 @@ PY
 }
 
 refresh_indexes() {
-  local version
-  version="$(fiz_version_label)"
+  # bench matrix-index defaults --fiz-tools-version to internal/fiztools.Version,
+  # which is the canonical agent-behavior identity. The fiz semver/commit
+  # info from .fiz-benchmark-version.json stays in OUT for run-level
+  # provenance but isn't the path key.
   "${BENCH_BIN}" matrix-index \
     --work-dir "${REPO_ROOT}" \
     --root "${OUT}" \
     --out "${OUT}/indexes" \
-    --fiz-version "${version}" \
     --dataset terminal-bench-2-1
 }
 
