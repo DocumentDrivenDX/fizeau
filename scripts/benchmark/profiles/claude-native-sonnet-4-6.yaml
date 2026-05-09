@@ -2,6 +2,14 @@
 # represents the model selected by Claude Code, not a model-controlled
 # OpenAI-compatible row.
 id: claude-native-sonnet-4-6
+metadata:
+  server: anthropic
+  model_family: claude-sonnet-4
+  model_id: anthropic/claude-sonnet-4.6
+  quant_label: cloud-hosted
+  provider_surface: claude-code-native
+  runtime: claude-code
+
 provider:
   type: anthropic
   model: sonnet-4.6

@@ -1,6 +1,14 @@
 # Claude Sonnet 4.6 via OpenRouter. Leaderboard comparison baseline for fizeau.
 # Pricing from OpenRouter 2026-04-30.
 id: claude-sonnet-4-6
+metadata:
+  server: openrouter
+  model_family: claude-sonnet-4
+  model_id: anthropic/claude-sonnet-4.6
+  quant_label: cloud-hosted
+  provider_surface: openrouter
+  runtime: openrouter
+
 provider:
   type: openrouter
   model: anthropic/claude-sonnet-4.6

@@ -2,6 +2,16 @@
 # loaded_context_length=101770 per /api/v0/models at 2026-05-01.
 # Qwen3 thinking-mode recommended sampling: T=0.6, top_p=0.95, top_k=20.
 id: bragi-qwen3-6-27b
+metadata:
+  server: bragi
+  model_family: qwen3-6-27b
+  model_id: qwen/qwen3.6-27b
+  quant_label: lmstudio-q4_k_m
+  provider_surface: bragi-lmstudio
+  runtime: lmstudio
+  hardware_label: bragi-club-3090
+  endpoint: http://bragi:1234/v1
+
 provider:
   type: lmstudio
   model: qwen/qwen3.6-27b

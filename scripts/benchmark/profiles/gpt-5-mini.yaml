@@ -3,6 +3,14 @@
 # with recency ≥ 2025-11-01. Pricing from OpenRouter list price 2026-04-30.
 # SD-010 §6.3: cost reconciliation hashes this YAML per cell run.
 id: gpt-5-mini
+metadata:
+  server: openrouter
+  model_family: gpt-5-mini
+  model_id: openai/gpt-5-mini
+  quant_label: cloud-hosted
+  provider_surface: openrouter
+  runtime: openrouter
+
 provider:
   type: openai-compat
   model: openai/gpt-5-mini
