@@ -130,11 +130,20 @@ def container_jsonl_stats(name: str) -> dict:
 
 
 def lane_cell_stats(canonical: Path, profile: str, since: dt.datetime | None) -> dict:
-    """Tally cells under <canonical>/cells/<dataset>/*/<profile>/rep-*/report.json."""
+    """Tally cells under <canonical>/cells/<dataset>/*/<profile>/rep-*/report.json.
+
+    Also collects per-cell turn / wall_seconds / error signals over the fresh
+    window so the anomaly detector can flag silent quality degradations
+    (e.g. "all recent fails are 2-turn fast-fails" → likely config bug,
+    not real model failure).
+    """
     pattern = str(canonical / "cells" / "terminal-bench-2-1" / "*" / profile / "rep-*" / "report.json")
     paths = glob.glob(pattern)
     total = pas = fail = inv = other = fresh = 0
     fresh_pass = fresh_fail = fresh_inv = 0
+    fresh_fail_turns: list[int] = []
+    fresh_fail_walls: list[float] = []
+    fresh_error_phrases: Counter = Counter()
     for p in paths:
         try:
             r = json.loads(Path(p).read_text())
@@ -158,8 +167,26 @@ def lane_cell_stats(canonical: Path, profile: str, since: dt.datetime | None) ->
                 fresh_pass += 1
             elif is_fail:
                 fresh_fail += 1
+                fresh_fail_turns.append(int(r.get("turns") or 0))
+                fresh_fail_walls.append(float(r.get("wall_seconds") or 0))
             elif is_inv:
                 fresh_inv += 1
+            # Bucket recurring error phrases — a single phrase appearing in
+            # many cells is the smoking gun of a config bug.
+            err = (r.get("error") or "").strip()
+            if err:
+                # First short tag-like phrase: provider/wire-error markers we know about
+                for marker in ("not supported by provider type",
+                               "reasoning_wire=none",
+                               "agent runtime bundle",
+                               "address pools",
+                               "binary not found",
+                               "asyncio.run()",
+                               "Connection refused",
+                               "context length"):
+                    if marker.lower() in err.lower():
+                        fresh_error_phrases[marker] += 1
+                        break
     return {
         "total": total,
         "pass": pas,
@@ -170,7 +197,56 @@ def lane_cell_stats(canonical: Path, profile: str, since: dt.datetime | None) ->
         "fresh_pass": fresh_pass,
         "fresh_fail": fresh_fail,
         "fresh_invalid": fresh_inv,
+        "fresh_fail_turns": fresh_fail_turns,
+        "fresh_fail_walls": fresh_fail_walls,
+        "fresh_error_phrases": dict(fresh_error_phrases),
     }
+
+
+def lane_anomaly(stats: dict) -> list[str]:
+    """Return human-readable anomaly tags for a lane's recent activity.
+
+    Conservative — fires fast (low N thresholds) and treats anything
+    structurally suspicious as a harness/config issue, not a model
+    quality issue. The whole point is to stop us from concluding "this
+    model is bad" when really our test rig is broken.
+
+    Heuristics, all tuned to fire as early as 3 cells:
+      - ≥3 recent fails averaging ≤2 turns → agent isn't engaging
+      - ≥3 recent fails averaging <30s wall → model not producing usable tokens
+      - Any error phrase recurs in ≥3 fresh cells → config bug
+      - ≥5 fresh cells with 0 passes (and none of the above already firing) → verify
+      - ≥3 fresh structurally-suspicious cells (zero output_tokens) → harness/setup issue
+    """
+    anomalies: list[str] = []
+    n_fail = stats["fresh_fail"]
+    turns = stats["fresh_fail_turns"]
+    walls = stats["fresh_fail_walls"]
+    THRESH = 3  # fire fast — operator would rather investigate a false positive than miss a silent regression
+    if n_fail >= THRESH and turns:
+        avg_turns = sum(turns) / len(turns)
+        if avg_turns <= 2.5:
+            anomalies.append(
+                f"HARNESS/CONFIG SUSPECT: avg_turns={avg_turns:.1f} across {n_fail} recent fails — "
+                "agent not engaging; check provider config (sampling, reasoning, model wire format) before concluding model quality"
+            )
+    if n_fail >= THRESH and walls:
+        avg_wall = sum(walls) / len(walls)
+        if avg_wall < 30:
+            anomalies.append(
+                f"HARNESS/CONFIG SUSPECT: avg_wall={avg_wall:.0f}s across {n_fail} recent fails — "
+                "model not producing usable tokens; this is almost never a model quality issue"
+            )
+    for phrase, n in stats["fresh_error_phrases"].items():
+        if n >= THRESH:
+            anomalies.append(
+                f"HARNESS/CONFIG SUSPECT: recurring error '{phrase}' in {n} recent cells — fix config before retrying"
+            )
+    if stats["fresh"] >= 5 and stats["fresh_pass"] == 0 and not anomalies:
+        anomalies.append(
+            f"verify lane health: 0 passes in {stats['fresh']} recent cells (could be hard tasks or silent failure)"
+        )
+    return anomalies
 
 
 def lane_pid_alive(profile: str) -> tuple[int | None, bool]:
@@ -226,6 +302,7 @@ def main() -> int:
         rate_per_min = cells["fresh"] / args.since_minutes if args.since_minutes > 0 else 0
         remaining = max(0, target_per_lane - cells["total"])
         eta_min = remaining / rate_per_min if rate_per_min > 0 else None
+        anomalies = lane_anomaly(cells)
         lanes.append({
             "profile": prof,
             "pid": pid, "alive": alive,
@@ -233,6 +310,7 @@ def main() -> int:
             "target": target_per_lane,
             "rate_per_min": rate_per_min,
             "remaining": remaining, "eta_min": eta_min,
+            "anomalies": anomalies,
         })
 
     containers = docker_ps_task_containers() if args.containers else []
@@ -261,6 +339,8 @@ def main() -> int:
         print(f"  {L['profile']:<30} {L['pid'] or '—':>7} {('yes' if L['alive'] else 'NO'):>5} "
               f"{c['total']:>6} {c['pass']:>5} {c['fail']:>5} {c['invalid']:>5} "
               f"{c['fresh']:>6} {L['rate_per_min']*60:>7.1f} {L['remaining']:>7} {eta:>10}")
+        for a in L.get("anomalies", []):
+            print(f"    !! {a}")
 
     if args.containers and containers:
         print(f"\nrunning task containers ({len(containers)}):")

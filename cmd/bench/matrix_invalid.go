@@ -15,7 +15,7 @@ const (
 var (
 	matrixInvalidQuotaPattern    = regexp.MustCompile(`(?i)(api_error_status:\s*429|insufficient[_\s-]*quota|out_of_credits|credits?\s+exhausted|usage\s+exhausted|rate\s*limit|too many requests|quota\s+exhausted|quota\s+exceeded)`)
 	matrixInvalidAuthPattern     = regexp.MustCompile(`(?i)(unauthori[sz]ed|authentication failed|invalid api key|missing credentials?|not signed in|login required|account .*not .*authenticated|oauth.*failed|credential.*missing|account .*required|access denied)`)
-	matrixInvalidSetupPattern    = regexp.MustCompile(`(?i)(binary not found|no such file or directory|exec format error|cannot execute binary file|wrong architecture|architecture mismatch|task dir not found|submodule not initialized|failed to start|wrapper startup|startup failed|docker.*(failed|error)|container.*(failed|error)|image.*(failed|error|not found)|harbor[\\/]+environments[\\/]+docker|_run_docker_compose_command|_start_environment_with_retry|docker compose command|asyncio\.run\(\) cannot be called from a running event loop|operation not permitted|permission denied|sandbox.*failed|setup failed|preflight failure)`)
+	matrixInvalidSetupPattern    = regexp.MustCompile(`(?i)(binary not found|no such file or directory|exec format error|cannot execute binary file|wrong architecture|architecture mismatch|task dir not found|submodule not initialized|failed to start|wrapper startup|startup failed|docker.*(failed|error)|container.*(failed|error)|image.*(failed|error|not found)|harbor[\\/]+environments[\\/]+docker|_run_docker_compose_command|_start_environment_with_retry|docker compose command|asyncio\.run\(\) cannot be called from a running event loop|operation not permitted|permission denied|sandbox.*failed|setup failed|preflight failure|reasoning=[^ ]* is not supported by provider type|reasoning_wire=none|qwen reasoning control is not supported|unsupported reasoning [^ ]* for harness)`)
 	matrixInvalidProviderPattern = regexp.MustCompile(`(?i)(connection refused|connection reset|socket hang up|fetch failed|tls handshake|dns|eof|timed out|timeout|stream closed|broken pipe|remote closed|upstream|service unavailable|bad gateway|gateway timeout|failed to connect|provider transport|network error)`)
 )
 
@@ -33,12 +33,32 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 		return class
 	}
 	switch report.FinalStatus {
-	case "graded_fail", "verifier_fail":
+	case "verifier_fail":
 		return ""
 	case "install_fail_permanent", "install_failed":
 		return matrixInvalidSetup
-	}
-	if matrixHasMeaningfulAttempt(report) {
+	case "graded_fail":
+		// Conservative quality-attribution rule: a graded_fail with no
+		// meaningful agent attempt (zero turns, zero output tokens) is
+		// almost certainly a harness/provider/setup failure that Harbor
+		// happened to verify cleanly with reward=0. We refuse to count it
+		// as a real model quality failure — it pollutes downstream
+		// pass-rate aggregates and lets silent config bugs masquerade as
+		// model deficiencies. Reclassify as invalid_setup; operators can
+		// drill into the specific cell to confirm.
+		if !matrixHasMeaningfulAttempt(report) {
+			return matrixInvalidSetup
+		}
+		// Even with some turns, if output tokens are zero AND wall is
+		// suspiciously short (<30s) we treat it as harness-level — the
+		// model never produced usable tokens, so reward=0 isn't a model
+		// quality signal. Threshold tuned so genuinely hard tasks where
+		// the model thinks-then-fails-fast still graded_fail correctly.
+		if intValue(report.OutputTokens) == 0 && intValue(report.Turns) <= 2 {
+			if w := report.WallSeconds; w != nil && *w < 30 {
+				return matrixInvalidSetup
+			}
+		}
 		return ""
 	}
 	return ""

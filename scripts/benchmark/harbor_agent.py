@@ -355,6 +355,17 @@ class FizeauAgent(BaseInstalledAgent):
             '    find /logs/agent -maxdepth 4 -mindepth 1 -print 2>/dev/null || true; '
             f"  }} >> {_OUTPUT_LOG}; "
             "fi; "
+            # Surface fiz internal errors from session JSONL into the
+            # operator-visible fiz.txt log so the matrix classifier can see
+            # them. This is critical for catching silent provider/config
+            # failures (e.g. "reasoning=low not supported") that otherwise
+            # only appear in the per-session JSONL and get masked as
+            # graded_fail by Harbor's verifier.
+            f'find {_SESSION_LOG_DIR} -type f -name "*.jsonl" -print 2>/dev/null | head -1 | while read JSONL; do '
+            '  grep -E \'"error"\\s*:\\s*"[^"]+\' "$JSONL" 2>/dev/null | head -5 | '
+            '  awk -F\\" \'/"error":/ {for(i=1;i<=NF;i++)if($i=="error"){print "fiz session error: "$(i+2);break}}\' '
+            f' >> {_OUTPUT_LOG}; '
+            "done; "
             'exit "$fiz_rc"'
         )
 

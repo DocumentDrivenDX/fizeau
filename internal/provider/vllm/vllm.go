@@ -51,12 +51,22 @@ func init() {
 	})
 }
 
-// ProtocolCapabilities mirrors lmstudio's openai-compat surface and adds
-// ImplicitGenerationConfig=true so the catalog-stale nudge can soften.
+// ProtocolCapabilities matches the OpenAI-compat surface vLLM exposes,
+// including thinking-mode controls for Qwen-family models. vLLM's Qwen3
+// deployments accept `enable_thinking` and `thinking_budget` as top-level
+// chat-completions fields, so we emit the Qwen wire format. Like LM Studio,
+// vLLM hosts mixed model families (Qwen, Llama, Gemma, etc.), so leave
+// StrictThinkingModelMatch=false — reasoning controls silently no-op on
+// non-Qwen models instead of failing the request, which means a profile
+// declaring `reasoning: low` for a non-thinking model just degrades
+// gracefully.
 var ProtocolCapabilities = openai.ProtocolCapabilities{
 	Tools:                    true,
 	Stream:                   true,
 	StructuredOutput:         true,
+	Thinking:                 true,
+	ThinkingFormat:           openai.ThinkingWireFormatQwen,
+	StrictThinkingModelMatch: false,
 	ImplicitGenerationConfig: true,
 }
 

@@ -22,6 +22,10 @@ func TestClassifyMatrixInvalidFromFixtures(t *testing.T) {
 		{name: "setup-native-arch.json", want: matrixInvalidSetup},
 		{name: "harbor-docker-compose-truncated.json", want: matrixInvalidSetup},
 		{name: "harness-asyncio-loop-crash.json", want: matrixInvalidSetup},
+		{name: "fiz-reasoning-not-supported.json", want: matrixInvalidSetup},
+		{name: "graded-fail-no-attempt.json", want: matrixInvalidSetup},
+		{name: "graded-fail-zero-output-fast.json", want: matrixInvalidSetup},
+		{name: "graded-fail-real-attempt.json", want: ""},
 		{name: "provider-transport.json", want: matrixInvalidProvider},
 		{name: "verifier-fail-after-attempt.json", want: ""},
 	}

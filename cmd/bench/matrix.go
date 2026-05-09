@@ -1465,6 +1465,13 @@ func samplingEnvPairs(p *profile.Profile) []string {
 	if p.Sampling.MinP != nil {
 		pairs = append(pairs, fmt.Sprintf("FIZEAU_MIN_P=%g", *p.Sampling.MinP))
 	}
+	if r := strings.TrimSpace(p.Sampling.Reasoning); r != "" {
+		// Propagate the profile's declared reasoning level (low/medium/high/off).
+		// Operators should not need to set FIZEAU_REASONING manually for
+		// standard sweeps — the profile is the source of truth. Fiz's
+		// openai provider decides per-model whether to honour it.
+		pairs = append(pairs, fmt.Sprintf("FIZEAU_REASONING=%s", r))
+	}
 	return pairs
 }
 
