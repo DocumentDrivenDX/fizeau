@@ -199,13 +199,14 @@ func toolEventsCapability(name string, cfg harnesses.HarnessConfig) HarnessCapab
 }
 
 func quotaStatusCapability(cfg harnesses.HarnessConfig) HarnessCapability {
-	if cfg.TestOnly || cfg.IsLocal {
+	billing := harnessPaymentKind(cfg.Name, cfg)
+	if cfg.TestOnly || billing == BillingModelFixed {
 		return capNotApplicable("local or test-only harness has no subscription quota")
 	}
 	if cfg.Name == "gemini" {
 		return capOptional("Gemini CLI /model manage tier usage is probed via PTY and persisted to a durable quota cache")
 	}
-	if cfg.IsSubscription && cfg.TUIQuotaCommand != "" {
+	if billing == BillingModelSubscription && cfg.TUIQuotaCommand != "" {
 		return capOptional("subscription quota can be probed or read from a cache")
 	}
 	return capUnsupported("no quota/status monitor is registered")

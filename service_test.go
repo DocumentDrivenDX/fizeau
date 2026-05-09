@@ -59,14 +59,11 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.CostClass != "medium" {
 			t.Errorf("codex CostClass: want medium, got %q", h.CostClass)
 		}
-		if h.IsSubscription != true {
-			t.Errorf("codex IsSubscription: want true")
+		if h.Billing != fizeau.BillingModelSubscription {
+			t.Errorf("codex Billing: want subscription, got %q", h.Billing)
 		}
 		if !h.AutoRoutingEligible {
 			t.Errorf("codex AutoRoutingEligible: want true")
-		}
-		if h.IsLocal {
-			t.Errorf("codex IsLocal: want false")
 		}
 		if h.Type != "subprocess" {
 			t.Errorf("codex Type: want subprocess, got %q", h.Type)
@@ -87,8 +84,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.CostClass != "medium" {
 			t.Errorf("claude CostClass: want medium, got %q", h.CostClass)
 		}
-		if h.IsSubscription != true {
-			t.Errorf("claude IsSubscription: want true")
+		if h.Billing != fizeau.BillingModelSubscription {
+			t.Errorf("claude Billing: want subscription, got %q", h.Billing)
 		}
 		if !h.AutoRoutingEligible {
 			t.Errorf("claude AutoRoutingEligible: want true")
@@ -108,8 +105,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.Type != "native" {
 			t.Errorf("fiz Type: want native, got %q", h.Type)
 		}
-		if !h.IsLocal {
-			t.Errorf("fiz IsLocal: want true")
+		if h.Billing != fizeau.BillingModelFixed {
+			t.Errorf("fiz Billing: want fixed, got %q", h.Billing)
 		}
 		if !h.AutoRoutingEligible {
 			t.Errorf("fiz AutoRoutingEligible: want true")
@@ -138,6 +135,9 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.CostClass != "medium" {
 			t.Errorf("openrouter CostClass: want medium, got %q", h.CostClass)
 		}
+		if h.Billing != fizeau.BillingModelPerToken {
+			t.Errorf("openrouter Billing: want per_token, got %q", h.Billing)
+		}
 	})
 
 	t.Run("lmstudio_local", func(t *testing.T) {
@@ -145,8 +145,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.CostClass != "local" {
 			t.Errorf("lmstudio CostClass: want local, got %q", h.CostClass)
 		}
-		if !h.IsLocal {
-			t.Errorf("lmstudio IsLocal: want true")
+		if h.Billing != fizeau.BillingModelFixed {
+			t.Errorf("lmstudio Billing: want fixed, got %q", h.Billing)
 		}
 	})
 
@@ -158,8 +158,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.CostClass != "local" {
 			t.Errorf("omlx CostClass: want local, got %q", h.CostClass)
 		}
-		if !h.IsLocal {
-			t.Errorf("omlx IsLocal: want true")
+		if h.Billing != fizeau.BillingModelFixed {
+			t.Errorf("omlx Billing: want fixed, got %q", h.Billing)
 		}
 	})
 

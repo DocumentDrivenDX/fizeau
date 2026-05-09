@@ -102,6 +102,12 @@ func TestListProviders_Connected(t *testing.T) {
 	if info.Type != "lmstudio" {
 		t.Errorf("Type: got %q, want %q", info.Type, "lmstudio")
 	}
+	if info.Billing != BillingModelFixed {
+		t.Errorf("Billing: got %q, want fixed", info.Billing)
+	}
+	if !info.IncludeByDefault {
+		t.Error("IncludeByDefault should be true for fixed-billing providers")
+	}
 	if slices.Contains(info.Capabilities, "reasoning_control") {
 		t.Fatalf("lmstudio capabilities must not claim reasoning_control: %#v", info.Capabilities)
 	}
@@ -331,6 +337,12 @@ func TestListProviders_Anthropic(t *testing.T) {
 	}
 	if info.Type != "anthropic" {
 		t.Errorf("Type: got %q, want %q", info.Type, "anthropic")
+	}
+	if info.Billing != BillingModelPerToken {
+		t.Errorf("Billing: got %q, want per_token", info.Billing)
+	}
+	if info.IncludeByDefault {
+		t.Error("IncludeByDefault should be false for per-token providers by default")
 	}
 }
 

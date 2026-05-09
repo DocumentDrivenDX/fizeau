@@ -356,9 +356,9 @@ func TestProviderUsesLiveDiscovery_LlamaServer(t *testing.T) {
 	}
 }
 
-func TestProviderTypeIsLocalEndpoint_LlamaServer(t *testing.T) {
-	if !providerTypeIsLocalEndpoint("llama-server") {
-		t.Fatal("expected llama-server to count as a local endpoint")
+func TestProviderTypeUsesFixedBilling_LlamaServer(t *testing.T) {
+	if !providerTypeUsesFixedBilling("llama-server") {
+		t.Fatal("expected llama-server to count as a fixed-billing endpoint")
 	}
 }
 
@@ -501,9 +501,9 @@ func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {
 		return nil, ctx.Err()
 	}
 	svc, err := New(ServiceOptions{
-		ServiceConfig:         sc,
-		CatalogProbeTimeout:   40 * time.Millisecond,
-		CatalogRefreshTimeout: 80 * time.Millisecond,
+		ServiceConfig:        sc,
+		CatalogProbeTimeout:  40 * time.Millisecond,
+		CatalogReloadTimeout: 80 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

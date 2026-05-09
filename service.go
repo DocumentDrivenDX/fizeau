@@ -67,6 +67,11 @@ type ServiceProviderEntry struct {
 	APIKey         string
 	Headers        map[string]string
 	Model          string // configured default model (may be empty)
+	Billing        BillingModel
+	// IncludeByDefault reports whether this provider participates in automatic
+	// routing when the caller does not pin a provider.
+	IncludeByDefault    bool
+	IncludeByDefaultSet bool
 	// ContextWindow is the configured provider-side context override.
 	ContextWindow int
 	// ConfigError marks this provider entry invalid while allowing the rest of
@@ -121,9 +126,9 @@ type ServiceOptions struct {
 	// CatalogProbeTimeout bounds live /v1/models discovery during routing.
 	// Zero uses the service default of 2s.
 	CatalogProbeTimeout time.Duration
-	// CatalogRefreshTimeout bounds stale-while-revalidate catalog refreshes.
+	// CatalogReloadTimeout bounds stale-while-revalidate catalog reloads.
 	// Zero uses the service default of 30s.
-	CatalogRefreshTimeout time.Duration
+	CatalogReloadTimeout time.Duration
 
 	// LocalCostUSDPer1kTokens is the operator-supplied electricity/operations
 	// estimate for local endpoint providers under the embedded agent harness.
@@ -230,8 +235,7 @@ type HarnessInfo struct {
 	Available            bool
 	Path                 string
 	Error                string
-	IsLocal              bool
-	IsSubscription       bool
+	Billing              BillingModel
 	AutoRoutingEligible  bool
 	TestOnly             bool
 	ExactPinSupport      bool
@@ -257,21 +261,23 @@ type CooldownState struct {
 
 // ProviderInfo describes a provider with live status per CONTRACT-003.
 type ProviderInfo struct {
-	Name           string
-	Type           string // "openai" | "openrouter" | "lmstudio" | "omlx" | "ollama" | "anthropic" | "virtual"
-	BaseURL        string
-	Endpoints      []ServiceProviderEndpoint
-	Status         string // "connected" | "unreachable" | "error: <msg>"
-	ModelCount     int
-	Capabilities   []string       // e.g. {"tool_use","streaming","json_mode"}
-	IsDefault      bool           // matches the configured default_provider
-	DefaultModel   string         // per-provider configured default model, if any
-	CooldownState  *CooldownState // nil if not in cooldown
-	Auth           AccountStatus
-	EndpointStatus []EndpointStatus
-	Quota          *QuotaState
-	UsageWindows   []UsageWindow
-	LastError      *StatusError
+	Name             string
+	Type             string // "openai" | "openrouter" | "lmstudio" | "omlx" | "ollama" | "anthropic" | "virtual"
+	BaseURL          string
+	Endpoints        []ServiceProviderEndpoint
+	Status           string // "connected" | "unreachable" | "error: <msg>"
+	ModelCount       int
+	Capabilities     []string       // e.g. {"tool_use","streaming","json_mode"}
+	Billing          BillingModel   // "fixed" | "per_token" | "subscription" | ""
+	IncludeByDefault bool           // participates in unpinned/default routing
+	IsDefault        bool           // matches the configured default_provider
+	DefaultModel     string         // per-provider configured default model, if any
+	CooldownState    *CooldownState // nil if not in cooldown
+	Auth             AccountStatus
+	EndpointStatus   []EndpointStatus
+	Quota            *QuotaState
+	UsageWindows     []UsageWindow
+	LastError        *StatusError
 }
 
 // CostInfo holds per-token cost metadata for a model.
@@ -304,10 +310,10 @@ type ModelInfo struct {
 	Power           int
 	AutoRoutable    bool
 	ExactPinOnly    bool
+	Billing         BillingModel
 	Available       bool
-	IsDefault       bool   // matches the configured default model
-	CatalogRef      string // canonical catalog reference if recognized
-	RankPosition    int    // ordinal in latest discovery rank; -1 if unranked
+	IsDefault       bool // matches the configured default model
+	RankPosition    int  // ordinal in latest discovery rank; -1 if unranked
 }
 
 // ModelFilter filters ListModels results.
@@ -807,8 +813,8 @@ type service struct {
 }
 
 const (
-	defaultCatalogProbeTimeout   = 2 * time.Second
-	defaultCatalogRefreshTimeout = 30 * time.Second
+	defaultCatalogProbeTimeout  = 2 * time.Second
+	defaultCatalogReloadTimeout = 30 * time.Second
 )
 
 func (o ServiceOptions) catalogProbeTimeout() time.Duration {
@@ -819,10 +825,10 @@ func (o ServiceOptions) catalogProbeTimeout() time.Duration {
 }
 
 func (o ServiceOptions) catalogRefreshTimeout() time.Duration {
-	if o.CatalogRefreshTimeout > 0 {
-		return o.CatalogRefreshTimeout
+	if o.CatalogReloadTimeout > 0 {
+		return o.CatalogReloadTimeout
 	}
-	return defaultCatalogRefreshTimeout
+	return defaultCatalogReloadTimeout
 }
 
 func (s *service) now() time.Time {
@@ -903,7 +909,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 
 // harnessType returns "native" for HTTP/embedded harnesses, "subprocess" for CLI-invoked ones.
 func harnessType(cfg harnesses.HarnessConfig) string {
-	if cfg.IsHTTPProvider || cfg.IsLocal {
+	if harnessRunsInProcessOrHTTP(cfg) {
 		return "native"
 	}
 	return "subprocess"
@@ -1188,8 +1194,7 @@ func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
 			Available:            st.Available,
 			Path:                 st.Path,
 			Error:                st.Error,
-			IsLocal:              cfg.IsLocal,
-			IsSubscription:       cfg.IsSubscription,
+			Billing:              harnessPaymentKind(name, cfg),
 			AutoRoutingEligible:  cfg.AutoRoutingEligible,
 			TestOnly:             cfg.TestOnly,
 			ExactPinSupport:      cfg.ExactPinSupport,

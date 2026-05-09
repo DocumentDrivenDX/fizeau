@@ -503,29 +503,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 			continue
 		}
 		st := statusByName[name]
-		entry := routing.HarnessEntry{
-			Name:                name,
-			Surface:             cfg.Surface,
-			CostClass:           cfg.CostClass,
-			IsLocal:             cfg.IsLocal,
-			IsSubscription:      cfg.IsSubscription,
-			IsHTTPProvider:      cfg.IsHTTPProvider,
-			AutoRoutingEligible: cfg.AutoRoutingEligible,
-			TestOnly:            cfg.TestOnly,
-			ExactPinSupport:     cfg.ExactPinSupport,
-			DefaultModel:        cfg.DefaultModel,
-			SupportedModels:     subprocessHarnessModelIDs(name, cfg),
-			SupportedReasoning:  supportedReasoning(cfg),
-			MaxReasoningTokens:  cfg.MaxReasoningTokens,
-			SupportedPerms:      supportedPermissions(cfg),
-			SupportsTools:       true, // all builtin harnesses support tools today
-			Available:           st.Available,
-			QuotaOK:             true,
-			QuotaTrend:          routing.QuotaTrendUnknown,
-			// SubscriptionOK defaults to true and is refined by subscription
-			// harness quota caches below.
-			SubscriptionOK: true,
-		}
+		entry := routingHarnessEntryFromMetadata(name, cfg, st)
 		if name == "fiz" && s.opts.ServiceConfig == nil {
 			entry.AutoRoutingEligible = false
 		}
@@ -943,7 +921,7 @@ func (s *service) applyEndpointRoutingCost(entry *routing.ProviderEntry, pcfg Se
 	if entry == nil {
 		return
 	}
-	if providerTypeIsLocalEndpoint(pcfg.Type) {
+	if providerTypeUsesFixedBilling(pcfg.Type) {
 		if s.opts.LocalCostUSDPer1kTokens > 0 {
 			entry.CostUSDPer1kTokens = s.opts.LocalCostUSDPer1kTokens
 			entry.CostSource = routing.CostSourceUserConfig
@@ -963,7 +941,7 @@ func (s *service) applyEndpointRoutingCost(entry *routing.ProviderEntry, pcfg Se
 }
 
 func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat *modelcatalog.Catalog) {
-	if entry == nil || !entry.IsSubscription {
+	if !routingHarnessUsesAccountBilling(entry) {
 		return
 	}
 	baseCost, ok := catalogCostUSDPer1kTokens(cat, entry.DefaultModel)
@@ -980,17 +958,8 @@ func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat 
 	}}
 }
 
-func providerTypeIsLocalEndpoint(providerType string) bool {
-	switch normalizeServiceProviderType(providerType) {
-	case "lmstudio", "llama-server", "omlx", "rapid-mlx", "ollama", "lucebox", "vllm":
-		return true
-	default:
-		return false
-	}
-}
-
 func providerRoutingCostClass(providerType string) string {
-	if providerTypeIsLocalEndpoint(providerType) {
+	if providerTypeUsesFixedBilling(providerType) {
 		return "local"
 	}
 	return "medium"

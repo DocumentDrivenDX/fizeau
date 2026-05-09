@@ -38,8 +38,7 @@ type listModelsJSONRow struct {
 		MaxConcurrency *int     `json:"max_concurrency"`
 		CachePressure  *float64 `json:"cache_pressure"`
 	} `json:"utilization"`
-	Available  bool   `json:"available"`
-	CatalogRef string `json:"catalog_ref"`
+	Available bool `json:"available"`
 }
 
 func TestCLI_ListModels_TableShowsPowerCostEndpoint(t *testing.T) {
@@ -115,7 +114,6 @@ default: studio
 	assert.Equal(t, 59.0, known.SWEBenchVerified)
 	assert.Equal(t, 262144, known.ContextLength)
 	assert.NotZero(t, known.PerfSignal)
-	assert.NotEmpty(t, known.CatalogRef)
 	assert.Empty(t, known.Utilization.Source)
 	knownGeneric := findListModelsGenericRow(t, generic, "qwen3.5-27b", res.stdout)
 	for _, key := range []string{"server_instance", "context_source", "perf_signal", "utilization"} {
@@ -129,7 +127,6 @@ default: studio
 	assert.Equal(t, 0, unknown.Power)
 	assert.False(t, unknown.AutoRoutable)
 	assert.False(t, unknown.ExactPinOnly)
-	assert.Empty(t, unknown.CatalogRef)
 	assert.Equal(t, "vidar", unknown.EndpointName)
 }
 

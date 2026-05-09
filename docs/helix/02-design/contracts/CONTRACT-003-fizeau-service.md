@@ -686,8 +686,7 @@ type HarnessInfo struct {
     Available            bool
     Path                 string   // for subprocess harnesses
     Error                string   // when Available=false
-    IsLocal              bool
-    IsSubscription       bool
+    Billing              BillingModel // fixed|per_token|subscription|unknown
     TestOnly             bool     // true for sentinel harnesses excluded from production routing
     ExactPinSupport      bool
     DefaultModel         string   // built-in default model when no override is supplied
@@ -800,6 +799,8 @@ type ProviderInfo struct {
     Status        string  // "connected" | "unreachable" | "error: <msg>"
     ModelCount    int
     Capabilities  []string  // {"tool_use","vision","json_mode","streaming"}
+    Billing       BillingModel // fixed|per_token|subscription|unknown
+    IncludeByDefault bool // participates in unpinned/default routing
     IsDefault     bool      // matches the configured default_provider
     DefaultModel  string    // the per-provider configured default model, if any
     CooldownState *CooldownState  // nil if not in cooldown
@@ -830,8 +831,8 @@ type ModelInfo struct {
     Available     bool
     AutoRoutable   bool   // PLANNED agent-da67ebbe; eligible for unpinned automatic routing
     ExactPinOnly   bool   // PLANNED agent-da67ebbe; available only when directly pinned
+    Billing        BillingModel // fixed|per_token|subscription|unknown
     IsDefault     bool    // matches the configured default model
-    CatalogRef    string  // canonical catalog reference if recognized
     ReasoningDefault Reasoning // catalog/provider default for this model, if known
     ReasoningMaxTokens int     // 0 when unknown or not applicable
     RankPosition  int     // ordinal in the latest discovery rank for this provider; -1 if unranked

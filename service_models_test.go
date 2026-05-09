@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
 	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
 	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
 )
@@ -301,24 +300,8 @@ func TestListModels_isDefaultMatchesConfig(t *testing.T) {
 	}
 }
 
-func TestListModels_catalogRefSetForKnown(t *testing.T) {
-	// Load the embedded catalog to find a known model ID.
-	cat, err := modelcatalog.Default()
-	if err != nil {
-		t.Skip("catalog load failed:", err)
-	}
-	knownModels := cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
-	if len(knownModels) == 0 {
-		t.Skip("no agent.openai models in catalog")
-	}
-	// Pick the first known model ID deterministically.
-	var knownID string
-	for id := range knownModels {
-		knownID = id
-		break
-	}
-
-	ts := fakeModelsServer([]string{knownID, "unknown-model-xyz"})
+func TestListModels_billingSetForProviderModels(t *testing.T) {
+	ts := fakeModelsServer([]string{"qwen3.5-27b", "unknown-model-xyz"})
 	defer ts.Close()
 
 	sc := &fakeServiceConfig{
@@ -335,14 +318,10 @@ func TestListModels_catalogRefSetForKnown(t *testing.T) {
 		t.Fatalf("ListModels: %v", err)
 	}
 
-	var catalogRefFound bool
 	for _, info := range infos {
-		if info.ID == knownID && info.CatalogRef != "" {
-			catalogRefFound = true
+		if info.Billing != BillingModelFixed {
+			t.Errorf("model %q Billing = %q, want fixed", info.ID, info.Billing)
 		}
-	}
-	if !catalogRefFound {
-		t.Errorf("expected CatalogRef to be set for known catalog model %q; models: %v", knownID, modelInfoDebug(infos))
 	}
 }
 
@@ -383,8 +362,8 @@ func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T
 	}
 
 	known := byID["qwen3.5-27b"]
-	if known.CatalogRef == "" {
-		t.Fatalf("known model missing CatalogRef: %#v", known)
+	if known.Billing != BillingModelFixed {
+		t.Fatalf("known model Billing = %q, want fixed: %#v", known.Billing, known)
 	}
 	if known.Power != 5 || !known.AutoRoutable || known.ExactPinOnly {
 		t.Errorf("known model eligibility = power %d auto %v exact %v, want power 5 auto true exact false", known.Power, known.AutoRoutable, known.ExactPinOnly)
@@ -415,8 +394,8 @@ func TestListModels_catalogMetadataForKnownAndUnknownProviderModels(t *testing.T
 	}
 
 	unknown := byID["unknown-model-xyz"]
-	if unknown.CatalogRef != "" {
-		t.Errorf("unknown model CatalogRef = %q, want empty", unknown.CatalogRef)
+	if unknown.Billing != BillingModelFixed {
+		t.Errorf("unknown model Billing = %q, want fixed", unknown.Billing)
 	}
 	if unknown.Power != 0 || unknown.AutoRoutable || unknown.ExactPinOnly {
 		t.Errorf("unknown model eligibility = power %d auto %v exact %v, want zero/false/false", unknown.Power, unknown.AutoRoutable, unknown.ExactPinOnly)
@@ -498,8 +477,8 @@ func TestListModels_catalogMetadataForSubprocessHarnessModels(t *testing.T) {
 	if opus.ID == "" {
 		t.Fatalf("want opus-4.7 in claude harness models, got %v", modelInfoDebug(infos))
 	}
-	if opus.CatalogRef == "" {
-		t.Fatalf("opus missing CatalogRef: %#v", opus)
+	if opus.Billing != BillingModelSubscription {
+		t.Fatalf("opus Billing = %q, want subscription: %#v", opus.Billing, opus)
 	}
 	if opus.Power != 10 || !opus.AutoRoutable || opus.ExactPinOnly {
 		t.Errorf("opus eligibility = power %d auto %v exact %v, want power 10 auto true exact false", opus.Power, opus.AutoRoutable, opus.ExactPinOnly)
@@ -594,8 +573,8 @@ func TestListModels_harnessFilter(t *testing.T) {
 		if info.Provider != "gemini" || info.Harness != "gemini" || !info.Available {
 			t.Errorf("unexpected gemini model info: %#v", info)
 		}
-		if info.ID != "gemini" && info.ID != "gemini-2.5" && info.CatalogRef == "" {
-			t.Errorf("unexpected gemini model without catalog ref: %#v", info)
+		if info.Billing != BillingModelSubscription {
+			t.Errorf("gemini model Billing = %q, want subscription: %#v", info.Billing, info)
 		}
 	}
 }
@@ -649,7 +628,7 @@ func containsModelString(values []string, want string) bool {
 func modelInfoDebug(infos []ModelInfo) []string {
 	out := make([]string, len(infos))
 	for i, info := range infos {
-		out[i] = info.Provider + ":" + info.ID + "(ref=" + info.CatalogRef + ")"
+		out[i] = info.Provider + ":" + info.ID + "(billing=" + string(info.Billing) + ")"
 	}
 	return out
 }

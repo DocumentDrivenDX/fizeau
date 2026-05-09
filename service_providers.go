@@ -282,12 +282,14 @@ func (s *service) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
 			}
 
 			info := ProviderInfo{
-				Name:         name,
-				Type:         normalizeServiceProviderType(entry.Type),
-				BaseURL:      entry.BaseURL,
-				Endpoints:    append([]ServiceProviderEndpoint(nil), entry.Endpoints...),
-				IsDefault:    name == defaultName,
-				DefaultModel: entry.Model,
+				Name:             name,
+				Type:             normalizeServiceProviderType(entry.Type),
+				BaseURL:          entry.BaseURL,
+				Endpoints:        append([]ServiceProviderEndpoint(nil), entry.Endpoints...),
+				Billing:          serviceProviderBilling(entry),
+				IncludeByDefault: serviceProviderDefaultInclusion(entry),
+				IsDefault:        name == defaultName,
+				DefaultModel:     entry.Model,
 			}
 
 			if entry.ConfigError != "" {

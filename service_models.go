@@ -96,14 +96,13 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 	name := harnesses.ResolveHarnessAlias(filter.Harness)
 	cfg, ok := s.registry.Get(name)
 	modelIDs := subprocessHarnessModelIDs(name, cfg)
-	if !ok || cfg.IsHTTPProvider || cfg.IsLocal || len(modelIDs) == 0 {
+	if !ok || harnessRunsInProcessOrHTTP(cfg) || len(modelIDs) == 0 {
 		return nil
 	}
 	if filter.Provider != "" && filter.Provider != name {
 		return nil
 	}
 	cat, _ := modelcatalog.Default()
-	catalogRefs := catalogRefsForHarness(cat, name)
 	out := make([]ModelInfo, 0, len(modelIDs))
 	for i, id := range modelIDs {
 		info := ModelInfo{
@@ -115,7 +114,7 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 			Capabilities:   []string{"streaming", "tool_use"},
 			Available:      true,
 			IsDefault:      cfg.DefaultModel != "" && id == cfg.DefaultModel,
-			CatalogRef:     catalogRefs[id],
+			Billing:        harnessPaymentKind(name, cfg),
 			RankPosition:   i,
 		}
 		if cat != nil {
@@ -210,22 +209,6 @@ func appendUniqueModelIDs(values []string, additions ...string) []string {
 	return values
 }
 
-func catalogRefsForHarness(cat *modelcatalog.Catalog, harness string) map[string]string {
-	if cat == nil {
-		return nil
-	}
-	switch harness {
-	case "codex":
-		return cat.AllConcreteModels(modelcatalog.SurfaceCodex)
-	case "claude":
-		return cat.AllConcreteModels(modelcatalog.SurfaceClaudeCode)
-	case "gemini":
-		return cat.AllConcreteModels(modelcatalog.SurfaceGemini)
-	default:
-		return nil
-	}
-}
-
 // listModelsForProvider discovers and annotates models for a single provider.
 func listModelsForProvider(
 	ctx context.Context,
@@ -240,7 +223,7 @@ func listModelsForProvider(
 		return nil
 	}
 	// Discover model IDs from the provider.
-	discoveries := discoverAndRankModels(ctx, entry, cat)
+	discoveries := discoverAndRankModels(ctx, entry)
 	if len(discoveries) == 0 {
 		return nil
 	}
@@ -260,14 +243,6 @@ func listModelsForProvider(
 			rankPos[sm.ID] = pos
 		}
 
-		// Build CatalogRef map from ranked list.
-		catalogRefMap := make(map[string]string, len(discovery.Ranked))
-		for _, sm := range discovery.Ranked {
-			if sm.CatalogRef != "" {
-				catalogRefMap[sm.ID] = sm.CatalogRef
-			}
-		}
-
 		for _, id := range discovery.IDs {
 			info := ModelInfo{
 				ID:              id,
@@ -278,6 +253,7 @@ func listModelsForProvider(
 				EndpointBaseURL: discovery.EndpointBaseURL,
 				ServerInstance:  discovery.ServerInstance,
 				Available:       true,
+				Billing:         serviceProviderBilling(entry),
 			}
 
 			// Resolve context length: provider config > provider API > catalog > default.
@@ -286,15 +262,8 @@ func listModelsForProvider(
 			// Capabilities from provider type.
 			info.Capabilities = providerCapabilities(entry)
 
-			// CatalogRef from ranked discovery.
-			info.CatalogRef = catalogRefMap[id]
-
 			// Cost and PerfSignal from catalog.
-			if cat != nil && info.CatalogRef != "" {
-				info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
-				info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
-			} else if cat != nil {
-				// Try direct model lookup by ID even without a catalog ref.
+			if cat != nil {
 				info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
 				info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
 			}
@@ -326,9 +295,9 @@ type discoveredModelSet struct {
 	Ranked          []scoredModel
 }
 
-// discoverAndRankModels fetches the model list from each provider endpoint and
-// ranks results against the catalog. IDs preserve discovery order per endpoint.
-func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat *modelcatalog.Catalog) []discoveredModelSet {
+// discoverAndRankModels fetches the model list from each provider endpoint.
+// IDs and rank positions preserve discovery order per endpoint.
+func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry) []discoveredModelSet {
 	switch normalizeServiceProviderType(entry.Type) {
 	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai":
 		endpoints := modelDiscoveryEndpoints(entry)
@@ -346,7 +315,7 @@ func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat 
 				EndpointBaseURL: endpoint.BaseURL,
 				ServerInstance:  endpoint.ServerInstance,
 				IDs:             ids,
-				Ranked:          rankModelsInline(ids, cat),
+				Ranked:          rankModelsInline(ids),
 			})
 		}
 		return out
@@ -355,12 +324,7 @@ func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry, cat 
 		// Anthropic does not expose /v1/models for discovery.
 		// If a default model is configured, surface it.
 		if entry.Model != "" {
-			sm := scoredModel{ID: entry.Model, CatalogRef: "", RankPosition: 0}
-			if cat != nil {
-				if ref, ok := catalogRefForModel(cat, entry.Model); ok {
-					sm.CatalogRef = ref
-				}
-			}
+			sm := scoredModel{ID: entry.Model, RankPosition: 0}
 			return []discoveredModelSet{{
 				EndpointName:    "default",
 				EndpointBaseURL: entry.BaseURL,
@@ -465,34 +429,16 @@ func discoverModelsInline(ctx context.Context, baseURL, apiKey string) ([]string
 // scoredModel mirrors provider/openai.ScoredModel to avoid the import cycle.
 type scoredModel struct {
 	ID           string
-	CatalogRef   string
 	RankPosition int
 }
 
-// rankModelsInline scores discovered model IDs against the catalog.
-func rankModelsInline(ids []string, cat *modelcatalog.Catalog) []scoredModel {
-	var knownModels map[string]string
-	if cat != nil {
-		knownModels = cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
-	}
-
-	// Score: 3=catalog, 2=pattern(unused here), 1=uncategorized.
+// rankModelsInline records discovered model IDs in provider-returned order.
+func rankModelsInline(ids []string) []scoredModel {
 	scored := make([]scoredModel, 0, len(ids))
 	for pos, id := range ids {
-		sm := scoredModel{ID: id, RankPosition: pos}
-		if ref, ok := knownModels[id]; ok {
-			sm.CatalogRef = ref
-		}
-		scored = append(scored, sm)
+		scored = append(scored, scoredModel{ID: id, RankPosition: pos})
 	}
 	return scored
-}
-
-// catalogRefForModel looks up a model ID in the catalog and returns (targetID, true) if found.
-func catalogRefForModel(cat *modelcatalog.Catalog, modelID string) (string, bool) {
-	knownModels := cat.AllConcreteModels(modelcatalog.SurfaceAgentOpenAI)
-	ref, ok := knownModels[modelID]
-	return ref, ok
 }
 
 // resolveContextEvidence resolves the context window for a model using the

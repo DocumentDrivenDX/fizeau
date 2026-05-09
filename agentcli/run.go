@@ -1421,7 +1421,6 @@ type cliModelInventoryRow struct {
 	} `json:"perf_signal,omitempty"`
 	Utilization  fizeau.RouteUtilizationState `json:"utilization,omitempty"`
 	Available    bool                         `json:"available"`
-	CatalogRef   string                       `json:"catalog_ref,omitempty"`
 	RankPosition int                          `json:"rank_position"`
 }
 
@@ -1507,7 +1506,6 @@ func modelInventoryRows(models []fizeau.ModelInfo) []cliModelInventoryRow {
 			},
 			Utilization:  model.Utilization,
 			Available:    model.Available,
-			CatalogRef:   model.CatalogRef,
 			RankPosition: model.RankPosition,
 		}
 		rows = append(rows, row)

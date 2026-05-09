@@ -228,7 +228,7 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 }
 
 func validateExplicitHarnessQuota(name string, cfg harnesses.HarnessConfig) error {
-	if !cfg.IsSubscription {
+	if harnessPaymentKind(name, cfg) != modelcatalog.BillingModelSubscription {
 		return nil
 	}
 	now := time.Now()
@@ -274,7 +274,7 @@ func validateExplicitHarnessPolicy(name string, cfg harnesses.HarnessConfig, pol
 	}
 	switch constraint {
 	case routing.ProviderPreferenceLocalOnly:
-		if !cfg.IsLocal {
+		if harnessPaymentKind(name, cfg) != modelcatalog.BillingModelFixed {
 			return &ErrPolicyRequirementUnsatisfied{
 				Policy:       policy,
 				Requirement:  constraint,
@@ -282,7 +282,7 @@ func validateExplicitHarnessPolicy(name string, cfg harnesses.HarnessConfig, pol
 			}
 		}
 	case routing.ProviderPreferenceSubscriptionOnly:
-		if !cfg.IsSubscription {
+		if harnessPaymentKind(name, cfg) != modelcatalog.BillingModelSubscription {
 			return &ErrPolicyRequirementUnsatisfied{
 				Policy:       policy,
 				Requirement:  constraint,
