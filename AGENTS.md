@@ -206,7 +206,7 @@ mechanics are accurate, **demote rather than rewrite**: add an
 "implementation reference" disclaimer paragraph above the existing prose,
 linking to the ADR that explains the right primary surface. ADR-006 is the
 canonical example — pin precedence stays accurate as implementation
-reference; profile-as-cost-vs-time is the new primary user surface.
+reference; policy-as-cost-vs-time is the new primary user surface.
 
 When in doubt about whether a spec is coherent design or unsupported
 speculation, run a code-review pass

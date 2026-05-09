@@ -3,6 +3,27 @@
 All notable changes to Fizeau are recorded here.
 Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
+## [Unreleased]
+
+### Breaking — v0.11 Routing Surface
+
+- Routing intent is now policy-based. Public callers use `--policy`,
+  `--min-power`, and `--max-power`; hard pins remain `--model`, `--provider`,
+  and `--harness`.
+- Removed routing flags and service fields for the old route-reference surface:
+  `--profile`, `--model-ref`, `ModelRef`, `ListProfiles`, `ResolveProfile`,
+  and `ProfileAliases`.
+- `fiz policies` and `fiz harnesses` expose the supported v0.11 inspection
+  surfaces. Route-status JSON uses `policy` and `power_policy`.
+- The canonical policy names are `cheap`, `default`, `smart`, and
+  `air-gapped`. The dropped policy/alias names are: `fast`, `code-fast`,
+  `code-economy`, `code-smart`, `standard`, `local`, `offline`, `code-high`,
+  and `code-medium`.
+- Pay-per-token providers are default-deny for automatic routing unless
+  `include_by_default` opts them in. Explicit pins can still select excluded
+  providers, but policy requirements such as `air-gapped` / `no_remote` still
+  win.
+
 ## [v0.10.9] — 2026-05-06
 
 ### Changed

@@ -7,6 +7,12 @@ ddx:
 ---
 # ADR-006: Manual Overrides Are Auto-Routing Failure Signals
 
+## Superseded in part by ADR-009
+
+ADR-009 owns the v0.11 public routing surface. The override-as-failure-signal
+decision remains active, but `Profile` and `ModelRef` are no longer public
+routing-intent fields.
+
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
 | 2026-04-25 | Proposed | DDX Agent maintainers | `ADR-005`, `CONTRACT-003`, `SD-005` | High |

@@ -28,9 +28,12 @@ endpoint, or harness.
 Useful commands:
 
 ```bash
+fiz policies
+fiz harnesses
+fiz models --format json
 fiz --list-models --json
-fiz run --min-power 5 "prompt"
-fiz run --min-power 8 "prompt"
+fiz run --policy cheap "prompt"
+fiz run --policy smart "prompt"
 fiz run --model qwen-3.6-27b "prompt"
 fiz run --provider lmstudio "prompt"
 ```
@@ -43,4 +46,4 @@ See also:
 
 - [Candidate selection](best-provider.md)
 - [Hard pins](override-precedence.md)
-- [Profiles and power bounds](profiles.md)
+- [Policies and power bounds](policies.md)

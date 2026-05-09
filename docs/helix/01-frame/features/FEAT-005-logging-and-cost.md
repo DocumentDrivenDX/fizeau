@@ -22,6 +22,12 @@ Cost is preserved when a provider, gateway, or explicitly configured runtime
 knows it; otherwise it remains unknown. This implements PRD P0 requirements
 10-11.
 
+The v0.11 routing redesign is a session-log schema break for routing fields:
+new logs use `policy` and `power_policy`, and they do not emit removed
+model reference fields. Cost attribution remains model-level: reported or
+configured prices attach to the resolved provider system and concrete model,
+not to routing policy names.
+
 Patterned on DDx's agent session logging (`SessionEntry` JSONL and
 `ddx agent usage` reporting) but with deeper granularity — DDx logs
 one entry per subprocess invocation; Fizeau logs every turn within the
@@ -112,11 +118,11 @@ conversation loop.
 20. If no reported cost exists, Fizeau may compute cost only from explicit
     pricing configuration for the exact runtime/provider system and resolved
     model. The authoritative `$-per-Mtok` numbers (input, output,
-    cached-input, retried-input) come from the **profile pricing schema**
-    defined in SD-010 (`scripts/benchmark/profiles/<id>.yaml`, loaded by
+    cached-input, retried-input) come from the SD-010 pricing schema
+    (`scripts/benchmark/profiles/<id>.yaml`, loaded by
     `internal/benchmark/profile/`). Fizeau does not maintain a separate
-    pricing table.
-21. If neither reported cost nor a matching profile pricing entry exists,
+    generic pricing table and does not price by routing policy.
+21. If neither reported cost nor a matching runtime/model pricing entry exists,
     cost remains unknown and is never guessed from generic pricing tables
 22. Local inference runtimes are not implicitly free; `$0` cost must come from
     reported billing or explicit configuration
@@ -125,7 +131,8 @@ conversation loop.
 24. `Result.CostUSD` reflects the known total session cost or `-1` when
     unknown
 25. Usage reporting aggregates token and timing data for all sessions, known
-    costs for priced sessions, and reports unknown-cost session counts
+    costs for priced sessions, unknown-cost session counts, concrete model
+    attribution, and v0.11 policy/power routing attribution when present
 
 #### Cost-Cap Enforcement
 
@@ -139,9 +146,9 @@ conversation loop.
     `timeout`, and `harness_crash`, and survives resume semantics: a
     `budget_halted` run is not silently retried.
 28. Cost-cap enforcement requires that turn cost be **known** (from provider
-    report or profile pricing). If cost is unknown, the cap cannot fire and
-    the run proceeds; this matches §22 — unknown is never coerced to a
-    number.
+    report or explicit runtime/model pricing). If cost is unknown, the cap
+    cannot fire and the run proceeds; this matches §22 — unknown is never
+    coerced to a number.
 29. Cost-cap enforcement is a feature requirement of Fizeau itself, not
     solely a property of the benchmark harness. The benchmark runner relies
     on this contract, but standalone `fiz run` invocations honor the
@@ -197,7 +204,8 @@ conversation loop.
 |----|-----------|------------------------|
 | AC-FEAT-005-01 | JSONL session logs contain ordered `session.start`, `llm.request`, `llm.response`, `tool.call`, and `session.end` events with stable `session_id`, `seq`, timestamps, correlation metadata, and full prompt/response bodies subject only to documented truncation rules. | `go test ./session ./...` |
 | AC-FEAT-005-02 | Replay renders a human-readable transcript of prompts, assistant turns, tool calls, tokens, timing, workdir/model/provider metadata, and known-vs-unknown cost state without mutating the underlying log. | `go test ./session ./...` |
-| AC-FEAT-005-03 | Provider-reported cost wins over configured pricing, configured runtime pricing applies only on exact runtime/model matches, and mixed or unknown constituent costs force the session total to remain unknown rather than guessed. The four token streams (input, output, cached-input, retried-input) are tracked separately per turn and per session and never folded into one another. Profile pricing is sourced from the SD-010 profile schema. | `go test ./session ./telemetry ./...` |
+| AC-FEAT-005-03 | Provider-reported cost wins over configured pricing, configured runtime pricing applies only on exact runtime/model matches, and mixed or unknown constituent costs force the session total to remain unknown rather than guessed. The four token streams (input, output, cached-input, retried-input) are tracked separately per turn and per session and never folded into one another. Pricing is sourced from the SD-010 pricing schema and never inferred from routing policy. | `go test ./session ./telemetry ./...` |
+| AC-FEAT-005-08 | v0.11 session-log and usage projections preserve `policy` / `power_policy` routing attribution while replay remains tolerant of pre-v0.11 routing fields. | `go test ./internal/session ./telemetry ./...` |
 | AC-FEAT-005-07 | A configured per-run cost cap halts the loop before the next `llm.request` once the known running total meets or exceeds the cap, the `session.end` event records `process_outcome=budget_halted`, and `Result` surfaces the halt; if cost is unknown the cap does not fire and the run proceeds. | `go test ./session ./...` |
 | AC-FEAT-005-04 | OTel export conforms to `CONTRACT-001`, including span taxonomy, identity fields, cost/timing attributes, tool error semantics, and throughput formulas derived only from valid timing windows. | `go test ./telemetry ./...` |
 | AC-FEAT-005-05 | `fiz usage` preserves known-cost and unknown-cost session semantics across time-window filtering and supports the documented table, JSON, and CSV output modes. | `go test ./cmd/fiz ./session ./...` |
@@ -212,9 +220,9 @@ conversation loop.
   for gaps such as cost source and runtime-specific timing
 - `CONTRACT-001` is authoritative for telemetry field names, formulas, and
   capture semantics
-- SD-010's profile pricing schema is authoritative for `$-per-Mtok` rates
-  across the four token streams; FEAT-005 consumes those rates and does not
-  define a parallel pricing source
+- SD-010's pricing schema is authoritative for `$-per-Mtok` rates across the
+  four token streams; FEAT-005 consumes those rates and does not define a
+  parallel pricing source
 - Log format is Fizeau-specific but designed to be consumable by DDx's
   session inspection tooling with a thin adapter
 - No log rotation or retention policy in P0

@@ -3,6 +3,7 @@ ddx:
   id: FEAT-003
   depends_on:
     - helix.prd
+    - ADR-009
 ---
 # Feature Specification: FEAT-003 — LLM Providers
 
@@ -13,422 +14,193 @@ ddx:
 
 ## Overview
 
-Fizeau supports multiple LLM backends through a common interface, with two
-built-in groups: a set of concrete OpenAI-compatible providers (LM Studio,
-omlx, Ollama, vLLM, llama-server, OpenAI, OpenRouter) and an Anthropic provider
-(Claude). This implements PRD P0 requirements 3-4.
+Fizeau reaches models through concrete provider systems. Provider identity
+names the actual source of model service (`lmstudio`, `openrouter`,
+`anthropic`, `ollama`, and so on), not the wire protocol. The
+OpenAI-compatible request/streaming shape is a shared SDK layer used by several
+providers, but it is not a provider identity and must not appear in routing,
+billing, telemetry, or cost reports.
 
-Provider identity names the **actual model source** (e.g. `lmstudio`, `openrouter`,
-`ollama`, `anthropic`). The OpenAI-compatible HTTP/SSE protocol is a shared
-API shape; it is not a provider identity. OpenAI-compatible request shaping,
-SSE decoding, tool-call conversion, and wire debug support live in a shared
-`internal/sdk/openaicompat` layer that has no provider identity. Concrete
-provider packages wrap this shared layer and own auth defaults, endpoint
-defaults, model discovery, limit discovery, cost attribution, and local
-endpoint handling.
+Provider data feeds the routing engine in three ways:
 
-**Provider identity is not `openai-compat`.** Telemetry, cost, auth, model
-listing, quota, local endpoint management, and provider-specific bugs all
-attach to the real source. The OpenAI-compatible shape is an API protocol
-concern and must not be used as the routing key or analytics label.
+- transport and auth: where requests go and how they authenticate;
+- live signals: model discovery, health, limits, quota, utilization, and cost;
+- policy defaults: billing classification and `include_by_default`.
+
+ADR-009 makes provider billing and default inclusion part of the v0.11 routing
+contract. Pay-per-token providers are default-deny for automatic routing unless
+the catalog or user config opts them in.
 
 ## Problem Statement
 
-- **Current situation**: DDx harnesses each implement provider-specific CLI
-  invocation. Adding a new provider means modifying the registry and writing
-  invocation glue.
-- **Pain points**: No unified Go API for calling different providers. LM Studio
-  and Ollama both speak OpenAI-compatible API but DDx treats them as separate
-  harnesses.
-- **Desired outcome**: A `Provider` interface in Go with concrete implementations
-  that each wrap the shared OpenAI-compatible SDK. Configure by type — same SDK
-  talks to LM Studio, Ollama, and OpenAI through their respective wrappers.
+- Provider configs historically mixed transport details with routing policy.
+- OpenAI-compatible local and cloud systems shared request code but needed
+  different billing, auth, model discovery, and telemetry identity.
+- Automatic routing must avoid accidental paid API spend while still allowing
+  explicit pins and opt-in paid routing.
 
 ## Requirements
 
-### Functional Requirements
+### Provider Interface
 
-#### Provider Interface
+1. Providers implement the internal synchronous chat contract used by the core
+   loop: messages in, tools/options in, response with content/tool calls/token
+   usage/model/cost metadata out.
+2. Streaming remains opt-in through the streaming provider interface; the core
+   loop detects it at runtime.
+3. Provider packages own provider-specific request shaping, auth defaults,
+   endpoint defaults, model discovery, limit discovery, cost attribution, quota
+   discovery, and utilization discovery.
+4. Shared protocol helpers may exist, but they must not own provider identity,
+   billing, URL heuristics, or routing decisions.
 
-1. Common interface: `Chat(ctx, []Message, []Tool, Options) (Response, error)`
-2. Messages include role (system/user/assistant/tool), content, and optional
-   tool-call metadata
-3. Tools are described as JSON Schema function definitions
-4. Options include: model name, temperature, max tokens, stop sequences
-5. Response includes: content (text), tool calls (if any), token usage
-   (input/output), model ID, finish reason
+### Concrete Provider Systems
 
-#### Concrete OpenAI-Compatible Providers
+5. Supported provider `type` values include `lmstudio`, `omlx`, `ollama`,
+   `vllm`, `rapid-mlx`, `llama-server`, `lucebox`, `openai`, `openrouter`,
+   `anthropic`, `google`, and `virtual`.
+6. `type: openai-compat` is rejected at config load. URL inference may map
+   known local ports or hosts to concrete provider systems, but only during
+   config normalization.
+7. Local providers may expose endpoint pools. Endpoint names are operational
+   identity for status, logs, sticky routing, and explicit endpoint selection;
+   they are not the primary routing policy surface.
+8. Cloud providers may use `base_url` as a single-endpoint override when that
+   provider supports it.
 
-6. Each concrete provider (`lmstudio`, `omlx`, `ollama`, `vllm`,
-   `rapid-mlx`, `llama-server`, `openai`, `openrouter`) wraps a shared
-   `internal/sdk/openaicompat` layer that owns:
-   Chat Completions request shaping, tool schema serialization, streaming chunk
-   parsing, tool-call delta accumulation, debug wire capture, request timeouts,
-   and generic `/v1/models` discovery. The shared layer contains no
-   `ProviderName`, provider-system naming, URL heuristics, cost attribution,
-   or provider capability tables.
-7. Provider packages own these idiosyncrasies and pass explicit options into
-   the shared layer:
-   - `lmstudio`: LM Studio API key (often `lmstudio`), endpoint list,
-     `/api/v0/models` and `/api/v0/models/{model}` limit discovery, thinking
-     support.
-   - `omlx`: endpoint list, `/v1/models/status` limit discovery, oMLX stream
-     quirks.
-   - `ollama`: local defaults, Ollama capability claims.
-   - `vllm`: local or self-hosted vLLM defaults, OpenAI-compatible serving
-     behavior, and `/metrics` utilization discovery.
-   - `rapid-mlx`: Rapid-MLX defaults and OpenAI-compatible serving behavior.
-   - `llama-server`: llama.cpp `llama-server` defaults, OpenAI-compatible
-     serving behavior, `/metrics` utilization discovery when started with
-     `--metrics`, and `/slots` utilization fallback when slots are enabled.
-   - `openai`: api.openai.com defaults, OpenAI API key, OpenAI model/list
-     behavior.
-   - `openrouter`: OpenRouter base URL, API key, headers, model limit
-     discovery, and cost attribution.
-8. Adding a new provider means adding a provider package, not editing a shared
-   flavor switch.
-
-#### Provider Config and Endpoint Pools
-
-9. Provider config has a concrete `type` and may have an endpoint pool for
-   local providers:
+Example:
 
 ```yaml
 providers:
   studio:
     type: lmstudio
+    include_by_default: true
     endpoints:
       - name: vidar
         base_url: http://vidar:1234/v1
       - name: eitri
         base_url: http://eitri:1234/v1
-    model_pattern: qwen|coder
 
   openrouter:
     type: openrouter
     api_key: ${OPENROUTER_API_KEY}
+    include_by_default: false
 ```
 
-10. Supported provider `type` values: `openai`, `openrouter`, `lmstudio`,
-    `omlx`, `vllm`, `rapid-mlx`, `llama-server`, `ollama`, `anthropic`,
-    `virtual`.
-    `type: openai-compat` is rejected at config load. URL inference maps
-    well-known hosts/ports to concrete types at config load only.
-11. For cloud providers, `base_url` is a shorthand for a single endpoint when
-    the provider supports URL override.
+### Billing Classification
 
-#### Provider Runtime Identity
+9. Billing is a first-class provider attribute with these values:
 
-12. Provider responses and attempt metadata use:
+| Billing | Provider systems |
+|---------|------------------|
+| `fixed` | `lmstudio`, `llama-server`, `omlx`, `vllm`, `rapid-mlx`, `ollama`, `lucebox` |
+| `per_token` | `openai`, `openrouter`, `anthropic`, `google` |
+| `subscription` | built-in account harnesses `claude`, `codex`, `gemini` |
+| unknown (`""`) | custom or unrecognized systems until config or manifest supplies billing |
+
+10. The known provider-system rows are hardcoded through
+    `BillingForProviderSystem`. Built-in account harnesses use the matching
+    harness billing table.
+11. Unknown provider systems must supply an explicit billing value before they
+    can participate in policy routing. This avoids treating an unknown paid API
+    as free or local by accident.
+
+### Default Inclusion
+
+12. `include_by_default` controls whether a provider participates in unpinned
+    automatic routing.
+13. Pay-per-token providers default to `include_by_default: false`.
+14. Fixed/local providers and subscription/account harnesses may be included by
+    default when the catalog or effective user config says so.
+15. User config may override the catalog default for a provider.
+16. Explicit pins (`Provider`, `Harness`, or exact `Model`) override
+    `include_by_default`, so an operator can deliberately use a provider that
+    is excluded from default automatic routing.
+17. Pins do not override policy `Require` constraints. For example,
+    `Policy=air-gapped` requires `no_remote`; pinning `openrouter` under that
+    policy fails with a policy requirement error.
+
+### Runtime Identity
+
+18. Attempt metadata and public inventory distinguish:
 
 ```go
 type AttemptMetadata struct {
-    Provider         string // configured provider name, e.g. "studio" or "openrouter"
-    ProviderType     string // provider package identity, e.g. "lmstudio" or "openrouter"
-    ProviderEndpoint string // endpoint name or host:port when applicable
-    Model            string
-    CostUSD          float64
+    Provider string
+    ProviderType string
+    ProviderEndpoint string
+    Model string
+    CostUSD float64
 }
 ```
 
-13. No code emits `openai-compat` as a provider name after the cutover.
-    `ProviderType` replaces flavor-based naming in telemetry and cost
-    attribution.
+19. `Provider` is the configured provider name. `ProviderType` is the provider
+    system. `ProviderEndpoint` is the endpoint name or normalized host identity
+    when applicable.
+20. No code emits the shared protocol name as a provider identity.
 
-#### Context and Token Limit Discovery
+### Limits and Discovery
 
-14. `LookupModelLimits` resolves context window size and max output tokens for
-    the active model via a three-step cascade:
-    a. Explicit config fields (`context_window` / `max_tokens`) — used directly
-       if non-zero
-    b. Live API probe against the provider's type-specific endpoint (see
-       below) — used if the probe succeeds and returns non-zero values
-    c. Zero — caller uses compaction defaults
-15. Per-provider-type probe endpoints:
-    - `lmstudio`: `GET /api/v0/models/{model}` → `loaded_context_length`
-      (prefers loaded context over theoretical maximum)
-    - `omlx`: `GET /v1/models/status` → `max_context_window` and `max_tokens`
-      per model entry
-    - `openrouter`: `GET https://openrouter.ai/api/v1/models` →
-      `context_length` and `top_provider.max_completion_tokens`
-    - Other types: no probe; falls through to zero
+21. `LookupModelLimits` resolves context window and output-token limits by:
+    explicit config, then provider-specific live probe, then zero/unknown.
+22. Provider-specific probes include:
+    - `lmstudio`: native model metadata for loaded context length;
+    - `omlx`: `/v1/models/status`;
+    - `openrouter`: OpenRouter model metadata;
+    - other providers: zero/unknown unless they expose a verified limit API.
+23. Live model discovery wins over configured model hints. Configured default
+    models are fallback hints, not the whole inventory.
 
-#### Provider Utilization Discovery
+### Utilization and Health
 
-15a. Local OpenAI-compatible providers may expose endpoint utilization. This is
-     provider-owned behavior determined by concrete provider `type`, not a
-     normal-case user config block. The configured `base_url` remains the
-     OpenAI-compatible API base (usually ending in `/v1`); utilization probes
-     derive the server root by stripping a trailing `/v1` path component before
-     querying root-scoped observability endpoints.
-15b. `vllm` probes `GET /metrics` on the server root and normalizes
-     `vllm:num_requests_running`, `vllm:num_requests_waiting`, and cache
-     pressure from `vllm:kv_cache_usage_perc` or older
-     `vllm:gpu_cache_usage_perc` into a provider-independent endpoint
-     utilization signal.
-15c. `rapid-mlx` probes `GET /v1/status` on the server root and normalizes
-     `num_running`, `num_waiting`, total prompt/completion token counters,
-     Metal active/peak/cache memory, cache hit metadata, and per-request
-     `ttft_s` / `tokens_per_second` fields into a provider-independent endpoint
-     utilization signal.
-15d. `llama-server` first probes `GET /metrics` on the server root when the
-     server was started with `--metrics`, normalizing
-     `llamacpp:requests_processing`, `llamacpp:requests_deferred`, and
-     `llamacpp:kv_cache_usage_ratio`. If metrics are unavailable, it probes
-     `GET /slots` and normalizes the number of slots with `is_processing=true`
-     plus the returned slot count. `/slots` is expected to be enabled unless the
-     operator starts `llama-server` with `--no-slots`.
-15e. Utilization probe failure does not make an endpoint unavailable by itself.
-     The provider returns stale or unknown utilization and routing falls back to
-     service-owned in-flight lease counts and normal availability health.
-15f. `omlx` probes `GET /api/status` on the server root and normalizes active
-     requests, waiting requests, total prompt/completion/cached tokens, cache
-     efficiency, average prefill/generation TPS, loaded model identifiers, and
-     model memory used/max into a provider-independent endpoint utilization
-     signal. `GET /admin/api/stats` remains an optional admin-only extension
-     and is not required for the base utilization probe.
-15g. LM Studio's verified native surfaces are documented, but the live
-     utilization probe is still a gap:
-     - `POST /api/v1/chat` returns a `stats` object with
-       `input_tokens`, `total_output_tokens`, `reasoning_output_tokens`,
-       `tokens_per_second`, `time_to_first_token_seconds`, and optional
-       `model_load_time_seconds`. Treat this as the native performance surface.
-     - `GET /api/v1/models`, `POST /api/v1/models/load`,
-       `POST /api/v1/models/unload`, `POST /api/v1/models/download`, and
-       `GET /api/v1/models/download/status` are the confirmed model-management
-       surfaces.
-     - `lms server status --json` confirms running state and port, but it is a
-       CLI status surface rather than a provider utilization signal.
-     - No verified native cache counter is exposed on the documented LM Studio
-       surfaces, so LM Studio cache pressure remains `unknown` and routing
-       continues to fall back to service-owned in-flight lease counts plus
-       normal health.
-     - Follow-up bead: implement an LM Studio utilization probe that consumes
-       the native chat stats path and any future LM Studio cache/status counters
-       without changing the unknown fallback behavior.
+24. Local OpenAI-compatible providers may expose endpoint utilization. The
+    configured `base_url` remains the API base; probes derive the server root
+    when needed.
+25. `vllm`, `rapid-mlx`, `llama-server`, and `omlx` normalize active/queued
+    work, cache pressure where available, and freshness into provider-neutral
+    utilization signals.
+26. Utilization probe failure does not make an endpoint unavailable by itself.
+    It produces stale/unknown utilization and routing falls back to service-owned
+    in-flight lease counts plus normal health state.
+27. LM Studio's chat stats may provide performance counters, but cache pressure
+    remains unknown unless a verified native counter is available.
 
-#### Reasoning Configuration
+### Reasoning and Sampling
 
-16. `reasoning` is the single public model-reasoning control for provider
-    configuration, CLI execution, service requests, and embedding callers.
-    Provider-specific terms such as `thinking`, `effort`, `variant`, and token
-    budgets are adapter terminology only.
-17. `reasoning` accepts one scalar value:
-    - Named values: `auto`, `off`, `low`, `medium`, `high`
-    - Extended named values when the selected provider or harness advertises
-      support, including `minimal`, `xhigh` / `x-high`, and `max`
-    - Numeric values such as `0`, `2048`, or `8192`
-18. Normalization and tri-state semantics:
-    - Empty or unset means no caller preference.
-    - `auto` means resolve model, catalog, or provider defaults.
-    - `off`, `none`, `false`, and numeric `0` mean explicit reasoning off.
-    - Positive integers mean an explicit max reasoning-token budget, or a
-      documented provider-equivalent numeric value.
-    - Spelling variants may normalize where safe, for example `x-high` to
-      `xhigh`, but explicit extended requests must not be silently downgraded.
-19. Portable named-to-token defaults are `low=2048`, `medium=8192`, and
-    `high=32768`. Provider, model, or catalog metadata may override these
-    defaults with a more specific map.
-20. Providers that only accept numeric reasoning controls must map named values
-    to numeric budgets using capability-aware model metadata and must enforce
-    model-specific maximum reasoning-token limits. `max` resolves at the
-    provider or harness boundary to the selected model/provider maximum, and is
-    accepted only when that maximum is known.
-21. Unsupported providers or models may drop reasoning controls that came from
-    `auto` or default policy. Explicit unsupported reasoning values and
-    explicit over-limit numeric values fail clearly rather than silently
-    downgrading.
-22. Provider configuration exposes only `reasoning`; older split provider
-    config names are rejected with a clear error.
-
-#### Sampling Defaults
-
-22a. Sampling parameters (`temperature`, `top_p`, `top_k`, `min_p`,
-     `repetition_penalty`) are **catalog policy**, not user configuration.
-     The model catalog carries named `sampling_profiles` bundles; the active
-     profile resolves through a precedence chain (catalog → per-provider
-     config → CLI) with per-field merge. Any field unset at every layer is
-     omitted from the wire so the server's own default applies — this is a
-     first-class outcome, not a fallback. See
-     [ADR-007](../../02-design/adr/ADR-007-sampling-profiles-in-catalog.md)
-     for the full design.
-22b. `ModelEntry.sampling_control` records whether the catalog values reach
-     the wire: `client_settable` (native agent path; values flow),
-     `harness_pinned` (subprocess harnesses pi/codex/claude-code; values are
-     metadata only), or `partial` (provider honors a subset; reserved).
-22c. The native agent default avoids greedy decoding (`temperature=0`) for
-     reasoning-capable models; the Qwen3 model cards explicitly warn that
-     greedy decoding under `enable_thinking=True` causes endless repetitions
-     and is the failure mode catalog-driven sampling exists to prevent.
-22d. Sampling profiles ship through the catalog distribution channel
-     (see plan-2026-04-10-catalog-distribution-and-refresh) and reach users
-     via `fiz catalog update`, not via binary upgrades. Existing
-     installations on stale manifests degrade gracefully — server defaults
-     apply, and the agent emits a single first-use nudge pointing at the
-     refresh command. ADR-007 §7 covers the schema-evolution rules.
-
-#### Model Auto-Discovery
-
-23. When `model` is empty in config, the provider queries `GET /v1/models`,
-    ranks the returned IDs, and auto-selects the top-ranked one.
-24. Ranking tiers (highest first):
-    - Tier 3: catalog-recognized model IDs
-    - Tier 2: pattern-matched via `model_pattern` regex config field
-    - Tier 1: uncategorized (any remaining model)
-    Within a tier, selection is deterministic (e.g., lexicographic) so the
-    chosen model does not change across restarts unless the server's model list
-    changes.
-25. Local providers with multiple endpoints may select a different endpoint
-    per discovery call based on health state.
-
-#### Real-Server Provider Cassettes
-
-25a. Provider API compatibility for `vllm` and `llama-server` is validated with
-     golden HTTP cassettes recorded from real server processes, not hand-written
-     endpoint mocks. Tests use the established `go-vcr` library for HTTP
-     record/replay.
-25b. Replay mode is the default for ordinary `go test` runs and must fail when
-     a required cassette interaction is missing. Record mode is opt-in via an
-     environment flag and owns server lifecycle: it installs or pulls the
-     required server runtime, starts a trivial CPU model on free local ports,
-     waits for readiness, records `/v1/models`, observability endpoints,
-     minimal chat, and under-load utilization evidence, then stops the server.
-25c. The record harness redacts credentials before saving cassettes. Developer
-     overrides for already-running servers may exist, but the acceptance path
-     must not require a user to manually install or start vLLM or llama-server.
-
-#### Public Model Listing
-
-26. `FizeauService.ListModels` is the public interface for listing configured
-    provider models. It must list OpenRouter, LM Studio, oMLX, vLLM, and
-    llama-server models by querying each configured endpoint's
-    OpenAI-compatible models endpoint
-    (`<base_url>/models`, typically `/v1/models`).
-27. `ModelInfo` results for provider-backed models include the configured
-    provider name, concrete provider type (`openrouter`, `lmstudio`, `vllm`,
-    `rapid-mlx`, `llama-server`, or `omlx`), endpoint name, endpoint base URL, model ID,
-    availability, ranking, context/cost/catalog metadata when known, and
-    route/default markers.
-28. Endpoint-pool behavior is additive and deterministic: a reachable endpoint
-    contributes its discovered models; an unreachable endpoint contributes no
-    models and does not prevent other endpoints or providers from being listed.
-
-#### Protocol Capability Introspection
-
-29. Providers expose protocol-capability accessors that report what the
-    server+type combination can actually honor, so callers can gate dispatch
-    on supported features rather than dispatch-and-fail:
-    - `SupportsTools() bool` — `/v1/chat/completions` accepts a `tools` field
-      and returns structured `tool_calls`
-    - `SupportsStream() bool` — `stream: true` returns a well-formed SSE
-      stream with incremental `choices[0].delta` chunks
-    - `SupportsStructuredOutput() bool` — honors `response_format: json_object`
-      or equivalent JSON-mode / tool-use-required semantics
-30. Capability flags are type-keyed (`lmstudio` / `omlx` / `vllm` /
-    `rapid-mlx` / `llama-server` / `openrouter` / `ollama` / `openai`). Unknown types return
-    `false` conservatively so routing rejects rather than dispatches-and-fails.
-31. Protocol capability is distinct from routing capability (the benchmark-
-    quality score used by smart-routing scoring). These axes do not interact.
-
-#### Debug and Observability
-
-32. A process-wide opt-in debug mode (`FIZEAU_DEBUG_WIRE=1`) dumps every HTTP
-    request and response at the openai-go transport boundary to stderr (or a
-    file via `FIZEAU_DEBUG_WIRE_FILE=<path>`). Default off, zero cost when
-    disabled. Authorization Bearer tokens are redacted before any event is
-    written. Complements session events (`EventLLMRequest`/`EventLLMResponse`)
-    which capture the logical view; wire dump captures the HTTP view.
-33. The shared `internal/sdk/openaicompat` layer owns debug wire capture. No
-    provider identity strings appear in captured wire logs.
-
-#### Anthropic Provider
-
-34. Connects to Anthropic's Messages API.
-35. Sends tools in Anthropic's tool-use format.
-36. Handles Anthropic-specific response structure (content blocks).
-37. Reports token usage from response.
-38. Uses `github.com/anthropics/anthropic-sdk-go` and is not an
-    OpenAI-compatible wrapper.
-
-### Non-Functional Requirements
-
-- **Performance**: Provider overhead (request serialization, response parsing)
-  < 10ms beyond network round-trip
-- **Reliability**: The runtime owns retry with exponential backoff for
-  transient errors (429, 500, 503). Providers execute one request attempt per
-  call and surface enough metadata for attempt-scoped observability. Max 3
-  runtime retries.
-- **Observability**: Each provider call logs model, token counts, latency,
-  and any error
-
-## Edge Cases and Error Handling
-
-- **Local server not running**: Return clear error with URL attempted — don't
-  hang. Connection timeout of 5s.
-- **Model not loaded**: Return provider error as-is (LM Studio and Ollama
-  return meaningful errors for this)
-- **Tool calling not supported by model**: Let it fail naturally — model will
-  return text instead of tool calls, agent loop handles it
-- **Streaming interrupted**: Return partial response with error
-- **API key missing for cloud provider**: Return error at call time, not at
-  provider construction (allows constructing providers speculatively)
-
-## Success Metrics
-
-- Same prompt completes successfully via LM Studio, omlx, vLLM, llama-server,
-  Ollama, and Anthropic providers
-- Token counts are accurately reported for all providers
-- Provider swap is a type/base-URL change — no code changes
-- When `model` is unset, auto-discovery selects a working model without
-  operator intervention
-- `LookupModelLimits` returns non-zero values for LM Studio, omlx, and
-  OpenRouter when their servers are reachable
-- vLLM and llama-server utilization probes return normalized active/queued/cache
-  signals when their observability endpoints are available, and stale/unknown
-  utilization when they are not
+28. `reasoning` is the only public model-reasoning control in provider config,
+    CLI execution, service requests, and embedding callers.
+29. Provider-specific terminology such as thinking, effort, variant, and token
+    budgets remains adapter terminology.
+30. Sampling defaults remain catalog policy per ADR-007. Routing policies do
+    not replace sampling profiles; the two surfaces are independent.
 
 ## Acceptance Criteria
 
 | ID | Criterion | Suggested Verification |
 |----|-----------|------------------------|
-| AC-FEAT-003-01 | OpenAI-compatible and Anthropic providers each perform exactly one upstream request attempt per `Chat()` call, return token usage and response model data, and surface attempt metadata needed by runtime retries and telemetry. | `go test ./provider/... ./...` |
-| AC-FEAT-003-02 | Streaming provider paths assemble partial text and tool-call fragments into the same logical response shape as synchronous calls, and interrupted streams preserve any partial response while still surfacing an error. | `go test ./provider/... ./...` |
-| AC-FEAT-003-03 | Unreachable local endpoints fail within the documented bounded timeout and include the attempted endpoint/base URL in the surfaced error so operators can distinguish routing from model behavior problems. | `go test ./provider/... ./...` |
-| AC-FEAT-003-04 | Missing cloud credentials fail at call time rather than constructor time, and default local base URLs remain constructible without extra configuration. | `go test ./provider/... ./...` |
-| AC-FEAT-003-05 | Build-tagged integration coverage exercises the same prompt path against LM Studio, omlx, OpenAI, OpenRouter, and Anthropic providers when the corresponding test environment is available. | `go test -tags=integration ./...`; `go test -tags=e2e ./...` |
-| AC-FEAT-003-06 | `LookupModelLimits` returns the correct context window and max-token values for LM Studio (via `/api/v0/models/{model}`), omlx (via `/v1/models/status`), and OpenRouter (via their public models endpoint); explicit config fields override live probe results; unreachable endpoints fall through to zero without error. | `go test ./provider/... ./...` |
-| AC-FEAT-003-07 | Provider type resolution: explicit `type` config skips all probes; URL inference maps well-known hosts/ports to concrete types at config load only; ambiguous URLs fire concurrent probes and resolve to the first responding type within the 3-second timeout. | `go test ./provider/... ./...` |
-| AC-FEAT-003-08 | When `model` is empty, auto-discovery selects the highest-ranked available model according to the three-tier ranking (catalog → pattern → uncategorized) and the selection is deterministic across repeated calls with the same model list. | `go test ./provider/... ./...` |
-| AC-FEAT-003-09 | Provider config rejects `type: openai-compat` and `flavor` at config load; concrete provider types are accepted; `base_url` is expanded to a single endpoint for cloud providers. | `go test ./provider/... ./...` |
-| AC-FEAT-003-10 | No code emits `openai-compat` as a provider name or telemetry label; `ProviderType` (e.g. `lmstudio`, `openrouter`) is used instead for cost attribution and routing keys. | `go test ./provider/... ./...` |
-| AC-FEAT-003-11 | `FizeauService.ListModels` lists models from OpenRouter, LM Studio, and oMLX through the public service API, includes provider type and endpoint identity in each `ModelInfo`, and continues listing healthy endpoints when another endpoint in the same pool fails. | `go test ./... -run TestListModels` |
-| AC-FEAT-003-12 | `type: llama-server` is accepted as a first-class OpenAI-compatible provider with default base URL `http://localhost:8080/v1`, endpoint-pool support, registry construction, public provider/model listing, and native provider dispatch through the same registry paths as other concrete providers. | `go test ./internal/provider/registry ./internal/config ./... -run 'Registry|ProviderType|llama'` |
-| AC-FEAT-003-13 | vLLM utilization is recorded from a real CPU vLLM server with `go-vcr`: record mode installs or pulls the runtime, starts a trivial CPU model, records `/v1/models`, `/metrics`, minimal chat, and under-load metrics; replay mode is default and parses running, waiting, and cache-pressure metrics from the cassette. | `go test ./internal/provider/vllm ./... -run 'VLLM.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 go test ./internal/provider/vllm -run 'Record'` |
-| AC-FEAT-003-14 | llama-server utilization is recorded from a real llama.cpp server with `go-vcr`: record mode installs or pulls `llama-server`, starts a trivial CPU GGUF model with `--metrics` and `/slots` enabled, records `/v1/models`, `/metrics`, `/slots`, minimal chat, and busy-slot evidence; replay mode is default and parses processing, deferred, cache-ratio, and slot occupancy signals from the cassette. | `go test ./internal/provider/llamaserver ./... -run 'Llama.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 go test ./internal/provider/llamaserver -run 'Record'` |
-| AC-FEAT-003-15 | Rapid-MLX utilization is recorded from a real macOS Apple Silicon Rapid-MLX server with `go-vcr`: record mode requires `FIZEAU_RECORD_PROVIDER_CASSETTES=1` and `RAPID_MLX_RECORD_BASE_URL`, records `/v1/models`, `/v1/status`, minimal chat, and under-load status evidence when feasible; replay mode is default and parses running, waiting, total prompt/completion counters, Metal memory, cache details, and active-request timing fields from the cassette. | `go test ./internal/provider/rapidmlx ./internal/provider/... -run 'Rapid.*Utilization|Rapid.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 RAPID_MLX_RECORD_BASE_URL=http://host:8000/v1 go test ./internal/provider/rapidmlx -run 'Record'` |
-| AC-FEAT-003-16 | oMLX utilization is recorded from a real macOS Apple Silicon oMLX server with `go-vcr`: record mode requires `FIZEAU_RECORD_PROVIDER_CASSETTES=1` and an overrideable live-server URL such as `OMLX_URL`, records `/v1/models`, `/api/status`, a minimal chat completion, and under-load status evidence when feasible; replay mode is default and parses active and waiting requests, total prompt/completion/cached tokens, cache efficiency, average prefill/generation TPS, loaded model identifiers, and model memory used/max from the cassette while treating `/admin/api/stats` as optional. | `go test ./internal/provider/omlx ./internal/provider/... -run 'OMLX.*Cassette|Utilization'`; `FIZEAU_RECORD_PROVIDER_CASSETTES=1 OMLX_URL=http://vidar:1235/v1 go test ./internal/provider/omlx -run 'Record'` |
+| AC-FEAT-003-01 | Provider configs accept concrete provider systems and reject `openai-compat` as a provider identity. | `go test ./internal/config ./...` |
+| AC-FEAT-003-02 | Provider inventory and attempt metadata report configured provider name, provider system, endpoint identity, model, billing, and default-inclusion state. | `go test ./... -run 'ListProviders|AttemptMetadata|ProviderInfo'` |
+| AC-FEAT-003-03 | `BillingForProviderSystem` classifies fixed, per-token, and unknown provider systems according to the table above; built-in account harnesses classify as subscription. | `go test ./internal/modelcatalog ./... -run Billing` |
+| AC-FEAT-003-04 | Pay-per-token providers are excluded from unpinned/default routing unless `include_by_default` is true, while explicit pins can still select them. | `go test ./internal/routing ./... -run 'Policy|IncludeByDefault|Pin'` |
+| AC-FEAT-003-05 | Policy requirements still beat pins: a remote provider pinned under `air-gapped` / `no_remote` fails with `ErrPolicyRequirementUnsatisfied`. | `go test ./internal/routing ./... -run Policy` |
+| AC-FEAT-003-06 | Provider limit and utilization probes preserve unknown/stale states instead of guessing or marking endpoints unavailable solely because utilization failed. | `go test ./internal/provider ./...` |
 
 ## Constraints and Assumptions
 
-- LM Studio and Ollama both speak OpenAI-compatible API well enough for a
-  single shared SDK. Edge cases handled by provider wrappers if needed.
-- Anthropic needs its own provider due to fundamentally different wire format.
-- Models are pre-loaded in LM Studio/Ollama — Fizeau does not manage model
-  lifecycle.
+- Billing classification is intentionally conservative; unknown means unknown.
+- Local/fixed billing does not mean zero operating cost in cost reports unless
+  pricing is reported or explicitly configured.
+- Ordinary request execution does not fetch remote catalog manifests.
+- Endpoint labels are operational diagnostics, not policy names.
 
 ## Dependencies
 
-- **Other features**: FEAT-001 (agent loop uses providers)
-- **Governing design**: [Provider Identity, Routing Policy, and Bash Output Filtering](./../../02-design/plan-2026-04-19-provider-routing-tool-output.md)
-- **External services**: LM Studio, omlx, Ollama, Anthropic API, OpenAI API
-- **PRD requirements**: P0-3, P0-4
+- `FEAT-004` for routing-policy interpretation of provider metadata.
+- `FEAT-005` for cost and usage projection.
+- `ADR-009` for the v0.11 routing surface.
 
 ## Out of Scope
 
-- Google Gemini native API (use via OpenAI-compatible wrapper or OpenRouter)
-- Provider-side prompt caching
-- Model lifecycle management (load/unload/pull)
-- Availability health checking (e.g., readiness/liveness polling — caller's
-  responsibility); type-detection probes are one-shot identification, not
-  ongoing health monitoring
+- Managing local model downloads or server processes.
+- Automatic paid-provider opt-in.
+- Reintroducing provider route tables or user-authored fallback chains.

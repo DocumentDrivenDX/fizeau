@@ -6,25 +6,27 @@ Automatic routing builds a complete candidate list before choosing.
    model IDs.
 2. Join each discovered model to the catalog for power, context, cost,
    capabilities, provider/deployment class, status, and provenance.
-   Profile and target references with ordered catalog candidates are matched
-   against live provider discovery in order, so an endpoint can serve a later
-   catalog candidate when the primary candidate is absent.
    Provider-native names with unambiguous casing, prefix, quantization, or
    packaging differences, such as `Qwen3.6-27B-MLX-8bit`, use the matching
-   catalog model's metadata.
+   catalog model's metadata when the mapping is unambiguous.
 3. Attach live usage and availability signals: health, cooldown, observed
    latency, prepaid quota, reset time, marginal cost, and local endpoint
    utilization when the provider type exposes it.
-4. Apply hard pins for model, provider source/endpoint, and harness.
-5. Apply `--min-power` / `--max-power` only when the request is not exact-pinned.
-6. Filter by context, tools, reasoning support, health, and catalog status.
-7. Reuse an existing sticky route assignment when the request belongs to a
+4. Apply hard pins for model, provider source/endpoint, and harness. Pins can
+   consider providers that are not included by default.
+5. Apply policy requirements such as `air-gapped` / `no_remote`. These
+   requirements beat pins.
+6. Apply `--policy`, `--min-power`, and `--max-power` as automatic-routing
+   policy and scoring inputs.
+7. Filter by context, tools, reasoning support, health, quota, and catalog
+   status.
+8. Reuse an existing sticky route assignment when the request belongs to a
    known worker sequence and the assigned endpoint is still eligible.
-8. For a new sticky sequence, choose the least-loaded equivalent local endpoint
+9. For a new sticky sequence, choose the least-loaded equivalent local endpoint
    using provider utilization plus Fizeau in-flight lease counts.
-9. Score survivors by power, effective cost, quota, availability, speed, context,
+10. Score survivors by power, effective cost, quota, availability, speed, context,
    endpoint utilization pressure, and capability.
-10. Dispatch the top candidate once.
+11. Dispatch the top candidate once.
 
 Local/free candidates are preferred over paid cloud candidates when they satisfy
 the requested power, tools, context, health, and hard constraints. This

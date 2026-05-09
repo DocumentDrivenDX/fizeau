@@ -6,26 +6,26 @@ ddx:
     - SD-002
     - CONTRACT-003
 ---
-# Architecture — DDX Agent
+# Architecture — Fizeau
 
 ## System Context
 
-DDX Agent is a library-first execution service. Callers submit intent
-(`prompt`, `model`, `model_ref`, `profile`, `provider`, `harness`,
-permissions, reasoning) through the public `DdxAgent` contract. The service
+Fizeau is a library-first execution service. Callers submit intent
+(`prompt`, `policy`, `model`, `provider`, `harness`, permissions, reasoning)
+through the public `FizeauService` contract. The service
 owns routing, provider construction, execution, event normalization, and
 session-log persistence.
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Orchestrator │     │ CI / Worker  │     │ agent CLI    │
+│ Orchestrator │     │ CI / Worker  │     │ fiz CLI      │
 │ (in-process) │     │ (in-process) │     │ (binary)     │
 └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
        │                    │                    │
        └────────────┬───────┴────────────────────┘
                     │
             ┌───────▼────────┐
-            │ DdxAgent       │
+            │ FizeauService  │
             │ service API    │
             │ Execute/List/* │
             └───────┬────────┘
@@ -48,14 +48,14 @@ session-log persistence.
 
 ## Module Boundaries
 
-### 1. CLI module: `cmd/agent`
+### 1. CLI module: `cmd/fiz` and `agentcli`
 
 Responsibilities:
 
 - parse flags, stdin, env, and project working directory
 - build public service requests
-- call `agent.New`, `Execute`, `TailSessionLog`, `List*`, `ResolveProfile`,
-  `ResolveRoute`, `RouteStatus`
+- call `fizeau.New`, `Execute`, `TailSessionLog`, `List*`, `ListPolicies`,
+  `ResolveRoute`, and `RouteStatus`
 - decode events with `DecodeServiceEvent` or `DrainExecute`
 - render stdout/stderr/JSON and map status to process exit codes
 
@@ -67,7 +67,7 @@ Must not own:
 - session lifecycle persistence by replaying service events into internal
   session-log types
 
-### 2. Service module: root `agent` package and `service*.go`
+### 2. Service module: root `fizeau` package and `service*.go`
 
 Responsibilities:
 
@@ -100,8 +100,8 @@ routing-specific behavior behind the service boundary.
 ## Package View
 
 ```
-agent/
-├── *.go                        # public types and DdxAgent service methods
+fizeau/
+├── *.go                        # public types and FizeauService methods
 ├── loop.go                     # native core loop implementation
 ├── stream_consume.go           # streaming helper for native providers
 ├── compaction/                 # conversation compaction
@@ -112,19 +112,19 @@ agent/
 │   ├── provider/               # backend adapters
 │   ├── routing/                # candidate ranking and routing policy
 │   ├── harnesses/              # subprocess harness registry and runners
-│   ├── modelcatalog/           # profile/model catalog
+│   ├── modelcatalog/           # policy/model catalog
 │   └── ...                     # config, safefs, prompt helpers, etc.
 └── cmd/
-    └── agent/                  # first-party CLI consumer of the service
+    └── fiz/                    # first-party CLI consumer of the service
 ```
 
 ## Execution Flow
 
-### Native (`agent`) harness
+### Native (`fiz`) harness
 
 ```
 CLI / caller
-  -> DdxAgent.Execute(req)
+  -> FizeauService.Execute(req)
   -> service route resolution
   -> service-native provider construction
   -> core loop
@@ -136,7 +136,7 @@ CLI / caller
 
 ```
 CLI / caller
-  -> DdxAgent.Execute(req)
+  -> FizeauService.Execute(req)
   -> service route resolution
   -> harness runner selection
   -> PTY / subprocess execution

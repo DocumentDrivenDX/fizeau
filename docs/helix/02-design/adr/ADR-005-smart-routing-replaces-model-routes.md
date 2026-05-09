@@ -7,6 +7,12 @@ ddx:
 ---
 # ADR-005: Power-Based Routing Replaces `model_routes`
 
+## Superseded in part by ADR-009
+
+ADR-009 owns the v0.11 public routing surface. The power-routing mechanics in
+this ADR remain implementation reference, but profile, target, alias, and
+surface-policy vocabulary here is historical.
+
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
 | 2026-04-25 | Proposed | DDX Agent maintainers | `CONTRACT-003`, `SD-005`, `FEAT-004` | Medium |

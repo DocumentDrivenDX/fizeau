@@ -18,8 +18,9 @@ ghostty model — great library, proven by a usable app — Fizeau ships as a Go
 package plus a thin standalone CLI that showcases the library and serves as an
 embeddable harness backend (see CONTRACT-003). Fizeau also owns a reusable
 shared model catalog and updateable manifest so callers and related tooling can
-resolve aliases, tiers/profiles, canonical policy targets, and deprecations without
-copying model policy into each consumer. Every LLM interaction and tool call is
+resolve canonical routing policies, model metadata, provider surface strings,
+and deprecations without copying model policy into each consumer. Every LLM
+interaction and tool call is
 logged and replayable, with per-model cost tracking built in. Success means
 orchestrators can run a HELIX build pass where 70%+ of routine tasks use local
 models at near-zero cost, the operator can replay any session to understand
@@ -56,10 +57,10 @@ task the same: spawn a process, send to cloud, parse the result.
    cost-tracked via JSONL session logging (per-session detail)
 5. **Prove it with an app** — standalone `fiz` CLI that showcases the library
    and serves as an embeddable harness, following the ghostty pattern
-6. **Own reusable model policy** — provide a agent-owned shared model catalog,
-   publishable updateable manifest, and explicit refresh workflow so aliases,
-   tiers/profiles, canonical policy targets, and deprecations are maintained
-   once and consumed by any caller
+6. **Own reusable model policy** — provide an agent-owned shared model catalog,
+   publishable updateable manifest, canonical routing policies, and explicit
+   refresh workflow so model metadata, provider surfaces, and deprecations are
+   maintained once and consumed by any caller
 
 ### Success Metrics
 
@@ -162,17 +163,17 @@ task the same: spawn a process, send to cloud, parse the result.
 9. **Conversation compaction** — auto-summarize long conversation histories
    to fit within model context windows — **Implemented**
 10. **Shared model catalog** — an agent-owned catalog and publishable
-    updateable manifest for model aliases, tiers/profiles (`smart`,
-    `standard`, `cheap`, with compatibility aliases such as `code-high`,
-    `code-medium`, `code-economy`), canonical policy targets, and
-    deprecation metadata, kept separate from prompt presets
+    updateable manifest for concrete model metadata, canonical routing
+    policies (`cheap`, `default`, `smart`, `air-gapped`), provider surface
+    strings, billing/default-inclusion metadata, and deprecation metadata, kept
+    separate from prompt presets
 
 ### Nice to Have (P2)
 
 1. **Caching** — cache file reads within a session to reduce redundant I/O
-2. **Model-first provider routing** — request a model or model ref and let the
-   embedded runtime choose among equivalent configured providers with recorded
-   attribution and bounded failover.
+2. **Policy/provider/model routing** — request a policy, numeric power bounds,
+   or exact pin and let the embedded runtime choose among equivalent configured
+   providers with recorded attribution.
 3. **Multi-model consensus** — run same prompt on N models, return majority
    answer (multi-harness quorum is a caller concern)
 4. **Model selection optimization** — choose model based on task
@@ -218,9 +219,9 @@ task the same: spawn a process, send to cloud, parse the result.
 
 ### Model Catalog
 
-- Fizeau MUST define a reusable shared model catalog for aliases, model
-  families, tiers/profiles, canonical policy targets, and deprecation/stale
-  metadata
+- Fizeau MUST define a reusable shared model catalog for model families,
+  canonical routing policies, provider surface strings, billing/default
+  inclusion, and deprecation/stale metadata
 - The shared catalog MUST be distinct from system prompt presets and use its
   own naming/config surface
 - Fizeau MUST ship an embedded release snapshot of the catalog and support an
@@ -228,8 +229,8 @@ task the same: spawn a process, send to cloud, parse the result.
 - Fizeau MUST support publishing catalog manifests outside normal binary
   releases and an explicit local refresh/install flow that does not introduce
   network access into ordinary request execution
-- Callers MUST be able to resolve model references through the agent-owned
-  catalog without duplicating model policy in their own repos
+- Callers MUST be able to select routing policies and exact model pins through
+  the agent-owned catalog without duplicating model policy in their own repos
 - HELIX stage intent MUST remain above this layer; HELIX selects intent, callers
   resolve harness/provider/model details using agent-owned catalog data
 
@@ -263,7 +264,7 @@ tests, review findings, or execution beads.
 | Cost tracking | Run cloud task with billed cost returned | Claude or gateway completion with reported billing | Result.CostUSD > 0 and matches reported cost |
 | Cost tracking | Run task without pricing data | Unconfigured runtime or provider with no reported billing | Result.CostUSD == -1 (unknown, not guessed) |
 | Standalone CLI | End-to-end | `fiz -p "Read main.go"` with config file | Successful completion, session logged |
-| Shared model catalog | Resolve model reference | `fiz -p "hi" --model-ref code-smart` | Concrete model resolved from the agent catalog for the selected surface |
+| Shared model catalog | Select policy and route | `fiz run --policy smart "hi"` | Concrete route selected from the catalog and live inventory for the requested policy |
 | Harness path | Structured harness invocation | Prompt envelope or harness execution path (CONTRACT-003) | Machine-readable JSON output includes tokens, session ID, and cost semantics |
 | Self-update check | Scripted version check | `fiz update --check-only` | Exit code reflects update availability and output shows current/latest versions |
 
@@ -318,9 +319,9 @@ tests, review findings, or execution beads.
 
 - **Model loading**: Assume models are pre-loaded. Fizeau does not manage
   `lms load` / `ollama pull`. Model selection optimization is P2.
-- **Routing**: Callers own cross-harness selection. Within the embedded harness,
-  Fizeau owns model-first provider routing keyed by requested model or model
-  ref; legacy backend pools are compatibility-only during migration.
+- **Routing**: Callers own semantic retry and cross-harness orchestration.
+  Within the embedded harness, Fizeau owns policy/provider/model routing keyed
+  by `Policy`, numeric power bounds, and exact hard pins.
 - **Config**: Library takes a `Config` struct that any embedder provides. The
   standalone CLI has its own config reader. Library has no config file opinions.
 - **File paths**: Allow paths outside working directory. Expectation is the
