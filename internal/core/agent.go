@@ -332,13 +332,6 @@ type Request struct {
 	// RequestedModel is the route key or canonical target that drove selection.
 	RequestedModel string
 
-	// RequestedModelRef is the caller-supplied model catalog reference.
-	RequestedModelRef string
-
-	// ResolvedModelRef is the resolved catalog target reference when model
-	// selection came from a model_ref.
-	ResolvedModelRef string
-
 	// ResolvedModel is the resolved concrete model selected before the run.
 	ResolvedModel string
 
@@ -430,12 +423,6 @@ type Result struct {
 
 	// RequestedModel is the route key or canonical target that drove selection.
 	RequestedModel string `json:"requested_model,omitempty"`
-
-	// RequestedModelRef is the caller-supplied model catalog reference.
-	RequestedModelRef string `json:"requested_model_ref,omitempty"`
-
-	// ResolvedModelRef is the resolved catalog target reference.
-	ResolvedModelRef string `json:"resolved_model_ref,omitempty"`
 
 	// ResolvedModel is the resolved concrete model selected before the run.
 	ResolvedModel string `json:"resolved_model,omitempty"`

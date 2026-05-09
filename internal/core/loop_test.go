@@ -1334,14 +1334,13 @@ func TestRun_RoutingReportUpdatesResultAndRootSpan(t *testing.T) {
 	}
 
 	result, err := Run(context.Background(), Request{
-		Prompt:            "say hi",
-		Provider:          provider,
-		Telemetry:         tel,
-		SelectedProvider:  "bragi",
-		SelectedRoute:     "qwen3.5-27b",
-		RequestedModel:    "qwen3.5-27b",
-		RequestedModelRef: "code-fast",
-		ResolvedModel:     "qwen/qwen3.5-27b",
+		Prompt:           "say hi",
+		Provider:         provider,
+		Telemetry:        tel,
+		SelectedProvider: "bragi",
+		SelectedRoute:    "qwen3.5-27b",
+		RequestedModel:   "qwen3.5-27b",
+		ResolvedModel:    "qwen/qwen3.5-27b",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
@@ -1354,7 +1353,6 @@ func TestRun_RoutingReportUpdatesResultAndRootSpan(t *testing.T) {
 	assert.Equal(t, "openrouter", attrString(t, root.Attributes(), telemetry.KeyProviderName))
 	assert.Equal(t, "qwen3.5-27b", attrString(t, root.Attributes(), telemetry.KeyProviderRoute))
 	assert.Equal(t, "qwen3.5-27b", attrString(t, root.Attributes(), telemetry.KeyRequestModel))
-	assert.Equal(t, "code-fast", attrString(t, root.Attributes(), telemetry.KeyRequestedModelRef))
 	assert.Equal(t, "qwen/qwen3.5-27b", attrString(t, root.Attributes(), telemetry.KeyProviderModelResolved))
 	assert.Equal(t, "bragi,openrouter", attrString(t, root.Attributes(), telemetry.KeyAttemptedProviders))
 	assert.Equal(t, int64(1), attrInt(t, root.Attributes(), telemetry.KeyFailoverCount))

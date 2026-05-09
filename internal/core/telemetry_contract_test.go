@@ -166,6 +166,55 @@ func TestRun_CONTRACT001SpanConformance(t *testing.T) {
 	assertNoContentCaptureAttrs(t, toolSpan.Attributes())
 }
 
+func TestTelemetryNoModelRefAttrs(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+	provider := &conformanceProvider{
+		provider:      "lmstudio",
+		system:        "openai",
+		model:         "gpt-4o",
+		serverAddress: "api.openai.com",
+		serverPort:    443,
+		responses: []Response{
+			{
+				Content: "done",
+				Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
+				Model:   "gpt-4o",
+				Attempt: &AttemptMetadata{
+					ProviderName:   "lmstudio",
+					ProviderSystem: "openai",
+					RequestedModel: "gpt-4o",
+					ResponseModel:  "gpt-4o",
+					ResolvedModel:  "gpt-4o",
+					ServerAddress:  "api.openai.com",
+					ServerPort:     443,
+				},
+			},
+		},
+	}
+
+	_, err := Run(context.Background(), Request{
+		Prompt:         "say hi",
+		Provider:       provider,
+		Telemetry:      tel,
+		RequestedModel: "gpt-4o",
+		ResolvedModel:  "gpt-4o",
+	})
+	require.NoError(t, err)
+
+	legacyKeys := []string{
+		"ddx.request.model_ref",
+		"ddx.request.resolved_model_ref",
+	}
+	for _, span := range recorder.Ended() {
+		for _, key := range legacyKeys {
+			assert.False(t, hasAttr(span.Attributes(), key), "span %q emitted legacy attr %q", span.Name(), key)
+		}
+	}
+}
+
 func TestRun_CONTRACT001CostPrecedence(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))

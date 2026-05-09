@@ -13,8 +13,8 @@ import (
 
 // TestRouteStatusCommandJSON verifies that fiz route-status --help documents
 // all routing-evidence flags that operators need for --json inspection:
-// --json (output mode), --profile, --min-power, --max-power (power policy),
-// --model, --model-ref, --provider (pin constraints).
+// --json (output mode), --policy, --min-power, --max-power (power policy),
+// --model, --provider (pin constraints).
 // This confirms AC-2 of FEAT-004: the route-status command surfaces the JSON
 // evidence envelope via its documented flag set.
 func TestRouteStatusCommandJSON(t *testing.T) {
@@ -27,7 +27,7 @@ func TestRouteStatusCommandJSON(t *testing.T) {
 	_ = cmd.Execute()
 
 	help := stdout.String() + stderr.String()
-	for _, flag := range []string{"--json", "--profile", "--min-power", "--max-power", "--model", "--model-ref", "--provider"} {
+	for _, flag := range []string{"--json", "--policy", "--min-power", "--max-power", "--model", "--provider"} {
 		if !strings.Contains(help, flag) {
 			t.Errorf("route-status help missing routing-evidence flag %q:\n%s", flag, help)
 		}
@@ -152,7 +152,7 @@ func TestProfileHelpAvoidsLegacyCodeHighAndCodeMedium(t *testing.T) {
 	}
 
 	help := stdout.String() + stderr.String()
-	for _, want := range []string{"--profile", "--min-power", "--max-power"} {
+	for _, want := range []string{"--policy", "--min-power", "--max-power"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}

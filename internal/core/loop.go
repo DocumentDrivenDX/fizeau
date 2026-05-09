@@ -27,14 +27,12 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 	sessionID := fmt.Sprintf("s-%d", start.UnixNano())
 	result := Result{
-		SessionID:         sessionID,
-		SelectedProvider:  req.SelectedProvider,
-		SelectedRoute:     req.SelectedRoute,
-		RequestedModel:    req.RequestedModel,
-		RequestedModelRef: req.RequestedModelRef,
-		ResolvedModelRef:  req.ResolvedModelRef,
-		ResolvedModel:     req.ResolvedModel,
-		Reasoning:         req.Reasoning,
+		SessionID:        sessionID,
+		SelectedProvider: req.SelectedProvider,
+		SelectedRoute:    req.SelectedRoute,
+		RequestedModel:   req.RequestedModel,
+		ResolvedModel:    req.ResolvedModel,
+		Reasoning:        req.Reasoning,
 	}
 
 	if req.Provider == nil {
@@ -97,20 +95,18 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		Type:      EventSessionStart,
 		Timestamp: time.Now().UTC(),
 		Data: mustMarshal(map[string]any{
-			"provider":            sessionProvider,
-			"model":               sessionModel,
-			"selected_provider":   req.SelectedProvider,
-			"selected_route":      req.SelectedRoute,
-			"requested_model":     req.RequestedModel,
-			"requested_model_ref": req.RequestedModelRef,
-			"resolved_model_ref":  req.ResolvedModelRef,
-			"resolved_model":      req.ResolvedModel,
-			"reasoning":           req.Reasoning,
-			"work_dir":            req.WorkDir,
-			"prompt":              req.Prompt,
-			"system_prompt":       req.SystemPrompt,
-			"max_iterations":      req.MaxIterations,
-			"metadata":            req.Metadata,
+			"provider":          sessionProvider,
+			"model":             sessionModel,
+			"selected_provider": req.SelectedProvider,
+			"selected_route":    req.SelectedRoute,
+			"requested_model":   req.RequestedModel,
+			"resolved_model":    req.ResolvedModel,
+			"reasoning":         req.Reasoning,
+			"work_dir":          req.WorkDir,
+			"prompt":            req.Prompt,
+			"system_prompt":     req.SystemPrompt,
+			"max_iterations":    req.MaxIterations,
+			"metadata":          req.Metadata,
 		}),
 	})
 
@@ -884,8 +880,6 @@ func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result,
 		"selected_provider":   result.SelectedProvider,
 		"selected_route":      result.SelectedRoute,
 		"requested_model":     result.RequestedModel,
-		"requested_model_ref": result.RequestedModelRef,
-		"resolved_model_ref":  result.ResolvedModelRef,
 		"resolved_model":      result.ResolvedModel,
 		"reasoning":           result.Reasoning,
 		"attempted_providers": result.AttemptedProviders,
@@ -932,7 +926,6 @@ func applyRoutingSpanAttributes(span trace.Span, result Result) {
 	attrs = appendStringAttr(attrs, telemetry.KeyProviderName, result.SelectedProvider)
 	attrs = appendStringAttr(attrs, telemetry.KeyProviderRoute, result.SelectedRoute)
 	attrs = appendStringAttr(attrs, telemetry.KeyRequestModel, result.RequestedModel)
-	attrs = appendStringAttr(attrs, telemetry.KeyRequestedModelRef, result.RequestedModelRef)
 	attrs = appendStringAttr(attrs, telemetry.KeyProviderModelResolved, result.ResolvedModel)
 	if len(result.AttemptedProviders) > 0 {
 		attrs = append(attrs, attribute.String(telemetry.KeyAttemptedProviders, strings.Join(result.AttemptedProviders, ",")))

@@ -35,7 +35,6 @@ const (
 	KeyHarnessVersion        = "ddx.harness.version"
 	KeySessionID             = "ddx.session.id"
 	KeyParentSessionID       = "ddx.parent.session.id"
-	KeyRequestedModelRef     = "ddx.request.model_ref"
 	KeyTurnIndex             = "ddx.turn.index"
 	KeyAttemptIndex          = "ddx.attempt.index"
 	KeyToolExecutionIndex    = "ddx.tool.execution.index"

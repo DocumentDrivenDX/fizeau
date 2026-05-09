@@ -21,8 +21,6 @@ type SessionStartData struct {
 	ResolvedHarness        string                  `json:"resolved_harness,omitempty"`
 	HarnessSource          string                  `json:"harness_source,omitempty"`
 	RequestedModel         string                  `json:"requested_model,omitempty"`
-	RequestedModelRef      string                  `json:"requested_model_ref,omitempty"`
-	ResolvedModelRef       string                  `json:"resolved_model_ref,omitempty"`
 	ResolvedModel          string                  `json:"resolved_model,omitempty"`
 	Reasoning              agent.Reasoning         `json:"reasoning,omitempty"`
 	AttemptedProviders     []string                `json:"attempted_providers,omitempty"`
@@ -95,8 +93,6 @@ type SessionEndData struct {
 	ResolvedHarness        string                  `json:"resolved_harness,omitempty"`
 	HarnessSource          string                  `json:"harness_source,omitempty"`
 	RequestedModel         string                  `json:"requested_model,omitempty"`
-	RequestedModelRef      string                  `json:"requested_model_ref,omitempty"`
-	ResolvedModelRef       string                  `json:"resolved_model_ref,omitempty"`
 	ResolvedModel          string                  `json:"resolved_model,omitempty"`
 	Reasoning              agent.Reasoning         `json:"reasoning,omitempty"`
 	AttemptedProviders     []string                `json:"attempted_providers,omitempty"`

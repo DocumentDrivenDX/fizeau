@@ -215,15 +215,13 @@ default: bragi
 `)
 
 	type routingResult struct {
-		Status            string `json:"status"`
-		SessionID         string `json:"session_id"`
-		Model             string `json:"model"`
-		SelectedProvider  string `json:"selected_provider"`
-		SelectedRoute     string `json:"selected_route"`
-		RequestedModel    string `json:"requested_model"`
-		RequestedModelRef string `json:"requested_model_ref"`
-		ResolvedModelRef  string `json:"resolved_model_ref"`
-		ResolvedModel     string `json:"resolved_model"`
+		Status           string `json:"status"`
+		SessionID        string `json:"session_id"`
+		Model            string `json:"model"`
+		SelectedProvider string `json:"selected_provider"`
+		SelectedRoute    string `json:"selected_route"`
+		RequestedModel   string `json:"requested_model"`
+		ResolvedModel    string `json:"resolved_model"`
 	}
 
 	first := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "first request")
@@ -234,7 +232,6 @@ default: bragi
 	assert.Equal(t, "qwen3.5-27b", firstResult.SelectedRoute)
 	assert.Equal(t, "bragi", firstResult.SelectedProvider)
 	assert.Equal(t, "qwen3.5-27b", firstResult.RequestedModel)
-	assert.Equal(t, "", firstResult.RequestedModelRef)
 	assert.Equal(t, "qwen3.5-27b", firstResult.ResolvedModel)
 	assert.Equal(t, "qwen3.5-27b", bragi.requestedModel())
 
@@ -827,7 +824,6 @@ default_backend: code-pool
 		Model            string `json:"model"`
 		SelectedProvider string `json:"selected_provider"`
 		SelectedRoute    string `json:"selected_route"`
-		ResolvedModelRef string `json:"resolved_model_ref"`
 		ResolvedModel    string `json:"resolved_model"`
 	}
 
@@ -838,7 +834,6 @@ default_backend: code-pool
 	assert.Equal(t, "success", firstResult.Status)
 	assert.Equal(t, "code-pool", firstResult.SelectedRoute)
 	assert.Equal(t, "vidar", firstResult.SelectedProvider)
-	assert.Equal(t, "", firstResult.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", firstResult.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", firstResult.Model)
 	assert.Equal(t, "gpt-5.4-mini", vidar.requestedModel())
@@ -849,12 +844,10 @@ default_backend: code-pool
 	firstStart := eventDataByType(t, firstEvents, fizeau.EventSessionStart)
 	assert.Equal(t, "vidar", firstStart["selected_provider"])
 	assert.Equal(t, "code-pool", firstStart["selected_route"])
-	assert.Empty(t, firstStart["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", firstStart["resolved_model"])
 	firstEnd := eventDataByType(t, firstEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "vidar", firstEnd["selected_provider"])
 	assert.Equal(t, "code-pool", firstEnd["selected_route"])
-	assert.Empty(t, firstEnd["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", firstEnd["resolved_model"])
 
 	second := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "-p", "second request")
@@ -864,7 +857,6 @@ default_backend: code-pool
 	assert.Equal(t, "success", secondResult.Status)
 	assert.Equal(t, "code-pool", secondResult.SelectedRoute)
 	assert.Equal(t, "bragi", secondResult.SelectedProvider)
-	assert.Equal(t, "", secondResult.ResolvedModelRef)
 	assert.Equal(t, "gpt-5.4-mini", secondResult.ResolvedModel)
 	assert.Equal(t, "gpt-5.4-mini", secondResult.Model)
 	assert.Equal(t, "gpt-5.4-mini", bragi.requestedModel())
@@ -875,12 +867,10 @@ default_backend: code-pool
 	secondStart := eventDataByType(t, secondEvents, fizeau.EventSessionStart)
 	assert.Equal(t, "bragi", secondStart["selected_provider"])
 	assert.Equal(t, "code-pool", secondStart["selected_route"])
-	assert.Empty(t, secondStart["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", secondStart["resolved_model"])
 	secondEnd := eventDataByType(t, secondEvents, fizeau.EventSessionEnd)
 	assert.Equal(t, "bragi", secondEnd["selected_provider"])
 	assert.Equal(t, "code-pool", secondEnd["selected_route"])
-	assert.Empty(t, secondEnd["resolved_model_ref"])
 	assert.Equal(t, "gpt-5.4-mini", secondEnd["resolved_model"])
 
 	assert.Equal(t, 1, vidar.chatCallCount())
