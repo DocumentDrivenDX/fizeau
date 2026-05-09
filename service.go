@@ -339,7 +339,6 @@ type RouteRequest struct {
 	Model       string
 	Provider    string
 	Harness     string
-	ModelRef    string
 	Reasoning   Reasoning
 	Permissions string
 	AllowLocal  bool
@@ -653,7 +652,6 @@ type ServiceExecuteRequest struct {
 	Model             string
 	Provider          string
 	Harness           string
-	ModelRef          string
 	Policy            string
 	WorkDir           string
 	Temperature       *float32
@@ -733,11 +731,6 @@ type ServiceExecuteRequest struct {
 	// post-hoc routing analytics can correlate logs to route keys without
 	// reconstructing attribution from the event stream.
 	SelectedRoute string
-
-	// ResolvedModelRef is the profile/model reference (e.g. "code-medium")
-	// that was mapped onto the concrete Model for this request. Paired with
-	// ModelRef (the caller-requested reference) in the session log.
-	ResolvedModelRef string
 
 	// Metadata is bidirectional: echoed back in every Event AND stamped
 	// onto every line of the session log so external consumers correlate.

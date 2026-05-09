@@ -210,7 +210,6 @@ func TestBuildServiceExecuteRequestPreservesNativeLoopSettings(t *testing.T) {
 		SelectedRoute:           "local",
 		RequestedModel:          "test-model",
 		ResolvedModel:           "test-model",
-		ResolvedModelRef:        "code-smart",
 		Reasoning:               fizeau.ReasoningLow,
 		MaxIterations:           7,
 		MaxTokens:               2048,

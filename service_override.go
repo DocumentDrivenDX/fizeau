@@ -105,7 +105,6 @@ func (s *service) resolveAutoDecisionForOverride(ctx context.Context, req Servic
 	// inputs explicitly so future axis additions are obvious here.
 	stripped := RouteRequest{
 		Policy:                req.Policy,
-		ModelRef:              req.ModelRef,
 		Reasoning:             req.Reasoning,
 		Permissions:           req.Permissions,
 		EstimatedPromptTokens: req.EstimatedPromptTokens,

@@ -389,8 +389,6 @@ func runWithOptions(opts Options) int {
 		SelectedProvider:        selection.Provider,
 		SelectedRoute:           selection.Route,
 		RequestedModel:          selection.RequestedModel,
-		RequestedModelRef:       selection.RequestedModelRef,
-		ResolvedModelRef:        selection.ResolvedModelRef,
 		ResolvedModel:           selection.ResolvedModel,
 		Harness:                 *harnessFlag,
 		Reasoning:               resolvedReasoning,
@@ -547,8 +545,6 @@ type serviceExecuteRequestParams struct {
 	SelectedProvider        string
 	SelectedRoute           string
 	RequestedModel          string
-	RequestedModelRef       string
-	ResolvedModelRef        string
 	ResolvedModel           string
 	Harness                 string
 	Reasoning               fizeau.Reasoning
@@ -631,7 +627,6 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 		SystemPrompt:            params.SystemPrompt,
 		Harness:                 harness,
 		Model:                   model,
-		ModelRef:                params.RequestedModelRef,
 		Provider:                provider,
 		WorkDir:                 params.WorkDir,
 		Reasoning:               params.Reasoning,
@@ -648,7 +643,6 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 		CompactionContextWindow: params.CompactionContextWindow,
 		CompactionReserveTokens: params.CompactionReserveTokens,
 		SelectedRoute:           params.SelectedRoute,
-		ResolvedModelRef:        params.ResolvedModelRef,
 		Temperature:             params.Temperature,
 		TopP:                    params.TopP,
 		TopK:                    params.TopK,

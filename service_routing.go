@@ -75,7 +75,6 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		s.annotateRouteDecisionEvidence(result)
 		return result, publicRoutingError(modelErr, result.Candidates, req.Policy)
 	}
-	applyRoutingModelRef(&in, req.ModelRef, cat)
 
 	rReq := routing.Request{
 		Policy:                policy,
@@ -687,73 +686,6 @@ func routingPolicyForProfile(cat *modelcatalog.Catalog, profile string) string {
 	}
 }
 
-func applyRoutingModelRef(in *routing.Inputs, ref string, cat *modelcatalog.Catalog) {
-	if in == nil {
-		return
-	}
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return
-	}
-	for hi := range in.Harnesses {
-		h := &in.Harnesses[hi]
-		if len(h.Providers) == 0 {
-			if model, ok := routingModelRefForSurface(cat, ref, h.Surface, nil, false); ok {
-				h.DefaultModel = model
-			}
-			continue
-		}
-		for pi := range h.Providers {
-			p := &h.Providers[pi]
-			if model, ok := routingModelRefForSurface(cat, ref, h.Surface, p.DiscoveredIDs, p.DiscoveryAttempted); ok {
-				p.DefaultModel = model
-				p.SupportsTools = providerSupportsTools(cat, model, p.DiscoveredIDs)
-			}
-		}
-	}
-}
-
-func routingModelRefForSurface(cat *modelcatalog.Catalog, ref, surface string, discovered []string, discoveryAttempted bool) (string, bool) {
-	if cat == nil {
-		if discoveryAttempted {
-			if matched := routing.FuzzyMatch(ref, discovered); matched != "" {
-				return matched, true
-			}
-		}
-		return ref, true
-	}
-	catalogSurface, ok := serviceRoutingCatalogSurface(surface)
-	if !ok {
-		return "", false
-	}
-	resolved, err := cat.Resolve(ref, modelcatalog.ResolveOptions{
-		Surface:         catalogSurface,
-		AllowDeprecated: true,
-	})
-	if err != nil || resolved.ConcreteModel == "" {
-		return "", false
-	}
-	if len(discovered) == 0 {
-		return resolved.ConcreteModel, true
-	}
-	candidates := cat.CandidatesFor(catalogSurface, resolved.CanonicalID)
-	if len(candidates) == 0 {
-		candidates = []string{resolved.ConcreteModel}
-	}
-	for _, candidate := range candidates {
-		if matched := routing.FuzzyMatch(candidate, discovered); matched != "" {
-			return matched, true
-		}
-	}
-	if matched := routing.FuzzyMatch(resolved.ConcreteModel, discovered); matched != "" {
-		return matched, true
-	}
-	if matched := routing.FuzzyMatch(ref, discovered); matched != "" {
-		return matched, true
-	}
-	return resolved.ConcreteModel, true
-}
-
 func serviceRoutingCatalogResolver(cat *modelcatalog.Catalog) func(ref, surface string) (string, bool) {
 	if cat == nil {
 		return nil
@@ -1206,7 +1138,6 @@ func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*Rou
 		Model:         req.Model,
 		Provider:      req.Provider,
 		Harness:       req.Harness,
-		ModelRef:      req.ModelRef,
 		Reasoning:     req.Reasoning,
 		Permissions:   req.Permissions,
 		CachePolicy:   req.CachePolicy,
@@ -1279,10 +1210,10 @@ func routePowerPolicyForRequest(cat *modelcatalog.Catalog, req RouteRequest) Rou
 }
 
 func routePowerBoundsForRequest(req RouteRequest, policy RoutePowerPolicy) (int, int) {
-	// Exact model references remain exact catalog-reference narrowing. The
-	// profile still reports its effective power policy for evidence, but it
-	// does not widen or override a hard model identity pin.
-	if req.Model != "" || req.ModelRef != "" {
+	// Exact model pins remain exact model identity pins. The policy still
+	// reports its effective power policy for evidence, but it does not widen
+	// or override the caller's model.
+	if req.Model != "" {
 		return req.MinPower, req.MaxPower
 	}
 	return policy.MinPower, policy.MaxPower

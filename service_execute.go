@@ -41,7 +41,7 @@ func generateSessionID() string {
 //
 // Routing: under-specified requests (no Harness) are dispatched through
 // internal/routing.Resolve via ResolveRoute. Callers can run with bare
-// Policy/ModelRef/Model/Provider — the engine picks. NativeProvider must
+// Policy/Model/Provider — the engine picks. NativeProvider must
 // still be supplied for the native path until provider construction lands
 // in a follow-up.
 func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-chan ServiceEvent, error) {

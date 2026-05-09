@@ -233,7 +233,7 @@ func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
 		return filepath.Join(dir, file), nil
 	}
 	svc := &service{opts: ServiceOptions{}, registry: registry}
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "smart", ModelRef: "smart"})
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Harness: "codex", Model: "gpt-5.5"})
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestBuildRoutingInputs_SecondaryHarnesses(t *testing.T) {
 	}
 }
 
-func TestResolveRoute_GeminiProfilesUseCatalogModels(t *testing.T) {
+func TestResolveRoute_GeminiCatalogModelsResolveByConcreteModel(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "redacted")
 	dir := t.TempDir()
 	quotaPath := filepath.Join(dir, "gemini-quota.json")
@@ -403,17 +403,17 @@ func TestResolveRoute_GeminiProfilesUseCatalogModels(t *testing.T) {
 	}
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 
-	for profile, want := range map[string]string{
-		"smart":    "gemini-2.5-pro",
-		"standard": "gemini-2.5-flash",
-		"cheap":    "gemini-2.5-flash-lite",
+	for policy, model := range map[string]string{
+		"smart":   "gemini-2.5-pro",
+		"default": "gemini-2.5-flash",
+		"cheap":   "gemini-2.5-flash-lite",
 	} {
-		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Harness: "gemini", Policy: profile, ModelRef: profile})
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Harness: "gemini", Policy: policy, Model: model})
 		if err != nil {
-			t.Fatalf("ResolveRoute profile=%s: %v", profile, err)
+			t.Fatalf("ResolveRoute policy=%s: %v", policy, err)
 		}
-		if dec.Harness != "gemini" || dec.Model != want {
-			t.Fatalf("profile=%s: got harness=%q model=%q, want gemini/%s", profile, dec.Harness, dec.Model, want)
+		if dec.Harness != "gemini" || dec.Model != model {
+			t.Fatalf("policy=%s: got harness=%q model=%q, want gemini/%s", policy, dec.Harness, dec.Model, model)
 		}
 	}
 }

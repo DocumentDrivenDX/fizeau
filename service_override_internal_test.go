@@ -12,9 +12,9 @@ import (
 )
 
 func TestAxesOverridden_EmptyForUnpinnedRequest(t *testing.T) {
-	got := axesOverridden(ServiceExecuteRequest{Policy: "smart", ModelRef: "code-medium"})
+	got := axesOverridden(ServiceExecuteRequest{Policy: "smart"})
 	if len(got) != 0 {
-		t.Fatalf("axesOverridden(profile-only) = %v, want empty", got)
+		t.Fatalf("axesOverridden(policy-only) = %v, want empty", got)
 	}
 }
 

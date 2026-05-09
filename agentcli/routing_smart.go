@@ -870,10 +870,18 @@ func cmdRouteStatus(workDir string, args []string) int {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	resolvedModel := *model
+	if resolvedModel == "" && *modelRef != "" {
+		resolved, err := resolveCanonicalModelRef(cfg, *modelRef, true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			return 1
+		}
+		resolvedModel = resolved.ConcreteModel
+	}
 	decision, resolveErr := svc.ResolveRoute(ctx, rootfizeau.RouteRequest{
 		Policy:   *profile,
-		Model:    *model,
-		ModelRef: *modelRef,
+		Model:    resolvedModel,
 		Provider: *provider,
 		Harness:  *harness,
 		MinPower: *minPower,
