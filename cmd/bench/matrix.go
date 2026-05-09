@@ -181,14 +181,26 @@ func cmdMatrix(args []string) int {
 	} else if !filepath.IsAbs(subsetPath) {
 		subsetPath = filepath.Join(wd, subsetPath)
 	}
+	// When neither --out nor --cells-root is specified, default both into
+	// the canonical fiz-version-rooted tree so direct `bench matrix`
+	// invocations join the same tensor as `bench sweep` runs. If --out is
+	// explicitly set (test fixtures, ad-hoc experiments), keep the legacy
+	// in-place layout to preserve isolation.
 	outDir := *out
+	useCanonicalDefaults := outDir == "" && *cellsRoot == ""
 	if outDir == "" {
-		outDir = filepath.Join(wd, "benchmark-results", "matrix-"+time.Now().UTC().Format("20060102T150405Z"))
+		if useCanonicalDefaults {
+			outDir = filepath.Join(resolveCanonicalFizRoot(wd), "matrix-runs", "matrix-"+time.Now().UTC().Format("20060102T150405Z"))
+		} else {
+			outDir = filepath.Join(wd, "benchmark-results", "matrix-"+time.Now().UTC().Format("20060102T150405Z"))
+		}
 	} else if !filepath.IsAbs(outDir) {
 		outDir = filepath.Join(wd, outDir)
 	}
 	cellRootDir := *cellsRoot
-	if cellRootDir != "" && !filepath.IsAbs(cellRootDir) {
+	if cellRootDir == "" && useCanonicalDefaults {
+		cellRootDir = filepath.Join(resolveCanonicalFizRoot(wd), "cells")
+	} else if cellRootDir != "" && !filepath.IsAbs(cellRootDir) {
 		cellRootDir = filepath.Join(wd, cellRootDir)
 	}
 
@@ -1009,6 +1021,40 @@ func matrixProviderMatchesProfile(pc agentConfig.ProviderConfig, p *profile.Prof
 
 func matrixTupleDir(outDir, harness, profileID string, rep int, taskID string) string {
 	return filepath.Join(outDir, "cells", safeMatrixSegment(harness), safeMatrixSegment(profileID), fmt.Sprintf("rep-%03d", rep), safeMatrixSegment(taskID))
+}
+
+// resolveCanonicalFizRoot returns the version-rooted benchmark directory the
+// runner should default --out / --cells-root into. Order of precedence:
+//  1. FIZ_BENCHMARK_ROOT env override (operator escape hatch)
+//  2. The most recent benchmark-results/fiz-v*/ directory present on disk
+//  3. benchmark-results/fiz-unknown/ as a last-resort fallback
+//
+// We deliberately don't shell out to `git describe` from this hot path; the
+// shell wrapper handles version-marker provenance. This helper just picks a
+// stable canonical root so direct `bench matrix` invocations don't scatter
+// cells under timestamp-rooted dirs.
+func resolveCanonicalFizRoot(workDir string) string {
+	if env := strings.TrimSpace(os.Getenv("FIZ_BENCHMARK_ROOT")); env != "" {
+		if filepath.IsAbs(env) {
+			return env
+		}
+		return filepath.Join(workDir, env)
+	}
+	resultsDir := filepath.Join(workDir, "benchmark-results")
+	entries, err := os.ReadDir(resultsDir)
+	if err == nil {
+		var candidates []string
+		for _, e := range entries {
+			if e.IsDir() && strings.HasPrefix(e.Name(), "fiz-v") {
+				candidates = append(candidates, e.Name())
+			}
+		}
+		if len(candidates) > 0 {
+			sort.Strings(candidates)
+			return filepath.Join(resultsDir, candidates[len(candidates)-1])
+		}
+	}
+	return filepath.Join(resultsDir, "fiz-unknown")
 }
 
 func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, rep int, taskID string) string {

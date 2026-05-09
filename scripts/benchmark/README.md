@@ -56,43 +56,64 @@ The sweep plan is `scripts/benchmark/terminalbench-2-1-sweep.yaml`.
 
 ## Output And Resume
 
-By default, benchmark runs write to the current fiz version root:
+Benchmark cells live in the version-rooted canonical tree, keyed on the
+dimensions that vary per run:
 
 ```text
 benchmark-results/fiz-<version>/
-  .fiz-benchmark-version.json
-  cells/terminal-bench-2-1/<task>/<provider>/<model>/<harness>/rep-001/...
-  <phase>/<lane>/matrix.json
-  indexes/runs.jsonl
-  indexes/summary.csv
-  indexes/summary.md
+  cells/<dataset>/<task>/<profile_id>/rep-NNN/
+    report.json         # carries fiz_tools_version + profile_id (small set of stamped fields)
+    fiz-<task>-rep<N>/  # Harbor job artifacts, work/, etc.
+  profiles/<profile_id>.yaml   # snapshotted profile catalog (server, model_family, quant, runtime)
+  indexes/runs.jsonl           # one row per cell, joinable to profiles/ on profile_id
+  indexes/summary.{csv,md}
+  <phase>/<lane>/matrix.json   # per-invocation summary; cells live in the shared cells/ tree
 ```
 
-Re-running the same phase/lane combination resumes from existing terminal
-`report.json` files in the version-rooted `cells/` tree. Do not create
-timestamped output directories for ordinary benchmark continuation.
+Reasoning:
 
-Only the version marker and `indexes/` are intended to be checked in. The raw
-`cells/` tree and phase summary directories stay gitignored: they are large and
-may contain provider secrets in Harbor config/result files. The runner refreshes
-`indexes/` after each completed invocation.
+- `profile_id` is the natural primary key — it uniquely encodes
+  (server, runtime, model, quant, sampling) by construction. Two profiles
+  with the same provider+model but different physical servers (sindri vs
+  bragi) get separate cells, which the previous `<provider>/<model>` layout
+  collapsed.
+- Profile metadata (server / model_family / quant_label / provider_surface /
+  runtime / hardware_label / endpoint) lives in the per-version snapshot at
+  `profiles/`, joined on `profile_id` at index time. Editing
+  `scripts/benchmark/profiles/*.yaml` does NOT retroactively rewrite
+  historical cells.
+- `fiz_tools_version` (constant in `internal/fiztools`) tracks agent
+  behavior separately from fiz semver. Bump only when prompts / tool
+  schemas / agent loop logic change, not for routing/test/CI work.
+
+Re-running the same phase/lane resumes from existing graded `report.json`
+files automatically. Cells classified as `invalid_*` are skipped on
+resume by default; pass `--retry-invalid` to opt in to re-running them
+(typical use case: infrastructure failure has been fixed and cells
+should be re-attempted).
+
+Only `profiles/` and `indexes/` are intended to be checked in. The raw
+`cells/` tree stays gitignored — large and contains Harbor job artifacts.
 
 ## Consolidating Existing Results
 
 Use `fiz-bench matrix-index` to scan historical `benchmark-results/**/report.json`
-files and emit a phase-independent index.
+files, snapshot the profile catalog, and emit a phase-independent index.
 
 ```bash
 go run ./cmd/bench matrix-index \
+  --copy \
   --root benchmark-results \
   --canonical-out benchmark-results/fiz-v0.10.16 \
   --fiz-version v0.10.16
 ```
 
-The index preserves each row's original `source_path` and marks missing old
-fiz version metadata as `unknown`. Do not pass `--copy` for committed
-benchmark records; that option is only for local forensic work when a temporary
-canonical raw-artifact tree is useful.
+`--copy` migrates each source cell directory into the canonical layout
+(at `<canonical>/cells/<dataset>/<task>/<profile_id>/rep-NNN/`) and stamps
+`fiz_tools_version=1` on historical reports. The index row preserves each
+row's original `source_path` for traceability. Cells filed under unknown
+profile_ids land in an "unknown" projection bucket — fix by adding a
+`metadata:` block to the corresponding profile YAML.
 
 ## Active Config Files
 
