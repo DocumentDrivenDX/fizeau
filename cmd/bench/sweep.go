@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +14,11 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// harborTaskContainerPattern matches Harbor's per-trial TerminalBench task
+// containers, named like `<task_sha>__<random>-main-1`. Docker compose adds
+// the `-main-1` suffix; the random middle is per-trial.
+var harborTaskContainerPattern = regexp.MustCompile(`^[0-9a-f]{32}__[a-z0-9]+-main-1$`)
 
 // sweepPlan is the parsed terminalbench-2-1-sweep.yaml.
 // Only fields consumed by the runner are decoded; free-form doc fields are ignored.
@@ -224,11 +231,60 @@ func cmdSweep(args []string) int {
 			}
 		} else {
 			if code := runSweepPhase(opts, phase); code != 0 {
+				pruneStaleHarborTaskContainers(time.Hour)
 				return code
 			}
 		}
 	}
+	if !*dryRun {
+		pruneStaleHarborTaskContainers(time.Hour)
+	}
 	return 0
+}
+
+// pruneStaleHarborTaskContainers stops and removes Harbor TerminalBench task
+// containers older than minAge. Containers are named `<sha>__<rand>-main-1`;
+// after a clean Harbor exit they are deleted by `--delete`. Anything left
+// behind older than the trial timeout window (35min) is a leak — typically
+// from a SIGKILL'd parent or an upstream Harbor crash. minAge is the safety
+// margin so we never touch a concurrent sweep's in-flight containers.
+//
+// Best-effort: errors print but never fail the caller. Returns the count of
+// containers removed.
+func pruneStaleHarborTaskContainers(minAge time.Duration) int {
+	out, err := exec.Command("docker", "ps", "-a",
+		"--format", "{{.Names}}\t{{.CreatedAt}}").Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[sweep] cleanup: docker ps failed: %v\n", err)
+		return 0
+	}
+	cutoff := time.Now().Add(-minAge)
+	var stale []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		if !harborTaskContainerPattern.MatchString(name) {
+			continue
+		}
+		// docker `CreatedAt` format: "2026-05-08 16:40:13 +0000 UTC"
+		created, err := time.Parse("2006-01-02 15:04:05 -0700 MST", strings.TrimSpace(parts[1]))
+		if err != nil || created.After(cutoff) {
+			continue
+		}
+		stale = append(stale, name)
+	}
+	if len(stale) == 0 {
+		return 0
+	}
+	fmt.Printf("[sweep] cleanup: pruning %d stale Harbor task container(s) older than %s\n", len(stale), minAge)
+	args := append([]string{"rm", "-f"}, stale...)
+	if err := exec.Command("docker", args...).Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "[sweep] cleanup: docker rm failed: %v\n", err)
+	}
+	return len(stale)
 }
 
 type sweepRunOpts struct {

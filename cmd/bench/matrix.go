@@ -636,6 +636,13 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, opts.harborBin, args...) // #nosec G204 G702 -- harborBin is a validated binary path from config
+	// Send SIGTERM (not the default SIGKILL) on context cancel so Harbor's
+	// `--delete` finalizer can tear down the per-trial docker compose stack.
+	// WaitDelay gives the cleanup 60s before we hard-kill; without this the
+	// task containers leak and pile up across sweeps (observed: 32 leftover
+	// containers after a 21h run, leading to docker-compose port/IP exhaustion).
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = 60 * time.Second
 	// Add repo root to PYTHONPATH so harbor_adapters modules resolve.
 	env := os.Environ()
 	pythonPath := opts.repoRoot
@@ -747,7 +754,10 @@ func harborFailureText(jobOutDir, combined string) string {
 	})
 	text := redactBenchmarkSecrets(strings.Join(parts, "\n"))
 	if len(text) > 4000 {
-		text = text[:4000]
+		// Keep the tail: Python tracebacks place the actual exception
+		// (e.g. "RuntimeError: Docker compose command failed ...") at the end,
+		// and the framework noise above it is what we'd rather drop.
+		text = text[len(text)-4000:]
 	}
 	return strings.TrimSpace(text)
 }

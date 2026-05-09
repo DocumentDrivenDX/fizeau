@@ -20,6 +20,8 @@ func TestClassifyMatrixInvalidFromFixtures(t *testing.T) {
 		{name: "opencode-account.json", want: matrixInvalidAuth},
 		{name: "opencode-wrapper-startup.json", want: matrixInvalidSetup},
 		{name: "setup-native-arch.json", want: matrixInvalidSetup},
+		{name: "harbor-docker-compose-truncated.json", want: matrixInvalidSetup},
+		{name: "harness-asyncio-loop-crash.json", want: matrixInvalidSetup},
 		{name: "provider-transport.json", want: matrixInvalidProvider},
 		{name: "verifier-fail-after-attempt.json", want: ""},
 	}
