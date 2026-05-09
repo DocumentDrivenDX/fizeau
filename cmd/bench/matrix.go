@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -174,6 +175,16 @@ func cmdMatrix(args []string) int {
 		return 2
 	}
 
+	// Parent context tied to interrupt/SIGTERM. When the bench process
+	// itself is signaled (Ctrl-C or `kill <pid>`) the parent ctx fires,
+	// propagating cancellation into every per-tuple Harbor invocation. Each
+	// Harbor child then gets SIGTERM via cmd.Cancel + WaitDelay, has 60s
+	// to tear down its docker compose stack, and exits cleanly. Without
+	// this, killing bench leaves Harbor children running with their task
+	// containers (the leak we saw earlier in the session).
+	parentCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
 	wd := resolveWorkDir(*workDir)
 	subsetPath := *subset
 	if subsetPath == "" {
@@ -306,6 +317,7 @@ func cmdMatrix(args []string) int {
 				forceRerun:        *forceRerun,
 				retryBudgetHalted: *retryBudgetHalted,
 				retryInvalid:      *retryInvalid,
+				parentCtx:         parentCtx,
 				tasksDir:          resolvedTasksDir,
 				harborBin:         harborBin,
 				extraEnv:          extraEnvMap(extraEnv),
@@ -376,8 +388,9 @@ type matrixTupleOptions struct {
 	forceRerun        bool
 	retryBudgetHalted bool
 	retryInvalid      bool
-	tasksDir          string // when set, use harbor run for grading
-	harborBin         string // path to harbor binary
+	parentCtx         context.Context // cancelled on parent SIGTERM/SIGINT
+	tasksDir          string          // when set, use harbor run for grading
+	harborBin         string          // path to harbor binary
 	extraEnv          map[string]string
 }
 
@@ -450,6 +463,7 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 				jobName:   fmt.Sprintf("%s-%s-rep%d", opts.harness, opts.task.ID, opts.rep),
 				repoRoot:  opts.workDir,
 				extraEnv:  opts.extraEnv,
+				parentCtx: opts.parentCtx,
 			})
 			if err != nil {
 				report.ProcessOutcome = "harness_crash"
@@ -580,6 +594,7 @@ type harborRunOpts struct {
 	jobName   string
 	repoRoot  string
 	extraEnv  map[string]string
+	parentCtx context.Context
 }
 
 type harborRunResult struct {
@@ -651,7 +666,13 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 		args = append(args, "--ae", kv)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Minute)
+	// Derive from the parent ctx so SIGTERM/SIGINT on the bench process
+	// itself propagates into this Harbor invocation and triggers cmd.Cancel.
+	parentCtx := opts.parentCtx
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, 35*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, opts.harborBin, args...) // #nosec G204 G702 -- harborBin is a validated binary path from config
 	// Send SIGTERM (not the default SIGKILL) on context cancel so Harbor's

@@ -99,9 +99,12 @@ type Versioning struct {
 // etc. Stamped on every report.json so cells can be projected/grouped by any
 // of these axes at index time without re-loading profiles.
 //
-// All fields are optional; profiles that don't declare a metadata block (e.g.
-// noop / smoke profiles) get empty strings, which the indexer treats as the
-// "unknown" bucket.
+// The named fields are conveniences for the dimensions we use today; arbitrary
+// future dimensions (e.g. experiment_id, prompt_variant, system_prompt_id,
+// sampling_preset_label) can be declared in the profile YAML without any
+// code change — they are absorbed into Extra and preserved verbatim by the
+// catalog snapshot at <canonical>/profiles/. Reporting tools join on
+// profile_id and read whatever keys exist.
 type Metadata struct {
 	Server          string `yaml:"server,omitempty"`
 	ModelFamily     string `yaml:"model_family,omitempty"`
@@ -111,6 +114,11 @@ type Metadata struct {
 	Runtime         string `yaml:"runtime,omitempty"`
 	HardwareLabel   string `yaml:"hardware_label,omitempty"`
 	Endpoint        string `yaml:"endpoint,omitempty"`
+	// Extra absorbs any metadata keys not in the typed fields above. Use it
+	// for ad-hoc experiment dimensions; promote a key to a typed field once
+	// it stabilizes. yaml v3 ",inline" merges these into the same map at the
+	// metadata block's level rather than a nested map.
+	Extra map[string]string `yaml:",inline"`
 }
 
 // Profile is the in-memory shape of a frozen v1 profile YAML.
