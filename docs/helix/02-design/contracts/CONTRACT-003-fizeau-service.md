@@ -347,6 +347,11 @@ Fizeau owns public `ServiceEvent` construction and session-log projection.
 Consumers may subscribe through `Execute` or `TailSessionLog` and may render
 stored sessions through `WriteSessionLog` and `ReplaySession`.
 
+Successful completion with empty `final_text` is a valid outcome. Consumers
+MUST NOT retry, mark failure, or synthesize fallback text on empty text alone;
+they must use the terminal status, process outcome, and error fields to decide
+whether the run failed.
+
 Session logs are versioned service artifacts. The v0.11 routing redesign is a
 schema break for routing fields: route events and final-event routing summaries
 use `policy` and `power_policy`; removed route-reference fields are not emitted.
@@ -354,6 +359,14 @@ use `policy` and `power_policy`; removed route-reference fields are not emitted.
 Replay must remain backward-compatible with older logs where practical. Unknown
 or removed fields from pre-v0.11 logs are ignored rather than reintroduced into
 the public contract.
+
+Cache-aware cost attribution keeps cache token streams separate from ordinary
+input/output pricing. Manifest/runtime pricing fields such as
+`cost_cache_read_per_m` and `cost_cache_write_per_m` price cache read/write
+tokens when known. For nullable reported cache amounts, explicit zero means the
+caller or provider opted out, for example through `CachePolicy=off`; nil means
+the harness or provider did not report the amount. Consumers must not treat nil
+as zero.
 
 ## Mountable CLI
 
