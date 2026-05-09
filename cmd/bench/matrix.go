@@ -150,6 +150,7 @@ func cmdMatrix(args []string) int {
 	resume := fs.Bool("resume", false, "Skip terminal reports already present under --out")
 	forceRerun := fs.Bool("force-rerun", false, "Rerun every tuple even when a terminal report exists")
 	retryBudgetHalted := fs.Bool("retry-budget-halted", false, "Rerun budget_halted reports while resuming")
+	retryInvalid := fs.Bool("retry-invalid", false, "Rerun cells with non-empty invalid_class (invalid_setup/invalid_provider/invalid_quota/invalid_auth) while resuming")
 	perRunBudgetUSD := fs.Float64("per-run-budget-usd", 0, "Per-run budget cap in USD (0 = no per-run cap)")
 	tasksDir := fs.String("tasks-dir", "", "Path to TB-2 tasks directory; when set, harbor run is used for grading")
 	jobs := fs.Int("jobs", 1, "Number of tuple runs to execute concurrently (default: 1)")
@@ -290,6 +291,7 @@ func cmdMatrix(args []string) int {
 				resume:            *resume,
 				forceRerun:        *forceRerun,
 				retryBudgetHalted: *retryBudgetHalted,
+				retryInvalid:      *retryInvalid,
 				tasksDir:          resolvedTasksDir,
 				harborBin:         harborBin,
 				extraEnv:          extraEnvMap(extraEnv),
@@ -359,6 +361,7 @@ type matrixTupleOptions struct {
 	resume            bool
 	forceRerun        bool
 	retryBudgetHalted bool
+	retryInvalid      bool
 	tasksDir          string // when set, use harbor run for grading
 	harborBin         string // path to harbor binary
 	extraEnv          map[string]string
@@ -370,7 +373,7 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 	if !opts.forceRerun {
 		if existing, ok, err := loadExistingMatrixReport(reportPath); err != nil {
 			return matrixRunReport{}, false, err
-		} else if ok && shouldSkipMatrixReport(existing, opts.resume, opts.retryBudgetHalted) {
+		} else if ok && shouldSkipMatrixReport(existing, opts.resume, opts.retryBudgetHalted, opts.retryInvalid) {
 			return existing, true, nil
 		}
 	}
@@ -1056,7 +1059,7 @@ func matrixRunKey(r matrixRunReport) string {
 	return fmt.Sprintf("%s\x00%s\x00%06d\x00%s", r.Harness, r.ProfileID, r.Rep, r.TaskID)
 }
 
-func shouldSkipMatrixReport(report matrixRunReport, resume, retryBudgetHalted bool) bool {
+func shouldSkipMatrixReport(report matrixRunReport, resume, retryBudgetHalted, retryInvalid bool) bool {
 	if !resume {
 		return false
 	}
@@ -1064,6 +1067,9 @@ func shouldSkipMatrixReport(report matrixRunReport, resume, retryBudgetHalted bo
 		return false
 	}
 	if classifyMatrixInvalid(report) != "" {
+		if retryInvalid {
+			return false
+		}
 		return true
 	}
 	switch report.FinalStatus {

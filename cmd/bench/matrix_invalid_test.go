@@ -179,6 +179,42 @@ func TestMatrixAggregateIncludesInvalidCountsAndSkipsInvalidDenominators(t *test
 	}
 }
 
+func TestShouldSkipMatrixReportRetryInvalid(t *testing.T) {
+	invalid := matrixRunReport{
+		FinalStatus:    "ran",
+		ProcessOutcome: "completed",
+		GradingOutcome: "ungraded",
+		InvalidClass:   matrixInvalidSetup,
+	}
+	graded := matrixRunReport{
+		FinalStatus:    "graded_pass",
+		ProcessOutcome: "completed",
+		GradingOutcome: "graded",
+		Reward:         intPtr(1),
+	}
+	cases := []struct {
+		name              string
+		report            matrixRunReport
+		resume            bool
+		retryBudgetHalted bool
+		retryInvalid      bool
+		want              bool
+	}{
+		{name: "no resume, never skip", report: invalid, resume: false, want: false},
+		{name: "resume + invalid skipped by default", report: invalid, resume: true, want: true},
+		{name: "resume + retry-invalid reruns invalid", report: invalid, resume: true, retryInvalid: true, want: false},
+		{name: "resume + retry-invalid still skips graded_pass", report: graded, resume: true, retryInvalid: true, want: true},
+		{name: "resume skips graded_pass", report: graded, resume: true, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldSkipMatrixReport(tc.report, tc.resume, tc.retryBudgetHalted, tc.retryInvalid); got != tc.want {
+				t.Fatalf("shouldSkipMatrixReport(%s) = %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func loadMatrixInvalidFixture(t *testing.T, name string) matrixRunReport {
 	t.Helper()
 	path := filepath.Join("testdata", "matrix-invalid", name)
