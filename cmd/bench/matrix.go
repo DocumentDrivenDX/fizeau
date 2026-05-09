@@ -453,13 +453,26 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 			report.GradingOutcome = "ungraded"
 			report.Error = err.Error()
 		} else {
+			// Remove any stale Harbor job dir from a prior run before we
+			// invoke harbor again. Harbor (re)creates fiz-<task>-rep<N>/
+			// inside --jobs-dir; if a stale subdir exists from an earlier
+			// run with a different --tasks-dir, Harbor's config.json there
+			// references paths that may no longer exist (or that point at
+			// since-deleted timestamp dirs), and the trial fails with
+			// confusing errors. Wiping ensures a clean Harbor invocation
+			// every retry.
+			jobName := fmt.Sprintf("%s-%s-rep%d", opts.harness, opts.task.ID, opts.rep)
+			staleJobDir := filepath.Join(cellDir, jobName)
+			if _, err := os.Stat(staleJobDir); err == nil {
+				_ = os.RemoveAll(staleJobDir)
+			}
 			harborResult, err := runMatrixHarbor(harborRunOpts{
 				harborBin: opts.harborBin,
 				taskPath:  taskPath,
 				harness:   opts.harness,
 				profile:   opts.profile,
 				jobsDir:   cellDir,
-				jobName:   fmt.Sprintf("%s-%s-rep%d", opts.harness, opts.task.ID, opts.rep),
+				jobName:   jobName,
 				repoRoot:  opts.workDir,
 				extraEnv:  opts.extraEnv,
 				parentCtx: opts.parentCtx,

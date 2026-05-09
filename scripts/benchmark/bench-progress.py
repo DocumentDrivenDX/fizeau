@@ -129,8 +129,25 @@ def container_jsonl_stats(name: str) -> dict:
     }
 
 
+def _started_at_utc(report: dict) -> dt.datetime | None:
+    """Parse report.started_at into an aware UTC datetime, or None on failure."""
+    raw = (report.get("started_at") or "").strip()
+    if not raw:
+        return None
+    try:
+        return dt.datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(dt.timezone.utc)
+    except ValueError:
+        return None
+
+
 def lane_cell_stats(canonical: Path, profile: str, since: dt.datetime | None) -> dict:
     """Tally cells under <canonical>/cells/<dataset>/*/<profile>/rep-*/report.json.
+
+    Freshness is keyed on report.started_at (when the cell was actually run),
+    NOT file mtime. This matters because bench's --retry-invalid pass touches
+    every invalid cell's report.json (rewriting it with the latest classifier
+    decision) — those are merely re-evaluated, not re-run, and counting them
+    as "fresh" floods the anomaly detector with stale errors.
 
     Also collects per-cell turn / wall_seconds / error signals over the fresh
     window so the anomaly detector can flag silent quality degradations
@@ -161,7 +178,9 @@ def lane_cell_stats(canonical: Path, profile: str, since: dt.datetime | None) ->
             inv += 1
         else:
             other += 1
-        if since and dt.datetime.fromtimestamp(os.path.getmtime(p), tz=dt.timezone.utc) > since:
+        # Freshness keyed on started_at, not mtime — see docstring.
+        started = _started_at_utc(r)
+        if since and started and started > since:
             fresh += 1
             if is_pass:
                 fresh_pass += 1
