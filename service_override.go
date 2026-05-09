@@ -104,7 +104,7 @@ func (s *service) resolveAutoDecisionForOverride(ctx context.Context, req Servic
 	// `axes`, the field on req is non-empty), but we surface non-axis user
 	// inputs explicitly so future axis additions are obvious here.
 	stripped := RouteRequest{
-		Profile:               req.Profile,
+		Policy:                req.Policy,
 		ModelRef:              req.ModelRef,
 		Reasoning:             req.Reasoning,
 		Permissions:           req.Permissions,

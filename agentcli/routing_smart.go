@@ -796,13 +796,13 @@ type routeStatusCandidate struct {
 }
 
 type routeStatusPowerPolicy struct {
-	Profile  string `json:"profile,omitempty"`
-	MinPower int    `json:"min_power,omitempty"`
-	MaxPower int    `json:"max_power,omitempty"`
+	PolicyName string `json:"profile,omitempty"`
+	MinPower   int    `json:"min_power,omitempty"`
+	MaxPower   int    `json:"max_power,omitempty"`
 }
 
 type routeStatusOutput struct {
-	Profile                string                           `json:"profile,omitempty"`
+	Policy                 string                           `json:"profile,omitempty"`
 	Model                  string                           `json:"model,omitempty"`
 	ModelRef               string                           `json:"model_ref,omitempty"`
 	Provider               string                           `json:"provider,omitempty"`
@@ -871,7 +871,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	decision, resolveErr := svc.ResolveRoute(ctx, rootfizeau.RouteRequest{
-		Profile:  *profile,
+		Policy:   *profile,
 		Model:    *model,
 		ModelRef: *modelRef,
 		Provider: *provider,
@@ -881,7 +881,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 	})
 
 	out := routeStatusOutput{
-		Profile:  *profile,
+		Policy:   *profile,
 		Model:    *model,
 		ModelRef: *modelRef,
 		Provider: *provider,
@@ -889,9 +889,9 @@ func cmdRouteStatus(workDir string, args []string) int {
 		MinPower: *minPower,
 		MaxPower: *maxPower,
 		PowerPolicy: routeStatusPowerPolicy{
-			Profile:  *profile,
-			MinPower: *minPower,
-			MaxPower: *maxPower,
+			PolicyName: *profile,
+			MinPower:   *minPower,
+			MaxPower:   *maxPower,
 		},
 		Candidates: []routeStatusCandidate{},
 	}
@@ -904,9 +904,9 @@ func cmdRouteStatus(workDir string, args []string) int {
 		out.Sticky = decision.Sticky
 		out.Utilization = decision.Utilization
 		out.PowerPolicy = routeStatusPowerPolicy{
-			Profile:  decision.PowerPolicy.Profile,
-			MinPower: decision.PowerPolicy.MinPower,
-			MaxPower: decision.PowerPolicy.MaxPower,
+			PolicyName: decision.PowerPolicy.PolicyName,
+			MinPower:   decision.PowerPolicy.MinPower,
+			MaxPower:   decision.PowerPolicy.MaxPower,
 		}
 		winnerSet := decision.Harness != "" || decision.Provider != "" || decision.Model != ""
 		for _, c := range decision.Candidates {
@@ -961,11 +961,11 @@ func cmdRouteStatus(workDir string, args []string) int {
 		return 0
 	}
 
-	if out.Profile != "" {
-		fmt.Printf("Profile: %s\n", out.Profile)
+	if out.Policy != "" {
+		fmt.Printf("Policy: %s\n", out.Policy)
 	}
-	if out.PowerPolicy.Profile != "" || out.PowerPolicy.MinPower > 0 || out.PowerPolicy.MaxPower > 0 {
-		fmt.Printf("Power policy: profile=%s", labelOrUnknown(out.PowerPolicy.Profile))
+	if out.PowerPolicy.PolicyName != "" || out.PowerPolicy.MinPower > 0 || out.PowerPolicy.MaxPower > 0 {
+		fmt.Printf("Power policy: profile=%s", labelOrUnknown(out.PowerPolicy.PolicyName))
 		if out.PowerPolicy.MinPower > 0 {
 			fmt.Printf(" min=%d", out.PowerPolicy.MinPower)
 		}

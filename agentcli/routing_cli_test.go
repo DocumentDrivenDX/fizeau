@@ -668,18 +668,18 @@ providers:
 		Winner        bool      `json:"winner"`
 	}
 	var parsed struct {
-		Profile     string `json:"profile"`
+		Policy      string `json:"profile"`
 		PowerPolicy struct {
-			Profile  string `json:"profile"`
-			MinPower int    `json:"min_power"`
-			MaxPower int    `json:"max_power"`
+			PolicyName string `json:"profile"`
+			MinPower   int    `json:"min_power"`
+			MaxPower   int    `json:"max_power"`
 		} `json:"power_policy"`
 		Winner     *candidate  `json:"winner"`
 		Candidates []candidate `json:"candidates"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
-	assert.Equal(t, "cheap", parsed.Profile)
-	assert.Equal(t, "cheap", parsed.PowerPolicy.Profile)
+	assert.Equal(t, "cheap", parsed.Policy)
+	assert.Equal(t, "cheap", parsed.PowerPolicy.PolicyName)
 	require.NotEmpty(t, parsed.Candidates, "engine must surface its candidate trace; stdout=%s", out.stdout)
 
 	// Every candidate carries the score-component bundle (cost, latency_ms,

@@ -41,26 +41,26 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			return nil, err
 		}
 	}
-	if req.Harness != "" && req.Profile != "" {
+	if req.Harness != "" && req.Policy != "" {
 		canonical := harnesses.ResolveHarnessAlias(req.Harness)
 		if !s.registry.Has(canonical) {
 			return nil, fmt.Errorf("unknown harness %q", req.Harness)
 		}
 		cfg, _ := s.registry.Get(canonical)
-		if err := validateExplicitHarnessProfile(canonical, cfg, req.Profile); err != nil {
+		if err := validateExplicitHarnessPolicy(canonical, cfg, req.Policy); err != nil {
 			return nil, err
 		}
 	}
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
-	profile := req.Profile
-	policy := routingPolicyForProfile(cat, profile)
+	requestedPolicy := req.Policy
+	policy := routingPolicyForProfile(cat, requestedPolicy)
 	powerPolicy := routePowerPolicyForRequest(cat, req)
-	providerPreference, err := providerPreferenceForProfile(cat, profile)
+	providerPreference, err := providerPreferenceForPolicy(cat, requestedPolicy)
 	if err != nil {
 		return &RouteDecision{
-			RequestedProfile: req.Profile,
-			PowerPolicy:      powerPolicy,
+			RequestedPolicy: req.Policy,
+			PowerPolicy:     powerPolicy,
 		}, err
 	}
 	in := s.buildRoutingInputsWithCatalog(ctx, cat)
@@ -68,12 +68,12 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	resolvedModel, modelCandidates, modelErr := s.resolveModelConstraint(req.Harness, req.Provider, req.Model, in, cat)
 	if modelErr != nil {
 		result := &RouteDecision{
-			RequestedProfile: req.Profile,
-			PowerPolicy:      powerPolicy,
-			Candidates:       modelCandidates,
+			RequestedPolicy: req.Policy,
+			PowerPolicy:     powerPolicy,
+			Candidates:      modelCandidates,
 		}
 		s.annotateRouteDecisionEvidence(result)
-		return result, publicRoutingError(modelErr, result.Candidates, req.Profile)
+		return result, publicRoutingError(modelErr, result.Candidates, req.Policy)
 	}
 	applyRoutingModelRef(&in, req.ModelRef, cat)
 
@@ -88,12 +88,18 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		EstimatedPromptTokens: req.EstimatedPromptTokens,
 		RequiresTools:         req.RequiresTools,
 		CorrelationID:         req.CorrelationID,
+		AllowLocal:            req.AllowLocal,
+		Require:               append([]string(nil), req.Require...),
+	}
+	if policyEntry, _, ok := policyForProfileName(cat, requestedPolicy); ok {
+		rReq.AllowLocal = rReq.AllowLocal || policyEntry.AllowLocal
+		rReq.Require = append(append([]string(nil), policyEntry.Require...), rReq.Require...)
 	}
 	rReq.MinPower, rReq.MaxPower = routePowerBoundsForRequest(req, powerPolicy)
 	s.applyRouteAttemptCooldowns(&in)
 	dec, err := routing.Resolve(rReq, in)
 	if err != nil {
-		if escalated, edec, eerr := escalatePolicyLadder(rReq, in, err, req.Profile); escalated {
+		if escalated, edec, eerr := escalatePolicyLadder(rReq, in, err, req.Policy); escalated {
 			dec = edec
 			err = eerr
 		}
@@ -103,10 +109,10 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		if result == nil {
 			result = &RouteDecision{}
 		}
-		result.RequestedProfile = req.Profile
+		result.RequestedPolicy = req.Policy
 		result.PowerPolicy = powerPolicy
 		s.annotateRouteDecisionEvidence(result)
-		return result, publicRoutingError(err, result.Candidates, req.Profile)
+		return result, publicRoutingError(err, result.Candidates, req.Policy)
 	}
 	s.applyStickyRouteLease(req.CorrelationID, result)
 	if result != nil && result.Endpoint == "" {
@@ -116,7 +122,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	s.annotateRouteDecisionEvidence(result)
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
-		result.RequestedProfile = req.Profile
+		result.RequestedPolicy = req.Policy
 		result.PowerPolicy = powerPolicy
 		result.Model = resolveSubprocessModelAlias(result.Harness, result.Model)
 		result.Power = catalogPowerForModel(cat, result.Model)
@@ -362,10 +368,10 @@ func shouldEscalateOnError(err error) bool {
 	return true
 }
 
-func publicRoutingError(err error, candidates []RouteCandidate, requestedProfile ...string) error {
-	displayProfile := func(policy string) string {
-		if len(requestedProfile) > 0 && requestedProfile[0] != "" {
-			return requestedProfile[0]
+func publicRoutingError(err error, candidates []RouteCandidate, requestedPolicy ...string) error {
+	displayPolicy := func(policy string) string {
+		if len(requestedPolicy) > 0 && requestedPolicy[0] != "" {
+			return requestedPolicy[0]
 		}
 		return policy
 	}
@@ -379,39 +385,32 @@ func publicRoutingError(err error, candidates []RouteCandidate, requestedProfile
 	}
 	var policyErr *routing.ErrPolicyRequirementUnsatisfied
 	if errors.As(err, &policyErr) {
-		if policyErr.AttemptedPin != "" {
-			return withRouteCandidates(&ErrProfilePinConflict{
-				Profile:           displayProfile(policyErr.Policy),
-				ConflictingPin:    policyErr.AttemptedPin,
-				ProfileConstraint: policyErr.Requirement,
-			}, candidates)
-		}
-		return withRouteCandidates(&ErrNoProfileCandidate{
-			Profile:           displayProfile(policyErr.Policy),
-			MissingCapability: policyErr.Requirement,
-			Rejected:          policyErr.Rejected,
+		return withRouteCandidates(&ErrPolicyRequirementUnsatisfied{
+			Policy:       displayPolicy(policyErr.Policy),
+			Requirement:  policyErr.Requirement,
+			AttemptedPin: policyErr.AttemptedPin,
+			Rejected:     policyErr.Rejected,
 		}, candidates)
 	}
 	var unknownPolicyErr *routing.ErrUnknownPolicy
 	if errors.As(err, &unknownPolicyErr) {
-		return withRouteCandidates(&ErrUnknownProfile{
-			Profile: displayProfile(unknownPolicyErr.Policy),
+		return withRouteCandidates(&ErrUnknownPolicy{
+			Policy: displayPolicy(unknownPolicyErr.Policy),
 		}, candidates)
 	}
 	var pinErr *routing.ErrUnsatisfiablePin
 	if errors.As(err, &pinErr) {
-		return withRouteCandidates(&ErrProfilePinConflict{
-			Profile:           displayProfile(""),
-			ConflictingPin:    pinErr.Pin,
-			ProfileConstraint: pinErr.Reason,
+		return withRouteCandidates(&ErrUnsatisfiablePin{
+			Pin:    pinErr.Pin,
+			Reason: pinErr.Reason,
 		}, candidates)
 	}
 	var noLiveErr *routing.ErrNoLiveProvider
 	if errors.As(err, &noLiveErr) {
 		return withRouteCandidates(&ErrNoLiveProvider{
-			PromptTokens:  noLiveErr.PromptTokens,
-			RequiresTools: noLiveErr.RequiresTools,
-			StartingTier:  displayProfile(noLiveErr.StartingPolicy),
+			PromptTokens:   noLiveErr.PromptTokens,
+			RequiresTools:  noLiveErr.RequiresTools,
+			StartingPolicy: displayPolicy(noLiveErr.StartingPolicy),
 		}, candidates)
 	}
 	var quotaErr *routing.ErrAllProvidersQuotaExhausted
@@ -1203,7 +1202,7 @@ func (s *service) probeEndpointDiscoveredIDs(ctx context.Context, pcfg ServicePr
 // is already specific enough that the legacy resolveExecuteRoute path applies.
 func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*RouteDecision, error) {
 	rr := RouteRequest{
-		Profile:       req.Profile,
+		Policy:        req.Policy,
 		Model:         req.Model,
 		Provider:      req.Provider,
 		Harness:       req.Harness,
@@ -1226,45 +1225,46 @@ func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*Rou
 	return dec, nil
 }
 
-func providerPreferenceForProfile(cat *modelcatalog.Catalog, profile string) (string, error) {
-	if profile == "" {
+func providerPreferenceForPolicy(cat *modelcatalog.Catalog, policy string) (string, error) {
+	if policy == "" {
 		return routing.ProviderPreferenceLocalFirst, nil
 	}
-	switch profile {
+	switch policy {
 	case "code-medium":
-		return "", fmt.Errorf("profile %q is deprecated; use --profile standard or --min-power/--max-power", profile)
+		return "", fmt.Errorf("policy %q is deprecated; use --policy default or --min-power/--max-power", policy)
 	case "code-high":
-		return "", fmt.Errorf("profile %q is deprecated; use --profile smart or --min-power/--max-power", profile)
+		return "", fmt.Errorf("policy %q is deprecated; use --policy smart or --min-power/--max-power", policy)
 	}
 	if cat == nil {
-		return "", &ErrUnknownProfile{Profile: profile}
+		return "", &ErrUnknownPolicy{Policy: policy}
 	}
-	if _, _, ok := policyForProfileName(cat, profile); !ok {
-		return "", &ErrUnknownProfile{Profile: profile}
+	if _, _, ok := policyForProfileName(cat, policy); !ok {
+		return "", &ErrUnknownPolicy{Policy: policy}
 	}
-	preference := providerPreferenceForPolicyName(profile)
+	preference := providerPreferenceForPolicyName(policy)
 	switch preference {
 	case routing.ProviderPreferenceLocalOnly, routing.ProviderPreferenceSubscriptionOnly,
 		routing.ProviderPreferenceLocalFirst, routing.ProviderPreferenceSubscriptionFirst:
 		return preference, nil
 	default:
-		return "", fmt.Errorf("profile %q has unsupported provider preference %q", profile, preference)
+		return "", fmt.Errorf("policy %q has unsupported provider preference %q", policy, preference)
 	}
 }
 
 func routePowerPolicyForRequest(cat *modelcatalog.Catalog, req RouteRequest) RoutePowerPolicy {
 	policy := RoutePowerPolicy{
-		Profile:  req.Profile,
-		MinPower: req.MinPower,
-		MaxPower: req.MaxPower,
+		PolicyName: req.Policy,
+		MinPower:   req.MinPower,
+		MaxPower:   req.MaxPower,
 	}
-	if req.Profile == "" || cat == nil {
+	if req.Policy == "" || cat == nil {
 		return policy
 	}
-	profile, _, ok := policyForProfileName(cat, req.Profile)
+	profile, policyName, ok := policyForProfileName(cat, req.Policy)
 	if !ok {
 		return policy
 	}
+	policy.PolicyName = policyName
 	if profile.MinPower > 0 {
 		if policy.MinPower == 0 || profile.MinPower > policy.MinPower {
 			policy.MinPower = profile.MinPower

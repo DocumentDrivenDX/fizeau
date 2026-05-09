@@ -8,15 +8,15 @@ import (
 )
 
 var (
-	errHarnessModelIncompatible = errors.New("agent: harness model incompatible")
-	errProfilePinConflict       = errors.New("agent: profile pin conflict")
-	errModelConstraintAmbiguous = errors.New("agent: model constraint ambiguous")
-	errModelConstraintNoMatch   = errors.New("agent: model constraint no match")
-	errNoProfileCandidate       = errors.New("agent: no profile candidate")
-	errUnknownProfile           = errors.New("agent: unknown profile")
-	errNoLiveProvider           = errors.New("agent: no live provider")
-	errUnknownProvider          = errors.New("agent: unknown provider")
-	errNoViableProviderForNow   = errors.New("agent: no viable provider for now")
+	errHarnessModelIncompatible     = errors.New("agent: harness model incompatible")
+	errPolicyRequirementUnsatisfied = errors.New("agent: policy requirement unsatisfied")
+	errModelConstraintAmbiguous     = errors.New("agent: model constraint ambiguous")
+	errModelConstraintNoMatch       = errors.New("agent: model constraint no match")
+	errUnknownPolicy                = errors.New("agent: unknown policy")
+	errUnsatisfiablePin             = errors.New("agent: unsatisfiable pin")
+	errNoLiveProvider               = errors.New("agent: no live provider")
+	errUnknownProvider              = errors.New("agent: unknown provider")
+	errNoViableProviderForNow       = errors.New("agent: no viable provider for now")
 )
 
 // ErrUnknownProvider reports an explicit Provider pin that is not present in
@@ -167,87 +167,83 @@ func (e ErrHarnessModelIncompatible) Unwrap() error {
 	return errHarnessModelIncompatible
 }
 
-// ErrProfilePinConflict reports an explicit Profile whose placement constraint
-// contradicts another explicit caller pin.
-//
-// DDx preflight callers should use errors.As to extract Profile,
-// ConflictingPin, and ProfileConstraint for worker logs or bead failure
-// records. errors.Is matches a zero-value ErrProfilePinConflict, even after
-// callers wrap the error with fmt.Errorf and %w.
-type ErrProfilePinConflict struct {
-	// Profile is the explicit profile requested by the caller.
-	Profile string
-	// ConflictingPin names the explicit pin that violates the profile, such as
-	// "Harness=claude" or "Model=local-model".
-	ConflictingPin string
-	// ProfileConstraint is a short description of the profile placement rule,
-	// such as "local-only" or "subscription-only".
-	ProfileConstraint string
+// ErrPolicyRequirementUnsatisfied reports a hard policy requirement that no
+// candidate, or an explicit caller pin, can satisfy.
+type ErrPolicyRequirementUnsatisfied struct {
+	Policy       string
+	Requirement  string
+	AttemptedPin string
+	Rejected     int
 }
 
-func (e ErrProfilePinConflict) Error() string {
-	return fmt.Sprintf("profile %q requires %s but conflicts with %s", e.Profile, e.ProfileConstraint, e.ConflictingPin)
+func (e ErrPolicyRequirementUnsatisfied) Error() string {
+	if e.AttemptedPin != "" {
+		return fmt.Sprintf("policy %q requires %s but conflicts with %s", e.Policy, e.Requirement, e.AttemptedPin)
+	}
+	return fmt.Sprintf("policy %q has no candidate satisfying %s: %d candidates rejected", e.Policy, e.Requirement, e.Rejected)
 }
 
-func (e ErrProfilePinConflict) Is(target error) bool {
+func (e ErrPolicyRequirementUnsatisfied) Is(target error) bool {
 	switch target.(type) {
-	case ErrProfilePinConflict, *ErrProfilePinConflict:
+	case ErrPolicyRequirementUnsatisfied, *ErrPolicyRequirementUnsatisfied:
 		return true
 	default:
-		return errors.Is(errProfilePinConflict, target)
+		return errors.Is(errPolicyRequirementUnsatisfied, target)
 	}
 }
 
-func (e ErrProfilePinConflict) Unwrap() error {
-	return errProfilePinConflict
+func (e ErrPolicyRequirementUnsatisfied) Unwrap() error {
+	return errPolicyRequirementUnsatisfied
 }
 
-// ErrNoProfileCandidate reports that a profile's hard placement requirement
-// could not be satisfied by any routed candidate.
-type ErrNoProfileCandidate struct {
-	Profile           string
-	MissingCapability string
-	Rejected          int
+// ErrUnknownPolicy reports an explicit policy name that is not present in the
+// model catalog.
+type ErrUnknownPolicy struct {
+	Policy string
 }
 
-func (e ErrNoProfileCandidate) Error() string {
-	return fmt.Sprintf("profile %q has no candidate satisfying %s: %d candidates rejected", e.Profile, e.MissingCapability, e.Rejected)
+func (e ErrUnknownPolicy) Error() string {
+	return fmt.Sprintf("unknown routing policy %q", e.Policy)
 }
 
-func (e ErrNoProfileCandidate) Is(target error) bool {
+func (e ErrUnknownPolicy) Is(target error) bool {
 	switch target.(type) {
-	case ErrNoProfileCandidate, *ErrNoProfileCandidate:
+	case ErrUnknownPolicy, *ErrUnknownPolicy:
 		return true
 	default:
-		return errors.Is(errNoProfileCandidate, target)
+		return errors.Is(errUnknownPolicy, target)
 	}
 }
 
-func (e ErrNoProfileCandidate) Unwrap() error {
-	return errNoProfileCandidate
+func (e ErrUnknownPolicy) Unwrap() error {
+	return errUnknownPolicy
 }
 
-// ErrUnknownProfile reports an explicit profile name that is not present in
-// the model catalog.
-type ErrUnknownProfile struct {
-	Profile string
+// ErrUnsatisfiablePin reports explicit caller pins that cannot all be true at
+// once.
+type ErrUnsatisfiablePin struct {
+	Pin    string
+	Reason string
 }
 
-func (e ErrUnknownProfile) Error() string {
-	return fmt.Sprintf("unknown routing profile %q", e.Profile)
+func (e ErrUnsatisfiablePin) Error() string {
+	if e.Reason == "" {
+		return fmt.Sprintf("unsatisfiable pin %s", e.Pin)
+	}
+	return fmt.Sprintf("unsatisfiable pin %s: %s", e.Pin, e.Reason)
 }
 
-func (e ErrUnknownProfile) Is(target error) bool {
+func (e ErrUnsatisfiablePin) Is(target error) bool {
 	switch target.(type) {
-	case ErrUnknownProfile, *ErrUnknownProfile:
+	case ErrUnsatisfiablePin, *ErrUnsatisfiablePin:
 		return true
 	default:
-		return errors.Is(errUnknownProfile, target)
+		return errors.Is(errUnsatisfiablePin, target)
 	}
 }
 
-func (e ErrUnknownProfile) Unwrap() error {
-	return errUnknownProfile
+func (e ErrUnsatisfiablePin) Unwrap() error {
+	return errUnsatisfiablePin
 }
 
 // ErrNoLiveProvider reports that profile-tier escalation walked the entire
@@ -256,14 +252,14 @@ func (e ErrUnknownProfile) Unwrap() error {
 // requirement so operators know what capability is missing across all
 // tiers, rather than the engine's "no viable routing candidate" jargon.
 type ErrNoLiveProvider struct {
-	PromptTokens  int
-	RequiresTools bool
-	StartingTier  string
+	PromptTokens   int
+	RequiresTools  bool
+	StartingPolicy string
 }
 
 func (e ErrNoLiveProvider) Error() string {
-	return fmt.Sprintf("no live provider supports prompt of %d tokens with tools=%v at tier ≥ %s",
-		e.PromptTokens, e.RequiresTools, e.StartingTier)
+	return fmt.Sprintf("no live provider supports prompt of %d tokens with tools=%v at policy %s",
+		e.PromptTokens, e.RequiresTools, e.StartingPolicy)
 }
 
 func (e ErrNoLiveProvider) Is(target error) bool {
@@ -286,7 +282,7 @@ func (e ErrNoLiveProvider) Unwrap() error {
 // the request as a permanent failure.
 //
 // Distinct from ErrNoLiveProvider (entire ladder lacks any live provider) and
-// from configuration errors (ErrUnknownProvider, ErrUnknownProfile,
+// from configuration errors (ErrUnknownProvider, ErrUnknownPolicy,
 // ErrHarnessModelIncompatible) which represent operator mistakes that won't
 // resolve themselves over time.
 type NoViableProviderForNow struct {

@@ -209,7 +209,7 @@ func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
 
 	ch, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
 		Prompt:  "hi",
-		Profile: "smart",
+		Policy:  "smart",
 		Harness: "fiz",
 	})
 	if err == nil {
@@ -221,14 +221,14 @@ func TestExecute_ReturnsProfilePinConflictBeforeProviderCall(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatalf("provider calls=%d, want 0", calls.Load())
 	}
-	if !errors.Is(err, fizeau.ErrProfilePinConflict{}) {
-		t.Fatalf("errors.Is should match ErrProfilePinConflict: %T %v", err, err)
+	if !errors.Is(err, fizeau.ErrPolicyRequirementUnsatisfied{}) {
+		t.Fatalf("errors.Is should match ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	var typed *fizeau.ErrProfilePinConflict
+	var typed *fizeau.ErrPolicyRequirementUnsatisfied
 	if !errors.As(err, &typed) {
-		t.Fatalf("errors.As should extract ErrProfilePinConflict: %T %v", err, err)
+		t.Fatalf("errors.As should extract ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	if typed.Profile != "smart" || typed.ConflictingPin != "Harness=fiz" || typed.ProfileConstraint != "subscription-only" {
+	if typed.Policy != "smart" || typed.AttemptedPin != "Harness=fiz" || typed.Requirement != "subscription-only" {
 		t.Fatalf("typed error=%#v, want smart/Harness=fiz/subscription-only", typed)
 	}
 }

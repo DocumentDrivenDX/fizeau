@@ -48,7 +48,7 @@ func TestNoViableProviderForNowDistinctFromOtherErrors(t *testing.T) {
 	if errors.Is(err, ErrNoLiveProvider{}) {
 		t.Fatal("NoViableProviderForNow should not match ErrNoLiveProvider")
 	}
-	if errors.Is(err, ErrNoProfileCandidate{}) {
-		t.Fatal("NoViableProviderForNow should not match ErrNoProfileCandidate")
+	if errors.Is(err, ErrPolicyRequirementUnsatisfied{}) {
+		t.Fatal("NoViableProviderForNow should not match ErrPolicyRequirementUnsatisfied")
 	}
 }

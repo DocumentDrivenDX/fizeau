@@ -269,8 +269,8 @@ targets:
 // surface IDs through claudeCLIExecutableModel normalization.
 func TestExecute_ExplicitHarnessEmptyModelWithProfile_RoutesWithinHarness(t *testing.T) {
 	// Fixture catalog: sonnet-4.6 on the claude-code surface (which the claude
-	// harness uses), plus the code-economy profile so providerPreferenceForProfile
-	// doesn't fail with ErrUnknownProfile.
+	// harness uses), plus the code-economy compatibility policy so
+	// providerPreferenceForPolicy doesn't fail with ErrUnknownPolicy.
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 4
 generated_at: 2026-05-08T00:00:00Z
@@ -299,7 +299,7 @@ targets:
 	decision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
 		Prompt:  "hello",
 		Harness: "claude",
-		Profile: "code-economy",
+		Policy:  "code-economy",
 	})
 
 	// Core invariant: the old code returned (decision.Model=="", err==nil).
@@ -354,7 +354,7 @@ func TestExecute_Class2HarnessEmptyModelWithProfile_FailsClearly(t *testing.T) {
 	_, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
 		Prompt:  "hello",
 		Harness: "gemini",
-		Profile: "code-economy",
+		Policy:  "code-economy",
 	})
 	if err == nil {
 		t.Fatal("expected no-auto-resolution error for Class 2 harness, got nil")

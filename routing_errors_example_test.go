@@ -29,24 +29,24 @@ func ExampleErrHarnessModelIncompatible() {
 	// true
 }
 
-func ExampleErrProfilePinConflict() {
-	err := fmt.Errorf("ddx preflight: %w", &fizeau.ErrProfilePinConflict{
-		Profile:           "local",
-		ConflictingPin:    "Harness=claude",
-		ProfileConstraint: "local-only",
+func ExampleErrPolicyRequirementUnsatisfied() {
+	err := fmt.Errorf("ddx preflight: %w", &fizeau.ErrPolicyRequirementUnsatisfied{
+		Policy:       "local",
+		Requirement:  "local-only",
+		AttemptedPin: "Harness=claude",
 	})
 
-	var routeErr *fizeau.ErrProfilePinConflict
+	var routeErr *fizeau.ErrPolicyRequirementUnsatisfied
 	if errors.As(err, &routeErr) {
-		fmt.Printf("ddx failed bead: profile=%s conflict=%s constraint=%s\n",
-			routeErr.Profile,
-			routeErr.ConflictingPin,
-			routeErr.ProfileConstraint)
+		fmt.Printf("ddx failed bead: policy=%s conflict=%s requirement=%s\n",
+			routeErr.Policy,
+			routeErr.AttemptedPin,
+			routeErr.Requirement)
 	}
-	fmt.Println(errors.Is(err, fizeau.ErrProfilePinConflict{}))
+	fmt.Println(errors.Is(err, fizeau.ErrPolicyRequirementUnsatisfied{}))
 
 	// Output:
-	// ddx failed bead: profile=local conflict=Harness=claude constraint=local-only
+	// ddx failed bead: policy=local conflict=Harness=claude requirement=local-only
 	// true
 }
 

@@ -914,7 +914,7 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 	})
 
 	svc := newTestService(t, ServiceOptions{})
-	_, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "smart"})
+	_, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "smart"})
 	if err == nil {
 		t.Fatal("ResolveRoute should not wait for background quota refresh to make missing-cache subscription harnesses eligible")
 	}

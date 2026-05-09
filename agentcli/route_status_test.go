@@ -14,9 +14,9 @@ import (
 
 func TestRouteStatusOutputIncludesPowerPolicy(t *testing.T) {
 	out := routeStatusOutput{
-		Profile: "standard",
+		Policy: "standard",
 		PowerPolicy: routeStatusPowerPolicy{
-			Profile: "standard",
+			PolicyName: "standard",
 		},
 	}
 	data, err := json.Marshal(out)

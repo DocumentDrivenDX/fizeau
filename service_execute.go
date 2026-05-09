@@ -41,7 +41,7 @@ func generateSessionID() string {
 //
 // Routing: under-specified requests (no Harness) are dispatched through
 // internal/routing.Resolve via ResolveRoute. Callers can run with bare
-// Profile/ModelRef/Model/Provider — the engine picks. NativeProvider must
+// Policy/ModelRef/Model/Provider — the engine picks. NativeProvider must
 // still be supplied for the native path until provider construction lands
 // in a follow-up.
 func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-chan ServiceEvent, error) {
@@ -157,7 +157,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 // resolveExecuteRoute reduces the request to a concrete RouteDecision.
 // The request is dispatched through the routing engine
 // (internal/routing.Resolve) when under-specified (Harness == ""), or when
-// Harness is set but Model is empty and routing inputs (Profile or MinPower)
+// Harness is set but Model is empty and routing inputs (Policy or MinPower)
 // are present (engine runs within the harness's eligible models). When Harness
 // is set and Model is also set, the decision is accepted verbatim.
 func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision, error) {
@@ -175,7 +175,7 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 
 	// Run per-field validators first so callers get the most specific error.
 	// Empty-model routing checks run after these, right before model resolution.
-	if err := validateExplicitHarnessProfile(canonical, cfg, req.Profile); err != nil {
+	if err := validateExplicitHarnessPolicy(canonical, cfg, req.Policy); err != nil {
 		return nil, err
 	}
 	if err := validateExplicitProvider(s.opts.ServiceConfig, cfg, req.Provider); err != nil {
@@ -196,13 +196,13 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 	// lmstudio/etc.), and "fiz" harnesses skip this block — they either use
 	// DefaultModel directly or have provider-side model semantics.
 	if !cfg.TestOnly && !cfg.IsHTTPProvider && canonical != "fiz" && req.Model == "" {
-		if req.Profile == "" && req.MinPower == 0 {
+		if req.Policy == "" && req.MinPower == 0 {
 			// Under-specified: no model, no routing inputs → silent empty model
 			// avoided by failing early with a clear diagnostic.
 			return nil, fmt.Errorf("under-specified routing for harness=%q: "+
-				"supply --model, --profile, or --min-power", canonical)
+				"supply --model, --policy, or --min-power", canonical)
 		}
-		// Profile or MinPower present: run the routing engine within the
+		// Policy or MinPower present: run the routing engine within the
 		// harness's eligible models. Class 2 harnesses (AutoRoutingEligible=false:
 		// gemini, opencode, pi) require an explicit --model.
 		if !cfg.AutoRoutingEligible {
@@ -267,34 +267,34 @@ func earliestQuotaResetAfter(windows []harnesses.QuotaWindow, now time.Time) tim
 	return earliest
 }
 
-func validateExplicitHarnessProfile(name string, cfg harnesses.HarnessConfig, profile string) error {
-	constraint, ok := explicitProfileConstraint(profile)
+func validateExplicitHarnessPolicy(name string, cfg harnesses.HarnessConfig, policy string) error {
+	constraint, ok := explicitPolicyConstraint(policy)
 	if !ok {
 		return nil
 	}
 	switch constraint {
 	case routing.ProviderPreferenceLocalOnly:
 		if !cfg.IsLocal {
-			return &ErrProfilePinConflict{
-				Profile:           profile,
-				ConflictingPin:    "Harness=" + name,
-				ProfileConstraint: constraint,
+			return &ErrPolicyRequirementUnsatisfied{
+				Policy:       policy,
+				Requirement:  constraint,
+				AttemptedPin: "Harness=" + name,
 			}
 		}
 	case routing.ProviderPreferenceSubscriptionOnly:
 		if !cfg.IsSubscription {
-			return &ErrProfilePinConflict{
-				Profile:           profile,
-				ConflictingPin:    "Harness=" + name,
-				ProfileConstraint: constraint,
+			return &ErrPolicyRequirementUnsatisfied{
+				Policy:       policy,
+				Requirement:  constraint,
+				AttemptedPin: "Harness=" + name,
 			}
 		}
 	}
 	return nil
 }
 
-func explicitProfileConstraint(profile string) (string, bool) {
-	switch profile {
+func explicitPolicyConstraint(policy string) (string, bool) {
+	switch policy {
 	case "local", "offline", "air-gapped":
 		return routing.ProviderPreferenceLocalOnly, true
 	case "smart", "code-smart", "code-high":
@@ -317,8 +317,12 @@ func isExplicitPinError(err error) bool {
 	if errors.As(err, &modelErr) {
 		return true
 	}
-	var profileErr *ErrProfilePinConflict
-	if errors.As(err, &profileErr) {
+	var policyErr *ErrPolicyRequirementUnsatisfied
+	if errors.As(err, &policyErr) && policyErr.AttemptedPin != "" {
+		return true
+	}
+	var pinErr *ErrUnsatisfiablePin
+	if errors.As(err, &pinErr) {
 		return true
 	}
 	var providerErr *ErrUnknownProvider

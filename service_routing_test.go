@@ -128,6 +128,67 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	}
 }
 
+func TestServiceTranslatesPolicyAirGappedToRequireNoRemote(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-08T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 5
+    max_power: 8
+    allow_local: true
+  cheap:
+    min_power: 5
+    max_power: 5
+    allow_local: true
+  smart:
+    min_power: 9
+    max_power: 10
+    allow_local: false
+  air-gapped:
+    min_power: 5
+    max_power: 5
+    allow_local: true
+    require: [no_remote]
+models:
+  remote-model:
+    family: example
+    status: active
+    provider_system: openrouter
+    deployment_class: managed_cloud_frontier
+    power: 5
+    surfaces:
+      agent.openai: remote-model
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := newTestService(t, ServiceOptions{
+		ServiceConfig: &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"openrouter": {Type: "openrouter", BaseURL: "http://remote.invalid/v1", Model: "remote-model"},
+			},
+			names:       []string{"openrouter"},
+			defaultName: "openrouter",
+		},
+	})
+
+	_, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Policy:   "air-gapped",
+		Provider: "openrouter",
+	})
+	if err == nil {
+		t.Fatal("expected air-gapped policy to reject remote provider pin")
+	}
+	var typed *ErrPolicyRequirementUnsatisfied
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As ErrPolicyRequirementUnsatisfied: %T %v", err, err)
+	}
+	if typed.Policy != "air-gapped" || typed.Requirement != "no_remote" || typed.AttemptedPin != "openrouter" {
+		t.Fatalf("ErrPolicyRequirementUnsatisfied=%#v, want air-gapped/no_remote/openrouter", typed)
+	}
+}
+
 func TestResolveRouteProfileReportsEffectivePowerPolicy(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 4
@@ -171,18 +232,18 @@ targets:
 		},
 	})
 
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "standard"})
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "standard"})
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
 	}
 	if dec == nil {
 		t.Fatal("ResolveRoute returned nil decision")
 	}
-	if dec.RequestedProfile != "standard" {
-		t.Fatalf("RequestedProfile=%q, want standard", dec.RequestedProfile)
+	if dec.RequestedPolicy != "standard" {
+		t.Fatalf("RequestedPolicy=%q, want standard", dec.RequestedPolicy)
 	}
-	if dec.PowerPolicy.Profile != "standard" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
-		t.Fatalf("PowerPolicy=%#v, want standard 7..8", dec.PowerPolicy)
+	if dec.PowerPolicy.PolicyName != "default" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
+		t.Fatalf("PowerPolicy=%#v, want default 7..8", dec.PowerPolicy)
 	}
 	if dec.Model != "provider-default" {
 		t.Fatalf("Model=%q, want provider-default without treating profile as a model ref", dec.Model)
@@ -241,7 +302,7 @@ targets:
 	})
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Profile: "standard",
+		Policy: "standard",
 	})
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
@@ -252,11 +313,11 @@ targets:
 	if dec.Model != "power-7" {
 		t.Fatalf("decision=%#v, want power-7 winner", dec)
 	}
-	if dec.RequestedProfile != "standard" {
-		t.Fatalf("RequestedProfile=%q, want standard", dec.RequestedProfile)
+	if dec.RequestedPolicy != "standard" {
+		t.Fatalf("RequestedPolicy=%q, want standard", dec.RequestedPolicy)
 	}
-	if dec.PowerPolicy.Profile != "standard" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
-		t.Fatalf("PowerPolicy=%#v, want standard 7..8", dec.PowerPolicy)
+	if dec.PowerPolicy.PolicyName != "default" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
+		t.Fatalf("PowerPolicy=%#v, want default 7..8", dec.PowerPolicy)
 	}
 
 	var sawBelowTarget, sawAboveTarget bool
@@ -1182,7 +1243,7 @@ models:
 		}
 
 		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-			Profile:               "standard",
+			Policy:                "standard",
 			EstimatedPromptTokens: 50_000,
 		})
 		if err != nil {
@@ -1204,7 +1265,7 @@ models:
 		defer cleanup()
 
 		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-			Profile:               "standard",
+			Policy:                "standard",
 			EstimatedPromptTokens: 1_000_000, // exceeds both 4096 and 200000 contexts
 		})
 		if err == nil {
@@ -1220,8 +1281,8 @@ models:
 		if !errors.As(err, &noLive) {
 			t.Fatalf("errors.As ErrNoLiveProvider: %T %v", err, err)
 		}
-		if noLive.StartingTier != "standard" {
-			t.Fatalf("StartingTier=%q, want standard", noLive.StartingTier)
+		if noLive.StartingPolicy != "standard" {
+			t.Fatalf("StartingPolicy=%q, want standard", noLive.StartingPolicy)
 		}
 		if noLive.PromptTokens != 1_000_000 {
 			t.Fatalf("PromptTokens=%d, want 1000000", noLive.PromptTokens)

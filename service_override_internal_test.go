@@ -12,7 +12,7 @@ import (
 )
 
 func TestAxesOverridden_EmptyForUnpinnedRequest(t *testing.T) {
-	got := axesOverridden(ServiceExecuteRequest{Profile: "smart", ModelRef: "code-medium"})
+	got := axesOverridden(ServiceExecuteRequest{Policy: "smart", ModelRef: "code-medium"})
 	if len(got) != 0 {
 		t.Fatalf("axesOverridden(profile-only) = %v, want empty", got)
 	}
@@ -295,7 +295,7 @@ func TestIsExplicitPinError_ClassifiesUnknownProvider(t *testing.T) {
 		{"unknown provider direct", &ErrUnknownProvider{Provider: "x"}, true},
 		{"unknown provider wrapped", errors.Join(errors.New("ctx"), &ErrUnknownProvider{Provider: "x"}), true},
 		{"orphan model", &ErrHarnessModelIncompatible{Harness: "h", Model: "m"}, true},
-		{"profile conflict", &ErrProfilePinConflict{Profile: "smart"}, true},
+		{"policy requirement conflict", &ErrPolicyRequirementUnsatisfied{Policy: "smart", AttemptedPin: "Harness=fiz"}, true},
 		{"plain error", errors.New("nope"), false},
 	}
 	for _, tc := range cases {

@@ -233,7 +233,7 @@ func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
 		return filepath.Join(dir, file), nil
 	}
 	svc := &service{opts: ServiceOptions{}, registry: registry}
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "smart", ModelRef: "smart"})
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "smart", ModelRef: "smart"})
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestResolveRoute_GeminiProfilesUseCatalogModels(t *testing.T) {
 		"standard": "gemini-2.5-flash",
 		"cheap":    "gemini-2.5-flash-lite",
 	} {
-		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Harness: "gemini", Profile: profile, ModelRef: profile})
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Harness: "gemini", Policy: profile, ModelRef: profile})
 		if err != nil {
 			t.Fatalf("ResolveRoute profile=%s: %v", profile, err)
 		}

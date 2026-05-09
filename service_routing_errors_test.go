@@ -3,6 +3,7 @@ package fizeau
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -196,73 +197,92 @@ func TestResolveExplicitClaudeRejectedWhenFreshQuotaExhausted(t *testing.T) {
 	}
 }
 
-func TestResolveRouteExplicitProfilePinConflict(t *testing.T) {
+func TestResolveRouteExplicitPolicyRequirementUnsatisfied(t *testing.T) {
 	svc := testRoutingErrorService()
 
 	_, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Profile: "local",
+		Policy:  "local",
 		Harness: "claude",
 	})
 	if err == nil {
-		t.Fatal("expected local profile to conflict with claude harness")
+		t.Fatal("expected local policy to conflict with claude harness")
 	}
-	if !errors.Is(err, ErrProfilePinConflict{}) {
-		t.Fatalf("errors.Is should match ErrProfilePinConflict: %T %v", err, err)
+	if !errors.Is(err, ErrPolicyRequirementUnsatisfied{}) {
+		t.Fatalf("errors.Is should match ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	var typed *ErrProfilePinConflict
+	var typed *ErrPolicyRequirementUnsatisfied
 	if !errors.As(err, &typed) {
-		t.Fatalf("errors.As should extract ErrProfilePinConflict: %T %v", err, err)
+		t.Fatalf("errors.As should extract ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	if typed.Profile != "local" || typed.ConflictingPin != "Harness=claude" || typed.ProfileConstraint != "local-only" {
-		t.Fatalf("profile conflict=%#v, want local/Harness=claude/local-only", typed)
+	if typed.Policy != "local" || typed.AttemptedPin != "Harness=claude" || typed.Requirement != "local-only" {
+		t.Fatalf("policy requirement=%#v, want local/Harness=claude/local-only", typed)
 	}
 
 	_, err = svc.ResolveRoute(context.Background(), RouteRequest{
-		Profile: "smart",
+		Policy:  "smart",
 		Harness: "fiz",
 	})
 	if err == nil {
-		t.Fatal("expected smart profile to conflict with local fiz harness")
+		t.Fatal("expected smart policy to conflict with local fiz harness")
 	}
-	var inverse *ErrProfilePinConflict
+	var inverse *ErrPolicyRequirementUnsatisfied
 	if !errors.As(err, &inverse) {
 		t.Fatalf("errors.As inverse: %T %v", err, err)
 	}
-	if inverse.Profile != "smart" || inverse.ConflictingPin != "Harness=fiz" || inverse.ProfileConstraint != "subscription-only" {
-		t.Fatalf("inverse profile conflict=%#v, want smart/Harness=fiz/subscription-only", inverse)
+	if inverse.Policy != "smart" || inverse.AttemptedPin != "Harness=fiz" || inverse.Requirement != "subscription-only" {
+		t.Fatalf("inverse policy requirement=%#v, want smart/Harness=fiz/subscription-only", inverse)
 	}
 }
 
-func TestResolveRouteUnknownProfileIsTyped(t *testing.T) {
-	svc := testRoutingErrorService()
-
-	_, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "does-not-exist"})
-	if err == nil {
-		t.Fatal("expected unknown profile error")
+func TestErrPolicyRequirementUnsatisfiedShape(t *testing.T) {
+	err := fmt.Errorf("preflight: %w", &ErrPolicyRequirementUnsatisfied{
+		Policy:       "air-gapped",
+		Requirement:  "no_remote",
+		AttemptedPin: "Provider=openrouter",
+		Rejected:     2,
+	})
+	if !errors.Is(err, ErrPolicyRequirementUnsatisfied{}) {
+		t.Fatalf("errors.Is should match ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	if !errors.Is(err, ErrUnknownProfile{}) {
-		t.Fatalf("errors.Is should match ErrUnknownProfile: %T %v", err, err)
-	}
-	var typed *ErrUnknownProfile
+	var typed *ErrPolicyRequirementUnsatisfied
 	if !errors.As(err, &typed) {
-		t.Fatalf("errors.As should extract ErrUnknownProfile: %T %v", err, err)
+		t.Fatalf("errors.As should extract ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	if typed.Profile != "does-not-exist" {
-		t.Fatalf("Profile=%q, want does-not-exist", typed.Profile)
+	if typed.Policy != "air-gapped" || typed.Requirement != "no_remote" || typed.AttemptedPin != "Provider=openrouter" || typed.Rejected != 2 {
+		t.Fatalf("ErrPolicyRequirementUnsatisfied=%#v, want full public shape", typed)
 	}
 }
 
-func TestResolveRouteLegacyCodeProfilesRejectWithReplacementGuidance(t *testing.T) {
+func TestResolveRouteUnknownPolicyIsTyped(t *testing.T) {
 	svc := testRoutingErrorService()
 
-	for profile, want := range map[string]string{
-		"code-medium": "--profile standard",
-		"code-high":   "--profile smart",
+	_, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "does-not-exist"})
+	if err == nil {
+		t.Fatal("expected unknown policy error")
+	}
+	if !errors.Is(err, ErrUnknownPolicy{}) {
+		t.Fatalf("errors.Is should match ErrUnknownPolicy: %T %v", err, err)
+	}
+	var typed *ErrUnknownPolicy
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrUnknownPolicy: %T %v", err, err)
+	}
+	if typed.Policy != "does-not-exist" {
+		t.Fatalf("Policy=%q, want does-not-exist", typed.Policy)
+	}
+}
+
+func TestResolveRouteLegacyCodePoliciesRejectWithReplacementGuidance(t *testing.T) {
+	svc := testRoutingErrorService()
+
+	for policy, want := range map[string]string{
+		"code-medium": "--policy default",
+		"code-high":   "--policy smart",
 	} {
-		t.Run(profile, func(t *testing.T) {
-			_, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: profile})
+		t.Run(policy, func(t *testing.T) {
+			_, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: policy})
 			if err == nil {
-				t.Fatalf("expected %s to be rejected", profile)
+				t.Fatalf("expected %s to be rejected", policy)
 			}
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("error=%q, want replacement guidance %q", err.Error(), want)
@@ -274,22 +294,22 @@ func TestResolveRouteLegacyCodeProfilesRejectWithReplacementGuidance(t *testing.
 	}
 }
 
-func TestResolveRouteLocalProfileNoLocalCandidateIsTyped(t *testing.T) {
+func TestResolveRouteLocalPolicyNoLocalCandidateIsTyped(t *testing.T) {
 	svc := testRoutingErrorService()
 
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Profile: "local"})
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "local"})
 	if err == nil {
-		t.Fatal("expected local profile without local candidates to fail")
+		t.Fatal("expected local policy without local candidates to fail")
 	}
-	if !errors.Is(err, ErrNoProfileCandidate{}) {
-		t.Fatalf("errors.Is should match ErrNoProfileCandidate: %T %v", err, err)
+	if !errors.Is(err, ErrPolicyRequirementUnsatisfied{}) {
+		t.Fatalf("errors.Is should match ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	var typed *ErrNoProfileCandidate
+	var typed *ErrPolicyRequirementUnsatisfied
 	if !errors.As(err, &typed) {
-		t.Fatalf("errors.As should extract ErrNoProfileCandidate: %T %v", err, err)
+		t.Fatalf("errors.As should extract ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	if typed.Profile != "local" || typed.MissingCapability != "local endpoint" {
-		t.Fatalf("ErrNoProfileCandidate=%#v, want local/local endpoint", typed)
+	if typed.Policy != "local" || typed.Requirement != "local endpoint" {
+		t.Fatalf("ErrPolicyRequirementUnsatisfied=%#v, want local/local endpoint", typed)
 	}
 	if dec == nil || len(dec.Candidates) == 0 {
 		t.Fatalf("expected rejected candidate trace, got decision=%#v", dec)

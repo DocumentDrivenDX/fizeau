@@ -335,13 +335,15 @@ type HealthTarget struct {
 
 // RouteRequest specifies a routing query.
 type RouteRequest struct {
-	Profile     string // optional named policy bundle: cheap|standard|smart|custom
+	Policy      string // optional named policy bundle: cheap|default|smart|air-gapped
 	Model       string
 	Provider    string
 	Harness     string
 	ModelRef    string
 	Reasoning   Reasoning
 	Permissions string
+	AllowLocal  bool
+	Require     []string
 	MinPower    int
 	MaxPower    int
 
@@ -407,8 +409,8 @@ func ValidatePowerBounds(minPower, maxPower int) error {
 
 // RouteDecision is the result of ResolveRoute.
 type RouteDecision struct {
-	// RequestedProfile is the caller-supplied profile policy, when any.
-	RequestedProfile string
+	// RequestedPolicy is the caller-supplied policy, when any.
+	RequestedPolicy string
 	// PowerPolicy records the effective policy inputs used for this
 	// resolution. It stays separate from the chosen model so operator
 	// surfaces can explain policy without re-deriving it.
@@ -446,9 +448,9 @@ type RouteDecision struct {
 // RoutePowerPolicy captures the numeric power-policy inputs associated with
 // one ResolveRoute call.
 type RoutePowerPolicy struct {
-	Profile  string
-	MinPower int
-	MaxPower int
+	PolicyName string
+	MinPower   int
+	MaxPower   int
 }
 
 // RouteCandidate is one routing candidate evaluated by ResolveRoute.
@@ -652,7 +654,7 @@ type ServiceExecuteRequest struct {
 	Provider          string
 	Harness           string
 	ModelRef          string
-	Profile           string
+	Policy            string
 	WorkDir           string
 	Temperature       *float32
 	TopP              *float64
