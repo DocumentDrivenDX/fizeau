@@ -37,7 +37,7 @@ func policyInfoFromCatalog(policy modelcatalog.Policy, meta modelcatalog.Metadat
 	}
 }
 
-func policyForProfileName(cat *modelcatalog.Catalog, name string) (modelcatalog.Policy, string, bool) {
+func policyForName(cat *modelcatalog.Catalog, name string) (modelcatalog.Policy, string, bool) {
 	if cat == nil {
 		return modelcatalog.Policy{}, "", false
 	}
@@ -45,14 +45,14 @@ func policyForProfileName(cat *modelcatalog.Catalog, name string) (modelcatalog.
 	if policy, ok := cat.Policy(name); ok {
 		return policy, policy.Name, true
 	}
-	if canonical, ok := profileCompatibilityAliases()[name]; ok {
+	if canonical, ok := policyCompatibilityAliases()[name]; ok {
 		policy, ok := cat.Policy(canonical)
 		return policy, canonical, ok
 	}
 	return modelcatalog.Policy{}, "", false
 }
 
-func profileCompatibilityAliases() map[string]string {
+func policyCompatibilityAliases() map[string]string {
 	return map[string]string{
 		"standard":     "default",
 		"code-fast":    "default",

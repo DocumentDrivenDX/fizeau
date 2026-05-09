@@ -54,7 +54,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
 	requestedPolicy := req.Policy
-	policy := routingPolicyForProfile(cat, requestedPolicy)
+	policy := routingPolicyForName(cat, requestedPolicy)
 	powerPolicy := routePowerPolicyForRequest(cat, req)
 	providerPreference, err := providerPreferenceForPolicy(cat, requestedPolicy)
 	if err != nil {
@@ -90,7 +90,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		AllowLocal:            req.AllowLocal,
 		Require:               append([]string(nil), req.Require...),
 	}
-	if policyEntry, _, ok := policyForProfileName(cat, requestedPolicy); ok {
+	if policyEntry, _, ok := policyForName(cat, requestedPolicy); ok {
 		rReq.AllowLocal = rReq.AllowLocal || policyEntry.AllowLocal
 		rReq.Require = append(append([]string(nil), policyEntry.Require...), rReq.Require...)
 	}
@@ -300,7 +300,7 @@ func capabilityScoreForCostClass(class string) float64 {
 // an eligible candidate, or (true, nil, *routing.ErrNoLiveProvider) when
 // the entire remaining ladder is also empty. Returns (false, _, _) when
 // escalation does not apply (hard pin error, policy not in ladder, etc.).
-func escalatePolicyLadder(req routing.Request, in routing.Inputs, origErr error, displayProfile string) (bool, *routing.Decision, error) {
+func escalatePolicyLadder(req routing.Request, in routing.Inputs, origErr error, displayPolicy string) (bool, *routing.Decision, error) {
 	if origErr == nil || req.Policy == "" {
 		return false, nil, nil
 	}
@@ -325,7 +325,7 @@ func escalatePolicyLadder(req routing.Request, in routing.Inputs, origErr error,
 			return true, dec, nil
 		}
 	}
-	starting := displayProfile
+	starting := displayPolicy
 	if starting == "" {
 		starting = req.Policy
 	}
@@ -631,13 +631,13 @@ func serviceRoutingCatalog() *modelcatalog.Catalog {
 	return cat
 }
 
-func routingPolicyForProfile(cat *modelcatalog.Catalog, profile string) string {
-	profile = strings.TrimSpace(profile)
-	switch profile {
+func routingPolicyForName(cat *modelcatalog.Catalog, name string) string {
+	name = strings.TrimSpace(name)
+	switch name {
 	case "":
 		return ""
 	case "cheap", "default", "smart", "air-gapped":
-		return profile
+		return name
 	case "standard", "code-fast", "fast":
 		return "default"
 	case "code-smart":
@@ -646,11 +646,11 @@ func routingPolicyForProfile(cat *modelcatalog.Catalog, profile string) string {
 		return "cheap"
 	}
 	if cat == nil {
-		return profile
+		return name
 	}
-	_, policyName, ok := policyForProfileName(cat, profile)
+	_, policyName, ok := policyForName(cat, name)
 	if !ok {
-		return profile
+		return name
 	}
 	switch policyName {
 	case "smart":
@@ -729,21 +729,21 @@ func serviceRoutingModelEligibility(cat *modelcatalog.Catalog) func(model string
 }
 
 // serviceRoutingReasoningResolver returns the catalog's surface_policy
-// reasoning_default for a (profile, surface) pair. Used by the routing engine
+// reasoning_default for a (policy, surface) pair. Used by the routing engine
 // to resolve Reasoning=auto to a concrete level before the capability gate.
-func serviceRoutingReasoningResolver(cat *modelcatalog.Catalog) func(profile, surface string) (string, bool) {
+func serviceRoutingReasoningResolver(cat *modelcatalog.Catalog) func(policy, surface string) (string, bool) {
 	if cat == nil {
 		return nil
 	}
-	return func(profile, surface string) (string, bool) {
-		if profile == "" {
+	return func(policy, surface string) (string, bool) {
+		if policy == "" {
 			return "", false
 		}
 		catalogSurface, ok := serviceRoutingCatalogSurface(surface)
 		if !ok {
 			return "", false
 		}
-		resolved, err := cat.Resolve(profile, modelcatalog.ResolveOptions{
+		resolved, err := cat.Resolve(policy, modelcatalog.ResolveOptions{
 			Surface:         catalogSurface,
 			AllowDeprecated: true,
 		})
@@ -946,7 +946,7 @@ func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat 
 	}
 	baseCost, ok := catalogCostUSDPer1kTokens(cat, entry.DefaultModel)
 	if !ok {
-		baseCost, ok = catalogCostUSDPer1kTokens(cat, subscriptionFallbackProfile(entry.Name))
+		baseCost, ok = catalogCostUSDPer1kTokens(cat, subscriptionFallbackPolicy(entry.Name))
 		if !ok {
 			baseCost = 0
 		}
@@ -965,7 +965,7 @@ func providerRoutingCostClass(providerType string) string {
 	return "medium"
 }
 
-func subscriptionFallbackProfile(harnessName string) string {
+func subscriptionFallbackPolicy(harnessName string) string {
 	switch harnessName {
 	case "claude", "codex", "gemini":
 		return "standard"
@@ -1138,7 +1138,7 @@ func providerPreferenceForPolicy(cat *modelcatalog.Catalog, policy string) (stri
 	if cat == nil {
 		return "", &ErrUnknownPolicy{Policy: policy}
 	}
-	if _, _, ok := policyForProfileName(cat, policy); !ok {
+	if _, _, ok := policyForName(cat, policy); !ok {
 		return "", &ErrUnknownPolicy{Policy: policy}
 	}
 	preference := providerPreferenceForPolicyName(policy)
@@ -1160,19 +1160,19 @@ func routePowerPolicyForRequest(cat *modelcatalog.Catalog, req RouteRequest) Rou
 	if req.Policy == "" || cat == nil {
 		return policy
 	}
-	profile, policyName, ok := policyForProfileName(cat, req.Policy)
+	policyEntry, policyName, ok := policyForName(cat, req.Policy)
 	if !ok {
 		return policy
 	}
 	policy.PolicyName = policyName
-	if profile.MinPower > 0 {
-		if policy.MinPower == 0 || profile.MinPower > policy.MinPower {
-			policy.MinPower = profile.MinPower
+	if policyEntry.MinPower > 0 {
+		if policy.MinPower == 0 || policyEntry.MinPower > policy.MinPower {
+			policy.MinPower = policyEntry.MinPower
 		}
 	}
-	if profile.MaxPower > 0 {
-		if policy.MaxPower == 0 || profile.MaxPower < policy.MaxPower {
-			policy.MaxPower = profile.MaxPower
+	if policyEntry.MaxPower > 0 {
+		if policy.MaxPower == 0 || policyEntry.MaxPower < policy.MaxPower {
+			policy.MaxPower = policyEntry.MaxPower
 		}
 	}
 	return policy
