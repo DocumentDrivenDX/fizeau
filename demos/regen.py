@@ -77,7 +77,10 @@ def render_cast(
     end = session["end"]["data"]
 
     content = (response.get("content") or end.get("output") or "").strip()
-    usage = response.get("usage") or end.get("tokens") or {}
+    # Prefer session.end totals (cumulative across all LLM round-trips,
+    # including any tool-call turns). Fall back to the final llm.response
+    # usage if session.end didn't record tokens.
+    usage = end.get("tokens") or response.get("usage") or {}
     tokens_in = usage.get("input", 0)
     tokens_out = usage.get("output", 0)
     status = end.get("status", "success")

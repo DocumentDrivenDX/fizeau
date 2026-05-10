@@ -67,6 +67,20 @@ website/                  # Hugo/Hextra microsite
 demos/                    # Demo scripts and session fixtures
 ```
 
+## CLI Documentation
+
+The Hugo CLI reference under `website/content/docs/cli/` is generated from the
+live Cobra command tree. After changing fiz subcommands or flags, regenerate
+the pages:
+
+```bash
+make docs-cli
+```
+
+Commit the regenerated files alongside your code change. The generator
+(`cmd/docgen-cli`) is deterministic — re-running it without source changes
+produces byte-identical output.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the

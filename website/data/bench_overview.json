@@ -1,5 +1,5 @@
 {
-  "snapshot_ts": "2026-05-10 04:09:24 UTC",
+  "snapshot_ts": "2026-05-10 04:39:50 UTC",
   "n_reports_total": 4410,
   "n_profiles_active": 20,
   "n_external_comparators": 45,
@@ -24,9 +24,9 @@
       "pass_at_k_pct": 16.346153846153847,
       "pass_at_k_num": 17,
       "pass_at_k_den": 104,
-      "median_wall_s": 691.022726579,
-      "decode_tps_p50": 83.59237513138604,
-      "ttft_p50_s": 18.296444177627563,
+      "median_wall_s": 691.346561265,
+      "decode_tps_p50": 79.02535929089804,
+      "ttft_p50_s": 18.35660409927368,
       "avg_cost_usd": 0.0,
       "n_attempts": 660
     },
@@ -36,9 +36,9 @@
       "pass_at_k_pct": 18.269230769230766,
       "pass_at_k_num": 19,
       "pass_at_k_den": 104,
-      "median_wall_s": 655.190523729,
-      "decode_tps_p50": 16.01792596768839,
-      "ttft_p50_s": 10.112328052520752,
+      "median_wall_s": 656.456497302,
+      "decode_tps_p50": 15.792924710738934,
+      "ttft_p50_s": 10.12727177143097,
       "avg_cost_usd": 0.0,
       "n_attempts": 652
     }

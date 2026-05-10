@@ -84,8 +84,3 @@ layout: hextra-home
   </div>
 </section>
 
-<section class="origin">
-  <p>
-    Named for <a href="docs/about/the-name/">Hippolyte Fizeau</a> (1819–1896), who measured the speed of light with a rotating toothed wheel in 1849 and the drag of light through moving water in 1851. The project treats round-trip timing as first-class output for the same reason: you cannot improve a measurement chain you can't see through.
-  </p>
-</section>

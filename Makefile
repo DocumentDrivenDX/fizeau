@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-regen
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-regen docs-cli docs-embedding docs-tools docs-adrs
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -18,6 +18,34 @@ catalog-dist:
 
 rename-noise-check:
 	go run ./cmd/renamecheck --repo . --fail
+
+# docs-cli regenerates the Hugo CLI reference at website/content/docs/cli/
+# from the live Cobra command tree. Run after changing fiz commands or flags.
+docs-cli:
+	go run ./cmd/docgen-cli --out website/content/docs/cli
+
+# docs-embedding regenerates the embedding (Go library) reference at
+# website/content/docs/embedding/ from the public fizeau API source via
+# go/doc. Run after changing the public surface in service.go,
+# public_api.go, or public_cli_api.go.
+docs-embedding:
+	go run ./cmd/docgen-embedding --pkg . --out website/content/docs/embedding/_index.md
+
+# docs-tools regenerates the tool-calling reference at
+# website/content/docs/tools/_index.md by enumerating
+# fizeau.BuiltinToolsForPreset for every prompt preset and emitting each
+# tool's name, description, JSON Schema, and parallel-safety. Run after
+# changing the registry in internal/tool/builtin.go or any tool's schema.
+docs-tools:
+	go run ./cmd/docgen-tools --out website/content/docs/tools/_index.md
+
+# docs-adrs republishes Architecture Decision Records from
+# docs/helix/02-design/adr/ into website/content/docs/architecture/adr/ with
+# Hextra-compatible front matter. Generates a per-section index and per-ADR
+# pages. Idempotent: running it twice with no source changes produces no diff.
+# Run after adding, editing, or superseding an ADR.
+docs-adrs:
+	go run ./cmd/docgen-adrs --src docs/helix/02-design/adr --out website/content/docs/architecture/adr
 
 build-ci:
 	go build ./...
@@ -105,6 +133,11 @@ coverage-history:
 coverage-trend: coverage-ratchet
 	@echo "Coverage trend from history:"
 	@go run scripts/coverage-ratchet.go --trend
+
+# Capture fresh fiz session JSONLs against a real OpenRouter model and write
+# them into demos/sessions/. Requires $OPENROUTER_API_KEY. Live LLM calls.
+demos-capture:
+	./demos/capture.sh
 
 # Regenerate homepage demo asciicasts from canonical session JSONLs in
 # demos/sessions/. Deterministic — no live LLM calls, no `asciinema rec`.

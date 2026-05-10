@@ -738,6 +738,99 @@ def _chart_ref_url(name: str) -> str:
     return f'<img src="charts/{html.escape(name)}" alt="{html.escape(name)}">'
 
 
+# ---- profile filters used by the multi-page IA ----
+
+def _filter_models_lanes(per_profile, profiles):
+    """Lanes that exercise different MODELS through the same harness (fiz built-in
+    or native CLI). Excludes provider variants of the same model and Qwen lanes
+    (those live on the providers page)."""
+    out = []
+    for pid, _ in per_profile.items():
+        if pid in EXCLUDED_PROFILES: continue
+        prof = profiles.get(pid) or {}
+        meta = prof.get("metadata") or {}
+        family = (meta.get("model_family") or "").lower()
+        # Skip qwen lanes — those are the providers page.
+        if "qwen" in family: continue
+        # Skip wrapper lanes — those are the harnesses page.
+        if pid.startswith("fiz-harness-"): continue
+        out.append(pid)
+    return sorted(out)
+
+
+def _filter_harness_lanes(per_profile, profiles):
+    """Lanes that exercise the same MODEL through different HARNESSES. Includes
+    native CLI lanes (claude-native-*, codex-native-*) and fiz-harness-* wrappers,
+    plus the corresponding fiz built-in lanes that share the model so direct
+    side-by-side reads are possible."""
+    out = []
+    for pid in per_profile.keys():
+        if pid in EXCLUDED_PROFILES: continue
+        prof = profiles.get(pid) or {}
+        meta = prof.get("metadata") or {}
+        family = (meta.get("model_family") or "").lower()
+        if "qwen" in family: continue
+        # Include if it's a wrapper, a native CLI lane, or a fiz lane on a model
+        # that ALSO appears in some wrapper/native lane.
+        if pid.startswith("fiz-harness-") or "native" in pid:
+            out.append(pid)
+            continue
+        # Direct fiz-on-X for any X that appears in the wrapper set.
+        if any((profiles.get(p) or {}).get("metadata", {}).get("model_family") == family
+               for p in per_profile if p.startswith("fiz-harness-") or "native" in p):
+            out.append(pid)
+    return sorted(out)
+
+
+def _filter_provider_lanes(per_profile, profiles):
+    """Qwen3.6-27B lanes only — same model, different provider/runtime."""
+    out = []
+    for pid in per_profile.keys():
+        if pid in EXCLUDED_PROFILES: continue
+        prof = profiles.get(pid) or {}
+        meta = prof.get("metadata") or {}
+        family = (meta.get("model_family") or "").lower()
+        if "qwen" in family:
+            out.append(pid)
+    return sorted(out)
+
+
+def _provider_descriptive_label(pid: str, profile_meta: dict | None, machine: dict | None) -> str:
+    """Generate a descriptive (no-hostname) label for a provider lane.
+    Examples:
+      - "OpenRouter (cloud aggregator)"
+      - "vLLM int4 / RTX 5090 Ti / Linux + WSL2"
+      - "oMLX 8-bit / Apple M2 Ultra (192 GB unified)"
+    """
+    md = (profile_meta or {}).get("metadata") or {}
+    pr = (profile_meta or {}).get("provider") or {}
+    runtime = (md.get("runtime") or pr.get("type") or "").lower()
+    if runtime == "openrouter":
+        return "OpenRouter (cloud aggregator)"
+    if runtime == "openai":
+        return "OpenAI (native API)"
+    if runtime == "anthropic":
+        return "Anthropic (native API)"
+    quant = md.get("quant_label") or ""
+    parts = []
+    if "vllm" in runtime: parts.append("vLLM")
+    elif "omlx" in runtime: parts.append("oMLX")
+    elif "rapid" in runtime: parts.append("RapidMLX")
+    else: parts.append(runtime or "?")
+    # Quant suffix
+    if "int4" in quant or "autoround" in quant: parts[-1] += " int4"
+    elif "8bit" in quant or "8-bit" in quant: parts[-1] += " 8-bit"
+    elif "4bit" in quant or "4-bit" in quant: parts[-1] += " 4-bit"
+    if machine:
+        gpu = machine.get("gpu") or ""
+        cpu = machine.get("cpu") or ""
+        os_ = machine.get("os") or ""
+        if gpu and "Apple" not in gpu: parts.append(gpu)
+        elif cpu and "Apple" in cpu: parts.append(f"{cpu}" + (f" ({machine.get('memory')})" if machine.get("memory") else ""))
+        if os_ and "Apple" not in (cpu or ""): parts.append(os_)
+    return " / ".join(parts)
+
+
 def render_body(*,
                 profiles: dict[str, dict[str, Any]],
                 machines: dict[str, dict[str, Any]],
@@ -749,8 +842,10 @@ def render_body(*,
                 snapshot_ts: str,
                 n_reports: int,
                 chart_emitter) -> str:
-    """Build the report body (everything inside <main>). chart_emitter(name) → str
-    chooses whether charts are inlined SVG or referenced as <img>."""
+    """Build the (legacy single-page) report body — kept for the standalone
+    HTML at docs/benchmarks/. The Hugo bundle uses the per-page renderers
+    below: render_overview_body, render_models_body, render_harnesses_body,
+    render_providers_body."""
 
     pid_active = sorted(p for p in per_profile if p not in EXCLUDED_PROFILES)
     ext_visible = sorted(
@@ -910,6 +1005,197 @@ def render_body(*,
     parts.append('<h2>Method notes</h2>')
     parts.append(f'<div class="narrative">{_read_section("method-notes.md")}</div>')
 
+    return "\n".join(parts)
+
+
+# ============================================================================
+# Per-page renderers for the multi-page Hugo bundle.
+#
+# Each function emits the BODY (no front matter) for one Hugo page. They share
+# the same chart_emitter signature as render_body. Charts are referenced via
+# absolute Hugo URLs (chart_emitter_abs) so sub-pages can reach the parent
+# bundle's charts/ dir.
+# ============================================================================
+
+def _render_subset_table(subsets) -> str:
+    s = ['<table><thead><tr><th>Subset</th><th>Tasks</th><th>Selection rule</th></tr></thead><tbody>']
+    for name in SUBSET_ORDER:
+        info = subsets.get(name)
+        if not info: continue
+        s.append(f'<tr><td>{html.escape(name)}</td><td>{len(info["tasks"])}</td><td>{html.escape(info.get("selection_rule",""))}</td></tr>')
+    s.append('</tbody></table>')
+    return "".join(s)
+
+
+def _render_pass_table(pids: list[str], subsets, per_subset, profiles,
+                       include_external: bool = False, ext_per_subset: dict | None = None,
+                       ext_filter=None) -> str:
+    """Pass@k table for the given profile ids. Optionally append external rows."""
+    s = ['<table><thead><tr><th>Profile / Submission</th>']
+    for sub in SUBSET_ORDER:
+        s.append(f'<th>{sub} ({len(subsets.get(sub,{}).get("tasks",[]))} tasks)</th>')
+    s.append('<th>Provider</th></tr></thead><tbody>')
+    for pid in pids:
+        prof = profiles.get(pid) or {}
+        provider_type = (prof.get("provider") or {}).get("type") or ""
+        ags = per_subset.get(pid, {})
+        cells = [f'<td>{html.escape(pid)}</td>']
+        for sub in SUBSET_ORDER:
+            d = ags.get(sub)
+            if not d or d["tasks_attempted"] == 0:
+                cells.append('<td><span class="pill warn">no data</span></td>')
+            else:
+                cells.append(f'<td>{d["tasks_passed"]/d["tasks_attempted"]*100:.1f}% <span class="meta">({d["tasks_passed"]}/{d["tasks_attempted"]})</span></td>')
+        cells.append(f'<td><span class="meta">{html.escape(provider_type)}</span></td>')
+        s.append('<tr>' + ''.join(cells) + '</tr>')
+    if include_external and ext_per_subset:
+        ext_rows = sorted(
+            [sub for sub in ext_per_subset if ext_per_subset[sub].get("all", {}).get("tasks_attempted", 0) >= 30],
+            key=lambda x: -ext_per_subset[x].get("all", {}).get("tasks_passed", 0),
+        )
+        if ext_filter:
+            ext_rows = [sub for sub in ext_rows if ext_filter(sub)]
+        if ext_rows:
+            s.append(f'<tr class="section-divider"><td colspan="{len(SUBSET_ORDER)+2}">External leaderboard (HF)</td></tr>')
+            for sub in ext_rows:
+                ags = ext_per_subset.get(sub, {})
+                cells = [f'<td>{html.escape(sub)}</td>']
+                for ssub in SUBSET_ORDER:
+                    d = ags.get(ssub, {})
+                    if not d.get("tasks_attempted"):
+                        cells.append('<td><span class="pill warn">no data</span></td>')
+                    else:
+                        cells.append(f'<td>{d["tasks_passed"]/d["tasks_attempted"]*100:.1f}% <span class="meta">({d["tasks_passed"]}/{d["tasks_attempted"]})</span></td>')
+                cells.append('<td><span class="meta">external</span></td>')
+                s.append('<tr class="external">' + ''.join(cells) + '</tr>')
+    s.append('</tbody></table>')
+    return "".join(s)
+
+
+def _render_detailed_table(pids: list[str], per_profile, profiles, timing, label_for=None) -> str:
+    def _fmt_int(x): return "—" if x is None else f"{int(x):,}"
+    def _fmt_num(x, dp=1): return "—" if x is None else f"{x:.{dp}f}"
+    def _fmt_pct(p, t): return "—" if not t else f"{p/t*100:.1f}%"
+    s = ['<table><thead><tr><th>Profile</th><th>Harness</th><th>Attempts</th><th>Real</th>'
+         '<th>pass@1</th><th>pass@k</th><th>med turns</th><th>med in</th><th>med out</th>'
+         '<th>med wall (s)</th><th>cost ($)</th><th>p50 TTFT (s)</th><th>p50 decode (tok/s)</th></tr></thead><tbody>']
+    for pid in pids:
+        a = per_profile[pid]
+        td = timing.get(pid, {})
+        prof = profiles.get(pid)
+        label = label_for(pid, prof) if label_for else pid
+        s.append('<tr>')
+        s.append(f'<td>{html.escape(label)}</td>')
+        s.append(f'<td><span class="meta">{html.escape(harness_label(pid, prof))}</span></td>')
+        s.append(f'<td>{a["n_attempts"]}</td><td>{a["n_real"]}</td>')
+        s.append(f'<td>{_fmt_pct(a["n_pass"], a["n_graded"])}</td>')
+        s.append(f'<td>{_fmt_pct(a["tasks_passed_any"], a["tasks_touched"])}</td>')
+        s.append(f'<td>{_fmt_num(a["median_turns"], 0)}</td>')
+        s.append(f'<td>{_fmt_int(a["median_in_tok"])}</td>')
+        s.append(f'<td>{_fmt_int(a["median_out_tok"])}</td>')
+        s.append(f'<td>{_fmt_num(a["median_wall"], 0)}</td>')
+        s.append(f'<td>{a["avg_cost"]:.3f}</td>')
+        s.append(f'<td>{_fmt_num(td.get("ttft_p50"), 2)}</td>')
+        s.append(f'<td>{_fmt_num(td.get("decode_tps_p50"), 1)}</td>')
+        s.append('</tr>')
+    s.append('</tbody></table>')
+    return "".join(s)
+
+
+def render_overview_body(*, snapshot_ts, n_reports, profiles, subsets,
+                         per_profile, per_subset, ext_per_subset, timing,
+                         chart_emitter) -> str:
+    pid_active = sorted(p for p in per_profile if p not in EXCLUDED_PROFILES)
+    parts = [
+        f'<div class="meta">Snapshot: {html.escape(snapshot_ts)} · {n_reports:,} trial reports · {len(pid_active)} active lanes</div>',
+        '<h2>How we run it</h2>',
+        f'<div class="narrative">{_read_section("02-terminal-bench.md")}</div>',
+        _render_subset_table(subsets),
+        '<h2>Three perspectives on the same data</h2>',
+        '<div class="narrative">',
+        '<p>The trial set runs each task many ways. Each of the three sub-pages slices the data along a different axis:</p>',
+        '<ul>',
+        '<li><a href="models/"><b>Models</b></a> — fiz with its built-in agent loop across multiple models, on the cheap subset where cost lets us run real reps.</li>',
+        '<li><a href="harnesses/"><b>Harnesses</b></a> — same model, different agent loop. Includes external leaderboard rows for the same models in other harnesses.</li>',
+        '<li><a href="providers/"><b>Providers</b></a> — Qwen3.6-27B held constant, varying the host (cloud aggregator vs local CUDA vs Apple silicon). The harness/runtime story.</li>',
+        '</ul>',
+        '</div>',
+        '<h2>Headline observations</h2>',
+        f'<div class="narrative">{_read_section("08-conclusions.md")}</div>',
+        '<h2>Method notes</h2>',
+        f'<div class="narrative">{_read_section("method-notes.md")}</div>',
+    ]
+    return "\n".join(parts)
+
+
+def render_models_body(*, snapshot_ts, profiles, subsets, per_profile,
+                       per_subset, ext_per_subset, timing, chart_emitter) -> str:
+    pids = _filter_models_lanes(per_profile, profiles)
+    parts = [
+        f'<div class="meta">Snapshot: {html.escape(snapshot_ts)} · {len(pids)} model lanes shown</div>',
+        '<div class="narrative">',
+        '<p>Each row is fiz running its own built-in agent loop against a different model. Where possible we report on the <code>openai-cheap</code> subset (35 tasks) so the cost gate doesn\'t bias the model selection — frontier hosted models are typically too expensive to run with k=5 reps across all 89 TB-2.1 tasks.</p>',
+        '</div>',
+        '<h2>Pass-rate</h2>',
+        _render_pass_table(pids, subsets, per_subset, profiles),
+        '<h2>Detailed metrics</h2>',
+        _render_detailed_table(pids, per_profile, profiles, timing),
+        '<h2>Model power vs pass-rate</h2>',
+        f'<div class="narrative">{_read_section("06-model-power-observations.md")}</div>',
+        f'<div class="chart">{chart_emitter("model-power-scatter.svg")}</div>',
+    ]
+    return "\n".join(parts)
+
+
+def render_harnesses_body(*, snapshot_ts, profiles, subsets, per_profile,
+                          per_subset, ext_per_subset, timing, chart_emitter) -> str:
+    pids = _filter_harness_lanes(per_profile, profiles)
+    # External rows for harness models we care about (Sonnet, GPT-5 family, Codex)
+    def harness_ext_filter(sub):
+        s = sub.lower()
+        return any(needle in s for needle in [
+            "claude-opus-4.6", "claude-sonnet", "gpt-5", "codex"
+        ])
+    parts = [
+        f'<div class="meta">Snapshot: {html.escape(snapshot_ts)} · {len(pids)} fiz harness lanes shown · external leaderboard for the same models below</div>',
+        '<div class="narrative">',
+        '<p>Each row holds the model constant (Sonnet 4.6, GPT-5.4-mini, etc.) and varies the agent loop. Native CLI lanes (<code>claude-native-*</code>, <code>codex-native-*</code>) run their own harness directly. <code>fiz-harness-*</code> lanes use fiz as a measurement wrapper around the same CLI. <code>fiz-openrouter-*</code> / <code>fiz-openai-*</code> lanes call the model\'s API directly through fiz\'s built-in loop. A delta between these is harness loss, isolated from model loss.</p>',
+        '</div>',
+        '<h2>Pass-rate (with external comparators)</h2>',
+        _render_pass_table(pids, subsets, per_subset, profiles,
+                           include_external=True, ext_per_subset=ext_per_subset,
+                           ext_filter=harness_ext_filter),
+        '<h2>Detailed metrics</h2>',
+        _render_detailed_table(pids, per_profile, profiles, timing),
+    ]
+    return "\n".join(parts)
+
+
+def render_providers_body(*, snapshot_ts, profiles, machines, subsets,
+                          per_profile, per_subset, ext_per_subset, timing,
+                          chart_emitter) -> str:
+    pids = _filter_provider_lanes(per_profile, profiles)
+    def label(pid, prof):
+        return _provider_descriptive_label(pid, prof, machine_for_profile(prof, machines))
+    parts = [
+        f'<div class="meta">Snapshot: {html.escape(snapshot_ts)} · Qwen3.6-27B across {len(pids)} provider/runtime combinations</div>',
+        '<div class="narrative">',
+        '<p>The model weights are the same across every row here — Qwen3.6-27B in some quantization. The variable is everything else: where the bytes get computed, which serving engine runs them, what sampling defaults the server applies, whether prefix-cache is hit, and how much round-trip latency the network adds.</p>',
+        '<p>Hostnames are abstracted to the substantive characteristics. The descriptive label captures engine + quantization + GPU/CPU + OS — enough to map to a known-good machine spec without leaking inventory.</p>',
+        '</div>',
+        '<h2>Pass-rate</h2>',
+        _render_pass_table(pids, subsets, per_subset, profiles),
+        '<h2>Detailed metrics</h2>',
+        _render_detailed_table(pids, per_profile, profiles, timing, label_for=label),
+        '<h2>Performance vs context length</h2>',
+        f'<div class="narrative">{_read_section("07-context-length-observations.md")}</div>',
+        f'<h3>TTFT (seconds, lower is better)</h3><div class="chart">{chart_emitter("ttft-by-context.svg")}</div>',
+        f'<h3>Decode tok/s (higher is better)</h3><div class="chart">{chart_emitter("decode-by-context.svg")}</div>',
+        '<h2>Provider details</h2>',
+        '<div class="narrative">',
+        '<p><i>Detailed per-provider engine + sampling + KV-cache info will land here once <code>scripts/benchmark/capture-machine-info.sh</code> is wired to populate <code>machines.yaml</code>. See <a href="https://github.com/easel/fizeau/blob/master/scripts/benchmark/machines.yaml">machines.yaml</a> for the current registry.</i></p>',
+        '</div>',
+    ]
     return "\n".join(parts)
 
 
@@ -1153,7 +1439,10 @@ def main():
     OUT_HTML.write_text(html_doc, encoding="utf-8")
     print(f"      wrote {OUT_HTML.relative_to(REPO)} ({OUT_HTML.stat().st_size:,} bytes)", file=sys.stderr)
 
-    # Hugo page bundle: charts and data live next to index.md so relative refs work.
+    # Hugo page bundle. The TB-2.1 page is split into 4 sub-pages so each
+    # comparison axis (models / harnesses / providers) gets its own URL and
+    # left-nav entry. Charts and data live at the parent bundle and are
+    # referenced via absolute Hugo URLs from the sub-pages.
     HUGO_BUNDLE.mkdir(parents=True, exist_ok=True)
     (HUGO_BUNDLE / "charts").mkdir(exist_ok=True)
     (HUGO_BUNDLE / "data").mkdir(exist_ok=True)
@@ -1161,13 +1450,45 @@ def main():
         (HUGO_BUNDLE / "charts" / svg.name).write_bytes(svg.read_bytes())
     for js in DATA_DIR.glob("*.json"):
         (HUGO_BUNDLE / "data" / js.name).write_bytes(js.read_bytes())
-    body_hugo = render_body(
-        profiles=profiles, machines=machines, subsets=subsets,
-        per_profile=per_profile, per_subset=per_subset, ext_per_subset=ext_per_subset,
-        timing=timing, snapshot_ts=snapshot_ts, n_reports=len(reports),
-        chart_emitter=_chart_ref_url,
-    )
-    (HUGO_BUNDLE / "index.md").write_text(render_hugo_md(body=body_hugo, snapshot_ts=snapshot_ts), encoding="utf-8")
+
+    # Sub-pages reference charts via absolute Hugo URLs (charts live at the
+    # parent bundle's charts/ dir).
+    BENCH_BASE = "/benchmarks/terminal-bench-2-1"
+    def _chart_ref_abs(name: str) -> str:
+        return f'<img src="{BENCH_BASE}/charts/{html.escape(name)}" alt="{html.escape(name)}">'
+    # The parent index page can use bundle-relative refs since charts are in
+    # the same bundle.
+    def _chart_ref_local(name: str) -> str:
+        return f'<img src="charts/{html.escape(name)}" alt="{html.escape(name)}">'
+
+    pages = [
+        # (path under HUGO_BUNDLE, title, weight, body fn, kwargs)
+        ("_index.md",            "Terminal-Bench 2.1", 1, render_overview_body,   dict(chart_emitter=_chart_ref_local)),
+        ("models/_index.md",     "Models",             2, render_models_body,     dict(chart_emitter=_chart_ref_abs)),
+        ("harnesses/_index.md",  "Harnesses",          3, render_harnesses_body,  dict(chart_emitter=_chart_ref_abs)),
+        ("providers/_index.md",  "Providers",          4, render_providers_body,  dict(chart_emitter=_chart_ref_abs)),
+    ]
+    for path, title, weight, body_fn, extra_kwargs in pages:
+        kwargs = dict(snapshot_ts=snapshot_ts, profiles=profiles, subsets=subsets,
+                      per_profile=per_profile, per_subset=per_subset,
+                      ext_per_subset=ext_per_subset, timing=timing)
+        # render_overview_body needs n_reports; render_providers_body needs machines.
+        if body_fn is render_overview_body:
+            kwargs["n_reports"] = len(reports)
+        if body_fn is render_providers_body:
+            kwargs["machines"] = machines
+        kwargs.update(extra_kwargs)
+        body = body_fn(**kwargs)
+        front = (
+            "---\n"
+            f"title: \"{title}\"\n"
+            f"weight: {weight}\n"
+            "toc: true\n"
+            "---\n"
+        )
+        out_path = HUGO_BUNDLE / path
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(f"{front}\n<div class=\"br-body\">\n{body}\n</div>\n", encoding="utf-8")
 
     # Landing page for the benchmarks section. Only create if it doesn't exist
     # (it's intended to be hand-edited; we won't clobber edits on regen).
