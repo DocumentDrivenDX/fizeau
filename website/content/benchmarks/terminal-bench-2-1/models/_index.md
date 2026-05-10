@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-10 20:22:36 UTC · 10 model lanes shown</div>
+<div class="meta">Snapshot: 2026-05-10 20:47:40 UTC · 10 model lanes shown</div>
 <div class="narrative">
 <p>Each row is fiz running its own built-in agent loop against a different model. Where possible we report on the <code>openai-cheap</code> subset (35 tasks) so the cost gate doesn't bias the model selection — frontier hosted models are typically too expensive to run with k=5 reps across all 89 TB-2.1 tasks.</p>
 </div>

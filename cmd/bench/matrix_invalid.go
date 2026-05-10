@@ -78,6 +78,12 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 		return ""
 	case "install_fail_permanent", "install_failed":
 		return matrixInvalidSetup
+	case "harness_crash":
+		// The agent runtime / wrapper crashed before producing a graded
+		// outcome. By definition systemic — usually per-trial timeout,
+		// docker subnet exhaustion, or external cancellation. Tag as
+		// invalid_setup so it doesn't pollute pass-rate denominators.
+		return matrixInvalidSetup
 	case "graded_fail":
 		// Conservative quality-attribution rule: a graded_fail with no
 		// meaningful agent attempt (zero turns, zero output tokens) is

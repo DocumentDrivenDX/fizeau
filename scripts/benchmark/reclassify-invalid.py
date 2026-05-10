@@ -83,6 +83,9 @@ def classify(r: dict) -> str:
         return ""
     if fs in ("install_fail_permanent", "install_failed"):
         return "invalid_setup"
+    if fs == "harness_crash":
+        # Mirror Go: agent runtime crash before grading is systemic.
+        return "invalid_setup"
     if fs == "graded_fail":
         if not has_attempt:
             return "invalid_setup"

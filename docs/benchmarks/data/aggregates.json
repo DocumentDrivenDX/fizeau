@@ -8,7 +8,7 @@
       "tasks_passed_any": 3,
       "n_real": 0,
       "invalids": {
-        "invalid_setup": 139,
+        "invalid_setup": 140,
         "invalid_provider": 1
       },
       "median_turns": null,
@@ -20,36 +20,36 @@
     },
     "sindri-club-3090": {
       "n_attempts": 660,
-      "n_graded": 193,
+      "n_graded": 194,
       "n_pass": 55,
       "tasks_touched": 104,
       "tasks_passed_any": 27,
-      "n_real": 103,
+      "n_real": 104,
       "invalids": {
-        "invalid_setup": 325
+        "invalid_setup": 514
       },
-      "median_turns": 11,
-      "median_in_tok": 62265,
-      "median_out_tok": 3554,
-      "median_wall": 873.951169906,
+      "median_turns": 11.0,
+      "median_in_tok": 61147.0,
+      "median_out_tok": 3623.5,
+      "median_wall": 900.2646410095,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
     "vidar-qwen3-6-27b": {
       "n_attempts": 652,
-      "n_graded": 165,
+      "n_graded": 166,
       "n_pass": 64,
       "tasks_touched": 104,
       "tasks_passed_any": 27,
-      "n_real": 102,
+      "n_real": 103,
       "invalids": {
-        "invalid_setup": 229,
+        "invalid_setup": 497,
         "invalid_provider": 1
       },
-      "median_turns": 13.5,
-      "median_in_tok": 95721.5,
-      "median_out_tok": 5480.0,
-      "median_wall": 931.7389808165001,
+      "median_turns": 14,
+      "median_in_tok": 95916,
+      "median_out_tok": 5459,
+      "median_wall": 931.341444076,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
@@ -61,7 +61,7 @@
       "tasks_passed_any": 52,
       "n_real": 361,
       "invalids": {
-        "invalid_setup": 42
+        "invalid_setup": 49
       },
       "median_turns": 13,
       "median_in_tok": 87289,
@@ -78,7 +78,7 @@
       "tasks_passed_any": 3,
       "n_real": 0,
       "invalids": {
-        "invalid_setup": 86
+        "invalid_setup": 87
       },
       "median_turns": null,
       "median_in_tok": null,

@@ -33,6 +33,7 @@ func TestClassifyMatrixInvalidFromFixtures(t *testing.T) {
 		// infrastructure failures. See the "We tried our best and didn't pass"
 		// principle in the function doc-comment.
 		{name: "graded-fail-real-attempt-with-wrapper-bash.json", want: ""},
+		{name: "harness-crash-context-canceled.json", want: matrixInvalidSetup},
 		{name: "provider-transport.json", want: matrixInvalidProvider},
 		{name: "verifier-fail-after-attempt.json", want: ""},
 	}
