@@ -84,6 +84,17 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 		// docker subnet exhaustion, or external cancellation. Tag as
 		// invalid_setup so it doesn't pollute pass-rate denominators.
 		return matrixInvalidSetup
+	case "ran":
+		// final_status="ran" + ungraded + no meaningful attempt means the
+		// harbor wrapper exited cleanly but the trial never actually ran
+		// the agent — typically docker image pull failure, environment
+		// setup error, or other pre-agent infra issue. The actual exception
+		// lives in a side-file (exception.txt), not in the report's error
+		// blob (which only carries the harbor summary table), so the text
+		// classifier can't see it. The structural signal is enough.
+		if !hasAttempt && (report.GradingOutcome == "" || report.GradingOutcome == "ungraded") {
+			return matrixInvalidSetup
+		}
 	case "graded_fail":
 		// Conservative quality-attribution rule: a graded_fail with no
 		// meaningful agent attempt (zero turns, zero output tokens) is

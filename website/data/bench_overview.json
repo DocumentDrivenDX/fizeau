@@ -1,6 +1,6 @@
 {
-  "snapshot_ts": "2026-05-10 21:06:33 UTC",
-  "n_reports_total": 3762,
+  "snapshot_ts": "2026-05-10 21:20:28 UTC",
+  "n_reports_total": 3652,
   "n_profiles_active": 20,
   "n_external_comparators": 45,
   "n_external_trials": 18484,
@@ -16,7 +16,7 @@
       "decode_tps_p50": 52.501924366766644,
       "ttft_p50_s": 0.7860475778579712,
       "avg_cost_usd": 0.12137973875706215,
-      "n_attempts": 450
+      "n_attempts": 443
     },
     {
       "profile_id": "sindri-club-3090",
@@ -24,11 +24,11 @@
       "pass_at_k_pct": 28.125,
       "pass_at_k_num": 27,
       "pass_at_k_den": 96,
-      "median_wall_s": 819.385792752,
-      "decode_tps_p50": 70.65556046931837,
-      "ttft_p50_s": 18.346883058547974,
+      "median_wall_s": 845.057554762,
+      "decode_tps_p50": 68.96299857475236,
+      "ttft_p50_s": 18.61844801902771,
       "avg_cost_usd": 0.0,
-      "n_attempts": 355
+      "n_attempts": 302
     },
     {
       "profile_id": "vidar-qwen3-6-27b",
@@ -36,11 +36,11 @@
       "pass_at_k_pct": 30.681818181818183,
       "pass_at_k_num": 27,
       "pass_at_k_den": 88,
-      "median_wall_s": 915.4089633605,
-      "decode_tps_p50": 15.41249534217744,
-      "ttft_p50_s": 9.995745718479156,
+      "median_wall_s": 928.241462682,
+      "decode_tps_p50": 15.407259960948947,
+      "ttft_p50_s": 9.898128986358643,
       "avg_cost_usd": 0.0,
-      "n_attempts": 325
+      "n_attempts": 275
     }
   ],
   "frontier_comparators": [

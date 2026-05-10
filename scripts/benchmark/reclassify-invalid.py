@@ -86,6 +86,11 @@ def classify(r: dict) -> str:
     if fs == "harness_crash":
         # Mirror Go: agent runtime crash before grading is systemic.
         return "invalid_setup"
+    if fs == "ran" and not has_attempt and r.get("grading_outcome") in (None, "", "ungraded"):
+        # Mirror Go: final_status="ran" + ungraded + no attempt = harbor
+        # wrapper exited but trial never ran (docker pull fail, env setup
+        # error, etc.). Exception lives in a side-file, not report.error.
+        return "invalid_setup"
     if fs == "graded_fail":
         if not has_attempt:
             return "invalid_setup"

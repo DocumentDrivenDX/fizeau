@@ -1,8 +1,8 @@
 {
-  "snapshot_ts": "2026-05-10 21:06:33 UTC",
+  "snapshot_ts": "2026-05-10 21:20:28 UTC",
   "subset": "all",
   "subset_size": 89,
-  "n_reports_total": 3762,
+  "n_reports_total": 3652,
   "hero_profile_id": "fiz-openrouter-qwen3-6-27b",
   "hero_label": "Qwen3.6-27B / OpenRouter",
   "hero": {
@@ -15,7 +15,7 @@
     "median_turns": 13.5,
     "median_in_tok": 87698.5,
     "median_out_tok": 5214.0,
-    "n_attempts": 450,
+    "n_attempts": 443,
     "n_real": 354
   }
 }
