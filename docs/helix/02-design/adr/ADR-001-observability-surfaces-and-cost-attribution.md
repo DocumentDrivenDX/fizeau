@@ -88,12 +88,12 @@ known cost is preserved and unknown cost stays unknown
 
 ## References
 
-- [PRD](/Users/erik/Projects/agent/docs/helix/01-frame/prd.md)
-- [FEAT-005 Logging, Replay, and Cost Tracking](/Users/erik/Projects/agent/docs/helix/01-frame/features/FEAT-005-logging-and-cost.md)
-- [FEAT-006 Standalone CLI](/Users/erik/Projects/agent/docs/helix/01-frame/features/FEAT-006-standalone-cli.md)
-- [Architecture](/Users/erik/Projects/agent/docs/helix/02-design/architecture.md)
-- [SD-001 Agent Core](/Users/erik/Projects/agent/docs/helix/02-design/solution-designs/SD-001-agent-core.md)
-- [CONTRACT-001 OTel Telemetry Capture](/Users/erik/Projects/agent/docs/helix/02-design/contracts/CONTRACT-001-otel-telemetry-capture.md)
+- [PRD](../../01-frame/prd.md)
+- [FEAT-005 Logging, Replay, and Cost Tracking](../../01-frame/features/FEAT-005-logging-and-cost.md)
+- [FEAT-006 Standalone CLI](../../01-frame/features/FEAT-006-standalone-cli.md)
+- [Architecture](../../02-design/architecture.md)
+- [SD-001 Agent Core](../../02-design/solution-designs/SD-001-agent-core.md)
+- [CONTRACT-001 OTel Telemetry Capture](../../02-design/contracts/CONTRACT-001-otel-telemetry-capture.md)
 - [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/)
 - [OpenTelemetry GenAI Metrics](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-metrics/)
 

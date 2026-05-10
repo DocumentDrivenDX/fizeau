@@ -57,6 +57,8 @@ created. See I-11.
 - **Proposed fix:** Single global rewrite pass: `DDX Agent` → `Fizeau`, `ddx-agent` → `fiz`, `CONTRACT-003-ddx-agent-service.md` → `CONTRACT-003-fizeau-service.md`. Add a `RENAMED.md` migration note at top of `02-design/adr/` and `02-design/contracts/`.
 
 ### I-02 — Absolute filesystem cross-doc paths to legacy `/Users/erik/Projects/agent/`
+- **Status: RESOLVED** — closed by ADR-003 (in I-01 sweep, fdbe71d3) and ADR-001 (this commit). All `/Users/erik/Projects/agent/...` cross-doc paths converted to repo-relative `../../...` form. Verification: `git grep '/Users/erik' -- 'docs/helix/**/*.md'` is empty.
+
 - **Severity:** blocker
 - **Where:** `ADR-001-observability-surfaces-and-cost-attribution.md` (lines 91–95), `ADR-003-pty-terminal-rendering.md` (lines 24, 145–148), and likely more
 - **Why it matters:** These links resolve to nothing on any other machine and to a stale tree on the author's machine. They make the ADRs un-followable for any reader who is not Erik.
