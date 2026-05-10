@@ -195,11 +195,11 @@ session logs, or measurement as first-class outputs.
 ### Should Have (P1)
 
 1. **System prompt composition** — base system prompt + caller-provided
-   additions (persona, project context, conventions) — **Implemented**
+   additions (persona, project context, conventions)
 2. **Session continuity** — option to carry conversation history across
    multiple `Run` calls within a session
 3. **Streaming callbacks** — caller can receive tool call events and partial
-   responses in real time — **Implemented**
+   responses in real time
 4. **Timeout management** — per-invocation and per-tool-call timeouts
 5. **Harness adapter** — implement the harness interface (CONTRACT-003) so Fizeau
    appears as a native harness alongside claude/codex/pi
@@ -214,7 +214,7 @@ session logs, or measurement as first-class outputs.
    project-namespaced attributes for cost/runtime details not yet covered by
    the standard.
 9. **Conversation compaction** — auto-summarize long conversation histories
-   to fit within model context windows — **Implemented**
+   to fit within model context windows
 10. **Shared model catalog** — an agent-owned catalog and publishable
     updateable manifest for concrete model metadata, canonical routing
     policies (`cheap`, `default`, `smart`, `air-gapped`), provider surface

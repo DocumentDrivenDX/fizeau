@@ -18,6 +18,14 @@ const (
 	StatusIterationLimit Status = "iteration_limit"
 	StatusCancelled      Status = "cancelled"
 	StatusError          Status = "error"
+	// StatusBudgetHalted indicates the loop halted before issuing the next
+	// llm.request because the configured per-run cost cap (Request.CostCapUSD)
+	// would be exceeded by the projected next turn. The cap is enforced
+	// against the running session total; "projected" uses the most recent
+	// turn's cost as a conservative estimate. Per FEAT-005 §26-29 and
+	// AC-FEAT-005-07, this is a first-class terminal outcome distinct from
+	// completed / cancelled / error.
+	StatusBudgetHalted Status = "budget_halted"
 )
 
 // Role identifies the sender of a message in the internal conversation history.
@@ -385,6 +393,17 @@ type Request struct {
 	// the context window. Returns the (possibly compacted) messages and result.
 	// The compaction package provides a ready-made implementation.
 	Compactor Compactor
+
+	// CostCapUSD is the per-run cost cap in USD. When > 0, the loop halts
+	// before issuing the next llm.request once the running session total plus
+	// the projected next turn cost would meet or exceed the cap. Zero (or
+	// negative) means no cap. Per FEAT-005 §28 / AC-FEAT-005-07, the cap
+	// requires turn cost to be **known** (provider-reported, gateway-reported,
+	// or configured pricing); if cost is unknown the cap cannot fire and the
+	// run proceeds. The "projected next turn" is approximated as the most
+	// recent turn's known cost — a conservative-enough estimate for the gate
+	// without requiring per-model burn-rate modeling.
+	CostCapUSD float64
 }
 
 // Result is the outcome of a internal agent loop.
@@ -441,6 +460,11 @@ type Result struct {
 
 	// SessionID identifies the session log for this run.
 	SessionID string `json:"session_id"`
+
+	// CostCapUSD is the per-run cost cap that was active for this run, echoed
+	// from Request.CostCapUSD. Zero means no cap was configured. Surfaced so
+	// callers can render "cost: $X / cap $Y" without re-threading the request.
+	CostCapUSD float64 `json:"cost_cap_usd,omitempty"`
 }
 
 // CompactionResult holds the output of a internal compaction pass.

@@ -100,6 +100,7 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 		sl.endWrote.Store(true)
 		end := session.SessionEndData{
 			Status:           harnessStatusToCoreStatus(final.Status),
+			ProcessOutcome:   processOutcomeForFinal(final.Status),
 			Output:           final.FinalText,
 			Tokens:           finalUsageToCoreTokens(final.Usage),
 			DurationMs:       final.DurationMS,
@@ -132,6 +133,10 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 		if final.CostUSD > 0 {
 			cost := final.CostUSD
 			end.CostUSD = &cost
+		}
+		if req.CostCapUSD > 0 {
+			cap := req.CostCapUSD
+			end.CostCapUSD = &cap
 		}
 		if final.RoutingActual != nil {
 			end.ResolvedHarness = final.RoutingActual.Harness
@@ -251,9 +256,22 @@ func harnessStatusToCoreStatus(status string) agentcore.Status {
 		return agentcore.StatusIterationLimit
 	case "cancelled":
 		return agentcore.StatusCancelled
+	case string(agentcore.StatusBudgetHalted):
+		return agentcore.StatusBudgetHalted
 	default:
 		return agentcore.StatusError
 	}
+}
+
+// processOutcomeForFinal returns the FEAT-005 §27 process_outcome label for
+// a session.end record. Today only "budget_halted" is mapped explicitly;
+// other statuses leave process_outcome empty so existing semantics ("status"
+// alone) are preserved.
+func processOutcomeForFinal(status string) string {
+	if status == string(agentcore.StatusBudgetHalted) {
+		return "budget_halted"
+	}
+	return ""
 }
 
 // finalUsageToCoreTokens converts the public FinalUsage pointer form into

@@ -83,6 +83,9 @@ type NativeRequest struct {
 	Decision                  NativeDecision
 	Started                   time.Time
 	SessionID                 string
+	// CostCapUSD mirrors ServiceExecuteRequest.CostCapUSD. See
+	// internal/core.Request.CostCapUSD for the enforcement contract.
+	CostCapUSD float64
 }
 
 // NativeProviderRequest is the narrow provider-selection request that crosses
@@ -260,6 +263,7 @@ func RunNative(ctx context.Context, req NativeRequest, cb NativeCallbacks) {
 		Compactor:          compactor,
 		CachePolicy:        req.CachePolicy,
 		PlanningMode:       req.PlanningMode || req.ToolPreset == "benchmark",
+		CostCapUSD:         req.CostCapUSD,
 	}
 	result, runErr := agentcore.Run(cancelCtx, loopReq)
 	if shouldRetryNativeNoStream(req.NoStream, result, runErr) {
@@ -338,6 +342,14 @@ func RunNative(ctx context.Context, req NativeRequest, cb NativeCallbacks) {
 		}
 	case result.Status == agentcore.StatusIterationLimit:
 		final.Status = string(agentcore.StatusIterationLimit)
+	case result.Status == agentcore.StatusBudgetHalted:
+		// FEAT-005 §26-29 / AC-FEAT-005-07: per-run cost cap halt is a
+		// first-class terminal status. Surface the loop's error string so
+		// downstream logs see "running + projected >= cap".
+		final.Status = string(agentcore.StatusBudgetHalted)
+		if result.Error != nil {
+			final.Error = result.Error.Error()
+		}
 	default:
 		final.Status = "success"
 	}

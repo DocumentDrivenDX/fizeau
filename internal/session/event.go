@@ -99,6 +99,15 @@ type SessionEndData struct {
 	FailoverCount          int                     `json:"failover_count,omitempty"`
 	Metadata               map[string]string       `json:"metadata,omitempty"`
 	Error                  string                  `json:"error,omitempty"`
+	// ProcessOutcome surfaces the FEAT-005 §27 / SD-010 failure-taxonomy
+	// label for terminal events that map to a first-class outcome
+	// distinct from Status (e.g. "budget_halted"). Empty when no outcome
+	// label applies — Status alone is then authoritative.
+	ProcessOutcome string `json:"process_outcome,omitempty"`
+	// CostCapUSD echoes the per-run cost cap (when configured) onto the
+	// session.end record so post-hoc tooling can report cost-vs-cap without
+	// reading the run's request envelope. Zero or nil when no cap was set.
+	CostCapUSD *float64 `json:"cost_cap_usd,omitempty"`
 }
 
 // RoutingStickyState summarizes sticky routing behavior without exposing

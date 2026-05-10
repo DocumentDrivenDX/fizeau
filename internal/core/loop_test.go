@@ -2480,3 +2480,125 @@ func TestPlanningModeFailure(t *testing.T) {
 		}
 	}
 }
+
+// TestRun_CostCapHaltsBeforeNextRequest verifies AC-FEAT-005-07: a configured
+// per-run cost cap halts the loop deterministically BEFORE issuing the next
+// llm.request once the running known cost plus the projected next-turn cost
+// would meet or exceed the cap. We feed five turns of fixed $0.012 cost (each
+// returning a tool call so the loop continues), set CostCapUSD = $0.05, and
+// expect the loop to halt at the start of iteration 5: after iterations
+// 0..3 the running total is $0.048; projecting +$0.012 yields $0.060 >= $0.05,
+// so iteration 5's llm.request is never sent.
+func TestRun_CostCapHaltsBeforeNextRequest(t *testing.T) {
+	const perTurnCost = 0.012
+	const cap = 0.05
+
+	// Build five tool-call responses so the loop iterates without
+	// terminating naturally; the sixth would be a final-text response but
+	// we expect the cap to halt the loop before then.
+	cost := perTurnCost
+	responses := make([]Response, 0, 6)
+	for i := 0; i < 5; i++ {
+		c := cost
+		responses = append(responses, Response{
+			Content: "",
+			ToolCalls: []ToolCall{
+				{ID: "tc", Name: "read", Arguments: json.RawMessage(`{}`)},
+			},
+			Usage: TokenUsage{Input: 100, Output: 50, Total: 150},
+			Model: "test-model",
+			Attempt: &AttemptMetadata{
+				ProviderName:   "test",
+				ProviderSystem: "test",
+				ResolvedModel:  "test-model",
+				Cost: &CostAttribution{
+					Source:   CostSourceProviderReported,
+					Amount:   &c,
+					Currency: "USD",
+				},
+			},
+		})
+	}
+	// Sentinel final-text response that should NEVER fire under the cap.
+	responses = append(responses, Response{Content: "should not be reached"})
+	provider := &mockProvider{responses: responses}
+	readTool := &mockTool{name: "read", result: "ok"}
+
+	var llmRequestCount int
+	result, err := Run(context.Background(), Request{
+		Prompt:     "cost cap",
+		Provider:   provider,
+		Tools:      []Tool{readTool},
+		CostCapUSD: cap,
+		Callback: func(e Event) {
+			if e.Type == EventLLMRequest {
+				llmRequestCount++
+			}
+		},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, StatusBudgetHalted, result.Status, "expected budget_halted status")
+	assert.Equal(t, cap, result.CostCapUSD, "Result.CostCapUSD echoes Request.CostCapUSD")
+	assert.NotNil(t, result.Error, "budget_halted run must surface a non-nil error")
+	// Running cost must be at or just below cap when the gate fires.
+	// 4 turns at $0.012 = $0.048; projecting +$0.012 = $0.060 >= $0.05 cap.
+	assert.InDelta(t, 4*perTurnCost, result.CostUSD, 1e-9, "running cost should be 4 turns when gate fires")
+	// We must have issued exactly 4 llm.request events (one per completed
+	// turn) — never the 5th, which would have pushed cost past the cap.
+	assert.Equal(t, 4, llmRequestCount, "5th llm.request must NOT have been issued")
+	assert.Equal(t, 4, provider.callCount, "provider must have been called 4 times only")
+}
+
+// TestRun_CostCapDoesNotFireOnUnknownCost verifies the FEAT-005 §28 contract:
+// when turn cost is unknown, the configured cap cannot fire and the run
+// proceeds. We give the provider 3 unknown-cost turns then a terminating
+// final-text response and expect a normal StatusSuccess.
+func TestRun_CostCapDoesNotFireOnUnknownCost(t *testing.T) {
+	provider := &mockProvider{
+		responses: []Response{
+			{
+				ToolCalls: []ToolCall{{ID: "tc1", Name: "read", Arguments: json.RawMessage(`{}`)}},
+				Usage:     TokenUsage{Input: 10, Output: 5, Total: 15},
+				Model:     "unpriced-model",
+				Attempt: &AttemptMetadata{
+					ProviderName:  "test",
+					ResolvedModel: "unpriced-model",
+					Cost:          &CostAttribution{Source: CostSourceUnknown},
+				},
+			},
+			{
+				ToolCalls: []ToolCall{{ID: "tc2", Name: "read", Arguments: json.RawMessage(`{}`)}},
+				Usage:     TokenUsage{Input: 10, Output: 5, Total: 15},
+				Model:     "unpriced-model",
+				Attempt: &AttemptMetadata{
+					ProviderName:  "test",
+					ResolvedModel: "unpriced-model",
+					Cost:          &CostAttribution{Source: CostSourceUnknown},
+				},
+			},
+			{
+				Content: "done",
+				Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
+				Model:   "unpriced-model",
+				Attempt: &AttemptMetadata{
+					ProviderName:  "test",
+					ResolvedModel: "unpriced-model",
+					Cost:          &CostAttribution{Source: CostSourceUnknown},
+				},
+			},
+		},
+	}
+	readTool := &mockTool{name: "read", result: "ok"}
+
+	result, err := Run(context.Background(), Request{
+		Prompt:     "unknown cost",
+		Provider:   provider,
+		Tools:      []Tool{readTool},
+		CostCapUSD: 0.001, // tiny cap that would trip immediately if known
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status, "unknown-cost run must NOT trip the cap (FEAT-005 §28)")
+	assert.Equal(t, float64(-1), result.CostUSD, "unknown cost stays as -1 sentinel")
+	assert.Equal(t, 3, provider.callCount, "all turns must execute when cost is unknown")
+}

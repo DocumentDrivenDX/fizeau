@@ -72,7 +72,8 @@ created. See I-11.
 
 ### I-04 — Embedding doc references nonexistent `ErrNoLiveProvider` "profile-tier" prose
 - **Severity:** nit
-- **Where:** `website/content/docs/embedding/_index.md:547` (`profile-tier escalation walked the entire`)
+- **Status:** deferred — `website/**` is outside this audit pass's no-touch boundary; the source is the Go doc-comment on `ErrNoLiveProvider`. Fix by editing the comment in `errors.go` and regenerating with `make docs-embedding`.
+- **Where:** `website/content/docs/embedding/_index.md:548` (`profile-tier escalation walked the entire`)
 - **Why it matters:** Per ADR-005 / ADR-009 the term "profile" is removed from the public surface. The error doc copy still uses `profile-tier`.
 - **Proposed fix:** Regenerate embedding doc from current source (`make docs-embedding` or equivalent) — likely already supported since the file header says "generated".
 
@@ -84,52 +85,62 @@ created. See I-11.
 
 ### I-06 — FEAT-005 AC-05 references `fiz usage` but PRD non-goals say no TUI; usage CSV mode unverified against current `cmd/fiz/usage.go`
 - **Severity:** info
+- **Status:** RESOLVED — CSV mode confirmed present in the generated CLI reference (`website/content/docs/cli/fiz_usage.md` lists `--csv  Output CSV`). Verification: `grep -n -- '--csv' website/content/docs/cli/fiz_usage.md`.
 - **Where:** `FEAT-005-logging-and-cost.md` AC-FEAT-005-05 promises "table, JSON, and CSV output modes"; the website CLI ref for `fiz_usage.md` was not opened in this pass — needs verification.
 - **Proposed fix:** Verify CSV mode exists and add a sanity test, or amend AC-05 to drop CSV.
 
 ### I-07 — `--preset` flag on root `fiz` command not reflected in FEAT-006
 - **Severity:** nit
+- **Status:** RESOLVED — extended AC-FEAT-006-06 to enumerate the accepted root-flag set (including `--preset`, `--system`, `--reasoning`, `--harness`, `--provider`, `--model`, `--policy`, `--min-power`, `--max-power`, `--max-iter`, `--work-dir`, `--allow-deprecated-model`, `--list-models`, `--json`).
 - **Where:** `website/content/docs/cli/_index.md` shows `--preset string` on root `fiz`, but `FEAT-006-standalone-cli.md` AC-FEAT-006-06 explicitly says `--profile/--model-ref/--backend` are removed/rejected with no mention of `--preset`. The tools doc (`website/content/docs/tools/_index.md`) calls preset "**prompt preset**" (system prompt selection). FEAT-006 does not enumerate `--preset` as an accepted flag at all.
 - **Proposed fix:** Add an AC line to FEAT-006 covering `--preset` (and `--system`, `--reasoning`, `--harness`, `--provider`, `--model`, `--max-iter`, `--allow-deprecated-model`, `--list-models`, `--work-dir`) so the AC matrix matches the help text the CLI emits.
 
 ### I-08 — FEAT-001 AC numbering gap and out-of-order
 - **Severity:** nit
+- **Status:** RESOLVED — swapped AC-FEAT-001-09 and -10 rows so IDs now ascend monotonically 01..10.
 - **Where:** `FEAT-001-agent-loop.md` AC table lists 01, 02, 03, 04, 05, 06, 07, 08, **10**, 09 — `09` appears after `10` and the order is broken. AC-FEAT-001-09 is the tool-call-loop detector.
 - **Proposed fix:** Reorder so IDs ascend monotonically; or mint 01..10 with no gap.
 
 ### I-09 — PRD success metric "Cost per bead (blended) <$0.05" depends on a `fiz usage` cost-per-bead aggregator that is not specced anywhere
 - **Severity:** info
+- **Status:** deferred — needs a feature decision (drop the metric or add a bead-tag aggregation AC). See `FEAT-005-logging-and-cost.md`.
 - **Where:** `prd.md` Success Metrics row 3 says measurement = `fiz usage` report, but neither FEAT-005 nor FEAT-006 specifies a "cost per bead" rollup; usage rollup is per-provider/model/time-window.
 - **Proposed fix:** Either drop the metric, or write a one-liner AC under FEAT-005 covering bead-tag aggregation.
 
 ### I-10 — PRD lists "Streaming callbacks — Implemented" / "Compaction — Implemented" inline as P1 status badges
 - **Severity:** nit
+- **Status:** RESOLVED — stripped the three inline `**Implemented**` badges from PRD P1 entries (System prompt composition, Streaming callbacks, Conversation compaction). Verification: `grep -n 'Implemented' docs/helix/01-frame/prd.md` now returns nothing.
 - **Where:** `prd.md:148-164`
 - **Why it matters:** PRD is the *requirements* doc; status belongs in a tracker (beads, the iteration metrics file). Status badges on the PRD will rot.
 - **Proposed fix:** Remove "**Implemented**" tags from PRD; track status in `06-iterate/metrics/test-coverage.yaml` or a status table maintained outside the PRD.
 
 ### I-11 — No `03-test/`, `04-build/`, `05-deploy/` HELIX stage directories exist
 - **Severity:** info
+- **Status:** deferred — architectural decision (flatten HELIX vs. populate stages). Track via PRD/concerns evolution, not a mechanical fix.
 - **Where:** `docs/helix/` has only `00-discover/`, `01-frame/`, `02-design/`, `06-iterate/`. PRD line 248-249 references "feature specs in docs/helix/01-frame/features/FEAT-00X-*.md" for AC, which is fine, but the ghostly forward-stages mean the PRD's "downstream test plan / build plan" assumption is unfulfilled.
 - **Proposed fix:** Either (a) commit to a flat HELIX (drop the 03/04/05 prose from the PRD/concerns), or (b) add stage skeletons.
 
 ### I-12 — `CONTRACT-002` is missing from the contracts directory
 - **Severity:** info
+- **Status:** deferred — needs an authorial decision (write `CONTRACT-002-RETIRED.md` stub vs. renumber 003 → 002). Not a mechanical fix.
 - **Where:** `docs/helix/02-design/contracts/` contains `CONTRACT-001`, `CONTRACT-003`. No `CONTRACT-002`.
 - **Proposed fix:** Document the gap (was 002 retired? renumbered? renamed?). Either re-add as a stub `CONTRACT-002-RETIRED.md` or renumber 003 → 002.
 
 ### I-13 — Plan `plan-2026-04-08-rename-agent.md` title is broken ("Rename DDX Agent to DDX Agent")
 - **Severity:** nit
+- **Status:** deferred — the rename plan is a historical artifact preserved as-is per the I-01 sweep policy (and per the present audit's no-touch guardrail on `plan-2026-04-08-rename-agent.md`). The broken self-titling is now a known intentional historical curio.
 - **Where:** Header line of the plan
 - **Proposed fix:** Title should be "Rename DDX Agent to Fizeau"; the plan's own subject got partially renamed before it could be applied.
 
 ### I-14 — `architecture.md` — line 51 says "CLI module: `cmd/fiz` and `agentcli`" but `agentcli/` is a top-level dir under repo root, not under `cmd/`
 - **Severity:** nit
+- **Status:** RESOLVED — clarified: header now reads "CLI module: `cmd/fiz` and the top-level `agentcli` package".
 - **Where:** `docs/helix/02-design/architecture.md:51`
 - **Proposed fix:** Clarify that `agentcli` is a sibling Go package, not under `cmd/`.
 
 ### I-15 — Inconsistent provider name aliases: `agent.openai` / `agent.anthropic` in SD-005 examples
 - **Severity:** blocker (config copy-paste will not work)
+- **Status:** RESOLVED — replaced both `agent.openai` occurrences in the SD-005 catalog example with `fizeau.openai` (the current consumer-surface namespace). Verification: `grep -n 'agent\\.openai' docs/helix/02-design/solution-designs/SD-005-provider-config.md` returns nothing.
 - **Where:** `SD-005-provider-config.md:226`, `:234`
 - **Why it matters:** The provider-system identity is `openai-compat` / `anthropic` per FEAT-003-AC-01 (which **rejects** `openai-compat` as a provider identity? — see I-16); the dotted-namespace `agent.openai` reflects the old `agent.openai` shared-catalog provider-surface naming that was renamed to `fizeau.openai` (or no namespace at all) during the rename. Code uses provider system strings.
 - **Proposed fix:** Update SD-005 example YAML to current provider system and surface names; cross-link to the live provider list (`fiz providers`).
@@ -142,43 +153,51 @@ created. See I-11.
 
 ### I-17 — FEAT-004 AC-08 ("Removed v0.10 names not advertised") vs. `agent.openai`/`agent.anthropic` still appearing in SD-005, SD-007 examples
 - **Severity:** nit
+- **Status:** RESOLVED — SD-005 examples updated under I-15 (`agent.openai` → `fizeau.openai`). SD-007 has no remaining `agent.{openai,anthropic}` literals. Verification: `grep -rn 'agent\\.\\(openai\\|anthropic\\)' docs/helix/02-design/solution-designs/` returns nothing.
 - **Where:** Cross-reference of FEAT-004-AC-08 with SD-005 / SD-007
 - **Proposed fix:** Either gate examples on a "legacy-pre-v0.11" notice block or rewrite to v0.11 names.
 
 ### I-18 — SD-002 says project config search is `.agent/config.yaml` (line 73) but PRD line 36 / website say `.fizeau/`
 - **Severity:** blocker (specced search path does not exist)
+- **Status:** RESOLVED — SD-002's config-search list already names `~/.config/fizeau/config.yaml` and `.fizeau/config.yaml` (lines 72-73). This pass also fixed the residual `--model-ref` flag at line 76 (now `--policy`) per ADR-009. Verification: `grep -n '\\.agent/\\|model-ref' docs/helix/02-design/solution-designs/SD-002-standalone-cli.md` returns nothing.
 - **Where:** `SD-002-standalone-cli.md:71-75`
 - **Proposed fix:** Update SD-002 config-search list to: `~/.config/fizeau/config.yaml`, `.fizeau/config.yaml`, `FIZEAU_*` env, `--flags`. Same as I-05.
 
 ### I-19 — `harness-golden-integration.md` uses `cmd/ddx-agent` (legacy)
 - **Severity:** nit
+- **Status:** RESOLVED — already clean after the I-01 sweep. Verification: `grep -n 'ddx-agent\\|cmd/ddx' docs/helix/02-design/harness-golden-integration.md` returns nothing.
 - **Where:** `02-design/harness-golden-integration.md`
 - **Proposed fix:** Rename to `cmd/fiz`.
 
 ### I-20 — ADR-007 references `catalog_version` bumps and `min_agent_version` field
 - **Severity:** info
+- **Status:** RESOLVED — verified that no such field exists in `internal/modelcatalog/` today (`grep -rn 'MinAgentVersion\\|MinFizeauVersion\\|min_agent_version\\|min_fizeau_version' internal/modelcatalog/` is empty). Updated the ADR-007 prose to use `min_fizeau_version` and to flag the field as forward-looking ("no such field exists in `internal/modelcatalog/` today").
 - **Where:** `ADR-007-sampling-profiles-in-catalog.md:84,86`
 - **Why it matters:** Field name `min_agent_version` should likely be `min_fizeau_version` if the catalog manifest is fizeau-owned. Not yet checked against the actual schema in `internal/modelcatalog/`.
 - **Proposed fix:** Confirm field name in code and update ADR or schema accordingly.
 
 ### I-21 — PRD non-goal "**MCP server** — Fizeau provides tools directly, not via MCP" vs. wozcode competitive-analysis hints at MCP integration
 - **Severity:** info
+- **Status:** deferred — strategic/product direction; revisit only if/when an MCP ADR is opened.
 - **Where:** `prd.md:78`, `00-discover/competitive-analysis/wozcode-plugin-2026-05-03.md`
 - **Proposed fix:** No fix yet — but if MCP becomes a real direction, the PRD non-goal should be reconsidered explicitly via an ADR.
 
 ### I-22 — `FEAT-006` AC-08 mentions "DDx harness mode" — still references the parent-product DDx by name
 - **Severity:** info
+- **Status:** RESOLVED — confirmed intentional. "DDx" is the parent build-orchestrator product (capitalized DDx) that consumes Fizeau as a harness backend; the FEAT-006 AC-08 reference is correct and load-bearing.
 - **Where:** `FEAT-006-standalone-cli.md` AC-FEAT-006-08
 - **Why it matters:** This is correct as-is (DDx is the parent build orchestrator that consumes Fizeau as a harness backend), but worth flagging because of the global naming churn — confirm that "DDx" the product is the intended capitalization.
 - **Proposed fix:** None; document the convention.
 
 ### I-23 — Concerns / risks around "local model context window too small" in PRD (Risks table) is not threaded into FEAT-004 routing
 - **Severity:** info
+- **Status:** deferred — needs a new AC in `FEAT-004-model-routing.md` covering the `EstimatedPromptTokens` gate (field exists in `service.go:694`). Out of scope for the nit-sweep cap.
 - **Where:** `prd.md:316`, FEAT-004 has no AC covering the auto-escalation behavior promised in the risk mitigation
 - **Proposed fix:** Add an AC to FEAT-004 covering `EstimatedPromptTokens`-driven gate (the field already exists in `ServiceExecuteRequest:694`).
 
 ### I-24 — Alignment-review history (8 AR docs) all written before the rename and never re-issued under the new name
 - **Severity:** info
+- **Status:** RESOLVED — historical AR docs are dated snapshots and intentionally preserved. This audit (`alignment-audit-2026-05-10.md`) is the canonical post-rename entry.
 - **Where:** `06-iterate/alignment-reviews/AR-2026-04-*.md`
 - **Proposed fix:** None to historical AR docs (they are dated snapshots). But the next AR (this one) should be filed as the canonical post-rename entry.
 
@@ -195,3 +214,13 @@ shipped in code but did not shipping in the spec corpus**. A single
 mechanical pass would resolve I-01, I-02, I-05, I-13, I-14, I-15, I-17,
 I-18, I-19. The remaining items (I-03, I-04, I-06..I-12, I-16, I-20..I-24)
 need targeted edits with code-truth verification, not blind rewrite.
+
+### 2026-05-10 nit-sweep update
+
+Closed in this pass (RESOLVED): I-06, I-07, I-08, I-10, I-14, I-15, I-17,
+I-18 (residual `--model-ref` flag), I-19, I-20, I-22, I-24.
+Reclassified as deferred (needs feature/spec work or out of audit scope):
+I-04 (website regen), I-09 (cost-per-bead AC), I-11 (HELIX stage decision),
+I-12 (CONTRACT-002 gap), I-13 (historical artifact preserve-as-is), I-21
+(MCP direction), I-23 (FEAT-004 EstimatedPromptTokens AC).
+Verification: `make rename-noise-check` clean post-edits.

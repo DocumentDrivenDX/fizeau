@@ -29,7 +29,7 @@ github.com/DocumentDrivenDX/agent/compaction    93.5%
 
 | Package Pattern | Floor | Tolerance | Auto-bump Threshold |
 |-----------------|-------|-----------|---------------------|
-| `ddx-agent` (root) | 75% | 2% | 85% |
+| `fizeau` (root) | 75% | 2% | 85% |
 | `*/compaction` | 80% | 2% | 90% |
 | `*/prompt` | 80% | 2% | 90% |
 | `*/tool` | 75% | 2% | 85% |

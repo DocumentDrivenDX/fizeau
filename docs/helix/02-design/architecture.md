@@ -48,7 +48,7 @@ session-log persistence.
 
 ## Module Boundaries
 
-### 1. CLI module: `cmd/fiz` and `agentcli`
+### 1. CLI module: `cmd/fiz` and the top-level `agentcli` package
 
 Responsibilities:
 

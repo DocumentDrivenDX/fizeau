@@ -661,6 +661,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 		ProviderTimeout:           req.ProviderTimeout,
 		Timeout:                   req.Timeout,
 		CachePolicy:               req.CachePolicy,
+		CostCapUSD:                req.CostCapUSD,
 		StallMaxReadOnlyIteration: stallMaxReadOnlyIterations,
 		Metadata:                  meta,
 		Decision:                  nativeDecision(decision),

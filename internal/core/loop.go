@@ -33,6 +33,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		RequestedModel:   req.RequestedModel,
 		ResolvedModel:    req.ResolvedModel,
 		Reasoning:        req.Reasoning,
+		CostCapUSD:       req.CostCapUSD,
 	}
 
 	if req.Provider == nil {
@@ -128,6 +129,19 @@ func Run(ctx context.Context, req Request) (Result, error) {
 	const toolCallLoopLimit = 3
 	var lastToolCallFingerprint string
 	consecutiveToolCallCount := 0
+
+	// Per-run cost cap state (FEAT-005 §26-29 / AC-FEAT-005-07). Zero or
+	// negative req.CostCapUSD disables the gate. lastTurnKnownCostUSD is the
+	// most recent turn's known cost — used as a conservative projection for
+	// the next turn so the cap fires *before* the first turn that would
+	// exceed the cap, not after. anyUnknownCostObserved is set when at least
+	// one turn returned an unknown cost: per spec §28 the cap cannot fire in
+	// that case (the run proceeds), but we surface a warning so operators can
+	// see why the cap was inert.
+	var (
+		lastTurnKnownCostUSD   float64
+		anyUnknownCostObserved bool
+	)
 
 	compactionCtx := ctx
 	if req.SystemPrompt != "" {
@@ -297,6 +311,29 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			snapshotMessages()
 			emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
 			return result, nil
+		}
+
+		// Per-run cost cap check (FEAT-005 §26-28 / AC-FEAT-005-07). Halt
+		// BEFORE issuing the next llm.request when the running known cost plus
+		// the projected next turn cost would meet or exceed the cap. Skipped
+		// on iteration 0 (no observed turn yet to project from), and skipped
+		// when any prior turn reported unknown cost (the cap cannot fire on
+		// unknown cost — see spec §28). result.CostUSD < 0 sentinel also means
+		// unknown.
+		if req.CostCapUSD > 0 && iteration > 0 && !anyUnknownCostObserved && sessionCostKnown {
+			projected := result.CostUSD + lastTurnKnownCostUSD
+			if projected >= req.CostCapUSD {
+				slog.Warn("cost cap reached: halting before next llm.request",
+					"running_cost_usd", result.CostUSD,
+					"projected_next_cost_usd", lastTurnKnownCostUSD,
+					"cap_usd", req.CostCapUSD)
+				result.Status = StatusBudgetHalted
+				result.Duration = time.Since(start)
+				result.Error = fmt.Errorf("agent: cost cap reached: $%.4f running + $%.4f projected >= $%.4f cap", result.CostUSD, lastTurnKnownCostUSD, req.CostCapUSD)
+				snapshotMessages()
+				emitFinalSessionEnd(req.Callback, sessionID, &seq, req.Provider, &result, req.Metadata)
+				return result, nil
+			}
 		}
 
 		// Check context cancellation
@@ -471,10 +508,21 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				if sessionCostKnown {
 					result.CostUSD += iterCost
 				}
+				// Track this turn's known cost so the next-iteration cap gate
+				// can project the upcoming turn conservatively.
+				lastTurnKnownCostUSD = iterCost
 			} else {
 				sessionCostObserved = true
 				sessionCostKnown = false
 				result.CostUSD = -1
+				// Per FEAT-005 §28 / AC-FEAT-005-07: cap cannot fire when any
+				// turn returned unknown cost. Surface a one-shot warning the
+				// first time so operators know the configured cap is inert.
+				if req.CostCapUSD > 0 && !anyUnknownCostObserved {
+					slog.Warn("cost cap configured but turn cost is unknown — cap will not fire (FEAT-005 §28)",
+						"cap_usd", req.CostCapUSD)
+				}
+				anyUnknownCostObserved = true
 			}
 
 			if chatMetricsRecorder != nil {

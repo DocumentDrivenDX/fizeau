@@ -73,7 +73,7 @@ fiz usage --since=7d         # with time window
 3. Project config: `.fizeau/config.yaml`
 4. Environment variables: `FIZEAU_PROVIDER`, `FIZEAU_BASE_URL`, `FIZEAU_API_KEY`,
    `FIZEAU_MODEL`
-5. CLI flags: `--provider`, `--model`, `--model-ref`, `--max-iter`,
+5. CLI flags: `--provider`, `--model`, `--policy`, `--max-iter`,
    `--work-dir`
 
 Later sources override earlier ones.

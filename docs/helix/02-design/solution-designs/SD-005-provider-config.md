@@ -223,7 +223,7 @@ models:
     cost_output_per_m: 0.30
     context_window: 262144
     surfaces:
-      agent.openai: qwen3.5-27b
+      fizeau.openai: qwen3.5-27b
 targets:
   code-work:
     family: coding
@@ -231,7 +231,7 @@ targets:
     context_window_min: 131072
     candidates: [qwen3.5-27b]
     surface_policy:
-      agent.openai:
+      fizeau.openai:
         reasoning_default: off
 ```
 

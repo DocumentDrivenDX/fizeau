@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -139,6 +140,11 @@ func runWithOptions(opts Options) int {
 	presetFlag := fs.String("preset", "", "System prompt preset: default, smart, cheap, minimal, benchmark")
 	planFlag := fs.Bool("plan", false, "Run a no-tool planning turn before the main loop (auto-enabled by --preset benchmark)")
 	anchorsFlag := fs.Bool("anchors", false, "Enable anchored read output and the anchor_edit tool")
+	// FEAT-005 §26-29 / AC-FEAT-005-07: per-run cost cap. Zero (the default)
+	// means no cap. Env override FIZEAU_COST_CAP_USD applies when the flag is
+	// not explicitly set, so scripts can configure a global cap without
+	// edit­ing every invocation.
+	costCapUSDFlag := fs.Float64("cost-cap-usd", 0, "Per-run cost cap in USD; halts the loop with status=budget_halted before the next request when running + projected cost reaches this limit (0 = no cap; env: FIZEAU_COST_CAP_USD)")
 
 	if err := fs.Parse(cliArgs); err != nil {
 		return 2
@@ -265,6 +271,21 @@ func runWithOptions(opts Options) int {
 	iterations := cfg.MaxIterations
 	if *maxIter > 0 {
 		iterations = *maxIter
+	}
+
+	// Resolve per-run cost cap. Precedence: explicit --cost-cap-usd flag wins;
+	// otherwise FIZEAU_COST_CAP_USD env var applies. Empty / unparseable env
+	// is silently ignored (no cap). Negative values are clamped to zero.
+	costCapUSD := *costCapUSDFlag
+	if !flagWasSet(fs, "cost-cap-usd") {
+		if env := strings.TrimSpace(os.Getenv("FIZEAU_COST_CAP_USD")); env != "" {
+			if parsed, err := strconv.ParseFloat(env, 64); err == nil && parsed > 0 {
+				costCapUSD = parsed
+			}
+		}
+	}
+	if costCapUSD < 0 {
+		costCapUSD = 0
 	}
 
 	anchorsEnabled := cfg.Anchors || *anchorsFlag
@@ -397,6 +418,7 @@ func runWithOptions(opts Options) int {
 		MaxIterations:           iterations,
 		MaxTokens:               resolvedMaxTokens,
 		ReasoningByteLimit:      cfg.ReasoningByteLimit,
+		CostCapUSD:              costCapUSD,
 		CompactionContextWindow: resolvedContextWindow,
 		CompactionReserveTokens: compactionCfg.ReserveTokens,
 		Temperature:             sTemp,
@@ -434,12 +456,23 @@ func runWithOptions(opts Options) int {
 	fmt.Fprintf(os.Stderr, "[%s] tokens: %d in / %d out", result.Status, result.Tokens.Input, result.Tokens.Output)
 	if result.CostUSD > 0 {
 		fmt.Fprintf(os.Stderr, " | cost: $%.4f", result.CostUSD)
+		if costCapUSD > 0 {
+			fmt.Fprintf(os.Stderr, " / cap $%.4f", costCapUSD)
+		}
+	} else if costCapUSD > 0 {
+		// Cap configured but cost still 0 — print the cap so operators see
+		// it even on free / unknown-cost runs.
+		fmt.Fprintf(os.Stderr, " | cap $%.4f", costCapUSD)
 	}
 	fmt.Fprintln(os.Stderr)
 
 	switch result.Status {
 	case "success", "iteration_limit":
 		return 0
+	case "budget_halted":
+		// FEAT-005 §27 / AC-FEAT-005-07: distinct non-zero exit code so
+		// scripts can branch on a budget halt vs other failures.
+		return 2
 	default:
 		return 1
 	}
@@ -555,6 +588,10 @@ type serviceExecuteRequestParams struct {
 	CompactionContextWindow int
 	CompactionReserveTokens int
 
+	// CostCapUSD is the per-run cost cap (USD). Zero means no cap. Threaded
+	// straight into ServiceExecuteRequest.CostCapUSD; see FEAT-005 §26-29.
+	CostCapUSD float64
+
 	// Sampling overrides. Nil/zero means leave-unset (let the request flow
 	// through the harness's effective defaults: today, Temperature is
 	// always sent as 0; the rest are unset).
@@ -639,6 +676,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 		ReasoningByteLimit:      params.ReasoningByteLimit,
 		CompactionContextWindow: params.CompactionContextWindow,
 		CompactionReserveTokens: params.CompactionReserveTokens,
+		CostCapUSD:              params.CostCapUSD,
 		SelectedRoute:           params.SelectedRoute,
 		Temperature:             params.Temperature,
 		TopP:                    params.TopP,
@@ -657,6 +695,20 @@ func derefInt(v *int) int {
 		return 0
 	}
 	return *v
+}
+
+// flagWasSet reports whether the flag with the given name was explicitly
+// provided on the command line. Used to give explicit flag values precedence
+// over environment-variable fallbacks (e.g. --cost-cap-usd over
+// FIZEAU_COST_CAP_USD).
+func flagWasSet(fs *flag.FlagSet, name string) bool {
+	set := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
 }
 
 func normalizeRunSubcommand(args []string) (bool, []string) {
