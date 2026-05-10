@@ -53,6 +53,8 @@ regen_one() {
 # branch in regen.py.
 regen_one quickstart   "list go files in ."
 
+regen_one cost-cap-halt "fiz --cost-cap-usd 0.005 -p 'add a doc comment to each .go file in this directory (one at a time)'"
+
 regen_one file-read    "Read main.go and explain what this program does"
 regen_one file-edit    "Read config.yaml, change the server port from 8080 to 9090, then verify"
 regen_one bash-explore "List all Go files in this project and summarize the package structure"

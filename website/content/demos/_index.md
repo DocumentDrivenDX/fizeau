@@ -19,6 +19,28 @@ self-update, and structured observability) and require no LLM at all.
 > speed. The threshold (default: any LLM turn over 8 seconds) is set via
 > `FIZEAU_LATENCY_THRESH` in `make demos-regen`.
 
+## Cost cap halts the loop mid-run
+
+`fiz run --cost-cap-usd 0.005 -p '<task>'` walks each iteration's running
+cost against the cap and refuses to issue the next `llm.request` once
+projected cost would cross the line. Status `budget_halted`, exit code `2`.
+Demoed against a tiny scratch repo with a per-file editing task that
+naturally takes more than `$0.005` of Qwen3.6-27B time.
+
+<script src="https://asciinema.org/a/demo.js" id="asciicast-cost-cap-halt" async data-src="/fizeau/demos/cost-cap-halt.cast" data-cols="100" data-rows="30"></script>
+<noscript>
+
+```
+$ fiz --cost-cap-usd 0.005 -p 'add a doc comment to each .go file (one at a time)'
+
+Let me read each file to understand its purpose, then add the doc comments one by one.
+[budget_halted] tokens: 4665 in / 613 out
+```
+
+</noscript>
+
+> **Origin:** OpenRouter (qwen/qwen3.6-27b). Captured 2026-05-10. Real spend: $0.0035 of $0.005 cap.
+
 ## Quickstart — install fiz, run a query, no GPU
 
 The literal end-to-end "getting started" flow: install the binary,
