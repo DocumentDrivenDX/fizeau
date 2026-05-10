@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
-	reasoningpolicy "github.com/DocumentDrivenDX/fizeau/internal/reasoning"
-	"github.com/DocumentDrivenDX/fizeau/internal/sdk/openaicompat"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/provider/quotaheaders"
+	reasoningpolicy "github.com/easel/fizeau/internal/reasoning"
+	"github.com/easel/fizeau/internal/sdk/openaicompat"
 	"github.com/openai/openai-go/option"
 )
 

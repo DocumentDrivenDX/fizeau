@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/provider/quotaheaders"
 	oai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"

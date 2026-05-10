@@ -6,7 +6,7 @@
 // surface area minimal), so external callers cannot import it directly. They
 // import this package with a blank import instead:
 //
-//	import _ "github.com/DocumentDrivenDX/fizeau/configinit"
+//	import _ "github.com/easel/fizeau/configinit"
 //
 // With this import in place, agent.New(opts) can auto-load configuration when
 // opts.ServiceConfig is nil but opts.ConfigPath is set, without requiring the
@@ -19,5 +19,5 @@ import (
 	// Triggers internal/config's init() which calls
 	// agent.RegisterConfigLoader, installing the directory-based loader used
 	// by agent.New when opts.ServiceConfig is nil.
-	_ "github.com/DocumentDrivenDX/fizeau/internal/config"
+	_ "github.com/easel/fizeau/internal/config"
 )

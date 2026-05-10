@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 const PiModelDiscoveryFreshnessWindow = 24 * time.Hour

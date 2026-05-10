@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // Index describes a published catalog bundle location.

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 func TestRunner_Info(t *testing.T) {

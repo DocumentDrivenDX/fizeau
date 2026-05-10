@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	agentConfig "github.com/easel/fizeau/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -1,4 +1,4 @@
-module github.com/DocumentDrivenDX/fizeau/website
+module github.com/easel/fizeau/website
 
 go 1.26.2
 

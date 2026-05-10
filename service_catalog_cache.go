@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
+	"github.com/easel/fizeau/internal/provider/openai"
 	"golang.org/x/sync/singleflight"
 )
 

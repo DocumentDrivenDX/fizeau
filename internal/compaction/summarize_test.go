@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

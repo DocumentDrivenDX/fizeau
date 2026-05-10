@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 const defaultRouteHealthCooldown = 30 * time.Second

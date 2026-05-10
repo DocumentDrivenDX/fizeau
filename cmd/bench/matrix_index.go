@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
-	"github.com/DocumentDrivenDX/fizeau/internal/fiztools"
+	"github.com/easel/fizeau/internal/benchmark/profile"
+	"github.com/easel/fizeau/internal/fiztools"
 )
 
 type matrixIndexRow struct {

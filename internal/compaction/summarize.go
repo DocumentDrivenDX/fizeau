@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // Summarization system prompt — prevents the model from continuing the conversation.

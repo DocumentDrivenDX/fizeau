@@ -3,7 +3,7 @@ package fizeau
 import (
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/quota"
+	"github.com/easel/fizeau/internal/quota"
 )
 
 // ProviderQuotaState is the state of one provider in the quota state machine.

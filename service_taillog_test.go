@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 // extractSessionID reads the session_id field from the routing_decision event.

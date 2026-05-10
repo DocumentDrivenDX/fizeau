@@ -69,3 +69,4 @@ coverage.html
 # Local root build artifacts
 /fiz
 /bench-fixed
+.venv-report

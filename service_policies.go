@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 func (s *service) ListPolicies(_ context.Context) ([]PolicyInfo, error) {

@@ -3,7 +3,7 @@ package fizeau
 import (
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 type testServiceOption func(*service)

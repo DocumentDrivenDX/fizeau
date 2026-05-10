@@ -1,0 +1,475 @@
+/* ====================================================================
+ * Fizeau — site-wide design overlay (Hugo + Hextra)
+ * Single source of truth for tokens: website/DESIGN.md
+ *
+ * Goals:
+ *   - Make text readable. No body text under 14 px.
+ *   - Land the "scientific instrument" aesthetic (mono headings, hairline
+ *     rules, two-saturated-accent palette, no shadows).
+ *   - Use CSS custom properties so light/dark and the report's scoped CSS
+ *     can both read the same tokens.
+ * ==================================================================== */
+
+/* ---- font loading ---- */
+
+@import url("https://rsms.me/inter/inter.css");
+@import url("https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@v2.304/css/jetbrains-mono.css");
+
+/* ---- design tokens ---- */
+
+:root {
+  /* surfaces */
+  --surface-page:    #fbfaf6;
+  --surface-panel:   #ffffff;
+  --surface-sunken:  #f1eee6;
+
+  /* ink */
+  --ink-primary:    #0e1116;
+  --ink-secondary:  #454a52;
+  --ink-tertiary:   #7d838c;
+
+  /* rules */
+  --rule:         #d6d3ca;
+  --rule-strong:  #b3afa2;
+
+  /* accents */
+  --accent-cyan:   #0a8e8e;
+  --accent-amber:  #c46a00;
+  --accent-green:  #1f7a3f;
+  --accent-red:    #b22b2b;
+  --accent-violet: #5e3aa8;
+
+  /* fonts */
+  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono",
+               ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* type scale */
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5625rem;
+  --text-3xl:  1.953rem;
+  --text-4xl:  2.441rem;
+
+  /* spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* radii */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+}
+
+.dark {
+  --surface-page:   #0a0e14;
+  --surface-panel:  #10151d;
+  --surface-sunken: #070a0f;
+
+  --ink-primary:   #e6edf3;
+  --ink-secondary: #9ea7b3;
+  --ink-tertiary:  #5e6772;
+
+  --rule:        #1e2530;
+  --rule-strong: #3a4250;
+
+  --accent-cyan:   #4dd4cf;
+  --accent-amber:  #ffb454;
+  --accent-green:  #7ce38b;
+  --accent-red:    #ff7b7b;
+  --accent-violet: #a78bfa;
+}
+
+/* ---- baseline ---- */
+
+html, body {
+  background: var(--surface-page);
+  color: var(--ink-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;        /* hard floor — Hextra sometimes drops this on mobile */
+  font-feature-settings: "ss01", "cv01", "cv11";  /* Inter stylistic sets */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Hextra's prose container */
+article, .hextra-content, main {
+  font-size: var(--text-base);
+  line-height: 1.65;
+  color: var(--ink-primary);
+}
+
+article p, main p {
+  font-size: var(--text-base);
+  max-width: 70ch;
+}
+
+article a, main a {
+  color: var(--accent-cyan);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+article a:hover, main a:hover {
+  text-decoration-thickness: 2px;
+}
+
+article code, main code,
+.hextra-content code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-sunken);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+/* fenced code blocks: keep Hextra/highlight chrome but enforce mono + size */
+article pre, main pre, .hextra-content pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  background: var(--surface-sunken) !important;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+article pre code, main pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+/* ---- headings ---- */
+
+h1, h2, h3, h4, h5, h6,
+.hextra-content h1, .hextra-content h2, .hextra-content h3,
+article h1, article h2, article h3 {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+  line-height: 1.25;
+}
+
+h1, article h1 { font-size: var(--text-3xl); margin-top: var(--space-7); margin-bottom: var(--space-5); }
+h2, article h2 { font-size: var(--text-2xl); margin-top: var(--space-7); margin-bottom: var(--space-4);
+                 padding-bottom: var(--space-2); border-bottom: 1px solid var(--rule-strong); }
+h3, article h3 { font-size: var(--text-xl);  margin-top: var(--space-5); margin-bottom: var(--space-3); }
+h4, h5, h6     { font-size: var(--text-lg);  margin-top: var(--space-4); margin-bottom: var(--space-2); }
+
+/* ---- navbar (Hextra) ---- */
+
+.hextra-nav-container {
+  background: var(--surface-page);
+  border-bottom: 1px solid var(--rule);
+  backdrop-filter: none;       /* lose the gauzy blur Hextra ships with */
+}
+
+.hextra-nav-container a,
+.hextra-nav-container .nx-text-base {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: -0.005em;
+  color: var(--ink-primary);
+}
+
+.hextra-nav-container a:hover {
+  color: var(--accent-cyan);
+}
+
+/* brand title in navbar */
+.hextra-nav-container [class*="logo"], .hextra-nav-container .nx-font-bold {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+/* ---- left sidebar (docs) ---- */
+
+aside, .nextra-sidebar, [class*="sidebar"] {
+  border-right: 1px solid var(--rule);
+}
+aside a, .nextra-sidebar a {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--ink-secondary);
+}
+aside a:hover, .nextra-sidebar a:hover {
+  color: var(--accent-cyan);
+}
+aside a.active, .nextra-sidebar a[aria-current="page"] {
+  color: var(--accent-cyan);
+  font-weight: 500;
+}
+
+/* ---- right TOC ---- */
+
+.toc, [class*="toc"] {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* ---- hero (homepage) ---- */
+
+.hextra-hero, [class*="hero-headline"] {
+  font-family: var(--font-mono) !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.02em !important;
+}
+
+[class*="hero-subtitle"] {
+  font-family: var(--font-sans);
+  color: var(--ink-secondary);
+  font-size: var(--text-lg);
+}
+
+/* feature grid card */
+[class*="feature-card"] {
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  box-shadow: none !important;
+}
+[class*="feature-card"]:hover {
+  border-color: var(--accent-cyan);
+}
+[class*="feature-card"] h3,
+[class*="feature-card"] [class*="title"] {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--text-lg);
+}
+[class*="feature-card"] p,
+[class*="feature-card"] [class*="subtitle"] {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--ink-secondary);
+}
+
+/* hero badge */
+[class*="hero-badge"] {
+  background: var(--surface-sunken);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-secondary);
+  box-shadow: none !important;
+}
+
+/* hero button */
+[class*="hero-button"] {
+  background: var(--accent-cyan);
+  color: var(--surface-page);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-5);
+}
+
+/* ---- footer ---- */
+
+footer, .hextra-footer {
+  border-top: 1px solid var(--rule);
+  background: var(--surface-page);
+  font-family: var(--font-sans);
+  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* ---- benchmark-report scoped overrides (.br-body) ---- */
+
+/* The report's REPORT_CSS injects .br-body styling. We override here so it
+ * inherits the design tokens and text sizes are humane. */
+
+.br-body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  color: var(--ink-primary);
+}
+
+.br-body h2 {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 500;
+  margin-top: var(--space-7);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--rule-strong);
+  letter-spacing: -0.01em;
+}
+
+.br-body h3 {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  margin-top: var(--space-5);
+  letter-spacing: -0.01em;
+}
+
+.br-body table {
+  font-size: var(--text-sm);              /* up from 12 px to 14 px */
+  font-family: var(--font-mono);
+  border: 1px solid var(--rule);
+  background: var(--surface-panel);
+  width: 100%;
+}
+.br-body th, .br-body td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--text-sm);
+}
+.br-body th {
+  background: var(--surface-sunken);
+  border-bottom: 2px solid var(--rule-strong);
+  font-weight: 500;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-secondary);
+}
+.br-body tr:hover td {
+  background: var(--surface-sunken);
+}
+.br-body tr.external td {
+  color: var(--ink-secondary);
+  background: transparent;
+}
+.br-body tr.section-divider td {
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-secondary);
+}
+
+.br-body .meta {
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);              /* up from 12 px */
+  font-family: var(--font-mono);
+}
+
+.br-body .pill {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-secondary);
+}
+.br-body .pill.warn {
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+}
+
+.br-body .profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.br-body .profile-card {
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  font-size: var(--text-sm);
+}
+.br-body .profile-card h4 {
+  margin: 0 0 var(--space-2) 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);              /* up from 14 px */
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+.br-body .profile-card .desc {
+  color: var(--ink-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);                /* up from 12 px */
+  margin-top: var(--space-3);
+  line-height: 1.55;
+}
+
+.br-body .machine {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);                /* up from 11.5 px */
+}
+.br-body .machine b {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.br-body .machine dl {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 2px var(--space-3);
+  margin: var(--space-2) 0 0 0;
+}
+.br-body .machine dt {
+  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
+}
+.br-body .machine dd {
+  margin: 0;
+  color: var(--ink-primary);
+  font-size: var(--text-sm);
+}
+
+.br-body code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-sunken);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+.br-body .narrative {
+  max-width: 75ch;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.65;
+}
+.br-body .narrative ul, .br-body .narrative ol {
+  margin-left: var(--space-5);
+}
+.br-body .narrative li {
+  margin-bottom: var(--space-2);
+}
+
+.br-body .chart {
+  margin: var(--space-5) 0;
+  padding: var(--space-4);
+  background: var(--surface-panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+}
+.br-body .chart svg, .br-body .chart img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---- selection ---- */
+
+::selection {
+  background: var(--accent-cyan);
+  color: var(--surface-page);
+}

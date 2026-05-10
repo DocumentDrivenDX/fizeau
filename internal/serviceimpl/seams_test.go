@@ -45,7 +45,7 @@ func TestServiceImplDoesNotImportRootPackage(t *testing.T) {
 		t.Fatalf("decode go list output: %v", err)
 	}
 
-	const root = "github.com/DocumentDrivenDX/fizeau"
+	const root = "github.com/easel/fizeau"
 	for _, imp := range pkg.Imports {
 		if imp == root {
 			t.Fatalf("internal/serviceimpl imports root package %q", root)

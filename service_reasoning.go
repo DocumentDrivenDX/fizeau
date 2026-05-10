@@ -1,6 +1,6 @@
 package fizeau
 
-import "github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+import "github.com/easel/fizeau/internal/reasoning"
 
 func effectiveReasoning(value Reasoning) Reasoning {
 	if value != "" {

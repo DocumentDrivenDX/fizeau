@@ -1,0 +1,683 @@
+{
+  "vidar-qwen3-6-27b-openai-compat": {
+    "n_turns": 64,
+    "ttft_p50": 9.44325304031372,
+    "decode_tps_p50": 18.114288004099674,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 64,
+        "ttft_p50": 10.601153016090393,
+        "n_decode": 64,
+        "decode_tps_p50": 16.94650908244038
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "sindri-club-3090": {
+    "n_turns": 1491,
+    "ttft_p50": 17.615838050842285,
+    "decode_tps_p50": 87.33507076363051,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 969,
+        "ttft_p50": 14.090099096298218,
+        "n_decode": 965,
+        "decode_tps_p50": 95.32102199017437
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 354,
+        "ttft_p50": 19.28183138370514,
+        "n_decode": 354,
+        "decode_tps_p50": 85.75331674357815
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 7,
+        "ttft_p50": 641.4873371124268,
+        "n_decode": 7,
+        "decode_tps_p50": 66.02259840268897
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "vidar-qwen3-6-27b": {
+    "n_turns": 1497,
+    "ttft_p50": 10.12727177143097,
+    "decode_tps_p50": 16.01941381051351,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 1109,
+        "ttft_p50": 10.054867029190063,
+        "n_decode": 1109,
+        "decode_tps_p50": 16.586187570174282
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 314,
+        "ttft_p50": 11.992216944694519,
+        "n_decode": 314,
+        "decode_tps_p50": 16.461896197333633
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 74,
+        "ttft_p50": 14.03772497177124,
+        "n_decode": 74,
+        "decode_tps_p50": 14.01455271016681
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "fiz-openrouter-qwen3-6-27b": {
+    "n_turns": 6754,
+    "ttft_p50": 0.7860475778579712,
+    "decode_tps_p50": 52.70838607484643,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 3635,
+        "ttft_p50": 0.7446792125701904,
+        "n_decode": 3512,
+        "decode_tps_p50": 54.25215453740286
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 2368,
+        "ttft_p50": 0.9332640171051025,
+        "n_decode": 2368,
+        "decode_tps_p50": 56.97639391167401
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 647,
+        "ttft_p50": 1.2547509670257568,
+        "n_decode": 647,
+        "decode_tps_p50": 50.16381742423461
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 78,
+        "ttft_p50": 1.5339505672454834,
+        "n_decode": 78,
+        "decode_tps_p50": 52.669845546100674
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "claude-sonnet-4-6": {
+    "n_turns": 151,
+    "ttft_p50": 1.9502060413360596,
+    "decode_tps_p50": 824.4927259799156,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 116,
+        "ttft_p50": 1.8825479745864868,
+        "n_decode": 116,
+        "decode_tps_p50": 832.0091230931628
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 7,
+        "ttft_p50": 2.067678213119507,
+        "n_decode": 7,
+        "decode_tps_p50": 1316.4618895808953
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 28,
+        "ttft_p50": 2.446587920188904,
+        "n_decode": 28,
+        "decode_tps_p50": 819.158584378808
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "bragi-qwen3-6-27b": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  },
+  "fiz-openai-gpt-5-5": {
+    "n_turns": 2582,
+    "ttft_p50": 0.06789088249206543,
+    "decode_tps_p50": 292.5091909922047,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 2094,
+        "ttft_p50": 0.36451053619384766,
+        "n_decode": 1005,
+        "decode_tps_p50": 382.67394989640235
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 400,
+        "ttft_p50": 1.02360200881958,
+        "n_decode": 400,
+        "decode_tps_p50": 209.72445568321126
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 74,
+        "ttft_p50": 1.0845355987548828,
+        "n_decode": 74,
+        "decode_tps_p50": 165.41008718457417
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 5,
+        "ttft_p50": 1.3422281742095947,
+        "n_decode": 5,
+        "decode_tps_p50": 179.5248578234801
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "bragi-club-3090": {
+    "n_turns": 263,
+    "ttft_p50": 30.012747943401337,
+    "decode_tps_p50": 89.42200987418386,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 263,
+        "ttft_p50": 30.012067079544067,
+        "n_decode": 28,
+        "decode_tps_p50": 87.07224029745535
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "grendel-rapid-mlx": {
+    "n_turns": 242,
+    "ttft_p50": 30.021039605140686,
+    "decode_tps_p50": 15.695264210768388,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 242,
+        "ttft_p50": 30.022003054618835,
+        "n_decode": 17,
+        "decode_tps_p50": 26.860550477296165
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "fiz-openrouter-gpt-5-4-mini": {
+    "n_turns": 125,
+    "ttft_p50": 0.7832986116409302,
+    "decode_tps_p50": 177.74382924507245,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 82,
+        "ttft_p50": 0.7308279275894165,
+        "n_decode": 82,
+        "decode_tps_p50": 175.96224286555545
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 43,
+        "ttft_p50": 0.7603509426116943,
+        "n_decode": 43,
+        "decode_tps_p50": 148.55932173900075
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "fiz-openrouter-claude-sonnet-4-6": {
+    "n_turns": 237,
+    "ttft_p50": 1.894227147102356,
+    "decode_tps_p50": 1474.6802102717552,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 180,
+        "ttft_p50": 1.7685375213623047,
+        "n_decode": 180,
+        "decode_tps_p50": 2350.678971665804
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 4,
+        "ttft_p50": null,
+        "n_decode": 4,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 53,
+        "ttft_p50": 2.3141369819641113,
+        "n_decode": 53,
+        "decode_tps_p50": 1252.8265981654565
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "fiz-harness-codex-gpt-5-4-mini": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  },
+  "fiz-harness-claude-sonnet-4-6": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  },
+  "claude-native-sonnet-4-6": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  },
+  "gpt-5-3-mini": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  },
+  "fiz-harness-pi-gpt-5-4-mini": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  },
+  "codex-native-gpt-5-4-mini": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  },
+  "gpt-5-mini": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  },
+  "gpt-5-4-mini-openrouter": {
+    "n_turns": 149,
+    "ttft_p50": 1.0390651226043701,
+    "decode_tps_p50": 194.4473909288243,
+    "buckets": [
+      {
+        "label": "0\u201310k",
+        "midpoint": 5000,
+        "lo": 0,
+        "hi": 10000,
+        "n_ttft": 124,
+        "ttft_p50": 1.0080314874649048,
+        "n_decode": 124,
+        "decode_tps_p50": 171.18159112861275
+      },
+      {
+        "label": "10\u201330k",
+        "midpoint": 20000,
+        "lo": 10000,
+        "hi": 30000,
+        "n_ttft": 25,
+        "ttft_p50": 0.983752965927124,
+        "n_decode": 25,
+        "decode_tps_p50": 167.34141732018915
+      },
+      {
+        "label": "30\u201360k",
+        "midpoint": 45000,
+        "lo": 30000,
+        "hi": 60000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "60\u2013120k",
+        "midpoint": 90000,
+        "lo": 60000,
+        "hi": 120000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      },
+      {
+        "label": "120k+",
+        "midpoint": 150000,
+        "lo": 120000,
+        "hi": 10000000,
+        "n_ttft": 0,
+        "ttft_p50": null,
+        "n_decode": 0,
+        "decode_tps_p50": null
+      }
+    ]
+  },
+  "fiz-harness-opencode-gpt-5-4-mini": {
+    "n_turns": 0,
+    "ttft_p50": null,
+    "decode_tps_p50": null,
+    "buckets": []
+  }
+}

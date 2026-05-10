@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/serviceimpl"
+	"github.com/easel/fizeau/internal/session"
 )
 
 // UsageReportOptions configures FizeauService.UsageReport.

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // SessionStartData is the data payload for a session.start event.

@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
-	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
+	"github.com/easel/fizeau/internal/harnesses"
+	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
+	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
+	"github.com/easel/fizeau/internal/serverinstance"
 )
 
 const (

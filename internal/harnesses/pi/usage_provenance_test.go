@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 // TestHarnessFinalEventPreservesUsageProvenance asserts that the pi harness

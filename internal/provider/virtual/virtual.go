@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // Entry is a recorded message→response pair stored on disk.

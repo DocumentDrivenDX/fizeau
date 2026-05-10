@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/pty/cassette"
+	"github.com/easel/fizeau/internal/pty/cassette"
 	"gopkg.in/yaml.v3"
 )
 

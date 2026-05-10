@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
+	"github.com/easel/fizeau/internal/benchmark/profile"
 )
 
 const defaultProfilesDir = "scripts/benchmark/profiles"

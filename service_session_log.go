@@ -6,9 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/session"
 )
 
 // serviceSessionLog is the service-owned writer that persists the session

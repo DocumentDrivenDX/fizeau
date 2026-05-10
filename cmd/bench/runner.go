@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
-	"github.com/DocumentDrivenDX/fizeau/internal/comparison"
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	fizeau "github.com/easel/fizeau"
+	"github.com/easel/fizeau/internal/comparison"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 // CostCapExceededError is returned (via RunResult.Error) when the accumulated

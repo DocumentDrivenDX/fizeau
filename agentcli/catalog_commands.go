@@ -17,12 +17,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/catalogdist"
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/observations"
-	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/easel/fizeau/catalogdist"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/observations"
+	"github.com/easel/fizeau/internal/productinfo"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 const defaultCatalogBaseURL = "https://documentdrivendx.github.io/agent/catalog"

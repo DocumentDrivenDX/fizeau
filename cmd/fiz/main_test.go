@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/agentcli"
-	"github.com/DocumentDrivenDX/fizeau/internal/buildinfo"
+	"github.com/easel/fizeau/agentcli"
+	"github.com/easel/fizeau/internal/buildinfo"
 )
 
 // TestRouteStatusCommandJSON verifies that fiz route-status --help documents

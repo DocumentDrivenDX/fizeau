@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/productinfo"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 const (
-	defaultGitHubRepo = "DocumentDrivenDX/fizeau"
+	defaultGitHubRepo = "easel/fizeau"
 	defaultGitHubAPI  = "https://api.github.com"
 	version           = "v0.0.8"  // Updated by release script
 	updateCheckTTL    = time.Hour // Cache version check for 1 hour

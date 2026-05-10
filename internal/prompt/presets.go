@@ -3,7 +3,7 @@ package prompt
 import (
 	"fmt"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
+	"github.com/easel/fizeau/internal/productinfo"
 )
 
 // Preset is a named system prompt configuration.

@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 const defaultEventBuffer = 64

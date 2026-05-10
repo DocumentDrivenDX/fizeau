@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/serviceimpl"
 )
 
 func TestExecuteExplicitHarnessPinsDispatchRequestedRunner(t *testing.T) {

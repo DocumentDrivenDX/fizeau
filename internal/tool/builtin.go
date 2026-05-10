@@ -1,7 +1,7 @@
 package tool
 
 import (
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // BuiltinToolsForPreset returns the built-in tool set used by the native

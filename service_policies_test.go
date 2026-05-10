@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 func TestListPoliciesReturnsCanonicalEntries(t *testing.T) {

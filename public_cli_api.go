@@ -10,13 +10,13 @@ package fizeau
 import (
 	"context"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	oaiProvider "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
-	"github.com/DocumentDrivenDX/fizeau/internal/skill"
-	"github.com/DocumentDrivenDX/fizeau/internal/tool"
-	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorstore"
+	"github.com/easel/fizeau/internal/compaction"
+	agentcore "github.com/easel/fizeau/internal/core"
+	oaiProvider "github.com/easel/fizeau/internal/provider/openai"
+	"github.com/easel/fizeau/internal/session"
+	"github.com/easel/fizeau/internal/skill"
+	"github.com/easel/fizeau/internal/tool"
+	"github.com/easel/fizeau/internal/tool/anchorstore"
 )
 
 // Skill discovery and the load_skill tool.

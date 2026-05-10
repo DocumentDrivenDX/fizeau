@@ -3,7 +3,7 @@ package serviceimpl
 import (
 	"context"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 // SessionSubscriber is the narrow root-facade seam TailSessionLog needs from

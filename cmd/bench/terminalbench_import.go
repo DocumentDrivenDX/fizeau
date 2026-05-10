@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/evidence"
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
+	"github.com/easel/fizeau/internal/benchmark/evidence"
+	"github.com/easel/fizeau/internal/benchmark/profile"
 )
 
 const terminalBenchMatrixMetadataName = "matrix.metadata.json"

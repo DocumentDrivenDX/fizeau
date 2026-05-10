@@ -1,5 +1,12 @@
 # AGENTS.md — agent coding conventions for AI agents
 
+> Named for Hippolyte Fizeau (1819–1896), the French physicist who measured
+> the speed of light with a rotating toothed wheel (1849) and the drag of
+> light through moving water (1851). The project treats round-trip timing,
+> per-turn measurement, and the difference between a moving medium and its
+> rest frame as first-class observability — not afterthoughts. See
+> `website/content/docs/about/the-name.md` for the full story.
+
 ## Package layout
 
 - Root package (`fizeau`) — public facade: exported service interfaces,

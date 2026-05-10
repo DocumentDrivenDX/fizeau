@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/compactionctx"
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/compactionctx"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // state tracks compaction state across invocations.

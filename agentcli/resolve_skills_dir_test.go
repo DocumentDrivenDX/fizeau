@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/prompt"
+	fizeau "github.com/easel/fizeau"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/prompt"
 )
 
 func TestResolveSkillsDir_DefaultsToProjectDir(t *testing.T) {

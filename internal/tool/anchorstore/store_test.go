@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorwords"
+	"github.com/easel/fizeau/internal/tool/anchorwords"
 )
 
 func TestAssignLookup(t *testing.T) {

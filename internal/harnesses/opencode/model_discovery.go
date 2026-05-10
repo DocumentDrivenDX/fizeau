@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 const OpenCodeModelDiscoveryFreshnessWindow = 24 * time.Hour

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

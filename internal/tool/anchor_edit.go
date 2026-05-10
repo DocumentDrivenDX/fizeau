@@ -8,9 +8,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
-	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorstore"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/tool/anchorstore"
 )
 
 // AnchorEditParams are the parameters for the anchor_edit tool.

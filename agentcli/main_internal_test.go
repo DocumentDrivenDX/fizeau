@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau"
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/prompt"
+	"github.com/easel/fizeau"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/prompt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -3,7 +3,7 @@ package fizeau
 import (
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/routingquality"
+	"github.com/easel/fizeau/internal/routingquality"
 )
 
 // ADR-006 §5: routing-quality is the user-facing measure of how often

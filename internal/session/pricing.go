@@ -1,6 +1,6 @@
 package session
 
-import agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+import agent "github.com/easel/fizeau/internal/core"
 
 // ModelPricing holds per-million-token costs for a model.
 // Alias of agent.ModelPricing — kept here for backward compatibility.

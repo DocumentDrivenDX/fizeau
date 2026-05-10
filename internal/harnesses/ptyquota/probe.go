@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/pty/cassette"
-	"github.com/DocumentDrivenDX/fizeau/internal/pty/session"
-	"github.com/DocumentDrivenDX/fizeau/internal/pty/terminal"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/pty/cassette"
+	"github.com/easel/fizeau/internal/pty/session"
+	"github.com/easel/fizeau/internal/pty/terminal"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 type Status string

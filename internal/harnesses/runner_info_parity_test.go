@@ -4,12 +4,12 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
-	opencodeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/opencode"
-	piharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/pi"
+	"github.com/easel/fizeau/internal/harnesses"
+	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
+	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
+	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
+	opencodeharness "github.com/easel/fizeau/internal/harnesses/opencode"
+	piharness "github.com/easel/fizeau/internal/harnesses/pi"
 )
 
 func TestRunnerInfoMatchesRegistryMetadata(t *testing.T) {

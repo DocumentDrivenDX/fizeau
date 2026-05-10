@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	fizeau "github.com/easel/fizeau"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 func TestDrainExecute_DecodesTypedResult(t *testing.T) {

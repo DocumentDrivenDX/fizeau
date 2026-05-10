@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/routehealth"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 const stickyRouteLeaseTTL = routehealth.DefaultLeaseTTL

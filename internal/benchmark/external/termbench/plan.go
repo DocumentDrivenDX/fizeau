@@ -3,7 +3,7 @@ package termbench
 import (
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 // ExecutionPlan is the ServiceExecuteRequest payload + ancillary metadata

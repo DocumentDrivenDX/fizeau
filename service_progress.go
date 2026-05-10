@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/transcript"
+	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/transcript"
 )
 
 const (

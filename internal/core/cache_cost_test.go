@@ -7,7 +7,7 @@ import (
 	"go/token"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/telemetry"
+	"github.com/easel/fizeau/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

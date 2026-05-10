@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
-	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
+	"github.com/easel/fizeau/internal/compaction"
+	"github.com/easel/fizeau/internal/provider/utilization"
+	"github.com/easel/fizeau/internal/serverinstance"
 )
 
 // fakeModelsServer returns an httptest.Server that serves the given model IDs from /v1/models.

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // LoadSkillTool exposes a *Catalog to the agent loop as the `load_skill`

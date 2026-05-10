@@ -3,7 +3,7 @@ package prompt
 import (
 	"path/filepath"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // contextFilenames are the filenames to look for as project context files.

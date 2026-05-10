@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
+	"github.com/easel/fizeau/internal/harnesses"
+	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
+	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 )
 
 // fakeServiceConfig implements ServiceConfig for tests.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 func ExampleErrHarnessModelIncompatible() {

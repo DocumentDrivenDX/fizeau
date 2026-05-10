@@ -1,9 +1,9 @@
 package fizeau
 
 import (
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/reasoning"
 )
 
 type Tool = agentcore.Tool

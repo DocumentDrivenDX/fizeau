@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/pty/cassette"
+	"github.com/easel/fizeau/internal/pty/cassette"
 )
 
 func TestReadGeminiQuotaViaPTY_CapturesTierUsage(t *testing.T) {

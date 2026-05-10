@@ -7,9 +7,9 @@ import (
 	"regexp"
 	"strings"
 
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/reasoning"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // ProviderMapping maps pi provider names to agent configurations.

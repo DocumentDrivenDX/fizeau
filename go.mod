@@ -1,4 +1,4 @@
-module github.com/DocumentDrivenDX/fizeau
+module github.com/easel/fizeau
 
 go 1.26.2
 

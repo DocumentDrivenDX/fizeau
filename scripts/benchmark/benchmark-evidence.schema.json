@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DocumentDrivenDX/fizeau/scripts/benchmark/benchmark-evidence.schema.json",
+  "$id": "https://github.com/easel/fizeau/scripts/benchmark/benchmark-evidence.schema.json",
   "title": "Fizeau Benchmark Evidence Record",
   "type": "object",
   "additionalProperties": false,

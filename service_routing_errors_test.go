@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
+	"github.com/easel/fizeau/internal/harnesses"
+	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 )
 
 func TestResolveRouteExplicitHarnessModelIncompatible(t *testing.T) {

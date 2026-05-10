@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
-	"github.com/DocumentDrivenDX/fizeau/internal/sdk/openaicompat"
+	"github.com/easel/fizeau/internal/provider/openai"
+	"github.com/easel/fizeau/internal/sdk/openaicompat"
 )
 
 // QuotaRecoveryProber reports whether a quota_exhausted provider has recovered.

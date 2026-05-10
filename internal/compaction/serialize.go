@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // SerializeConversation renders a message history as compact text suitable

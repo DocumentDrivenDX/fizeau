@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/evidence"
+	"github.com/easel/fizeau/internal/benchmark/evidence"
 )
 
 func cmdEvidence(args []string) int {

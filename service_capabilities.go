@@ -1,6 +1,6 @@
 package fizeau
 
-import "github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+import "github.com/easel/fizeau/internal/harnesses"
 
 // HarnessCapabilityStatus classifies one harness capability in the public
 // ListHarnesses capability matrix.

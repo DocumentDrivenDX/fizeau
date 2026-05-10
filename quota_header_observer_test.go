@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
+	"github.com/easel/fizeau/internal/provider/quotaheaders"
 )
 
 func TestQuotaSignalObserver_MarksProviderExhaustedOnZeroRemaining(t *testing.T) {

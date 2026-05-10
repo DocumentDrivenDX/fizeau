@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/external/termbench"
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	fizeau "github.com/easel/fizeau"
+	"github.com/easel/fizeau/internal/benchmark/external/termbench"
+	agentConfig "github.com/easel/fizeau/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

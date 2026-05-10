@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
+	"github.com/easel/fizeau/internal/provider/utilization"
 )
 
 // UtilizationProbe queries Rapid-MLX status endpoints and normalizes them into

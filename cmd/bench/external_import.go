@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/evidence"
+	"github.com/easel/fizeau/internal/benchmark/evidence"
 )
 
 func cmdEvidenceImportExternal(args []string) int {

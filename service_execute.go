@@ -9,14 +9,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
-	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
-	"github.com/DocumentDrivenDX/fizeau/internal/tool"
+	"github.com/easel/fizeau/internal/compaction"
+	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/reasoning"
+	"github.com/easel/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/serviceimpl"
+	"github.com/easel/fizeau/internal/tool"
 )
 
 // generateSessionID returns a unique session identifier for a new Execute.

@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/evidence"
+	"github.com/easel/fizeau/internal/benchmark/evidence"
 )
 
 const fhiFormulaRelativePath = "scripts/benchmark/fhi-formula-v1.json"

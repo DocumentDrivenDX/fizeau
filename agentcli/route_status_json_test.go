@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau"
+	"github.com/easel/fizeau"
 )
 
 func TestRouteStatusUsesPolicyKey(t *testing.T) {

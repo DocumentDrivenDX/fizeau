@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 const codexSessionsRootEnv = "FIZEAU_CODEX_SESSIONS_DIR"

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 func TestTailSessionLogProxiesEvents(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau"
+	"github.com/easel/fizeau"
 )
 
 func TestRun_UsesInjectedOutputAndDoesNotExit(t *testing.T) {

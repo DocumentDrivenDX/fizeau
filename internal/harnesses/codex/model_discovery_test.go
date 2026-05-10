@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses/ptyquota"
-	"github.com/DocumentDrivenDX/fizeau/internal/pty/cassette"
+	"github.com/easel/fizeau/internal/harnesses/ptyquota"
+	"github.com/easel/fizeau/internal/pty/cassette"
 	"github.com/stretchr/testify/require"
 )
 

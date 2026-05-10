@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 // drainRoleCorrEvents collects events from ch until close or timeout.

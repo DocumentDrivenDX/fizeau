@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fizeau installer — downloads the latest release binary for your platform.
-# Usage: curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/fizeau/master/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/easel/fizeau/master/install.sh | bash
 
 set -euo pipefail
 
@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="DocumentDrivenDX/fizeau"
+REPO="easel/fizeau"
 BINARY_NAME="${BINARY_NAME:-fiz}"
 INSTALL_DIR="${FIZEAU_INSTALL_DIR:-$HOME/.local/bin}"
 SHELL_NAME=""

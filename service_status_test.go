@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
-	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
-	sessionlog "github.com/DocumentDrivenDX/fizeau/internal/session"
+	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/harnesses"
+	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
+	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
+	"github.com/easel/fizeau/internal/serviceimpl"
+	sessionlog "github.com/easel/fizeau/internal/session"
 )
 
 func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {

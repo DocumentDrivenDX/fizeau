@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	"github.com/easel/fizeau/internal/session"
 )
 
 // SessionLogEntry is an API-neutral projection of one service session log.

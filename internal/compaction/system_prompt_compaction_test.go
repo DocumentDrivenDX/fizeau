@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/compactionctx"
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/compactionctx"
+	agent "github.com/easel/fizeau/internal/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

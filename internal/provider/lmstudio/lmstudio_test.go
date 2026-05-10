@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/reasoning"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

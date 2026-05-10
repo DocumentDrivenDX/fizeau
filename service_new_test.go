@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/config" // registers config loader via init()
+	fizeau "github.com/easel/fizeau"
+	_ "github.com/easel/fizeau/internal/config" // registers config loader via init()
 )
 
 // minimalConfigYAML is a valid agent config with one anthropic provider.

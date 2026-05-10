@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/serviceimpl"
 )
 
 // sessionHub is a concurrent-safe broadcast store for in-flight and completed

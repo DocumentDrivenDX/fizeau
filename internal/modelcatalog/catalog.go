@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
-	"github.com/DocumentDrivenDX/fizeau/internal/sampling"
+	"github.com/easel/fizeau/internal/reasoning"
+	"github.com/easel/fizeau/internal/sampling"
 )
 
 // Surface identifies a consumer-specific concrete model naming surface.

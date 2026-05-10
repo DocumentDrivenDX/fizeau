@@ -4,7 +4,7 @@ package anchorstore
 import (
 	"sync"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorwords"
+	"github.com/easel/fizeau/internal/tool/anchorwords"
 )
 
 // Store keeps the current anchor assignment for each path.

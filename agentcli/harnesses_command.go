@@ -8,8 +8,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/DocumentDrivenDX/fizeau"
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
+	"github.com/easel/fizeau"
+	agentConfig "github.com/easel/fizeau/internal/config"
 )
 
 type harnessCommandRow struct {

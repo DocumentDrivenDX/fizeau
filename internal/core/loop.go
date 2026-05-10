@@ -14,9 +14,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/compactionctx"
-	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
-	"github.com/DocumentDrivenDX/fizeau/telemetry"
+	"github.com/easel/fizeau/internal/compactionctx"
+	"github.com/easel/fizeau/internal/reasoning"
+	"github.com/easel/fizeau/telemetry"
 )
 
 // Run executes the internal agent loop: send prompt, process tool calls, repeat

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/conformance"
+	"github.com/easel/fizeau/internal/provider/conformance"
 )
 
 type openAICompatDescriptor struct {

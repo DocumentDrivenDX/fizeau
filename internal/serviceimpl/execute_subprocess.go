@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/reasoning"
 )
 
 // SubprocessRequest is the API-neutral request data needed by subprocess

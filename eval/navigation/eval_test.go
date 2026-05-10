@@ -16,8 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/tool"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

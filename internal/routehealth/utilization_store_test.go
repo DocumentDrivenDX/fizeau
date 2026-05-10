@@ -3,7 +3,7 @@ package routehealth
 import (
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
+	"github.com/easel/fizeau/internal/provider/utilization"
 )
 
 func TestUtilizationStoreEndpointLoadsUsesFreshSamplesAndLeaseFallback(t *testing.T) {

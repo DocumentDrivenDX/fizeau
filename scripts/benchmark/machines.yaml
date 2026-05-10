@@ -1,0 +1,64 @@
+# Machine registry for self-hosted benchmark lanes.
+#
+# Profile YAMLs reference a machine via metadata.server (the hostname/server name).
+# generate-report.py joins this file on that key to surface hardware on the
+# profile cards in the HTML report and in data/machines.json.
+#
+# Cloud providers (openai, openrouter, anthropic) intentionally don't appear
+# here — there's no machine to describe; they're treated as opaque endpoints.
+#
+# Schema (per machine):
+#   label    : short display name shown on the profile card
+#   chassis  : enclosure / form factor (laptop, desktop, Mac Studio, …)
+#   cpu      : CPU model
+#   gpu      : GPU model + memory if discrete
+#   memory   : system RAM (and unified note if applicable)
+#   os       : operating system + container/runtime layer (WSL, Docker Desktop, …)
+#   network  : how this machine is reached from benchmark runner (Tailscale, LAN, …)
+#   notes    : free-form (role, quirks, what backends it hosts)
+#
+# Leave fields empty when unknown — the renderer skips empty rows. Add new
+# machines as they come online.
+
+version: 1
+
+machines:
+  bragi:
+    label: "Bragi"
+    chassis: "Lenovo Legion 7i Pro (laptop)"
+    cpu: ""
+    gpu: "NVIDIA RTX 5090 24 GB (Laptop)"
+    memory: ""
+    os: "Windows 11 + WSL2"
+    network: "Tailscale"
+    notes: "Mobile inference host; vLLM at :8020, alternate at :1234."
+
+  sindri:
+    label: "Sindri"
+    chassis: "Custom desktop"
+    cpu: "AMD Ryzen 9 5950X"
+    gpu: "NVIDIA RTX 5090 Ti"
+    memory: ""
+    os: "Windows + WSL2"
+    network: "Tailscale"
+    notes: "Primary CUDA inference host; vLLM at :8020."
+
+  vidar:
+    label: "Vidar"
+    chassis: "Apple Mac Studio"
+    cpu: "Apple M2 Ultra"
+    gpu: "Apple M2 Ultra (integrated)"
+    memory: "192 GB unified"
+    os: "macOS"
+    network: "Tailscale"
+    notes: "Apple Silicon inference host for MLX / oMLX backends; oMLX at :1235."
+
+  grendel:
+    label: "Grendel"
+    chassis: ""
+    cpu: ""
+    gpu: ""
+    memory: ""
+    os: ""
+    network: "Tailscale"
+    notes: "Apple Silicon RapidMLX backend at :8000 (full hardware spec TBD)."

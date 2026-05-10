@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 type testServiceConfig struct {

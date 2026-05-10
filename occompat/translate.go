@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // TranslationResult contains the result of translating opencode config to agent config.

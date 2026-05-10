@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 const maxFindResults = 500

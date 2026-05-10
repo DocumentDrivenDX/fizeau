@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/provider/utilization"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 var loadRoutingCatalog = modelcatalog.Default

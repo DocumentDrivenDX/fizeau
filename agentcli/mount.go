@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
+	"github.com/easel/fizeau/internal/productinfo"
 	"github.com/spf13/cobra"
 )
 

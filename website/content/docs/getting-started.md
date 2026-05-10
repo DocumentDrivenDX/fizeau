@@ -6,7 +6,7 @@ weight: 1
 ## Install
 
 ```bash
-go install github.com/DocumentDrivenDX/fizeau/cmd/fiz@latest
+go install github.com/easel/fizeau/cmd/fiz@latest
 ```
 
 ## Quick Start with LM Studio
@@ -54,8 +54,8 @@ Environment variables override the config file:
 ```go
 import (
     "context"
-    "github.com/DocumentDrivenDX/fizeau"
-    _ "github.com/DocumentDrivenDX/fizeau/configinit"
+    "github.com/easel/fizeau"
+    _ "github.com/easel/fizeau/configinit"
 )
 
 func main() {

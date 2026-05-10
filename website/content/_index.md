@@ -3,7 +3,7 @@ title: Fizeau
 layout: hextra-home
 ---
 
-{{< hextra/hero-badge link="https://github.com/DocumentDrivenDX/fizeau" >}}
+{{< hextra/hero-badge link="https://github.com/easel/fizeau" >}}
   {{< icon name="github" attributes="height=14" >}}
   GitHub
 {{< /hextra/hero-badge >}}

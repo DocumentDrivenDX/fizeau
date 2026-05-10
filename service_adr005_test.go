@@ -7,7 +7,7 @@ import (
 	"go/token"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 // TestServiceExecuteRequestNoPreResolved is an AST guard against the

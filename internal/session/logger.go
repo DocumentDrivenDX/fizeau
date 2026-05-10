@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // Logger writes session events to a JSONL file.

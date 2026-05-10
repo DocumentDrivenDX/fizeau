@@ -5,7 +5,7 @@
 // Production binaries cannot construct or reference these types.
 package fizeau
 
-import agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
+import agentcore "github.com/easel/fizeau/internal/core"
 
 type Message = agentcore.Message
 type ToolCall = agentcore.ToolCall

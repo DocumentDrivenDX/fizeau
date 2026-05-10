@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // PatchParams are the parameters for the patch tool.

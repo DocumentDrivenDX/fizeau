@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // Skill describes a single discovered SKILL.md file.

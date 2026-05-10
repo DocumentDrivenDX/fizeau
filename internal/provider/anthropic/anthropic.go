@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/provider/quotaheaders"
+	"github.com/easel/fizeau/internal/provider/registry"
 	ant "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 )

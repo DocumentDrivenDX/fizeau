@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
-	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/provider/utilization"
+	"github.com/easel/fizeau/internal/routehealth"
 )
 
 func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {

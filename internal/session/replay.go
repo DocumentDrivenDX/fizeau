@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // Replay reads a session log and renders a human-readable conversation.

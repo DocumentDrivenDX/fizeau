@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 // DefaultCooldown is the process-local route-attempt TTL used when service

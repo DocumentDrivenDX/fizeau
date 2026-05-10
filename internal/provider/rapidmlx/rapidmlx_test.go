@@ -3,7 +3,7 @@ package rapidmlx
 import (
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
+	"github.com/easel/fizeau/internal/provider/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

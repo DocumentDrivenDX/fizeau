@@ -17,7 +17,7 @@ ddx:
 The repository root is the public Go package:
 
 ```go
-github.com/DocumentDrivenDX/fizeau
+github.com/easel/fizeau
 ```
 
 That package is currently carrying more than the public contract. It contains
@@ -61,11 +61,11 @@ This follows the official Go module layout guidance: an importable library
 package can live at the module root, commands live under `cmd/`, and private
 implementation packages live under `internal/`. This is a package-boundary
 change, not a module split. The module import path stays stable as
-`github.com/DocumentDrivenDX/fizeau`.
+`github.com/easel/fizeau`.
 
 Do not create a nested `fizeau/` package under this module. With the existing
 module path, that would either create the stutter import path
-`github.com/DocumentDrivenDX/fizeau/fizeau` or force the repository into a
+`github.com/easel/fizeau/fizeau` or force the repository into a
 nested-module/workspace shape. Neither tradeoff is justified by this decision.
 Introducing additional `go.mod` modules is deferred until the internal
 boundaries have proven stable and a real multi-module need exists.

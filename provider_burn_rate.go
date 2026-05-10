@@ -3,7 +3,7 @@ package fizeau
 import (
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/quota"
+	"github.com/easel/fizeau/internal/quota"
 )
 
 // ProviderBurnRateTracker maintains a per-provider rolling window of token

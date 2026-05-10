@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/observations"
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/observations"
+	"github.com/easel/fizeau/internal/session"
 	"github.com/stretchr/testify/require"
 )
 

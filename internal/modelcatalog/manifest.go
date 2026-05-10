@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/reasoning"
-	"github.com/DocumentDrivenDX/fizeau/internal/sampling"
+	"github.com/easel/fizeau/internal/reasoning"
+	"github.com/easel/fizeau/internal/sampling"
 	"gopkg.in/yaml.v3"
 )
 

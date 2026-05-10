@@ -1,6 +1,6 @@
 package harnesses
 
-import "github.com/DocumentDrivenDX/fizeau/internal/reasoning"
+import "github.com/easel/fizeau/internal/reasoning"
 
 // AdapterReasoningValue resolves the public reasoning scalar into the value
 // subprocess harnesses should pass to their native CLI flag. Empty, auto, off,

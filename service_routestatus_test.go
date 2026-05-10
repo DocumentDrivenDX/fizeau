@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 // TestRouteStatus_emptyConfig verifies that RouteStatus returns an empty report

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
+	"github.com/easel/fizeau/internal/benchmark/profile"
 )
 
 func TestMatrixNoopDumbScriptProducesValidMatrix(t *testing.T) {

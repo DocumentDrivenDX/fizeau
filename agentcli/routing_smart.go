@@ -22,10 +22,10 @@ import (
 	"strings"
 	"time"
 
-	rootfizeau "github.com/DocumentDrivenDX/fizeau"
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/observations"
+	rootfizeau "github.com/easel/fizeau"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/observations"
 )
 
 const (

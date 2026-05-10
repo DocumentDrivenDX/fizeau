@@ -7,10 +7,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
-	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorstore"
-	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorwords"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/tool/anchorstore"
+	"github.com/easel/fizeau/internal/tool/anchorwords"
 )
 
 // ReadParams are the parameters for the read tool.

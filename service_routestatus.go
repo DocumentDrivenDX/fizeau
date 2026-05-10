@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
-	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
+	"github.com/easel/fizeau/internal/routehealth"
+	"github.com/easel/fizeau/internal/serverinstance"
 )
 
 // RouteStatus returns live routing state for configured providers/models.

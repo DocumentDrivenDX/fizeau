@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/sessionlog"
+	"github.com/easel/fizeau/internal/sessionlog"
 )
 
 func OpenProgressLog(sessionLogDir, sessionID, prefix string) (*os.File, error) {

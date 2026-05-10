@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // UsageOptions configures how session logs are aggregated.

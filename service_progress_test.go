@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	fizeau "github.com/easel/fizeau"
+	"github.com/easel/fizeau/internal/session"
 )
 
 type progressTool struct {

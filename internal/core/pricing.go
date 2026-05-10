@@ -1,6 +1,6 @@
 package core
 
-import "github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
+import "github.com/easel/fizeau/internal/modelcatalog"
 
 // ModelPricing holds per-million-token costs for a model.
 type ModelPricing struct {

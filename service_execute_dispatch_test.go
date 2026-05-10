@@ -42,11 +42,11 @@ func TestExecuteDispatcherMovesConcreteRunnerSelectionOutOfExecuteLoop(t *testin
 	for _, imp := range file.Imports {
 		path := imp.Path.Value
 		switch path {
-		case `"github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"`,
-			`"github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"`,
-			`"github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"`,
-			`"github.com/DocumentDrivenDX/fizeau/internal/harnesses/opencode"`,
-			`"github.com/DocumentDrivenDX/fizeau/internal/harnesses/pi"`:
+		case `"github.com/easel/fizeau/internal/harnesses/claude"`,
+			`"github.com/easel/fizeau/internal/harnesses/codex"`,
+			`"github.com/easel/fizeau/internal/harnesses/gemini"`,
+			`"github.com/easel/fizeau/internal/harnesses/opencode"`,
+			`"github.com/easel/fizeau/internal/harnesses/pi"`:
 			t.Fatalf("service_execute.go imports concrete runner package %s; selection belongs behind executeRunnerInvoker", path)
 		}
 	}

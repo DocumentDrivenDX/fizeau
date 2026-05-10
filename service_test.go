@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 func TestListHarnesses_shape(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses"
 )
 
 func TestCodexQuotaSnapshotRoundTrip(t *testing.T) {

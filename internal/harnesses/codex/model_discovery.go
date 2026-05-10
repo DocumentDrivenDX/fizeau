@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses/ptyquota"
-	"github.com/DocumentDrivenDX/fizeau/internal/pty/cassette"
-	"github.com/DocumentDrivenDX/fizeau/internal/pty/session"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/harnesses/ptyquota"
+	"github.com/easel/fizeau/internal/pty/cassette"
+	"github.com/easel/fizeau/internal/pty/session"
 )
 
 const CodexModelDiscoveryFreshnessWindow = 24 * time.Hour

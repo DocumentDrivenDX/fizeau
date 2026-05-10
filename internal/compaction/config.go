@@ -3,7 +3,7 @@ package compaction
 import (
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // DefaultContextWindow is used when no context window is configured.

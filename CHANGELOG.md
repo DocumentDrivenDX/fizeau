@@ -110,7 +110,7 @@ consumers can import the new fields directly from the tagged release.
 
 ### Fixed
 
-- `go install github.com/DocumentDrivenDX/fizeau/cmd/fiz@<version>` builds now
+- `go install github.com/easel/fizeau/cmd/fiz@<version>` builds now
   report the module version from Go build metadata when release ldflags are not
   present. This keeps the documented `go install` path compatible with
   `fiz version` and `fiz update`.
@@ -136,9 +136,9 @@ names, config paths, or Fizeau-owned environment variables.
 Migration checklist:
 
 - **Go module path:** replace `github.com/DocumentDrivenDX/agent` with
-  `github.com/DocumentDrivenDX/fizeau`.
+  `github.com/easel/fizeau`.
 - **Go package name:** imports of the root package should use package
-  `fizeau`, for example `import "github.com/DocumentDrivenDX/fizeau"` and
+  `fizeau`, for example `import "github.com/easel/fizeau"` and
   calls such as `fizeau.New(...)`.
 - **Binaries and commands:** use `fiz` instead of `ddx-agent`. Benchmark helper
   command names follow the same product prefix: `fiz-bench` and
@@ -162,10 +162,10 @@ Migration checklist:
   env vars explicitly. The old config paths and old env prefixes are not
   migrated or loaded as fallbacks.
 - **DDx migration status:** DDx consumed the Fizeau pre-release in downstream
-  commit `1aaf5a57` and now imports `github.com/DocumentDrivenDX/fizeau`.
+  commit `1aaf5a57` and now imports `github.com/easel/fizeau`.
   The final DDx pin to this non-prerelease tag is tracked separately by FZ-064.
 - **Updater behavior:** the supported updater is `fiz update`. It checks
-  `DocumentDrivenDX/fizeau` releases and downloads `fiz-<os>-<arch>` assets.
+  `easel/fizeau` releases and downloads `fiz-<os>-<arch>` assets.
   Existing `ddx-agent update` installations do not bridge to `fiz`, do not
   rewrite user config, and stop at the last old-name release; users should
   install `fiz` from the renamed repository.

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/productinfo"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/productinfo"
+	"github.com/easel/fizeau/internal/safefs"
 	"gopkg.in/yaml.v3"
 )
 

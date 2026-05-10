@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/session"
 )
 
 // TestUsageReportRoutingQualityFromSessionLogs proves the architectural fix

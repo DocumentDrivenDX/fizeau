@@ -7,17 +7,17 @@ import (
 	// fire under the test binary. This mirrors the production import
 	// graph (cmd/fiz transitively imports all providers via service)
 	// without depending on those packages directly here.
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/anthropic"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/llamaserver"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/lucebox"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/ollama"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/omlx"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openai"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/openrouter"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/rapidmlx"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/registry"
-	_ "github.com/DocumentDrivenDX/fizeau/internal/provider/vllm"
+	_ "github.com/easel/fizeau/internal/provider/anthropic"
+	_ "github.com/easel/fizeau/internal/provider/llamaserver"
+	_ "github.com/easel/fizeau/internal/provider/lmstudio"
+	_ "github.com/easel/fizeau/internal/provider/lucebox"
+	_ "github.com/easel/fizeau/internal/provider/ollama"
+	_ "github.com/easel/fizeau/internal/provider/omlx"
+	_ "github.com/easel/fizeau/internal/provider/openai"
+	_ "github.com/easel/fizeau/internal/provider/openrouter"
+	_ "github.com/easel/fizeau/internal/provider/rapidmlx"
+	"github.com/easel/fizeau/internal/provider/registry"
+	_ "github.com/easel/fizeau/internal/provider/vllm"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -15,7 +15,7 @@ remain stable.
 | Surface | Previous product identity | Current Fizeau identity | Dashboard impact |
 |---|---|---|---|
 | OTel `service.name` attribute emitted on spans and chat metrics | not emitted by the core runtime | `fizeau` | Prefer this selector for new Fizeau dashboards. Update any new dashboards copied from pre-rename queries to include `service.name="fizeau"` rather than older harness-name-only filters. |
-| OTel tracer / meter instrumentation scope name | `github.com/DocumentDrivenDX/fizeau/telemetry` after the module rename; earlier `github.com/DocumentDrivenDX/agent/telemetry` | `fizeau` | Update backend queries or processors that filter by instrumentation scope name. |
+| OTel tracer / meter instrumentation scope name | `github.com/easel/fizeau/telemetry` after the module rename; earlier `github.com/DocumentDrivenDX/agent/telemetry` | `fizeau` | Update backend queries or processors that filter by instrumentation scope name. |
 | Root run span name | `invoke_agent agent` | `invoke_agent fizeau` | Update span-name filters that match the full root span name. Prefer filtering on `gen_ai.operation.name="invoke_agent"` plus `service.name="fizeau"` going forward. |
 | `ddx.harness.name` runtime value for Fizeau runs | `agent` | `fizeau` | Update dashboards grouping or filtering by harness name. |
 | `gen_ai.agent.name` runtime value for Fizeau runs | not emitted by the core runtime | `Fizeau` | Add or update display-name filters and labels. Keep the key name unchanged because `gen_ai.agent.name` is the OTel GenAI semantic-convention key. |
@@ -49,7 +49,7 @@ ddx.harness.name = "agent"  ->  ddx.harness.name = "fizeau"
 Also review queries for:
 
 - instrumentation scope names
-  `github.com/DocumentDrivenDX/fizeau/telemetry` or
+  `github.com/easel/fizeau/telemetry` or
   `github.com/DocumentDrivenDX/agent/telemetry`
 - full span-name matches for `invoke_agent agent`
 - old queries that should now add `service.name = "fizeau"`

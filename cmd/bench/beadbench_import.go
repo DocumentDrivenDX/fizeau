@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/evidence"
+	"github.com/easel/fizeau/internal/benchmark/evidence"
 )
 
 const beadBenchReportName = "report.json"

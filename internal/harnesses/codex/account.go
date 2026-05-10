@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/safefs"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 const codexAuthPathEnv = "FIZEAU_CODEX_AUTH"

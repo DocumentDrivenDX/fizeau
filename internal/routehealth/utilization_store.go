@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
+	"github.com/easel/fizeau/internal/provider/utilization"
 )
 
 // UtilizationKey identifies one provider endpoint/model utilization sample.

@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	fizeau "github.com/easel/fizeau"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/session"
 )
 
 func sessionScanRoutingQuality(dir string) (*session.RoutingQualityScan, error) {

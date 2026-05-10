@@ -8,8 +8,8 @@ worktree at base revision `6f3eaf7660a4ffa1143e7775e9410a1cd6932424`.
 
 | Ecosystem / Surface | Status | Evidence | Follow-up beads |
 |---|---|---|---|
-| **GitHub Releases** | **present** | `.github/workflows/release.yml` — tag-triggered, builds `fiz` binaries for linux/darwin × amd64/arm64, uploads via `gh release create` | none — binary name already `fiz`, repo already `DocumentDrivenDX/fizeau` |
-| **install.sh (bash installer)** | **present** | `install.sh` — downloads latest GitHub Release binary for detected platform | none — `REPO="DocumentDrivenDX/fizeau"` and `BINARY_NAME="${BINARY_NAME:-fiz}"` already use Fizeau names; functional enhancements are in-scope for FZ-033 (`agent-fee0000d`) |
+| **GitHub Releases** | **present** | `.github/workflows/release.yml` — tag-triggered, builds `fiz` binaries for linux/darwin × amd64/arm64, uploads via `gh release create` | none — binary name already `fiz`, repo already `easel/fizeau` |
+| **install.sh (bash installer)** | **present** | `install.sh` — downloads latest GitHub Release binary for detected platform | none — `REPO="easel/fizeau"` and `BINARY_NAME="${BINARY_NAME:-fiz}"` already use Fizeau names; functional enhancements are in-scope for FZ-033 (`agent-fee0000d`) |
 | Homebrew formula / cask | absent | no `Formula/`, `Casks/`, `*.rb` tap files found | — |
 | asdf plugin | absent | no `.tool-versions`, no plugin definition | — |
 | Scoop manifest | absent | no `bucket/`, no `*.json` manifest | — |
@@ -42,7 +42,7 @@ Version metadata injected via `-ldflags` (`main.Version`, `main.BuildTime`,
 or notarization step.
 
 **Rename status**: fully migrated — binary name `fiz` and repo
-`DocumentDrivenDX/fizeau` are already in place; no old-name strings remain.
+`easel/fizeau` are already in place; no old-name strings remain.
 
 ### install.sh
 
@@ -51,7 +51,7 @@ the latest GitHub Release tag via the API, downloads the matching binary, and
 configures PATH in the user's shell rc file. Usage:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/fizeau/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/easel/fizeau/master/install.sh | bash
 ```
 
 **Rename status**: fully migrated — `REPO` and `BINARY_NAME` already use Fizeau

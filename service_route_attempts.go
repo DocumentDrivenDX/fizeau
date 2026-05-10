@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
+	"github.com/easel/fizeau/internal/routehealth"
 )
 
 const defaultRouteAttemptCooldown = routehealth.DefaultCooldown

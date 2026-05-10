@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
+	agent "github.com/easel/fizeau/internal/core"
 )
 
 // notImplementedCapabilityPattern extracts the capability name from a server

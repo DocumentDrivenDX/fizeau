@@ -1,4 +1,4 @@
-baseURL: https://documentdrivendx.github.io/fizeau/
+baseURL: https://easel.github.io/fizeau/
 title: Fizeau
 locale: en-us
 
@@ -21,12 +21,15 @@ menu:
     - name: Docs
       pageRef: /docs
       weight: 1
+    - name: Benchmarks
+      pageRef: /benchmarks
+      weight: 2
     - name: Demos
       pageRef: /demos
-      weight: 2
-    - name: GitHub
-      url: https://github.com/DocumentDrivenDX/fizeau
       weight: 3
+    - name: GitHub
+      url: https://github.com/easel/fizeau
+      weight: 4
       params:
         icon: github
 
@@ -40,4 +43,4 @@ params:
     displayPoweredBy: false
   editURL:
     enable: true
-    base: https://github.com/DocumentDrivenDX/fizeau/edit/main/website/content
+    base: https://github.com/easel/fizeau/edit/main/website/content

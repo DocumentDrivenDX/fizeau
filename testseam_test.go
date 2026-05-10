@@ -5,7 +5,7 @@ package fizeau_test
 import (
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau"
+	"github.com/easel/fizeau"
 )
 
 // TestSeamFakeProvider demonstrates that FakeProvider compiles and can be

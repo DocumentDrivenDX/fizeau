@@ -17,16 +17,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/compaction"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/lmstudio"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/omlx"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/openrouter"
-	"github.com/DocumentDrivenDX/fizeau/internal/serverinstance"
+	"github.com/easel/fizeau/internal/compaction"
+	"github.com/easel/fizeau/internal/harnesses"
+	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
+	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
+	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/provider/lmstudio"
+	"github.com/easel/fizeau/internal/provider/omlx"
+	"github.com/easel/fizeau/internal/provider/openrouter"
+	"github.com/easel/fizeau/internal/serverinstance"
 )
 
 // ListModels returns models matching the filter, with full metadata.

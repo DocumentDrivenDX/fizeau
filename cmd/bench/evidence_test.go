@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/evidence"
+	"github.com/easel/fizeau/internal/benchmark/evidence"
 )
 
 func TestEvidenceValidateCommand(t *testing.T) {

@@ -3,7 +3,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/DocumentDrivenDX/fizeau.git
+git clone https://github.com/easel/fizeau.git
 cd agent
 lefthook install
 make install-quality-tools

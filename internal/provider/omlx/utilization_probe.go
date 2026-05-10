@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/utilization"
+	"github.com/easel/fizeau/internal/provider/utilization"
 )
 
 // UtilizationProbe queries oMLX server-root observability endpoints and

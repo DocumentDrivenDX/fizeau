@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorstore"
-	"github.com/DocumentDrivenDX/fizeau/internal/tool/anchorwords"
+	"github.com/easel/fizeau/internal/tool/anchorstore"
+	"github.com/easel/fizeau/internal/tool/anchorwords"
 )
 
 func TestAnchorEditTool_Execute(t *testing.T) {

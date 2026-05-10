@@ -131,7 +131,7 @@ bash scripts/rename-fizeau-module.sh --dry-run
 The script owns only the FZ-010 surface:
 
 - `go.mod` module path from `github.com/DocumentDrivenDX/agent` to
-  `github.com/DocumentDrivenDX/fizeau`
+  `github.com/easel/fizeau`
 - Go import paths and active non-historical references that name the old module
   path
 - `gofmt`, `go mod tidy`, `go build ./...`, and `go test ./...` verification
@@ -145,7 +145,7 @@ models execute the bead-prescribed mechanics rather than choosing a new policy.
 ## Release/Updater Decision
 
 **Release repository**: The canonical release repository after the rename is
-`DocumentDrivenDX/fizeau`. `DocumentDrivenDX/agent` is treated only as the old
+`easel/fizeau`. `DocumentDrivenDX/agent` is treated only as the old
 location that GitHub may redirect from; release tooling, installer snippets, and
 self-update code must not rely on that redirect as a supported contract.
 
@@ -156,7 +156,7 @@ self-update code must not rely on that redirect as a supported contract.
    installer constants, release asset names, and updater constants to
    `fizeau`/`fiz`.
 2. Rename the GitHub repository from `DocumentDrivenDX/agent` to
-   `DocumentDrivenDX/fizeau` before publishing any renamed release tag. This
+   `easel/fizeau` before publishing any renamed release tag. This
    ensures the tagged Go module path and release URLs are canonical at the
    moment downstream consumers fetch them.
 3. Create a traceability tag named `rename/fizeau` at the rename commit.
@@ -167,7 +167,7 @@ self-update code must not rely on that redirect as a supported contract.
    `fizeau-v1.0.0-rc.1-<os>-<arch>.tar.gz` containing a `fiz` binary, plus any
    checksums under the `fizeau` name.
 6. Bump DDx downstream to consume
-   `github.com/DocumentDrivenDX/fizeau@v1.0.0-rc.1` and invoke `fiz`. Run the
+   `github.com/easel/fizeau@v1.0.0-rc.1` and invoke `fiz`. Run the
    DDx integration checks there before cutting a final release.
 7. If DDx exposes a rename defect, fix it in this repository and repeat with
    `v1.0.0-rc.2`, `v1.0.0-rc.3`, and so on. DDx must be bumped to the newest
@@ -175,7 +175,7 @@ self-update code must not rely on that redirect as a supported contract.
 8. Create the final `v1.0.0` tag and GitHub release from the exact commit
    validated by the accepted RC. Publish the same new-name asset pattern as the
    RC with the final version.
-9. Update DDx from the accepted RC to `github.com/DocumentDrivenDX/fizeau@v1.0.0`
+9. Update DDx from the accepted RC to `github.com/easel/fizeau@v1.0.0`
    after the final release is live.
 
 **Bridge artifacts**: **No.** Do not publish `ddx-agent-*` binaries, tarballs,

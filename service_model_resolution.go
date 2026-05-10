@@ -3,9 +3,9 @@ package fizeau
 import (
 	"strings"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelmatch"
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/modelmatch"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 // resolveModelConstraint resolves an explicit raw model pin to a single

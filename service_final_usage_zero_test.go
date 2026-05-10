@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 // TestServiceFinalUsage_DistinguishesZeroFromUnknown asserts that the public

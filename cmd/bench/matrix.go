@@ -22,9 +22,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/benchmark/profile"
-	agentConfig "github.com/DocumentDrivenDX/fizeau/internal/config"
-	"github.com/DocumentDrivenDX/fizeau/internal/fiztools"
+	"github.com/easel/fizeau/internal/benchmark/profile"
+	agentConfig "github.com/easel/fizeau/internal/config"
+	"github.com/easel/fizeau/internal/fiztools"
 )
 
 const (

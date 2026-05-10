@@ -2,8 +2,15 @@
 
 Embeddable Go agent runtime - local-model-first via LM Studio.
 
-[![CI](https://github.com/DocumentDrivenDX/fizeau/actions/workflows/ci.yml/badge.svg)](https://github.com/DocumentDrivenDX/fizeau/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/DocumentDrivenDX/fizeau)](https://github.com/DocumentDrivenDX/fizeau/releases/latest)
+> Named for [Hippolyte Fizeau](https://en.wikipedia.org/wiki/Hippolyte_Fizeau)
+> (1819–1896), who measured the speed of light with a rotating toothed wheel
+> in 1849 and the drag of light through moving water in 1851. The project
+> treats round-trip timing as first-class output for the same reason: you
+> cannot improve a measurement chain you can't see through. See
+> [docs: The Name](https://easel.github.io/fizeau/docs/about/the-name/).
+
+[![CI](https://github.com/easel/fizeau/actions/workflows/ci.yml/badge.svg)](https://github.com/easel/fizeau/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/easel/fizeau)](https://github.com/easel/fizeau/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Fizeau is a Go library that implements a coding agent runtime - a tool-calling
@@ -16,13 +23,13 @@ escalation to cloud providers.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DocumentDrivenDX/fizeau/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/easel/fizeau/master/install.sh | bash
 ```
 
 Or with Go:
 
 ```bash
-go install github.com/DocumentDrivenDX/fizeau/cmd/fiz@latest
+go install github.com/easel/fizeau/cmd/fiz@latest
 ```
 
 ## Quick Start
@@ -90,8 +97,8 @@ import (
     "context"
     "fmt"
 
-    "github.com/DocumentDrivenDX/fizeau"
-    _ "github.com/DocumentDrivenDX/fizeau/configinit"
+    "github.com/easel/fizeau"
+    _ "github.com/easel/fizeau/configinit"
 )
 
 func main() {
@@ -178,9 +185,9 @@ fiz replay <session-id>  # human-readable replay
 
 ## Documentation
 
-- [Getting Started](https://documentdrivendx.github.io/fizeau/docs/getting-started/)
+- [Getting Started](https://easel.github.io/fizeau/docs/getting-started/)
 - [Routing Reference](docs/routing/index.md)
-- [Microsite](https://documentdrivendx.github.io/fizeau/)
+- [Microsite](https://easel.github.io/fizeau/)
 
 ## Contributing
 

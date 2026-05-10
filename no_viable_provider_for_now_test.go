@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 func TestNoViableProviderForNowExposesFields(t *testing.T) {

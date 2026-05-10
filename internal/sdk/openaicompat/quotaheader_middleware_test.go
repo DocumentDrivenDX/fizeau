@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/provider/quotaheaders"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/provider/quotaheaders"
 )
 
 // TestQuotaHeaderMiddleware_WiresIntoDispatchPath verifies that the

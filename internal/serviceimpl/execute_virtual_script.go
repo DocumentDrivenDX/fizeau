@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	agentcore "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	virtualprovider "github.com/DocumentDrivenDX/fizeau/internal/provider/virtual"
+	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/harnesses"
+	virtualprovider "github.com/easel/fizeau/internal/provider/virtual"
 )
 
 // ExecuteRunnerDecision is the API-neutral routing data needed by internal

@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	claudeharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/claude"
-	codexharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/DocumentDrivenDX/fizeau/internal/harnesses/gemini"
-	"github.com/DocumentDrivenDX/fizeau/internal/routehealth"
-	"github.com/DocumentDrivenDX/fizeau/internal/serviceimpl"
-	sessionusage "github.com/DocumentDrivenDX/fizeau/internal/session"
+	"github.com/easel/fizeau/internal/harnesses"
+	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
+	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
+	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
+	"github.com/easel/fizeau/internal/routehealth"
+	"github.com/easel/fizeau/internal/serviceimpl"
+	sessionusage "github.com/easel/fizeau/internal/session"
 )
 
 // FizeauService is the entire public Go surface of the fizeau module.

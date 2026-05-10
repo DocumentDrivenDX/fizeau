@@ -1,9 +1,9 @@
 package fizeau
 
 import (
-	"github.com/DocumentDrivenDX/fizeau/internal/harnesses"
-	"github.com/DocumentDrivenDX/fizeau/internal/modelcatalog"
-	"github.com/DocumentDrivenDX/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/routing"
 )
 
 func harnessPaymentKind(name string, cfg harnesses.HarnessConfig) BillingModel {

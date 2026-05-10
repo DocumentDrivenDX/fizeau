@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	fizeau "github.com/DocumentDrivenDX/fizeau"
+	fizeau "github.com/easel/fizeau"
 )
 
 func TestExecute_DispatchesAdditionalSubprocessHarnesses(t *testing.T) {

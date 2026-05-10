@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	agent "github.com/DocumentDrivenDX/fizeau/internal/core"
-	"github.com/DocumentDrivenDX/fizeau/internal/session"
+	agent "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/session"
 )
 
 // PopulateFromLogs reads all JSONL session files in logDir and adds
