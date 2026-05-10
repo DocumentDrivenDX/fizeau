@@ -14,7 +14,7 @@ make check    # fmt + vet + lint + test
 
 ### Requirements
 
-- Go 1.26.2+
+- Go 1.26.3+
 - [lefthook](https://lefthook.dev/) for local pre-push CI gates
 - [golangci-lint](https://golangci-lint.run/) for linting
 - [LM Studio](https://lmstudio.ai/) for integration tests (optional)
@@ -24,7 +24,9 @@ make check    # fmt + vet + lint + test
 ```bash
 make test                    # unit tests
 make lint                    # golangci-lint
-make ci-checks               # matches the pre-push/CI gate sequence
+make ci-checks               # matches the Go-side CI gate (the `test` job)
+make adapter-pytest          # matches the `adapter-pytest` CI job
+make ci                      # runs every CI job locally (ci-checks + adapter-pytest)
 lefthook run pre-push --force # run the hook sequence on demand
 go test -tags=integration .  # integration tests (requires LM Studio)
 ```

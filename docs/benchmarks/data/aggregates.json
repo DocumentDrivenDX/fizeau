@@ -17,50 +17,50 @@
     },
     "sindri-club-3090": {
       "n_attempts": 660,
-      "n_graded": 144,
-      "n_pass": 39,
+      "n_graded": 146,
+      "n_pass": 40,
       "tasks_touched": 104,
-      "tasks_passed_any": 16,
-      "n_real": 43,
+      "tasks_passed_any": 17,
+      "n_real": 45,
       "invalids": {
-        "invalid_setup": 324,
+        "invalid_setup": 323,
         "invalid_provider": 7
       },
-      "median_turns": 15,
+      "median_turns": 14,
       "median_in_tok": 90497,
-      "median_out_tok": 3827,
-      "median_wall": 582.054318374,
+      "median_out_tok": 3979,
+      "median_wall": 691.022726579,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
     "vidar-qwen3-6-27b": {
       "n_attempts": 652,
-      "n_graded": 134,
+      "n_graded": 135,
       "n_pass": 54,
       "tasks_touched": 104,
       "tasks_passed_any": 19,
-      "n_real": 51,
+      "n_real": 52,
       "invalids": {
         "invalid_setup": 257,
         "invalid_provider": 11
       },
-      "median_turns": 18,
-      "median_in_tok": 109352,
-      "median_out_tok": 3976,
-      "median_wall": 653.924550156,
+      "median_turns": 18.0,
+      "median_in_tok": 107018.5,
+      "median_out_tok": 4064.0,
+      "median_wall": 655.190523729,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
     "fiz-openrouter-qwen3-6-27b": {
       "n_attempts": 466,
-      "n_graded": 438,
+      "n_graded": 443,
       "n_pass": 178,
       "tasks_touched": 89,
       "tasks_passed_any": 52,
       "n_real": 361,
       "invalids": {
         "invalid_setup": 100,
-        "invalid_provider": 63
+        "invalid_provider": 68
       },
       "median_turns": 13,
       "median_in_tok": 87289,
@@ -393,7 +393,7 @@
         "n_attempts": 552,
         "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 16
+        "tasks_passed": 17
       },
       "canary": {
         "n_attempts": 74,
@@ -411,7 +411,7 @@
         "n_attempts": 266,
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 14
+        "tasks_passed": 15
       }
     },
     "vidar-qwen3-6-27b": {
@@ -936,994 +936,994 @@
     }
   },
   "external_per_subset": {
-    "Ante__Gemini-3-Pro-Preview": {
+    "Junie_CLI__Gemini-3-Flash-Preview-Gemini-3.1-Pro-Preview-Claude-Opus-4.6-GPT-5.3-Codex": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 79
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 15
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Ante__Gemini-3.1-Pro-Preview": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "BashAgent__TermiGen-32B": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Capy__Claude-Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "ClaudeCode__GLM-4.7": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "CodeBrain-1__GPT-5.3-Codex": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "CodeBrain-1__Gemini-3-Pro-Preview": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Crux__Claude-Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Deep-Agents__GPT-5.2-Codex": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Droid__Claude-Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 34
       }
     },
     "Droid__GPT-5.3-Codex": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 78
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 15
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Forge__GPT-5.4": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Forge__Gemini-3.1-Pro-Preview": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Forge__Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Gemini_CLI__Gemini-3-Flash-Preview": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "IndusAGICodingAgent__gpt-5.3-codex": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Judy__Claude-Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Judy__Gemini-3.1-Pro-Preview": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Junie_CLI__Gemini-3-Flash-Preview-Gemini-3.1-Pro-Preview-Claude-Opus-4.6-GPT-5.3-Codex": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "MAYA__Claude-4.5-sonnet": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "MAYA__Claude-4.6-opus": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Mux__Claude-Opus-4.5": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Mux__Claude-Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Mux__GPT-5.2": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Mux__GPT-5.3-Codex": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "OB-1_GPT-5.3-Codex-Claude-Opus-4.5-Claude-Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 32
       }
     },
     "OB-1_GPT-5.4-GPT-5.3-Codex-Claude-Opus-4.5-Claude-Opus-4.6": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 77
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 15
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 33
       }
     },
-    "OpenCode__Claude-Opus-4.5": {
+    "MAYA__Claude-4.6-opus": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 72
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 2
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 13
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "OpenSage__GPT-5.3-Codex": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "OpenSage__Gemini-3-Pro-Preview": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Simple-Codex__GPT-5.3-Codex": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Terminus-KIRA__Claude-Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Terminus-KIRA__Gemini-3.1-Pro-Preview": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Terminus2__Claude-Opus-4.6": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 32
       }
     },
     "Terminus2__DeepSeek-V3.2": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 52
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 13
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 27
       }
     },
-    "Terminus2__GLM-4.7": {
+    "OpenSage__Gemini-3-Pro-Preview": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 68
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 13
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 32
       }
     },
-    "Terminus2__GLM-5": {
+    "Mux__GPT-5.3-Codex": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 79
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 2
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 14
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Terminus2__GPT-5.3-Codex": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
-      }
-    },
-    "Terminus2__Kimi-k2.5": {
-      "all": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 89,
-        "tasks_passed": 0
-      },
-      "canary": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 15,
-        "tasks_passed": 0
-      },
-      "openai-cheap": {
-        "tasks_attempted": 0,
-        "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 33
       }
     },
     "Terminus2__Minimax-m2.5": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 50
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 12
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 27
+      }
+    },
+    "Forge__Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 78
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 34
+      }
+    },
+    "Capy__Claude-Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 76
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 15
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 32
+      }
+    },
+    "Terminus2__GPT-5.3-Codex": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 72
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 33
+      }
+    },
+    "Terminus-KIRA__Claude-Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 77
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 34
+      }
+    },
+    "Terminus2__GLM-4.7": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 45
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 11
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 23
+      }
+    },
+    "Terminus2__Claude-Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 69
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 31
       }
     },
     "cchuter__minimax-m2.5": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 52
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 13
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 28
+      }
+    },
+    "OB-1_GPT-5.3-Codex-Claude-Opus-4.5-Claude-Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 73
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 32
       }
     },
     "dakou__qwen3-coder-480b": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 38
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 12
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 23
       }
     },
-    "grok-cli__grok-4.20-0309-reasoning": {
+    "Judy__Gemini-3.1-Pro-Preview": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 83
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 15
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 35
       }
     },
-    "pilot-real__claude-opus-4-6": {
+    "Terminus-KIRA__Gemini-3.1-Pro-Preview": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 78
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 15
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 34
+      }
+    },
+    "BashAgent__TermiGen-32B": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 27
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 9
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 18
+      }
+    },
+    "Ante__Gemini-3-Pro-Preview": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 73
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 32
+      }
+    },
+    "Mux__Claude-Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 70
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 12
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 29
+      }
+    },
+    "CodeBrain-1__Gemini-3-Pro-Preview": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 69
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 31
+      }
+    },
+    "MAYA__Claude-4.5-sonnet": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 38
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 1
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 8
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 14
+      }
+    },
+    "Forge__Gemini-3.1-Pro-Preview": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 76
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 33
+      }
+    },
+    "IndusAGICodingAgent__gpt-5.3-codex": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 69
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 1
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 29
+      }
+    },
+    "Deep-Agents__GPT-5.2-Codex": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 75
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 15
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 31
+      }
+    },
+    "ClaudeCode__GLM-4.7": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 46
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 12
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 22
+      }
+    },
+    "OpenCode__Claude-Opus-4.5": {
+      "all": {
+        "tasks_attempted": 88,
+        "tasks_in_subset": 89,
+        "tasks_passed": 46
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 1
+      },
+      "full": {
+        "tasks_attempted": 14,
+        "tasks_in_subset": 15,
+        "tasks_passed": 7
+      },
+      "openai-cheap": {
+        "tasks_attempted": 34,
+        "tasks_in_subset": 35,
+        "tasks_passed": 22
+      }
+    },
+    "Ante__Gemini-3.1-Pro-Preview": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 80
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 33
+      }
+    },
+    "Mux__GPT-5.2": {
+      "all": {
+        "tasks_attempted": 87,
+        "tasks_in_subset": 89,
+        "tasks_passed": 54
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 11
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 24
+      }
+    },
+    "Crux__Claude-Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 86
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 15
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 35
+      }
+    },
+    "Terminus2__GLM-5": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 61
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 29
+      }
+    },
+    "Forge__GPT-5.4": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 80
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 33
+      }
+    },
+    "Judy__Claude-Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 78
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 15
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 33
+      }
+    },
+    "Gemini_CLI__Gemini-3-Flash-Preview": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 64
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 27
+      }
+    },
+    "Terminus2__Kimi-k2.5": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 53
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 27
+      }
+    },
+    "Simple-Codex__GPT-5.3-Codex": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 76
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 33
+      }
+    },
+    "Mux__Claude-Opus-4.5": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 52
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 13
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 27
+      }
+    },
+    "Droid__Claude-Opus-4.6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 74
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 32
+      }
+    },
+    "CodeBrain-1__GPT-5.3-Codex": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 75
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 14
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 31
       }
     },
     "terminus-2__AfterQuery-GPT-OSS-20B": {
       "all": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 88,
         "tasks_in_subset": 89,
-        "tasks_passed": 0
+        "tasks_passed": 28
       },
       "canary": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 3,
         "tasks_in_subset": 3,
-        "tasks_passed": 0
+        "tasks_passed": 3
       },
       "full": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 0
+        "tasks_passed": 10
       },
       "openai-cheap": {
-        "tasks_attempted": 0,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 0
+        "tasks_passed": 20
+      }
+    },
+    "OpenSage__GPT-5.3-Codex": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 79
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 15
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 35
+      }
+    },
+    "grok-cli__grok-4.20-0309-reasoning": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 61
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 15
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 30
+      }
+    },
+    "pilot-real__claude-opus-4-6": {
+      "all": {
+        "tasks_attempted": 89,
+        "tasks_in_subset": 89,
+        "tasks_passed": 77
+      },
+      "canary": {
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 12
+      },
+      "openai-cheap": {
+        "tasks_attempted": 35,
+        "tasks_in_subset": 35,
+        "tasks_passed": 27
       }
     }
   }

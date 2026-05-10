@@ -356,7 +356,7 @@ func importHumanEval(workDir, sourceFile string) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(sourceFile)
+	raw, err := os.ReadFile(sourceFile) // #nosec G304 -- sourceFile is operator-supplied import path
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", sourceFile, err)
 	}
@@ -596,7 +596,7 @@ func externalEvidenceRecord(in externalEvidenceInput) map[string]any {
 }
 
 func parseMarkdownTableFixture(path string) (map[string]string, []map[string]string, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is operator-supplied fixture path
 	if err != nil {
 		return nil, nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -676,7 +676,7 @@ func isMarkdownSeparatorRow(line string) bool {
 }
 
 func parseCSVFixture(path string) (map[string]string, []map[string]string, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is operator-supplied fixture path
 	if err != nil {
 		return nil, nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -939,7 +939,7 @@ func relativeArtifactPath(workDir, path string) string {
 }
 
 func sha256FileHex(path string) (string, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is operator-supplied import artifact
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", path, err)
 	}

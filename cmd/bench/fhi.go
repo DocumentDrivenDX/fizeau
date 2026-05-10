@@ -138,7 +138,7 @@ func cmdFHIRank(args []string) int {
 
 func loadFHIFormula(repoRoot string) (*fhiFormulaConfig, error) {
 	path := filepath.Join(repoRoot, fhiFormulaRelativePath)
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path joins caller-supplied repo root with constant relative path
 	if err != nil {
 		return nil, fmt.Errorf("read FHI formula %s: %w", path, err)
 	}

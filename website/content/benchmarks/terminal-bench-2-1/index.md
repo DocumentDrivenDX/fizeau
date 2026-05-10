@@ -6,12 +6,8 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-10 03:39:31 UTC · 4,410 trial reports · 20 active lanes · external comparators from <code>harborframework/terminal-bench-2-leaderboard</code></div>
-<h2>1. What is Fizeau</h2>
-<div class="narrative"><p>Fizeau is an agent runtime with its own built-in agent loop (the <code>fiz</code> harness): it manages the prompt, tool-call protocol, file/edit/bash tooling, planning, compaction, retries, sampling, reasoning, quotas, and session log. It is not an LLM serving runtime — it does not host weights. Upstream model traffic is delegated to whatever provider the lane points at (OpenAI, Anthropic, OpenRouter, vLLM, oMLX, RapidMLX, native local).</p>
-<p>Fizeau can also run <em>as a wrapper</em> around a different agent CLI (Claude Code, Codex, Pi, OpenCode) — the <code>fiz-harness-*</code> lanes in the catalog use this mode, where fiz handles configuration, environment, tool-call accounting, and session logging while delegating the actual reasoning loop to the wrapped agent. This is the mechanism that lets us isolate "is the agent loop hurting?" from "is the model hurting?" — same model, different harness, different lane.</p>
-<p>For benchmark purposes, holding either axis constant and varying the other is what each lane in the catalog is designed to enable. A delta between two lanes that share a model but differ in harness is harness loss; a delta between two lanes that share a harness but differ in provider is provider/runtime loss.</p></div>
-<h2>2. Terminal-Bench 2.1 and how we run it</h2>
+<div class="meta">Snapshot: 2026-05-10 04:09:24 UTC · 4,410 trial reports · 20 active lanes · external comparators from <code>harborframework/terminal-bench-2-leaderboard</code></div>
+<h2>1. Terminal-Bench 2.1 and how we run it</h2>
 <div class="narrative"><p><a href="https://terminal-bench.dev/">Terminal-Bench</a> 2.1 is a public coding-agent benchmark of 89 long-form tasks. Each task ships a prompt, an isolated Docker container with the test environment, and a deterministic verifier. An agent reads the prompt, runs shell commands and edits files inside the container, and the verifier scores the resulting state. We use the arm64 preflight image of the dataset (commit <code>harbor-registry</code>).</p>
 <p>Each lane runs through <a href="https://github.com/laude-institute/harbor">Harbor</a> 0.3.x's <code>BaseInstalledAgent</code> path. Harbor stages our agent runtime tarball into the task image, runs the agent inside the task's container with bind-mounted log directories, then runs the verifier separately. Our agent adapter (<code>scripts/benchmark/harbor_agent.py</code>) launches <code>fiz</code> with provider/model wired via per-lane env vars (<code>FIZEAU_PROVIDER</code>, <code>FIZEAU_BASE_URL</code>, <code>FIZEAU_MODEL</code>, …). Each task is run with <code>--reps 5</code> per lane; pass@1 (per-rep success rate) and pass@k (any-rep solve rate, for the k=5 reps) are reported separately.</p>
 <p>We slice the 89-task set into nested benchmarks of decreasing scope. The exact subset YAMLs are under <code>scripts/benchmark/task-subset-tb21-*.yaml</code>:</p></div>
@@ -21,7 +17,7 @@ toc: true
 <tr><td>full</td><td>15</td><td>filtered TB-2.1 tasks with fixed category quotas SE=5 security=3 file-ops=2 sysadmin=2 data-processing=2 debugging=1; difficulty-desc then id-asc</td></tr>
 <tr><td>all</td><td>89</td><td>all 89 tasks from the Harbor terminal-bench/terminal-bench-2-1 task catalog</td></tr>
 </tbody></table>
-<h2>3. Profile catalog</h2>
+<h2>2. Profile catalog</h2>
 <div class="narrative"><p>Each card below is one (provider, model, harness) tuple. Cards are colored by provider family for visual grouping; the same color is used in subsequent charts. Lane definitions are kept in <code>scripts/benchmark/profiles/&lt;id&gt;.yaml</code>.</p>
 <p>The catalog spans four kinds of provider surface:</p>
 <ul>
@@ -160,7 +156,7 @@ toc: true
 <div class="meta">sampling: {&quot;temperature&quot;:0.6,&quot;reasoning&quot;:&quot;low&quot;,&quot;top_p&quot;:0.95,&quot;top_k&quot;:20}</div>
 <div class="meta">pricing: $0.32 in / $3.2 out per Mtok</div>
 <div class="desc">fiz provider lane through OpenRouter to Qwen3.6 27B.</div>
-<div class="meta" style="margin-top:6px;">attempts: <b>466</b> · graded: 438 · pass@1: <b>40.6%</b></div>
+<div class="meta" style="margin-top:6px;">attempts: <b>466</b> · graded: 443 · pass@1: <b>40.2%</b></div>
 </div>
 <div class="profile-card" style="border-left: 4px solid #666666">
 <h4>gpt-5-3-mini</h4>
@@ -218,7 +214,7 @@ toc: true
 </dl>
 <div class="meta" style="margin-top:4px;">Primary CUDA inference host; vLLM at :8020.</div>
 </div>
-<div class="meta" style="margin-top:6px;">attempts: <b>660</b> · graded: 144 · pass@1: <b>27.1%</b></div>
+<div class="meta" style="margin-top:6px;">attempts: <b>660</b> · graded: 146 · pass@1: <b>27.4%</b></div>
 </div>
 <div class="profile-card" style="border-left: 4px solid #e8b020">
 <h4>vidar-qwen3-6-27b</h4>
@@ -238,7 +234,7 @@ toc: true
 </dl>
 <div class="meta" style="margin-top:4px;">Apple Silicon inference host for MLX / oMLX backends; oMLX at :1235.</div>
 </div>
-<div class="meta" style="margin-top:6px;">attempts: <b>652</b> · graded: 134 · pass@1: <b>40.3%</b></div>
+<div class="meta" style="margin-top:6px;">attempts: <b>652</b> · graded: 135 · pass@1: <b>40.0%</b></div>
 </div>
 <div class="profile-card" style="border-left: 4px solid #666666">
 <h4>vidar-qwen3-6-27b-openai-compat</h4>
@@ -247,7 +243,7 @@ toc: true
 <div class="meta" style="margin-top:6px;">attempts: <b>276</b> · graded: 147 · pass@1: <b>5.4%</b></div>
 </div>
 </div>
-<h2>4. Pass-rate summary by subset</h2>
+<h2>3. Pass-rate summary by subset</h2>
 <div class="narrative"><p>Each cell shows <strong>pass@k</strong> = unique tasks where any of the 5 reps solved the task / unique tasks attempted in that subset, with absolute counts in parentheses. Lanes that did not attempt a subset show <code>no data</code>. External rows are submissions on the public Hugging Face leaderboard with at least 30 tasks attempted in <code>all</code>.</p>
 <p>The <code>canary</code> numbers should be ignored as standalone signals — that subset exists to verify a lane can start, reach its provider, and write artifacts at all. Headline comparison is the <code>all</code> column.</p></div>
 <table><thead><tr><th>Profile / Submission</th>
@@ -273,13 +269,58 @@ toc: true
 <tr><td>gpt-5-4-mini-openrouter</td><td>100.0% <span class="meta">(1/1)</span></td><td>100.0% <span class="meta">(3/3)</span></td><td>100.0% <span class="meta">(2/2)</span></td><td>100.0% <span class="meta">(3/3)</span></td><td><span class="meta">openrouter</span></td></tr>
 <tr><td>gpt-5-mini</td><td>0.0% <span class="meta">(0/1)</span></td><td>0.0% <span class="meta">(0/3)</span></td><td>0.0% <span class="meta">(0/2)</span></td><td>0.0% <span class="meta">(0/3)</span></td><td><span class="meta">openai-compat</span></td></tr>
 <tr><td>grendel-rapid-mlx</td><td>0.0% <span class="meta">(0/3)</span></td><td>8.3% <span class="meta">(1/12)</span></td><td>0.0% <span class="meta">(0/15)</span></td><td>6.2% <span class="meta">(1/16)</span></td><td><span class="meta">rapid-mlx</span></td></tr>
-<tr><td>sindri-club-3090</td><td>100.0% <span class="meta">(3/3)</span></td><td>40.0% <span class="meta">(14/35)</span></td><td>66.7% <span class="meta">(10/15)</span></td><td>18.0% <span class="meta">(16/89)</span></td><td><span class="meta">vllm</span></td></tr>
+<tr><td>sindri-club-3090</td><td>100.0% <span class="meta">(3/3)</span></td><td>42.9% <span class="meta">(15/35)</span></td><td>66.7% <span class="meta">(10/15)</span></td><td>19.1% <span class="meta">(17/89)</span></td><td><span class="meta">vllm</span></td></tr>
 <tr><td>vidar-qwen3-6-27b</td><td>100.0% <span class="meta">(3/3)</span></td><td>40.0% <span class="meta">(14/35)</span></td><td>66.7% <span class="meta">(10/15)</span></td><td>21.3% <span class="meta">(19/89)</span></td><td><span class="meta">omlx</span></td></tr>
 <tr><td>vidar-qwen3-6-27b-openai-compat</td><td>33.3% <span class="meta">(1/3)</span></td><td>8.6% <span class="meta">(3/35)</span></td><td>13.3% <span class="meta">(2/15)</span></td><td>3.4% <span class="meta">(3/89)</span></td><td><span class="meta"></span></td></tr>
 <tr class="section-divider"><td colspan="6">External leaderboard (HF: harborframework/terminal-bench-2-leaderboard)</td></tr>
+<tr class="external"><td>Crux__Claude-Opus-4.6</td><td>100.0% <span class="meta">(3/3)</span></td><td>100.0% <span class="meta">(35/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>96.6% <span class="meta">(86/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Judy__Gemini-3.1-Pro-Preview</td><td>100.0% <span class="meta">(3/3)</span></td><td>100.0% <span class="meta">(35/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>93.3% <span class="meta">(83/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Ante__Gemini-3.1-Pro-Preview</td><td>100.0% <span class="meta">(3/3)</span></td><td>94.3% <span class="meta">(33/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>89.9% <span class="meta">(80/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Forge__GPT-5.4</td><td>100.0% <span class="meta">(3/3)</span></td><td>94.3% <span class="meta">(33/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>89.9% <span class="meta">(80/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Junie_CLI__Gemini-3-Flash-Preview-Gemini-3.1-Pro-Preview-Claude-Opus-4.6-GPT-5.3-Codex</td><td>100.0% <span class="meta">(3/3)</span></td><td>97.1% <span class="meta">(34/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>88.8% <span class="meta">(79/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Mux__GPT-5.3-Codex</td><td>66.7% <span class="meta">(2/3)</span></td><td>94.3% <span class="meta">(33/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>88.8% <span class="meta">(79/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>OpenSage__GPT-5.3-Codex</td><td>100.0% <span class="meta">(3/3)</span></td><td>100.0% <span class="meta">(35/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>88.8% <span class="meta">(79/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Droid__GPT-5.3-Codex</td><td>100.0% <span class="meta">(3/3)</span></td><td>91.4% <span class="meta">(32/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>87.6% <span class="meta">(78/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Forge__Opus-4.6</td><td>100.0% <span class="meta">(3/3)</span></td><td>97.1% <span class="meta">(34/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>87.6% <span class="meta">(78/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus-KIRA__Gemini-3.1-Pro-Preview</td><td>100.0% <span class="meta">(3/3)</span></td><td>97.1% <span class="meta">(34/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>87.6% <span class="meta">(78/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Judy__Claude-Opus-4.6</td><td>100.0% <span class="meta">(3/3)</span></td><td>94.3% <span class="meta">(33/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>87.6% <span class="meta">(78/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>OB-1_GPT-5.4-GPT-5.3-Codex-Claude-Opus-4.5-Claude-Opus-4.6</td><td>100.0% <span class="meta">(3/3)</span></td><td>94.3% <span class="meta">(33/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>86.5% <span class="meta">(77/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus-KIRA__Claude-Opus-4.6</td><td>100.0% <span class="meta">(3/3)</span></td><td>97.1% <span class="meta">(34/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>86.5% <span class="meta">(77/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>pilot-real__claude-opus-4-6</td><td>100.0% <span class="meta">(3/3)</span></td><td>77.1% <span class="meta">(27/35)</span></td><td>80.0% <span class="meta">(12/15)</span></td><td>86.5% <span class="meta">(77/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Capy__Claude-Opus-4.6</td><td>100.0% <span class="meta">(3/3)</span></td><td>91.4% <span class="meta">(32/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>85.4% <span class="meta">(76/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Forge__Gemini-3.1-Pro-Preview</td><td>66.7% <span class="meta">(2/3)</span></td><td>94.3% <span class="meta">(33/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>85.4% <span class="meta">(76/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Simple-Codex__GPT-5.3-Codex</td><td>66.7% <span class="meta">(2/3)</span></td><td>94.3% <span class="meta">(33/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>85.4% <span class="meta">(76/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Deep-Agents__GPT-5.2-Codex</td><td>100.0% <span class="meta">(3/3)</span></td><td>88.6% <span class="meta">(31/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>84.3% <span class="meta">(75/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>CodeBrain-1__GPT-5.3-Codex</td><td>66.7% <span class="meta">(2/3)</span></td><td>88.6% <span class="meta">(31/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>84.3% <span class="meta">(75/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Droid__Claude-Opus-4.6</td><td>100.0% <span class="meta">(3/3)</span></td><td>91.4% <span class="meta">(32/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>83.1% <span class="meta">(74/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>OB-1_GPT-5.3-Codex-Claude-Opus-4.5-Claude-Opus-4.6</td><td>66.7% <span class="meta">(2/3)</span></td><td>91.4% <span class="meta">(32/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>82.0% <span class="meta">(73/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Ante__Gemini-3-Pro-Preview</td><td>100.0% <span class="meta">(3/3)</span></td><td>91.4% <span class="meta">(32/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>82.0% <span class="meta">(73/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>MAYA__Claude-4.6-opus</td><td>66.7% <span class="meta">(2/3)</span></td><td>91.4% <span class="meta">(32/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>80.9% <span class="meta">(72/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus2__GPT-5.3-Codex</td><td>100.0% <span class="meta">(3/3)</span></td><td>94.3% <span class="meta">(33/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>80.9% <span class="meta">(72/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Mux__Claude-Opus-4.6</td><td>66.7% <span class="meta">(2/3)</span></td><td>82.9% <span class="meta">(29/35)</span></td><td>80.0% <span class="meta">(12/15)</span></td><td>78.7% <span class="meta">(70/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus2__Claude-Opus-4.6</td><td>66.7% <span class="meta">(2/3)</span></td><td>88.6% <span class="meta">(31/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>77.5% <span class="meta">(69/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>CodeBrain-1__Gemini-3-Pro-Preview</td><td>100.0% <span class="meta">(3/3)</span></td><td>88.6% <span class="meta">(31/35)</span></td><td>93.3% <span class="meta">(14/15)</span></td><td>77.5% <span class="meta">(69/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>IndusAGICodingAgent__gpt-5.3-codex</td><td>33.3% <span class="meta">(1/3)</span></td><td>82.9% <span class="meta">(29/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>77.5% <span class="meta">(69/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>OpenSage__Gemini-3-Pro-Preview</td><td>100.0% <span class="meta">(3/3)</span></td><td>91.4% <span class="meta">(32/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>76.4% <span class="meta">(68/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Gemini_CLI__Gemini-3-Flash-Preview</td><td>100.0% <span class="meta">(3/3)</span></td><td>77.1% <span class="meta">(27/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>71.9% <span class="meta">(64/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus2__GLM-5</td><td>100.0% <span class="meta">(3/3)</span></td><td>82.9% <span class="meta">(29/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>68.5% <span class="meta">(61/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>grok-cli__grok-4.20-0309-reasoning</td><td>100.0% <span class="meta">(3/3)</span></td><td>85.7% <span class="meta">(30/35)</span></td><td>100.0% <span class="meta">(15/15)</span></td><td>68.5% <span class="meta">(61/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Mux__GPT-5.2</td><td>66.7% <span class="meta">(2/3)</span></td><td>68.6% <span class="meta">(24/35)</span></td><td>73.3% <span class="meta">(11/15)</span></td><td>62.1% <span class="meta">(54/87)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus2__Kimi-k2.5</td><td>100.0% <span class="meta">(3/3)</span></td><td>77.1% <span class="meta">(27/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>59.6% <span class="meta">(53/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus2__DeepSeek-V3.2</td><td>100.0% <span class="meta">(3/3)</span></td><td>77.1% <span class="meta">(27/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>58.4% <span class="meta">(52/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>cchuter__minimax-m2.5</td><td>100.0% <span class="meta">(3/3)</span></td><td>80.0% <span class="meta">(28/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>58.4% <span class="meta">(52/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Mux__Claude-Opus-4.5</td><td>100.0% <span class="meta">(3/3)</span></td><td>77.1% <span class="meta">(27/35)</span></td><td>86.7% <span class="meta">(13/15)</span></td><td>58.4% <span class="meta">(52/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus2__Minimax-m2.5</td><td>100.0% <span class="meta">(3/3)</span></td><td>77.1% <span class="meta">(27/35)</span></td><td>80.0% <span class="meta">(12/15)</span></td><td>56.2% <span class="meta">(50/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>ClaudeCode__GLM-4.7</td><td>100.0% <span class="meta">(3/3)</span></td><td>62.9% <span class="meta">(22/35)</span></td><td>80.0% <span class="meta">(12/15)</span></td><td>51.7% <span class="meta">(46/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>OpenCode__Claude-Opus-4.5</td><td>33.3% <span class="meta">(1/3)</span></td><td>64.7% <span class="meta">(22/34)</span></td><td>50.0% <span class="meta">(7/14)</span></td><td>52.3% <span class="meta">(46/88)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>Terminus2__GLM-4.7</td><td>66.7% <span class="meta">(2/3)</span></td><td>65.7% <span class="meta">(23/35)</span></td><td>73.3% <span class="meta">(11/15)</span></td><td>50.6% <span class="meta">(45/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>dakou__qwen3-coder-480b</td><td>100.0% <span class="meta">(3/3)</span></td><td>65.7% <span class="meta">(23/35)</span></td><td>80.0% <span class="meta">(12/15)</span></td><td>42.7% <span class="meta">(38/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>MAYA__Claude-4.5-sonnet</td><td>33.3% <span class="meta">(1/3)</span></td><td>40.0% <span class="meta">(14/35)</span></td><td>53.3% <span class="meta">(8/15)</span></td><td>42.7% <span class="meta">(38/89)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>terminus-2__AfterQuery-GPT-OSS-20B</td><td>100.0% <span class="meta">(3/3)</span></td><td>57.1% <span class="meta">(20/35)</span></td><td>66.7% <span class="meta">(10/15)</span></td><td>31.8% <span class="meta">(28/88)</span></td><td><span class="meta">external</span></td></tr>
+<tr class="external"><td>BashAgent__TermiGen-32B</td><td>66.7% <span class="meta">(2/3)</span></td><td>51.4% <span class="meta">(18/35)</span></td><td>60.0% <span class="meta">(9/15)</span></td><td>30.3% <span class="meta">(27/89)</span></td><td><span class="meta">external</span></td></tr>
 </tbody></table>
 <div class="chart"><img src="charts/pass-rate.svg" alt="pass-rate.svg"></div>
-<h2>5. Detailed metrics by lane (TB-2.1 'all' subset)</h2>
+<h2>4. Detailed metrics by lane (TB-2.1 'all' subset)</h2>
 <div class="narrative"><p>All metrics are aggregated over the canonical <code>all</code> subset.</p>
 <ul>
 <li><strong>Real runs</strong> filter excludes <code>invalid_setup</code>, <code>invalid_provider</code>, and zero-turn timeouts so per-trial medians (turns, tokens, wall) reflect actual model interaction.</li>
@@ -459,7 +500,7 @@ toc: true
 <td>fiz-openrouter-qwen3-6-27b</td>
 <td><span class="meta">fiz (built-in agent loop)</span></td>
 <td>466</td><td>361</td>
-<td>40.6%</td>
+<td>40.2%</td>
 <td>58.4%</td>
 <td>13</td>
 <td>87,289</td>
@@ -528,29 +569,29 @@ toc: true
 <tr>
 <td>sindri-club-3090</td>
 <td><span class="meta">fiz (built-in agent loop)</span></td>
-<td>660</td><td>43</td>
-<td>27.1%</td>
-<td>15.4%</td>
-<td>15</td>
+<td>660</td><td>45</td>
+<td>27.4%</td>
+<td>16.3%</td>
+<td>14</td>
 <td>90,497</td>
-<td>3,827</td>
-<td>582</td>
+<td>3,979</td>
+<td>691</td>
 <td>0.000</td>
-<td>17.62</td>
-<td>87.3</td>
+<td>18.30</td>
+<td>83.6</td>
 </tr>
 <tr>
 <td>vidar-qwen3-6-27b</td>
 <td><span class="meta">fiz (built-in agent loop)</span></td>
-<td>652</td><td>51</td>
-<td>40.3%</td>
+<td>652</td><td>52</td>
+<td>40.0%</td>
 <td>18.3%</td>
 <td>18</td>
-<td>109,352</td>
-<td>3,976</td>
-<td>654</td>
+<td>107,018</td>
+<td>4,064</td>
+<td>655</td>
 <td>0.000</td>
-<td>10.13</td>
+<td>10.11</td>
 <td>16.0</td>
 </tr>
 <tr>
@@ -568,18 +609,18 @@ toc: true
 <td>18.1</td>
 </tr>
 </tbody></table>
-<h2>6. Model power vs pass rate</h2>
+<h2>5. Model power vs pass rate</h2>
 <div class="narrative"><p><em>This section is intended to be regenerated against the latest data — see <code>data/aggregates.json</code> and the chart below. Open in pull request when refreshed.</em></p>
 <p>Each marker is a lane (or external submission) plotted at its model-power score (1 = weak, 10 = frontier per <code>scripts/benchmark/terminalbench_model_power.json</code>) against pass@k on the <code>all</code> subset. Marker size scales with median turns (large = the agent worked harder before converging or giving up). Distance below the trend line at a given x-value is the <em>harness loss</em> for that lane: how much pass-rate the lane is leaving on the floor relative to what the underlying model can deliver elsewhere.</p></div>
 <div class="chart"><img src="charts/model-power-scatter.svg" alt="model-power-scatter.svg"></div>
-<h2>7. Performance vs context length</h2>
+<h2>6. Performance vs context length</h2>
 <div class="narrative"><p><em>This section is intended to be regenerated against the latest data — see <code>data/timing.json</code> and the charts below.</em></p>
 <p>Per-turn TTFT (first-token latency) and steady-state decode tok/s, bucketed by <strong>input-token length of that turn</strong>. We bucket per turn rather than per task because the agent loop's input grows monotonically inside a single task — buckets reveal how each provider scales its prefill and decode under increasing context.</p>
 <p>Buckets: 0–10k, 10–30k, 30–60k, 60–120k, 120k+ tokens. Buckets with fewer than 5 turns of data are dropped to avoid noise.</p>
 <p>Read this as: a lane that holds steady across buckets has a working KV-cache / prefix-cache; a lane whose TTFT slopes up sharply is recomputing prefill on every turn.</p></div>
 <h3>TTFT (seconds, lower is better)</h3><div class="chart"><img src="charts/ttft-by-context.svg" alt="ttft-by-context.svg"></div>
 <h3>Decode tok/s (higher is better)</h3><div class="chart"><img src="charts/decode-by-context.svg" alt="decode-by-context.svg"></div>
-<h2>8. Observations and conclusions</h2>
+<h2>7. Observations and conclusions</h2>
 <div class="narrative"><p><em>This section is the editorial summary. Regenerate against the data in <code>data/aggregates.json</code> and <code>data/timing.json</code>. The numbers cited here will go stale as more cells land — re-run <code>scripts/benchmark/generate-report.py</code> and refresh this section.</em></p>
 <h3>Qwen3.6-27B across providers (the headline question)</h3>
 <p>OpenRouter Qwen3.6-27B is the throughput reference. The local lanes are bottlenecked elsewhere:</p>

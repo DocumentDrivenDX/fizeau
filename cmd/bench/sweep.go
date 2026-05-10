@@ -281,7 +281,7 @@ func pruneStaleHarborTaskContainers(minAge time.Duration) int {
 	}
 	fmt.Printf("[sweep] cleanup: pruning %d stale Harbor task container(s) older than %s\n", len(stale), minAge)
 	args := append([]string{"rm", "-f"}, stale...)
-	if err := exec.Command("docker", args...).Run(); err != nil {
+	if err := exec.Command("docker", args...).Run(); err != nil { // #nosec G204 -- docker is fixed binary; args are container names from docker ps output
 		fmt.Fprintf(os.Stderr, "[sweep] cleanup: docker rm failed: %v\n", err)
 	}
 	return len(stale)

@@ -70,3 +70,7 @@ coverage.html
 /fiz
 /bench-fixed
 .venv-report
+
+# Hugo build output
+website/public/
+/public/

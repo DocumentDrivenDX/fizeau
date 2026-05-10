@@ -115,7 +115,7 @@ func cmdEvidenceImportTerminalBench(args []string) int {
 }
 
 func loadTerminalBenchMatrixOutput(matrixRoot string) (*matrixOutput, error) {
-	raw, err := os.ReadFile(filepath.Join(matrixRoot, "matrix.json"))
+	raw, err := os.ReadFile(filepath.Join(matrixRoot, "matrix.json")) // #nosec G304 -- matrixRoot is operator-supplied benchmark output dir
 	if err != nil {
 		return nil, fmt.Errorf("read matrix.json: %w", err)
 	}
@@ -128,7 +128,7 @@ func loadTerminalBenchMatrixOutput(matrixRoot string) (*matrixOutput, error) {
 
 func loadTerminalBenchMatrixMetadata(matrixRoot string) (map[string]any, error) {
 	path := filepath.Join(matrixRoot, terminalBenchMatrixMetadataName)
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- matrixRoot is operator-supplied benchmark output dir
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -701,7 +701,7 @@ func terminalBenchArtifactHash(matrixRoot, runDir string, parts ...string) (stri
 
 func terminalBenchRewardFromFile(matrixRoot, runDir string) (int, error) {
 	path := resolveBenchmarkPath("", matrixRoot, filepath.Join(runDir, "logs", "verifier", "reward.txt"))
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is under operator-supplied matrixRoot
 	if err != nil {
 		return 0, err
 	}
@@ -957,7 +957,7 @@ func writeBenchmarkEvidenceJSONL(file *os.File, records []map[string]any) error 
 }
 
 func sha256File(path string) string {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is operator-supplied benchmark artifact
 	if err != nil {
 		return ""
 	}

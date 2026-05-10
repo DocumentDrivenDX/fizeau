@@ -299,9 +299,9 @@ func int64Value(raw any) (int64, bool) {
 	case int32:
 		return int64(v), true
 	case uint:
-		return int64(v), true
+		return int64(v), true // #nosec G115 -- json-decoded counter; overflow on >math.MaxInt64 acceptable for telemetry
 	case uint64:
-		return int64(v), true
+		return int64(v), true // #nosec G115 -- json-decoded counter; overflow on >math.MaxInt64 acceptable for telemetry
 	case uint32:
 		return int64(v), true
 	case string:

@@ -793,7 +793,7 @@ func harborFailureText(jobOutDir, combined string) string {
 		if base != "fiz.txt" && base != "exception.txt" {
 			return nil
 		}
-		data, err := os.ReadFile(path) // #nosec G304 -- path is under runner-owned output dir
+		data, err := os.ReadFile(path) // #nosec G304 G122 -- path is under runner-owned output dir; WalkDir TOCTOU acceptable for postprocess scan
 		if err != nil {
 			return nil
 		}
@@ -846,7 +846,7 @@ func readHarborTrajectoryMetrics(jobOutDir string) (*int, *int, *int, float64) {
 		if err != nil || d.IsDir() || filepath.Base(path) != "trajectory.json" {
 			return nil
 		}
-		data, err := os.ReadFile(path) // #nosec G304 -- path is under runner-owned output dir
+		data, err := os.ReadFile(path) // #nosec G304 G122 -- path is under runner-owned output dir; WalkDir TOCTOU acceptable for postprocess scan
 		if err != nil {
 			return nil
 		}

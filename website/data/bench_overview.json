@@ -1,0 +1,88 @@
+{
+  "snapshot_ts": "2026-05-10 04:09:24 UTC",
+  "n_reports_total": 4410,
+  "n_profiles_active": 20,
+  "n_external_comparators": 45,
+  "n_external_trials": 18484,
+  "subset_size_all": 89,
+  "qwen_across_providers": [
+    {
+      "profile_id": "fiz-openrouter-qwen3-6-27b",
+      "label": "OpenRouter (cloud)",
+      "pass_at_k_pct": 58.42696629213483,
+      "pass_at_k_num": 52,
+      "pass_at_k_den": 89,
+      "median_wall_s": 533.318203732,
+      "decode_tps_p50": 52.70838607484643,
+      "ttft_p50_s": 0.7860475778579712,
+      "avg_cost_usd": 0.12251578238227147,
+      "n_attempts": 466
+    },
+    {
+      "profile_id": "sindri-club-3090",
+      "label": "vLLM int4 (sindri / RTX 5090)",
+      "pass_at_k_pct": 16.346153846153847,
+      "pass_at_k_num": 17,
+      "pass_at_k_den": 104,
+      "median_wall_s": 691.022726579,
+      "decode_tps_p50": 83.59237513138604,
+      "ttft_p50_s": 18.296444177627563,
+      "avg_cost_usd": 0.0,
+      "n_attempts": 660
+    },
+    {
+      "profile_id": "vidar-qwen3-6-27b",
+      "label": "oMLX 8-bit (vidar / Mac Studio)",
+      "pass_at_k_pct": 18.269230769230766,
+      "pass_at_k_num": 19,
+      "pass_at_k_den": 104,
+      "median_wall_s": 655.190523729,
+      "decode_tps_p50": 16.01792596768839,
+      "ttft_p50_s": 10.112328052520752,
+      "avg_cost_usd": 0.0,
+      "n_attempts": 652
+    }
+  ],
+  "frontier_comparators": [
+    {
+      "model_label": "Claude Opus 4.6",
+      "submission": "Crux__Claude-Opus-4.6",
+      "harness": "Crux",
+      "pass_at_k_pct": 96.62921348314607,
+      "pass_at_k_num": 86,
+      "pass_at_k_den": 89
+    },
+    {
+      "model_label": "GPT-5.4",
+      "submission": "Forge__GPT-5.4",
+      "harness": "Forge",
+      "pass_at_k_pct": 89.8876404494382,
+      "pass_at_k_num": 80,
+      "pass_at_k_den": 89
+    },
+    {
+      "model_label": "GPT-5.3-Codex",
+      "submission": "Mux__GPT-5.3-Codex",
+      "harness": "Mux",
+      "pass_at_k_pct": 88.76404494382022,
+      "pass_at_k_num": 79,
+      "pass_at_k_den": 89
+    },
+    {
+      "model_label": "Gemini 3 Pro",
+      "submission": "Ante__Gemini-3-Pro-Preview",
+      "harness": "Ante",
+      "pass_at_k_pct": 82.02247191011236,
+      "pass_at_k_num": 73,
+      "pass_at_k_den": 89
+    },
+    {
+      "model_label": "Gemini 3.1 Pro",
+      "submission": "Judy__Gemini-3.1-Pro-Preview",
+      "harness": "Judy",
+      "pass_at_k_pct": 93.25842696629213,
+      "pass_at_k_num": 83,
+      "pass_at_k_den": 89
+    }
+  ]
+}

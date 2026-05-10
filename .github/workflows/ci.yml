@@ -62,4 +62,4 @@ jobs:
         run: python -m pip install --upgrade pytest
 
       - name: Adapter pytest
-        run: python -m pytest scripts/benchmark/harness_adapters
+        run: make adapter-pytest

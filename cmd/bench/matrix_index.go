@@ -192,7 +192,7 @@ func collectMatrixIndexRows(root, canonicalRoot string, copyCells bool, fallback
 		if strings.Contains(filepath.ToSlash(path), "/indexes/") {
 			return nil
 		}
-		raw, err := os.ReadFile(path) // #nosec G304 -- path discovered under operator-supplied benchmark-results root
+		raw, err := os.ReadFile(path) // #nosec G304 G122 -- path discovered under operator-supplied benchmark-results root; WalkDir TOCTOU acceptable for index build
 		if err != nil {
 			return err
 		}
@@ -289,7 +289,7 @@ func snapshotProfileCatalog(canonicalRoot, sourceProfilesDir string) (int, error
 		if err != nil {
 			return count, err
 		}
-		if err := os.WriteFile(dst, raw, 0o600); err != nil {
+		if err := os.WriteFile(dst, raw, 0o600); err != nil { // #nosec G304 G703 -- dst joins operator-controlled dest dir with sanitized filename from same source dir
 			return count, err
 		}
 		count++
@@ -483,7 +483,7 @@ func copyFile(src, dst string, perm os.FileMode) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm) // #nosec G304 -- dst is operator-supplied output path
 	if err != nil {
 		return err
 	}
@@ -495,7 +495,7 @@ func copyFile(src, dst string, perm os.FileMode) error {
 }
 
 func writeMatrixIndexJSONL(path string, rows []matrixIndexRow) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) // #nosec G304 -- path is operator-supplied output path
 	if err != nil {
 		return err
 	}
@@ -547,7 +547,7 @@ func summarizeMatrixIndexRows(rows []matrixIndexRow) []matrixIndexSummaryRow {
 }
 
 func writeMatrixIndexCSV(path string, rows []matrixIndexSummaryRow) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) // #nosec G304 -- path is operator-supplied output path
 	if err != nil {
 		return err
 	}

@@ -87,7 +87,7 @@ func cmdEvidenceImportBeadBench(args []string) int {
 }
 
 func loadBeadbenchReport(path string) (map[string]any, []byte, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is operator-supplied beadbench report
 	if err != nil {
 		return nil, nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -416,7 +416,7 @@ func beadbenchCorpusEntry(workDir, beadID string) map[string]any {
 		return nil
 	}
 	path := filepath.Join(workDir, "scripts", "beadbench", "corpus.yaml")
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path joins caller-supplied workDir with constant relative path
 	if err != nil {
 		return nil
 	}

@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-regen
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -71,6 +71,14 @@ govulncheck:
 ci-checks: build-ci vet lint gosec govulncheck fmt-check rename-noise-check test-no-race test-race
 	@echo "All CI checks passed."
 
+# adapter-pytest mirrors the .github/workflows/ci.yml adapter-pytest job.
+adapter-pytest:
+	python -m pytest scripts/benchmark/harness_adapters
+
+# ci runs every gate that .github/workflows/ci.yml runs (both jobs).
+ci: ci-checks adapter-pytest
+	@echo "All CI jobs (test + adapter-pytest) passed."
+
 check: fmt vet lint test coverage-ratchet
 	@echo "All checks passed."
 
@@ -97,6 +105,11 @@ coverage-history:
 coverage-trend: coverage-ratchet
 	@echo "Coverage trend from history:"
 	@go run scripts/coverage-ratchet.go --trend
+
+# Regenerate homepage demo asciicasts from canonical session JSONLs in
+# demos/sessions/. Deterministic — no live LLM calls, no `asciinema rec`.
+demos-regen:
+	./demos/regen.sh
 
 clean:
 	rm -f $(BINARY_NAME)

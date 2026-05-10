@@ -303,11 +303,17 @@ def _refresh_leaderboard() -> None:
                 reward = float(val)
             except ValueError:
                 continue
+            # Path format: submissions/terminal-bench/2.0/<sub>/<run-id>/<task>__<trial>/verifier/reward.txt
             parts = rel.split("/")
-            sub_idx = parts.index("2.0") + 2 if "2.0" in parts else 4
-            if sub_idx >= len(parts): continue
-            submission = "/".join(parts[:4])
-            task_id = parts[sub_idx]
+            try:
+                idx = parts.index("2.0")
+            except ValueError:
+                continue
+            if idx + 3 >= len(parts):
+                continue
+            submission = "/".join(parts[:idx + 2])         # ".../2.0/<sub>"
+            task_trial = parts[idx + 3]                    # "<task>__<trial>"
+            task_id = task_trial.split("__")[0]
             trials.append({"submission": submission, "task_id": task_id, "reward": reward, "tier": "external"})
     LEADERBOARD_CACHE.parent.mkdir(parents=True, exist_ok=True)
     json.dump({"trials": trials}, open(LEADERBOARD_CACHE, "w"))
@@ -755,12 +761,11 @@ def render_body(*,
     parts: list[str] = []
     parts.append(f'<div class="meta">Snapshot: {html.escape(snapshot_ts)} · {n_reports:,} trial reports · {len(pid_active)} active lanes · external comparators from <code>harborframework/terminal-bench-2-leaderboard</code></div>')
 
-    # Section 1
-    parts.append('<h2>1. What is Fizeau</h2>')
-    parts.append(f'<div class="narrative">{_read_section("01-fizeau.md")}</div>')
+    # (Former §1 "What is Fizeau" was lifted to the homepage; the report
+    # starts at the benchmark setup.)
 
-    # Section 2
-    parts.append('<h2>2. Terminal-Bench 2.1 and how we run it</h2>')
+    # Section 1
+    parts.append('<h2>1. Terminal-Bench 2.1 and how we run it</h2>')
     parts.append(f'<div class="narrative">{_read_section("02-terminal-bench.md")}</div>')
     parts.append('<table><thead><tr><th>Subset</th><th>Tasks</th><th>Selection rule</th></tr></thead><tbody>')
     for name in SUBSET_ORDER:
@@ -770,7 +775,7 @@ def render_body(*,
     parts.append('</tbody></table>')
 
     # Section 3
-    parts.append('<h2>3. Profile catalog</h2>')
+    parts.append('<h2>2. Profile catalog</h2>')
     parts.append(f'<div class="narrative">{_read_section("03-profiles-intro.md")}</div>')
     parts.append('<div class="profile-grid">')
     for pid in pid_active:
@@ -822,7 +827,7 @@ def render_body(*,
     parts.append('</div>')
 
     # Section 4
-    parts.append('<h2>4. Pass-rate summary by subset</h2>')
+    parts.append('<h2>3. Pass-rate summary by subset</h2>')
     parts.append(f'<div class="narrative">{_read_section("04-pass-rate-narrative.md")}</div>')
     parts.append('<table><thead><tr><th>Profile / Submission</th>')
     for s in SUBSET_ORDER:
@@ -857,7 +862,7 @@ def render_body(*,
     parts.append(f'<div class="chart">{chart_emitter("pass-rate.svg")}</div>')
 
     # Section 5
-    parts.append('<h2>5. Detailed metrics by lane (TB-2.1 \'all\' subset)</h2>')
+    parts.append('<h2>4. Detailed metrics by lane (TB-2.1 \'all\' subset)</h2>')
     parts.append(f'<div class="narrative">{_read_section("05-detailed-metrics-intro.md")}</div>')
     parts.append('<table><thead><tr><th>Profile</th><th>Harness</th><th>Attempts</th><th>Real runs</th>'
                  '<th>pass@1</th><th>pass@k</th>'
@@ -887,18 +892,18 @@ def render_body(*,
     parts.append('</tbody></table>')
 
     # Section 6
-    parts.append('<h2>6. Model power vs pass rate</h2>')
+    parts.append('<h2>5. Model power vs pass rate</h2>')
     parts.append(f'<div class="narrative">{_read_section("06-model-power-observations.md")}</div>')
     parts.append(f'<div class="chart">{chart_emitter("model-power-scatter.svg")}</div>')
 
     # Section 7
-    parts.append('<h2>7. Performance vs context length</h2>')
+    parts.append('<h2>6. Performance vs context length</h2>')
     parts.append(f'<div class="narrative">{_read_section("07-context-length-observations.md")}</div>')
     parts.append(f'<h3>TTFT (seconds, lower is better)</h3><div class="chart">{chart_emitter("ttft-by-context.svg")}</div>')
     parts.append(f'<h3>Decode tok/s (higher is better)</h3><div class="chart">{chart_emitter("decode-by-context.svg")}</div>')
 
     # Section 8
-    parts.append('<h2>8. Observations and conclusions</h2>')
+    parts.append('<h2>7. Observations and conclusions</h2>')
     parts.append(f'<div class="narrative">{_read_section("08-conclusions.md")}</div>')
 
     # Method notes (always last)
@@ -1006,6 +1011,127 @@ def main():
     (DATA_DIR / "timing.json").write_text(json.dumps(timing, indent=2, default=str), encoding="utf-8")
     (DATA_DIR / "profiles.json").write_text(json.dumps(profiles, indent=2, default=str), encoding="utf-8")
     (DATA_DIR / "machines.json").write_text(json.dumps(machines, indent=2, default=str), encoding="utf-8")
+
+    # Headline-numbers JSON for the website homepage hero. Hugo reads this
+    # as a Site Data file (website/data/bench_latest.json) so the hero
+    # readout updates whenever this script runs.
+    HERO_PROFILE = "fiz-openrouter-qwen3-6-27b"  # benchmark "throughput reference"
+    a = per_profile.get(HERO_PROFILE, {})
+    t = timing.get(HERO_PROFILE, {})
+    bench_latest = {
+        "snapshot_ts": snapshot_ts,
+        "subset": "all",
+        "subset_size": len(subsets.get("all", {}).get("tasks", [])),
+        "n_reports_total": len(reports),
+        "hero_profile_id": HERO_PROFILE,
+        "hero_label": "Qwen3.6-27B / OpenRouter",
+        "hero": {
+            "decode_tps_p50": t.get("decode_tps_p50"),
+            "ttft_p50_s": t.get("ttft_p50"),
+            "pass_at_k_pct": (a.get("tasks_passed_any") / a["tasks_touched"] * 100) if a.get("tasks_touched") else None,
+            "pass_at_k_num": a.get("tasks_passed_any"),
+            "pass_at_k_den": a.get("tasks_touched"),
+            "median_wall_s": a.get("median_wall"),
+            "median_turns": a.get("median_turns"),
+            "median_in_tok": a.get("median_in_tok"),
+            "median_out_tok": a.get("median_out_tok"),
+            "n_attempts": a.get("n_attempts"),
+            "n_real": a.get("n_real"),
+        },
+    }
+    HUGO_DATA = REPO / "website/data"
+    HUGO_DATA.mkdir(parents=True, exist_ok=True)
+    (HUGO_DATA / "bench_latest.json").write_text(
+        json.dumps(bench_latest, indent=2, default=str), encoding="utf-8"
+    )
+
+    # Comparative overview JSON for the /benchmarks/ landing page. Picks a
+    # focused set of rows that tell the harness/model isolation story: the
+    # three Qwen lanes (same model, different provider/runtime) plus the
+    # top external comparators by pass@k (different model, same TB-2.1
+    # task set).
+    QWEN_LANES = [
+        ("fiz-openrouter-qwen3-6-27b", "OpenRouter (cloud)"),
+        ("sindri-club-3090",            "vLLM int4 (sindri / RTX 5090)"),
+        ("vidar-qwen3-6-27b",           "oMLX 8-bit (vidar / Mac Studio)"),
+    ]
+    qwen_rows = []
+    for pid, label in QWEN_LANES:
+        a = per_profile.get(pid, {})
+        t = timing.get(pid, {})
+        qwen_rows.append({
+            "profile_id": pid,
+            "label": label,
+            "pass_at_k_pct": (a.get("tasks_passed_any") / a["tasks_touched"] * 100) if a.get("tasks_touched") else None,
+            "pass_at_k_num": a.get("tasks_passed_any"),
+            "pass_at_k_den": a.get("tasks_touched"),
+            "median_wall_s": a.get("median_wall"),
+            "decode_tps_p50": t.get("decode_tps_p50"),
+            "ttft_p50_s": t.get("ttft_p50"),
+            "avg_cost_usd": a.get("avg_cost"),
+            "n_attempts": a.get("n_attempts"),
+        })
+
+    # External: pick best-performing submission per underlying frontier model on TB-2.1 'all'.
+    FRONTIER_KEYS = [
+        ("Claude Opus 4.6", ["Opus-4.6", "claude-opus-4-6"]),
+        ("GPT-5.4",         ["GPT-5.4"]),
+        ("GPT-5.3-Codex",   ["GPT-5.3-Codex"]),
+        ("Gemini 3 Pro",    ["Gemini-3-Pro"]),
+        ("Gemini 3.1 Pro",  ["Gemini-3.1-Pro"]),
+    ]
+    # Heuristic: an "ensemble" submission packs multiple model families into one
+    # row name (e.g. "Junie_CLI__Gemini-3-Flash-...-GPT-5.3-Codex" or "OB-1_..."
+    # naming Opus + Codex together). For per-model headline rows we want
+    # single-model entries only, so skip submissions whose post-__ tail names
+    # more than one model family or that use the multi-model OB-1 / Junie_CLI
+    # harness prefix.
+    import re as _re
+    MODEL_FAMILY_RE = _re.compile(r"(Claude-Opus|Claude-Sonnet|GPT-5|Gemini-3|Kimi|GLM|Minimax|DeepSeek|qwen3)", _re.IGNORECASE)
+    def _is_ensemble(sub: str) -> bool:
+        if sub.startswith(("OB-1", "Junie_CLI")):
+            return True
+        tail = sub.split("__", 1)[1] if "__" in sub else sub
+        return len(MODEL_FAMILY_RE.findall(tail)) > 1
+
+    external_rows = []
+    for label, needles in FRONTIER_KEYS:
+        candidates = []
+        for sub, by_sub in ext_per_subset.items():
+            if _is_ensemble(sub):
+                continue
+            d = by_sub.get("all", {})
+            if not d.get("tasks_attempted"):
+                continue
+            if any(n.lower() in sub.lower() for n in needles):
+                pct = d["tasks_passed"] / d["tasks_attempted"] * 100
+                candidates.append((sub, pct, d["tasks_passed"], d["tasks_attempted"]))
+        if not candidates:
+            continue
+        candidates.sort(key=lambda x: -x[1])
+        best_sub, pct, p, a_ = candidates[0]
+        external_rows.append({
+            "model_label": label,
+            "submission": best_sub,
+            "harness": best_sub.split("__")[0] if "__" in best_sub else "",
+            "pass_at_k_pct": pct,
+            "pass_at_k_num": p,
+            "pass_at_k_den": a_,
+        })
+
+    bench_overview = {
+        "snapshot_ts": snapshot_ts,
+        "n_reports_total": len(reports),
+        "n_profiles_active": len([p for p in per_profile if p not in EXCLUDED_PROFILES]),
+        "n_external_comparators": len(ext_per_subset),
+        "n_external_trials": sum(1 for _ in leaderboard),
+        "subset_size_all": len(subsets.get("all", {}).get("tasks", [])),
+        "qwen_across_providers": qwen_rows,
+        "frontier_comparators": external_rows,
+    }
+    (HUGO_DATA / "bench_overview.json").write_text(
+        json.dumps(bench_overview, indent=2, default=str), encoding="utf-8"
+    )
 
     if args.emit_data_only:
         print(f"[done, data-only] data/ written. Edit sections/*.md, then re-run without --emit-data-only.", file=sys.stderr)

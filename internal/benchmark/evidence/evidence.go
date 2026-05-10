@@ -46,7 +46,7 @@ func (e *DuplicateRecordsError) Error() string {
 // NewValidator compiles the benchmark evidence schema from repoRoot.
 func NewValidator(repoRoot string) (*Validator, error) {
 	schemaPath := filepath.Join(repoRoot, SchemaRelativePath)
-	rawSchema, err := os.ReadFile(schemaPath)
+	rawSchema, err := os.ReadFile(schemaPath) // #nosec G304 -- schemaPath joins caller-supplied repo root with constant relative path
 	if err != nil {
 		return nil, fmt.Errorf("read evidence schema %s: %w", schemaPath, err)
 	}
@@ -208,7 +208,7 @@ func loadLedgerRecords(path string) ([]map[string]any, error) {
 }
 
 func loadRecords(path string) ([]map[string]any, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is operator-supplied evidence file
 	if err != nil {
 		return nil, fmt.Errorf("read evidence file %s: %w", path, err)
 	}
@@ -270,10 +270,10 @@ func mustMarshal(doc map[string]any) []byte {
 }
 
 func appendRecords(path string, records []map[string]any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { // #nosec G301 -- ledger dir must be group-readable for ops tooling
 		return fmt.Errorf("create ledger directory: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304 -- path is operator-supplied ledger file
 	if err != nil {
 		return fmt.Errorf("open ledger %s: %w", path, err)
 	}

@@ -80,7 +80,7 @@ func reapStaleHarnessRecords(dir string, grace time.Duration, now time.Time) err
 }
 
 func readStaleHarnessRecord(path string) (staleHarnessRecord, bool) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is service-owned reaper state file
 	if err != nil {
 		return staleHarnessRecord{}, false
 	}
@@ -93,7 +93,7 @@ func readStaleHarnessRecord(path string) (staleHarnessRecord, bool) {
 }
 
 func writeStaleHarnessRecord(path string, record staleHarnessRecord) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { // #nosec G301 -- reaper state dir must be group-readable for ops tooling
 		return err
 	}
 	data, err := json.MarshalIndent(record, "", "  ")
