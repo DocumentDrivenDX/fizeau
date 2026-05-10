@@ -723,18 +723,19 @@ func normalizeRunSubcommand(args []string) (bool, []string) {
 		"version":                true,
 	}
 	valueFlags := map[string]bool{
-		"harness":   true,
-		"max-power": true,
-		"max-iter":  true,
-		"min-power": true,
-		"model":     true,
-		"p":         true,
-		"policy":    true,
-		"preset":    true,
-		"provider":  true,
-		"reasoning": true,
-		"system":    true,
-		"work-dir":  true,
+		"cost-cap-usd": true,
+		"harness":      true,
+		"max-power":    true,
+		"max-iter":     true,
+		"min-power":    true,
+		"model":        true,
+		"p":            true,
+		"policy":       true,
+		"preset":       true,
+		"provider":     true,
+		"reasoning":    true,
+		"system":       true,
+		"work-dir":     true,
 	}
 
 	for i := 0; i < len(args); i++ {

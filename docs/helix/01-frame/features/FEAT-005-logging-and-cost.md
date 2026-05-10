@@ -159,6 +159,22 @@ loop.
     on this contract, but standalone `fiz run` invocations honor the
     same cap when one is configured.
 
+**Implementation status (§26-29).** Implemented. The cap is plumbed
+end-to-end: `fiz run --cost-cap-usd <USD>` (or `FIZEAU_COST_CAP_USD`) sets
+`ServiceExecuteRequest.CostCapUSD`, which threads through
+`internal/serviceimpl.NativeRequest.CostCapUSD` into
+`internal/core.Request.CostCapUSD`. The native loop
+(`internal/core/loop.go`) gates each iteration: if
+`running_known_cost + projected_next_turn_cost ≥ cap`, it halts before the
+next `llm.request`, the agent `Result.Status` becomes `budget_halted`, the
+service emits a final event with `final.Status = "budget_halted"`, the
+session log records `process_outcome = "budget_halted"` and `cost_cap_usd`,
+and the CLI exits with code `2` (distinct from `1` for other errors). The
+projection uses the most recent turn's known cost as a conservative
+estimate. When turn cost is unknown (per §28) the cap cannot fire — the
+loop logs a one-shot warning so operators can see the cap is inert and
+proceeds normally.
+
 #### Usage Reporting (P1 — Standalone CLI)
 
 30. `fiz usage` aggregates session logs and telemetry: per-provider/model

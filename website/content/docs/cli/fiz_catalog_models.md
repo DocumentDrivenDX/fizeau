@@ -23,6 +23,7 @@ fiz catalog models [flags]
 
 ```
       --allow-deprecated-model   Allow deprecated model catalog references
+      --cost-cap-usd float       Per-run cost cap in USD; halts the loop with status=budget_halted before the next request when running + projected cost reaches this limit (0 = no cap; env: FIZEAU_COST_CAP_USD)
       --harness string           Harness hard pin (selects a specific harness)
       --json                     Output result as JSON
       --list-models              List available models with routing metadata

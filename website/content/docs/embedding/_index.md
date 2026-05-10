@@ -223,6 +223,17 @@ type ServiceExecuteRequest struct {
     CompactionContextWindow int
     CompactionReserveTokens int
 
+    // CostCapUSD is the per-run cost cap in USD, mirrored to
+    // internal/core.Request.CostCapUSD. When > 0, the native loop halts
+    // before issuing the next llm.request once running known cost plus the
+    // projected next-turn cost would meet or exceed the cap; the resulting
+    // final event reports Status="budget_halted". Zero means no cap. Per
+    // FEAT-005 §28 / AC-FEAT-005-07, the cap requires turn cost to be known;
+    // unknown-cost runs proceed past the cap with a stderr warning. Honored
+    // only when Harness=="fiz" (the native loop) — subprocess harnesses
+    // manage cost externally.
+    CostCapUSD float64
+
     // Optional stall policy. When non-nil agent enforces and ends with
     // Status="stalled" if any limit hits. Default policy applies when nil.
     StallPolicy *StallPolicy
@@ -830,6 +841,7 @@ parameter types, and field-level documentation, follow the
 | `probeOpenAIModelsForDiscovery` | var |  |
 | `probeServiceProvider` | func (func probeServiceProvider(ctx context.Context, entry ServiceProviderEntry) (status string, modelCount int, caps []string)) | probeServiceProvider pings a provider and returns (status, modelCount, capabilities) |
 | `processGroupAlive` | func (func processGroupAlive(pgid int) bool) |  |
+| `processOutcomeForFinal` | func (func processOutcomeForFinal(status string) string) | processOutcomeForFinal returns the FEAT-005 §27 process_outcome label for |
 | `progressExceptionalLineLimit` | const |  |
 | `progressLineLimit` | const |  |
 | `progressMessageLimit` | func (func progressMessageLimit(payload ServiceProgressData) int) |  |

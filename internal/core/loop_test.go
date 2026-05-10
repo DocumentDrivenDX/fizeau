@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -2500,10 +2501,12 @@ func TestRun_CostCapHaltsBeforeNextRequest(t *testing.T) {
 	responses := make([]Response, 0, 6)
 	for i := 0; i < 5; i++ {
 		c := cost
+		// Vary ID + arguments so the tool-call-loop detector doesn't fire.
+		args := json.RawMessage(`{"i":` + strconv.Itoa(i) + `}`)
 		responses = append(responses, Response{
 			Content: "",
 			ToolCalls: []ToolCall{
-				{ID: "tc", Name: "read", Arguments: json.RawMessage(`{}`)},
+				{ID: "tc-" + strconv.Itoa(i), Name: "read", Arguments: args},
 			},
 			Usage: TokenUsage{Input: 100, Output: 50, Total: 150},
 			Model: "test-model",

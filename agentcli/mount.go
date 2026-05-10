@@ -680,6 +680,10 @@ func addLegacyPersistentFlags(cmd *cobra.Command) {
 	flags.Bool("version", false, "Print version")
 	flags.String("system", "", "System prompt")
 	flags.String("preset", "", "System prompt preset")
+	// FEAT-005 §26-29 / AC-FEAT-005-07: per-run cost cap. Surfaced as a
+	// persistent flag so cobra-doc's CLI reference picks it up; the actual
+	// parsing happens in agentcli/run.go runWithOptions.
+	flags.Float64("cost-cap-usd", 0, "Per-run cost cap in USD; halts the loop with status=budget_halted before the next request when running + projected cost reaches this limit (0 = no cap; env: FIZEAU_COST_CAP_USD)")
 }
 
 func legacyArgs(cmd *cobra.Command, args ...string) []string {
@@ -696,6 +700,7 @@ func legacyArgs(cmd *cobra.Command, args ...string) []string {
 		}
 	}
 	for _, name := range []string{
+		"cost-cap-usd",
 		"harness",
 		"max-power",
 		"max-iter",

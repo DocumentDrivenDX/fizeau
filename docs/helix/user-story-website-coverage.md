@@ -82,7 +82,7 @@ viewer can read in 30 seconds. **N** if it is internal plumbing
 | AC-FEAT-005-04 | OTel export conforms to CONTRACT-001 | OTel surface | `/docs/observability/` | N |
 | AC-FEAT-005-05 | `fiz usage` supports table/JSON/CSV with time-window filters | `fiz usage` | `/docs/cli/fiz_usage/` | Y (`fiz usage --since 7d`) |
 | AC-FEAT-005-06 | Unwritable log dir / OTel export failure → best-effort, run completes | Failure modes | GAP | N |
-| AC-FEAT-005-07 | Per-run cost cap halts loop before next request, status budget_halted | Cost cap | GAP | Y (cap-halt visible at terminal) |
+| AC-FEAT-005-07 | Per-run cost cap halts loop before next request, status budget_halted | Cost cap | IMPLEMENTED (`fiz run --cost-cap-usd` / `FIZEAU_COST_CAP_USD`; halt status = `budget_halted`, exit 2; website page TBD under `/docs/cost-control/`) | Y (cap-halt visible at terminal) |
 | AC-FEAT-005-08 | v0.11 session log preserves policy/power_policy attribution | Routing-attr persistence | GAP | N |
 
 ## FEAT-006 — Standalone CLI
@@ -130,9 +130,12 @@ viewer can read in 30 seconds. **N** if it is internal plumbing
 
 ## Top website-coverage gaps (Part B output, top 5)
 
-1. **Cost cap (`AC-FEAT-005-07`)** — `cost_cap` budget halt is fully implemented but
-   completely unmentioned on the public site. High differentiator vs.
-   competitors. → propose new `/docs/cost-control/` page.
+1. **Cost cap (`AC-FEAT-005-07`)** — `cost_cap` budget halt is fully
+   implemented end-to-end (`fiz run --cost-cap-usd $X` /
+   `FIZEAU_COST_CAP_USD`; loop emits `process_outcome=budget_halted` and the
+   CLI exits with code 2) but the public site still has no dedicated page.
+   High differentiator vs. competitors. → propose new `/docs/cost-control/`
+   page.
 2. **Reasoning guards (`AC-FEAT-001-07`, `-08`, `-09`)** — three different
    safety nets (overflow, stall, tool-call loop) protecting against
    model misbehavior; none discussed publicly. → consolidate under
