@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-regen docs-cli docs-embedding docs-tools docs-adrs capture-machine-info
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs capture-machine-info
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -138,6 +138,16 @@ coverage-trend: coverage-ratchet
 # them into demos/sessions/. Requires $OPENROUTER_API_KEY. Live LLM calls.
 demos-capture:
 	./demos/capture.sh
+
+# Capture demo session JSONLs inside the CPU-only Docker image (bundled
+# llama-server + Qwen2.5-Coder-0.5B). No GPU, no API key, no internet.
+# Builds the image on first run (~5 min, mostly model download).
+demos-capture-docker:
+	./demos/capture-docker.sh
+
+# Build the demos Docker image without capturing (handy for CI cache).
+demos-docker-build:
+	docker build -f demos/docker/Dockerfile.cpu -t fiz-demos-cpu:local .
 
 # Regenerate homepage demo asciicasts from canonical session JSONLs in
 # demos/sessions/. Deterministic — no live LLM calls, no `asciinema rec`.

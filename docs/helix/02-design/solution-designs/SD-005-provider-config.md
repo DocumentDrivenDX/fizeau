@@ -76,7 +76,7 @@ The target config declares sources/endpoints for discovery and dispatch. It
 does not encode route order, model-strength policy, or fallback chains.
 
 ```yaml
-# .agent/config.yaml
+# .fizeau/config.yaml
 model_catalog:
   manifest: ~/.config/fiz/models.yaml   # optional local override
 

@@ -204,7 +204,7 @@ These observations should anchor the thresholds in the benchmark evaluation plan
 - **Preset**: `cheap`
 - **Working directories**: Isolated temp dirs per task (`/tmp/ddx-bench/taskN`)
 - **Invocation**: `ddx-agent --json --preset cheap -p "<prompt>"`
-- **Provider config**: OpenRouter via `~/.config/agent/config.yaml`
+- **Provider config**: OpenRouter via `~/.config/fizeau/config.yaml`
 - **Timing**: Wall clock via `time` (not `duration_ms` in JSON, which has a bug)
 - **Token counts**: From `--json` output `.tokens.input` / `.tokens.output`
 
@@ -214,7 +214,7 @@ To reproduce this baseline:
 
 ```bash
 # Configure a provider
-mkdir -p ~/.config/agent && cat > ~/.config/agent/config.yaml <<EOF
+mkdir -p ~/.config/fizeau && cat > ~/.config/fizeau/config.yaml <<EOF
 providers:
   openrouter:
     type: openai-compat

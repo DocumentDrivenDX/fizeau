@@ -10,7 +10,7 @@ description: "How fiz picks a (harness, provider, model) per call, fails over, a
 A single `fiz run` request usually under-specifies the route. The caller
 asks for a *policy* (cheap / default / smart / air-gapped) or pins one
 axis (`--model`, `--provider`, `--harness`) and expects the runtime to
-fill in the rest, avoid providers that just timed out, exclude providers
+fill in the rest, skip providers that just timed out, exclude providers
 that are quota-exhausted, and reuse a previously-good choice when a
 correlation key is present. That's auto-routing: the engine that
 collapses an under-specified request into a concrete
@@ -38,8 +38,8 @@ trace (including rejected candidates and their typed
 
 Internally it delegates to
 [`internal/routing.Resolve`](https://github.com/easel/fizeau/blob/master/internal/routing/engine.go),
-which is the single ranking engine; everything else (cooldowns, lease
-reuse, escalation) is plumbing around it.
+the single ranking engine; everything else (cooldowns, lease reuse,
+escalation) is plumbing around it.
 
 ### Failure modes
 
@@ -57,7 +57,7 @@ The engine returns typed errors so callers can branch precisely:
   provider that supports the prompt size + tool requirement.
 - [`*NoViableProviderForNow`](https://github.com/easel/fizeau/blob/master/routing_errors.go#L288) —
   every otherwise-eligible candidate is *currently* quota-exhausted.
-  Carries a `RetryAfter` so DDx-style supervisors pause work instead of
+  Carries a `RetryAfter` so DDx-style supervisors pause work rather than
   treating the request as a permanent failure.
 
 ### Quota state machine
@@ -75,9 +75,9 @@ quota_exhausted --(now >= retry_after)--> available  // auto-decay
 [`ProviderBurnRateTracker`](https://github.com/easel/fizeau/blob/master/provider_burn_rate.go#L28)
 maintains a per-provider rolling daily-token window and *predictively*
 transitions a provider to `quota_exhausted` before the upstream quota
-error fires, when a `daily_token_budget` is configured. This is the
-hook that turns observed token usage (see
-[Performance tracking](../observability/)) into routing pressure.
+error fires, when a `daily_token_budget` is configured. This turns
+observed token usage (see [Performance tracking](../observability/))
+into routing pressure.
 
 ### Per-attempt feedback
 
@@ -87,7 +87,7 @@ which feeds
 [`internal/routehealth.Store`](https://github.com/easel/fizeau/blob/master/internal/routehealth/store.go).
 Failed attempts cool down the (provider, model, endpoint) tuple for
 `routing.health_cooldown` (default 60s) so the next ResolveRoute skips
-it. This is what makes auto-routing *adaptive* rather than purely
+it. This makes auto-routing *adaptive* rather than purely
 configuration-driven.
 
 ### Routing-quality ring
@@ -136,7 +136,7 @@ plus the sampling pin overrides
 `FIZEAU_TEMPERATURE` / `FIZEAU_TOP_P` / `FIZEAU_TOP_K` / `FIZEAU_MIN_P`
 ([source](https://github.com/easel/fizeau/blob/master/internal/config/config.go#L421-L466))
 override config-file values for one process. The bench harness uses
-these to inject per-trial samplers without rewriting `config.yaml`.
+these to inject per-trial samplers without editing `config.yaml`.
 
 ### CLI
 
@@ -189,8 +189,8 @@ $ fiz route-status --json | jq '.routing_quality'
 
 A 0.94 acceptance rate over the recent window means humans accepted the
 auto choice 94% of the time. The 0.21 disagreement rate inside the
-overrides says ~80% of those overrides were redundant (the human pinned
-the same thing auto would have picked).
+overrides says ~80% of those overrides were redundant — the human pinned
+what auto would have picked.
 
 ## Where to look next
 

@@ -9,4 +9,5 @@ weight: 1
   {{< card link="cli" title="CLI Reference" subtitle="Every command with examples." >}}
   {{< card link="routing" title="Auto-routing" subtitle="How fiz picks (harness, provider, model) and recovers from failures." >}}
   {{< card link="observability" title="Performance tracking" subtitle="Per-turn timing, token usage, cost, and the OTel surface." >}}
+  {{< card link="comparison" title="Agents Comparison" subtitle="Side-by-side facts for every coding-agent harness in our benchmarks." >}}
 {{< /cards >}}

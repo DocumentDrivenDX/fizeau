@@ -26,7 +26,7 @@
 - **Vision**: Users of pi and opencode should be able to import their existing LLM provider configurations into agent without duplication.
 - **Requirements**: Import from pi (~/.pi/agent/auth.json, settings.json, models.json) and opencode (~/.local/share/opencode/auth.json, opencode.json). Support diff/merge modes, secret redaction, drift detection, and zero-config discovery.
 - **Features / Stories**: Per SD-007 — import CLI commands, two-source merge for pi, secret handling to user config, drift detection with hash tracking.
-- **Architecture / ADRs**: Uses existing config.Load() pattern, writes to ~/.config/agent/config.yaml by default.
+- **Architecture / ADRs**: Uses existing config.Load() pattern, writes to ~/.config/fizeau/config.yaml by default.
 - **Technical Design**: SD-007 fully specifies the design including package structure, CLI commands, metadata schema, and implementation plan.
 - **Test Plans**: Not yet specified for this feature.
 - **Implementation Plan**: 8 tasks in SD-007, tasks 1-4 (readers), task 5 (CLI), task 6 (discovery), task 7 (drift), task 8 (env var fallback already exists in config.Load()).

@@ -8,7 +8,7 @@ description: "Package structure, design principles, and the decision record."
 Fizeau is a Go library and CLI for driving language-model agents through
 provider-agnostic tools, harnesses, and routing. This page describes the
 shape of the codebase and the principles behind it; the
-[ADR index](adr/) captures individual decisions in dated, numbered form.
+[ADR index](adr/) captures individual decisions, dated and numbered.
 
 ## Design principles
 
@@ -20,7 +20,7 @@ shape of the codebase and the principles behind it; the
 - **Round-trip timing as a first-class signal.** Named for the physicist who
   measured the speed of light with a rotating wheel, the project treats
   per-turn timing, replay fidelity, and the gap between measured and rest
-  frames as observability primitives — not afterthoughts. See
+  frames as observability primitives, not afterthoughts. See
   [the name](../about/the-name/).
 - **Replay first, analytics second.** JSONL session logs are the canonical
   replay artifact. OpenTelemetry GenAI spans and metrics are the analytics
@@ -123,7 +123,6 @@ increasing sequence numbers.
 
 ## Decision record
 
-The full set of architectural decisions, with context, alternatives,
-consequences, and risks, lives in the [ADR index](adr/). Each ADR is dated
-and numbered; superseded entries stay in the source tree but are hidden from
-the index.
+The architectural decisions, with context, alternatives, consequences,
+and risks, live in the [ADR index](adr/). Each ADR is dated and numbered;
+superseded entries stay in the source tree but are hidden from the index.

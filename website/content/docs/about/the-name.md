@@ -10,13 +10,13 @@ The project is named for **Armand Hippolyte Louis Fizeau** (23 September 1819 �
 
 ### 1849 — the toothed wheel
 
-In 1849 Fizeau set up a rotating brass wheel pierced by 720 teeth on the rooftop of his father's house on the slopes of Mont Valérien in Suresnes, west of Paris, and a return mirror on the heights of Montmartre, roughly 8.6 km away. He shone a beam of light through a gap between teeth, off the distant mirror, and back. By spinning the wheel fast enough that the returning beam was blocked by the *next* tooth instead of the gap that emitted it (the first total eclipse occurred at about 12.6 rotations per second), he could solve for the round-trip transit time of light over a known distance — and from that, the speed of light. He reported a value of approximately 315,000 km/s, within a few percent of the modern value (≈299,792 km/s).[^speed][^enwiki]
+In 1849 Fizeau set up a rotating brass wheel with 720 teeth on the rooftop of his father's house on the slopes of Mont Valérien in Suresnes, west of Paris, and a return mirror on the heights of Montmartre, roughly 8.6 km away. He shone a beam of light through a gap between teeth, off the distant mirror, and back. By spinning the wheel fast enough that the returning beam was blocked by the *next* tooth instead of the gap that emitted it (first total eclipse at about 12.6 rotations per second), he could solve for the round-trip transit time of light over a known distance — and from that, the speed of light. He reported a value of approximately 315,000 km/s, within a few percent of the modern value (≈299,792 km/s).[^speed][^enwiki]
 
-The apparatus is a measurement instrument, not a model. The point is not the result; the point is that it works at all — that you can pin down a quantity that fast by making the *measurement chain itself* fast and precise enough to interrogate it.
+The apparatus is a measurement instrument, not a model. The point is not the result; the point is that it works at all — you can pin down a quantity that fast by making the *measurement chain itself* fast and precise enough to interrogate it.
 
 ### 1851 — light in moving water
 
-Two years later Fizeau performed the experiment that has his name on it more permanently. He sent two coherent light beams through a U-shaped tube where water flowed rapidly in opposite directions, recombined them on an interferometer, and measured the shift in the resulting fringes. The fringes shifted depending on the water's flow direction — confirming Augustin-Jean Fresnel's empirical "dragging coefficient" *f* = 1 − 1/n², which says light travelling through a moving medium is partially dragged along but by less than a Newtonian sum would predict.[^fizeauexp]
+Two years later Fizeau performed the experiment that carries his name. He sent two coherent light beams through a U-shaped tube where water flowed in opposite directions, recombined them on an interferometer, and measured the shift in the fringes. The fringes shifted with the water's flow direction — confirming Augustin-Jean Fresnel's empirical "dragging coefficient" *f* = 1 − 1/n², which says light travelling through a moving medium is partially dragged along but by less than a Newtonian sum would predict.[^fizeauexp]
 
 That result remained mysterious for half a century. In 1907 Max von Laue showed the Fresnel drag coefficient is a natural consequence of the relativistic addition of velocities derived in Einstein's 1905 special-relativity paper. Einstein himself singled out the Fizeau measurements as among the experimental results that "were enough" to inform his thinking about relativity.[^laue]
 
@@ -27,9 +27,9 @@ Two ideas embedded in that experiment:
 
 ## Why this name for an agent runtime
 
-Modern LLM agents are bytes flowing through a measurement chain — provider, network, harness, container, tools, and back. The thing we want to know about that chain is, mostly, *how is it running and where is it slow?* — round-trip latency per turn, prefill vs decode rate, throughput under context pressure, where compute is being spent, where it is being wasted.
+Modern LLM agents are bytes flowing through a measurement chain — provider, network, harness, container, tools, and back. What we want to know about that chain is, mostly, *how is it running and where is it slow?* — round-trip latency per turn, prefill vs decode rate, throughput under context pressure, where compute is spent, where it is wasted.
 
-Fizeau, the software, treats those measurements as first-class output, not as observability bolted on. Every turn produces structured timing. Every provider runs through the same surface so deltas mean what they look like they mean. The rotating-wheel motif is the right one: a precision chronograph wrapped around a fast-moving signal, designed to interrogate a moving medium without distorting it.
+Fizeau, the software, treats those measurements as first-class output, not as observability bolted on. Every turn produces structured timing. Every provider runs through the same surface so deltas mean what they look like they mean. The rotating-wheel motif fits: a precision chronograph wrapped around a fast-moving signal, designed to interrogate a moving medium without distorting it.
 
 That is the genesis of the name, and the design intent behind the project.
 

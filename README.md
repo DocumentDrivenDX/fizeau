@@ -107,9 +107,9 @@ func main() {
         panic(err)
     }
     events, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
-        Prompt:   "Read main.go and tell me the package name",
-        ModelRef: "cheap",
-        WorkDir:  ".",
+        Prompt:  "Read main.go and tell me the package name",
+        Policy:  "cheap",
+        WorkDir: ".",
     })
     if err != nil {
         panic(err)

@@ -12,17 +12,50 @@ LLM calls** and does not require `asciinema rec`.
 demos/
 ├── README.md              # this file
 ├── regen.sh               # entry point — wraps regen.py for all demos
-├── regen.py               # JSONL → asciicast v2 renderer
+├── regen.py               # JSONL → asciicast v2 renderer (with time compression)
+├── capture.sh             # capture sessions against OpenRouter (cloud)
+├── capture-docker.sh      # capture sessions in the CPU Docker image (offline)
+├── docker/
+│   ├── Dockerfile.cpu     # ubuntu + fiz + llama-server + Qwen-Coder-0.5B (~390 MB)
+│   ├── Dockerfile.gpu     # CUDA variant; same plumbing, model bind-mounted
+│   ├── entrypoint.sh      # boots llama-server in the bg + waits for /health
+│   └── fizeau-config.yaml # points fiz at 127.0.0.1:8080 (the local llama-server)
 ├── record.sh              # legacy live-recording helper (uses LM Studio)
 ├── scripts/               # legacy live-recording demo scripts
 │   ├── demo-read.sh
 │   ├── demo-edit.sh
 │   └── demo-bash.sh
 └── sessions/              # canonical session JSONLs (CHECK THESE IN)
+    ├── quickstart.jsonl              # install + download + first query
+    ├── quickstart.preface.json       # shell-history frames before $ fiz
     ├── file-read.jsonl
     ├── file-edit.jsonl
     └── bash-explore.jsonl
 ```
+
+## Capture paths
+
+| Path                    | Backend            | When to use                         |
+| ----------------------- | ------------------ | ----------------------------------- |
+| `make demos-capture`        | OpenRouter        | Reels that need a strong cloud model |
+| `make demos-capture-docker` | local llama-server | Reels the 0.5 B Coder can solve     |
+
+The Docker path is what most reels should use going forward — it is
+fully reproducible (no network at run time, model baked in) and the
+image works on `linux/amd64` and `linux/arm64`.
+
+## Time-compression banners
+
+The renderer detects slow operations (model downloads, model loads, any
+LLM turn slower than `--latency-threshold-ms`, default 8000 ms) and
+fast-forwards them in the playback to a configurable `--compressed-s`
+(default 2.0 s). A dimmed banner like
+
+    ⏩  Fast-forward: model load (47.2s → 2.0s)
+
+makes the compression visible. The cast title is suffixed with
+`[time-compressed]` whenever this happens, and a leading line summarizes
+the total wall-clock time hidden.
 
 ## Regenerating the casts
 

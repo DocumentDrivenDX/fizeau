@@ -172,7 +172,7 @@ func (c *Catalog) Current(profile string, opts ResolveOptions) (ResolvedTarget, 
 
 ```yaml
 model_catalog:
-  manifest: ~/.config/agent/models.yaml
+  manifest: ~/.config/fizeau/models.yaml
 ```
 
 - CLI gains a catalog-oriented selector separate from prompt presets:
@@ -253,7 +253,7 @@ targets:
 
 - Canonical source file: `modelcatalog/catalog/models.yaml`
 - Embedded release snapshot: bundled from that file into `modelcatalog/`
-- Optional override file: configured by path in `.agent/config.yaml` or by a
+- Optional override file: configured by path in `.fizeau/config.yaml` or by a
   downstream consumer such as DDx
 - Update workflow:
   1. edit `modelcatalog/catalog/models.yaml`

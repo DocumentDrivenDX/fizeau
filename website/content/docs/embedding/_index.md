@@ -38,9 +38,9 @@ func main() {
         panic(err)
     }
     events, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
-        Prompt:   "Read main.go and tell me the package name",
-        ModelRef: "cheap",
-        WorkDir:  ".",
+        Prompt:  "Read main.go and tell me the package name",
+        Policy:  "cheap",
+        WorkDir: ".",
     })
     if err != nil {
         panic(err)
@@ -515,6 +515,7 @@ parameter types, and field-level documentation, follow the
 |------|------|---------|
 | `AccountStatus` | type (struct) | AccountStatus describes authentication/account state without exposing |
 | `AnchorStore` | type (alias) |  |
+| `AvailableHarnesses` | func (func AvailableHarnesses() []string) | AvailableHarnesses returns the canonical names of every harness whose CLI |
 | `BashOutputFilterConfig` | type (alias) |  |
 | `BillingModel` | type (alias) |  |
 | `BillingModelFixed` | const |  |
@@ -558,6 +559,7 @@ parameter types, and field-level documentation, follow the
 | `FilterReasonScoredBelowTop` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
 | `FilterReasonUnhealthy` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
 | `FizeauService` | type (interface) | FizeauService is the entire public Go surface of the fizeau module |
+| `HarnessAvailability` | type (struct) | HarnessAvailability reports the install status of a single harness CLI as |
 | `HarnessCapability` | type (struct) | HarnessCapability describes one capability row for one harness |
 | `HarnessCapabilityMatrix` | type (struct) | HarnessCapabilityMatrix is the public, per-harness capability table exposed |
 | `HarnessCapabilityStatus` | type | HarnessCapabilityStatus classifies one harness capability in the public |

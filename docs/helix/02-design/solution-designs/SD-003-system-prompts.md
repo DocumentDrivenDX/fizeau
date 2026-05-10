@@ -48,7 +48,7 @@ sections, not a generic template language. Simpler, more predictable, debuggable
 These files provide project-specific instructions.
 
 **D3: Prompt templates are markdown files with frontmatter.** Templates live
-in `.agent/prompts/` or `~/.config/agent/prompts/`. They use `$1`, `$@`,
+in `.fizeau/prompts/` or `~/.config/fizeau/prompts/`. They use `$1`, `$@`,
 `${@:N}` for argument substitution (bash-style, matching pi).
 
 **D4: Library has no opinion on base prompt content.** The library provides

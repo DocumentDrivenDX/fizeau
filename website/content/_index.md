@@ -11,7 +11,7 @@ layout: hextra-home
   <h1 class="hero__title">Fizeau</h1>
 
   <p class="hero__lede">
-    An <b>agentic-development runtime</b> with its own measured loop. Other tools build on top of fizeau instead of writing their own — we control the harness, sampling, performance instrumentation, cost tracking, and subscription accounting so they don't have to. Local-model-first via vLLM, MLX, LM Studio, Ollama; cloud providers when you want them.
+    An <b>agentic-development runtime</b> with its own measured loop. Other tools build on fizeau instead of writing their own — we own the harness, sampling, performance instrumentation, cost tracking, and subscription accounting so they don't have to. Local-model-first via vLLM, MLX, LM Studio, Ollama; cloud providers when you want them.
   </p>
 
   <div class="hero__cta">
@@ -40,17 +40,17 @@ layout: hextra-home
 
   <h2 class="what-is__title" style="margin-top: 2.5rem;">What it is</h2>
 
-  <p>Fizeau is an agent runtime with its own built-in agent loop (the <code>fiz</code> harness): it manages the prompt, tool-call protocol, file/edit/bash tooling, planning, compaction, retries, sampling, reasoning, quotas, and session log. It is not an LLM serving runtime — it does not host weights. Upstream model traffic is delegated to whatever provider the lane points at (OpenAI, Anthropic, OpenRouter, vLLM, oMLX, RapidMLX, native local).</p>
+  <p>Fizeau is an agent runtime with a built-in agent loop (the <code>fiz</code> harness): it manages the prompt, tool-call protocol, file/edit/bash tooling, planning, compaction, retries, sampling, reasoning, quotas, and session log. It is not an LLM serving runtime — it does not host weights. Upstream model traffic goes to whatever provider the lane points at (OpenAI, Anthropic, OpenRouter, vLLM, oMLX, RapidMLX, native local).</p>
 
-  <p>Fizeau can also run <em>as a wrapper</em> around a different agent CLI (Claude Code, Codex, Pi, OpenCode) — the <code>fiz-harness-*</code> lanes in the <a href="benchmarks/profiles/">profile catalog</a> use this mode, where fiz handles configuration, environment, tool-call accounting, and session logging while delegating the actual reasoning loop to the wrapped agent. This is the mechanism that lets us isolate "is the agent loop hurting?" from "is the model hurting?" — same model, different harness, different lane.</p>
+  <p>Fizeau can also run <em>as a wrapper</em> around a different agent CLI (Claude Code, Codex, Pi, OpenCode) — the <code>fiz-harness-*</code> lanes in the <a href="benchmarks/profiles/">profile catalog</a> use this mode, where fiz handles configuration, environment, tool-call accounting, and session logging while delegating the reasoning loop to the wrapped agent. This isolates "is the agent loop hurting?" from "is the model hurting?" — same model, different harness, different lane.</p>
 
-  <p>For <a href="benchmarks/">benchmark purposes</a>, holding either axis constant and varying the other is what each lane in the catalog is designed to enable. A delta between two lanes that share a model but differ in harness is <em>harness loss</em>; a delta between two lanes that share a harness but differ in provider is <em>provider/runtime loss</em>.</p>
+  <p>For <a href="benchmarks/">benchmark purposes</a>, each lane in the catalog holds either axis constant and varies the other. A delta between two lanes that share a model but differ in harness is <em>harness loss</em>; a delta between two lanes that share a harness but differ in provider is <em>provider/runtime loss</em>.</p>
 </section>
 
 <section class="features">
   <h2 class="features__title">Built for instrumented agent work</h2>
   <p class="features__lede">
-    Every surface assumes you want to know <em>what the medium is doing</em>. There is no separate observability layer — the runtime emits structured timing per turn as a first-class output.
+    Every surface assumes you want to know <em>what the medium is doing</em>. There is no separate observability layer — the runtime emits structured per-turn timing as a first-class output.
   </p>
 
   <div class="features__grid">
@@ -70,7 +70,7 @@ layout: hextra-home
   <div class="feature">
   <div class="feature__label">MEASUREMENT</div>
   <h3>TTFT, decode, prefill — per turn</h3>
-  <p>Every <code>llm.request → llm.delta → llm.response</code> chain is timed and recorded. No sampling, no aggregation loss. Bucket by context length, attribute wall-time to prefill vs generation.</p>
+  <p>Every <code>llm.request → llm.delta → llm.response</code> chain is timed and recorded. No sampling, no aggregation loss. Bucket by context length; attribute wall-time to prefill vs generation.</p>
   </div>
 
   <div class="feature">
@@ -81,14 +81,14 @@ layout: hextra-home
 
   <div class="feature">
   <div class="feature__label">SESSIONS</div>
-  <h3>JSONL session logs, fully replayable</h3>
+  <h3>JSONL session logs, replayable</h3>
   <p>Every turn, every tool call, every cost figure on disk in line-delimited JSON. <code>fiz log</code> to list, <code>fiz replay</code> to render. Replays drive the per-turn timing analysis behind every chart on this site.</p>
   </div>
 
   <div class="feature">
   <div class="feature__label">EMBEDDABLE</div>
   <h3>Go library, no subprocess overhead</h3>
-  <p><code>fizeau.New(...).Execute(ctx, request)</code>. Designed to live inside a build orchestrator (<a href="https://github.com/DocumentDrivenDX/ddx">DDx</a>) or any Go service that needs a tool-using model on its critical path.</p>
+  <p><code>fizeau.New(...).Execute(ctx, request)</code>. Lives inside a build orchestrator (<a href="https://github.com/DocumentDrivenDX/ddx">DDx</a>) or any Go service that needs a tool-using model on its critical path.</p>
   </div>
 
   </div>

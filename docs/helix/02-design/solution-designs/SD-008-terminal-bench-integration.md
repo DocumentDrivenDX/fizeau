@@ -89,13 +89,13 @@ def get_env(self) -> dict:
 ```
 
 **fiz config approach for benchmark runs**: fiz currently reads
-its provider configuration from a YAML config file (`~/.config/agent/config.yaml`
-or `.agent/config.yaml` in the working dir). For benchmark use, the recommended
+its provider configuration from a YAML config file (`~/.config/fizeau/config.yaml`
+or `.fizeau/config.yaml` in the working dir). For benchmark use, the recommended
 approach is to ship a minimal config file in the adapter's `install()` hook
 that references an env-var-expanded API key:
 
 ```yaml
-# Installed at ~/.config/agent/config.yaml inside the container
+# Installed at ~/.config/fizeau/config.yaml inside the container
 providers:
   benchmark:
     type: anthropic

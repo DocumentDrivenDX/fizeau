@@ -4,8 +4,8 @@ weight: 1
 ---
 
 A five-minute tour: install `fiz`, point it at a provider, ask it a
-question. Then learn how `fiz` auto-detects the agent CLIs you already
-have installed (`claude`, `codex`, `pi`, `opencode`) and routes through
+question. Then see how `fiz` auto-detects agent CLIs you already have
+installed (`claude`, `codex`, `pi`, `opencode`) and routes through
 them as harnesses.
 
 ## 1. Install
@@ -20,7 +20,7 @@ Confirm:
 fiz version
 ```
 
-## 2. Smallest possible run
+## 2. Smallest run
 
 Set an API key for any OpenAI-compatible endpoint, then run a one-shot
 prompt. The defaults assume a local LM Studio at `http://localhost:1234`,
@@ -35,7 +35,7 @@ That's it. `fiz` resolves a model, dispatches the request, streams the
 answer to stdout, and writes a session log under `.fizeau/sessions/`.
 
 For a local model with [LM Studio](https://lmstudio.ai/), no key is
-needed — start LM Studio with a tool-capable model loaded and run:
+needed — start LM Studio with a tool-capable model loaded, then run:
 
 ```bash
 fiz -p "Read main.go and tell me the package name"
@@ -77,20 +77,20 @@ fiz harnesses --json
 
 No configuration is required to enable detection — installing `claude`
 or `codex` is enough. There is no harness path to set in
-`.fizeau/config.yaml`; if you uninstall a wrapper, its row simply flips
-back to `unavailable` on the next run.
+`.fizeau/config.yaml`; if you uninstall a wrapper, its row flips back
+to `unavailable` on the next run.
 
 ## 4. Wrapping `claude`, `codex`, `pi`, `opencode`
 
-When `fiz` finds one of these CLIs on your `$PATH`, it automatically
-becomes a routing target. The default preference order is:
+When `fiz` finds one of these CLIs on your `$PATH`, it becomes a
+routing target. The default preference order is:
 
 ```
 codex → claude → opencode → fiz → pi → gemini
 ```
 
-So if you have both `codex` and `claude` installed, `fiz` will prefer
-`codex` for unpinned requests. To force a specific harness for one run:
+If both `codex` and `claude` are installed, `fiz` prefers `codex` for
+unpinned requests. To force a specific harness for one run:
 
 ```bash
 fiz --harness claude -p "summarize git log -n 5"
@@ -104,17 +104,17 @@ fiz --model claude-sonnet-4-6 -p "..."
 
 Each wrapped harness contributes its native subscription quota to the
 routing decision: `fiz` reads `claude --usage` / `codex --status` /
-similar so a quota-exhausted harness is skipped automatically. See the
+similar so a quota-exhausted harness is skipped. See the
 [routing documentation](routing/) for the full decision flow.
 
-If a CLI is installed but not authenticated, `fiz` will surface the
+If a CLI is installed but not authenticated, `fiz` surfaces the
 provider's own auth error in the session log — log in with the wrapped
 CLI directly (`claude login`, `codex login`, …) and re-run.
 
 ## 5. As a Go library
 
 `fiz` is a thin CLI over the `github.com/easel/fizeau` package. The
-same routing, harness-detection, and execution machinery is available
+same routing, harness-detection, and execution machinery runs
 in-process:
 
 ```go
@@ -136,9 +136,9 @@ func main() {
         panic(err)
     }
     events, err := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
-        Prompt:   "what is the capital of France?",
-        ModelRef: "cheap",
-        WorkDir:  ".",
+        Prompt:  "what is the capital of France?",
+        Policy:  "cheap",
+        WorkDir: ".",
     })
     if err != nil {
         panic(err)
@@ -150,8 +150,8 @@ func main() {
 ```
 
 `fizeau.AvailableHarnesses()` returns the same list `fiz harnesses`
-prints — it's a cheap `exec.LookPath` probe with no subprocess spawn,
-safe to call at process startup.
+prints — an `exec.LookPath` probe with no subprocess spawn, safe to
+call at process startup.
 
 For richer per-harness detail (quota, auth, capability matrix), call
 `svc.ListHarnesses(ctx)` instead.

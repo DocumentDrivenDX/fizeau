@@ -16,7 +16,7 @@ formats creates fragile dependencies and maintenance burden.
 ## Design: Import-Time Translation
 
 Fizeau reads other tools' configs at **import time** (explicit user action),
-translates them to agent-native `.agent/config.yaml` (per SD-005 schema),
+translates them to agent-native `.fizeau/config.yaml` (per SD-005 schema),
 and records the import source so it can detect drift later.
 
 ### CLI Commands
@@ -31,12 +31,12 @@ fiz import pi --merge       # merge new providers without overwriting existing
 
 ### Zero-Config Discovery
 
-When agent starts with no providers configured (no `.agent/config.yaml`, no
-`~/.config/agent/config.yaml`, no `AGENT_*` env vars, no standard API key env
+When fiz starts with no providers configured (no `.fizeau/config.yaml`, no
+`~/.config/fizeau/config.yaml`, no `FIZEAU_*` env vars, no standard API key env
 vars), it checks for importable configs and shows a notice:
 
 ```
-agent: no providers configured. Found pi config at ~/.pi/agent/ — run 'fiz import pi' to import.
+fiz: no providers configured. Found pi config at ~/.pi/agent/ — run 'fiz import pi' to import.
 ```
 
 This is a one-line stderr notice, not an error. Fizeau still runs if env vars
@@ -125,14 +125,14 @@ defaults to).
 
 **Secrets go to user config, not project config.**
 
-The import writes to `~/.config/agent/config.yaml` (user-global) by default,
-NOT `.agent/config.yaml` (project-level). This prevents accidental commits of
-API keys. The `--project` flag writes to `.agent/config.yaml` but requires
+The import writes to `~/.config/fizeau/config.yaml` (user-global) by default,
+NOT `.fizeau/config.yaml` (project-level). This prevents accidental commits of
+API keys. The `--project` flag writes to `.fizeau/config.yaml` but requires
 explicit confirmation and warns:
 
 ```
-agent: warning: writing API keys to project config (.agent/config.yaml)
-agent: ensure .agent/config.yaml is in .gitignore before committing
+fiz: warning: writing API keys to project config (.fizeau/config.yaml)
+fiz: ensure .fizeau/config.yaml is in .gitignore before committing
 Proceed? [y/N]
 ```
 
@@ -164,15 +164,15 @@ without revealing what.
 - On `fiz providers` or `fiz -p`, if `imported_from` exists and source
   files have a different hash, emit once per day:
   ```
-  agent: pi config changed since import — run 'fiz import pi --diff' to review
+  fiz: pi config changed since import — run 'fiz import pi --diff' to review
   ```
-- Debounced by checking mtime of `~/.config/agent/.import-check-{source}`
+- Debounced by checking mtime of `~/.config/fizeau/.import-check-{source}`
 - Per-source, so pi and opencode drift are tracked independently
 
 **Token expiry:** OAuth tokens have an `expires` field in epoch milliseconds.
 On import, if a token expires within 24 hours, warn:
 ```
-agent: warning: anthropic token expires in 3h — use pi to refresh, then re-import
+fiz: warning: anthropic token expires in 3h — use pi to refresh, then re-import
 ```
 If already expired, warn but still import (the token might still work briefly,
 or the user may want the endpoint config without the token).

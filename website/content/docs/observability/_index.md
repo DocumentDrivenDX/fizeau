@@ -15,7 +15,7 @@ to compute throughput, attribute cost, and feed signals back into
 [auto-routing](../routing/) so the next decision incorporates the last
 one's outcome.
 
-The point is not "we collect metrics." The point is the *measurement
+The point is not "we collect metrics." The point is that the *measurement
 chain* is the public surface — public events, public projections, an
 OpenTelemetry semantic-convention span — so embedders never need to
 parse harness-native streams or raw JSONL to learn what happened.
@@ -38,10 +38,10 @@ Event payloads are stable, versioned types defined in
 | `tool.call`     | `duration_ms`, `output`, `error` ([source](https://github.com/easel/fizeau/blob/master/internal/session/event.go#L70-L76)) |
 | `session.end`   | aggregated `tokens`, `cost_usd`, `duration_ms`, full route/sticky/utilization snapshot ([source](https://github.com/easel/fizeau/blob/master/internal/session/event.go#L79-L102)) |
 
-The lifecycle wrapper —
-[`serviceSessionLog`](https://github.com/easel/fizeau/blob/master/service_session_log.go#L20) —
-guarantees `session.end` is written exactly once even when the run
-fails partway through.
+The lifecycle wrapper
+[`serviceSessionLog`](https://github.com/easel/fizeau/blob/master/service_session_log.go#L20)
+writes `session.end` exactly once even when the run fails partway
+through.
 
 ### Aggregated projection
 
@@ -57,9 +57,9 @@ expose computed accessors so callers don't re-derive them:
 
 The report also carries a
 [`RoutingQuality`](https://github.com/easel/fizeau/blob/master/service_routing_quality.go#L19)
-block (auto-acceptance rate, override-class breakdown) so a single
-`UsageReport` covers both *what happened* and *how good the routing
-was* over the same window.
+block (auto-acceptance rate, override-class breakdown), so a single
+`UsageReport` covers both *what happened* and *how the routing
+performed* over the same window.
 
 ### OpenTelemetry surface
 
@@ -94,8 +94,8 @@ into the
 When projected end-of-day usage exceeds the configured
 `daily_token_budget`, the tracker pre-emptively transitions the
 provider to `quota_exhausted` — without waiting for the upstream 429.
-This is the loop that makes performance tracking actionable instead of
-purely diagnostic.
+This loop makes performance tracking actionable rather than purely
+diagnostic.
 
 ## Operator surface
 

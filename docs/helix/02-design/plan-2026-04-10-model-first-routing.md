@@ -189,7 +189,7 @@ Routing precedence:
 
 ```yaml
 model_catalog:
-  manifest: ~/.config/agent/models.yaml
+  manifest: ~/.config/fizeau/models.yaml
 
 providers:
   bragi:
