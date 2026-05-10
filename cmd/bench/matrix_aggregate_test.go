@@ -36,6 +36,8 @@ func TestMatrixAggregateWritesSchemasWithNullsAndBudgetHalted(t *testing.T) {
 		GradingOutcome: "ungraded",
 		Reward:         nil,
 		FinalStatus:    "ran",
+		InputTokens:    intPtr(1000),
+		OutputTokens:   intPtr(2000),
 		StartedAt:      time.Now().UTC(),
 		FinishedAt:     time.Now().UTC(),
 	})

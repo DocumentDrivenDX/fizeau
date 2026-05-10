@@ -340,6 +340,14 @@ def aggregate_per_profile(reports: list[dict[str, Any]]) -> dict[str, dict[str, 
         for r in rs:
             if r.get("invalid_class"):
                 invalids[r["invalid_class"]] += 1
+        # n_truncated: real attempts cut off mid-tool-call (model was
+        # actively producing output when the wall budget hit). Distinct
+        # from invalid_* (systemic) and graded_fail (claimed-and-failed).
+        # Stays in pass@k denominator but flags throughput/budget bottlenecks.
+        n_truncated = sum(1 for r in rs if r.get("terminated_mid_work") is True
+                          and not r.get("invalid_class"))
+        n_finished_clean = sum(1 for r in rs if r.get("terminated_mid_work") is False
+                               and not r.get("invalid_class"))
         out[profile] = {
             "n_attempts": len(rs),
             "n_graded": len(graded),
@@ -347,6 +355,8 @@ def aggregate_per_profile(reports: list[dict[str, Any]]) -> dict[str, dict[str, 
             "tasks_touched": len(by_task),
             "tasks_passed_any": tasks_passed_any,
             "n_real": len(real),
+            "n_truncated": n_truncated,
+            "n_finished_clean": n_finished_clean,
             "invalids": dict(invalids),
             "median_turns": median([r["turns"] for r in real]) if real else None,
             "median_in_tok": median([r["input_tokens"] for r in real]) if real else None,

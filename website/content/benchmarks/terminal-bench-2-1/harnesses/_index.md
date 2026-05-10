@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-10 21:20:28 UTC · 11 fiz harness lanes shown · external leaderboard for the same models below</div>
+<div class="meta">Snapshot: 2026-05-10 21:51:32 UTC · 11 fiz harness lanes shown · external leaderboard for the same models below</div>
 <div class="narrative">
 <p>Each row holds the model constant (Sonnet 4.6, GPT-5.4-mini, etc.) and varies the agent loop. Native CLI lanes (<code>claude-native-*</code>, <code>codex-native-*</code>) run their own harness directly. <code>fiz-harness-*</code> lanes use fiz as a measurement wrapper around the same CLI. <code>fiz-openrouter-*</code> / <code>fiz-openai-*</code> lanes call the model's API directly through fiz's built-in loop. A delta between these is harness loss, isolated from model loss.</p>
 </div>

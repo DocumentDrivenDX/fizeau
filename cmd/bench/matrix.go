@@ -34,32 +34,39 @@ const (
 )
 
 type matrixRunReport struct {
-	Harness                 string                   `json:"harness"`
-	ProfileID               string                   `json:"profile_id"`
-	ProfilePath             string                   `json:"profile_path"`
-	ProfileSnapshot         string                   `json:"profile_snapshot,omitempty"`
-	FizToolsVersion         int                      `json:"fiz_tools_version"`
-	AdapterModule           string                   `json:"adapter_module"`
-	HarborAgent             string                   `json:"harbor_agent"`
-	Rep                     int                      `json:"rep"`
-	TaskID                  string                   `json:"task_id"`
-	Category                string                   `json:"category,omitempty"`
-	Difficulty              string                   `json:"difficulty,omitempty"`
-	OutputDir               string                   `json:"output_dir"`
-	ProcessOutcome          string                   `json:"process_outcome"`
-	GradingOutcome          string                   `json:"grading_outcome"`
-	Reward                  *int                     `json:"reward"`
-	FinalStatus             string                   `json:"final_status"`
-	InvalidClass            string                   `json:"invalid_class,omitempty"`
-	Retriable               bool                     `json:"retriable,omitempty"`
-	Turns                   *int                     `json:"turns"`
-	ToolCalls               *int                     `json:"tool_calls"`
-	ToolCallErrors          *int                     `json:"tool_call_errors"`
-	InputTokens             *int                     `json:"input_tokens"`
-	OutputTokens            *int                     `json:"output_tokens"`
-	CachedInputTokens       *int                     `json:"cached_input_tokens"`
-	RetriedInputTokens      *int                     `json:"retried_input_tokens"`
-	WallSeconds             *float64                 `json:"wall_seconds"`
+	Harness            string   `json:"harness"`
+	ProfileID          string   `json:"profile_id"`
+	ProfilePath        string   `json:"profile_path"`
+	ProfileSnapshot    string   `json:"profile_snapshot,omitempty"`
+	FizToolsVersion    int      `json:"fiz_tools_version"`
+	AdapterModule      string   `json:"adapter_module"`
+	HarborAgent        string   `json:"harbor_agent"`
+	Rep                int      `json:"rep"`
+	TaskID             string   `json:"task_id"`
+	Category           string   `json:"category,omitempty"`
+	Difficulty         string   `json:"difficulty,omitempty"`
+	OutputDir          string   `json:"output_dir"`
+	ProcessOutcome     string   `json:"process_outcome"`
+	GradingOutcome     string   `json:"grading_outcome"`
+	Reward             *int     `json:"reward"`
+	FinalStatus        string   `json:"final_status"`
+	InvalidClass       string   `json:"invalid_class,omitempty"`
+	Retriable          bool     `json:"retriable,omitempty"`
+	Turns              *int     `json:"turns"`
+	ToolCalls          *int     `json:"tool_calls"`
+	ToolCallErrors     *int     `json:"tool_call_errors"`
+	InputTokens        *int     `json:"input_tokens"`
+	OutputTokens       *int     `json:"output_tokens"`
+	CachedInputTokens  *int     `json:"cached_input_tokens"`
+	RetriedInputTokens *int     `json:"retried_input_tokens"`
+	WallSeconds        *float64 `json:"wall_seconds"`
+	// TerminatedMidWork is true when the trial's last llm.response had
+	// finish_reason in (tool_calls, length) — i.e. the model was actively
+	// emitting output when wall budget cut it off, rather than declaring
+	// itself done with finish_reason=stop. Lets the matrix distinguish
+	// "ran out of time" from "claimed a solution and failed". Pointer so
+	// absent (no session data) is distinct from explicitly-false.
+	TerminatedMidWork       *bool                    `json:"terminated_mid_work,omitempty"`
 	CostUSD                 float64                  `json:"cost_usd"`
 	PricingSource           string                   `json:"pricing_source"`
 	AdapterTranslationNotes []string                 `json:"adapter_translation_notes,omitempty"`
@@ -88,12 +95,19 @@ type matrixOutput struct {
 }
 
 type matrixCell struct {
-	Harness       string         `json:"harness"`
-	ProfileID     string         `json:"profile_id"`
-	NRuns         int            `json:"n_runs"`
-	NValid        int            `json:"n_valid"`
-	NReported     int            `json:"n_reported"`
-	NInvalid      int            `json:"n_invalid"`
+	Harness   string `json:"harness"`
+	ProfileID string `json:"profile_id"`
+	NRuns     int    `json:"n_runs"`
+	NValid    int    `json:"n_valid"`
+	NReported int    `json:"n_reported"`
+	NInvalid  int    `json:"n_invalid"`
+	// NTruncated counts non-invalid reps where the model was actively
+	// emitting output (terminated_mid_work=true) when the trial ended —
+	// "ran out of time" rather than "claimed a solution and failed". Stays
+	// in the pass@k denominator (it's a real attempt that didn't pass) but
+	// surfaces separately so a high truncation rate flags a wall-budget /
+	// throughput problem distinctly from a model-quality problem.
+	NTruncated    int            `json:"n_truncated"`
 	InvalidCounts map[string]int `json:"invalid_counts,omitempty"`
 	MeanReward    *float64       `json:"mean_reward"`
 	SDReward      *float64       `json:"sd_reward"`
@@ -657,7 +671,20 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	if truthyEnv("HARBOR_FORCE_BUILD") {
 		args = append(args, "--force-build")
 	}
-	if multiplier := strings.TrimSpace(os.Getenv("HARBOR_AGENT_TIMEOUT_MULTIPLIER")); multiplier != "" {
+	// Agent timeout multiplier resolution order (later wins):
+	//   1. Profile YAML's agent_timeout_multiplier (per-lane default)
+	//   2. HARBOR_AGENT_TIMEOUT_MULTIPLIER env var (per-invocation override)
+	// Slow local engines (oMLX, vLLM-int4) bake their multiplier into the
+	// profile so individual sweeps don't have to remember to set the env
+	// var. Without this, those lanes truncate mid-tool-call on hard tasks.
+	multiplier := ""
+	if m := opts.profile.AgentTimeoutMultiplier; m > 0 {
+		multiplier = strconv.FormatFloat(m, 'f', -1, 64)
+	}
+	if env := strings.TrimSpace(os.Getenv("HARBOR_AGENT_TIMEOUT_MULTIPLIER")); env != "" {
+		multiplier = env
+	}
+	if multiplier != "" {
 		args = append(args, "--agent-timeout-multiplier", multiplier)
 	}
 	// Do not pass actual API key values through Harbor --ae args. Harbor
@@ -684,7 +711,14 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	if parentCtx == nil {
 		parentCtx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(parentCtx, 35*time.Minute)
+	// Process-level cap on the harbor invocation. This must exceed the
+	// max possible effective per-trial agent timeout (task base × profile
+	// agent_timeout_multiplier) plus harbor's environment/grading overhead,
+	// or the cap kills the run before harbor can timeout the agent
+	// gracefully. TB-2.1 task bases are <=1200s; vidar's 3.7x multiplier
+	// pushes the effective ceiling to ~74min. 150min leaves headroom for
+	// future profile bumps and non-trivial environment setup.
+	ctx, cancel := context.WithTimeout(parentCtx, 150*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, opts.harborBin, args...) // #nosec G204 G702 -- harborBin is a validated binary path from config
 	// Send SIGTERM (not the default SIGKILL) on context cancel so Harbor's
@@ -1256,6 +1290,18 @@ func applyTelemetry(report *matrixRunReport, telemetry map[string]any) {
 	report.CachedInputTokens = intPointerField(telemetry, "cached_input_tokens")
 	report.RetriedInputTokens = intPointerField(telemetry, "retried_input_tokens")
 	report.WallSeconds = floatPointerField(telemetry, "wall_seconds")
+	report.TerminatedMidWork = boolPointerField(telemetry, "terminated_mid_work")
+}
+
+func boolPointerField(m map[string]any, key string) *bool {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return nil
+	}
+	if b, ok := v.(bool); ok {
+		return &b
+	}
+	return nil
 }
 
 func deriveMatrixFinalStatus(processOutcome, gradingOutcome string, reward *int, retriable bool) string {
@@ -1325,6 +1371,9 @@ func summarizeMatrixCells(runs []matrixRunReport) []matrixCell {
 			if run.Reward != nil {
 				a.cell.NReported++
 				a.rewards = append(a.rewards, float64(*run.Reward))
+			}
+			if run.TerminatedMidWork != nil && *run.TerminatedMidWork {
+				a.cell.NTruncated++
 			}
 		}
 		a.cost += run.CostUSD

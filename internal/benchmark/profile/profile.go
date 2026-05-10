@@ -131,6 +131,16 @@ type Profile struct {
 	Sampling   Sampling   `yaml:"sampling"`
 	Versioning Versioning `yaml:"versioning"`
 
+	// AgentTimeoutMultiplier scales harbor's per-task agent timeout to
+	// account for slow inference engines. Without this, low-throughput
+	// local lanes hit the harbor default mid-tool-call (see the
+	// `terminated_mid_work` field on matrix reports). Computed as the p95
+	// of per-task wall_local/wall_OR ratios on jointly-passed tasks. Maps
+	// directly to harbor's --agent-timeout-multiplier flag. 0 = use
+	// harbor default (effectively 1.0). The HARBOR_AGENT_TIMEOUT_MULTIPLIER
+	// env var overrides this per-invocation.
+	AgentTimeoutMultiplier float64 `yaml:"agent_timeout_multiplier,omitempty"`
+
 	// Path is the filesystem path the profile was loaded from. Not part of
 	// the YAML; populated by Load / LoadDir for diagnostics and `profiles
 	// list` output.

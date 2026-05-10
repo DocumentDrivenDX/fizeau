@@ -26,6 +26,14 @@ limits:
   context_tokens: 128000
   rate_limit_rpm: 60
   rate_limit_tpm: 100000
+# Scale harbor's per-task agent timeout. Computed as p95 of per-task
+# wall_local/wall_OR on jointly-passed TB-2.1 tasks (n=27): p50=2.14,
+# p75=3.27, p95=3.72. oMLX 8-bit decode at ~15 tok/s vs OR cloud Qwen at
+# ~52 tok/s drives the gap. The default 1.0 multiplier produces ~47%
+# mid-tool-call truncation on this lane (see `n_truncated` in matrix
+# data); 3.7x should collapse that. The HARBOR_AGENT_TIMEOUT_MULTIPLIER
+# env var overrides this.
+agent_timeout_multiplier: 3.7
 sampling:
   temperature: 0.6
   reasoning: low

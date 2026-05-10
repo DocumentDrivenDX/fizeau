@@ -631,6 +631,7 @@
       "rate_limit_rpm": 60,
       "rate_limit_tpm": 100000
     },
+    "agent_timeout_multiplier": 2.7,
     "sampling": {
       "temperature": 0.6,
       "reasoning": "low",
@@ -703,6 +704,7 @@
       "rate_limit_rpm": 60,
       "rate_limit_tpm": 100000
     },
+    "agent_timeout_multiplier": 3.7,
     "sampling": {
       "temperature": 0.6,
       "reasoning": "low",

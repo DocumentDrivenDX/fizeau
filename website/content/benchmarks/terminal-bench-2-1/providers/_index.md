@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-10 21:20:28 UTC · Qwen3.6-27B across 6 provider/runtime combinations</div>
+<div class="meta">Snapshot: 2026-05-10 21:51:32 UTC · Qwen3.6-27B across 6 provider/runtime combinations</div>
 <div class="narrative">
 <p>The model weights are the same across every row here — Qwen3.6-27B in some quantization. The variable is everything else: where the bytes get computed, which serving engine runs them, what sampling defaults the server applies, whether prefix-cache is hit, and how much round-trip latency the network adds.</p>
 <p>Hostnames are abstracted to the substantive characteristics. The descriptive label captures engine + quantization + GPU/CPU + OS — enough to map to a known-good machine spec without leaking inventory.</p>

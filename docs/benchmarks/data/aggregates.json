@@ -7,6 +7,8 @@
       "tasks_touched": 89,
       "tasks_passed_any": 3,
       "n_real": 0,
+      "n_truncated": 1,
+      "n_finished_clean": 4,
       "invalids": {
         "invalid_setup": 267,
         "invalid_provider": 1
@@ -25,6 +27,8 @@
       "tasks_touched": 96,
       "tasks_passed_any": 27,
       "n_real": 100,
+      "n_truncated": 36,
+      "n_finished_clean": 86,
       "invalids": {
         "invalid_setup": 175
       },
@@ -42,6 +46,8 @@
       "tasks_touched": 89,
       "tasks_passed_any": 52,
       "n_real": 354,
+      "n_truncated": 115,
+      "n_finished_clean": 240,
       "invalids": {
         "invalid_setup": 26
       },
@@ -59,6 +65,8 @@
       "tasks_touched": 89,
       "tasks_passed_any": 3,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 14,
       "invalids": {
         "invalid_setup": 88
       },
@@ -76,6 +84,8 @@
       "tasks_touched": 104,
       "tasks_passed_any": 0,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 375
       },
@@ -93,6 +103,8 @@
       "tasks_touched": 89,
       "tasks_passed_any": 22,
       "n_real": 98,
+      "n_truncated": 5,
+      "n_finished_clean": 93,
       "invalids": {
         "invalid_setup": 177,
         "invalid_provider": 1
@@ -111,6 +123,8 @@
       "tasks_touched": 31,
       "tasks_passed_any": 2,
       "n_real": 7,
+      "n_truncated": 0,
+      "n_finished_clean": 8,
       "invalids": {
         "invalid_setup": 187
       },
@@ -128,6 +142,8 @@
       "tasks_touched": 31,
       "tasks_passed_any": 1,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 2,
       "invalids": {
         "invalid_setup": 176
       },
@@ -145,6 +161,8 @@
       "tasks_touched": 88,
       "tasks_passed_any": 27,
       "n_real": 97,
+      "n_truncated": 57,
+      "n_finished_clean": 62,
       "invalids": {
         "invalid_setup": 147
       },
@@ -162,6 +180,8 @@
       "tasks_touched": 30,
       "tasks_passed_any": 2,
       "n_real": 14,
+      "n_truncated": 0,
+      "n_finished_clean": 14,
       "invalids": {
         "invalid_setup": 185
       },
@@ -179,6 +199,8 @@
       "tasks_touched": 30,
       "tasks_passed_any": 3,
       "n_real": 15,
+      "n_truncated": 0,
+      "n_finished_clean": 16,
       "invalids": {
         "invalid_setup": 183
       },
@@ -196,6 +218,8 @@
       "tasks_touched": 30,
       "tasks_passed_any": 3,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 191
       },
@@ -213,6 +237,8 @@
       "tasks_touched": 30,
       "tasks_passed_any": 0,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 201
       },
@@ -230,6 +256,8 @@
       "tasks_touched": 3,
       "tasks_passed_any": 0,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 15
       },
@@ -247,6 +275,8 @@
       "tasks_touched": 4,
       "tasks_passed_any": 1,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {},
       "median_turns": null,
       "median_in_tok": null,
@@ -262,6 +292,8 @@
       "tasks_touched": 3,
       "tasks_passed_any": 0,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 6
       },
@@ -279,6 +311,8 @@
       "tasks_touched": 3,
       "tasks_passed_any": 0,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 22
       },
@@ -296,6 +330,8 @@
       "tasks_touched": 6,
       "tasks_passed_any": 0,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 40
       },
@@ -313,6 +349,8 @@
       "tasks_touched": 3,
       "tasks_passed_any": 3,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 4
       },
@@ -330,6 +368,8 @@
       "tasks_touched": 4,
       "tasks_passed_any": 0,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 21
       },
@@ -347,6 +387,8 @@
       "tasks_touched": 3,
       "tasks_passed_any": 3,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 7,
       "invalids": {
         "invalid_setup": 8
       },
@@ -364,6 +406,8 @@
       "tasks_touched": 6,
       "tasks_passed_any": 0,
       "n_real": 0,
+      "n_truncated": 0,
+      "n_finished_clean": 0,
       "invalids": {
         "invalid_setup": 41
       },
