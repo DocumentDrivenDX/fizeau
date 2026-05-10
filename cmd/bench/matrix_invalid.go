@@ -13,9 +13,26 @@ const (
 )
 
 var (
-	matrixInvalidQuotaPattern    = regexp.MustCompile(`(?i)(api_error_status:\s*429|insufficient[_\s-]*quota|out_of_credits|credits?\s+exhausted|usage\s+exhausted|rate\s*limit|too many requests|quota\s+exhausted|quota\s+exceeded)`)
-	matrixInvalidAuthPattern     = regexp.MustCompile(`(?i)(unauthori[sz]ed|authentication failed|invalid api key|missing credentials?|not signed in|login required|account .*not .*authenticated|oauth.*failed|credential.*missing|account .*required|access denied)`)
-	matrixInvalidSetupPattern    = regexp.MustCompile(`(?i)(binary not found|no such file or directory|exec format error|cannot execute binary file|wrong architecture|architecture mismatch|task dir not found|submodule not initialized|failed to start|wrapper startup|startup failed|docker.*(failed|error)|container.*(failed|error)|image.*(failed|error|not found)|harbor[\\/]+environments[\\/]+docker|_run_docker_compose_command|_start_environment_with_retry|docker compose command|asyncio\.run\(\) cannot be called from a running event loop|operation not permitted|permission denied|sandbox.*failed|setup failed|preflight failure|reasoning=[^ ]* is not supported by provider type|reasoning_wire=none|qwen reasoning control is not supported|unsupported reasoning [^ ]* for harness)`)
+	matrixInvalidQuotaPattern = regexp.MustCompile(`(?i)(api_error_status:\s*429|insufficient[_\s-]*quota|out_of_credits|credits?\s+exhausted|usage\s+exhausted|rate\s*limit|too many requests|quota\s+exhausted|quota\s+exceeded)`)
+	matrixInvalidAuthPattern  = regexp.MustCompile(`(?i)(unauthori[sz]ed|authentication failed|invalid api key|missing credentials?|not signed in|login required|account .*not .*authenticated|oauth.*failed|credential.*missing|account .*required|access denied)`)
+
+	// Setup signals split into two tiers.
+	//
+	// matrixInvalidSetupDefinitivePattern: high-precision runtime errors
+	// that are unambiguous config/setup mismatches even when emitted
+	// during a real model attempt. Safe to trust on graded_fail with
+	// turns > 0.
+	//
+	// matrixInvalidSetupBroadPattern: lower-precision substrings that
+	// catch generic harness/container failures. Many of these false-
+	// positive against the wrapper bash script that gets included in the
+	// error blob (`permission denied` from chmod fallbacks, `failed to
+	// start` from generic error fallbacks, `docker.*(failed|error)`
+	// matches anywhere with a docker context). Only safe to apply when
+	// there was no real model attempt.
+	matrixInvalidSetupDefinitivePattern = regexp.MustCompile(`(?i)(binary not found|exec format error|cannot execute binary file|wrong architecture|architecture mismatch|task dir not found|submodule not initialized|wrapper startup|asyncio\.run\(\) cannot be called from a running event loop|preflight failure|reasoning=[^ ]* is not supported by provider type|reasoning_wire=none|qwen reasoning control is not supported|unsupported reasoning [^ ]* for harness)`)
+	matrixInvalidSetupBroadPattern      = regexp.MustCompile(`(?i)(no such file or directory|failed to start|startup failed|docker.*(failed|error)|container.*(failed|error)|image.*(failed|error|not found)|harbor[\\/]+environments[\\/]+docker|_run_docker_compose_command|_start_environment_with_retry|docker compose command|operation not permitted|permission denied|sandbox.*failed|setup failed)`)
+
 	matrixInvalidProviderPattern = regexp.MustCompile(`(?i)(connection refused|connection reset|socket hang up|fetch failed|tls handshake|dns|eof|timed out|timeout|stream closed|broken pipe|remote closed|upstream|service unavailable|bad gateway|gateway timeout|failed to connect|provider transport|network error)`)
 )
 
@@ -29,7 +46,31 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 	if report.InvalidClass != "" {
 		return report.InvalidClass
 	}
-	if class := classifyMatrixInvalidText(matrixInvalidSignalBlob(report)); class != "" {
+
+	// "Invalid" means the run didn't work because of systemic issues — not
+	// "we tried our best and didn't pass". A real attempt that hits the
+	// verifier and gets reward=0 is a graded_fail, full stop. The only
+	// signals strong enough to reclassify a real attempt are QUOTA and
+	// AUTH (definitive provider/account state) — never SETUP or PROVIDER
+	// transport, whose regexes match the wrapper bash script and verifier
+	// output ("eof" matches heredoc <<EOF markers; "timeout" matches task
+	// content; "permission denied" matches chmod fallbacks; etc.).
+	hasAttempt := matrixHasMeaningfulAttempt(report)
+	signal := matrixInvalidSignalBlob(report)
+	if hasAttempt {
+		// Only high-precision signals are trustworthy on real attempts.
+		// Broad SETUP/PROVIDER patterns false-positive on wrapper bash
+		// content and verifier output — see pattern doc-comments above.
+		if matrixInvalidQuotaPattern.MatchString(signal) {
+			return matrixInvalidQuota
+		}
+		if matrixInvalidAuthPattern.MatchString(signal) {
+			return matrixInvalidAuth
+		}
+		if matrixInvalidSetupDefinitivePattern.MatchString(signal) {
+			return matrixInvalidSetup
+		}
+	} else if class := classifyMatrixInvalidText(signal); class != "" {
 		return class
 	}
 	switch report.FinalStatus {
@@ -41,12 +82,9 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 		// Conservative quality-attribution rule: a graded_fail with no
 		// meaningful agent attempt (zero turns, zero output tokens) is
 		// almost certainly a harness/provider/setup failure that Harbor
-		// happened to verify cleanly with reward=0. We refuse to count it
-		// as a real model quality failure — it pollutes downstream
-		// pass-rate aggregates and lets silent config bugs masquerade as
-		// model deficiencies. Reclassify as invalid_setup; operators can
-		// drill into the specific cell to confirm.
-		if !matrixHasMeaningfulAttempt(report) {
+		// happened to verify cleanly with reward=0. Reclassify as
+		// invalid_setup; operators can drill into the specific cell.
+		if !hasAttempt {
 			return matrixInvalidSetup
 		}
 		// Even with some turns, if output tokens are zero AND wall is
@@ -64,6 +102,10 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 	return ""
 }
 
+// classifyMatrixInvalidText is the no-meaningful-attempt path: when the
+// agent never produced tokens, the broad SETUP / PROVIDER patterns become
+// safe to apply (the error blob is dominated by infrastructure messages
+// rather than wrapper bash + task content).
 func classifyMatrixInvalidText(blob string) string {
 	blob = strings.ToLower(strings.TrimSpace(blob))
 	if blob == "" {
@@ -74,7 +116,8 @@ func classifyMatrixInvalidText(blob string) string {
 		return matrixInvalidQuota
 	case matrixInvalidAuthPattern.MatchString(blob):
 		return matrixInvalidAuth
-	case matrixInvalidSetupPattern.MatchString(blob):
+	case matrixInvalidSetupDefinitivePattern.MatchString(blob),
+		matrixInvalidSetupBroadPattern.MatchString(blob):
 		return matrixInvalidSetup
 	case matrixInvalidProviderPattern.MatchString(blob):
 		return matrixInvalidProvider

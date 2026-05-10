@@ -527,7 +527,8 @@ func classifyBeadbenchInvalid(rawStatus string, result, executeResult, verifyRes
 		return matrixInvalidQuota
 	case matrixInvalidAuthPattern.MatchString(blob):
 		return matrixInvalidAuth
-	case matrixInvalidSetupPattern.MatchString(blob):
+	case matrixInvalidSetupDefinitivePattern.MatchString(blob),
+		matrixInvalidSetupBroadPattern.MatchString(blob):
 		return matrixInvalidSetup
 	case matrixInvalidProviderPattern.MatchString(blob):
 		return matrixInvalidProvider

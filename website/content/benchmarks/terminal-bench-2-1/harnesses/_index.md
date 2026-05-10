@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-10 04:49:55 UTC · 11 fiz harness lanes shown · external leaderboard for the same models below</div>
+<div class="meta">Snapshot: 2026-05-10 20:22:36 UTC · 11 fiz harness lanes shown · external leaderboard for the same models below</div>
 <div class="narrative">
 <p>Each row holds the model constant (Sonnet 4.6, GPT-5.4-mini, etc.) and varies the agent loop. Native CLI lanes (<code>claude-native-*</code>, <code>codex-native-*</code>) run their own harness directly. <code>fiz-harness-*</code> lanes use fiz as a measurement wrapper around the same CLI. <code>fiz-openrouter-*</code> / <code>fiz-openai-*</code> lanes call the model's API directly through fiz's built-in loop. A delta between these is harness loss, isolated from model loss.</p>
 </div>
@@ -15,18 +15,18 @@ toc: true
 <table><thead><tr><th>Profile</th><th>Harness</th><th>Attempts</th><th>Real</th><th>pass@1</th><th>pass@k</th><th>med turns</th><th>med in</th><th>med out</th><th>med wall (s)</th><th>cost ($)</th><th>p50 TTFT (s)</th><th>p50 decode (tok/s)</th></tr></thead><tbody><tr><td>claude-native-sonnet-4-6</td><td><span class="meta">Claude Code (native CLI)</span></td><td>15</td><td>0</td><td>0.0%</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>claude-sonnet-4-6</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>102</td><td>0</td><td>14.0%</td><td>3.4%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>1.95</td><td>824.5</td></tr><tr><td>codex-native-gpt-5-4-mini</td><td><span class="meta">Codex (native CLI)</span></td><td>15</td><td>0</td><td>91.7%</td><td>100.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>fiz-harness-claude-sonnet-4-6</td><td><span class="meta">Claude Code (wrapped by fiz)</span></td><td>202</td><td>0</td><td>0.0%</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>fiz-harness-codex-gpt-5-4-mini</td><td><span class="meta">Codex (wrapped by fiz)</span></td><td>202</td><td>0</td><td>15.3%</td><td>10.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>fiz-harness-opencode-gpt-5-4-mini</td><td><span class="meta">OpenCode (wrapped by fiz)</span></td><td>41</td><td>0</td><td>0.0%</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>fiz-harness-pi-gpt-5-4-mini</td><td><span class="meta">Pi (wrapped by fiz)</span></td><td>40</td><td>0</td><td>0.0%</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>fiz-openrouter-claude-sonnet-4-6</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>199</td><td>15</td><td>22.2%</td><td>10.0%</td><td>11</td><td>166,505</td><td>2,182</td><td>135</td><td>0.574</td><td>1.89</td><td>1474.7</td></tr><tr><td>fiz-openrouter-gpt-5-4-mini</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>199</td><td>14</td><td>6.9%</td><td>6.7%</td><td>8</td><td>32,542</td><td>886</td><td>108</td><td>0.053</td><td>0.78</td><td>177.7</td></tr><tr><td>gpt-5-4-mini-openrouter</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>15</td><td>0</td><td>46.7%</td><td>100.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>1.04</td><td>194.4</td></tr><tr><td>gpt-5-mini</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>21</td><td>0</td><td>—</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr></tbody></table>
 <h2>Side-by-side coverage and gaps</h2>
 <div class="narrative"><h3>Side-by-side coverage today</h3>
-<p>The point of the harness page is to hold the model constant and read the difference between rows as harness loss. Two model families currently have enough lanes wired up to read that delta:</p>
+<p>The harness page holds the model constant and reads the difference between rows as harness loss. Two model families currently have enough lanes wired up to read that delta:</p>
 <p><strong>Sonnet 4.6 (three paths, no clean comparison yet).</strong>
 - <code>claude-native-sonnet-4-6</code> — Claude Code's own CLI, no fiz involvement. 15 attempts, 0 real reps in the latest sweep (all <code>invalid_setup</code>).
 - <code>fiz-harness-claude-sonnet-4-6</code> — fiz wraps the Claude Code CLI. 202 attempts, 0 real reps (same blocker).
 - <code>fiz-openrouter-claude-sonnet-4-6</code> — fiz's built-in agent loop talking to Sonnet through OpenRouter. 199 attempts, <strong>15 real reps</strong>, 22.2 % pass@1 on the partial <code>openai-cheap</code> cell (3 of 11 unique tasks solved any-rep).</p>
-<p>The only row that is currently producing graded data is the OpenRouter built-in path. Until the two CLI-wrapping lanes get past <code>invalid_setup</code>, we cannot put a number on Claude Code's harness loss versus fiz's loop on Sonnet — that is the comparison we most want to make and the one that is most blocked.</p>
+<p>The only row currently producing graded data is the OpenRouter built-in path. Until the two CLI-wrapping lanes get past <code>invalid_setup</code>, we cannot put a number on Claude Code's harness loss versus fiz's loop on Sonnet — the comparison we most want to make and the one most blocked.</p>
 <p><strong>GPT-5.4-mini (three paths, partial side-by-side).</strong>
-- <code>codex-native-gpt-5-4-mini</code> — Codex CLI native, only 1 of 3 canary tasks attempted but <strong>100 % pass@k</strong> on what it touched (extremely small sample).
+- <code>codex-native-gpt-5-4-mini</code> — Codex CLI native, only 1 of 3 canary tasks attempted but <strong>100 % pass@k</strong> on what it touched (very small sample).
 - <code>fiz-harness-codex-gpt-5-4-mini</code> — fiz wraps Codex. 202 attempts, 0 real reps. Reports <code>pass@1 15.3%</code> from the binary success path even though no token-level data flowed.
 - <code>fiz-openrouter-gpt-5-4-mini</code> — fiz's built-in loop direct to OpenRouter. 199 attempts, 14 real reps, <strong>6.7 % pass@k</strong> on the partial cell.
 - <code>gpt-5-4-mini-openrouter</code> — older fiz built-in lane, 100 % pass@k on a 3-task canary only.</p>
-<p>The reading here is more legible than Sonnet but still preliminary: native Codex looks much stronger on the canary than fiz's built-in loop on the same model on a wider task set, but the canary is 3 tasks and the fiz cell is 11 — the comparison only becomes diagnostic once the wrapped Codex lane stops invalidating.</p>
+<p>The reading here is more legible than Sonnet but still preliminary: native Codex looks stronger on the canary than fiz's built-in loop on the same model on a wider task set, but the canary is 3 tasks and the fiz cell is 11 — the comparison becomes diagnostic only once the wrapped Codex lane stops invalidating.</p>
 <h3>What to compare next</h3>
 <p>These are the comparisons we cannot make today because one side of the side-by-side is missing. Adding the listed fiz lane would close the gap.</p>
 <table>
@@ -49,7 +49,7 @@ toc: true
 <td>GPT-5.4-mini</td>
 <td><code>codex-native-gpt-5-4-mini</code> (canary only) and <code>fiz-openrouter-gpt-5-4-mini</code></td>
 <td><code>codex-native-gpt-5-4-mini</code> extended to the full <code>openai-cheap</code> 35-task cell</td>
-<td>The Codex wrapper looks strong on the canary. Without the wider cell we cannot tell whether the canary picked easy tasks or whether the wrapper genuinely outperforms the OpenRouter loop. Cheap to do (≈ $9).</td>
+<td>The Codex wrapper looks strong on the canary. Without the wider cell we cannot tell whether the canary picked easy tasks or whether the wrapper outperforms the OpenRouter loop. Cheap to do (≈ $9).</td>
 </tr>
 <tr>
 <td>GPT-5.5</td>
@@ -61,15 +61,15 @@ toc: true
 <td>Qwen3.6-27B (frontier reasoning lane)</td>
 <td>All three Qwen provider rows on the providers page</td>
 <td>A <code>fiz-harness-codex-qwen-3-6-27b</code> lane (Codex CLI configured against an OpenAI-compat Qwen endpoint)</td>
-<td>Currently the only Qwen rows use fiz's built-in loop. A second harness on the same Qwen weights would let the providers-page numbers be re-read as model-loss vs harness-loss.</td>
+<td>The only Qwen rows today use fiz's built-in loop. A second harness on the same Qwen weights would let the providers-page numbers be re-read as model-loss vs harness-loss.</td>
 </tr>
 <tr>
 <td>Opus 4.6</td>
 <td>External leaderboard (Crux, Judy, Capy, Droid, Mux, Terminus2 all reporting &gt; 78 % on <code>all</code>)</td>
 <td>Any fiz lane on Opus 4.6 (built-in loop or harness wrapper)</td>
-<td>We currently have zero internal coverage of the model that tops the leaderboard. Without it the gap between fiz and the best external row mixes harness loss and model loss into a single unreadable number.</td>
+<td>We have zero internal coverage of the model that tops the leaderboard. Without it the gap between fiz and the best external row mixes harness loss and model loss into a single unreadable number.</td>
 </tr>
 </tbody>
 </table>
-<p>Across these five rows the cheapest two (mini extended to 35 tasks, and getting the wrapped-Codex lane producing real data) are the highest-leverage additions: both are well under $20 in API spend and they unblock the only model where we have lanes on three different harnesses on the same model.</p></div>
+<p>Across these five rows the cheapest two (mini extended to 35 tasks, and getting the wrapped-Codex lane producing real data) are the highest-leverage additions: both run well under $20 in API spend and unblock the only model where we have lanes on three different harnesses.</p></div>
 </div>

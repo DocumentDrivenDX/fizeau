@@ -26,6 +26,13 @@ func TestClassifyMatrixInvalidFromFixtures(t *testing.T) {
 		{name: "graded-fail-no-attempt.json", want: matrixInvalidSetup},
 		{name: "graded-fail-zero-output-fast.json", want: matrixInvalidSetup},
 		{name: "graded-fail-real-attempt.json", want: ""},
+		// Regression: a real attempt whose error blob carries the wrapper bash
+		// script (heredoc EOF markers, mkdir/cp scaffolding) MUST stay a real
+		// graded_fail. The previous classifier matched "eof" → invalid_provider
+		// against the heredoc and silently relabeled real model failures as
+		// infrastructure failures. See the "We tried our best and didn't pass"
+		// principle in the function doc-comment.
+		{name: "graded-fail-real-attempt-with-wrapper-bash.json", want: ""},
 		{name: "provider-transport.json", want: matrixInvalidProvider},
 		{name: "verifier-fail-after-attempt.json", want: ""},
 	}

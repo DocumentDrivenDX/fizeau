@@ -7,7 +7,10 @@
       "tasks_touched": 89,
       "tasks_passed_any": 3,
       "n_real": 0,
-      "invalids": {},
+      "invalids": {
+        "invalid_setup": 139,
+        "invalid_provider": 1
+      },
       "median_turns": null,
       "median_in_tok": null,
       "median_out_tok": null,
@@ -17,37 +20,36 @@
     },
     "sindri-club-3090": {
       "n_attempts": 660,
-      "n_graded": 148,
-      "n_pass": 40,
+      "n_graded": 193,
+      "n_pass": 55,
       "tasks_touched": 104,
-      "tasks_passed_any": 17,
-      "n_real": 47,
+      "tasks_passed_any": 27,
+      "n_real": 103,
       "invalids": {
-        "invalid_setup": 323,
-        "invalid_provider": 7
+        "invalid_setup": 325
       },
-      "median_turns": 13,
-      "median_in_tok": 82974,
-      "median_out_tok": 4564,
-      "median_wall": 691.670395951,
+      "median_turns": 11,
+      "median_in_tok": 62265,
+      "median_out_tok": 3554,
+      "median_wall": 873.951169906,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
     "vidar-qwen3-6-27b": {
       "n_attempts": 652,
-      "n_graded": 137,
-      "n_pass": 55,
+      "n_graded": 165,
+      "n_pass": 64,
       "tasks_touched": 104,
-      "tasks_passed_any": 20,
-      "n_real": 54,
+      "tasks_passed_any": 27,
+      "n_real": 102,
       "invalids": {
-        "invalid_setup": 255,
-        "invalid_provider": 12
+        "invalid_setup": 229,
+        "invalid_provider": 1
       },
-      "median_turns": 18.0,
-      "median_in_tok": 107018.5,
-      "median_out_tok": 4172.0,
-      "median_wall": 700.104722445,
+      "median_turns": 13.5,
+      "median_in_tok": 95721.5,
+      "median_out_tok": 5480.0,
+      "median_wall": 931.7389808165001,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
@@ -59,8 +61,7 @@
       "tasks_passed_any": 52,
       "n_real": 361,
       "invalids": {
-        "invalid_setup": 100,
-        "invalid_provider": 68
+        "invalid_setup": 42
       },
       "median_turns": 13,
       "median_in_tok": 87289,
@@ -76,7 +77,9 @@
       "tasks_touched": 89,
       "tasks_passed_any": 3,
       "n_real": 0,
-      "invalids": {},
+      "invalids": {
+        "invalid_setup": 86
+      },
       "median_turns": null,
       "median_in_tok": null,
       "median_out_tok": null,
@@ -92,7 +95,7 @@
       "tasks_passed_any": 0,
       "n_real": 0,
       "invalids": {
-        "invalid_setup": 108
+        "invalid_setup": 365
       },
       "median_turns": null,
       "median_in_tok": null,
@@ -127,7 +130,7 @@
       "tasks_passed_any": 2,
       "n_real": 7,
       "invalids": {
-        "invalid_setup": 108
+        "invalid_setup": 167
       },
       "median_turns": 2,
       "median_in_tok": 3049,
@@ -144,7 +147,7 @@
       "tasks_passed_any": 1,
       "n_real": 0,
       "invalids": {
-        "invalid_setup": 108
+        "invalid_setup": 162
       },
       "median_turns": null,
       "median_in_tok": null,
@@ -161,7 +164,7 @@
       "tasks_passed_any": 2,
       "n_real": 14,
       "invalids": {
-        "invalid_setup": 108
+        "invalid_setup": 166
       },
       "median_turns": 7.5,
       "median_in_tok": 32542.0,
@@ -178,7 +181,7 @@
       "tasks_passed_any": 3,
       "n_real": 15,
       "invalids": {
-        "invalid_setup": 108
+        "invalid_setup": 164
       },
       "median_turns": 11,
       "median_in_tok": 166505,
@@ -195,7 +198,7 @@
       "tasks_passed_any": 3,
       "n_real": 0,
       "invalids": {
-        "invalid_setup": 108
+        "invalid_setup": 169
       },
       "median_turns": null,
       "median_in_tok": null,
@@ -212,7 +215,7 @@
       "tasks_passed_any": 0,
       "n_real": 0,
       "invalids": {
-        "invalid_setup": 108
+        "invalid_setup": 181
       },
       "median_turns": null,
       "median_in_tok": null,
@@ -228,7 +231,9 @@
       "tasks_touched": 3,
       "tasks_passed_any": 0,
       "n_real": 0,
-      "invalids": {},
+      "invalids": {
+        "invalid_setup": 6
+      },
       "median_turns": null,
       "median_in_tok": null,
       "median_out_tok": null,
@@ -258,7 +263,9 @@
       "tasks_touched": 3,
       "tasks_passed_any": 0,
       "n_real": 0,
-      "invalids": {},
+      "invalids": {
+        "invalid_setup": 6
+      },
       "median_turns": null,
       "median_in_tok": null,
       "median_out_tok": null,
@@ -289,7 +296,7 @@
       "tasks_passed_any": 0,
       "n_real": 0,
       "invalids": {
-        "invalid_setup": 18
+        "invalid_setup": 27
       },
       "median_turns": null,
       "median_in_tok": null,
@@ -305,7 +312,9 @@
       "tasks_touched": 3,
       "tasks_passed_any": 3,
       "n_real": 0,
-      "invalids": {},
+      "invalids": {
+        "invalid_setup": 1
+      },
       "median_turns": null,
       "median_in_tok": null,
       "median_out_tok": null,
@@ -320,7 +329,9 @@
       "tasks_touched": 4,
       "tasks_passed_any": 0,
       "n_real": 0,
-      "invalids": {},
+      "invalids": {
+        "invalid_setup": 12
+      },
       "median_turns": null,
       "median_in_tok": null,
       "median_out_tok": null,
@@ -335,7 +346,9 @@
       "tasks_touched": 3,
       "tasks_passed_any": 3,
       "n_real": 0,
-      "invalids": {},
+      "invalids": {
+        "invalid_setup": 8
+      },
       "median_turns": null,
       "median_in_tok": null,
       "median_out_tok": null,
@@ -351,7 +364,7 @@
       "tasks_passed_any": 0,
       "n_real": 0,
       "invalids": {
-        "invalid_setup": 18
+        "invalid_setup": 27
       },
       "median_turns": null,
       "median_in_tok": null,
@@ -393,7 +406,7 @@
         "n_attempts": 552,
         "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 17
+        "tasks_passed": 27
       },
       "canary": {
         "n_attempts": 74,
@@ -411,7 +424,7 @@
         "n_attempts": 266,
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 15
+        "tasks_passed": 22
       }
     },
     "vidar-qwen3-6-27b": {
@@ -419,7 +432,7 @@
         "n_attempts": 544,
         "tasks_attempted": 89,
         "tasks_in_subset": 89,
-        "tasks_passed": 20
+        "tasks_passed": 27
       },
       "canary": {
         "n_attempts": 102,
@@ -431,13 +444,13 @@
         "n_attempts": 173,
         "tasks_attempted": 15,
         "tasks_in_subset": 15,
-        "tasks_passed": 10
+        "tasks_passed": 11
       },
       "openai-cheap": {
         "n_attempts": 270,
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 14
+        "tasks_passed": 19
       }
     },
     "fiz-openrouter-qwen3-6-27b": {

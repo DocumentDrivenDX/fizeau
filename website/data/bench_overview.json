@@ -1,5 +1,5 @@
 {
-  "snapshot_ts": "2026-05-10 04:49:55 UTC",
+  "snapshot_ts": "2026-05-10 20:22:36 UTC",
   "n_reports_total": 4410,
   "n_profiles_active": 20,
   "n_external_comparators": 45,
@@ -21,24 +21,24 @@
     {
       "profile_id": "sindri-club-3090",
       "label": "vLLM int4 (sindri / RTX 5090)",
-      "pass_at_k_pct": 16.346153846153847,
-      "pass_at_k_num": 17,
+      "pass_at_k_pct": 25.961538461538463,
+      "pass_at_k_num": 27,
       "pass_at_k_den": 104,
-      "median_wall_s": 691.670395951,
-      "decode_tps_p50": 79.02535929089804,
-      "ttft_p50_s": 18.35660409927368,
+      "median_wall_s": 873.951169906,
+      "decode_tps_p50": 73.13959943163445,
+      "ttft_p50_s": 19.068445444107056,
       "avg_cost_usd": 0.0,
       "n_attempts": 660
     },
     {
       "profile_id": "vidar-qwen3-6-27b",
       "label": "oMLX 8-bit (vidar / Mac Studio)",
-      "pass_at_k_pct": 19.230769230769234,
-      "pass_at_k_num": 20,
+      "pass_at_k_pct": 25.961538461538463,
+      "pass_at_k_num": 27,
       "pass_at_k_den": 104,
-      "median_wall_s": 700.104722445,
-      "decode_tps_p50": 15.731679498492873,
-      "ttft_p50_s": 10.112328052520752,
+      "median_wall_s": 931.7389808165001,
+      "decode_tps_p50": 15.365484351964557,
+      "ttft_p50_s": 10.146856188774109,
       "avg_cost_usd": 0.0,
       "n_attempts": 652
     }
