@@ -43,7 +43,7 @@ func main() {
 		if !strings.HasPrefix(n, "ADR-") || !strings.HasSuffix(n, ".md") {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(*src, n)) //nolint:gosec // fixed in-repo source dir
+		raw, err := os.ReadFile(filepath.Join(*src, n)) // #nosec G304 -- fixed in-repo ADR source dir, n filtered by HasPrefix/HasSuffix above
 		if err != nil {
 			fail(err)
 		}
@@ -85,7 +85,7 @@ func parseADR(filename, raw string) (adr, error) {
 		if a.Title == "" {
 			if m := titleRe.FindStringSubmatch(line); m != nil {
 				a.ID, a.Title = m[1], m[2]
-				fmt.Sscanf(strings.TrimPrefix(a.ID, "ADR-"), "%d", &a.Num)
+				_, _ = fmt.Sscanf(strings.TrimPrefix(a.ID, "ADR-"), "%d", &a.Num)
 				continue
 			}
 		}
