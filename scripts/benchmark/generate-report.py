@@ -1140,6 +1140,8 @@ def render_models_body(*, snapshot_ts, profiles, subsets, per_profile,
         _render_pass_table(pids, subsets, per_subset, profiles),
         '<h2>Detailed metrics</h2>',
         _render_detailed_table(pids, per_profile, profiles, timing),
+        '<h2>Cost to extend coverage</h2>',
+        f'<div class="narrative">{_read_section("models-coverage-cost.md")}</div>',
         '<h2>Model power vs pass-rate</h2>',
         f'<div class="narrative">{_read_section("06-model-power-observations.md")}</div>',
         f'<div class="chart">{chart_emitter("model-power-scatter.svg")}</div>',
@@ -1167,6 +1169,8 @@ def render_harnesses_body(*, snapshot_ts, profiles, subsets, per_profile,
                            ext_filter=harness_ext_filter),
         '<h2>Detailed metrics</h2>',
         _render_detailed_table(pids, per_profile, profiles, timing),
+        '<h2>Side-by-side coverage and gaps</h2>',
+        f'<div class="narrative">{_read_section("harnesses-side-by-side.md")}</div>',
     ]
     return "\n".join(parts)
 
@@ -1192,9 +1196,7 @@ def render_providers_body(*, snapshot_ts, profiles, machines, subsets,
         f'<h3>TTFT (seconds, lower is better)</h3><div class="chart">{chart_emitter("ttft-by-context.svg")}</div>',
         f'<h3>Decode tok/s (higher is better)</h3><div class="chart">{chart_emitter("decode-by-context.svg")}</div>',
         '<h2>Provider details</h2>',
-        '<div class="narrative">',
-        '<p><i>Detailed per-provider engine + sampling + KV-cache info will land here once <code>scripts/benchmark/capture-machine-info.sh</code> is wired to populate <code>machines.yaml</code>. See <a href="https://github.com/easel/fizeau/blob/master/scripts/benchmark/machines.yaml">machines.yaml</a> for the current registry.</i></p>',
-        '</div>',
+        f'<div class="narrative">{_read_section("providers-details.md")}</div>',
     ]
     return "\n".join(parts)
 

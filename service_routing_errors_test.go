@@ -157,7 +157,6 @@ func TestResolveExecuteRouteNormalizesSubprocessAliases(t *testing.T) {
 func TestResolveExplicitClaudeRejectedWhenFreshQuotaExhausted(t *testing.T) {
 	cachePath := filepath.Join(t.TempDir(), "claude-quota.json")
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
-	t.Setenv("DDX_AGENT_CLAUDE_QUOTA_CACHE", "")
 
 	now := time.Now().UTC()
 	reset := now.Add(2 * time.Hour).Unix()

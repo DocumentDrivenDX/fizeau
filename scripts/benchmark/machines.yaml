@@ -7,18 +7,76 @@
 # Cloud providers (openai, openrouter, anthropic) intentionally don't appear
 # here — there's no machine to describe; they're treated as opaque endpoints.
 #
-# Schema (per machine):
+# ---------------------------------------------------------------------------
+# Schema (per machine).  All fields are optional; the renderer skips empties.
+# ---------------------------------------------------------------------------
+# Top-level (kept for backwards compatibility — existing entries still parse):
 #   label    : short display name shown on the profile card
 #   chassis  : enclosure / form factor (laptop, desktop, Mac Studio, …)
-#   cpu      : CPU model
-#   gpu      : GPU model + memory if discrete
-#   memory   : system RAM (and unified note if applicable)
-#   os       : operating system + container/runtime layer (WSL, Docker Desktop, …)
-#   network  : how this machine is reached from benchmark runner (Tailscale, LAN, …)
+#   cpu      : CPU model (free text; superseded by hardware.cpu_model)
+#   gpu      : GPU model + memory if discrete (superseded by hardware.gpu_*)
+#   memory   : system RAM (free text; superseded by hardware.memory_gb)
+#   os       : operating system + container/runtime layer
+#   network  : how this machine is reached from the benchmark runner
 #   notes    : free-form (role, quirks, what backends it hosts)
+#
+# Extended sub-blocks (populated by capture-machine-info.sh):
+#   snapshot:
+#     captured_at        : ISO-8601 UTC timestamp the snapshot was taken
+#     hostname           : reported `hostname`
+#     kernel             : `uname -sr`
+#     os_release         : VERSION_ID (Linux) / build (macOS)
+#   hardware:
+#     cpu_model          : detected CPU brand string
+#     cpu_cores          : logical CPU count
+#     cpu_sockets        : physical socket count
+#     memory_gb          : total system RAM, GB
+#     gpu_vendor         : NVIDIA | Apple | AMD | …
+#     gpu_model          : detected GPU/SoC name
+#     gpu_vram_mb        : dedicated VRAM, MiB (0 for unified memory)
+#     gpu_driver         : driver version (NVIDIA only)
+#     gpu_runtime        : CUDA | ROCm | MLX/Metal
+#     gpu_runtime_version: toolkit version
+#     gpu_util_pct       : utilization snapshot %
+#     gpu_mem_used_mb    : allocated VRAM at snapshot, MiB
+#   network_detail:
+#     primary_ip         : default-route source IP
+#     tailscale_ip       : tailnet IPv4
+#     public_ip          : opt-in (FETCH_PUBLIC_IP=1)
+#   serving:
+#     engine             : vllm | mlx | ollama | lmstudio | unknown
+#     engine_version     : `<engine> --version`
+#     endpoint           : base URL probed (http://127.0.0.1:PORT)
+#     port               : numeric port
+#     pid                : engine PID at snapshot
+#     model_id           : id from /v1/models[0].id
+#     quant_label        : AWQ | GPTQ | FP8 | INT4 | INT8 | BF16 (inferred)
+#     weights_path       : path/root from /v1/models entry
+#     context_window     : max_model_len / context_length
+#     kv_cache           : free-text KV cache description (manual)
+#     max_batch          : max concurrent batch (manual)
+#     max_seq_len        : max sequence length (manual)
+#   sampling_defaults:
+#     temperature, top_p, top_k, repetition_penalty, max_tokens
+#       — defaults the host serves with; record what your launcher passes.
 #
 # Leave fields empty when unknown — the renderer skips empty rows. Add new
 # machines as they come online.
+#
+# ---------------------------------------------------------------------------
+# Workflow for refreshing an entry
+# ---------------------------------------------------------------------------
+#   1. ssh <hostname>
+#   2. cd path/to/fizeau    # or scp the script over
+#   3. ./scripts/benchmark/capture-machine-info.sh > /tmp/me.yaml
+#   4. scp <hostname>:/tmp/me.yaml ./me.yaml
+#   5. Replace the existing block under that hostname in this file with the
+#      generated YAML. Keep the original `label`, `chassis`, and `notes`
+#      values unless they need updating — the script leaves them empty.
+#   6. Commit.  generate-report.py prefers extended fields when present.
+#
+# Tip: `make capture-machine-info` runs the script locally on the build host
+# (only useful when you're physically on the machine you want to inventory).
 
 version: 1
 

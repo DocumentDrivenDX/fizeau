@@ -48,6 +48,7 @@ var skippedDirs = map[string]bool{
 	".claude":              true,
 	".fizeau":              true,
 	".helix-ratchets":      true,
+	"benchmark-results":    true,
 	"docs/helix":           true,
 	"docs/research":        true,
 	"internal/renamecheck": true,

@@ -11,7 +11,7 @@ layout: hextra-home
   <h1 class="hero__title">Fizeau</h1>
 
   <p class="hero__lede">
-    A measurement-first agent loop. Holds the harness constant, swaps the model behind it, and reports the round-trip timing it took to get there. Local-model-first via vLLM, MLX, LM Studio, Ollama; cloud providers when you want them.
+    An <b>agentic-development runtime</b> with its own measured loop. Other tools build on top of fizeau instead of writing their own — we control the harness, sampling, performance instrumentation, cost tracking, and subscription accounting so they don't have to. Local-model-first via vLLM, MLX, LM Studio, Ollama; cloud providers when you want them.
   </p>
 
   <div class="hero__cta">
@@ -28,7 +28,17 @@ layout: hextra-home
 </div>
 
 <section class="what-is">
-  <h2 class="what-is__title">What it is</h2>
+  <h2 class="what-is__title">Why fizeau exists</h2>
+
+  <p>Fizeau exists for three reasons that build on each other:</p>
+
+  <ol>
+    <li><b>Facilitate agentic development.</b> A reusable, embeddable agent loop with the right primitives — tool-calling, planning, compaction, retries, session logging — so building tools doesn't mean re-implementing the loop every time.</li>
+    <li><b>Make agentic work measurable.</b> Per-turn timing, prefill vs decode breakdown, cost-per-trial, subscription-quota accounting — first-class outputs, not bolted-on observability. You can't improve prompts, agents, or providers you can't measure.</li>
+    <li><b>Make local models a real option.</b> Local serving (vLLM, MLX, LM Studio, Ollama) on the same provider surface as cloud frontier models. The benchmarks compare them honestly. Self-hosted at the right quantization is often cheaper, sometimes faster, and rarely the right answer for everything — but you can pick per workload because the data is on the table.</li>
+  </ol>
+
+  <h2 class="what-is__title" style="margin-top: 2.5rem;">What it is</h2>
 
   <p>Fizeau is an agent runtime with its own built-in agent loop (the <code>fiz</code> harness): it manages the prompt, tool-call protocol, file/edit/bash tooling, planning, compaction, retries, sampling, reasoning, quotas, and session log. It is not an LLM serving runtime — it does not host weights. Upstream model traffic is delegated to whatever provider the lane points at (OpenAI, Anthropic, OpenRouter, vLLM, oMLX, RapidMLX, native local).</p>
 

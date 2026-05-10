@@ -1,7 +1,11 @@
 package harnesses
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -127,6 +131,122 @@ func TestBuiltinHarnessesPermissionArgs(t *testing.T) {
 	claude, ok := r.Get("claude")
 	require.True(t, ok)
 	assert.Contains(t, claude.PermissionArgs["unrestricted"], "--dangerously-skip-permissions")
+}
+
+// TestRegistryDiscover_LookupTable drives Discover() through a table of
+// PATH-presence scenarios loaded from testdata/lookup_cases.json. Each case
+// fakes exec.LookPath success for a chosen subset of binaries and asserts
+// the resulting Available set. Embedded harnesses (fiz, virtual, script)
+// and HTTP-only providers must always show as available regardless of PATH.
+func TestRegistryDiscover_LookupTable(t *testing.T) {
+	type caseDef struct {
+		Name              string   `json:"name"`
+		Installed         []string `json:"installed"`
+		ExpectAvailable   []string `json:"expect_available"`
+		ExpectUnavailable []string `json:"expect_unavailable"`
+	}
+
+	raw, err := os.ReadFile(filepath.Join("testdata", "lookup_cases.json"))
+	require.NoError(t, err, "read testdata/lookup_cases.json")
+
+	var cases []caseDef
+	require.NoError(t, json.Unmarshal(raw, &cases), "decode lookup_cases.json")
+	require.NotEmpty(t, cases, "lookup_cases.json must contain at least one case")
+
+	for _, c := range cases {
+		c := c
+		t.Run(c.Name, func(t *testing.T) {
+			installed := make(map[string]bool, len(c.Installed))
+			for _, b := range c.Installed {
+				installed[b] = true
+			}
+
+			r := NewRegistry()
+			r.LookPath = func(file string) (string, error) {
+				if installed[file] {
+					return "/usr/local/bin/" + file, nil
+				}
+				return "", fmt.Errorf("exec: %q: not found in $PATH", file)
+			}
+
+			statuses := r.Discover()
+			gotAvailable := make([]string, 0, len(statuses))
+			gotUnavailable := make([]string, 0, len(statuses))
+			for _, s := range statuses {
+				if s.Available {
+					gotAvailable = append(gotAvailable, s.Name)
+				} else {
+					gotUnavailable = append(gotUnavailable, s.Name)
+				}
+			}
+
+			sort.Strings(gotAvailable)
+			sort.Strings(gotUnavailable)
+			expectAvail := append([]string(nil), c.ExpectAvailable...)
+			expectUnavail := append([]string(nil), c.ExpectUnavailable...)
+			sort.Strings(expectAvail)
+			sort.Strings(expectUnavail)
+
+			assert.Equal(t, expectAvail, gotAvailable, "available set")
+			assert.Equal(t, expectUnavail, gotUnavailable, "unavailable set")
+
+			// Subprocess harnesses that resolved must report a non-empty Path
+			// pointing at the faked binary location.
+			for _, s := range statuses {
+				if !s.Available || s.Path == "(embedded)" || s.Path == "(http)" {
+					continue
+				}
+				assert.Equal(t, "/usr/local/bin/"+s.Binary, s.Path,
+					"resolved path for %s should be the faked LookPath result", s.Name)
+				assert.Empty(t, s.Error, "available harness %s should have no error", s.Name)
+			}
+
+			// Unavailable subprocess harnesses must surface a "binary not
+			// found" error so callers can render a helpful message.
+			for _, s := range statuses {
+				if s.Available {
+					continue
+				}
+				assert.Equal(t, "binary not found", s.Error,
+					"unavailable harness %s should report 'binary not found'", s.Name)
+			}
+		})
+	}
+}
+
+// TestRegistryDiscover_FirstAvailableHonorsPreferenceOrder verifies that
+// FirstAvailable returns the highest-preference installed CLI even when
+// multiple are present, matching the documented preference order.
+func TestRegistryDiscover_FirstAvailableHonorsPreferenceOrder(t *testing.T) {
+	cases := []struct {
+		installed []string
+		// expected may be any of these values — tests only that it is one
+		// of the installed CLIs and matches the preference order.
+		wantFirst string
+	}{
+		{installed: []string{"claude", "codex", "opencode", "pi"}, wantFirst: "codex"},
+		{installed: []string{"claude", "opencode", "pi"}, wantFirst: "claude"},
+		{installed: []string{"opencode", "pi"}, wantFirst: "opencode"},
+		{installed: []string{"pi"}, wantFirst: "fiz"}, // fiz beats pi in preference
+	}
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("installed=%v", c.installed), func(t *testing.T) {
+			set := make(map[string]bool, len(c.installed))
+			for _, b := range c.installed {
+				set[b] = true
+			}
+			r := NewRegistry()
+			r.LookPath = func(file string) (string, error) {
+				if set[file] {
+					return "/usr/local/bin/" + file, nil
+				}
+				return "", fmt.Errorf("not found")
+			}
+			got, ok := r.FirstAvailable()
+			require.True(t, ok)
+			assert.Equal(t, c.wantFirst, got)
+		})
+	}
 }
 
 func TestBuiltinHarnessesMetadata(t *testing.T) {

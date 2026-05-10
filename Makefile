@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-regen docs-cli docs-embedding docs-tools docs-adrs
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-regen docs-cli docs-embedding docs-tools docs-adrs capture-machine-info
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -143,6 +143,13 @@ demos-capture:
 # demos/sessions/. Deterministic — no live LLM calls, no `asciinema rec`.
 demos-regen:
 	./demos/regen.sh
+
+# Capture this host's hardware + serving-engine inventory and emit a YAML
+# block keyed by hostname. Run ON the inference machine you want to record;
+# pipe to a file and paste under the matching key in
+# scripts/benchmark/machines.yaml. See the script header for prerequisites.
+capture-machine-info:
+	./scripts/benchmark/capture-machine-info.sh
 
 clean:
 	rm -f $(BINARY_NAME)

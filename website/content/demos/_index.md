@@ -3,7 +3,7 @@ title: Demos
 weight: 2
 ---
 
-Terminal recordings showing Fizeau in action with [LM Studio](https://lmstudio.ai/) and `qwen3-coder-next`.
+Terminal recordings showing Fizeau in action with [OpenRouter](https://openrouter.ai/) and `qwen/qwen3.6-27b`.
 
 ## Read a file and explain it
 
@@ -15,9 +15,9 @@ Model reads `main.go` using the read tool and describes the program.
 ```
 $ fiz -p 'Read main.go and explain what this program does'
 
-This program is a simple HTTP server that listens on port 8080 and responds
-with "Hello from Fizeau!" to any request.
-[success] tokens: 1861 in / 70 out
+This Go program starts an HTTP server on port 8080. It responds with
+"Hello from Fizeau!" to any request made to the root path (`/`).
+[success] tokens: 4625 in / 138 out
 ```
 
 </noscript>
@@ -32,8 +32,8 @@ Model reads a config, edits the port number, and verifies the change.
 ```
 $ fiz -p 'Read config.yaml, change the server port from 8080 to 9090, then verify'
 
-Done. The server port in config.yaml has been changed from 8080 to 9090.
-[success] tokens: 4082 in / 127 out
+The server port has been changed from 8080 to 9090 and verified in the file.
+[success] tokens: 9562 in / 245 out
 ```
 
 </noscript>
@@ -48,15 +48,24 @@ Model uses bash to find all Go files and summarizes the package layout.
 ```
 $ fiz -p 'List all Go files and summarize the package structure'
 
-Package Structure:
-├── cmd/server/main.go       (package main)
-├── internal/api/handler.go  (package api)
-├── internal/api/middleware.go (package api)
-└── internal/db/postgres.go  (package db)
-[success] tokens: 6388 in / 297 out
+Here's the package structure:
+
+project/
+├── main.go                  (root package — entry point)
+├── cmd/
+│   └── server/main.go       (cmd/server — server binary)
+└── internal/
+    ├── api/handler.go       (internal/api — HTTP handlers)
+    ├── api/middleware.go    (internal/api — middleware)
+    └── db/postgres.go       (internal/db — Postgres database layer)
+
+5 Go files across 4 packages: a root main, a cmd/server binary,
+and two internal packages (api and db) under internal/.
+[success] tokens: 4670 in / 238 out
 ```
 
 </noscript>
 
-All demos run against [qwen3-coder-next](https://huggingface.co/Qwen) via LM Studio.
-Demo scripts are in [`demos/scripts/`](https://github.com/easel/fizeau/tree/main/demos/scripts) and can be re-recorded with `demos/record.sh`.
+All demos run against [qwen/qwen3.6-27b](https://openrouter.ai/qwen/qwen3.6-27b) via OpenRouter.
+Captured with `make demos-capture` and rendered with `make demos-regen` from
+canonical session JSONLs in [`demos/sessions/`](https://github.com/easel/fizeau/tree/main/demos/sessions).

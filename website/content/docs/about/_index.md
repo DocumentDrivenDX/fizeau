@@ -3,6 +3,16 @@ title: About
 weight: 90
 ---
 
+## Mission
+
+Fizeau exists for three reasons that build on each other:
+
+1. **Facilitate agentic development.** A reusable, embeddable agent loop with the right primitives — tool-calling, planning, compaction, retries, sampling, reasoning, quotas, session logs — so building tools doesn't mean re-implementing the loop every time. Other tools embed `fizeau.New(...)` instead of writing their own agent harness.
+2. **Make agentic work measurable.** Per-turn timing, prefill vs decode breakdown, cost-per-trial, subscription-quota accounting, route-attempt feedback — all first-class outputs, not bolted-on observability. You can't improve the prompts, agents, or providers you can't measure.
+3. **Make local models a real option.** Local serving (vLLM, MLX, LM Studio, Ollama) on the same provider surface as cloud frontier models. The benchmarks compare them honestly. Self-hosted at the right quantization is often cheaper, sometimes faster, and rarely the right answer for everything — but you can pick per workload because the data is on the table.
+
+The harness control implied by #1 is what enables #2 (we can instrument what we own) and what makes #3 viable (one provider surface that abstracts cloud and local equally). Tools built on fizeau inherit that without writing their own loop, sampling controls, performance instrumentation, cost tracking, or subscription accounting.
+
 ## Why "Fizeau"
 
 Named for **Armand Hippolyte Louis Fizeau** (1819–1896), the French physicist who made the first terrestrial measurement of the speed of light — and then, two years later, did something more interesting.

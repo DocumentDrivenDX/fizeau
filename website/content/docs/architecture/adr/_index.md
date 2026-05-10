@@ -8,8 +8,8 @@ description: "Numbered, dated decisions about Fizeau's architecture."
 
 Each ADR captures one architectural decision: the context that forced the
 choice, the alternatives considered, what was decided, and the consequences.
-ADRs are append-only — superseded ones stay in the source tree but are hidden
-from this index.
+ADRs are append-only — superseded entries stay in the source tree but are
+hidden from this index.
 
 | ADR | Status | Date | Decision |
 |-----|--------|------|----------|
