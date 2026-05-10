@@ -205,16 +205,26 @@ $ jq -c '{ts, type, model: .data.model, tokens: (.data.usage // .data.tokens),
 
 ## How these are produced
 
-| Reel            | Capture path                       | Backend           | Model                                  |
-| --------------- | ---------------------------------- | ----------------- | -------------------------------------- |
-| `quickstart`    | `make demos-capture-docker`        | local llama-server | Qwen2.5-Coder-0.5B-Instruct (Q4_K_M)   |
-| `file-read`     | `make demos-capture` (OpenRouter)  | OpenRouter API    | `qwen/qwen3.6-27b`                     |
-| `file-edit`     | `make demos-capture` (OpenRouter)  | OpenRouter API    | `qwen/qwen3.6-27b`                     |
-| `bash-explore`  | `make demos-capture` (OpenRouter)  | OpenRouter API    | `qwen/qwen3.6-27b`                     |
+| Reel                | Capture path                              | Backend            | Model                                |
+| ------------------- | ----------------------------------------- | ------------------ | ------------------------------------ |
+| `quickstart`        | `make demos-capture-docker`               | local llama-server | Qwen2.5-Coder-0.5B-Instruct (Q4_K_M) |
+| `file-read`         | `make demos-capture` (OpenRouter)         | OpenRouter API     | `qwen/qwen3.6-27b`                   |
+| `file-edit`         | `make demos-capture` (OpenRouter)         | OpenRouter API     | `qwen/qwen3.6-27b`                   |
+| `bash-explore`      | `make demos-capture` (OpenRouter)         | OpenRouter API     | `qwen/qwen3.6-27b`                   |
+| `fiz-usage`         | `./demos/capture-subcommands.sh`          | local              | n/a (reads existing session logs)    |
+| `fiz-update-check`  | `./demos/capture-subcommands.sh`          | local              | n/a (single GitHub releases GET)     |
+| `fiz-jsonl`         | `./demos/capture-subcommands.sh`          | local              | n/a (reads `demos/sessions/`)        |
 
-All four render to asciicast v2 via `make demos-regen` from canonical
-session JSONLs in
+The first four reels render to asciicast v2 via `make demos-regen` from
+canonical session JSONLs in
 [`demos/sessions/`](https://github.com/easel/fizeau/tree/main/demos/sessions).
 Rendering is deterministic and never makes a live LLM call. The
 time-compression banner is implemented in
 [`demos/regen.py`](https://github.com/easel/fizeau/blob/main/demos/regen.py).
+
+The three subcommand reels (`fiz-usage`, `fiz-update-check`, `fiz-jsonl`)
+have no agent loop, so they bypass `regen.py` and emit asciicast v2
+directly via
+[`demos/scripts/build-subcommand-cast.py`](https://github.com/easel/fizeau/blob/main/demos/scripts/build-subcommand-cast.py).
+Each step's stdout is captured verbatim from a real `fiz` invocation —
+no fabrication — and replayed with realistic typing/pause delays.

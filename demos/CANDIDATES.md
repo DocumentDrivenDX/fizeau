@@ -1,13 +1,33 @@
 ---
 title: Demo Reel Candidates
-status: research
+status: in-progress
 date: 2026-05-10
 source: docs/helix/user-story-website-coverage.md (demo-able rows)
 length-target: 30 seconds per reel
-format: asciinema (.cast), captured via `make demos-capture`
+format: asciinema (.cast), captured via `make demos-capture` /
+        `make demos-capture-subcommands`
 ---
 
 # Demo Reel Candidates — Top 8
+
+## Status summary (2026-05-10)
+
+| #  | Candidate                                       | Status                       |
+| -- | ----------------------------------------------- | ---------------------------- |
+| 1  | Cost-cap halt                                   | needs feature (FEAT-005-07)  |
+| 2  | Three policies, three routes                    | partial (config-blocked)     |
+| 3  | Tool-call loop detector trips                   | partial (capture-fragile)    |
+| 4  | JSONL → `fiz replay` round trip                 | shipped 2026-05-10 (rescoped)|
+| 5  | Per-turn TTFT live                              | needs feature (FEAT-001-05)  |
+| 6  | `fiz usage` known-vs-unknown cost               | shipped 2026-05-10           |
+| 7  | Embed in 12-line Go program                     | partial (needs LM Studio)    |
+| 8  | `fiz update --check-only`                       | shipped 2026-05-10 (partial) |
+
+Three new reels (`fiz-usage`, `fiz-update-check`, `fiz-jsonl`) live in
+`website/static/demos/` and are wired into
+`website/content/demos/_index.md`.
+
+
 
 These are the eight user stories from the coverage map most likely to
 make a punchy ~30-second asciinema reel for the website (`/demos/`).
@@ -24,6 +44,8 @@ guardrails, and embedding — the pillars of the product.
 
 ## 1. Cost cap halts the loop mid-run
 
+- **Status:** **needs feature** — `AC-FEAT-005-07` is marked GAP in
+  the feature matrix; no `--cost-cap` flag exists on `fiz run`.
 - **Why this story:** `AC-FEAT-005-07`. Few agent CLIs have a hard
   per-run budget. Showing one halt before the next request is
   visceral and operator-relevant.
@@ -43,6 +65,14 @@ guardrails, and embedding — the pillars of the product.
 
 ## 2. Routing decision: same prompt, three policies, three choices
 
+- **Status:** **partial** — `fiz route-status --profile {cheap,default,smart}`
+  works (the flag is `--profile`, not `--policy` as the candidate
+  prompt assumed). With the current default config the catalog only
+  exposes power-tier-8 candidates, so `--profile cheap` (5) and
+  `--profile smart` (9–10) both return zero candidates with
+  `error: no live provider supports …`. The "three policies, three
+  *different* routes" promise needs a config that actually has
+  candidates spanning all three tiers — capture deferred until then.
 - **Why this story:** `AC-FEAT-004-02`, `AC-FEAT-004-03`. The product's
   measurement-first identity. Showing `--policy cheap → local`,
   `--policy default → mid`, `--policy smart → frontier` in a tight
@@ -65,6 +95,13 @@ guardrails, and embedding — the pillars of the product.
 
 ## 3. Tool-call loop detector trips and saves the user from a runaway
 
+- **Status:** **partial** — feature exists (`ErrToolCallLoop` in
+  `internal/core/loop.go:823`, covered by
+  `TestRun_ToolCallLoopDetection`) but capturing the demo requires the
+  model to actually emit three identical tool calls in a row, which is
+  fragile to reproduce against any production-quality model. Defer
+  until we either ship a deterministic `--simulate-loop` test mode or
+  pin to a known-loopy fixture model.
 - **Why this story:** `AC-FEAT-001-09`. The kind of safety story most
   agent demos skip because it requires *intentionally* failing the
   model. High empathy: every operator has watched a runaway loop.
@@ -83,6 +120,16 @@ guardrails, and embedding — the pillars of the product.
 
 ## 4. JSONL session log → `fiz replay` round trip
 
+- **Status:** **shipped 2026-05-10 (re-scoped)** — captured as the
+  `fiz-jsonl` reel (`website/static/demos/fiz-jsonl.cast`). The "show
+  raw JSONL on disk" half of the original promise made it; the "render
+  the replay side-by-side" half did not, because `fiz replay` prints
+  the full session including the system prompt — way too verbose for a
+  30-second reel and there is no `--brief`/`--summary` flag yet. The
+  shipped reel uses `jq` to project per-event `{ts, type, model,
+  tokens, cost_usd, latency_ms}` from the same JSONL that powers the
+  *Read a file and explain it* reel, so the observability-first
+  promise lands without the runtime cost of a fresh LLM call.
 - **Why this story:** `AC-FEAT-005-01`, `AC-FEAT-005-02`. The
   observability-first promise made tangible. Show the raw JSONL on
   disk *and* the rendered replay side by side.
@@ -102,6 +149,12 @@ guardrails, and embedding — the pillars of the product.
 
 ## 5. Per-turn TTFT measurement, live
 
+- **Status:** **needs feature** — session events emit `latency_ms`
+  (whole-turn) but not `ttft_ms` or `decode_tok_s`. The candidate's
+  jq projection (`{turn, ttft_ms, decode_tok_s}`) returns nothing
+  against today's session schema. Capture deferred until
+  `AC-FEAT-001-05`'s per-turn TTFT/decode-rate fields land in
+  `internal/session`.
 - **Why this story:** `AC-FEAT-001-05`. Connects the tagline ("a
   measurement-first agent loop") to a number on the screen. Most
   agent CLIs hide this; Fizeau exposes it.
@@ -118,6 +171,10 @@ guardrails, and embedding — the pillars of the product.
 
 ## 6. `fiz usage` report — known vs unknown cost
 
+- **Status:** **shipped 2026-05-10** — captured as the `fiz-usage`
+  reel (`website/static/demos/fiz-usage.cast`). Real `fiz usage
+  --since 30d` output across `openrouter` (known cost) and `vllm`
+  (unknown cost) rows.
 - **Why this story:** `AC-FEAT-005-03`, `AC-FEAT-005-05`. The cost-attribution
   policy ("never guess") is unique and hard to convey in prose. Showing
   a `fiz usage` table where some rows have `cost = ?` and others have
@@ -138,6 +195,15 @@ guardrails, and embedding — the pillars of the product.
 
 ## 7. Embed Fizeau in a 12-line Go program
 
+- **Status:** **partial** — the embedding API exists
+  (`fizeau.New(ServiceOptions{}).Execute(ctx, ServiceExecuteRequest{Policy:
+  "cheap", ...})`, see `website/content/docs/embedding/_index.md`),
+  the I-03 `ModelRef` fix has landed, and the example in the docs
+  compiles. Capturing it as a reel needs an LM Studio process running
+  on `localhost:1234` plus a sub-second response so the `go run`
+  output stays under 30 s — better captured in the Docker reel
+  pipeline alongside `quickstart`. Deferred until that pipeline grows
+  a Go-source-edit step.
 - **Why this story:** `AC-FEAT-001-01`, `AC-FEAT-006-08`. The
   embed-as-library story is the thesis from `prd.md` and the
   `/docs/embedding/` page. A reel showing `go run` of a tiny program
@@ -157,6 +223,13 @@ guardrails, and embedding — the pillars of the product.
 
 ## 8. `fiz update --check-only` and atomic in-place upgrade
 
+- **Status:** **shipped 2026-05-10 (partial scope)** — captured as the
+  `fiz-update-check` reel (`website/static/demos/fiz-update-check.cast`).
+  The reel shows `fiz version` → `fiz update --check-only` (exit 1 ⇒
+  outdated) and stops there. The atomic in-place upgrade half (`fiz
+  update`) is not in the reel because running it mid-recording would
+  swap the binary and the next `fiz version` would race the file
+  replace; that part is left as a doc note.
 - **Why this story:** `AC-FEAT-007-01`, `AC-FEAT-007-02`. Self-update is
   surprisingly satisfying to watch as a reel because the binary
   literally rewrites itself. Differentiator vs. CLIs that require a

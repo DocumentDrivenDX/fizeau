@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs capture-machine-info
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs capture-machine-info
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -153,6 +153,12 @@ demos-docker-build:
 # demos/sessions/. Deterministic — no live LLM calls, no `asciinema rec`.
 demos-regen:
 	./demos/regen.sh
+
+# Capture asciicasts for non-LLM-loop fiz subcommands (usage, update,
+# JSONL inspection). Runs each command for real, captures stdout
+# verbatim, and emits asciicast v2 directly (bypasses regen.py).
+demos-capture-subcommands:
+	./demos/capture-subcommands.sh
 
 # Capture this host's hardware + serving-engine inventory and emit a YAML
 # block keyed by hostname. Run ON the inference machine you want to record;
