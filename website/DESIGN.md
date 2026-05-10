@@ -44,8 +44,8 @@ Two-mode: **light** is the default for documentation; **dark** is the canonical 
 | `--ink-primary` | `#e6edf3` | body text |
 | `--ink-secondary` | `#9ea7b3` | metadata |
 | `--ink-tertiary` | `#5e6772` | timestamps |
-| `--rule` | `#22293340` | borders (low contrast on intent) |
-| `--rule-strong` | `#3a4250` | head-of-table, dividers |
+| `--rule` | `#262e3a` | borders — readable hairline against `#0a0e14` page bg |
+| `--rule-strong` | `#3d4756` | head-of-table, dividers |
 | `--accent-cyan` | `#4dd4cf` | primary signal — phosphor cyan, used for live state |
 | `--accent-amber` | `#ffb454` | live data, "now" markers — phosphor amber |
 | `--accent-green` | `#7ce38b` | pass, success |

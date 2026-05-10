@@ -15,12 +15,17 @@ ddx:
 
 ## Overview
 
+Measurement is PRD pillar #2: per-turn timing, prefill vs decode breakdown,
+cost-per-trial, subscription-quota accounting, and route-attempt feedback are
+first-class outputs of the agent loop, not bolted-on observability. FEAT-005
+is the surface that delivers that pillar.
+
 Every LLM interaction and tool call in Fizeau is logged to a structured
 session log. Sessions can be replayed to understand exactly what happened.
 Analytics and cross-tool observability are emitted through OpenTelemetry.
 Cost is preserved when a provider, gateway, or explicitly configured runtime
-knows it; otherwise it remains unknown. This implements PRD P0 requirements
-10-11.
+knows it; otherwise it remains unknown — never guessed from generic price
+tables. This implements PRD P0 requirements 10-11.
 
 The v0.11 routing redesign is a session-log schema break for routing fields:
 new logs use `policy` and `power_policy`, and they do not emit removed

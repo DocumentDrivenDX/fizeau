@@ -182,13 +182,13 @@ func TestRegistryDiscover_LookupTable(t *testing.T) {
 
 			sort.Strings(gotAvailable)
 			sort.Strings(gotUnavailable)
-			expectAvail := append([]string(nil), c.ExpectAvailable...)
-			expectUnavail := append([]string(nil), c.ExpectUnavailable...)
+			expectAvail := append([]string{}, c.ExpectAvailable...)
+			expectUnavail := append([]string{}, c.ExpectUnavailable...)
 			sort.Strings(expectAvail)
 			sort.Strings(expectUnavail)
 
-			assert.Equal(t, expectAvail, gotAvailable, "available set")
-			assert.Equal(t, expectUnavail, gotUnavailable, "unavailable set")
+			assert.ElementsMatch(t, expectAvail, gotAvailable, "available set")
+			assert.ElementsMatch(t, expectUnavail, gotUnavailable, "unavailable set")
 
 			// Subprocess harnesses that resolved must report a non-empty Path
 			// pointing at the faked binary location.

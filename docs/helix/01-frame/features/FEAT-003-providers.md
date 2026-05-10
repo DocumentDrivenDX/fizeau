@@ -14,9 +14,13 @@ ddx:
 
 ## Overview
 
+The provider surface is what backs PRD pillar #3 (make local models a real
+option): one shared abstraction across cloud frontier providers and local
+serving runtimes, so callers and benchmarks treat them uniformly.
+
 Fizeau reaches models through concrete provider systems. Provider identity
 names the actual source of model service (`lmstudio`, `openrouter`,
-`anthropic`, `ollama`, and so on), not the wire protocol. The
+`anthropic`, `ollama`, `vllm`, `omlx`, and so on), not the wire protocol. The
 OpenAI-compatible request/streaming shape is a shared SDK layer used by several
 providers, but it is not a provider identity and must not appear in routing,
 billing, telemetry, or cost reports.

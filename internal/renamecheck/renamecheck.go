@@ -2,10 +2,12 @@ package renamecheck
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -52,6 +54,9 @@ var skippedDirs = map[string]bool{
 	"docs/helix":           true,
 	"docs/research":        true,
 	"internal/renamecheck": true,
+	// ADRs are immutable historical decision records that legitimately
+	// reference the prior project name in context.
+	"website/content/docs/architecture/adr": true,
 }
 
 var skippedFiles = map[string]bool{
@@ -69,39 +74,59 @@ func Scan(opts Options) ([]Finding, error) {
 	}
 
 	var findings []Finding
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		if rel == "." {
-			return nil
-		}
-		if d.IsDir() {
-			if shouldSkipDir(rel) {
-				return filepath.SkipDir
+	files, gitOK := gitTrackedFiles(root)
+	if gitOK {
+		for _, rel := range files {
+			if shouldSkipPath(rel) {
+				continue
 			}
-			return nil
+			if skippedFiles[rel] {
+				continue
+			}
+			if !isTextCandidate(rel) {
+				continue
+			}
+			fileFindings, err := scanFile(root, rel)
+			if err != nil {
+				return nil, err
+			}
+			findings = append(findings, fileFindings...)
 		}
-		if skippedFiles[rel] {
+	} else {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+			if rel == "." {
+				return nil
+			}
+			if d.IsDir() {
+				if shouldSkipDir(rel) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if skippedFiles[rel] {
+				return nil
+			}
+			if !isTextCandidate(rel) {
+				return nil
+			}
+			fileFindings, err := scanFile(root, rel)
+			if err != nil {
+				return err
+			}
+			findings = append(findings, fileFindings...)
 			return nil
-		}
-		if !isTextCandidate(rel) {
-			return nil
-		}
-		fileFindings, err := scanFile(root, rel)
+		})
 		if err != nil {
-			return err
+			return nil, err
 		}
-		findings = append(findings, fileFindings...)
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 	sort.Slice(findings, func(i, j int) bool {
 		if findings[i].Path != findings[j].Path {
@@ -142,9 +167,40 @@ func Run(opts Options) ([]Finding, error) {
 	return findings, Report(opts.Out, findings)
 }
 
+func gitTrackedFiles(root string) ([]string, bool) {
+	cmd := exec.Command("git", "-C", root, "ls-files", "-z") // #nosec G204 -- root is the validated repo root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, false
+	}
+	parts := strings.Split(strings.TrimRight(string(out), "\x00"), "\x00")
+	files := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		files = append(files, filepath.ToSlash(p))
+	}
+	return files, true
+}
+
+func shouldSkipPath(rel string) bool {
+	for dir := range skippedDirs {
+		if rel == dir || strings.HasPrefix(rel, dir+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func scanFile(root, rel string) ([]Finding, error) {
 	file, err := os.Open(filepath.Join(root, filepath.FromSlash(rel))) // #nosec G304 -- root is a validated repo root, rel is a relative path
 	if err != nil {
+		// Tolerate broken symlinks and files that disappeared between
+		// enumeration and open (e.g., generated benchmark artifacts).
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	defer file.Close()

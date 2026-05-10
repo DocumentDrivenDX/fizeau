@@ -16,16 +16,22 @@ ddx:
 The agent loop is Fizeau's core — a tool-calling LLM conversation loop that
 sends a prompt, executes tool calls from the model's response, feeds results
 back, and repeats until the model produces a final text response or limits are
-reached. This implements PRD P0 requirements 1, 8, 10, and 11.
+reached. It is the primitive that backs PRD pillar #1 (a reusable, embeddable
+agent loop) and the surface that pillar #2 (measurement) instruments. This
+implements PRD P0 requirements 1, 8, 10, and 11.
 
 ## Problem Statement
 
-- **Current situation**: DDx dispatches agent work by spawning subprocess CLIs.
-  Each manages its own conversation loop internally.
+- **Current situation**: Tools that need a tool-calling agent on their
+  critical path either re-implement the loop themselves or shell out to
+  standalone CLIs (claude, codex, pi, opencode), each managing its own
+  conversation loop with its own bugs, gaps, and observability semantics.
 - **Pain points**: No programmatic control over the loop from Go. Can't
-  inspect, pause, or redirect mid-conversation. No shared state.
+  inspect, pause, or redirect mid-conversation. No shared state. Per-tool
+  re-implementation of retry, compaction, sampling, and session logging.
 - **Desired outcome**: A Go function that runs the full agent loop in-process,
-  returning structured results with full tool-call history.
+  returns structured results with full tool-call history, and emits the
+  per-turn instrumentation FEAT-005 needs to make the loop measurable.
 
 ## Requirements
 

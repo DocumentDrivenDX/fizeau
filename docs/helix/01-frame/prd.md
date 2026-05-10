@@ -6,69 +6,110 @@ ddx:
 
 ## Summary
 
-Fizeau is a Go library that implements a coding agent runtime — a tool-calling
-LLM loop with file read/write, shell execution, navigation helpers, task
-tracking, and structured I/O — designed
-to be embedded in build orchestrators and related tooling. It prioritizes local
-model inference via LM Studio and Ollama, with transparent escalation to cloud
-providers when local models are insufficient. Fizeau provides an in-process
-alternative to subprocess-based agent dispatch, eliminating process overhead,
-enabling direct state sharing, and providing native cost control. Following the
-ghostty model — great library, proven by a usable app — Fizeau ships as a Go
-package plus a thin standalone CLI that showcases the library and serves as an
-embeddable harness backend (see CONTRACT-003). Fizeau also owns a reusable
-shared model catalog and updateable manifest so callers and related tooling can
-resolve canonical routing policies, model metadata, provider surface strings,
-and deprecations without copying model policy into each consumer. Every LLM
-interaction and tool call is
-logged and replayable, with per-model cost tracking built in. Success means
-orchestrators can run a HELIX build pass where 70%+ of routine tasks use local
-models at near-zero cost, the operator can replay any session to understand
-exactly what happened, and downstream tools consume agent's model catalog rather
-than duplicating release-policy tables.
+Fizeau exists for three reasons that build on each other:
+
+1. **Facilitate agentic development.** A reusable, embeddable agent loop with
+   the right primitives — tool-calling, planning, compaction, retries, sampling,
+   reasoning, quotas, session logs — so building tools doesn't mean
+   re-implementing the loop every time. Other tools embed `fizeau.New(...)`
+   instead of writing their own agent harness.
+2. **Make agentic work measurable.** Per-turn timing, prefill vs decode
+   breakdown, cost-per-trial, subscription-quota accounting, route-attempt
+   feedback — all first-class outputs, not bolted-on observability. You can't
+   improve the prompts, agents, or providers you can't measure.
+3. **Make local models a real option.** Local serving (vLLM, MLX, LM Studio,
+   Ollama) on the same provider surface as cloud frontier models. The
+   benchmarks compare them honestly. Self-hosted at the right quantization is
+   often cheaper, sometimes faster, and rarely the right answer for everything
+   — but you can pick per workload because the data is on the table.
+
+The harness control implied by #1 enables #2 (we can instrument what we own)
+and makes #3 viable (one provider surface that abstracts cloud and local
+equally).
+
+Concretely, Fizeau is a Go library that implements a tool-calling agent runtime
+— an in-process loop with file read/write, shell execution, navigation
+helpers, task tracking, structured I/O, compaction, retry, and per-turn
+instrumentation — designed to be embedded in build orchestrators, benchmark
+harnesses, CI systems, and any tool that needs an instrumented agent on its
+critical path. Following the ghostty model — great library, proven by a usable
+app — Fizeau ships as a Go package plus a thin standalone `fiz` CLI that
+showcases the library and serves as an embeddable harness backend (see
+CONTRACT-003). Fizeau also owns a reusable shared model catalog and
+updateable manifest so callers can resolve canonical routing policies, model
+metadata, provider surface strings, and deprecations without copying model
+policy into each consumer. Every LLM interaction and tool call is logged and
+replayable, with per-turn cost and timing built in. Success means tools embed
+Fizeau instead of re-implementing the loop, every measurement surface produces
+honest data without bolted-on observability, and local-vs-cloud is a per-workload
+data question because the same provider-shaped surface covers both.
 
 ## Problem and Goals
 
 ### Problem
 
-Orchestrators dispatching work to AI agents typically shell out to standalone
-CLIs (claude, codex, pi, opencode). Each invocation spawns a process, re-reads
-the codebase, re-establishes context, and returns unstructured text that must be
-parsed. This is slow (~2-5s overhead per invocation), expensive (full cloud
-pricing on every call including context re-establishment), and lossy (no shared
-state between invocations). Local models are theoretically supported but require
-running a separate agent CLI that may not support LM Studio or may not handle
-tool calling reliably.
+Tools that need a tool-calling agent on their critical path — build
+orchestrators, benchmark harnesses, CI systems, evaluation pipelines, embedded
+agent products — face three compounding problems:
 
-In a typical HELIX build pass, 70% of agent tasks are mechanical — reading
-files, applying templated edits, running tests, scaffolding boilerplate. These
-don't need a $15/MTok cloud model. But the current architecture treats every
-task the same: spawn a process, send to cloud, parse the result.
+1. **Each tool re-implements the loop.** Tool-calling protocol, retry, sampling,
+   compaction, reasoning controls, quota handling, and session logging get
+   rebuilt per project. The result is a fragmented surface where every consumer
+   ships its own bugs and its own gaps.
+2. **Measurement is bolted on.** Most agent stacks expose final tokens-and-cost
+   if you're lucky. Per-turn timing, prefill vs decode, TTFT, throughput, known-
+   vs-unknown cost, subscription quota accounting — the things you'd actually
+   need to improve a prompt, an agent, or a provider — aren't first-class
+   outputs. You can't compare what you can't measure.
+3. **Local models live in a separate world.** Even when a tool theoretically
+   supports a local backend, it usually means a different code path, a
+   different observability surface, and different cost semantics — so
+   comparing self-hosted against frontier cloud is never a straight delta. A
+   significant fraction of agent work is mechanical and well within local-model
+   capability, but tools route everything to cloud because the local path is
+   second-class.
+
+The legacy framing — "build orchestrators shell out to agent CLIs and we
+should run the loop in-process instead" — describes one symptom. The deeper
+problem is that the loop, the measurement chain, and the provider surface are
+each being rebuilt per tool, with local backends as an afterthought.
 
 ### Goals
 
-1. **Embed the agent loop in Go** — provide a `agent.Run(ctx, prompt, opts)`
-   API that callers invoke in-process, eliminating subprocess overhead
-2. **Local-model-first** — native LM Studio and Ollama support with tool
-   calling, making local models the default for routine tasks
-3. **Structured I/O** — accept prompts and structured envelopes, return structured results
-   with status, output, token usage, and timing
-4. **Full observability** — every LLM turn and tool call logged, replayable,
-   cost-tracked via JSONL session logging (per-session detail)
-5. **Prove it with an app** — standalone `fiz` CLI that showcases the library
-   and serves as an embeddable harness, following the ghostty pattern
-6. **Own reusable model policy** — provide an agent-owned shared model catalog,
+1. **Provide a reusable, embeddable agent loop.** Ship a Go library with a
+   tool-calling loop, planning, compaction, retries, sampling, reasoning,
+   quotas, and session logs as first-class primitives. Other tools embed
+   `fizeau.New(...).Execute(ctx, request)` instead of writing their own agent
+   harness.
+2. **Make the loop measurable.** Per-turn timing (TTFT, prefill, decode, tool
+   latency), the four token streams (input, output, cached-input,
+   retried-input), known-or-unknown cost-per-trial, subscription-quota
+   accounting, and route-attempt feedback are first-class outputs of every
+   `Execute` call, not optional observability.
+3. **Make local models a real option.** One provider surface across cloud
+   (OpenAI, Anthropic, OpenRouter, Google) and local (vLLM, MLX, LM Studio,
+   Ollama, native local) backends. Routing, billing, instrumentation, and
+   session logs are uniform across both. Benchmarks can compare them honestly.
+4. **Structured I/O.** Accept prompts and structured envelopes, return
+   structured results with status, output, four-stream token usage, per-turn
+   timing, and cost semantics.
+5. **Prove it with an app.** Standalone `fiz` CLI that showcases the library
+   and serves as an embeddable harness backend for callers like DDx and the
+   benchmark runner, following the ghostty pattern.
+6. **Own reusable model policy.** Provide a Fizeau-owned shared model catalog,
    publishable updateable manifest, canonical routing policies, and explicit
    refresh workflow so model metadata, provider surfaces, and deprecations are
-   maintained once and consumed by any caller
+   maintained once and consumed by any caller.
 
 ### Success Metrics
 
 | Metric | Target | Measurement Method |
 |--------|--------|--------------------|
-| Subprocess elimination | Fizeau handles ≥1 harness in-process | Integration test |
-| Local model completion rate | ≥70% of routine tasks succeed on local 7B+ | HELIX build pass logs |
-| Cost per bead (blended) | <$0.05 average | `fiz usage` report |
+| Embeddable adoption | ≥1 external tool (DDx, benchmark runner) consumes Fizeau as a library through CONTRACT-003 | Integration test + downstream consumer wiring |
+| Measurement coverage | Every `llm.request → llm.response` chain emits TTFT, prefill, decode, four token streams, and known-or-unknown cost; no silent gaps | CONTRACT-001 conformance tests |
+| Local-vs-cloud parity | Local serving runtimes (vLLM, MLX, LM Studio, Ollama) and cloud providers expose the same provider-shaped surface so benchmark deltas are honest | Benchmark catalog lane definitions |
+| Local model completion rate | ≥70% of routine coding tasks succeed on local 7B+ under `cheap`/`default` policies | HELIX/build-pass logs |
+| Cost per task (blended) | <$0.05 average for routine coding tasks | `fiz usage` report |
 | Agent loop overhead | <10ms beyond model inference time | Benchmark suite |
 
 ### Non-Goals
@@ -87,23 +128,35 @@ task the same: spawn a process, send to cloud, parse the result.
 
 ## Users and Scope
 
-### Primary Persona: Orchestrator / Caller
+### Primary Persona: Tool Builder / Embedder
 
-**Role**: An orchestration system or embedding application (software, not a human)
-**Goals**: Dispatch agent work with minimal overhead, control cost, get structured results
-**Pain Points**: Subprocess spawning is slow, cloud-only is expensive, output parsing is fragile
+**Role**: A tool that needs an instrumented tool-calling agent on its critical
+path — build orchestrator, benchmark harness, CI system, evaluation pipeline,
+embedded agent product. Software, not a human.
+**Goals**: Embed an agent loop without re-implementing it; get first-class
+per-turn measurement; treat local and cloud backends uniformly.
+**Pain Points**: Re-implementing the loop, sampling, compaction, retries, and
+session logging per project. Bolted-on observability. Local backends as
+second-class code paths.
 
-### Secondary Persona: Build System Integrator
+### Secondary Persona: Benchmark / Measurement Consumer
 
-**Role**: Developer embedding Fizeau in custom CI pipelines or build tools
-**Goals**: Run LLM-powered code tasks (fix lint, update deps, generate tests) in Go programs
-**Pain Points**: Existing agent CLIs require process management, don't expose a library API
+**Role**: A benchmark harness or research workflow that compares prompts,
+agents, providers, or self-hosted vs cloud configurations.
+**Goals**: Honest deltas. Holding either the model or the harness constant and
+varying the other should produce data attributable to exactly that axis.
+**Pain Points**: Provider-by-provider instrumentation drift; cost guessed from
+stale tables; per-turn timing not exposed; local backends not on the same
+surface as cloud frontier models.
 
 ### Tertiary Persona: CLI User
 
-**Role**: Developer using `fiz` or a wrapper CLI from the command line
-**Goals**: Faster, cheaper agent invocations with local model support
-**Pain Points**: Current harness is slower than necessary, no local model path
+**Role**: Developer using `fiz` (or a wrapper) from the command line.
+**Goals**: Inspect providers/policies/models, run an agent task with policy
+routing, replay session logs, and read usage/cost without standing up an
+embedder.
+**Pain Points**: Existing agent CLIs don't expose policy-routing, structured
+session logs, or measurement as first-class outputs.
 
 ## Requirements
 
@@ -340,8 +393,15 @@ canonical analytics surface per ADR-001.
 ## Success Criteria
 
 - Fizeau library compiles with `go build` and has no CGo dependencies
-- `agent.Run()` can complete a file-read-and-edit task using LM Studio locally
-- `agent.Run()` can complete the same task using Claude API
-- A caller can use Fizeau as an in-process harness via CONTRACT-003
-- A HELIX build pass can execute a bead using Fizeau with a local model
-- Token usage and timing are accurately reported for both local and cloud
+- `fizeau.New(...).Execute(...)` can complete a file-read-and-edit task using
+  LM Studio (or any local serving runtime) locally
+- The same call can complete the same task against Anthropic, OpenRouter, or
+  any cloud provider on the shared provider surface
+- A caller (DDx, benchmark runner, or any embedder) can use Fizeau as an
+  in-process harness via CONTRACT-003 without parsing private internals
+- Per-turn timing (TTFT, prefill, decode), four-stream token usage, and
+  known-or-unknown cost are reported for every successful execution on both
+  local and cloud backends, conforming to CONTRACT-001
+- Benchmark lanes that share a model but differ in harness produce a
+  measurable delta attributable to harness; lanes that share a harness but
+  differ in provider produce a measurable delta attributable to provider/runtime
