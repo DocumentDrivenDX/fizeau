@@ -15,7 +15,7 @@ routing-intent fields.
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-25 | Proposed | DDX Agent maintainers | `ADR-005`, `CONTRACT-003`, `SD-005` | High |
+| 2026-04-25 | Proposed | Fizeau maintainers | `ADR-005`, `CONTRACT-003`, `SD-005` | High |
 
 ## Context
 
@@ -132,7 +132,7 @@ Three beads. Step 1 lands first; steps 2 and 3 can parallelize.
 
 2. **`metrics: routing-quality vs provider-reliability separation in RouteStatus / UsageReport`** (P2). Adds `auto_acceptance_rate`, `override_disagreement_rate`, and `override_class_breakdown` as first-class metrics. Renames or relabels the existing per-(provider, model) success-rate UI to "Provider reliability" so the two are not conflated.
 
-3. **`cli: ddx agent route-status --overrides --since DURATION`** (P3, depends on 2). Operator surface — prints `override_class_breakdown` with outcome aggregates over the time window. Includes a mode to filter by axis. Note explicitly: operator-driven feedback loop; automatic learning is a future ADR.
+3. **`cli: fiz route-status --overrides --since DURATION`** (P3, depends on 2). Operator surface — prints `override_class_breakdown` with outcome aggregates over the time window. Includes a mode to filter by axis. Note explicitly: operator-driven feedback loop; automatic learning is a future ADR.
 
 A separate small commit amends three locations with framing disclaimers (no behavior change):
 - CONTRACT-003 "Selection precedence" section gets a leading disclaimer naming pin precedence as implementation reference.

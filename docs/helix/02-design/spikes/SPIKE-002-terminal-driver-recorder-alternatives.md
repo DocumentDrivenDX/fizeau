@@ -6,15 +6,15 @@
 
 ## Question
 
-Can DDX Agent satisfy the real primary-harness goals without overbuilding a
+Can Fizeau satisfy the real primary-harness goals without overbuilding a
 terminal product?
 
 The pass/fail criteria for this spike are deliberately narrow:
 
-1. DDX Agent must be able to control Claude and Codex as terminal users and
+1. Fizeau must be able to control Claude and Codex as terminal users and
    extract quota/status, model lists, reasoning levels, and adjacent facts that
    the CLIs expose only through their TUIs.
-2. DDX Agent must be able to replay captured terminal evidence so client-side
+2. Fizeau must be able to replay captured terminal evidence so client-side
    parsers, terminal rendering, and capability assertions can run in unit tests
    without installed, authenticated, or functional Claude/Codex binaries.
 
@@ -102,7 +102,7 @@ cassette path.
 ### NTM and Gas Town Prior Art
 
 NTM is useful because it shows the "grown-up tmux wrapper" requirements, not
-because DDX Agent should copy its scope. The checkout includes:
+because Fizeau should copy its scope. The checkout includes:
 
 - command timeouts and a tmux circuit breaker;
 - strict session-name validation;
@@ -120,7 +120,7 @@ Gas Town shows similar lessons from another mature tmux-centered system:
 
 These projects confirm that tmux can support human inspection and multi-agent
 orchestration, but only with substantial registry, socket, lifecycle, and
-reconciliation code. For DDX Agent, that is a warning against allowing tmux
+reconciliation code. For Fizeau, that is a warning against allowing tmux
 semantics to leak into the core cassette library.
 
 ### Claude TUI Probe

@@ -9,7 +9,7 @@ ddx:
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-27 | Accepted | DDX Agent maintainers | `ADR-005`, `ADR-006` | High |
+| 2026-04-27 | Accepted | Fizeau maintainers | `ADR-005`, `ADR-006` | High |
 
 ## Context
 
@@ -81,9 +81,9 @@ This decoupling drives three rules for any feature — including ADR-007 itself 
 
 2. **Graceful degradation when the installed manifest predates the feature.** Code that depends on new catalog data MUST behave correctly when those fields are absent. For sampling profiles specifically: the resolver's L1 lookup fails silently when `sampling_profiles.code` is missing, returning a zero-value bundle and falling through to L2 (provider config) or to the server's own defaults. The user does not get the new behavior, but no run breaks.
 
-3. **`catalog_version` bumps are the user-facing pull signal.** Whenever a code release introduces a feature that depends on new catalog data, the embedded manifest's `catalog_version` MUST bump alongside it. This drives `ddx-agent catalog check` to report an update is available. Optionally, the published bundle's `min_agent_version` can be raised when the manifest itself depends on new code semantics — but that direction is for protecting old binaries from new manifests, not for protecting new binaries from old manifests.
+3. **`catalog_version` bumps are the user-facing pull signal.** Whenever a code release introduces a feature that depends on new catalog data, the embedded manifest's `catalog_version` MUST bump alongside it. This drives `fiz catalog check` to report an update is available. Optionally, the published bundle's `min_agent_version` can be raised when the manifest itself depends on new code semantics — but that direction is for protecting old binaries from new manifests, not for protecting new binaries from old manifests.
 
-4. **One actionable nudge per feature, not silent regressions.** A feature whose graceful-degraded behavior is materially worse than its catalog-on behavior MUST log a single, actionable warning at first-use noting that the installed manifest predates the feature and pointing at `ddx-agent catalog update`. For ADR-007 v1: when the resolver is called with a `code` profile name and the catalog returns no profile, log once. Repeat warnings per-process are noise; per-session-per-feature is the right granularity.
+4. **One actionable nudge per feature, not silent regressions.** A feature whose graceful-degraded behavior is materially worse than its catalog-on behavior MUST log a single, actionable warning at first-use noting that the installed manifest predates the feature and pointing at `fiz catalog update`. For ADR-007 v1: when the resolver is called with a `code` profile name and the catalog returns no profile, log once. Repeat warnings per-process are noise; per-session-per-feature is the right granularity.
 
 Embedded manifest edits never silently override an installed external manifest. The embedded snapshot's role is bootstrap-only.
 

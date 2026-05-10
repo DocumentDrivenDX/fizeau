@@ -1,0 +1,5 @@
+[
+  {"prompt": "fiz usage --since 30d",
+   "output_file": "/Users/erik/Projects/fizeau/demos/sessions/fiz-usage.stdout",
+   "post_pause": 3.0}
+]

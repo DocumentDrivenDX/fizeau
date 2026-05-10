@@ -5,13 +5,17 @@ ddx:
   captured: 2026-04-08
   model: anthropic/claude-4.5-haiku-20251001 (via OpenRouter)
   provider: openai-compat (openrouter)
-  ddx-agent-version: dev (commit from master, 2026-04-08)
+  fizeau-version: dev (commit from master, 2026-04-08; pre-rename build then known as fiz f3b980c)
 ---
-# DDX Agent Benchmark Baseline — 2026-04-08
+# Fizeau Benchmark Baseline — 2026-04-08
+
+> Captured before the rename to Fizeau (`fiz`). Product/binary references
+> below have been retroactively normalized to current names; the underlying
+> measurements are unchanged.
 
 ## Purpose
 
-This document captures the first baseline measurement of ddx-agent's task-solving
+This document captures the first baseline measurement of fiz's task-solving
 behavior on a pilot task sample. It is the primary input for calibrating thresholds
 in the benchmark evaluation plan (agent-82042311) and for identifying which
 tool/harness gaps matter most before Terminal-Bench integration work begins.
@@ -20,7 +24,7 @@ tool/harness gaps matter most before Terminal-Bench integration work begins.
 
 ## Pilot Task Sample
 
-Six representative coding tasks were run against ddx-agent using the `cheap` preset
+Six representative coding tasks were run against fiz using the `cheap` preset
 and `anthropic/claude-4.5-haiku-20251001` via OpenRouter. Each task ran in an isolated
 temporary working directory. No context was shared between tasks.
 
@@ -76,7 +80,7 @@ wrong data. Wall clock time from the OS (`time`) is accurate.
 
 ### FM-2: cost_usd = -1 (harness)
 **Severity**: Low for benchmarking — expected behavior  
-**Description**: Cost tracking returns `-1` when the model is not in ddx-agent's
+**Description**: Cost tracking returns `-1` when the model is not in fiz's
 pricing table. OpenRouter models and new model versions not yet in the embedded catalog
 return `-1` instead of an estimated cost.  
 **Impact**: Cost-based success metrics cannot use `Result.CostUSD` for OpenRouter runs.
@@ -199,11 +203,11 @@ These observations should anchor the thresholds in the benchmark evaluation plan
 ## Methodology
 
 - **Run date**: 2026-04-08
-- **ddx-agent build**: dev/master (commit f3b980c)
+- **fiz build**: dev/master (commit f3b980c)
 - **Model**: `anthropic/claude-4.5-haiku-20251001` via OpenRouter
 - **Preset**: `cheap`
-- **Working directories**: Isolated temp dirs per task (`/tmp/ddx-bench/taskN`)
-- **Invocation**: `ddx-agent --json --preset cheap -p "<prompt>"`
+- **Working directories**: Isolated temp dirs per task (`/tmp/fiz-bench/taskN`)
+- **Invocation**: `fiz --json --preset cheap -p "<prompt>"`
 - **Provider config**: OpenRouter via `~/.config/fizeau/config.yaml`
 - **Timing**: Wall clock via `time` (not `duration_ms` in JSON, which has a bug)
 - **Token counts**: From `--json` output `.tokens.input` / `.tokens.output`
@@ -229,7 +233,7 @@ EOF
 # Run T1 as a smoke test
 mkdir -p /tmp/bench-smoke
 echo 'package main; import "fmt"; func main() { fmt.Println("hello") }' > /tmp/bench-smoke/main.go
-./ddx-agent --json --preset cheap --work-dir /tmp/bench-smoke \
+./fiz --json --preset cheap --work-dir /tmp/bench-smoke \
   -p "Read main.go and tell me the package name."
 ```
 

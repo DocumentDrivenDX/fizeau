@@ -10,7 +10,7 @@ ddx:
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-20 | Accepted | DDX Agent maintainers | `ADR-002`, `ADR-003`, `CONTRACT-003` | Medium |
+| 2026-04-20 | Accepted | Fizeau maintainers | `ADR-002`, `ADR-003`, `CONTRACT-003` | Medium |
 
 ## Context
 
@@ -21,7 +21,7 @@ boundary of a terminal product: PTY lifecycle, ANSI/VT rendering, input
 impersonation, timed recording, playback, inspection, and golden-master
 assertions.
 
-That is build-vs-buy territory. DDX Agent must not accidentally become a
+That is build-vs-buy territory. Fizeau must not accidentally become a
 general terminal emulator, terminal multiplexer, or IDE terminal. The only
 reason to own new library code is the narrow DDX requirement that primary
 harnesses produce authenticated, replayable, scrubbed evidence with raw PTY
@@ -30,17 +30,17 @@ quota data, and deterministic replay.
 
 ## Current Buy-Side Evidence
 
-| Candidate | Buyable Capability | Missing for DDX Agent |
+| Candidate | Buyable Capability | Missing for Fizeau |
 |-----------|--------------------|------------------------|
 | `creack/pty` | Go PTY primitive for starting commands, attaching stdin/stdout/stderr to a pseudoterminal, sizing, resize forwarding, and Unix-style lifecycle control. | Higher-level process policy, screen model, cassettes, service events, authenticated harness preflight, scrub/normalization policy. |
 | `Netflix/go-expect` | Expect-style input/output automation over a pseudoterminal. | Does not spawn or manage process lifecycle; does not define rendered frame evidence, cassette artifacts, or DDX service events. |
 | `script` | Ubiquitous terminal session recording with timing support on util-linux systems. | Recorder only; wrapper text/noise; no reliable harness control, DDX service events, scrub reports, model/quota parsing, or cross-platform library boundary. |
 | `asciinema` / asciicast v3 | Mature terminal recording and playback concepts, newline-delimited JSON, timed output/input/resize/exit events, local playback, speed controls, and raw output preservation. | Not a harness runner, not a Go library boundary, no DDX service-event stream, no quota/model/reasoning preflight, no accepted-vs-diagnostic cassette policy. |
 | `tmux` | Mature terminal multiplexer with sessions, attachability, pane capture, key injection, pipe-pane streaming, and a useful human inspection story. | Global server/socket/session state, split-brain/stale-session cleanup, pane-index instability, command hangs, paste/send quirks, and no DDX cassette/service-event contract. |
-| `ntm` / Gas Town | Current tmux-based multi-agent control planes with real operational patterns: socket isolation, session registries, cleanup, timeouts, circuit breakers, paste-buffer paths, capture helpers, and quota/status probing. | They validate the complexity of tmux ownership; adopting their shape would make tmux semantics part of DDX Agent's core capability story. |
+| `ntm` / Gas Town | Current tmux-based multi-agent control planes with real operational patterns: socket isolation, session registries, cleanup, timeouts, circuit breakers, paste-buffer paths, capture helpers, and quota/status probing. | They validate the complexity of tmux ownership; adopting their shape would make tmux semantics part of Fizeau's core capability story. |
 | Charmbracelet `vhs` | Declarative terminal scripting, typed input, waits, generated GIF/video/PNG frames, tape recording, and dependency checks for documentation and demos. | Outputs visual media and tape scripts, not DDX evidence cassettes; depends on external rendering stack; not a live authenticated harness recorder with service-event replay. |
 | `xterm.js` / serialize addon | Widely used terminal emulator and buffer serialization for browser/UI use. | JavaScript/browser dependency, experimental serialization addon, not a Go PTY harness layer, no DDX cassette/service-event contract. |
-| JetBrains `JediTerm` / IntelliJ terminal | Mature Java terminal emulator used by IDE terminals with local PTY support and xterm/VT100 behavior. | Java UI stack and IDE product scope; no Go cassette/service-event library; illustrates the scale DDX Agent must not rebuild. |
+| JetBrains `JediTerm` / IntelliJ terminal | Mature Java terminal emulator used by IDE terminals with local PTY support and xterm/VT100 behavior. | Java UI stack and IDE product scope; no Go cassette/service-event library; illustrates the scale Fizeau must not rebuild. |
 
 The buyable pieces are real and should be used. The gap is not "terminal
 emulation exists"; the gap is a small, testable Go orchestration/cassette layer
@@ -81,7 +81,7 @@ primary harness TUI-only capability support.
 
 ## Decision
 
-DDX Agent will not implement a terminal emulator from scratch, a terminal UI,
+Fizeau will not implement a terminal emulator from scratch, a terminal UI,
 an IDE terminal, or a tmux-like multiplexer.
 
 The PTY library work is limited to orchestration and evidence:
@@ -116,9 +116,9 @@ of these triggers occurs:
 - the generic PTY/cassette code exceeds the harness-specific code in size or
   release cadence;
 - the package needs its own compatibility matrix, fixtures, or versioned public
-  API independent of DDX Agent;
+  API independent of Fizeau;
 - adoption of a third-party recorder/emulator requires adapter work better
-  maintained outside DDX Agent;
+  maintained outside Fizeau;
 - build or release constraints make terminal dependencies a burden for ordinary
   agent library consumers.
 
@@ -197,7 +197,7 @@ working for DDX.
 - [x] Context names a specific problem
 - [x] Decision statement is actionable
 - [x] At least two alternatives were evaluated
-- [x] Each alternative has concrete limits for DDX Agent
+- [x] Each alternative has concrete limits for Fizeau
 - [x] Selected boundary explains why it wins
 - [x] Consequences include positive and negative impacts
 - [x] Negative consequences have mitigations

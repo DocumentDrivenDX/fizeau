@@ -33,10 +33,10 @@ model reference fields. Cost attribution remains model-level: reported or
 configured prices attach to the resolved provider system and concrete model,
 not to routing policy names.
 
-Patterned on DDx's agent session logging (`SessionEntry` JSONL and
-`ddx agent usage` reporting) but with deeper granularity — DDx logs
-one entry per subprocess invocation; Fizeau logs every turn within the
-conversation loop.
+Patterned on DDx's `SessionEntry` JSONL session logging and `ddx
+usage` reporting, but with deeper granularity — DDx logs one entry per
+subprocess invocation; Fizeau logs every turn within the conversation
+loop.
 
 ## Problem Statement
 
@@ -165,8 +165,8 @@ conversation loop.
     token counts (broken out by the four streams in §19), known cost, and
     throughput summaries, with time-window filtering (today, 7d, 30d, date
     range)
-31. Output formats: table (default), JSON, CSV — patterned on
-    `ddx agent usage`
+31. Output formats: table (default), JSON, CSV — patterned on the
+    parent DDx orchestrator's session-usage report
 
 ### Non-Functional Requirements
 

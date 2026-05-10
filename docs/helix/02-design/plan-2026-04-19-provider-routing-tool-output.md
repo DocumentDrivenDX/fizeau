@@ -6,7 +6,7 @@
 
 ## Problem Statement
 
-DDX Agent currently treats several distinct concerns as one concern:
+Fizeau currently treats several distinct concerns as one concern:
 
 - The OpenAI-compatible HTTP/SSE protocol is used as if it were a provider identity.
 - The routing engine has candidate ranking and quota fields, but the service does not yet expose a caller policy for local versus subscription candidates or provide real quota/burn-rate signals to the engine.
@@ -487,7 +487,7 @@ No RTK analytics or `rtk gain` data is collected by agent.
 - `docs/helix/01-frame/features/FEAT-002-tools.md`
 - `docs/helix/01-frame/features/FEAT-003-providers.md`
 - `docs/helix/01-frame/features/FEAT-004-model-routing.md`
-- `docs/helix/02-design/contracts/CONTRACT-003-ddx-agent-service.md`
+- `docs/helix/02-design/contracts/CONTRACT-003-fizeau-service.md`
 - `docs/helix/02-design/solution-designs/SD-005-provider-config.md`
 - `docs/helix/02-design/plan-2026-04-08-shared-model-catalog.md`
 - `docs/helix/02-design/plan-2026-04-10-model-first-routing.md`

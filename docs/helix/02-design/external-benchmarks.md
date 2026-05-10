@@ -86,9 +86,9 @@ Bead `agent-6d6ae2f6` introduced this. Highlights:
 - **Invocation.**
 
   ```sh
-  ddx-agent-bench run \
+  fiz-bench run \
     --external=termbench \
-    --external-harness=ddx-agent \
+    --external-harness=fiz \
     --external-model=openrouter/qwen/qwen3.6-plus \
     --external-max-tasks=3
   ```
@@ -96,7 +96,7 @@ Bead `agent-6d6ae2f6` introduced this. Highlights:
 - **Grading.** After the bench command finishes, run
   `scripts/benchmark/run_benchmark.sh` to invoke Harbor's verifier
   (Docker required; see SD-008 §5). The verifier drops reward.txt under
-  each task's output directory; a re-run of `ddx-agent-bench run
+  each task's output directory; a re-run of `fiz-bench run
   --external=termbench` then surfaces the reward in `results.json`.
 
 ## Adding a new benchmark

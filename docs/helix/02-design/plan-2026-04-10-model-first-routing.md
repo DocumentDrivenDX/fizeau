@@ -17,14 +17,14 @@ setup like `bragi`, `vidar`, `grendel`, and `openrouter`, the desired command
 is:
 
 ```bash
-ddx-agent run --model qwen3.5-27b "Some nice prompt"
+fiz run --model qwen3.5-27b "Some nice prompt"
 ```
 
 and the resolver should choose the best available configured provider that can
 serve that model. The design should preserve the runtime boundary
 (`agent.Run()` still receives one concrete provider), but replace backend-first
 configuration and CLI behavior with model-first routing. The embedded
-`ddx-agent` handles the inner provider-selection step; callers interact with
+`fiz` handles the inner provider-selection step; callers interact with
 the harness via CONTRACT-003 and need only pass model intent.
 
 ## Requirements
@@ -32,7 +32,7 @@ the harness via CONTRACT-003 and need only pass model intent.
 ### Functional
 
 1. The preferred CLI entrypoint for an execution run is
-   `ddx-agent run [flags] <prompt>`.
+   `fiz run [flags] <prompt>`.
 2. The preferred routing inputs are `--model` and `--model-ref`, not
    `--backend`.
 3. The configuration surface supports model routes keyed by the requested model
@@ -157,23 +157,23 @@ the harness via CONTRACT-003 and need only pass model intent.
 Preferred:
 
 ```bash
-ddx-agent run --model qwen3.5-27b "Some nice prompt"
-ddx-agent run --model-ref code-fast "Implement this function"
-ddx-agent run --provider grendel --model qwen3.5-27b "Investigate this test"
+fiz run --model qwen3.5-27b "Some nice prompt"
+fiz run --model-ref code-fast "Implement this function"
+fiz run --provider grendel --model qwen3.5-27b "Investigate this test"
 ```
 
 Compatibility:
 
 ```bash
-ddx-agent -p "Some nice prompt"
-ddx-agent -p "Some nice prompt" --backend code-fast-local
+fiz -p "Some nice prompt"
+fiz -p "Some nice prompt" --backend code-fast-local
 ```
 
 Caller integration (see CONTRACT-003):
 
 - Callers may invoke the embedded harness with a model ref or exact pin.
 - Callers do not name the removed route-table field, provider candidates, or health state.
-- Embedded `ddx-agent` returns routing attribution facts that callers can log and
+- Embedded `fiz` returns routing attribution facts that callers can log and
   display alongside their cross-harness routing evidence.
 
 Routing precedence:

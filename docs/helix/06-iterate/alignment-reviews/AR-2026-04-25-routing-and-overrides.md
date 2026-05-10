@@ -25,7 +25,7 @@
 
 ### Governing artifacts touched
 
-- `docs/helix/02-design/contracts/CONTRACT-003-ddx-agent-service.md`
+- `docs/helix/02-design/contracts/CONTRACT-003-fizeau-service.md`
 - `docs/helix/02-design/solution-designs/SD-005-provider-config.md`
 - `docs/helix/02-design/architecture.md` (Caching section added)
 - `docs/helix/02-design/adr/ADR-005-smart-routing-replaces-model-routes.md`

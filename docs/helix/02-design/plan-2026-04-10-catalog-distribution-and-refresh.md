@@ -12,7 +12,7 @@
 
 ## Problem Statement
 
-DDX Agent has the right ownership boundary for shared model policy, but the
+Fizeau has the right ownership boundary for shared model policy, but the
 current catalog is still incomplete as an operational system:
 
 - the embedded manifest is stale and too small to serve as a real shared policy
@@ -33,7 +33,7 @@ three stable levels:
   effort
 
 The broader system goal is to make the catalog publishable and updateable on a
-faster cadence than `ddx-agent` binary releases while preserving the existing
+faster cadence than `fiz` binary releases while preserving the existing
 runtime constraint that ordinary request execution does not fetch policy from
 the network.
 
@@ -45,16 +45,16 @@ the network.
   this repo.
 - Publish a versioned, immutable manifest bundle independently of binary
   releases whenever catalog policy changes.
-- Publish a stable channel pointer so `ddx-agent`, DDx, and operators can fetch
+- Publish a stable channel pointer so `fiz`, DDx, and operators can fetch
   the latest approved manifest without guessing artifact names.
-- Preserve the embedded manifest snapshot in `ddx-agent` releases for offline
+- Preserve the embedded manifest snapshot in `fiz` releases for offline
   deterministic behavior.
 - Add an explicit local update workflow so operators can install or refresh a
   local manifest file without editing YAML by hand.
 - Keep the runtime request path offline-by-default. A normal `Run()` or
-  `ddx-agent run ...` invocation must never fetch the manifest from the
+  `fiz run ...` invocation must never fetch the manifest from the
   network.
-- Allow DDx and `ddx-agent` to consume the same published manifest file.
+- Allow DDx and `fiz` to consume the same published manifest file.
 - Evolve the manifest schema so one logical policy tier can project to
   different concrete models and effort defaults per surface.
 - Refresh the starter catalog so it exposes current code-oriented tiers:
@@ -80,7 +80,7 @@ the network.
 - `agent.Run()` still receives one resolved concrete provider per attempt.
 - HELIX continues to emit intent only; it does not fetch or own manifest
   distribution.
-- DDx remains the cross-harness router. Embedded `ddx-agent` owns only embedded
+- DDx remains the cross-harness router. Embedded `fiz` owns only embedded
   provider selection and embedded-surface catalog projection.
 
 ## Architecture Decisions
@@ -102,7 +102,7 @@ the network.
 
 ### Decision 2: Keep network access out of the run path
 
-- **Question**: Should `ddx-agent run` auto-fetch catalog updates?
+- **Question**: Should `fiz run` auto-fetch catalog updates?
 - **Alternatives**:
   - implicit fetch during normal runs
   - explicit fetch/install command
@@ -124,7 +124,7 @@ the network.
   `code-high`, `code-medium`, and `code-economy`
 - **Rationale**: the shared catalog exists to express cross-surface policy.
   Requiring the same vendor family everywhere would make the catalog too weak
-  for the actual DDx/DDX Agent routing model
+  for the actual DDx/Fizeau routing model
 
 ### Decision 4: Add per-surface policy metadata to the manifest
 
@@ -193,7 +193,7 @@ Existing local override remains:
 
 ```yaml
 model_catalog:
-  manifest: ~/.config/ddx-agent/models.yaml
+  manifest: ~/.config/fizeau/models.yaml
 ```
 
 No runtime network URL is added to ordinary request config in phase 1.
@@ -203,10 +203,10 @@ No runtime network URL is added to ordinary request config in phase 1.
 Add explicit catalog-management commands:
 
 ```bash
-ddx-agent catalog show
-ddx-agent catalog check --channel stable
-ddx-agent catalog update --channel stable
-ddx-agent catalog update --version 2026-04-10.1
+fiz catalog show
+fiz catalog check --channel stable
+fiz catalog update --channel stable
+fiz catalog update --version 2026-04-10.1
 ```
 
 Behavior:
@@ -332,8 +332,8 @@ Notes:
 
 ### Consumer Workflow
 
-1. Operator or DDx runs `ddx-agent catalog check`.
-2. If a newer manifest is desired, run `ddx-agent catalog update`.
+1. Operator or DDx runs `fiz catalog check`.
+2. If a newer manifest is desired, run `fiz catalog update`.
 3. The command writes the verified manifest to the configured local path.
 4. Future runs resolve catalog refs from that local manifest; if the file is
    missing or unreadable, the embedded manifest remains the fallback unless the
@@ -369,12 +369,12 @@ Notes:
   - schema-version rejection
   - checksum verification
 - **Integration**:
-  - `ddx-agent catalog check` against a fixture index
-  - `ddx-agent catalog update` installs a manifest to the configured local path
+  - `fiz catalog check` against a fixture index
+  - `fiz catalog update` installs a manifest to the configured local path
   - runtime resolution prefers the installed local manifest over the embedded
     snapshot
 - **E2E**:
-  - DDx and `ddx-agent` resolve the same catalog refs from the same external
+  - DDx and `fiz` resolve the same catalog refs from the same external
     manifest file
   - embedded runs continue to function when the network is absent but the local
     manifest is already installed
@@ -388,7 +388,7 @@ Notes:
 2. Extend `modelcatalog` schema and resolver for schema v2 and per-surface
    policy metadata.
 3. Add catalog publication workflow and channel metadata.
-4. Add explicit `ddx-agent catalog` management commands.
+4. Add explicit `fiz catalog` management commands.
 5. Refresh the embedded manifest to the new code-tier baseline.
 6. Update DDx consumption to prefer the installed shared manifest and remove
    stale builtin fallback behavior.
@@ -397,7 +397,7 @@ Notes:
 
 - publish versioned catalog bundles independently of binary releases
 - add schema-v2 modelcatalog support with per-surface policy metadata
-- add `ddx-agent catalog show/check/update`
+- add `fiz catalog show/check/update`
 - refresh the embedded manifest to `code-high`, `code-medium`, and
   `code-economy`
 - update DDx to consume the same installed manifest path

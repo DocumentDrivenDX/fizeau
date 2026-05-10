@@ -6,7 +6,7 @@
 
 ## Question
 
-Can DDX Agent run a real TUI through a direct PTY, control it with user-like
+Can Fizeau run a real TUI through a direct PTY, control it with user-like
 input, capture raw ANSI bytes, and render useful screen frames without tmux?
 
 ## Setup
@@ -99,4 +99,4 @@ ANSI control sequences:
 
 Medium. The spike proves direct PTY plus terminal emulation is feasible, but it
 also confirms the terminal model is the hard part. The design is tractable only
-if DDX Agent wraps a real emulator and validates it against multiple TUIs.
+if Fizeau wraps a real emulator and validates it against multiple TUIs.

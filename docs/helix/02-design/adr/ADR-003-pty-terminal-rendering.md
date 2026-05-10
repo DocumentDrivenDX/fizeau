@@ -9,14 +9,14 @@ ddx:
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-20 | Accepted, amended | DDX Agent maintainers | `ADR-002`, `ADR-004`, `SPIKE-001`, `CONTRACT-003` | Medium |
+| 2026-04-20 | Accepted, amended | Fizeau maintainers | `ADR-002`, `ADR-004`, `SPIKE-001`, `CONTRACT-003` | Medium |
 
 ## Context
 
 ADR-002 selects direct PTY ownership and versioned PTY cassettes. ADR-004
-constrains that decision with a build-vs-buy boundary: DDX Agent must adopt or
+constrains that decision with a build-vs-buy boundary: Fizeau must adopt or
 wrap an existing terminal emulator rather than becoming a terminal emulator
-project. That still leaves a hard implementation question: how does DDX Agent
+project. That still leaves a hard implementation question: how does Fizeau
 turn raw ANSI PTY output from real TUIs into stable screen frames for
 assertions, replay, and inspection?
 
@@ -30,7 +30,7 @@ model.
 
 ## Decision
 
-DDX Agent will implement `internal/pty/terminal` as a wrapper around a real
+Fizeau will implement `internal/pty/terminal` as a wrapper around a real
 VT/ANSI terminal emulator library. The project will not hand-roll ANSI parsing
 or rely on regex stripping for TUI assertions. The implementation bead is
 blocked on the ADR-004 build-vs-buy evaluation before choosing the concrete
@@ -118,7 +118,7 @@ are designed.
 | Positive | Harness probes can assert against rendered screens instead of brittle raw ANSI output. |
 | Positive | Cassettes preserve raw evidence while also carrying human-reviewable frames. |
 | Positive | The emulator backend can be swapped without rewriting harness adapters. |
-| Negative | DDX Agent inherits terminal-emulator edge cases and must maintain a conformance suite. |
+| Negative | Fizeau inherits terminal-emulator edge cases and must maintain a conformance suite. |
 | Negative | Terminal rendering is more work than PTY process control alone. |
 
 ## Risks
@@ -145,7 +145,7 @@ are designed.
 - [ADR-002 PTY Cassette Transport](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-002-pty-cassette-transport.md)
 - [ADR-004 Terminal Harness Build-vs-Buy Boundary](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md)
 - [SPIKE-001 Direct PTY Rendering With Unix Top](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
-- [CONTRACT-003 DdxAgent Service Interface](/Users/erik/Projects/agent/docs/helix/02-design/contracts/CONTRACT-003-ddx-agent-service.md)
+- [CONTRACT-003 Fizeau Service Interface](../contracts/CONTRACT-003-fizeau-service.md)
 
 ## Review Checklist
 

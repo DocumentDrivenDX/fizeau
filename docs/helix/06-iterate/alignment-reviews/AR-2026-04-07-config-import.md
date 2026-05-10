@@ -12,7 +12,7 @@
 
 - picompat package (pi config readers)
 - occompat package (opencode config readers)
-- ddx-agent import CLI command
+- fiz import CLI command
 - imported_from metadata and drift detection
 - zero-config discovery notice
 
@@ -41,7 +41,7 @@
 ## Implementation Map
 
 - **Topology**: No packages exist yet. Target: `agent/picompat/`, `agent/occompat/`.
-- **Entry Points**: New subcommands in `cmd/ddx-agent/main.go`: `ddx-agent import pi`, `ddx-agent import opencode`.
+- **Entry Points**: New subcommands in `cmd/fiz/main.go`: `fiz import pi`, `fiz import opencode`.
 - **Test Surfaces**: No tests exist yet. Need unit tests for each reader and translator.
 - **Unplanned Areas**: None — SD-007 covers the full scope.
 
@@ -53,7 +53,7 @@
 | SD-007 Task 2 | Pi models.json reader | none | UNIMPLEMENTED | No picompat/models.go |
 | SD-007 Task 3 | Pi settings.json reader + translate | none | UNIMPLEMENTED | No picompat/settings.go, picompat/translate.go |
 | SD-007 Task 4 | OpenCode auth + config reader | none | UNIMPLEMENTED | No occompat/ |
-| SD-007 Task 5 | ddx-agent import CLI command | none | UNIMPLEMENTED | No import subcommand in main.go |
+| SD-007 Task 5 | fiz import CLI command | none | UNIMPLEMENTED | No import subcommand in main.go |
 | SD-007 Task 6 | Zero-config discovery notice | none | UNIMPLEMENTED | No discovery logic |
 | SD-007 Task 7 | Drift detection | none | UNIMPLEMENTED | No ImportMetadata, no hash tracking |
 | SD-007 Task 8 | Standard env var fallback | none | IMPLEMENTED | config.Load() has applyEnvOverrides() |
@@ -66,7 +66,7 @@
 | picompat/models.go | NOT_IMPLEMENTED | SD-007 task 2 | No file exists | code-to-plan | agent-640ef3be |
 | picompat/settings.go + translate.go | NOT_IMPLEMENTED | SD-007 task 3 | No files exist | code-to-plan | agent-640ef3be |
 | occompat/ package | NOT_IMPLEMENTED | SD-007 task 4 | No package exists | code-to-plan | agent-c8d7eb45 |
-| ddx-agent import CLI | NOT_IMPLEMENTED | SD-007 task 5 | No subcommand in main.go | code-to-plan | agent-bc840f36 |
+| fiz import CLI | NOT_IMPLEMENTED | SD-007 task 5 | No subcommand in main.go | code-to-plan | agent-bc840f36 |
 | imported_from metadata | NOT_IMPLEMENTED | SD-007 Config Schema Additions | Config struct missing ImportMetadata | code-to-plan | agent-a8e99614 |
 | drift detection | NOT_IMPLEMENTED | SD-007 Drift Detection section | No hash tracking, no notice | code-to-plan | agent-a8e99614 |
 | zero-config discovery | NOT_IMPLEMENTED | SD-007 Zero-Config Discovery | No discovery logic | code-to-plan | agent-5bc78ae2 |
@@ -88,7 +88,7 @@ None — feature not yet implemented.
 |----------|------|---------------|
 | agent-640ef3be | picompat package | NOT_IMPLEMENTED |
 | agent-c8d7eb45 | occompat package | NOT_IMPLEMENTED |
-| agent-bc840f36 | ddx-agent import CLI | NOT_IMPLEMENTED |
+| agent-bc840f36 | fiz import CLI | NOT_IMPLEMENTED |
 | agent-a8e99614 | imported_from + drift | NOT_IMPLEMENTED |
 | agent-5bc78ae2 | zero-config discovery | NOT_IMPLEMENTED |
 
@@ -98,10 +98,10 @@ None — feature not yet implemented.
 |----------|------|--------|------|--------------|-------------|
 | agent-NEW | task | helix,area:lib,phase:build | Implement picompat package (auth, models, settings, translate) | — | Unit tests pass |
 | agent-NEW | task | helix,area:lib,phase:build | Implement occompat package (auth, config, translate) | — | Unit tests pass |
-| agent-NEW | task | helix,area:cli,phase:build | Implement ddx-agent import CLI command | picompat, occompat | Functional tests pass |
+| agent-NEW | task | helix,area:cli,phase:build | Implement fiz import CLI command | picompat, occompat | Functional tests pass |
 | agent-NEW | chore | helix,area:lib,phase:build | Add ImportMetadata to config.Config | picompat | Config round-trips correctly |
 | agent-NEW | task | helix,area:lib,phase:build | Implement drift detection (hash tracking, notice) | ImportMetadata | Manual verification |
-| agent-NEW | task | helix,area:cli,phase:build | Implement zero-config discovery notice | ddx-agent import | Manual verification |
+| agent-NEW | task | helix,area:cli,phase:build | Implement zero-config discovery notice | fiz import | Manual verification |
 
 ## Issue Coverage
 
@@ -109,7 +109,7 @@ None — feature not yet implemented.
 |-----------------|----------------|--------|
 | picompat package | agent-NEW | covered |
 | occompat package | agent-NEW | covered |
-| ddx-agent import CLI | agent-NEW | covered |
+| fiz import CLI | agent-NEW | covered |
 | imported_from metadata | agent-NEW | covered |
 | drift detection | agent-NEW | covered |
 | zero-config discovery | agent-NEW | covered |
@@ -119,7 +119,7 @@ None — feature not yet implemented.
 
 1. **agent-picompat** — picompat package (auth, models, settings, translate)
 2. **agent-occompat** — occompat package (auth, config, translate)
-3. **agent-import-cli** — ddx-agent import CLI command
+3. **agent-import-cli** — fiz import CLI command
 4. **agent-import-metadata** — Add ImportMetadata to config.Config
 5. **agent-drift** — Implement drift detection
 6. **agent-discovery** — Implement zero-config discovery

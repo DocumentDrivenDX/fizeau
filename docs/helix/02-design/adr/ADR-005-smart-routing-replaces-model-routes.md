@@ -15,7 +15,7 @@ surface-policy vocabulary here is historical.
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-25 | Proposed | DDX Agent maintainers | `CONTRACT-003`, `SD-005`, `FEAT-004` | Medium |
+| 2026-04-25 | Proposed | Fizeau maintainers | `CONTRACT-003`, `SD-005`, `FEAT-004` | Medium |
 
 ## Context
 
@@ -79,7 +79,7 @@ The service must build a complete joined inventory before choosing:
    metered providers expose static or live cost; local/free providers expose
    zero marginal cost plus measured latency/reliability when known.
 5. **Inspectable output** — expose the joined inventory through
-   `ddx-agent --list-models` and the service `ListModels` API. Operators must
+   `fiz --list-models` and the service `ListModels` API. Operators must
    be able to inspect the same candidate table the router scores: harness,
    provider source, endpoint/host, model, power, family,
    provider/deployment class, marginal cost, quota/reset, context, tool

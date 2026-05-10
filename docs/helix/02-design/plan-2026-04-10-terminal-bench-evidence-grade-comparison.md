@@ -13,7 +13,7 @@ ddx:
 
 This plan turns the benchmark pipeline established by SD-008/SD-009 into a
 credible before/after experiment for evaluating whether ForgeCode-inspired
-changes improved ddx-agent's standing on Terminal-Bench.
+changes improved Fizeau's standing on Terminal-Bench.
 
 The benchmark harness, patch tool, navigation tools, benchmark preset, and
 task-tracking work are already implemented. The missing work is experimental
@@ -25,8 +25,8 @@ comparison memo derived from artifacts rather than anecdotes.
 The experiment claims:
 
 > Under a fixed harness, fixed task subset, and fixed runtime/model config,
-> ddx-agent after the ForgeCode-inspired changes performs better than
-> ddx-agent before those changes on Terminal-Bench.
+> Fizeau after the ForgeCode-inspired changes performs better than
+> Fizeau before those changes on Terminal-Bench.
 
 This claim is valid only if:
 
@@ -44,7 +44,7 @@ This claim is valid only if:
 
 2. **Commit-independent harness**
    Update `scripts/benchmark/run_benchmark.sh` and `scripts/benchmark/harbor_agent.py`
-   so one benchmark harness can evaluate arbitrary ddx-agent binaries from
+   so one benchmark harness can evaluate arbitrary `fiz` binaries from
    different SHAs without changing the runner itself.
 
 3. **Evidence-grade reporting**

@@ -11,14 +11,14 @@ ddx:
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-09 | Accepted | DDX Agent maintainers | `FEAT-005`, `FEAT-006`, `SD-001` | High |
+| 2026-04-09 | Accepted | Fizeau maintainers | `FEAT-005`, `FEAT-006`, `SD-001` | High |
 
 ## Context
 
 | Aspect | Description |
 |--------|-------------|
 | Problem | The planning stack still treats OpenTelemetry as an optional add-on while the project needs one analytics model that can be compared against Claude Code and Codex without losing replay fidelity or corrupting cost data. |
-| Current State | DDX Agent writes JSONL session logs for replay. Existing docs describe per-model pricing-table estimation and leave OTel undecided. Research across Claude Code, Codex, and OTel shows that JSONL-style transcripts are useful for replay, while OTel GenAI conventions are the best available interoperability layer for analytics. |
+| Current State | Fizeau writes JSONL session logs for replay. Existing docs describe per-model pricing-table estimation and leave OTel undecided. Research across Claude Code, Codex, and OTel shows that JSONL-style transcripts are useful for replay, while OTel GenAI conventions are the best available interoperability layer for analytics. |
 | Requirements | Preserve exact local replay, support cross-tool analytics, record cost without guessing, distinguish local runtimes such as `bragi`, `vidar`, and `grendel`, and expose enough timing data to compute throughput only when the provider supplies a valid timing window. |
 
 ## Decision
@@ -30,7 +30,7 @@ surface.
 We will record provider- or gateway-reported cost when it is available. If no
 reported cost exists, we will use only explicit runtime-specific pricing for
 the exact provider system and resolved model. If neither exists, cost remains
-unknown. DDX Agent will not guess cost from generic stale price tables.
+unknown. Fizeau will not guess cost from generic stale price tables.
 
 We will use standard OTel GenAI fields wherever the semantic conventions cover
 the need, and a `ddx.*` namespace for gaps such as billed cost source,
@@ -47,15 +47,15 @@ known cost is preserved and unknown cost stays unknown
 | Option | Pros | Cons | Evaluation |
 |--------|------|------|------------|
 | Keep JSONL as the only observability surface | Lowest implementation complexity, preserves replay, no collector dependency | Weak interoperability, poor analytics ergonomics, no standard cross-tool schema | Rejected: insufficient for the stated analytics goal |
-| Copy Claude Code or Codex local storage formats directly | Easier superficial compatibility with one tool at a time | Vendor internals are not a stable universal contract, locks DDX Agent to foreign storage assumptions, still leaves cost/timing gaps | Rejected: wrong abstraction boundary |
-| **Use JSONL for replay and OTel for analytics, with project-namespaced extensions for gaps** | Preserves exact session reconstruction, aligns with the strongest emerging standard, supports one analytics tool across DDX Agent, Claude, and Codex | Adds telemetry implementation work, requires careful schema discipline, some fields such as cost still need custom attributes | **Selected: best fit for interoperability without sacrificing replay fidelity** |
+| Copy Claude Code or Codex local storage formats directly | Easier superficial compatibility with one tool at a time | Vendor internals are not a stable universal contract, locks Fizeau to foreign storage assumptions, still leaves cost/timing gaps | Rejected: wrong abstraction boundary |
+| **Use JSONL for replay and OTel for analytics, with project-namespaced extensions for gaps** | Preserves exact session reconstruction, aligns with the strongest emerging standard, supports one analytics tool across Fizeau, Claude, and Codex | Adds telemetry implementation work, requires careful schema discipline, some fields such as cost still need custom attributes | **Selected: best fit for interoperability without sacrificing replay fidelity** |
 
 ## Consequences
 
 | Type | Impact |
 |------|--------|
 | Positive | Replay and analytics are both first-class and no longer compete for one storage shape. |
-| Positive | DDX Agent can normalize analytics across Claude Code, Codex, and its own session logs using OTel-compatible ingestion. |
+| Positive | Fizeau can normalize analytics across Claude Code, Codex, and its own session logs using OTel-compatible ingestion. |
 | Positive | Variable-price gateways such as OpenRouter can preserve actual billed cost instead of being recomputed later from unstable tables. |
 | Positive | Local runtimes such as `bragi`, `vidar`, and `grendel` become explicit analytics dimensions rather than disappearing behind a generic local-provider bucket. |
 | Negative | Telemetry adds implementation complexity and collector configuration surface beyond the current JSONL logger. |
@@ -79,7 +79,7 @@ known cost is preserved and unknown cost stays unknown
 | Providers that report cost preserve that cost without recomputation drift | Reported billing differs from stored billing after ingestion |
 | Unknown-cost sessions remain explicitly unknown | Any code path silently fills unknown cost from a generic fallback table |
 | Throughput analytics are emitted only when backed by matching timing windows | A dashboard displays input, output, or cache tok/s without source timing evidence |
-| One analytics tool can ingest DDX Agent telemetry alongside Claude/Codex adapters | Cross-tool ingestion requires bespoke schema logic for DDX Agent alone |
+| One analytics tool can ingest Fizeau telemetry alongside Claude/Codex adapters | Cross-tool ingestion requires bespoke schema logic for Fizeau alone |
 
 ## Concern Impact
 

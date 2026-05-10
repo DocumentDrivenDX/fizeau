@@ -78,11 +78,11 @@ evidence".
 
 ## Promoting a bead
 
-The `ddx-agent corpus promote` subcommand handles the gate, the writes,
+The `fiz corpus promote` subcommand handles the gate, the writes,
 and the post-write validation:
 
 ```
-ddx-agent corpus promote agent-39f79181 \
+fiz corpus promote agent-39f79181 \
   --capability sampling-resolver-cli-wiring \
   --difficulty medium \
   --prompt-kind implement-with-spec \
@@ -103,8 +103,8 @@ What the command does:
   if validation fails, both writes are rolled back and the command
   returns the validation error.
 
-`ddx-agent corpus validate` re-runs the cross-validator at any time.
-`ddx-agent corpus list` shows the index in a tabular format
+`fiz corpus validate` re-runs the cross-validator at any time.
+`fiz corpus list` shows the index in a tabular format
 (`--json` for machine output).
 
 ## Filtering beadbench by corpus

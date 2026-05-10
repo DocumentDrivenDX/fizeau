@@ -10,7 +10,7 @@ ddx:
 
 | Date | Status | Deciders | Related | Confidence |
 |------|--------|----------|---------|------------|
-| 2026-04-20 | Accepted, amended | DDX Agent maintainers | `CONTRACT-003`, harness capability matrix | Medium |
+| 2026-04-20 | Accepted, amended | Fizeau maintainers | `CONTRACT-003`, harness capability matrix | Medium |
 
 ## Context
 
@@ -25,19 +25,19 @@ ddx:
 This decision was re-reviewed against local and current external terminal-agent
 managers on 2026-04-20.
 
-| Source | Transport Shape | Useful Patterns | Limits for DDX Agent |
+| Source | Transport Shape | Useful Patterns | Limits for Fizeau |
 |--------|-----------------|-----------------|----------------------|
 | `gastown` local repo | tmux is the runtime/session boundary | Session creation runs the target command directly instead of racing shell readiness; pane capture and process-command checks are used for inspection and zombie cleanup; input helpers account for paste/Enter timing. | Strong operator UX, but the service would inherit tmux server state, send timing quirks, and display scraping as correctness inputs. |
-| `ntm` current GitHub repo | tmux is an explicit required dependency and multi-agent control plane | Uses named sessions/panes, strict session-name validation, command timeouts, a circuit breaker, semantic capture budgets, `pipe-pane` streaming with polling fallback, and buffer paste for multiline/large prompts. | Its own analysis notes deep tmux lock-in. Good negative evidence for DDX Agent's library boundary. |
+| `ntm` current GitHub repo | tmux is an explicit required dependency and multi-agent control plane | Uses named sessions/panes, strict session-name validation, command timeouts, a circuit breaker, semantic capture budgets, `pipe-pane` streaming with polling fallback, and buffer paste for multiline/large prompts. | Its own analysis notes deep tmux lock-in. Good negative evidence for Fizeau's library boundary. |
 | `claude-squad` current GitHub repo | hybrid: tmux owns sessions, Go PTY owns attach/control | Uses `creack/pty` to attach to tmux, resize the attached session, forward stdin/stdout, and write direct bytes for key input while still using tmux `capture-pane`. | Confirms that user impersonation needs a real terminal channel, but still leaves tmux as the persistent lifecycle owner. |
 | `dmux` current GitHub repo | tmux panes plus git worktrees, TypeScript/Ink UI | Treats tmux as an operator pane manager with persistent panes, hooks, and worktree isolation. | Valuable operator pattern; not a deterministic record/replay or service-event evidence layer. |
 | `dun` local repo | non-interactive CLI harnesses | Uses stdin/stdout CLI modes such as `claude --print` and `codex exec -`; prior spike docs prefer stdin for large prompts. | Does not solve TUI-only model/quota/status surfaces. |
-| `creack/pty` | direct Go PTY primitive | Starts commands with a controlling terminal, supports explicit terminal sizing and resize handling, and keeps lifecycle inside the process. | Requires DDX Agent to own screen parsing, process-group cleanup, timeout behavior, and inspection UI. |
+| `creack/pty` | direct Go PTY primitive | Starts commands with a controlling terminal, supports explicit terminal sizing and resize handling, and keeps lifecycle inside the process. | Requires Fizeau to own screen parsing, process-group cleanup, timeout behavior, and inspection UI. |
 | `Netflix/go-expect` | expect-style terminal automation | Useful expectation/input layer over a pseudoterminal. | It does not own process lifecycle, so it is a helper over the selected terminal transport, not the transport itself. |
 | `asciinema` | terminal recording/playback | Proven lightweight terminal recording format with timing and replay concepts. | Record/playback only; it does not drive the harness or emit CONTRACT-003 service events. |
 
 The current ecosystem trend for human multi-agent operation is tmux. That is not
-the right baseline for DDX Agent. DDX Agent needs a reusable direct PTY library
+the right baseline for Fizeau. Fizeau needs a reusable direct PTY library
 because cassettes need raw bytes, structured service events, deterministic
 replay, credential-free playback, and process cleanup without depending on
 global tmux server state. tmux evidence is useful for understanding common TUI
@@ -45,7 +45,7 @@ failure modes, but it must not be part of the core harness capability story.
 
 ## Decision
 
-DDX Agent will own direct PTY lifecycle in-process using Go `os/exec` plus a
+Fizeau will own direct PTY lifecycle in-process using Go `os/exec` plus a
 small reusable PTY library. That library includes cassette recording and
 playback as a first-class layer; recording/replay is not a separate harness
 helper bolted on beside the PTY code. tmux is not part of the core harness
@@ -58,11 +58,11 @@ results do not promote a capability to final `supported` status. Any capability
 that can only be proven through tmux is `gap` until direct PTY evidence exists.
 
 If a future operator project wants tmux attach/switch UX, it must live outside
-the core service/cassette path and consume DDX Agent outputs like any other
-client. The DDX Agent baseline is direct PTY only.
+the core service/cassette path and consume Fizeau outputs like any other
+client. The Fizeau baseline is direct PTY only.
 
 SPIKE-002 clarified the only acceptable success criteria for this area:
-DDX Agent must control Claude/Codex well enough to extract TUI-only quota,
+Fizeau must control Claude/Codex well enough to extract TUI-only quota,
 available-model, reasoning-level, and related status facts; and it must replay
 cassettes well enough that client-side parsers and terminal assertions run
 without live Claude/Codex binaries, credentials, or network. Per-run token
@@ -395,7 +395,7 @@ never normalizes or rewrites the evidence.
 | Terminal-session interface with direct PTY and tmux adapters | Would preserve an easy operator escape hatch | Keeps tmux alive as an attractive partial implementation and makes capability evidence ambiguous | Rejected for the core baseline; direct PTY library only |
 | Standardize on tmux for all harness lifecycle | Mature attach/detach UX, pane capture, process supervision already exists; matches tools such as gastown, ntm, claude-squad, and dmux | Makes tmux a hard dependency for library consumers and CI; Windows portability is poor; machine-local tmux state complicates deterministic replay; tmux capture is a derived screen view rather than raw service evidence | Rejected |
 | Keep tmux only for quota/status while direct exec handles normal runs | Minimal short-term change | Violates the single-transport concern; quota behavior and live execution would diverge; cassette replay could not prove the path that quota probes use | Rejected: partial helper is explicitly the failure mode this ADR resolves |
-| Adopt ntm or another terminal manager as the core | Faster access to mature tmux orchestration patterns and robot APIs | Adds another lifecycle owner without CONTRACT-003 semantics; inherits tmux coupling; does not define DDX Agent cassette/service-event evidence | Rejected |
+| Adopt ntm or another terminal manager as the core | Faster access to mature tmux orchestration patterns and robot APIs | Adds another lifecycle owner without CONTRACT-003 semantics; inherits tmux coupling; does not define Fizeau cassette/service-event evidence | Rejected |
 | Use asciinema/script-style recorder as the core | Existing terminal recording/playback concepts and viewer ecosystem | Records terminal output but does not drive input, manage auth/quota preflight, own process cleanup, or emit service events | Rejected: useful format reference, insufficient as harness transport |
 | Split a generic PTY cassette project now | Clean abstraction if multiple projects need it | Premature API freeze; no second consumer yet; slows harness support beads | Rejected for now by ADR-004; revisit at the documented extraction triggers |
 
@@ -404,11 +404,11 @@ never normalizes or rewrites the evidence.
 | Type | Impact |
 |------|--------|
 | Positive | Harness execution, quota probes, model-list probes, record/replay, cancellation, and inspection share one direct PTY library. |
-| Positive | Library consumers do not need tmux installed to use or test DDX Agent harness support. |
+| Positive | Library consumers do not need tmux installed to use or test Fizeau harness support. |
 | Positive | Golden-master cassettes can carry CONTRACT-003 service events and typed-drain payloads as first-class evidence. |
 | Negative | The project must own PTY edge cases: resize races, process groups, signal handling, terminal modes, and OS portability. |
 | Negative | Read-only inspection needs a purpose-built viewer instead of relying on `tmux attach`. |
-| Neutral | Developers may still use tmux manually outside DDX Agent, but tmux is not a DDX Agent dependency or evidence source. |
+| Neutral | Developers may still use tmux manually outside Fizeau, but tmux is not a Fizeau dependency or evidence source. |
 
 ## Risks
 
@@ -443,7 +443,7 @@ never normalizes or rewrites the evidence.
 
 ## References
 
-- [CONTRACT-003 DdxAgent Service Interface](/Users/erik/Projects/agent/docs/helix/02-design/contracts/CONTRACT-003-ddx-agent-service.md)
+- [CONTRACT-003 Fizeau Service Interface](../contracts/CONTRACT-003-fizeau-service.md)
 - [Concerns](/Users/erik/Projects/agent/docs/helix/01-frame/concerns.md)
 - [Architecture](/Users/erik/Projects/agent/docs/helix/02-design/architecture.md)
 - [ADR-003 PTY Terminal Rendering and Screen Model](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md)

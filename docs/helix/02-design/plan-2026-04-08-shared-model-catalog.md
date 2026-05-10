@@ -6,7 +6,7 @@
 
 ## Problem Statement
 
-DDX Agent now owns prompt presets, but model policy is still duplicated outside the
+Fizeau now owns prompt presets, but model policy is still duplicated outside the
 repo in DDx and HELIX-adjacent tooling. That creates three problems:
 
 - rapidly changing model release data is copied into multiple repos
@@ -50,7 +50,7 @@ HELIX owns only stage intent.
 
 ### Constraints
 
-- DDX Agent remains an embeddable library; `agent.Run()` still accepts one concrete
+- Fizeau remains an embeddable library; `agent.Run()` still accepts one concrete
   `Provider`.
 - Backward compatibility with today's provider config and `--model` override
   path must be preserved.
@@ -178,9 +178,9 @@ model_catalog:
 - CLI gains a catalog-oriented selector separate from prompt presets:
 
 ```bash
-ddx-agent run --model-ref code-smart "review this diff"
-ddx-agent run --model qwen3-coder-next "summarize"
-ddx-agent run --model claude-sonnet-4-20250514 "use exact pin"
+fiz run --model-ref code-smart "review this diff"
+fiz run --model qwen3-coder-next "summarize"
+fiz run --model claude-sonnet-4-20250514 "use exact pin"
 ```
 
 - `--model` remains a concrete override and bypasses catalog policy.
@@ -188,11 +188,11 @@ ddx-agent run --model claude-sonnet-4-20250514 "use exact pin"
 
 ### Consumer Boundary
 
-- DDX Agent CLI uses the catalog to resolve `--model-ref` or model routes.
+- Fizeau CLI uses the catalog to resolve `--model-ref` or model routes.
 - DDx uses the catalog as a library dependency for harness/model resolution and
   warnings/guardrails.
 - When DDx selects the embedded harness, it passes only model intent
-  (`model_ref` or exact pin). Embedded `ddx-agent` continues provider
+  (`model_ref` or exact pin). Embedded `fiz` continues provider
   selection internally.
 - HELIX does not depend on the catalog at runtime; it emits stage intent such as
   `smart` or `fast`, and DDx maps that intent to a concrete harness/model pair.
@@ -279,7 +279,7 @@ targets:
 ## Security
 
 - The manifest contains no secrets; credentials remain in provider config.
-- DDX Agent should not fetch manifests over the network at runtime.
+- Fizeau should not fetch manifests over the network at runtime.
 - External manifest paths must be explicit and local to avoid surprising policy
   changes from implicit remote sources.
 

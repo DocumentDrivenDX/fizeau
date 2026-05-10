@@ -51,6 +51,7 @@ created. See I-11.
 
 ### I-01 — Pervasive "DDX Agent" / `ddx-agent` rename rot in current specs
 - **Severity:** blocker
+- **Status:** RESOLVED — closed by the rename-rot sweep staged on top of `90976f0c` (rewrites all 9 ADRs, both spikes, the affected plans/baselines, dated AR docs, `epic-validation-e8c1f21c.md`, `external-benchmarks.md`, and `benchmark-corpus.md`; relinks the `CONTRACT-003-ddx-agent-service.md` cross-reference to `CONTRACT-003-fizeau-service.md`; preserves the historical rename plan `plan-2026-04-08-rename-agent.md`).
 - **Where:** ADR-001..ADR-007 (header rows, prose, alternatives, references), ADR-005 line 82 (`ddx-agent --list-models`), ADR-007 lines 84/86 (`ddx-agent catalog check/update`), ADR-002 line 446 (link to non-existent `CONTRACT-003-ddx-agent-service.md`), `architecture.md` references, `epic-validation-e8c1f21c.md`, `external-benchmarks.md`, `terminalbench-fiz-wrapper-comparison-2026-05-06.md`
 - **Why it matters:** Current product is **Fizeau**, module is `github.com/easel/fizeau`, binary is `fiz`, package is `fizeau`. The rename plan (`plan-2026-04-08-rename-agent.md`) was supposed to drive a global rename; the code did rename but the spec corpus did not follow. The rename plan's own title reads "Rename DDX Agent to DDX Agent" — broken on its own face.
 - **Proposed fix:** Single global rewrite pass: `DDX Agent` → `Fizeau`, `ddx-agent` → `fiz`, `CONTRACT-003-ddx-agent-service.md` → `CONTRACT-003-fizeau-service.md`. Add a `RENAMED.md` migration note at top of `02-design/adr/` and `02-design/contracts/`.

@@ -6,7 +6,7 @@ ddx:
   commit: dcc2f45
 ---
 
-# Epic Validation: agent-e8c1f21c — Benchmark ddx-agent on Terminal-Bench
+# Epic Validation: agent-e8c1f21c — Benchmark Fizeau on Terminal-Bench
 
 **Validated**: 2026-04-09  
 **Commit**: `dcc2f45` (task-tracking tools + final validation)
@@ -20,7 +20,7 @@ ddx:
 | 1 | Documented benchmark plan for Terminal-Bench/Harbor grounded in explicit interface audit | ✅ PASS | SD-008 (`fe6f871`) + SD-009 (`e2ae171`) — both closed with measure-results |
 | 2 | Checked-in fixed and versioned benchmark task subset | ✅ PASS | `scripts/benchmark/task-subset-v1.yaml` — version "1", 15 tasks across 6 categories |
 | 3 | Runnable adapter or wrapper path for at least smoke-task execution | ✅ PASS | `scripts/benchmark/harbor_agent.py` (Harbor BaseInstalledAgent adapter) + `scripts/benchmark/smoke_run.sh` both committed in `82644ed` |
-| 4 | Independently captured baseline report for ddx-agent on pilot/subset tasks | ✅ PASS | `docs/helix/02-design/benchmark-baseline-2026-04-08.md` — 6/6 tasks resolved, failure modes documented, thresholds calibrated |
+| 4 | Independently captured baseline report for Fizeau on pilot/subset tasks | ✅ PASS | `docs/helix/02-design/benchmark-baseline-2026-04-08.md` — 6/6 tasks resolved, failure modes documented, thresholds calibrated |
 | 5 | Child beads covering benchmark-mode behavior, benchmark-critical tools, micro-evals, and reproducible result capture | ✅ PASS | All 9 child beads closed (see Child Bead Status below) |
 
 ---

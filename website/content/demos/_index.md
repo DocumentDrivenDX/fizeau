@@ -5,8 +5,11 @@ weight: 2
 
 Terminal recordings of Fizeau. One reel runs **inside a Docker container**
 with `llama-server` + a 0.5 B Qwen coder model — no GPU, no API key, no
-internet. The other three were captured against `qwen/qwen3.6-27b` via
-OpenRouter, kept here for comparison.
+internet. Three more were captured against `qwen/qwen3.6-27b` via
+OpenRouter, kept here for comparison. The final three reels — `usage`,
+`update --check-only`, and a peek at the on-disk JSONL session log —
+demonstrate Fizeau-specific affordances (cost attribution, atomic
+self-update, and structured observability) and require no LLM at all.
 
 > **About time compression.** Slow operations (model downloads, model
 > loads, long LLM responses) are *fast-forwarded* in the playback so the
@@ -119,6 +122,86 @@ and two internal packages (api and db) under internal/.
 </noscript>
 
 > Origin: **OpenRouter** / `qwen/qwen3.6-27b`.
+
+## Cost attribution — known vs unknown
+
+`fiz usage` rolls up every session JSONL in your history and prints
+per-(provider, model) totals. Where the catalog has a price for the
+model the `COST` column is exact; where it doesn't (a self-hosted
+`vllm` deployment, a model with no published rate) the column reads
+`unknown` rather than guessing. Operators can see at a glance which
+slice of their spend Fizeau can attribute and which it cannot — the
+"never guess" policy from the cost-attribution spec made tangible.
+
+<script src="https://asciinema.org/a/demo.js" id="asciicast-usage" async data-src="/fizeau/demos/fiz-usage.cast" data-cols="170" data-rows="18"></script>
+<noscript>
+
+```
+$ fiz usage --since 30d
+Window: 2026-04-10 .. 2026-05-10
+PROVIDER     MODEL                       SESSIONS  INPUT  OUTPUT  COST
+openrouter   anthropic/claude-sonnet-4.6        2  73048    2501  $0.2567
+openrouter   openai/gpt-5.3-mini                3      0       0  unknown
+vllm         qwen3.6-27b-autoround              1   5204      17  unknown
+```
+
+</noscript>
+
+> Origin: **local** (no LLM call). Reads existing `~/.fizeau/sessions/*.jsonl`.
+
+## Self-update check
+
+`fiz` ships as a single static binary and updates itself in place; the
+`--check-only` flag does the version comparison without downloading or
+swapping anything. Exit code 1 means "outdated", 0 means "current". A
+shell script can wrap this for a daily cron, or you can drop the flag
+to perform the actual atomic in-place upgrade.
+
+<script src="https://asciinema.org/a/demo.js" id="asciicast-update" async data-src="/fizeau/demos/fiz-update-check.cast" data-cols="100" data-rows="18"></script>
+<noscript>
+
+```
+$ fiz version
+fiz v0.10.16 (commit f7bbeb1c, built 2026-05-08T19:07:05Z)
+  Update available: v0.12.1
+
+$ fiz update --check-only; echo "exit=$?"
+Current: v0.10.16
+Latest:  v0.12.1
+
+Update available. Run 'fiz update' to upgrade.
+exit=1
+```
+
+</noscript>
+
+> Origin: **local** (single GET to GitHub releases API, no LLM call).
+
+## Structured session log on disk
+
+Every fiz invocation appends a line-delimited JSON event log to
+`~/.fizeau/sessions/<session-id>.jsonl`. The file is the source of
+truth for `fiz replay`, `fiz usage`, and downstream observability.
+A short `jq` projection over the first three events shows the
+per-turn token counts, latency, and model identifier — every figure
+on the website's benchmark pages comes from rolling up these files.
+
+<script src="https://asciinema.org/a/demo.js" id="asciicast-jsonl" async data-src="/fizeau/demos/fiz-jsonl.cast" data-cols="170" data-rows="14"></script>
+<noscript>
+
+```
+$ jq -c '{ts, type, model: .data.model, tokens: (.data.usage // .data.tokens),
+          cost_usd: .data.cost_usd, latency_ms: .data.latency_ms}' \
+     .fizeau/sessions/svc-*.jsonl | head -3
+{"ts":"...","type":"session.start","model":"qwen/qwen3.6-27b","tokens":null,...}
+{"ts":"...","type":"llm.response","model":"qwen/qwen3.6-27b","tokens":{"input":2249,"output":53,"total":2302},"cost_usd":0.00088928,"latency_ms":1671}
+{"ts":"...","type":"llm.response","model":"qwen/qwen3.6-27b","tokens":{"input":2376,"output":85,"total":2461},"cost_usd":0.00103232,"latency_ms":5577}
+```
+
+</noscript>
+
+> Origin: **local** (reads `demos/sessions/file-read.jsonl`, the same
+> JSONL that powers the *Read a file and explain it* reel above).
 
 ## How these are produced
 
