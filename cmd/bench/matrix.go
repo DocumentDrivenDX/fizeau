@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -521,6 +522,14 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 					report.ProcessOutcome = "completed"
 					report.GradingOutcome = "ungraded"
 				}
+			}
+			// Read finish_reason of the last llm.response from the trial's
+			// session jsonl to populate terminated_mid_work. The harbor agent
+			// (FizeauAgent) writes to <cellDir>/<jobName>/<trial-hash>/agent/
+			// sessions/svc-*.jsonl; we don't know the trial-hash up front so
+			// glob for the newest. Mirrors backfill-terminated-mid-work.py.
+			if tmw := readTerminatedMidWorkFromCell(filepath.Join(cellDir, jobName)); tmw != nil {
+				report.TerminatedMidWork = tmw
 			}
 		}
 	} else {
@@ -1302,6 +1311,64 @@ func boolPointerField(m map[string]any, key string) *bool {
 		return &b
 	}
 	return nil
+}
+
+// readTerminatedMidWorkFromCell streams the trial's session jsonl, finds
+// the last llm.response event's finish_reason, and returns true when the
+// model was actively producing output (tool_calls, length, function_call)
+// vs false when it voluntarily stopped (stop, end_turn). Returns nil when
+// no session jsonl was written or no llm.response events were emitted.
+// jobDir = <cellDir>/<jobName>; the harbor agent writes to
+// <jobDir>/<trial-hash>/agent/sessions/svc-*.jsonl.
+func readTerminatedMidWorkFromCell(jobDir string) *bool {
+	matches, err := filepath.Glob(filepath.Join(jobDir, "*", "agent", "sessions", "svc-*.jsonl"))
+	if err != nil || len(matches) == 0 {
+		return nil
+	}
+	// Newest by mtime — matches the trial we just ran.
+	sessPath := matches[0]
+	if len(matches) > 1 {
+		newest, _ := os.Stat(sessPath)
+		for _, m := range matches[1:] {
+			st, err := os.Stat(m)
+			if err == nil && (newest == nil || st.ModTime().After(newest.ModTime())) {
+				sessPath = m
+				newest = st
+			}
+		}
+	}
+	f, err := os.Open(sessPath) // #nosec G304 -- jobDir is a benchmark output path
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var lastFinish string
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
+	for scanner.Scan() {
+		var ev struct {
+			Type string `json:"type"`
+			Data struct {
+				FinishReason string `json:"finish_reason"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &ev); err != nil {
+			continue
+		}
+		if ev.Type == "llm.response" && ev.Data.FinishReason != "" {
+			lastFinish = ev.Data.FinishReason
+		}
+	}
+	switch lastFinish {
+	case "tool_calls", "length", "function_call":
+		t := true
+		return &t
+	case "stop", "end_turn":
+		f := false
+		return &f
+	default:
+		return nil
+	}
 }
 
 func deriveMatrixFinalStatus(processOutcome, gradingOutcome string, reward *int, retriable bool) string {

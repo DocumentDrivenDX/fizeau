@@ -63,31 +63,16 @@ class Agent(BaseAdapter):
 
     def parse_telemetry(self, stream: str) -> dict[str, Any]:
         telemetry = empty_telemetry()
-        last_finish_reason: str | None = None
         for event in jsonl_objects(stream):
-            etype = event.get("type")
+            if event.get("type") not in {"session.end", "final"}:
+                continue
             data = event.get("data")
-            if etype == "llm.response" and isinstance(data, dict):
-                fr = data.get("finish_reason")
-                if fr:
-                    last_finish_reason = fr
-                continue
-            if etype not in {"session.end", "final"}:
-                continue
             if isinstance(data, dict):
                 usage = data.get("usage") or {}
                 telemetry["input_tokens"] = usage.get("input") or usage.get("input_tokens")
                 telemetry["output_tokens"] = usage.get("output") or usage.get("output_tokens")
                 if data.get("status") == "failed":
                     telemetry["process_outcome"] = "harness_crash"
-        # terminated_mid_work: model was actively producing output when the
-        # conversation ended (tool_calls or length cutoff) rather than
-        # voluntarily declaring done (stop / end_turn). Lets the matrix tell
-        # "ran out of time" apart from "claimed a solution and failed".
-        if last_finish_reason in {"tool_calls", "length", "function_call"}:
-            telemetry["terminated_mid_work"] = True
-        elif last_finish_reason in {"stop", "end_turn"}:
-            telemetry["terminated_mid_work"] = False
         telemetry["wall_seconds"] = 0.0
         return telemetry
 
