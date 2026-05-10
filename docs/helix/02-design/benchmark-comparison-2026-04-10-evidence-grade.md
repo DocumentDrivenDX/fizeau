@@ -6,8 +6,8 @@ Date: 2026-04-10
 
 - `before_sha`: `9c8b5b09fb4058545201b8d72a21b0861e4a4cdb`
 - `after_sha`: `dcc2f4512207e8b80d9f70bb2aeb7cb6c3913077`
-- Shared config: [scripts/benchmark/evidence-grade-comparison.env](/Users/erik/Projects/agent/scripts/benchmark/evidence-grade-comparison.env)
-- Subset: [scripts/benchmark/task-subset-v2.yaml](/Users/erik/Projects/agent/scripts/benchmark/task-subset-v2.yaml)
+- Shared config: [scripts/benchmark/evidence-grade-comparison.env](../../../scripts/benchmark/evidence-grade-comparison.env)
+- Subset: [scripts/benchmark/task-subset-v2.yaml](../../../scripts/benchmark/task-subset-v2.yaml)
 - Dataset: `terminal-bench@2.0`
 - Provider route: `openrouter`
 - Model: `anthropic/claude-opus-4.6-fast`
@@ -16,8 +16,8 @@ Date: 2026-04-10
 
 ## Artifacts
 
-- Before report: [report-20260411T010657Z.json](/Users/erik/Projects/agent/benchmark-results/evidence-grade/report-20260411T010657Z.json)
-- After report: [report-20260411T013232Z.json](/Users/erik/Projects/agent/benchmark-results/evidence-grade/report-20260411T013232Z.json)
+- Before report: [report-20260411T010657Z.json](../../../benchmark-results/evidence-grade/report-20260411T010657Z.json)
+- After report: [report-20260411T013232Z.json](../../../benchmark-results/evidence-grade/report-20260411T013232Z.json)
 
 ## Summary
 

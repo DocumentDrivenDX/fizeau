@@ -402,7 +402,7 @@ must not be used as the authoritative primary-harness health signal.
 
 TUI-only capability rows are feature complete only when the corresponding
 record/playback checklist in
-[Harness Golden-Master Integration](/Users/erik/Projects/agent/docs/helix/02-design/harness-golden-integration.md)
+[Harness Golden-Master Integration](../02-design/harness-golden-integration.md)
 passes in both live record mode and credential-free playback mode.
 
 ## Acceptance Criteria

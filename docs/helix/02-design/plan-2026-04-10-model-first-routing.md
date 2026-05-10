@@ -349,8 +349,8 @@ Callers do not read or own this state.
 
 ## Governing Artifacts
 
-- [prd.md](/Users/erik/Projects/agent/docs/helix/01-frame/prd.md)
-- [FEAT-004-model-routing.md](/Users/erik/Projects/agent/docs/helix/01-frame/features/FEAT-004-model-routing.md)
-- [FEAT-006-standalone-cli.md](/Users/erik/Projects/agent/docs/helix/01-frame/features/FEAT-006-standalone-cli.md)
-- [SD-002-standalone-cli.md](/Users/erik/Projects/agent/docs/helix/02-design/solution-designs/SD-002-standalone-cli.md)
-- [SD-005-provider-config.md](/Users/erik/Projects/agent/docs/helix/02-design/solution-designs/SD-005-provider-config.md)
+- [prd.md](../01-frame/prd.md)
+- [FEAT-004-model-routing.md](../01-frame/features/FEAT-004-model-routing.md)
+- [FEAT-006-standalone-cli.md](../01-frame/features/FEAT-006-standalone-cli.md)
+- [SD-002-standalone-cli.md](../02-design/solution-designs/SD-002-standalone-cli.md)
+- [SD-005-provider-config.md](../02-design/solution-designs/SD-005-provider-config.md)
