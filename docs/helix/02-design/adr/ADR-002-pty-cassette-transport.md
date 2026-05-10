@@ -81,7 +81,7 @@ than the first implementation target.
 
 The cassette recorder and player remain part of `internal/pty` for the baseline
 implementation, subject to the build-vs-buy gate in
-[ADR-004](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md).
+[ADR-004](../../02-design/adr/ADR-004-terminal-harness-build-vs-buy.md).
 The project will adopt PTY, terminal-emulator, and recording concepts where
 existing libraries fit. If reuse appears later, extract the mature PTY library
 as a whole rather than splitting cassette playback from session and terminal
@@ -110,13 +110,13 @@ library must be testable with synthetic programs and ordinary Unix TUIs before
 Claude or Codex are involved. Claude and Codex quota/model probes are acceptance
 tests for the harness adapters, not proof that the PTY library is complete by
 themselves. The terminal rendering decision is detailed in
-[ADR-003](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md).
+[ADR-003](../../02-design/adr/ADR-003-pty-terminal-rendering.md).
 The build-vs-buy boundary and extraction triggers are detailed in
-[ADR-004](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md).
+[ADR-004](../../02-design/adr/ADR-004-terminal-harness-build-vs-buy.md).
 The terminal rendering decision is supported by the `top` spike in
-[SPIKE-001](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md).
+[SPIKE-001](../../02-design/spikes/SPIKE-001-direct-pty-top-rendering.md).
 The recorder/driver build-vs-buy pressure test is captured in
-[SPIKE-002](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-002-terminal-driver-recorder-alternatives.md).
+[SPIKE-002](../../02-design/spikes/SPIKE-002-terminal-driver-recorder-alternatives.md).
 
 ## Data Flow
 
@@ -444,11 +444,11 @@ never normalizes or rewrites the evidence.
 ## References
 
 - [CONTRACT-003 Fizeau Service Interface](../contracts/CONTRACT-003-fizeau-service.md)
-- [Concerns](/Users/erik/Projects/agent/docs/helix/01-frame/concerns.md)
-- [Architecture](/Users/erik/Projects/agent/docs/helix/02-design/architecture.md)
-- [ADR-003 PTY Terminal Rendering and Screen Model](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md)
-- [ADR-004 Terminal Harness Build-vs-Buy Boundary](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md)
-- [SPIKE-001 Direct PTY Rendering With Unix Top](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
+- [Concerns](../../01-frame/concerns.md)
+- [Architecture](../../02-design/architecture.md)
+- [ADR-003 PTY Terminal Rendering and Screen Model](../../02-design/adr/ADR-003-pty-terminal-rendering.md)
+- [ADR-004 Terminal Harness Build-vs-Buy Boundary](../../02-design/adr/ADR-004-terminal-harness-build-vs-buy.md)
+- [SPIKE-001 Direct PTY Rendering With Unix Top](../../02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
 - [gastown local tmux wrapper](/Users/erik/Projects/gastown/internal/tmux/tmux.go)
 - [dun local harness spike](/Users/erik/Projects/dun/main/docs/helix/01-frame/spikes/SPIKE-001-nested-agent-harness.md)
 - [Named Tmux Manager](https://github.com/Dicklesworthstone/ntm)
