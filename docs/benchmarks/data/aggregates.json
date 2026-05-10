@@ -19,55 +19,37 @@
       "harness": "fiz (built-in agent loop)"
     },
     "sindri-club-3090": {
-      "n_attempts": 660,
+      "n_attempts": 355,
       "n_graded": 194,
       "n_pass": 55,
-      "tasks_touched": 104,
+      "tasks_touched": 96,
       "tasks_passed_any": 27,
-      "n_real": 104,
+      "n_real": 99,
       "invalids": {
-        "invalid_setup": 514
+        "invalid_setup": 209
       },
-      "median_turns": 11.0,
-      "median_in_tok": 61147.0,
-      "median_out_tok": 3623.5,
-      "median_wall": 900.2646410095,
-      "avg_cost": 0.0,
-      "harness": "fiz (built-in agent loop)"
-    },
-    "vidar-qwen3-6-27b": {
-      "n_attempts": 652,
-      "n_graded": 166,
-      "n_pass": 64,
-      "tasks_touched": 104,
-      "tasks_passed_any": 27,
-      "n_real": 103,
-      "invalids": {
-        "invalid_setup": 497,
-        "invalid_provider": 1
-      },
-      "median_turns": 14,
-      "median_in_tok": 95916,
-      "median_out_tok": 5459,
-      "median_wall": 931.341444076,
+      "median_turns": 11,
+      "median_in_tok": 62265,
+      "median_out_tok": 3554,
+      "median_wall": 819.385792752,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
     "fiz-openrouter-qwen3-6-27b": {
-      "n_attempts": 466,
+      "n_attempts": 450,
       "n_graded": 443,
       "n_pass": 178,
       "tasks_touched": 89,
       "tasks_passed_any": 52,
-      "n_real": 361,
+      "n_real": 354,
       "invalids": {
-        "invalid_setup": 49
+        "invalid_setup": 33
       },
-      "median_turns": 13,
-      "median_in_tok": 87289,
-      "median_out_tok": 5233,
-      "median_wall": 533.318203732,
-      "avg_cost": 0.12251578238227147,
+      "median_turns": 13.5,
+      "median_in_tok": 87698.5,
+      "median_out_tok": 5214.0,
+      "median_wall": 514.582230925,
+      "avg_cost": 0.12137973875706215,
       "harness": "fiz (built-in agent loop)"
     },
     "claude-sonnet-4-6": {
@@ -153,6 +135,24 @@
       "median_in_tok": null,
       "median_out_tok": null,
       "median_wall": null,
+      "avg_cost": 0.0,
+      "harness": "fiz (built-in agent loop)"
+    },
+    "vidar-qwen3-6-27b": {
+      "n_attempts": 325,
+      "n_graded": 167,
+      "n_pass": 64,
+      "tasks_touched": 88,
+      "tasks_passed_any": 27,
+      "n_real": 96,
+      "invalids": {
+        "invalid_setup": 170,
+        "invalid_provider": 1
+      },
+      "median_turns": 14.0,
+      "median_in_tok": 95721.5,
+      "median_out_tok": 4881.5,
+      "median_wall": 915.4089633605,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
@@ -403,77 +403,51 @@
     },
     "sindri-club-3090": {
       "all": {
-        "n_attempts": 552,
-        "tasks_attempted": 89,
+        "n_attempts": 247,
+        "tasks_attempted": 81,
         "tasks_in_subset": 89,
         "tasks_passed": 27
       },
       "canary": {
-        "n_attempts": 74,
+        "n_attempts": 68,
         "tasks_attempted": 3,
         "tasks_in_subset": 3,
         "tasks_passed": 3
       },
       "full": {
-        "n_attempts": 182,
+        "n_attempts": 159,
         "tasks_attempted": 15,
         "tasks_in_subset": 15,
         "tasks_passed": 10
       },
       "openai-cheap": {
-        "n_attempts": 266,
-        "tasks_attempted": 35,
+        "n_attempts": 156,
+        "tasks_attempted": 33,
         "tasks_in_subset": 35,
         "tasks_passed": 22
       }
     },
-    "vidar-qwen3-6-27b": {
-      "all": {
-        "n_attempts": 544,
-        "tasks_attempted": 89,
-        "tasks_in_subset": 89,
-        "tasks_passed": 27
-      },
-      "canary": {
-        "n_attempts": 102,
-        "tasks_attempted": 3,
-        "tasks_in_subset": 3,
-        "tasks_passed": 3
-      },
-      "full": {
-        "n_attempts": 173,
-        "tasks_attempted": 15,
-        "tasks_in_subset": 15,
-        "tasks_passed": 11
-      },
-      "openai-cheap": {
-        "n_attempts": 270,
-        "tasks_attempted": 35,
-        "tasks_in_subset": 35,
-        "tasks_passed": 19
-      }
-    },
     "fiz-openrouter-qwen3-6-27b": {
       "all": {
-        "n_attempts": 466,
+        "n_attempts": 450,
         "tasks_attempted": 89,
         "tasks_in_subset": 89,
         "tasks_passed": 52
       },
       "canary": {
-        "n_attempts": 36,
+        "n_attempts": 31,
         "tasks_attempted": 3,
         "tasks_in_subset": 3,
         "tasks_passed": 3
       },
       "full": {
-        "n_attempts": 96,
+        "n_attempts": 90,
         "tasks_attempted": 15,
         "tasks_in_subset": 15,
         "tasks_passed": 12
       },
       "openai-cheap": {
-        "n_attempts": 196,
+        "n_attempts": 191,
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 29
@@ -607,6 +581,32 @@
         "tasks_attempted": 12,
         "tasks_in_subset": 35,
         "tasks_passed": 1
+      }
+    },
+    "vidar-qwen3-6-27b": {
+      "all": {
+        "n_attempts": 217,
+        "tasks_attempted": 73,
+        "tasks_in_subset": 89,
+        "tasks_passed": 27
+      },
+      "canary": {
+        "n_attempts": 93,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 3
+      },
+      "full": {
+        "n_attempts": 139,
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 11
+      },
+      "openai-cheap": {
+        "n_attempts": 151,
+        "tasks_attempted": 30,
+        "tasks_in_subset": 35,
+        "tasks_passed": 19
       }
     },
     "fiz-openrouter-gpt-5-4-mini": {

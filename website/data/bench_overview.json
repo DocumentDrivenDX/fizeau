@@ -1,6 +1,6 @@
 {
-  "snapshot_ts": "2026-05-10 20:47:40 UTC",
-  "n_reports_total": 4410,
+  "snapshot_ts": "2026-05-10 21:06:33 UTC",
+  "n_reports_total": 3762,
   "n_profiles_active": 20,
   "n_external_comparators": 45,
   "n_external_trials": 18484,
@@ -12,35 +12,35 @@
       "pass_at_k_pct": 58.42696629213483,
       "pass_at_k_num": 52,
       "pass_at_k_den": 89,
-      "median_wall_s": 533.318203732,
-      "decode_tps_p50": 52.70838607484643,
+      "median_wall_s": 514.582230925,
+      "decode_tps_p50": 52.501924366766644,
       "ttft_p50_s": 0.7860475778579712,
-      "avg_cost_usd": 0.12251578238227147,
-      "n_attempts": 466
+      "avg_cost_usd": 0.12137973875706215,
+      "n_attempts": 450
     },
     {
       "profile_id": "sindri-club-3090",
       "label": "vLLM int4 (sindri / RTX 5090)",
-      "pass_at_k_pct": 25.961538461538463,
+      "pass_at_k_pct": 28.125,
       "pass_at_k_num": 27,
-      "pass_at_k_den": 104,
-      "median_wall_s": 900.2646410095,
-      "decode_tps_p50": 71.89757995047641,
-      "ttft_p50_s": 18.980042934417725,
+      "pass_at_k_den": 96,
+      "median_wall_s": 819.385792752,
+      "decode_tps_p50": 70.65556046931837,
+      "ttft_p50_s": 18.346883058547974,
       "avg_cost_usd": 0.0,
-      "n_attempts": 660
+      "n_attempts": 355
     },
     {
       "profile_id": "vidar-qwen3-6-27b",
       "label": "oMLX 8-bit (vidar / Mac Studio)",
-      "pass_at_k_pct": 25.961538461538463,
+      "pass_at_k_pct": 30.681818181818183,
       "pass_at_k_num": 27,
-      "pass_at_k_den": 104,
-      "median_wall_s": 931.341444076,
-      "decode_tps_p50": 15.365484351964557,
-      "ttft_p50_s": 10.053900957107544,
+      "pass_at_k_den": 88,
+      "median_wall_s": 915.4089633605,
+      "decode_tps_p50": 15.41249534217744,
+      "ttft_p50_s": 9.995745718479156,
       "avg_cost_usd": 0.0,
-      "n_attempts": 652
+      "n_attempts": 325
     }
   ],
   "frontier_comparators": [
