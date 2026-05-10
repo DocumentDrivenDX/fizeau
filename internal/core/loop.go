@@ -125,8 +125,20 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		CachePolicy:       req.CachePolicy,
 	}
 
-	// Tool-call loop detection: abort when the same fingerprint repeats consecutively.
-	const toolCallLoopLimit = 3
+	// Tool-call loop detection: abort when the same fingerprint (byte-
+	// identical tool name + arguments) repeats consecutively this many
+	// times. The detector catches genuinely stuck models that re-emit
+	// identical Python snippets, recreate the same TODO id, re-read the
+	// same file expecting different output, etc.
+	//
+	// Tuned to 5 after observing TB-2.1 sweeps: at limit=3 the detector
+	// killed ~30% of vidar (oMLX 8-bit Qwen) trials, including cases
+	// where the model was stuttering but plausibly recoverable. At
+	// limit=5 the model still gets killed when truly stuck (5 byte-
+	// identical calls is unmistakable) while cheaper momentary repetitions
+	// don't poison the cell. The cost in wasted wall time on confirmed-
+	// stuck cells is small (each extra repeat is one llm round-trip).
+	const toolCallLoopLimit = 5
 	var lastToolCallFingerprint string
 	consecutiveToolCallCount := 0
 
@@ -866,7 +878,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			lastToolCallFingerprint = fp
 		}
 		if consecutiveToolCallCount >= toolCallLoopLimit {
-			slog.Warn("tool-call loop: identical calls repeated 3 times, aborting")
+			slog.Warn("tool-call loop: identical calls repeated, aborting", "count", consecutiveToolCallCount, "limit", toolCallLoopLimit)
 			result.Status = StatusError
 			result.Error = ErrToolCallLoop
 			result.Duration = time.Since(start)

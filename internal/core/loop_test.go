@@ -2093,11 +2093,12 @@ func TestRun_OverflowCompactionSuccessRetryStillOverflowsReturnsError(t *testing
 }
 
 func TestRun_ToolCallLoopDetection(t *testing.T) {
-	// AC-FEAT-001-09: loop exits with ErrToolCallLoop when the agent produces identical
-	// tool calls (same name + args fingerprint) for 3 or more consecutive turns.
+	// AC-FEAT-001-09: loop exits with ErrToolCallLoop when the agent produces
+	// byte-identical tool calls (same name + args fingerprint) for
+	// toolCallLoopLimit (=5) consecutive turns.
 	//
-	// Provider returns the same tool call 4 times in a row.
-	// Loop should abort after 3 identical consecutive turns with ErrToolCallLoop.
+	// Provider returns the same tool call 6 times in a row. The loop should
+	// abort exactly on the 5th identical turn.
 	loopCall := ToolCall{
 		ID:        "call-1",
 		Name:      "bash",
@@ -2105,6 +2106,8 @@ func TestRun_ToolCallLoopDetection(t *testing.T) {
 	}
 	provider := &mockProvider{
 		responses: []Response{
+			{ToolCalls: []ToolCall{loopCall}},
+			{ToolCalls: []ToolCall{loopCall}},
 			{ToolCalls: []ToolCall{loopCall}},
 			{ToolCalls: []ToolCall{loopCall}},
 			{ToolCalls: []ToolCall{loopCall}},
@@ -2121,12 +2124,12 @@ func TestRun_ToolCallLoopDetection(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrToolCallLoop)
 	assert.Equal(t, StatusError, result.Status)
-	assert.Equal(t, 3, provider.callCount, "should abort after 3 identical consecutive turns")
+	assert.Equal(t, 5, provider.callCount, "should abort after 5 identical consecutive turns")
 }
 
 func TestRun_ToolCallLoopCounterResetsOnDifferentCall(t *testing.T) {
 	// Two identical calls, then a different call, then same again — counter resets.
-	// With toolCallLoopLimit=3 the loop should not abort in this sequence.
+	// With toolCallLoopLimit=5 the loop should not abort in this sequence.
 	callA := ToolCall{
 		ID:        "call-a",
 		Name:      "bash",
