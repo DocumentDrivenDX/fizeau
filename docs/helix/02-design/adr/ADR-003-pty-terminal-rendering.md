@@ -21,7 +21,7 @@ turn raw ANSI PTY output from real TUIs into stable screen frames for
 assertions, replay, and inspection?
 
 `top` was spiked through a direct PTY in
-[SPIKE-001](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md).
+[SPIKE-001](../../02-design/spikes/SPIKE-001-direct-pty-top-rendering.md).
 The spike successfully started `top`, sent input, resized the PTY, captured raw
 bytes, and rendered useful frames with a VT emulator. It also showed that raw
 output contains dense ANSI mode changes, cursor motion, screen clears, SGR
@@ -142,9 +142,9 @@ are designed.
 
 ## References
 
-- [ADR-002 PTY Cassette Transport](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-002-pty-cassette-transport.md)
-- [ADR-004 Terminal Harness Build-vs-Buy Boundary](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-004-terminal-harness-build-vs-buy.md)
-- [SPIKE-001 Direct PTY Rendering With Unix Top](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
+- [ADR-002 PTY Cassette Transport](../../02-design/adr/ADR-002-pty-cassette-transport.md)
+- [ADR-004 Terminal Harness Build-vs-Buy Boundary](../../02-design/adr/ADR-004-terminal-harness-build-vs-buy.md)
+- [SPIKE-001 Direct PTY Rendering With Unix Top](../../02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
 - [CONTRACT-003 Fizeau Service Interface](../contracts/CONTRACT-003-fizeau-service.md)
 
 ## Review Checklist

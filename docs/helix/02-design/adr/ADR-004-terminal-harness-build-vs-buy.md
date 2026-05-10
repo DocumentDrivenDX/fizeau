@@ -175,10 +175,10 @@ working for DDX.
 
 ## References
 
-- [ADR-002 PTY Cassette Transport](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-002-pty-cassette-transport.md)
-- [ADR-003 PTY Terminal Rendering and Screen Model](/Users/erik/Projects/agent/docs/helix/02-design/adr/ADR-003-pty-terminal-rendering.md)
-- [SPIKE-001 Direct PTY Rendering With Unix Top](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
-- [SPIKE-002 Terminal Driver and Recorder Alternatives](/Users/erik/Projects/agent/docs/helix/02-design/spikes/SPIKE-002-terminal-driver-recorder-alternatives.md)
+- [ADR-002 PTY Cassette Transport](../../02-design/adr/ADR-002-pty-cassette-transport.md)
+- [ADR-003 PTY Terminal Rendering and Screen Model](../../02-design/adr/ADR-003-pty-terminal-rendering.md)
+- [SPIKE-001 Direct PTY Rendering With Unix Top](../../02-design/spikes/SPIKE-001-direct-pty-top-rendering.md)
+- [SPIKE-002 Terminal Driver and Recorder Alternatives](../../02-design/spikes/SPIKE-002-terminal-driver-recorder-alternatives.md)
 - [creack/pty](https://github.com/creack/pty)
 - [Netflix/go-expect](https://github.com/Netflix/go-expect)
 - [asciicast v3 specification](https://docs.asciinema.org/manual/asciicast/v3/)
