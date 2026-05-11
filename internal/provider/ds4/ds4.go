@@ -38,12 +38,26 @@ func init() {
 	})
 }
 
-// ProtocolCapabilities mirrors the standard OpenAI-compatible surface. ds4
-// implements the full chat-completions wire (including tool_calls streaming
-// as deltas) but never emits a finish_reason of "tool_calls" — only "stop"
-// or "length". The agent loop already checks for empty resp.ToolCalls to
-// detect natural-stop turns, so this quirk is handled upstream.
-var ProtocolCapabilities = openai.OpenAIProtocolCapabilities
+// ProtocolCapabilities extends the standard OpenAI-compatible surface with
+// thinking-control support. ds4 accepts:
+//   - `reasoning_effort: "low"|"medium"|"high"|"max"|"xhigh"` (OpenAI-style)
+//   - `thinking: {"type": "enabled"|"disabled", "budget_tokens": N}`
+//     (Anthropic-style — matches our default ThinkingWireFormatThinkingMap)
+//   - `think: false` (boolean shortcut for direct-reply)
+//   - model alias `deepseek-chat` for non-thinking
+//
+// ds4 defaults to thinking mode at high effort (README §thinking-modes). The
+// thinking_map wire format fizeau emits by default lands cleanly here.
+//
+// Other ds4 quirks worth knowing about (handled elsewhere): finish_reason
+// is only "stop" or "length" — never "tool_calls" — but the agent loop
+// already keys on empty resp.ToolCalls for natural-stop detection.
+var ProtocolCapabilities = openai.ProtocolCapabilities{
+	Tools:            true,
+	Stream:           true,
+	StructuredOutput: true,
+	Thinking:         true,
+}
 
 type Config struct {
 	BaseURL      string
