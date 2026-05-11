@@ -705,9 +705,10 @@ lanes:
     endpoint: "http://sindri:8020/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
       top_p: 0.95
       top_k: 20
+      # No `reasoning:` — fiz's llama-server provider rejects the OpenAI
+      # reasoning_effort param. See note in the matching profile YAML.
     equivalence_note: >-
       RTX 3090, llama.cpp's llama-server hosting Unsloth Q3_K_XL GGUF.
       Replaces the vLLM autoround engine on the same machine. Different
