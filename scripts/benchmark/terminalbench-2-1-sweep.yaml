@@ -62,6 +62,7 @@ phases:
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
       - fiz-sindri-club-3090-qwen3-6-27b
+      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
     preflight:
       - "Verify all local endpoints are reachable before starting canary"
       - "Active 2026-05-07 targets: vidar:1235, bragi:8020, sindri:8020. Grendel is held out until laptop resource tuning is stable."
@@ -86,9 +87,10 @@ phases:
       - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
       - fiz-sindri-club-3090-qwen3-6-27b
+      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
     parallel_policy: >-
       Each lane belongs to a distinct resource group (rg-vidar-omlx,
-      rg-bragi-club-3090, rg-sindri-club-3090);
+      rg-bragi-club-3090, rg-sindri-club-3090, rg-sindri-club-3090-llamacpp);
       all three may run in parallel since they use different servers/endpoints.
       Within each resource group max_concurrency=1.
 
@@ -107,6 +109,7 @@ phases:
       - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
       - fiz-sindri-club-3090-qwen3-6-27b
+      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
       - fiz-openrouter-claude-sonnet-4-6
       - fiz-openrouter-gpt-5-4-mini
       - fiz-harness-claude-sonnet-4-6
