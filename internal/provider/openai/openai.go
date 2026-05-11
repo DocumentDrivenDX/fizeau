@@ -5,6 +5,7 @@ package openai
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -35,6 +36,7 @@ type Provider struct {
 	serverPort         int
 	reasoningDefault   reasoningpolicy.Reasoning
 	modelReasoningWire map[string]string
+	logger             *slog.Logger
 
 	// lazy model discovery — runs at most once per Provider instance
 	discoverOnce     sync.Once
@@ -68,10 +70,14 @@ type Config struct {
 	// ModelReasoningWire maps a concrete model ID to the catalog
 	// reasoning_wire value for that model. Recognized values are "provider"
 	// (default), "model_id" (model name encodes reasoning level — strip the
-	// reasoning field at serialization), and "none" (model has no reasoning
-	// surface — reject explicit non-off requests pre-flight). Models not
-	// listed default to "provider", preserving existing behavior.
+	// reasoning field at serialization), "none" (model has no reasoning
+	// surface — reject explicit non-off requests pre-flight), "effort"
+	// (always emit reasoning.effort string), and "tokens" (always emit
+	// reasoning.max_tokens int). Models not listed default to "provider",
+	// preserving existing behavior.
 	ModelReasoningWire map[string]string
+	// Logger is used for structured diagnostic logging. When nil, slog.Default() is used.
+	Logger *slog.Logger
 	// QuotaHeaderParser, when set, overrides the default OpenAI rate-limit
 	// header parser. OpenRouter uses this to install
 	// quotaheaders.ParseOpenRouter even though it goes through this
@@ -101,7 +107,7 @@ func New(cfg Config) *Provider {
 		// supplied. OpenRouter overrides this via Config.QuotaHeaderParser.
 		parser = quotaheaders.ParseOpenAI
 	}
-	return &Provider{
+	p := &Provider{
 		client: openaicompat.NewClient(openaicompat.Config{
 			BaseURL:             cfg.BaseURL,
 			APIKey:              cfg.APIKey,
@@ -122,7 +128,12 @@ func New(cfg Config) *Provider {
 		serverPort:         serverPort,
 		reasoningDefault:   cfg.Reasoning,
 		modelReasoningWire: cfg.ModelReasoningWire,
+		logger:             cfg.Logger,
 	}
+	if p.logger == nil {
+		p.logger = slog.Default()
+	}
+	return p
 }
 
 // DiscoveredModels returns the full ranked list of models discovered from the
@@ -359,7 +370,8 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 	// reasoning level in the model name (e.g. fixed-variant Qwen3.6) and the
 	// upstream endpoint cannot honor an external reasoning toggle, so the
 	// reasoning field must be stripped from the wire body.
-	switch p.modelReasoningWireFor(model) {
+	catalogWire := p.modelReasoningWireFor(model)
+	switch catalogWire {
 	case "none":
 		if explicitRequest && !policy.IsExplicitOff() {
 			return nil, fmt.Errorf("openai: model %q has reasoning_wire=none; explicit reasoning=%q is not supported", model, policy.Value)
@@ -401,13 +413,29 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 	}
 
 	if p.thinkingWireFormat() == ThinkingWireFormatOpenRouter {
-		return openRouterReasoningOptions(policy)
+		return openRouterReasoningOptions(policy, catalogWire)
 	}
 	if p.thinkingWireFormat() == ThinkingWireFormatQwen && !isQwenModel(model) {
 		if explicitRequest && p.strictThinkingModelMatch() {
 			return nil, fmt.Errorf("openai: qwen reasoning control is not supported for model %q on provider type %q", model, p.providerSystem)
 		}
 		return nil, nil
+	}
+
+	// Qwen and ThinkingMap providers can only express a token budget on the
+	// wire. If the catalog declares effort wire for this model, degrade
+	// gracefully: snap KindTokens to the nearest PortableBudgets tier so the
+	// downstream budget calculation uses a standard value. The model still
+	// works; the catalog entry is simply mis-classified.
+	if catalogWire == "effort" {
+		p.logger.Warn("catalog declares effort wire but provider only supports budget wire",
+			"model", model,
+			"provider", p.providerSystem,
+		)
+		if policy.Kind == reasoningpolicy.KindTokens {
+			tier := reasoningpolicy.NearestTierForTokens(policy.Tokens)
+			policy = reasoningpolicy.Policy{Kind: reasoningpolicy.KindNamed, Value: tier}
+		}
 	}
 
 	thinkingBudget, err := reasoningpolicy.BudgetFor(policy, nil, 0)
@@ -450,24 +478,67 @@ func isQwenModel(model string) bool {
 	return strings.Contains(strings.ToLower(model), "qwen")
 }
 
-func openRouterReasoningOptions(policy reasoningpolicy.Policy) ([]option.RequestOption, error) {
+// openRouterReasoningOptions builds the OpenRouter nested reasoning object.
+// wire is the catalog reasoning_wire value for the model:
+//   - "" or "provider": pick wire shape from policy.Kind (backwards-compat)
+//   - "effort": always emit reasoning.effort string; snap KindTokens to nearest tier
+//   - "tokens": always emit reasoning.max_tokens int; expand KindNamed via PortableBudgets
+func openRouterReasoningOptions(policy reasoningpolicy.Policy, wire string) ([]option.RequestOption, error) {
 	reasoning := map[string]interface{}{}
-	switch policy.Kind {
-	case reasoningpolicy.KindTokens:
-		reasoning["max_tokens"] = policy.Tokens
-	case reasoningpolicy.KindNamed:
-		effort := string(policy.Value)
-		if policy.Value == reasoningpolicy.ReasoningMax {
-			effort = string(reasoningpolicy.ReasoningXHigh)
+	switch wire {
+	case "effort":
+		var tier reasoningpolicy.Reasoning
+		switch policy.Kind {
+		case reasoningpolicy.KindTokens:
+			tier = reasoningpolicy.NearestTierForTokens(policy.Tokens)
+		case reasoningpolicy.KindNamed:
+			tier = policy.Value
+			if tier == reasoningpolicy.ReasoningMax {
+				tier = reasoningpolicy.ReasoningXHigh
+			}
+		default:
+			return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning policy %q for effort wire", policy.Kind)
 		}
+		effort := string(tier)
 		switch effort {
 		case "minimal", "low", "medium", "high", "xhigh":
 			reasoning["effort"] = effort
 		default:
-			return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning effort %q", policy.Value)
+			return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning effort %q", tier)
 		}
+	case "tokens":
+		var budget int
+		switch policy.Kind {
+		case reasoningpolicy.KindTokens:
+			budget = policy.Tokens
+		case reasoningpolicy.KindNamed:
+			budget = reasoningpolicy.BudgetForNamed(policy.Value)
+			if budget <= 0 {
+				return nil, fmt.Errorf("openai: named reasoning %q has no portable token budget for tokens wire", policy.Value)
+			}
+		default:
+			return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning policy %q for tokens wire", policy.Kind)
+		}
+		reasoning["max_tokens"] = budget
 	default:
-		return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning policy %q", policy.Kind)
+		// "" or "provider": today's behavior — pick wire shape from policy.Kind.
+		switch policy.Kind {
+		case reasoningpolicy.KindTokens:
+			reasoning["max_tokens"] = policy.Tokens
+		case reasoningpolicy.KindNamed:
+			effort := string(policy.Value)
+			if policy.Value == reasoningpolicy.ReasoningMax {
+				effort = string(reasoningpolicy.ReasoningXHigh)
+			}
+			switch effort {
+			case "minimal", "low", "medium", "high", "xhigh":
+				reasoning["effort"] = effort
+			default:
+				return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning effort %q", policy.Value)
+			}
+		default:
+			return nil, fmt.Errorf("openai: unsupported OpenRouter reasoning policy %q", policy.Kind)
+		}
 	}
 	return []option.RequestOption{option.WithJSONSet("reasoning", reasoning)}, nil
 }

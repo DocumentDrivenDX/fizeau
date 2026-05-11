@@ -81,3 +81,54 @@ func TestBudgetForRejectsOverLimitAndUnsupportedNamedValues(t *testing.T) {
 		t.Fatal("expected unsupported extended named value to fail without provider map")
 	}
 }
+
+func TestBudgetForNamed(t *testing.T) {
+	tests := []struct {
+		tier Reasoning
+		want int
+	}{
+		{ReasoningLow, 2048},
+		{ReasoningMedium, 8192},
+		{ReasoningHigh, 32768},
+		{ReasoningOff, 0},
+		{ReasoningMinimal, 0},
+		{ReasoningXHigh, 0},
+		{ReasoningMax, 0},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.tier), func(t *testing.T) {
+			got := BudgetForNamed(tt.tier)
+			if got != tt.want {
+				t.Fatalf("BudgetForNamed(%q) = %d, want %d", tt.tier, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNearestTierForTokens(t *testing.T) {
+	tests := []struct {
+		tokens int
+		want   Reasoning
+	}{
+		{1, ReasoningLow},
+		{2048, ReasoningLow},
+		{4095, ReasoningLow},
+		// 4096 = geometric midpoint of 2048 and 8192; ties round up → medium
+		{4096, ReasoningMedium},
+		{4097, ReasoningMedium},
+		{8192, ReasoningMedium},
+		{16383, ReasoningMedium},
+		// 16384 = geometric midpoint of 8192 and 32768; ties round up → high
+		{16384, ReasoningHigh},
+		{32768, ReasoningHigh},
+		{100000, ReasoningHigh},
+	}
+	for _, tt := range tests {
+		t.Run(string(ReasoningTokens(tt.tokens)), func(t *testing.T) {
+			got := NearestTierForTokens(tt.tokens)
+			if got != tt.want {
+				t.Fatalf("NearestTierForTokens(%d) = %q, want %q", tt.tokens, got, tt.want)
+			}
+		})
+	}
+}

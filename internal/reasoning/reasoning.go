@@ -132,6 +132,25 @@ func Parse(value any) (Policy, error) {
 	}
 }
 
+// BudgetForNamed returns the PortableBudgets token budget for a named reasoning
+// tier. Returns 0 for tiers without a portable budget (off, minimal, xhigh, max).
+func BudgetForNamed(r Reasoning) int {
+	return PortableBudgets[r]
+}
+
+// NearestTierForTokens snaps a token count to the nearest PortableBudgets tier
+// using log2-scale distance; ties round up to the higher tier.
+// Boundaries (geometric midpoints): <4096 → low, [4096,16384) → medium, ≥16384 → high.
+func NearestTierForTokens(n int) Reasoning {
+	if n < 4096 {
+		return ReasoningLow
+	}
+	if n < 16384 {
+		return ReasoningMedium
+	}
+	return ReasoningHigh
+}
+
 func BudgetFor(policy Policy, budgets map[Reasoning]int, maxTokens int) (int, error) {
 	switch policy.Kind {
 	case KindUnset, KindAuto:

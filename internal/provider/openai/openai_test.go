@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +19,31 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// testLogHandler captures slog records for assertion in tests.
+type testLogHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *testLogHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *testLogHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	h.records = append(h.records, r.Clone())
+	h.mu.Unlock()
+	return nil
+}
+func (h *testLogHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *testLogHandler) WithGroup(_ string) slog.Handler      { return h }
+func (h *testLogHandler) Messages() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	msgs := make([]string, len(h.records))
+	for i, r := range h.records {
+		msgs[i] = r.Message
+	}
+	return msgs
+}
 
 // streamSSE writes a sequence of SSE data lines followed by a final [DONE] event.
 func streamSSE(w http.ResponseWriter, events []string) {
@@ -1196,4 +1223,140 @@ func captureOpenAIChatBodyWithReasoningWire(t *testing.T, model string, modelWir
 	})
 	_, err := p.Chat(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "hello"}}, nil, opts)
 	return capturedBody, err
+}
+
+// captureOpenAIChatBodyWithReasoningWireQwen constructs a Qwen-style provider
+// (ThinkingWireFormatQwen) with the given per-model reasoning_wire metadata,
+// an optional logger, and returns the captured request body.
+func captureOpenAIChatBodyWithReasoningWireQwen(t *testing.T, model string, modelWire map[string]string, logger *slog.Logger, opts agent.Options) ([]byte, error) {
+	t.Helper()
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-1",
+			"model":"` + model + `",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}
+		}`))
+	}))
+	defer srv.Close()
+
+	caps := openai.OpenAIProtocolCapabilities
+	caps.Thinking = true
+	caps.ThinkingFormat = openai.ThinkingWireFormatQwen
+
+	p := openai.New(openai.Config{
+		BaseURL:            srv.URL + "/v1",
+		APIKey:             "test",
+		Model:              model,
+		ProviderSystem:     "omlx",
+		Capabilities:       &caps,
+		ModelReasoningWire: modelWire,
+		Logger:             logger,
+	})
+	_, err := p.Chat(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "hello"}}, nil, opts)
+	return capturedBody, err
+}
+
+// TestOpenRouterReasoningWireCatalog verifies the five wire-form table cases
+// from the bead spec and the backwards-compat case.
+func TestOpenRouterReasoningWireCatalog(t *testing.T) {
+	const model = "qwen/qwen3-235b-a22b"
+
+	tests := []struct {
+		name          string
+		opts          agent.Options
+		wire          string
+		wantEffort    string
+		wantMaxTokens int
+	}{
+		// AC1: low + tokens wire → max_tokens: 2048
+		{
+			name:          "low+tokens wire emits max_tokens 2048",
+			opts:          agent.Options{Reasoning: agent.ReasoningLow},
+			wire:          "tokens",
+			wantMaxTokens: 2048,
+		},
+		// AC2: 4096 tokens + effort wire → effort: "medium" (round-up on tie)
+		{
+			name:       "4096tokens+effort wire emits effort medium",
+			opts:       agent.Options{Reasoning: agent.ReasoningTokens(4096)},
+			wire:       "effort",
+			wantEffort: "medium",
+		},
+		// AC3: high + effort wire → effort: "high"
+		{
+			name:       "high+effort wire emits effort high",
+			opts:       agent.Options{Reasoning: agent.ReasoningHigh},
+			wire:       "effort",
+			wantEffort: "high",
+		},
+		// AC4 (backwards-compat): high + provider wire → effort: "high" (no change)
+		{
+			name:       "high+provider wire emits effort high (backwards-compat)",
+			opts:       agent.Options{Reasoning: agent.ReasoningHigh},
+			wire:       "provider",
+			wantEffort: "high",
+		},
+		// AC4 (backwards-compat): high + unset wire → effort: "high" (no change)
+		{
+			name:       "high+unset wire emits effort high (backwards-compat)",
+			opts:       agent.Options{Reasoning: agent.ReasoningHigh},
+			wire:       "",
+			wantEffort: "high",
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			wireMap := map[string]string{}
+			if tt.wire != "" {
+				wireMap[model] = tt.wire
+			}
+			body, err := captureOpenAIChatBodyWithReasoningWire(t, model, wireMap, tt.opts)
+			require.NoError(t, err)
+			assertOpenRouterReasoningWire(t, body, tt.wantEffort, tt.wantMaxTokens)
+		})
+	}
+}
+
+// TestQwenReasoningWireCatalogEffortDegrades verifies AC5: a Qwen-format
+// provider whose model is catalog-flagged as wire=effort degrades to budget
+// wire with the nearest PortableBudgets tier, and emits a structured warning.
+func TestQwenReasoningWireCatalogEffortDegrades(t *testing.T) {
+	const model = "Qwen3.6-27B-MLX-8bit"
+	logHandler := &testLogHandler{}
+	logger := slog.New(logHandler)
+
+	body, err := captureOpenAIChatBodyWithReasoningWireQwen(t, model, map[string]string{
+		model: "effort",
+	}, logger, agent.Options{Reasoning: agent.ReasoningTokens(4096)})
+	require.NoError(t, err)
+	// 4096 snaps to medium tier → thinking_budget: 8192
+	assertQwenReasoningWireBudget(t, body, true, 8192)
+
+	// Verify the structured warning was emitted.
+	msgs := logHandler.Messages()
+	require.NotEmpty(t, msgs, "expected a structured warning log for effort wire on Qwen provider")
+	assert.Contains(t, msgs[0], "catalog declares effort wire but provider only supports budget wire")
+}
+
+// TestQwenReasoningWireCatalogTokensPassthrough verifies that wire=tokens on a
+// Qwen-format provider behaves identically to the default (no degradation, no
+// warning), satisfying the backwards-compat requirement for Qwen+tokens.
+func TestQwenReasoningWireCatalogTokensPassthrough(t *testing.T) {
+	const model = "Qwen3.6-27B-MLX-8bit"
+	logHandler := &testLogHandler{}
+	logger := slog.New(logHandler)
+
+	body, err := captureOpenAIChatBodyWithReasoningWireQwen(t, model, map[string]string{
+		model: "tokens",
+	}, logger, agent.Options{Reasoning: agent.ReasoningHigh})
+	require.NoError(t, err)
+	assertQwenReasoningWireBudget(t, body, true, 32768)
+
+	assert.Empty(t, logHandler.Messages(), "wire=tokens on Qwen must not emit a warning")
 }
