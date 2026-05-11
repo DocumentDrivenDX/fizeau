@@ -155,6 +155,7 @@ func (c *Client) Chat(ctx context.Context, model string, messages []agent.Messag
 			int(completion.Usage.TotalTokens),
 			int(completion.Usage.PromptTokensDetails.CachedTokens),
 		)
+		result.Usage.Reasoning = extractReasoningTokens(result.RawUsage)
 	}
 
 	if len(completion.Choices) > 0 {
@@ -245,6 +246,7 @@ func (c *Client) ChatStream(ctx context.Context, model string, messages []agent.
 					int(chunk.Usage.TotalTokens),
 					int(chunk.Usage.PromptTokensDetails.CachedTokens),
 				)
+				usage.Reasoning = extractReasoningTokens(chunk.Usage.RawJSON())
 				send(agent.StreamDelta{Usage: &usage})
 			}
 		}
@@ -389,4 +391,31 @@ func tokenUsage(input, output, total, cacheRead int) agent.TokenUsage {
 		usage.CacheRead = cacheRead
 	}
 	return usage
+}
+
+// extractReasoningTokens reads usage.completion_tokens_details.reasoning_tokens
+// from the raw usage JSON. The OpenAI Go SDK doesn't expose this field
+// directly through its typed Usage struct (it's in completion_tokens_details
+// which the SDK exposes on some models but not others), so we parse it from
+// the raw JSON. Returns 0 when absent. Servers that emit reasoning_tokens:
+// OpenAI (o1/o3/gpt-5+ thinking models), DeepSeek R1, Qwen3 thinking-mode
+// builds (vLLM, llama.cpp, oMLX), DwarfStar 4 (ds4-server).
+func extractReasoningTokens(rawUsageJSON string) int {
+	if rawUsageJSON == "" {
+		return 0
+	}
+	var raw struct {
+		CompletionTokensDetails struct {
+			ReasoningTokens int `json:"reasoning_tokens"`
+		} `json:"completion_tokens_details"`
+		// Some non-OpenAI servers put reasoning_tokens at the top level.
+		ReasoningTokens *int `json:"reasoning_tokens,omitempty"`
+	}
+	if err := json.Unmarshal([]byte(rawUsageJSON), &raw); err != nil {
+		return 0
+	}
+	if raw.ReasoningTokens != nil && *raw.ReasoningTokens > 0 {
+		return *raw.ReasoningTokens
+	}
+	return raw.CompletionTokensDetails.ReasoningTokens
 }

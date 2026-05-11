@@ -20,13 +20,18 @@ pricing:
   output_usd_per_mtok: 3.20
   cached_input_usd_per_mtok: 0.32
 limits:
-  max_output_tokens: 32768
+  max_output_tokens: 65536               # bumped from 32768 — gives response room after Qwen's thinking section
   context_tokens: 262144
   rate_limit_rpm: 500
   rate_limit_tpm: 1000000
 sampling:
   temperature: 0.6
-  reasoning: low
+  # reasoning=medium maps to thinking_budget=8192 in fizeau's reasoning policy,
+  # which matches the Qwen3 technical report's RULER benchmark setting and the
+  # community's hard-agentic-task converged number (research 2026-05-11). Was
+  # `low` (2048) which the OR rerun showed truncating 40% of cells — Qwen
+  # thinking is verbose and 2048 isn't enough room for hard tasks.
+  reasoning: medium
   top_p: 0.95
   top_k: 20
 versioning:

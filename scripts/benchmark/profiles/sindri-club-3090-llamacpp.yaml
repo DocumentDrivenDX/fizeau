@@ -26,22 +26,21 @@ pricing:
   output_usd_per_mtok: 0.0
   cached_input_usd_per_mtok: 0.0
 limits:
-  max_output_tokens: 32768
+  max_output_tokens: 65536               # bumped from 32768 — gives response room after Qwen's thinking section
   context_tokens: 180000
   rate_limit_rpm: 60
   rate_limit_tpm: 100000
 sampling:
   temperature: 0.6
+  # reasoning=medium → thinking_budget=8192 via fizeau's reasoning policy.
+  # The llamaserver ProtocolCapabilities was updated 2026-05-11 to set
+  # Thinking=true + ThinkingFormat=Qwen so fizeau emits enable_thinking +
+  # thinking_budget for this lane (previously rejected as "not supported
+  # by provider type llama-server"). The Q3_K_XL GGUF's chat template
+  # uses <think>...</think> tags natively for thinking mode.
+  reasoning: medium
   top_p: 0.95
   top_k: 20
-# NOTE: no `reasoning:` field. Fiz's llama-server provider rejects the
-# OpenAI-style `reasoning_effort` parameter ("reasoning=... is not
-# supported by provider type llama-server"). Qwen3 thinking mode is
-# instead controlled by llama-server's chat template (the
-# generation_prompt determines whether <think> tags are open or closed
-# at generation start). Sindri's current llama-server reports
-# reasoning_format=none and generation_prompt="<think>\n\n</think>\n\n"
-# (closed = no thinking).
 versioning:
   resolved_at: "2026-05-10"
   snapshot: "Qwen3.6-27B-UD-Q3_K_XL.gguf"

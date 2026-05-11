@@ -30,8 +30,23 @@ func init() {
 	})
 }
 
-// ProtocolCapabilities mirrors the standard OpenAI-compatible surface.
-var ProtocolCapabilities = openai.OpenAIProtocolCapabilities
+// ProtocolCapabilities extends the standard OpenAI-compatible surface with
+// thinking-control support. llama.cpp's llama-server accepts Qwen-family
+// enable_thinking + thinking_budget controls when the model's chat template
+// is wired for thinking mode (Qwen3, DeepSeek R1, etc.) — and silently
+// ignores them on non-thinking models. The default ThinkingWireFormatQwen
+// matches what Qwen GGUFs expect.
+//
+// Without Thinking: true, fizeau's openai provider rejects any explicit
+// reasoning param with "openai: reasoning=... is not supported by provider
+// type llama-server" — biting us on sindri-llamacpp until 2026-05-11.
+var ProtocolCapabilities = openai.ProtocolCapabilities{
+	Tools:            true,
+	Stream:           true,
+	StructuredOutput: true,
+	Thinking:         true,
+	ThinkingFormat:   openai.ThinkingWireFormatQwen,
+}
 
 type Config struct {
 	BaseURL      string

@@ -45,6 +45,13 @@ type TokenUsage struct {
 	CacheRead  int `json:"cache_read,omitempty"`
 	CacheWrite int `json:"cache_write,omitempty"`
 	Total      int `json:"total"`
+	// Reasoning is the count of thinking-mode tokens included in Output.
+	// Servers that expose `usage.completion_tokens_details.reasoning_tokens`
+	// (OpenAI o1/o3/gpt-5, DeepSeek R1, Qwen3, ds4) populate this from the
+	// upstream wire field. Output already includes reasoning tokens — this
+	// is a sub-count for analyses that need to separate "model thought" from
+	// "model wrote the answer". Zero when the provider doesn't expose it.
+	Reasoning int `json:"reasoning,omitempty"`
 }
 
 // Add accumulates token counts from another TokenUsage.
@@ -54,6 +61,7 @@ func (u *TokenUsage) Add(other TokenUsage) {
 	u.CacheRead += other.CacheRead
 	u.CacheWrite += other.CacheWrite
 	u.Total += other.Total
+	u.Reasoning += other.Reasoning
 }
 
 // ToolCall represents a tool invocation requested by the model in the internal

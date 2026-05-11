@@ -73,7 +73,15 @@ type matrixRunReport struct {
 	// TerminatedMidWork lets the classifier distinguish:
 	//   - request fired, no response → invalid_provider (provider hang/error)
 	//   - no request at all          → invalid_setup (failed before reaching model)
-	HadLLMRequest           *bool                    `json:"had_llm_request,omitempty"`
+	HadLLMRequest *bool `json:"had_llm_request,omitempty"`
+	// ReasoningTokens is the per-cell sum of thinking-mode tokens emitted
+	// across all llm.response events. Servers expose it as
+	// usage.completion_tokens_details.reasoning_tokens (OpenAI o1/o3/gpt-5,
+	// DeepSeek R1, Qwen3 thinking-mode builds, ds4). Output_tokens already
+	// includes reasoning; this is a sub-count for analyses that need to
+	// separate "model thought" from "model wrote answer". Pointer so absent
+	// (no session data, or no thinking model) is distinct from explicit zero.
+	ReasoningTokens         *int                     `json:"reasoning_tokens,omitempty"`
 	CostUSD                 float64                  `json:"cost_usd"`
 	PricingSource           string                   `json:"pricing_source"`
 	AdapterTranslationNotes []string                 `json:"adapter_translation_notes,omitempty"`
@@ -529,14 +537,18 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 					report.GradingOutcome = "ungraded"
 				}
 			}
-			// Read session-jsonl signals (terminated_mid_work + had_llm_request)
-			// from the trial's session jsonl. The harbor agent (FizeauAgent)
-			// writes to <cellDir>/<jobName>/<trial-hash>/agent/sessions/
-			// svc-*.jsonl; glob for the newest since the trial-hash isn't
-			// known up front. Mirrors backfill-terminated-mid-work.py.
-			tmw, hadReq := readSessionSignalsFromCell(filepath.Join(cellDir, jobName))
+			// Read session-jsonl signals (terminated_mid_work + had_llm_request
+			// + reasoning_tokens) from the trial's session jsonl. The harbor
+			// agent (FizeauAgent) writes to <cellDir>/<jobName>/<trial-hash>/
+			// agent/sessions/svc-*.jsonl; glob for the newest since the
+			// trial-hash isn't known up front. Mirrors backfill-terminated-
+			// mid-work.py.
+			tmw, hadReq, reasoning := readSessionSignalsFromCell(filepath.Join(cellDir, jobName))
 			if tmw != nil {
 				report.TerminatedMidWork = tmw
+			}
+			if reasoning != nil {
+				report.ReasoningTokens = reasoning
 			}
 			report.HadLLMRequest = &hadReq
 		}
@@ -1322,13 +1334,19 @@ func boolPointerField(m map[string]any, key string) *bool {
 }
 
 // readSessionSignalsFromCell streams the trial's session jsonl and
-// returns three signals:
+// returns four signals:
 //
-//	tmw          : terminated_mid_work — true if last llm.response had
-//	               finish_reason in (tool_calls, length, function_call);
-//	               false on (stop, end_turn); nil when no llm.response.
-//	hadLLMRequest: true when the agent issued at least one llm.request,
-//	               whether or not a response came back.
+//	tmw           : terminated_mid_work — true if last llm.response had
+//	                finish_reason in (tool_calls, length, function_call);
+//	                false on (stop, end_turn); nil when no llm.response.
+//	hadLLMRequest : true when the agent issued at least one llm.request,
+//	                whether or not a response came back.
+//	reasoningTokens: per-cell sum of usage.reasoning across all llm.response
+//	                events. Returns nil when the provider doesn't expose
+//	                reasoning_tokens at all (so absent vs explicit-zero are
+//	                distinguishable). Captured from data.usage.reasoning
+//	                (fizeau-emitted) or data.usage.completion_tokens_details
+//	                .reasoning_tokens (raw upstream OpenAI shape).
 //
 // The combination distinguishes three failure shapes:
 //   - tmw set true|false  → model attempted (real graded result)
@@ -1339,10 +1357,10 @@ func boolPointerField(m map[string]any, key string) *bool {
 //
 // jobDir = <cellDir>/<jobName>; harbor writes to
 // <jobDir>/<trial-hash>/agent/sessions/svc-*.jsonl.
-func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool) {
+func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool, reasoningTokens *int) {
 	matches, err := filepath.Glob(filepath.Join(jobDir, "*", "agent", "sessions", "svc-*.jsonl"))
 	if err != nil || len(matches) == 0 {
-		return nil, false
+		return nil, false, nil
 	}
 	// Newest by mtime — matches the trial we just ran.
 	sessPath := matches[0]
@@ -1358,10 +1376,12 @@ func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool) {
 	}
 	f, err := os.Open(sessPath) // #nosec G304 -- jobDir is a benchmark output path
 	if err != nil {
-		return nil, false
+		return nil, false, nil
 	}
 	defer f.Close()
 	var lastFinish string
+	var reasoningSum int
+	var sawReasoning bool
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 	for scanner.Scan() {
@@ -1369,6 +1389,12 @@ func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool) {
 			Type string `json:"type"`
 			Data struct {
 				FinishReason string `json:"finish_reason"`
+				Usage        struct {
+					Reasoning               int `json:"reasoning"`
+					CompletionTokensDetails struct {
+						ReasoningTokens int `json:"reasoning_tokens"`
+					} `json:"completion_tokens_details"`
+				} `json:"usage"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &ev); err != nil {
@@ -1381,6 +1407,16 @@ func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool) {
 			if ev.Data.FinishReason != "" {
 				lastFinish = ev.Data.FinishReason
 			}
+			// Prefer fizeau's normalized field; fall back to the raw OpenAI shape
+			// if a provider passes raw upstream usage through unchanged.
+			tokens := ev.Data.Usage.Reasoning
+			if tokens == 0 {
+				tokens = ev.Data.Usage.CompletionTokensDetails.ReasoningTokens
+			}
+			if tokens > 0 {
+				sawReasoning = true
+				reasoningSum += tokens
+			}
 		}
 	}
 	switch lastFinish {
@@ -1391,7 +1427,10 @@ func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool) {
 		fv := false
 		tmw = &fv
 	}
-	return tmw, hadLLMRequest
+	if sawReasoning {
+		reasoningTokens = &reasoningSum
+	}
+	return tmw, hadLLMRequest, reasoningTokens
 }
 
 func deriveMatrixFinalStatus(processOutcome, gradingOutcome string, reward *int, retriable bool) string {
