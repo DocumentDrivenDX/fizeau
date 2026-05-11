@@ -16,7 +16,7 @@ func TestWireFormatFor(t *testing.T) {
 	}{
 		{"openrouter", wireOpenRouter},
 		{"OPENROUTER", wireOpenRouter},
-		{"ds4", wireThinkingMap},
+		{"ds4", wireOpenAIEffort},
 		{"anthropic", wireThinkingMap},
 		{"lmstudio", wireQwen},
 		{"vllm", wireQwen},
@@ -75,29 +75,70 @@ func TestAddOpenRouterFields_Tokens(t *testing.T) {
 
 func TestAddQwenFields_Off(t *testing.T) {
 	body := bodyFor(t, wireQwen, reasoning.Policy{Kind: reasoning.KindOff})
-	if body["enable_thinking"] != false {
-		t.Errorf("enable_thinking = %v, want false", body["enable_thinking"])
+	kw, ok := body["chat_template_kwargs"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("chat_template_kwargs missing or wrong type: %T", body["chat_template_kwargs"])
 	}
-	if body["thinking_budget"] != 0 {
-		t.Errorf("thinking_budget = %v, want 0", body["thinking_budget"])
+	if kw["enable_thinking"] != false {
+		t.Errorf("enable_thinking = %v, want false", kw["enable_thinking"])
+	}
+	if kw["thinking_budget"] != 0 {
+		t.Errorf("thinking_budget = %v, want 0", kw["thinking_budget"])
 	}
 }
 
 func TestAddQwenFields_NamedMedium(t *testing.T) {
 	body := bodyFor(t, wireQwen, reasoning.Policy{Kind: reasoning.KindNamed, Value: reasoning.ReasoningMedium})
-	if body["enable_thinking"] != true {
-		t.Errorf("enable_thinking = %v, want true", body["enable_thinking"])
+	kw, ok := body["chat_template_kwargs"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("chat_template_kwargs missing or wrong type: %T", body["chat_template_kwargs"])
+	}
+	if kw["enable_thinking"] != true {
+		t.Errorf("enable_thinking = %v, want true", kw["enable_thinking"])
 	}
 	// PortableBudgets[medium] = 8192
-	if body["thinking_budget"] != 8192 {
-		t.Errorf("thinking_budget = %v, want 8192", body["thinking_budget"])
+	if kw["thinking_budget"] != 8192 {
+		t.Errorf("thinking_budget = %v, want 8192", kw["thinking_budget"])
 	}
 }
 
 func TestAddQwenFields_Tokens16384(t *testing.T) {
 	body := bodyFor(t, wireQwen, reasoning.Policy{Kind: reasoning.KindTokens, Tokens: 16384})
-	if body["thinking_budget"] != 16384 {
-		t.Errorf("thinking_budget = %v, want 16384", body["thinking_budget"])
+	kw, ok := body["chat_template_kwargs"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("chat_template_kwargs missing or wrong type: %T", body["chat_template_kwargs"])
+	}
+	if kw["thinking_budget"] != 16384 {
+		t.Errorf("thinking_budget = %v, want 16384", kw["thinking_budget"])
+	}
+}
+
+func TestAddOpenAIEffortFields_Off(t *testing.T) {
+	body := bodyFor(t, wireOpenAIEffort, reasoning.Policy{Kind: reasoning.KindOff})
+	if body["think"] != false {
+		t.Errorf("think = %v, want false", body["think"])
+	}
+	if _, present := body["reasoning_effort"]; present {
+		t.Errorf("reasoning_effort should be absent for off")
+	}
+}
+
+func TestAddOpenAIEffortFields_NamedHigh(t *testing.T) {
+	body := bodyFor(t, wireOpenAIEffort, reasoning.Policy{Kind: reasoning.KindNamed, Value: reasoning.ReasoningHigh})
+	if body["reasoning_effort"] != "high" {
+		t.Errorf("reasoning_effort = %v, want high", body["reasoning_effort"])
+	}
+	if _, present := body["think"]; present {
+		t.Errorf("think field should be absent for explicit named tier")
+	}
+}
+
+func TestAddOpenAIEffortFields_Tokens4096(t *testing.T) {
+	body := bodyFor(t, wireOpenAIEffort, reasoning.Policy{Kind: reasoning.KindTokens, Tokens: 4096})
+	// PortableBudgets are 2048/8192/32768; 4096 is midpoint of low+medium →
+	// rounds up to "medium".
+	if body["reasoning_effort"] != "medium" {
+		t.Errorf("reasoning_effort = %v, want medium (4096 snaps up)", body["reasoning_effort"])
 	}
 }
 

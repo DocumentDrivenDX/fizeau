@@ -35,9 +35,10 @@ const (
 type wireFormat string
 
 const (
-	wireOpenRouter  wireFormat = "openrouter"   // reasoning: {effort|max_tokens}
-	wireQwen        wireFormat = "qwen"         // enable_thinking + thinking_budget
-	wireThinkingMap wireFormat = "thinking_map" // thinking: {type, budget_tokens}
+	wireOpenRouter   wireFormat = "openrouter"    // reasoning: {effort|max_tokens}
+	wireQwen         wireFormat = "qwen"          // chat_template_kwargs.{enable_thinking, thinking_budget}
+	wireThinkingMap  wireFormat = "thinking_map"  // thinking: {type, budget_tokens}
+	wireOpenAIEffort wireFormat = "openai_effort" // top-level reasoning_effort + think:false off path (ds4)
 )
 
 // probeCase is one row in the measurement matrix.
@@ -58,14 +59,15 @@ var probeMatrix = []probeCase{
 
 // probeResult captures the measured outcome for one matrix row.
 type probeResult struct {
-	Label         string
-	WireBody      json.RawMessage // raw JSON sent to the endpoint
-	FinishReason  string
-	ReasoningToks int
-	WallTime      time.Duration
-	ThinkHash     string // SHA-256 hex prefix of <think> block content, or ""
-	ResponseBody  json.RawMessage
-	Error         string
+	Label                 string
+	WireBody              json.RawMessage // raw JSON sent to the endpoint
+	FinishReason          string
+	ReasoningToks         int
+	ReasoningTokensApprox bool // true when derived from len(reasoning_content)/4
+	WallTime              time.Duration
+	ThinkHash             string // SHA-256 hex prefix of <think> or reasoning_content, or ""
+	ResponseBody          json.RawMessage
+	Error                 string
 }
 
 // probeConfig holds the resolved endpoint / provider parameters.
@@ -213,7 +215,9 @@ func wireFormatFor(providerType string) wireFormat {
 	switch strings.ToLower(providerType) {
 	case "openrouter":
 		return wireOpenRouter
-	case "ds4", "anthropic":
+	case "ds4":
+		return wireOpenAIEffort
+	case "anthropic":
 		return wireThinkingMap
 	default:
 		// lmstudio, vllm, llama-server, omlx, ollama, rapid-mlx, openai-compat use Qwen wire.
@@ -313,6 +317,8 @@ func addReasoningFields(body map[string]interface{}, format wireFormat, policy r
 		return addQwenFields(body, policy)
 	case wireThinkingMap:
 		return addThinkingMapFields(body, policy)
+	case wireOpenAIEffort:
+		return addOpenAIEffortFields(body, policy)
 	default:
 		return fmt.Errorf("unknown wire format %q", format)
 	}
@@ -339,9 +345,15 @@ func addOpenRouterFields(body map[string]interface{}, policy reasoning.Policy) e
 }
 
 func addQwenFields(body map[string]interface{}, policy reasoning.Policy) error {
+	// llama-server / vLLM Qwen3 require chat_template_kwargs envelope; top-level
+	// enable_thinking/thinking_budget is silently dropped (verified 2026-05-11
+	// against sindri llama.cpp). Mirrors fizeau translator at
+	// internal/provider/openai/openai.go (cfdcdcc4).
 	if policy.Kind == reasoning.KindOff {
-		body["enable_thinking"] = false
-		body["thinking_budget"] = 0
+		body["chat_template_kwargs"] = map[string]interface{}{
+			"enable_thinking": false,
+			"thinking_budget": 0,
+		}
 		return nil
 	}
 	budget, err := reasoning.BudgetFor(policy, nil, 0)
@@ -349,12 +361,44 @@ func addQwenFields(body map[string]interface{}, policy reasoning.Policy) error {
 		return err
 	}
 	if budget <= 0 {
-		body["enable_thinking"] = false
-		body["thinking_budget"] = 0
+		body["chat_template_kwargs"] = map[string]interface{}{
+			"enable_thinking": false,
+			"thinking_budget": 0,
+		}
 		return nil
 	}
-	body["enable_thinking"] = true
-	body["thinking_budget"] = budget
+	body["chat_template_kwargs"] = map[string]interface{}{
+		"enable_thinking": true,
+		"thinking_budget": budget,
+	}
+	return nil
+}
+
+// addOpenAIEffortFields emits flat top-level reasoning_effort:"<tier>" + think:false
+// off path. Used by ds4 (deepseek-v4-flash) per /props.api.supported_request_parameters.
+// Mirrors fizeau translator's ThinkingWireFormatOpenAIEffort branch (cfdcdcc4).
+func addOpenAIEffortFields(body map[string]interface{}, policy reasoning.Policy) error {
+	if policy.Kind == reasoning.KindOff {
+		body["think"] = false
+		return nil
+	}
+	switch policy.Kind {
+	case reasoning.KindNamed:
+		effort := string(policy.Value)
+		switch effort {
+		case "minimal", "low", "medium", "high", "xhigh", "max":
+			body["reasoning_effort"] = effort
+		default:
+			return fmt.Errorf("unsupported OpenAIEffort tier %q", effort)
+		}
+	case reasoning.KindTokens:
+		// Snap to nearest tier via PortableBudgets, matching fizeau's
+		// NearestTierForTokens behavior (round up on ties).
+		tier := reasoning.NearestTierForTokens(policy.Tokens)
+		body["reasoning_effort"] = string(tier)
+	default:
+		return fmt.Errorf("unsupported policy kind %q for openai_effort wire", policy.Kind)
+	}
 	return nil
 }
 
@@ -387,7 +431,8 @@ func parseResponse(raw []byte, r *probeResult) {
 		Choices []struct {
 			FinishReason string `json:"finish_reason"`
 			Message      struct {
-				Content string `json:"content"`
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
 			} `json:"message"`
 		} `json:"choices"`
 		Usage json.RawMessage `json:"usage"`
@@ -396,16 +441,31 @@ func parseResponse(raw []byte, r *probeResult) {
 		r.Error = fmt.Sprintf("parse response json: %v", err)
 		return
 	}
+	var reasoningContent string
 	if len(resp.Choices) > 0 {
 		r.FinishReason = resp.Choices[0].FinishReason
 		content := resp.Choices[0].Message.Content
+		reasoningContent = resp.Choices[0].Message.ReasoningContent
+		// Hash inline <think> when reasoning_format=none leaves it in content;
+		// otherwise hash the extracted reasoning_content.
 		if m := thinkRe.FindStringSubmatch(content); len(m) > 1 {
 			sum := sha256.Sum256([]byte(m[1]))
+			r.ThinkHash = fmt.Sprintf("%x", sum[:8])
+		} else if reasoningContent != "" {
+			sum := sha256.Sum256([]byte(reasoningContent))
 			r.ThinkHash = fmt.Sprintf("%x", sum[:8])
 		}
 	}
 	if len(resp.Usage) > 0 {
 		r.ReasoningToks = extractReasoningTokens(string(resp.Usage))
+	}
+	// Fallback when usage.completion_tokens_details.reasoning_tokens is absent
+	// but the response carries reasoning_content (ds4, some llama-server builds):
+	// approximate via chars/4. Mirrors fizeau-8f62bcbb behavior so probe and
+	// benchmark cells report comparable values.
+	if r.ReasoningToks == 0 && reasoningContent != "" {
+		r.ReasoningToks = len(reasoningContent) / 4
+		r.ReasoningTokensApprox = true
 	}
 }
 
