@@ -226,3 +226,207 @@ preserves cold-start latency and request determinism.
   and validation.
 - `internal/config/config.go:925-944` — `modelReasoningWireMap`
   (the surface-id lookup bug).
+
+---
+
+## Amendment 2026-05-11: Introspection is the primary source of truth
+
+### Why this amendment exists
+
+A direct probing session against the live ds4 (`vidar:1236`) and
+sindri-llamacpp (`sindri:8020`) endpoints surfaced two facts the
+original Decision didn't account for:
+
+1. **Both servers expose rich introspection at `/props`.**
+   - ds4's `/props.reasoning` carries `supported_efforts`,
+     `aliases` (the explicit low/medium/xhigh → high collapse map),
+     `default`, `effective_default`, and `think_max_min_context`
+     (the `--ctx ≥ 393216` constraint for the `max` tier).
+   - llama-server's `/props` carries `chat_template` (full jinja),
+     `chat_template_caps.supports_preserve_reasoning`,
+     `default_generation_settings.params.reasoning_format`, and
+     `build_info`.
+   - Cost: 8–15 ms p50 on LAN endpoints, 316 ms p50 for OR's
+     `/api/v1/models` (cross-internet, full-catalog payload).
+     Negligible against per-request workload.
+2. **Wire-shape behavior differs across providers in ways the
+   original `effort | tokens` enum cannot fully express.**
+   - llama-server requires `chat_template_kwargs.{enable_thinking,
+     thinking_budget}` — top-level `enable_thinking` is silently
+     dropped. Verified: variant F of the 2026-05-11 sindri matrix
+     produced 4 completion tokens (no thinking) where the kwargs
+     envelope produced 250–526 tokens with extracted reasoning.
+   - ds4 accepts only flat top-level `reasoning_effort` on
+     `/v1/chat/completions`; the Anthropic-shape `thinking: {type,
+     budget_tokens}` is silently ignored. ds4's `/v1/messages`
+     endpoint accepts `output_config.effort` instead — a separate
+     shape — but we don't route through it today.
+   - ds4's effort tiers `low`, `medium`, `xhigh` all alias to
+     "high"; only `max` is genuinely distinct (and only when
+     `--ctx ≥ 393216`). Source: `ds4_server.c:710` and
+     `ds4.c:15170` per upstream agent reading.
+   - sindri's `chat_template_kwargs.thinking_budget` does not bind
+     in any meaningful way — it's a soft template hint at best.
+     Verified: `budget=128` produced 1914 completion tokens with
+     3599 chars of reasoning vs `budget=2048` producing 1434
+     completion tokens / 2494 chars (within sampling noise).
+     `max_tokens` is the only hard limit on this lane.
+
+These findings invert the original Decision §5–§6. The probe tool
+should not be the source of truth where introspection answers the
+question; introspection should be primary, with the probe relegated
+to verification (does the upstream actually behave the way `/props`
+claims?) and to discovery for opaque providers (OR's upstream
+routing, where `/api/v1/models.supported_parameters` lists the
+`reasoning` family but doesn't disambiguate which subkeys bite).
+
+### Revised Decision (supersedes §5–§6)
+
+#### 5'. Layered source-of-truth chain
+
+Wire form is determined by a three-layer lookup at provider
+construction time:
+
+1. **L1 — Live introspection** via the provider's own metadata
+   endpoint (`/props` for ds4 and llama-server, `/api/v1/models`
+   for OR, `/v1/models` for OpenAI/Anthropic-native, etc.). When
+   the endpoint exposes reasoning capabilities directly (alias
+   maps, supported parameters, chat-template flags), that
+   information is authoritative.
+2. **L2 — Catalog `reasoning_wire`** field. Used when L1 is
+   silent (provider has no introspection, or the introspection
+   doesn't disambiguate the wire form). For OR-Qwen3, L1 confirms
+   `reasoning` is accepted but doesn't say which subkey
+   (`effort`/`max_tokens`) bites; L2 declares `tokens` per the
+   probe verdict.
+3. **L3 — Static `ThinkingFormat` per provider type**. Final
+   default when neither L1 nor L2 has an opinion. Today's
+   behavior; preserved for unaudited models.
+
+Higher layers stomp lower layers. An operator override at L2 (catalog)
+beats L1 introspection — useful for testing or for working around a
+known server-side misclaim. A structured log emits when L2 overrides
+L1, mirroring ADR-006's override-as-failure-signal pattern.
+
+#### 6'. Introspection adapters as a first-class concept
+
+Each provider type that exposes useful introspection ships an
+adapter under `internal/provider/<name>/introspection.go`,
+extending the existing utilization-probe pattern at
+`internal/provider/ds4/utilization_probe.go`. The adapter:
+
+- Is invoked once at provider construction; result is cached for
+  the process lifetime keyed by `(base_url, model)`.
+- Returns a structured `ProviderIntrospection` that augments the
+  existing `ProtocolCapabilities`: effective `ThinkingFormat`,
+  effective `reasoning_levels`, `supported_request_parameters`,
+  alias maps, server-side defaults (e.g. llama-server's
+  `reasoning_format`), and a free-form raw-snapshot field for
+  audit.
+- Falls through silently to L2 if the endpoint is unreachable or
+  returns malformed data — provider construction must not fail
+  on introspection errors. A structured warning is logged.
+
+Provider construction order: instantiate provider → run
+introspection adapter (if available) → merge into capabilities →
+ready. Per-request path is unchanged; no introspection IO at
+request time.
+
+#### 7. Wire-shape vocabulary expanded
+
+The `ThinkingFormat` enum at `internal/provider/openai/protocol_support.go`
+gains one new value:
+
+- `ThinkingWireFormatOpenAIEffort` — flat top-level `reasoning_effort:
+  "<tier>"`. ds4's wire on `/v1/chat/completions`. Disable form is
+  top-level `think: false` per ds4 docs.
+
+The existing `ThinkingWireFormatQwen` is **fixed** to emit via
+`chat_template_kwargs` envelope plus an optional per-request
+`reasoning_format` override (defaulting to whatever the server's
+`/props.default_generation_settings.params.reasoning_format`
+reports — typically `auto` or `deepseek`, both of which extract
+the `<think>` block into `message.reasoning_content`). Top-level
+`enable_thinking`/`thinking_budget` is removed. Verified against
+sindri-llamacpp 2026-05-11.
+
+`ThinkingWireFormatThinkingMap` is unchanged — it remains the
+correct format for genuine Anthropic-shape providers (oMLX,
+lucebox; ds4 was misclassified as ThinkingMap and switches to
+`OpenAIEffort`).
+
+#### 8. Telemetry: faithful reasoning-token reporting
+
+Cells must record `reasoning_tokens` truthfully even when the
+upstream omits the OpenAI-shape `usage.completion_tokens_details
+.reasoning_tokens` field. Resolution chain in
+`internal/sdk/openaicompat/client.go`:
+
+1. If `usage.completion_tokens_details.reasoning_tokens` is
+   present, use it. (OpenAI native, OR.)
+2. Else if `message.reasoning_content` is non-empty, derive an
+   approximation. Char-count divided by ~4 is the v1 estimator;
+   the field is annotated as `reasoning_tokens_approx=true` in
+   the cell record so analysts know the source.
+3. Else `reasoning_tokens=0`. (Honest absence, not silent
+   truncation.)
+
+The catalog never lies about this either: a model with a built-in
+thinking-on default (ds4 default `reasoning.effective_default:
+"high"`) gets recorded as such even when the caller didn't
+explicitly enable thinking.
+
+#### 9. Capability honesty over enforced uniformity
+
+When a lane physically cannot honor the caller's intent at the
+requested granularity (ds4 has no token budget; sindri's budget
+hint doesn't bind; ds4's low/medium/xhigh all collapse), fizeau:
+
+- Sends the closest representable wire form (e.g. `reasoning: low`
+  on ds4 → `reasoning_effort: "high"` because `low` aliases to
+  `high` per L1 introspection).
+- Records both the requested intent and the actually-emitted wire
+  in the cell record (`reasoning_intent: low, reasoning_emitted:
+  high, reasoning_emitted_reason: "ds4 alias map"`).
+- Does **not** silently degrade to a wire form that wouldn't
+  produce comparable results. Cross-lane analysis is honest at
+  read time, not forced at write time.
+
+### End goal (canonical statement)
+
+A benchmark caller writes `reasoning: <intent>` once in a profile.
+Across every lane in the matrix, that intent is honored to the
+maximum extent the upstream supports. The actual wire emitted, the
+upstream's published capabilities, and the observed reasoning depth
+are all recorded per cell. Cross-lane comparison happens at
+analysis time on truthful data, not by forcing identical wire-level
+behavior across providers that genuinely differ.
+
+### Out of scope (revised)
+
+Removed from the original out-of-scope list:
+
+- "Catalog refresh tool" — partially absorbed by L1 introspection.
+  Refresh is still deferred for non-introspecting providers (OR,
+  Anthropic-native) but for ds4/llama-server it's now a runtime
+  property.
+
+Still out of scope:
+
+- A startup probe that auto-discovers wire form via behavioral
+  testing. (Cheap-introspection-at-construction is fine; expensive
+  behavioral probing at startup remains rejected.)
+- A CI gate on `last_probed_at` staleness.
+- Model-card URL/citation fields in catalog entries.
+- vLLM introspection adapter — defer until we re-add a vLLM lane.
+
+### Newly identified bugs (filed as beads)
+
+- **Surface-id vs catalog-id lookup mismatch**
+  (`internal/config/config.go:925-944`). Fix bundled into the
+  populate bead (`fizeau-b83502c0`) so it lands together with
+  catalog value updates.
+- **Reasoning-token extraction from `reasoning_content`** when
+  `usage.completion_tokens_details.reasoning_tokens` is absent.
+  Affects ds4 cells today. Filed as a separate bead (independent
+  of L1/L2/L3 work).

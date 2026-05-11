@@ -26,18 +26,20 @@ limits:
   rate_limit_tpm: 1000000
 sampling:
   temperature: 0.6
-  # Named tier — catalog owns the wire shape (ADR-010).
-  # fizeau translates `reasoning: low` via catalog reasoning_wire=tokens:
-  #   - OpenRouter:  `reasoning.max_tokens: 2048` (PortableBudgets low=2048)
+  # Explicit token budget — wire-format-stable across providers.
+  # fizeau translates `reasoning: <int>` to:
+  #   - OpenRouter:  `reasoning.max_tokens: 4096`  (forwarded to upstream
+  #                  Qwen as `thinking_budget`; THE knob OR honors for Qwen3
+  #                  per research 2026-05-11; effort tiers are silently
+  #                  flattened for Qwen3 on OR)
   #   - Qwen-native (vLLM/llamaserver): `enable_thinking: true,
-  #                  thinking_budget: 2048`
+  #                  thinking_budget: 4096`
   #   - Anthropic-format (omlx, ds4, lucebox): `thinking: {type: enabled,
-  #                  budget_tokens: 2048}`
-  # Reverted from `reasoning: 4096` (explicit KindTokens) per ADR-010:
-  # benchmark profiles should use named tiers; the catalog entry for
-  # qwen3.6-27b now carries reasoning_wire=tokens so the correct wire
-  # shape is emitted without profile-level workarounds.
-  reasoning: low
+  #                  budget_tokens: 4096}`
+  # 4096 is between Qwen's tech-report number (8192) and our previous `low`
+  # alias (2048). Empirically the OR thinking output ran ~4500 tokens at
+  # nominal `low`, so this matches observed thinking volume.
+  reasoning: 4096
   top_p: 0.95
   top_k: 20
 versioning:

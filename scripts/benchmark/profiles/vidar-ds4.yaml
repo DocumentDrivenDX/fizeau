@@ -58,12 +58,12 @@ limits:
   rate_limit_tpm: 100000
 sampling:
   temperature: 0.6
-  # Named tier — catalog owns the wire shape (ADR-010).
+  # Explicit token budget (matches other Qwen lanes for cross-lane parity).
   # fizeau emits Anthropic-style `thinking: {type: enabled, budget_tokens:
-  # 2048}` to ds4 (which speaks the Anthropic Messages API alongside
-  # OpenAI's). PortableBudgets low=2048. Reverted from `reasoning: 4096`
-  # (explicit KindTokens) per ADR-010.
-  reasoning: low
+  # 4096}` to ds4 (which speaks the Anthropic Messages API alongside
+  # OpenAI's). ds4 also honors reasoning_effort as a fallback, but the
+  # explicit budget is what we want for benchmarking.
+  reasoning: 4096
   top_p: 0.95
   top_k: 20
 versioning:
