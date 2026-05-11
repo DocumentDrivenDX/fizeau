@@ -47,6 +47,10 @@ const (
 	// ThinkingWireFormatOpenRouter sends OpenRouter's nested `reasoning`
 	// object with `effort`, `max_tokens`, or `exclude`.
 	ThinkingWireFormatOpenRouter ThinkingWireFormat = "openrouter"
+	// ThinkingWireFormatOpenAIEffort sends flat top-level
+	// `reasoning_effort: "<tier>"`. Disable form: top-level `think: false`.
+	// Used by ds4 / deepseek-v4-flash.
+	ThinkingWireFormatOpenAIEffort ThinkingWireFormat = "openai_effort"
 )
 
 var (

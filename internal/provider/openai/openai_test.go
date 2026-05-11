@@ -1060,8 +1060,14 @@ func assertQwenReasoningWireBudget(t *testing.T, body []byte, wantEnabled bool, 
 	require.NotNil(t, body)
 	var reqBody map[string]interface{}
 	require.NoError(t, json.Unmarshal(body, &reqBody))
-	assert.Equal(t, wantEnabled, reqBody["enable_thinking"])
-	assert.Equal(t, float64(wantBudget), reqBody["thinking_budget"])
+	assert.NotContains(t, reqBody, "enable_thinking", "qwen controls must use chat_template_kwargs envelope: %s", string(body))
+	assert.NotContains(t, reqBody, "thinking_budget", "qwen controls must use chat_template_kwargs envelope: %s", string(body))
+	ctk, ok := reqBody["chat_template_kwargs"].(map[string]interface{})
+	require.True(t, ok, "request body must include chat_template_kwargs: %s", string(body))
+	assert.Equal(t, wantEnabled, ctk["enable_thinking"])
+	if wantEnabled {
+		assert.Equal(t, float64(wantBudget), ctk["thinking_budget"])
+	}
 	if _, ok := reqBody["thinking"]; ok {
 		t.Fatalf("qwen reasoning controls must not use thinking map: %s", string(body))
 	}
@@ -1076,6 +1082,32 @@ func assertNoQwenReasoningWire(t *testing.T, body []byte) {
 	assert.NotContains(t, reqBody, "thinking_budget")
 	assert.NotContains(t, reqBody, "thinking")
 	assert.NotContains(t, reqBody, "reasoning")
+	assert.NotContains(t, reqBody, "chat_template_kwargs")
+}
+
+func assertOpenAIEffortReasoningWire(t *testing.T, body []byte, wantEffort string) {
+	t.Helper()
+	require.NotNil(t, body)
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	gotEffort, ok := reqBody["reasoning_effort"].(string)
+	require.True(t, ok, "request body must include reasoning_effort string: %s", string(body))
+	assert.Equal(t, wantEffort, gotEffort)
+	assert.NotContains(t, reqBody, "thinking")
+	assert.NotContains(t, reqBody, "think")
+	assert.NotContains(t, reqBody, "enable_thinking")
+}
+
+func assertOpenAIEffortOffWire(t *testing.T, body []byte) {
+	t.Helper()
+	require.NotNil(t, body)
+	var reqBody map[string]interface{}
+	require.NoError(t, json.Unmarshal(body, &reqBody))
+	thinkVal, ok := reqBody["think"].(bool)
+	require.True(t, ok, "request body must include think: false: %s", string(body))
+	assert.False(t, thinkVal)
+	assert.NotContains(t, reqBody, "reasoning_effort")
+	assert.NotContains(t, reqBody, "thinking")
 }
 
 func assertSamplingWireOptions(t *testing.T, body []byte, wantTemperature float64, wantSeed int64) {
@@ -1359,4 +1391,83 @@ func TestQwenReasoningWireCatalogTokensPassthrough(t *testing.T) {
 	assertQwenReasoningWireBudget(t, body, true, 32768)
 
 	assert.Empty(t, logHandler.Messages(), "wire=tokens on Qwen must not emit a warning")
+}
+
+// captureOpenAIChatBodyWithOpenAIEffort constructs an OpenAIEffort-format provider
+// (ThinkingWireFormatOpenAIEffort) and returns the captured request body.
+func captureOpenAIChatBodyWithOpenAIEffort(t *testing.T, model string, opts agent.Options) ([]byte, error) {
+	t.Helper()
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-1",
+			"model":"` + model + `",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}
+		}`))
+	}))
+	defer srv.Close()
+
+	caps := openai.OpenAIProtocolCapabilities
+	caps.Thinking = true
+	caps.ThinkingFormat = openai.ThinkingWireFormatOpenAIEffort
+
+	p := openai.New(openai.Config{
+		BaseURL:        srv.URL + "/v1",
+		APIKey:         "test",
+		Model:          model,
+		ProviderSystem: "ds4",
+		Capabilities:   &caps,
+	})
+	_, err := p.Chat(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "hello"}}, nil, opts)
+	return capturedBody, err
+}
+
+// TestQwenReasoningWireChatTemplateKwargsEnvelope verifies that the Qwen wire format
+// emits enable_thinking and thinking_budget inside a chat_template_kwargs envelope,
+// not at the top level. This is the sindri llama-server fix from the 2026-05-11 probe:
+// top-level enable_thinking/thinking_budget are silently dropped by llama-server,
+// but the chat_template_kwargs envelope activates thinking (250-526 completion tokens
+// with extracted reasoning_content).
+func TestQwenReasoningWireChatTemplateKwargsEnvelope(t *testing.T) {
+	const model = "Qwen3.6-27B-UD-Q3_K_XL.gguf"
+
+	t.Run("on/emits chat_template_kwargs envelope", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithReasoningWireQwen(t, model, nil, nil, agent.Options{Reasoning: agent.ReasoningTokens(4096)})
+		require.NoError(t, err)
+		assertQwenReasoningWireBudget(t, body, true, 4096)
+	})
+
+	t.Run("off/emits chat_template_kwargs.enable_thinking=false", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithReasoningWireQwen(t, model, nil, nil, agent.Options{Reasoning: agent.ReasoningOff})
+		require.NoError(t, err)
+		assertQwenReasoningWireBudget(t, body, false, 0)
+	})
+}
+
+// TestOpenAIEffortReasoningWire verifies the flat top-level reasoning_effort wire
+// emitted by OpenAIEffort-format providers (ds4 / deepseek-v4-flash).
+func TestOpenAIEffortReasoningWire(t *testing.T) {
+	const model = "deepseek-v4-flash"
+
+	t.Run("high/emits reasoning_effort:high", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, agent.Options{Reasoning: agent.ReasoningHigh})
+		require.NoError(t, err)
+		assertOpenAIEffortReasoningWire(t, body, "high")
+	})
+
+	t.Run("off/emits think:false", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, agent.Options{Reasoning: agent.ReasoningOff})
+		require.NoError(t, err)
+		assertOpenAIEffortOffWire(t, body)
+	})
+
+	t.Run("tokens=4096/snaps to medium via NearestTierForTokens", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, agent.Options{Reasoning: agent.ReasoningTokens(4096)})
+		require.NoError(t, err)
+		assertOpenAIEffortReasoningWire(t, body, "medium")
+	})
 }

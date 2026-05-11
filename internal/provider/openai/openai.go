@@ -401,19 +401,25 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 				return nil, nil
 			}
 			return []option.RequestOption{
-				option.WithJSONSet("enable_thinking", false),
-				option.WithJSONSet("thinking_budget", 0),
+				option.WithJSONSet("chat_template_kwargs", map[string]interface{}{
+					"enable_thinking": false,
+				}),
 			}, nil
 		case ThinkingWireFormatOpenRouter:
 			return []option.RequestOption{option.WithJSONSet("reasoning", map[string]interface{}{
 				"effort": "none",
 			})}, nil
+		case ThinkingWireFormatOpenAIEffort:
+			return []option.RequestOption{option.WithJSONSet("think", false)}, nil
 		}
 		return nil, nil
 	}
 
 	if p.thinkingWireFormat() == ThinkingWireFormatOpenRouter {
 		return openRouterReasoningOptions(policy, catalogWire)
+	}
+	if p.thinkingWireFormat() == ThinkingWireFormatOpenAIEffort {
+		return openAIEffortReasoningOptions(policy)
 	}
 	if p.thinkingWireFormat() == ThinkingWireFormatQwen && !isQwenModel(model) {
 		if explicitRequest && p.strictThinkingModelMatch() {
@@ -449,8 +455,10 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 	switch p.thinkingWireFormat() {
 	case ThinkingWireFormatQwen:
 		return []option.RequestOption{
-			option.WithJSONSet("enable_thinking", true),
-			option.WithJSONSet("thinking_budget", thinkingBudget),
+			option.WithJSONSet("chat_template_kwargs", map[string]interface{}{
+				"enable_thinking": true,
+				"thinking_budget": thinkingBudget,
+			}),
 		}, nil
 	case "", ThinkingWireFormatThinkingMap:
 		return []option.RequestOption{option.WithJSONSet("thinking", map[string]interface{}{
@@ -460,6 +468,22 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 	default:
 		return nil, fmt.Errorf("openai: unsupported thinking wire format %q for provider type %q", p.thinkingWireFormat(), p.providerSystem)
 	}
+}
+
+// openAIEffortReasoningOptions builds the flat top-level reasoning_effort wire
+// used by ds4 / deepseek-v4-flash. Named tiers are emitted as-is; token
+// budgets are snapped to the nearest PortableBudgets tier via NearestTierForTokens.
+func openAIEffortReasoningOptions(policy reasoningpolicy.Policy) ([]option.RequestOption, error) {
+	var tier reasoningpolicy.Reasoning
+	switch policy.Kind {
+	case reasoningpolicy.KindTokens:
+		tier = reasoningpolicy.NearestTierForTokens(policy.Tokens)
+	case reasoningpolicy.KindNamed:
+		tier = policy.Value
+	default:
+		return nil, fmt.Errorf("openai: unsupported OpenAI effort reasoning policy kind %q", policy.Kind)
+	}
+	return []option.RequestOption{option.WithJSONSet("reasoning_effort", string(tier))}, nil
 }
 
 // modelReasoningWireFor returns the catalog reasoning_wire value for the

@@ -39,15 +39,14 @@ func init() {
 }
 
 // ProtocolCapabilities extends the standard OpenAI-compatible surface with
-// thinking-control support. ds4 accepts:
-//   - `reasoning_effort: "low"|"medium"|"high"|"max"|"xhigh"` (OpenAI-style)
-//   - `thinking: {"type": "enabled"|"disabled", "budget_tokens": N}`
-//     (Anthropic-style — matches our default ThinkingWireFormatThinkingMap)
-//   - `think: false` (boolean shortcut for direct-reply)
+// thinking-control support. ds4's verified wire surface (via /props):
+//   - `reasoning_effort: "low"|"medium"|"high"|"max"|"xhigh"` (flat top-level, OpenAI-style)
+//   - `think: false` (boolean shortcut for direct-reply / disable)
 //   - model alias `deepseek-chat` for non-thinking
 //
-// ds4 defaults to thinking mode at high effort (README §thinking-modes). The
-// thinking_map wire format fizeau emits by default lands cleanly here.
+// ds4 /props.reasoning.aliases declares {low→high, medium→high, xhigh→high};
+// only `high` and `max` are practically distinct effort levels.
+// fizeau emits ThinkingWireFormatOpenAIEffort (flat reasoning_effort) for this provider.
 //
 // Other ds4 quirks worth knowing about (handled elsewhere): finish_reason
 // is only "stop" or "length" — never "tool_calls" — but the agent loop
@@ -57,6 +56,7 @@ var ProtocolCapabilities = openai.ProtocolCapabilities{
 	Stream:           true,
 	StructuredOutput: true,
 	Thinking:         true,
+	ThinkingFormat:   openai.ThinkingWireFormatOpenAIEffort,
 }
 
 type Config struct {

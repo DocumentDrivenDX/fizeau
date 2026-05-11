@@ -58,11 +58,11 @@ limits:
   rate_limit_tpm: 100000
 sampling:
   temperature: 0.6
-  # Explicit token budget (matches other Qwen lanes for cross-lane parity).
-  # fizeau emits Anthropic-style `thinking: {type: enabled, budget_tokens:
-  # 4096}` to ds4 (which speaks the Anthropic Messages API alongside
-  # OpenAI's). ds4 also honors reasoning_effort as a fallback, but the
-  # explicit budget is what we want for benchmarking.
+  # fizeau emits flat top-level `reasoning_effort` via ThinkingWireFormatOpenAIEffort
+  # (verified via ds4 /props.api.supported_request_parameters). NearestTierForTokens(4096)
+  # snaps to "medium". ds4 /props.reasoning.aliases declares {low→high, medium→high,
+  # xhigh→high}; only `high` and `max` are practically distinct effort levels.
+  # Off path emits `think: false` (ds4's boolean direct-reply shortcut).
   reasoning: 4096
   top_p: 0.95
   top_k: 20

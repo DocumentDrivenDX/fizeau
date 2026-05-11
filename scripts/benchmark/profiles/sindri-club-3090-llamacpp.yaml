@@ -32,14 +32,13 @@ limits:
   rate_limit_tpm: 100000
 sampling:
   temperature: 0.6
-  # Explicit token budget (matches other Qwen lanes for cross-lane parity).
-  # fizeau emits `enable_thinking: true, thinking_budget: 4096` to
-  # llamaserver via the Qwen wire format. Honored at the request level
-  # only if the active chat template doesn't pre-suppress thinking — the
-  # 2026-05-11 probe showed the Q3_K_XL GGUF currently emits empty
-  # `<think> </think>` regardless of this setting. Operator decision
-  # whether to flip the server-side template; this profile sends the
-  # signal the model wants on its terms.
+  # fizeau emits `chat_template_kwargs: {enable_thinking: true, thinking_budget: 4096}`
+  # via ThinkingWireFormatQwen (chat_template_kwargs envelope, not top-level fields —
+  # top-level enable_thinking/thinking_budget are silently dropped by llama-server).
+  # thinking_budget is a soft template hint; it doesn't bind — max_tokens caps
+  # actual output tokens. The 2026-05-11 probe showed the Q3_K_XL GGUF currently
+  # emits empty `<think> </think>` regardless of this setting (server-side template
+  # suppresses thinking); operator decision whether to flip the server-side template.
   reasoning: 4096
   top_p: 0.95
   top_k: 20
