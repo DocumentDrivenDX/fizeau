@@ -26,18 +26,17 @@ limits:
   context_tokens: 128000
   rate_limit_rpm: 60
   rate_limit_tpm: 100000
-# Budget derived from OR's observed passing walls on the 52-task or-passing
-# subset. OR p90 pass-wall = 1066s; vidar throughput ratio ~3.5x (oMLX
-# 8-bit ~15 tok/s vs OR ~52 tok/s) ⇒ target per-cell budget ~3731s.
-# Divided by median harbor task base (900s) ⇒ ~4.1x → rounded to 3.0x
-# since most tasks have base <= 900s and the multiplier-based cap over-
-# provisions long-base tasks. Bump back up if truncation rate exceeds 15%.
-#
-# Earlier tuning (3.7x) was derived from per-task wall_local/wall_OR
-# ratios on jointly-passed cells of the FULL 89-task subset, which
-# included tasks where Qwen never converges and budget was wasted on
-# thrash. Switching to or-passing eliminates those tasks.
-agent_timeout_multiplier: 3.0
+# Budget = QWEN_BASE × LANE_PENALTY = 3.0 × 3.23 ≈ 10.0x.
+#   QWEN_BASE = 3.0:  empirical estimate that cloud OR-Qwen3.6-27B itself
+#                     truncates ~48% of its real fails at the harbor 1.0x
+#                     default — Qwen as a model needs ~3x base to converge.
+#   LANE_PENALTY = 3.23x:  p75 of median(local_pass_wall / OR_pass_wall)
+#                     across joint-pass tasks (n=31 as of 2026-05-11).
+# Vidar's p75 penalty is significantly higher than sindri-llamacpp's 2.03x
+# because oMLX 8-bit has worse TTFT (~10s vs sindri-llamacpp ~1s), which
+# adds up over multi-turn agent runs. Over-provisioning is cheap: cells
+# that don't need the headroom exit early on finish_reason=stop.
+agent_timeout_multiplier: 10.0
 sampling:
   temperature: 0.6
   reasoning: low
