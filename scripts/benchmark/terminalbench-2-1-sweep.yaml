@@ -297,7 +297,23 @@ resource_groups:
     max_concurrency: 1
     notes: >-
       vLLM with autoround quantization. Verified 2026-05-07: /v1/models
-      lists qwen3.6-27b-autoround at http://sindri:8020/v1.
+      lists qwen3.6-27b-autoround at http://sindri:8020/v1. Note: the
+      vLLM engine was switched out for llama.cpp (rg-sindri-club-3090-
+      llamacpp) on 2026-05-10 after repeated mid-generation stalls; this
+      rg should not be scheduled concurrently with the llamacpp rg as
+      both target the same machine and port.
+
+  - id: rg-sindri-club-3090-llamacpp
+    server: sindri
+    base_url: "http://sindri:8020/v1"
+    provider_type: llama-server
+    hardware: "RTX 3090 (sindri-club, port 8020)"
+    max_concurrency: 1
+    notes: >-
+      llama.cpp's llama-server hosting Unsloth Qwen3.6-27B-UD-Q3_K_XL
+      GGUF. Replaced the vLLM autoround engine on 2026-05-10. Same
+      machine and port as rg-sindri-club-3090; mutually exclusive with
+      that rg at runtime.
 
   - id: rg-openrouter
     base_url: "https://openrouter.ai/api/v1"
@@ -665,6 +681,36 @@ lanes:
       RTX 3090, vLLM with autoround quantization. Verified 2026-05-07.
       Same weights lineage and quant method as bragi-club-3090; different
       server — approximate_same_family only.
+
+  - id: fiz-sindri-club-3090-llamacpp-qwen3-6-27b
+    profile_id: sindri-club-3090-llamacpp
+    lane_type: fiz_provider_native
+    phases: [canary, local-qwen]
+    comparison_groups: [cg-local-qwen-provider-quant]
+    resource_group: rg-sindri-club-3090-llamacpp
+    fizeau_env:
+      FIZEAU_PROVIDER: llama-server
+      FIZEAU_MODEL: "unsloth-q3kxl/Qwen3.6-27B-UD-Q3_K_XL.gguf"
+      FIZEAU_BASE_URL: "http://sindri:8020/v1"
+      FIZEAU_API_KEY_ENV: LLAMACPP_API_KEY
+    model_family: qwen3-6-27b
+    model_id: "unsloth-q3kxl/Qwen3.6-27B-UD-Q3_K_XL.gguf"
+    quant_label: gguf-q3-k-xl-unsloth
+    provider_surface: sindri-club-llamacpp
+    runtime: llama-server
+    hardware_label: sindri-club-3090
+    endpoint: "http://sindri:8020/v1"
+    sampling:
+      temperature: 0.6
+      reasoning: low
+      top_p: 0.95
+      top_k: 20
+    equivalence_note: >-
+      RTX 3090, llama.cpp's llama-server hosting Unsloth Q3_K_XL GGUF.
+      Replaces the vLLM autoround engine on the same machine. Different
+      runtime and quant method from any sibling lane in the cg-local-
+      qwen-provider-quant comparison group — approximate_same_family
+      only at the model-weights level.
 
 # ---------------------------------------------------------------------------
 # Resume Policy

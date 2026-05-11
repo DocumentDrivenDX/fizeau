@@ -154,7 +154,8 @@ expand_lane_alias() {
   case "$1" in
     openai-gpt55|gpt55|openai) echo "fiz-openai-gpt-5-5" ;;
     openrouter-qwen36|or-qwen36|qwen36-or) echo "fiz-openrouter-qwen3-6-27b" ;;
-    sindri) echo "fiz-sindri-club-3090-qwen3-6-27b" ;;
+    sindri|sindri-vllm) echo "fiz-sindri-club-3090-qwen3-6-27b" ;;
+    sindri-llamacpp|sindri-llcpp) echo "fiz-sindri-club-3090-llamacpp-qwen3-6-27b" ;;
     vidar) echo "fiz-vidar-omlx-qwen3-6-27b" ;;
     *) echo "$1" ;;
   esac

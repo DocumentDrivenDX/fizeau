@@ -1,0 +1,47 @@
+# Qwen3.6-27B Unsloth Q3_K_XL GGUF via llama.cpp's llama-server on sindri,
+# port 8020 (re-using the port the vLLM build previously held).
+# Switched from vLLM autoround on 2026-05-10 because the vLLM engine
+# repeatedly stalled mid-generation (model never streamed tokens after
+# accepting requests, wasted full agent budget). The vLLM lane profile
+# at sindri-club-3090.yaml is kept alongside for historical comparison
+# but should not run concurrently — both share the same hardware/port.
+id: sindri-club-3090-llamacpp
+metadata:
+  model_family: qwen3-6-27b
+  model_id: unsloth-q3kxl/Qwen3.6-27B-UD-Q3_K_XL.gguf
+  quant_label: gguf-q3-k-xl-unsloth
+  provider_surface: sindri-club-llamacpp
+  runtime: llama-server
+  hardware_label: sindri-club-3090
+  endpoint: http://sindri:8020/v1
+  server: sindri
+
+provider:
+  type: llama-server
+  model: unsloth-q3kxl/Qwen3.6-27B-UD-Q3_K_XL.gguf
+  base_url: http://sindri:8020/v1
+  api_key_env: LLAMACPP_API_KEY
+pricing:
+  input_usd_per_mtok: 0.0
+  output_usd_per_mtok: 0.0
+  cached_input_usd_per_mtok: 0.0
+limits:
+  max_output_tokens: 32768
+  context_tokens: 180000
+  rate_limit_rpm: 60
+  rate_limit_tpm: 100000
+sampling:
+  temperature: 0.6
+  reasoning: low
+  top_p: 0.95
+  top_k: 20
+versioning:
+  resolved_at: "2026-05-10"
+  snapshot: "Qwen3.6-27B-UD-Q3_K_XL.gguf"
+
+# Starting multiplier matches the vLLM lane (2.7x) since we have no llama.cpp
+# wall-time data yet. Q3_K_XL weights are smaller than int4-AWQ but llama.cpp
+# is typically slower per token than vLLM, so net throughput is uncertain.
+# Re-tune from the first batch of jointly-passed tasks (see how the vLLM
+# multiplier was computed in sindri-club-3090.yaml).
+agent_timeout_multiplier: 2.7
