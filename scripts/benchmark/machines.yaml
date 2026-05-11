@@ -80,10 +80,70 @@
 
 version: 1
 
+# ---------------------------------------------------------------------------
+# Hardware profile registry — reusable specs referenced by `machines.*.hardware_profile`.
+# ---------------------------------------------------------------------------
+# Each entry is a self-contained hardware description that may be shared
+# across multiple machines (e.g. two Mac Studios with identical config).
+# Profile YAMLs do not reference these directly; report generators join via
+# the machine entry's `hardware_profile` field. Add a new profile here once
+# and reuse — chip/memory specs change rarely compared to host turnover.
+#
+# Fields:
+#   chip               : marketing chip name (apple-m2-ultra, nvidia-rtx-5090, …)
+#   chip_family        : coarse family (apple-silicon | nvidia-cuda | amd-rocm | cpu)
+#   cores_cpu          : performance + efficiency cores combined
+#   cores_gpu          : GPU/SoC GPU core count where meaningful
+#   memory_gb          : total RAM (unified for Apple Silicon)
+#   memory_type        : unified | discrete | system+vram
+#   vram_gb            : dedicated VRAM (0 for unified)
+#   typical_backends   : informational — which inference backends this chip can serve
+#   notes              : free-form
+hardware_profiles:
+  apple-m2-ultra-192gb:
+    chip: apple-m2-ultra
+    chip_family: apple-silicon
+    cores_cpu: 24                # 16 performance + 8 efficiency
+    cores_gpu: 76                # M2 Ultra max GPU configuration
+    memory_gb: 192
+    memory_type: unified
+    vram_gb: 0
+    typical_backends: [omlx, llama-server, ds4, lmstudio, lucebox, rapid-mlx]
+    notes: >-
+      Mac Studio Apple Silicon. Unified memory lets the GPU address all 192 GB,
+      so 200B-class models fit if quantized. Metal-only — no CUDA path.
+
+  nvidia-rtx-5090-desktop:
+    chip: nvidia-rtx-5090
+    chip_family: nvidia-cuda
+    cores_cpu: 0                 # CPU host varies; track per-machine if needed
+    cores_gpu: 0                 # SM count; fill in if it becomes load-bearing
+    memory_gb: 0                 # system RAM tracked per-machine (varies)
+    memory_type: system+vram
+    vram_gb: 32
+    typical_backends: [vllm, llama-server]
+    notes: >-
+      Desktop / workstation RTX 5090. 32 GB VRAM — 27B-class models fit
+      at int4/int8 with reasonable context.
+
+  nvidia-rtx-5090-laptop:
+    chip: nvidia-rtx-5090-laptop
+    chip_family: nvidia-cuda
+    cores_cpu: 0
+    cores_gpu: 0
+    memory_gb: 0
+    memory_type: system+vram
+    vram_gb: 24
+    typical_backends: [vllm, llama-server]
+    notes: >-
+      Laptop RTX 5090 (mobile silicon, 24 GB VRAM cap). Lower TDP / clocks
+      than the desktop part; expect 60-80% of the desktop's throughput.
+
 machines:
   bragi:
     label: "Bragi"
     chassis: "Lenovo Legion 7i Pro (laptop)"
+    hardware_profile: nvidia-rtx-5090-laptop
     cpu: ""
     gpu: "NVIDIA RTX 5090 24 GB (Laptop)"
     memory: ""
@@ -94,26 +154,32 @@ machines:
   sindri:
     label: "Sindri"
     chassis: "Custom desktop"
+    hardware_profile: nvidia-rtx-5090-desktop
     cpu: "AMD Ryzen 9 5950X"
     gpu: "NVIDIA RTX 5090 Ti"
     memory: ""
     os: "Windows + WSL2"
     network: "Tailscale"
-    notes: "Primary CUDA inference host; vLLM at :8020."
+    notes: "Primary CUDA inference host; llama-server at :8020 (was vLLM until 2026-05-10)."
 
   vidar:
     label: "Vidar"
     chassis: "Apple Mac Studio"
+    hardware_profile: apple-m2-ultra-192gb
     cpu: "Apple M2 Ultra"
     gpu: "Apple M2 Ultra (integrated)"
     memory: "192 GB unified"
     os: "macOS"
     network: "Tailscale"
-    notes: "Apple Silicon inference host for MLX / oMLX backends; oMLX at :1235."
+    notes: >-
+      Apple Silicon inference host. Active backend (2026-05-11):
+      ds4-server at :1236 hosting DeepSeek V4 Flash (IQ2XXS-mixed GGUF).
+      Was oMLX at :1235 until ds4 came online on 2026-05-11.
 
   grendel:
     label: "Grendel"
     chassis: ""
+    hardware_profile: ""        # full hardware spec TBD
     cpu: ""
     gpu: ""
     memory: ""
