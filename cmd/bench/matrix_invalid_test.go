@@ -37,6 +37,10 @@ func TestClassifyMatrixInvalidFromFixtures(t *testing.T) {
 		{name: "ran-no-attempt-docker-pull-fail.json", want: matrixInvalidSetup},
 		{name: "graded-fail-no-llm-response.json", want: matrixInvalidProvider},
 		{name: "provider-transport.json", want: matrixInvalidProvider},
+		// Retry-spam: turns=6 inflated by fiz internal retries, but zero tokens
+		// means the provider was unreachable on every attempt. Must be invalid_provider,
+		// not graded_fail — the model never got to try.
+		{name: "graded-fail-retry-spam.json", want: matrixInvalidProvider},
 		{name: "verifier-fail-after-attempt.json", want: ""},
 	}
 

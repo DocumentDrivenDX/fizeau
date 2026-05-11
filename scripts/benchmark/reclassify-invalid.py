@@ -98,6 +98,13 @@ def classify(r: dict) -> str:
             if r.get("had_llm_request") is True and r.get("terminated_mid_work") is None:
                 return "invalid_provider"
             return "invalid_setup"
+        # Retry-spam: fiz retries transient provider errors internally; each
+        # retry increments turns but no tokens are produced. Zero input+output
+        # tokens with had_llm_request=true and no response means the provider
+        # was unreachable on every attempt. Mirrors Go classifier.
+        if (r.get("input_tokens") or 0) == 0 and (r.get("output_tokens") or 0) == 0 and \
+                r.get("had_llm_request") is True and r.get("terminated_mid_work") is None:
+            return "invalid_provider"
         if (r.get("output_tokens") or 0) == 0 and (r.get("turns") or 0) <= 2:
             wall = r.get("wall_seconds")
             if wall is not None and wall < 30:

@@ -114,6 +114,17 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 			}
 			return matrixInvalidSetup
 		}
+		// Retry-spam: fiz retries transient provider errors internally up to
+		// ~5 times; each retry increments turns but produces no tokens. A real
+		// LLM turn always consumes input_tokens > 0 (the prompt is sent).
+		// Zero input+output tokens with had_llm_request=true and no response
+		// means the provider was unreachable on every attempt — not a model
+		// quality failure.
+		if intValue(report.InputTokens) == 0 && intValue(report.OutputTokens) == 0 &&
+			report.HadLLMRequest != nil && *report.HadLLMRequest &&
+			report.TerminatedMidWork == nil {
+			return matrixInvalidProvider
+		}
 		// Even with some turns, if output tokens are zero AND wall is
 		// suspiciously short (<30s) we treat it as harness-level — the
 		// model never produced usable tokens, so reward=0 isn't a model
