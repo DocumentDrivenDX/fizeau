@@ -46,14 +46,17 @@ versioning:
   resolved_at: "2026-05-10"
   snapshot: "Qwen3.6-27B-UD-Q3_K_XL.gguf"
 
-# Budget = QWEN_BASE × LANE_PENALTY = 3.0 × 2.03 ≈ 6.0x.
-#   QWEN_BASE = 3.0:  empirical estimate that cloud OR-Qwen3.6-27B itself
-#                     truncates ~48% of its real fails at the harbor 1.0x
-#                     default — Qwen as a model needs ~3x base to converge.
-#   LANE_PENALTY = 2.03x:  p75 of median(local_pass_wall / OR_pass_wall)
-#                     across joint-pass tasks (n=11 as of 2026-05-11).
-# Decode rate is ~14 tok/s vs OR ~52, but empirical lane penalty is much
-# smaller because tool-exec time dominates wall on most TB tasks (the LLM
-# slice is a small fraction of total wall). Over-provisioning is cheap:
-# cells that don't need the headroom exit early on finish_reason=stop.
-agent_timeout_multiplier: 6.0
+# Budget = QWEN_BASE × LANE_PENALTY = 2.5 × 2.03 ≈ 5.0x.
+#   QWEN_BASE = 2.5:  bounded from OR-Qwen's truncated-fail wall distribution
+#                     (p95 ≈ 1832s, max ≈ 2025s vs harbor 900s task base) —
+#                     ~2.3x rescues most truncated cells, +margin for safety.
+#   LANE_PENALTY = 2.03x:  empirical p75 of median(local_pass_wall /
+#                     OR_pass_wall) across joint-pass tasks (n=11 as of
+#                     2026-05-11). Empirical and well-bounded — sindri-
+#                     llamacpp's observed lane behavior on tasks both lanes
+#                     pass.
+# Decode rate is ~14 tok/s vs OR ~52, but empirical lane penalty is small
+# because tool-exec dominates wall on most TB tasks (LLM is a small slice
+# of total wall on tool-heavy tasks). Cells exit early on finish_reason=stop
+# so over-provisioning has bounded cost.
+agent_timeout_multiplier: 5.0
