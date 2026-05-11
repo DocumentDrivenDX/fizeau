@@ -40,7 +40,12 @@ sampling:
   top_k: 20
 versioning:
   resolved_at: "2026-05-11"
-  snapshot: "deepseek-v4-flash via ds4-server (antirez/ds4)"
+  # ds4 doesn't expose a version via any HTTP endpoint, so we stamp the
+  # exact upstream commit running on vidar manually. Update this whenever
+  # the server is rebuilt; the matrix runner copies this string into every
+  # report.json's profile_snapshot field for traceability.
+  # Source: https://github.com/antirez/ds4/commit/ae302c2fa18cc6d9aefc021d0f27ae03c9ad2fc0
+  snapshot: "deepseek-v4-flash via ds4-server antirez/ds4@ae302c2f"
 
 # DeepSeek V4 Flash is a 284B-param MoE — substantially larger than Qwen3.6-
 # 27B. The QWEN_BASE × LANE_PENALTY formula doesn't apply directly because
