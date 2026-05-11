@@ -508,7 +508,7 @@ lanes:
     endpoint: "http://vidar:1235/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
 
@@ -533,7 +533,7 @@ lanes:
     endpoint: "http://vidar:1235/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
 
@@ -576,7 +576,7 @@ lanes:
     runtime: openrouter
     sampling:
       temperature: 0.6
-      reasoning: low
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
     equivalence_note: >-
@@ -643,7 +643,7 @@ lanes:
     endpoint: "http://vidar:1236/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
     equivalence_note: >-
@@ -674,7 +674,7 @@ lanes:
     endpoint: "http://vidar:1235/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
     equivalence_note: >-
@@ -702,7 +702,7 @@ lanes:
     endpoint: "http://bragi:8020/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
     equivalence_note: >-
@@ -730,7 +730,7 @@ lanes:
     endpoint: "http://grendel:8000/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
     equivalence_note: >-
@@ -758,7 +758,7 @@ lanes:
     endpoint: "http://sindri:8020/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
     equivalence_note: >-

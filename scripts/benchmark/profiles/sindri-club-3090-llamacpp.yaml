@@ -32,13 +32,15 @@ limits:
   rate_limit_tpm: 100000
 sampling:
   temperature: 0.6
-  # reasoning=medium → thinking_budget=8192 via fizeau's reasoning policy.
-  # The llamaserver ProtocolCapabilities was updated 2026-05-11 to set
-  # Thinking=true + ThinkingFormat=Qwen so fizeau emits enable_thinking +
-  # thinking_budget for this lane (previously rejected as "not supported
-  # by provider type llama-server"). The Q3_K_XL GGUF's chat template
-  # uses <think>...</think> tags natively for thinking mode.
-  reasoning: medium
+  # Explicit token budget (matches other Qwen lanes for cross-lane parity).
+  # fizeau emits `enable_thinking: true, thinking_budget: 4096` to
+  # llamaserver via the Qwen wire format. Honored at the request level
+  # only if the active chat template doesn't pre-suppress thinking — the
+  # 2026-05-11 probe showed the Q3_K_XL GGUF currently emits empty
+  # `<think> </think>` regardless of this setting. Operator decision
+  # whether to flip the server-side template; this profile sends the
+  # signal the model wants on its terms.
+  reasoning: 4096
   top_p: 0.95
   top_k: 20
 versioning:

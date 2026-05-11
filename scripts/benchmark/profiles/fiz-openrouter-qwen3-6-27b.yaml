@@ -26,12 +26,20 @@ limits:
   rate_limit_tpm: 1000000
 sampling:
   temperature: 0.6
-  # reasoning=medium maps to thinking_budget=8192 in fizeau's reasoning policy,
-  # which matches the Qwen3 technical report's RULER benchmark setting and the
-  # community's hard-agentic-task converged number (research 2026-05-11). Was
-  # `low` (2048) which the OR rerun showed truncating 40% of cells — Qwen
-  # thinking is verbose and 2048 isn't enough room for hard tasks.
-  reasoning: medium
+  # Explicit token budget — wire-format-stable across providers.
+  # fizeau translates `reasoning: <int>` to:
+  #   - OpenRouter:  `reasoning.max_tokens: 4096`  (forwarded to upstream
+  #                  Qwen as `thinking_budget`; THE knob OR honors for Qwen3
+  #                  per research 2026-05-11; effort tiers are silently
+  #                  flattened for Qwen3 on OR)
+  #   - Qwen-native (vLLM/llamaserver): `enable_thinking: true,
+  #                  thinking_budget: 4096`
+  #   - Anthropic-format (omlx, ds4, lucebox): `thinking: {type: enabled,
+  #                  budget_tokens: 4096}`
+  # 4096 is between Qwen's tech-report number (8192) and our previous `low`
+  # alias (2048). Empirically the OR thinking output ran ~4500 tokens at
+  # nominal `low`, so this matches observed thinking volume.
+  reasoning: 4096
   top_p: 0.95
   top_k: 20
 versioning:

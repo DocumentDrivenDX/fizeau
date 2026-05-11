@@ -58,7 +58,12 @@ limits:
   rate_limit_tpm: 100000
 sampling:
   temperature: 0.6
-  reasoning: low                       # ds4 accepts reasoning_effort + thinking:{...} + think:false; ProtocolCapabilities.Thinking=true in internal/provider/ds4/ds4.go since 2026-05-11.
+  # Explicit token budget (matches other Qwen lanes for cross-lane parity).
+  # fizeau emits Anthropic-style `thinking: {type: enabled, budget_tokens:
+  # 4096}` to ds4 (which speaks the Anthropic Messages API alongside
+  # OpenAI's). ds4 also honors reasoning_effort as a fallback, but the
+  # explicit budget is what we want for benchmarking.
+  reasoning: 4096
   top_p: 0.95
   top_k: 20
 versioning:
