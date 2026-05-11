@@ -52,6 +52,13 @@ type TokenUsage struct {
 	// is a sub-count for analyses that need to separate "model thought" from
 	// "model wrote the answer". Zero when the provider doesn't expose it.
 	Reasoning int `json:"reasoning,omitempty"`
+	// ReasoningTokensApprox is true when Reasoning was estimated from
+	// message.reasoning_content char-count÷4 because
+	// usage.completion_tokens_details.reasoning_tokens was absent. The
+	// char-count/4 estimator is a v1 placeholder; accuracy degrades for
+	// non-ASCII-heavy content. When false (or absent), Reasoning is
+	// provider-reported and authoritative.
+	ReasoningTokensApprox bool `json:"reasoning_tokens_approx,omitempty"`
 }
 
 // Add accumulates token counts from another TokenUsage.
@@ -62,6 +69,7 @@ func (u *TokenUsage) Add(other TokenUsage) {
 	u.CacheWrite += other.CacheWrite
 	u.Total += other.Total
 	u.Reasoning += other.Reasoning
+	u.ReasoningTokensApprox = u.ReasoningTokensApprox || other.ReasoningTokensApprox
 }
 
 // ToolCall represents a tool invocation requested by the model in the internal

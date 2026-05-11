@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	agent "github.com/easel/fizeau/internal/core"
@@ -148,6 +149,7 @@ func (c *Client) Chat(ctx context.Context, model string, messages []agent.Messag
 		Model:    completion.Model,
 		RawUsage: completion.Usage.RawJSON(),
 	}
+	msgReasoningContent := extractMessageReasoningContent(completion.RawJSON())
 	if completion.Usage.TotalTokens != 0 {
 		result.Usage = tokenUsage(
 			int(completion.Usage.PromptTokens),
@@ -155,7 +157,7 @@ func (c *Client) Chat(ctx context.Context, model string, messages []agent.Messag
 			int(completion.Usage.TotalTokens),
 			int(completion.Usage.PromptTokensDetails.CachedTokens),
 		)
-		result.Usage.Reasoning = extractReasoningTokens(result.RawUsage)
+		result.Usage.Reasoning, result.Usage.ReasoningTokensApprox = extractReasoningTokens(result.RawUsage, msgReasoningContent)
 	}
 
 	if len(completion.Choices) > 0 {
@@ -191,6 +193,7 @@ func (c *Client) ChatStream(ctx context.Context, model string, messages []agent.
 		indexToID := make(map[int]string)
 		responseModel := model
 		var streamCost *agent.CostAttribution
+		var aggReasoningContent strings.Builder
 		for stream.Next() {
 			chunk := stream.Current()
 			if chunk.Model != "" {
@@ -203,6 +206,9 @@ func (c *Client) ChatStream(ctx context.Context, model string, messages []agent.
 			}
 
 			reasoningContent := extractReasoningContent(chunk.RawJSON())
+			if reasoningContent != "" {
+				aggReasoningContent.WriteString(reasoningContent)
+			}
 
 			if len(chunk.Choices) > 0 {
 				choice := chunk.Choices[0]
@@ -246,7 +252,7 @@ func (c *Client) ChatStream(ctx context.Context, model string, messages []agent.
 					int(chunk.Usage.TotalTokens),
 					int(chunk.Usage.PromptTokensDetails.CachedTokens),
 				)
-				usage.Reasoning = extractReasoningTokens(chunk.Usage.RawJSON())
+				usage.Reasoning, usage.ReasoningTokensApprox = extractReasoningTokens(chunk.Usage.RawJSON(), aggReasoningContent.String())
 				send(agent.StreamDelta{Usage: &usage})
 			}
 		}
@@ -393,29 +399,71 @@ func tokenUsage(input, output, total, cacheRead int) agent.TokenUsage {
 	return usage
 }
 
-// extractReasoningTokens reads usage.completion_tokens_details.reasoning_tokens
-// from the raw usage JSON. The OpenAI Go SDK doesn't expose this field
-// directly through its typed Usage struct (it's in completion_tokens_details
-// which the SDK exposes on some models but not others), so we parse it from
-// the raw JSON. Returns 0 when absent. Servers that emit reasoning_tokens:
-// OpenAI (o1/o3/gpt-5+ thinking models), DeepSeek R1, Qwen3 thinking-mode
-// builds (vLLM, llama.cpp, oMLX), DwarfStar 4 (ds4-server).
-func extractReasoningTokens(rawUsageJSON string) int {
+// extractReasoningTokens resolves the reasoning token count per ADR-010
+// Amendment §8. Resolution chain:
+//  1. usage.completion_tokens_details.reasoning_tokens (authoritative; even
+//     an explicit zero is honoured — the provider signalled no reasoning ran).
+//  2. Top-level usage.reasoning_tokens > 0 (non-standard servers).
+//  3. char-count(reasoningContent)÷4 when the usage path is absent AND
+//     reasoningContent is non-empty. Returns approx=true.
+//
+// The char-count/4 estimator is a v1 placeholder (4 chars ≈ 1 token for
+// English; accuracy degrades for CJK or heavily-symbolic content). A future
+// bead can replace it with a real tokenizer once measurement shows the
+// approximation error matters in practice.
+//
+// Returns (tokens, approx). approx is true only in case 3.
+func extractReasoningTokens(rawUsageJSON, reasoningContent string) (int, bool) {
 	if rawUsageJSON == "" {
-		return 0
+		if reasoningContent != "" {
+			return len(reasoningContent) / 4, true
+		}
+		return 0, false
 	}
 	var raw struct {
 		CompletionTokensDetails struct {
-			ReasoningTokens int `json:"reasoning_tokens"`
+			// Pointer so absent vs. explicit-zero are distinguishable: nil means
+			// the field was not present; &0 means the server said "no reasoning".
+			ReasoningTokens *int `json:"reasoning_tokens"`
 		} `json:"completion_tokens_details"`
 		// Some non-OpenAI servers put reasoning_tokens at the top level.
 		ReasoningTokens *int `json:"reasoning_tokens,omitempty"`
 	}
 	if err := json.Unmarshal([]byte(rawUsageJSON), &raw); err != nil {
-		return 0
+		return 0, false
+	}
+	if raw.CompletionTokensDetails.ReasoningTokens != nil {
+		// Field present — respect the value even if zero (provider said no
+		// reasoning ran; do not fall through to the char-count heuristic).
+		return *raw.CompletionTokensDetails.ReasoningTokens, false
 	}
 	if raw.ReasoningTokens != nil && *raw.ReasoningTokens > 0 {
-		return *raw.ReasoningTokens
+		return *raw.ReasoningTokens, false
 	}
-	return raw.CompletionTokensDetails.ReasoningTokens
+	// usage path absent; fall back to reasoning_content char-count estimate.
+	if reasoningContent != "" {
+		return len(reasoningContent) / 4, true
+	}
+	return 0, false
+}
+
+// extractMessageReasoningContent reads choices[0].message.reasoning_content
+// from a full (non-streaming) Chat Completions response JSON. Providers that
+// do thinking inline but do not populate completion_tokens_details (e.g. ds4)
+// carry the thinking text here. Returns "" when absent or unparseable.
+func extractMessageReasoningContent(rawCompletionJSON string) string {
+	if rawCompletionJSON == "" {
+		return ""
+	}
+	var raw struct {
+		Choices []struct {
+			Message struct {
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal([]byte(rawCompletionJSON), &raw); err != nil || len(raw.Choices) == 0 {
+		return ""
+	}
+	return raw.Choices[0].Message.ReasoningContent
 }

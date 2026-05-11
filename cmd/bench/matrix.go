@@ -81,7 +81,11 @@ type matrixRunReport struct {
 	// includes reasoning; this is a sub-count for analyses that need to
 	// separate "model thought" from "model wrote answer". Pointer so absent
 	// (no session data, or no thinking model) is distinct from explicit zero.
-	ReasoningTokens         *int                     `json:"reasoning_tokens,omitempty"`
+	ReasoningTokens *int `json:"reasoning_tokens,omitempty"`
+	// ReasoningTokensApprox is true when ReasoningTokens was estimated from
+	// message.reasoning_content char-count÷4 rather than a provider-reported
+	// token count. See TokenUsage.ReasoningTokensApprox.
+	ReasoningTokensApprox   bool                     `json:"reasoning_tokens_approx,omitempty"`
 	CostUSD                 float64                  `json:"cost_usd"`
 	PricingSource           string                   `json:"pricing_source"`
 	AdapterTranslationNotes []string                 `json:"adapter_translation_notes,omitempty"`
@@ -543,12 +547,13 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 			// agent/sessions/svc-*.jsonl; glob for the newest since the
 			// trial-hash isn't known up front. Mirrors backfill-terminated-
 			// mid-work.py.
-			tmw, hadReq, reasoning := readSessionSignalsFromCell(filepath.Join(cellDir, jobName))
+			tmw, hadReq, reasoning, reasoningApprox := readSessionSignalsFromCell(filepath.Join(cellDir, jobName))
 			if tmw != nil {
 				report.TerminatedMidWork = tmw
 			}
 			if reasoning != nil {
 				report.ReasoningTokens = reasoning
+				report.ReasoningTokensApprox = reasoningApprox
 			}
 			report.HadLLMRequest = &hadReq
 		}
@@ -1357,10 +1362,10 @@ func boolPointerField(m map[string]any, key string) *bool {
 //
 // jobDir = <cellDir>/<jobName>; harbor writes to
 // <jobDir>/<trial-hash>/agent/sessions/svc-*.jsonl.
-func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool, reasoningTokens *int) {
+func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool, reasoningTokens *int, reasoningApprox bool) {
 	matches, err := filepath.Glob(filepath.Join(jobDir, "*", "agent", "sessions", "svc-*.jsonl"))
 	if err != nil || len(matches) == 0 {
-		return nil, false, nil
+		return nil, false, nil, false
 	}
 	// Newest by mtime — matches the trial we just ran.
 	sessPath := matches[0]
@@ -1376,12 +1381,13 @@ func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool, r
 	}
 	f, err := os.Open(sessPath) // #nosec G304 -- jobDir is a benchmark output path
 	if err != nil {
-		return nil, false, nil
+		return nil, false, nil, false
 	}
 	defer f.Close()
 	var lastFinish string
 	var reasoningSum int
 	var sawReasoning bool
+	var anyApprox bool
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 	for scanner.Scan() {
@@ -1390,7 +1396,8 @@ func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool, r
 			Data struct {
 				FinishReason string `json:"finish_reason"`
 				Usage        struct {
-					Reasoning               int `json:"reasoning"`
+					Reasoning               int  `json:"reasoning"`
+					ReasoningTokensApprox   bool `json:"reasoning_tokens_approx"`
 					CompletionTokensDetails struct {
 						ReasoningTokens int `json:"reasoning_tokens"`
 					} `json:"completion_tokens_details"`
@@ -1416,6 +1423,9 @@ func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool, r
 			if tokens > 0 {
 				sawReasoning = true
 				reasoningSum += tokens
+				if ev.Data.Usage.ReasoningTokensApprox {
+					anyApprox = true
+				}
 			}
 		}
 	}
@@ -1430,7 +1440,7 @@ func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool, r
 	if sawReasoning {
 		reasoningTokens = &reasoningSum
 	}
-	return tmw, hadLLMRequest, reasoningTokens
+	return tmw, hadLLMRequest, reasoningTokens, anyApprox
 }
 
 func deriveMatrixFinalStatus(processOutcome, gradingOutcome string, reward *int, retriable bool) string {
