@@ -1,7 +1,7 @@
 {
-  "snapshot_ts": "2026-05-10 21:51:32 UTC",
-  "n_reports_total": 3652,
-  "n_profiles_active": 20,
+  "snapshot_ts": "2026-05-11 15:37:18 UTC",
+  "n_reports_total": 3450,
+  "n_profiles_active": 21,
   "n_external_comparators": 45,
   "n_external_trials": 18484,
   "subset_size_all": 89,
@@ -9,38 +9,38 @@
     {
       "profile_id": "fiz-openrouter-qwen3-6-27b",
       "label": "OpenRouter (cloud)",
-      "pass_at_k_pct": 58.42696629213483,
+      "pass_at_k_pct": 75.36231884057972,
       "pass_at_k_num": 52,
-      "pass_at_k_den": 89,
-      "median_wall_s": 514.582230925,
-      "decode_tps_p50": 52.501924366766644,
-      "ttft_p50_s": 0.7860475778579712,
-      "avg_cost_usd": 0.12137973875706215,
-      "n_attempts": 443
+      "pass_at_k_den": 69,
+      "median_wall_s": 296.89909543,
+      "decode_tps_p50": 55.796549580661946,
+      "ttft_p50_s": 0.8164945840835571,
+      "avg_cost_usd": 0.11740432473372782,
+      "n_attempts": 204
     },
     {
       "profile_id": "sindri-club-3090",
       "label": "vLLM int4 (sindri / RTX 5090)",
-      "pass_at_k_pct": 28.125,
-      "pass_at_k_num": 27,
-      "pass_at_k_den": 96,
+      "pass_at_k_pct": 28.865979381443296,
+      "pass_at_k_num": 28,
+      "pass_at_k_den": 97,
       "median_wall_s": 845.057554762,
-      "decode_tps_p50": 68.96299857475236,
-      "ttft_p50_s": 18.61844801902771,
+      "decode_tps_p50": 66.32310639368131,
+      "ttft_p50_s": 18.980042934417725,
       "avg_cost_usd": 0.0,
-      "n_attempts": 302
+      "n_attempts": 305
     },
     {
       "profile_id": "vidar-qwen3-6-27b",
       "label": "oMLX 8-bit (vidar / Mac Studio)",
-      "pass_at_k_pct": 30.681818181818183,
-      "pass_at_k_num": 27,
-      "pass_at_k_den": 88,
-      "median_wall_s": 928.241462682,
-      "decode_tps_p50": 15.407259960948947,
-      "ttft_p50_s": 9.898128986358643,
+      "pass_at_k_pct": 31.958762886597935,
+      "pass_at_k_num": 31,
+      "pass_at_k_den": 97,
+      "median_wall_s": 929.900420096,
+      "decode_tps_p50": 15.417730723405935,
+      "ttft_p50_s": 10.111177504062653,
       "avg_cost_usd": 0.0,
-      "n_attempts": 275
+      "n_attempts": 292
     }
   ],
   "frontier_comparators": [

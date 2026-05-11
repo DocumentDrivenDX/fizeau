@@ -1,21 +1,21 @@
 {
-  "snapshot_ts": "2026-05-10 21:51:32 UTC",
+  "snapshot_ts": "2026-05-11 15:37:18 UTC",
   "subset": "all",
   "subset_size": 89,
-  "n_reports_total": 3652,
+  "n_reports_total": 3450,
   "hero_profile_id": "fiz-openrouter-qwen3-6-27b",
   "hero_label": "Qwen3.6-27B / OpenRouter",
   "hero": {
-    "decode_tps_p50": 52.501924366766644,
-    "ttft_p50_s": 0.7860475778579712,
-    "pass_at_k_pct": 58.42696629213483,
+    "decode_tps_p50": 55.796549580661946,
+    "ttft_p50_s": 0.8164945840835571,
+    "pass_at_k_pct": 75.36231884057972,
     "pass_at_k_num": 52,
-    "pass_at_k_den": 89,
-    "median_wall_s": 514.582230925,
-    "median_turns": 13.5,
-    "median_in_tok": 87698.5,
-    "median_out_tok": 5214.0,
-    "n_attempts": 443,
-    "n_real": 354
+    "pass_at_k_den": 69,
+    "median_wall_s": 296.89909543,
+    "median_turns": 16,
+    "median_in_tok": 96239,
+    "median_out_tok": 4493,
+    "n_attempts": 204,
+    "n_real": 169
   }
 }

@@ -21,14 +21,14 @@
       "harness": "fiz (built-in agent loop)"
     },
     "sindri-club-3090": {
-      "n_attempts": 302,
-      "n_graded": 194,
-      "n_pass": 55,
-      "tasks_touched": 96,
-      "tasks_passed_any": 27,
-      "n_real": 100,
+      "n_attempts": 305,
+      "n_graded": 195,
+      "n_pass": 56,
+      "tasks_touched": 97,
+      "tasks_passed_any": 28,
+      "n_real": 104,
       "n_truncated": 36,
-      "n_finished_clean": 86,
+      "n_finished_clean": 87,
       "invalids": {
         "invalid_setup": 175
       },
@@ -40,22 +40,22 @@
       "harness": "fiz (built-in agent loop)"
     },
     "fiz-openrouter-qwen3-6-27b": {
-      "n_attempts": 443,
-      "n_graded": 443,
+      "n_attempts": 204,
+      "n_graded": 204,
       "n_pass": 178,
-      "tasks_touched": 89,
+      "tasks_touched": 69,
       "tasks_passed_any": 52,
-      "n_real": 354,
-      "n_truncated": 115,
-      "n_finished_clean": 240,
+      "n_real": 169,
+      "n_truncated": 1,
+      "n_finished_clean": 169,
       "invalids": {
         "invalid_setup": 26
       },
-      "median_turns": 13.5,
-      "median_in_tok": 87698.5,
-      "median_out_tok": 5214.0,
-      "median_wall": 514.582230925,
-      "avg_cost": 0.12137973875706215,
+      "median_turns": 16,
+      "median_in_tok": 96239,
+      "median_out_tok": 4493,
+      "median_wall": 296.89909543,
+      "avg_cost": 0.11740432473372782,
       "harness": "fiz (built-in agent loop)"
     },
     "claude-sonnet-4-6": {
@@ -126,7 +126,8 @@
       "n_truncated": 0,
       "n_finished_clean": 8,
       "invalids": {
-        "invalid_setup": 187
+        "invalid_setup": 142,
+        "invalid_provider": 45
       },
       "median_turns": 2,
       "median_in_tok": 3049,
@@ -145,7 +146,8 @@
       "n_truncated": 0,
       "n_finished_clean": 2,
       "invalids": {
-        "invalid_setup": 176
+        "invalid_setup": 132,
+        "invalid_provider": 44
       },
       "median_turns": null,
       "median_in_tok": null,
@@ -155,21 +157,21 @@
       "harness": "fiz (built-in agent loop)"
     },
     "vidar-qwen3-6-27b": {
-      "n_attempts": 275,
-      "n_graded": 167,
-      "n_pass": 64,
-      "tasks_touched": 88,
-      "tasks_passed_any": 27,
-      "n_real": 97,
-      "n_truncated": 57,
-      "n_finished_clean": 62,
+      "n_attempts": 292,
+      "n_graded": 183,
+      "n_pass": 69,
+      "tasks_touched": 97,
+      "tasks_passed_any": 31,
+      "n_real": 109,
+      "n_truncated": 63,
+      "n_finished_clean": 67,
       "invalids": {
-        "invalid_setup": 147
+        "invalid_setup": 148
       },
       "median_turns": 14,
       "median_in_tok": 95916,
-      "median_out_tok": 5032,
-      "median_wall": 928.241462682,
+      "median_out_tok": 5175,
+      "median_wall": 929.900420096,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
@@ -380,6 +382,25 @@
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
+    "sindri-club-3090-llamacpp": {
+      "n_attempts": 17,
+      "n_graded": 17,
+      "n_pass": 12,
+      "tasks_touched": 17,
+      "tasks_passed_any": 12,
+      "n_real": 16,
+      "n_truncated": 1,
+      "n_finished_clean": 15,
+      "invalids": {
+        "invalid_provider": 1
+      },
+      "median_turns": 27.0,
+      "median_in_tok": 272981.0,
+      "median_out_tok": 3936.0,
+      "median_wall": 435.5119513105,
+      "avg_cost": 0.0,
+      "harness": "fiz (built-in agent loop)"
+    },
     "gpt-5-4-mini-openrouter": {
       "n_attempts": 15,
       "n_graded": 15,
@@ -444,14 +465,20 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 3
+      },
+      "or-passing": {
+        "n_attempts": 167,
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 3
       }
     },
     "sindri-club-3090": {
       "all": {
-        "n_attempts": 194,
-        "tasks_attempted": 81,
+        "n_attempts": 197,
+        "tasks_attempted": 82,
         "tasks_in_subset": 89,
-        "tasks_passed": 27
+        "tasks_passed": 28
       },
       "canary": {
         "n_attempts": 42,
@@ -466,36 +493,48 @@
         "tasks_passed": 10
       },
       "openai-cheap": {
-        "n_attempts": 111,
+        "n_attempts": 112,
         "tasks_attempted": 33,
         "tasks_in_subset": 35,
-        "tasks_passed": 22
+        "tasks_passed": 23
+      },
+      "or-passing": {
+        "n_attempts": 140,
+        "tasks_attempted": 49,
+        "tasks_in_subset": 52,
+        "tasks_passed": 27
       }
     },
     "fiz-openrouter-qwen3-6-27b": {
       "all": {
-        "n_attempts": 443,
-        "tasks_attempted": 89,
+        "n_attempts": 204,
+        "tasks_attempted": 69,
         "tasks_in_subset": 89,
         "tasks_passed": 52
       },
       "canary": {
-        "n_attempts": 24,
+        "n_attempts": 16,
         "tasks_attempted": 3,
         "tasks_in_subset": 3,
         "tasks_passed": 3
       },
       "full": {
-        "n_attempts": 83,
-        "tasks_attempted": 15,
+        "n_attempts": 55,
+        "tasks_attempted": 14,
         "tasks_in_subset": 15,
         "tasks_passed": 12
       },
       "openai-cheap": {
-        "n_attempts": 184,
-        "tasks_attempted": 35,
+        "n_attempts": 116,
+        "tasks_attempted": 32,
         "tasks_in_subset": 35,
         "tasks_passed": 29
+      },
+      "or-passing": {
+        "n_attempts": 179,
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 52
       }
     },
     "claude-sonnet-4-6": {
@@ -521,6 +560,12 @@
         "n_attempts": 48,
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
+        "tasks_passed": 3
+      },
+      "or-passing": {
+        "n_attempts": 65,
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
         "tasks_passed": 3
       }
     },
@@ -548,6 +593,12 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 156,
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 0
       }
     },
     "fiz-openai-gpt-5-5": {
@@ -574,6 +625,12 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 15
+      },
+      "or-passing": {
+        "n_attempts": 379,
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 18
       }
     },
     "bragi-club-3090": {
@@ -599,6 +656,12 @@
         "n_attempts": 76,
         "tasks_attempted": 12,
         "tasks_in_subset": 35,
+        "tasks_passed": 2
+      },
+      "or-passing": {
+        "n_attempts": 79,
+        "tasks_attempted": 13,
+        "tasks_in_subset": 52,
         "tasks_passed": 2
       }
     },
@@ -626,14 +689,20 @@
         "tasks_attempted": 12,
         "tasks_in_subset": 35,
         "tasks_passed": 1
+      },
+      "or-passing": {
+        "n_attempts": 61,
+        "tasks_attempted": 13,
+        "tasks_in_subset": 52,
+        "tasks_passed": 1
       }
     },
     "vidar-qwen3-6-27b": {
       "all": {
-        "n_attempts": 167,
-        "tasks_attempted": 73,
+        "n_attempts": 184,
+        "tasks_attempted": 82,
         "tasks_in_subset": 89,
-        "tasks_passed": 27
+        "tasks_passed": 31
       },
       "canary": {
         "n_attempts": 57,
@@ -648,10 +717,16 @@
         "tasks_passed": 11
       },
       "openai-cheap": {
-        "n_attempts": 106,
-        "tasks_attempted": 30,
+        "n_attempts": 116,
+        "tasks_attempted": 35,
         "tasks_in_subset": 35,
-        "tasks_passed": 19
+        "tasks_passed": 21
+      },
+      "or-passing": {
+        "n_attempts": 146,
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 31
       }
     },
     "fiz-openrouter-gpt-5-4-mini": {
@@ -677,6 +752,12 @@
         "n_attempts": 79,
         "tasks_attempted": 11,
         "tasks_in_subset": 35,
+        "tasks_passed": 2
+      },
+      "or-passing": {
+        "n_attempts": 82,
+        "tasks_attempted": 12,
+        "tasks_in_subset": 52,
         "tasks_passed": 2
       }
     },
@@ -704,6 +785,12 @@
         "tasks_attempted": 11,
         "tasks_in_subset": 35,
         "tasks_passed": 3
+      },
+      "or-passing": {
+        "n_attempts": 82,
+        "tasks_attempted": 12,
+        "tasks_in_subset": 52,
+        "tasks_passed": 3
       }
     },
     "fiz-harness-codex-gpt-5-4-mini": {
@@ -729,6 +816,12 @@
         "n_attempts": 82,
         "tasks_attempted": 11,
         "tasks_in_subset": 35,
+        "tasks_passed": 3
+      },
+      "or-passing": {
+        "n_attempts": 85,
+        "tasks_attempted": 12,
+        "tasks_in_subset": 52,
         "tasks_passed": 3
       }
     },
@@ -756,6 +849,12 @@
         "tasks_attempted": 11,
         "tasks_in_subset": 35,
         "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 85,
+        "tasks_attempted": 12,
+        "tasks_in_subset": 52,
+        "tasks_passed": 0
       }
     },
     "claude-native-sonnet-4-6": {
@@ -781,6 +880,12 @@
         "n_attempts": 15,
         "tasks_attempted": 3,
         "tasks_in_subset": 35,
+        "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 15,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 52,
         "tasks_passed": 0
       }
     },
@@ -808,6 +913,12 @@
         "tasks_attempted": 3,
         "tasks_in_subset": 35,
         "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 6,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 52,
+        "tasks_passed": 0
       }
     },
     "noop": {
@@ -833,6 +944,12 @@
         "n_attempts": 6,
         "tasks_attempted": 3,
         "tasks_in_subset": 35,
+        "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 6,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 52,
         "tasks_passed": 0
       }
     },
@@ -860,6 +977,12 @@
         "tasks_attempted": 2,
         "tasks_in_subset": 35,
         "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 14,
+        "tasks_attempted": 2,
+        "tasks_in_subset": 52,
+        "tasks_passed": 0
       }
     },
     "fiz-harness-pi-gpt-5-4-mini": {
@@ -885,6 +1008,12 @@
         "n_attempts": 22,
         "tasks_attempted": 3,
         "tasks_in_subset": 35,
+        "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 22,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 52,
         "tasks_passed": 0
       }
     },
@@ -912,6 +1041,12 @@
         "tasks_attempted": 3,
         "tasks_in_subset": 35,
         "tasks_passed": 3
+      },
+      "or-passing": {
+        "n_attempts": 15,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 52,
+        "tasks_passed": 3
       }
     },
     "gpt-5-mini": {
@@ -938,6 +1073,44 @@
         "tasks_attempted": 3,
         "tasks_in_subset": 35,
         "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 17,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 52,
+        "tasks_passed": 0
+      }
+    },
+    "sindri-club-3090-llamacpp": {
+      "all": {
+        "n_attempts": 17,
+        "tasks_attempted": 17,
+        "tasks_in_subset": 89,
+        "tasks_passed": 12
+      },
+      "canary": {
+        "n_attempts": 3,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "n_attempts": 6,
+        "tasks_attempted": 6,
+        "tasks_in_subset": 15,
+        "tasks_passed": 4
+      },
+      "openai-cheap": {
+        "n_attempts": 10,
+        "tasks_attempted": 10,
+        "tasks_in_subset": 35,
+        "tasks_passed": 7
+      },
+      "or-passing": {
+        "n_attempts": 17,
+        "tasks_attempted": 17,
+        "tasks_in_subset": 52,
+        "tasks_passed": 12
       }
     },
     "gpt-5-4-mini-openrouter": {
@@ -963,6 +1136,12 @@
         "n_attempts": 15,
         "tasks_attempted": 3,
         "tasks_in_subset": 35,
+        "tasks_passed": 3
+      },
+      "or-passing": {
+        "n_attempts": 15,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 52,
         "tasks_passed": 3
       }
     },
@@ -990,6 +1169,12 @@
         "tasks_attempted": 3,
         "tasks_in_subset": 35,
         "tasks_passed": 0
+      },
+      "or-passing": {
+        "n_attempts": 23,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 52,
+        "tasks_passed": 0
       }
     }
   },
@@ -1014,6 +1199,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 34
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "Droid__GPT-5.3-Codex": {
@@ -1036,6 +1226,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 32
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "OB-1_GPT-5.4-GPT-5.3-Codex-Claude-Opus-4.5-Claude-Opus-4.6": {
@@ -1058,6 +1253,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 33
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "MAYA__Claude-4.6-opus": {
@@ -1080,6 +1280,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 32
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 47
       }
     },
     "Terminus2__DeepSeek-V3.2": {
@@ -1102,6 +1307,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 27
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 42
       }
     },
     "OpenSage__Gemini-3-Pro-Preview": {
@@ -1124,6 +1334,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 32
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 47
       }
     },
     "Mux__GPT-5.3-Codex": {
@@ -1146,6 +1361,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 33
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "Terminus2__Minimax-m2.5": {
@@ -1168,6 +1388,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 27
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 42
       }
     },
     "Forge__Opus-4.6": {
@@ -1190,6 +1415,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 34
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 47
       }
     },
     "Capy__Claude-Opus-4.6": {
@@ -1212,6 +1442,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 32
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "Terminus2__GPT-5.3-Codex": {
@@ -1234,6 +1469,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 33
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "Terminus-KIRA__Claude-Opus-4.6": {
@@ -1256,6 +1496,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 34
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "Terminus2__GLM-4.7": {
@@ -1278,6 +1523,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 23
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 39
       }
     },
     "Terminus2__Claude-Opus-4.6": {
@@ -1300,6 +1550,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 31
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 46
       }
     },
     "cchuter__minimax-m2.5": {
@@ -1322,6 +1577,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 28
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 43
       }
     },
     "OB-1_GPT-5.3-Codex-Claude-Opus-4.5-Claude-Opus-4.6": {
@@ -1344,6 +1604,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 32
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "dakou__qwen3-coder-480b": {
@@ -1366,6 +1631,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 23
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 33
       }
     },
     "Judy__Gemini-3.1-Pro-Preview": {
@@ -1388,6 +1658,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 35
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 51
       }
     },
     "Terminus-KIRA__Gemini-3.1-Pro-Preview": {
@@ -1410,6 +1685,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 34
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "BashAgent__TermiGen-32B": {
@@ -1432,6 +1712,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 18
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 22
       }
     },
     "Ante__Gemini-3-Pro-Preview": {
@@ -1454,6 +1739,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 32
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 50
       }
     },
     "Mux__Claude-Opus-4.6": {
@@ -1476,6 +1766,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 29
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 45
       }
     },
     "CodeBrain-1__Gemini-3-Pro-Preview": {
@@ -1498,6 +1793,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 31
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "MAYA__Claude-4.5-sonnet": {
@@ -1520,6 +1820,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 14
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 25
       }
     },
     "Forge__Gemini-3.1-Pro-Preview": {
@@ -1542,6 +1847,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 33
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "IndusAGICodingAgent__gpt-5.3-codex": {
@@ -1564,6 +1874,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 29
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 45
       }
     },
     "Deep-Agents__GPT-5.2-Codex": {
@@ -1586,6 +1901,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 31
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "ClaudeCode__GLM-4.7": {
@@ -1608,6 +1928,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 22
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 40
       }
     },
     "OpenCode__Claude-Opus-4.5": {
@@ -1630,6 +1955,11 @@
         "tasks_attempted": 34,
         "tasks_in_subset": 35,
         "tasks_passed": 22
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 35
       }
     },
     "Ante__Gemini-3.1-Pro-Preview": {
@@ -1652,6 +1982,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 33
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 47
       }
     },
     "Mux__GPT-5.2": {
@@ -1674,6 +2009,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 24
+      },
+      "or-passing": {
+        "tasks_attempted": 50,
+        "tasks_in_subset": 52,
+        "tasks_passed": 40
       }
     },
     "Crux__Claude-Opus-4.6": {
@@ -1696,6 +2036,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 35
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 51
       }
     },
     "Terminus2__GLM-5": {
@@ -1718,6 +2063,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 29
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "Forge__GPT-5.4": {
@@ -1740,6 +2090,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 33
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "Judy__Claude-Opus-4.6": {
@@ -1762,6 +2117,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 33
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "Gemini_CLI__Gemini-3-Flash-Preview": {
@@ -1784,6 +2144,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 27
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 43
       }
     },
     "Terminus2__Kimi-k2.5": {
@@ -1806,6 +2171,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 27
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 44
       }
     },
     "Simple-Codex__GPT-5.3-Codex": {
@@ -1828,6 +2198,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 33
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "Mux__Claude-Opus-4.5": {
@@ -1850,6 +2225,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 27
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 41
       }
     },
     "Droid__Claude-Opus-4.6": {
@@ -1872,6 +2252,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 32
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 47
       }
     },
     "CodeBrain-1__GPT-5.3-Codex": {
@@ -1894,6 +2279,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 31
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 48
       }
     },
     "terminus-2__AfterQuery-GPT-OSS-20B": {
@@ -1916,6 +2306,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 20
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 28
       }
     },
     "OpenSage__GPT-5.3-Codex": {
@@ -1938,6 +2333,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 35
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 49
       }
     },
     "grok-cli__grok-4.20-0309-reasoning": {
@@ -1960,6 +2360,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 30
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 43
       }
     },
     "pilot-real__claude-opus-4-6": {
@@ -1982,6 +2387,11 @@
         "tasks_attempted": 35,
         "tasks_in_subset": 35,
         "tasks_passed": 27
+      },
+      "or-passing": {
+        "tasks_attempted": 52,
+        "tasks_in_subset": 52,
+        "tasks_passed": 46
       }
     }
   }

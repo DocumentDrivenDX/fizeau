@@ -99,9 +99,19 @@ func classifyMatrixInvalid(report matrixRunReport) string {
 		// Conservative quality-attribution rule: a graded_fail with no
 		// meaningful agent attempt (zero turns, zero output tokens) is
 		// almost certainly a harness/provider/setup failure that Harbor
-		// happened to verify cleanly with reward=0. Reclassify as
-		// invalid_setup; operators can drill into the specific cell.
+		// happened to verify cleanly with reward=0. Sub-classify so the
+		// matrix tells these apart:
+		//   - had_llm_request=true + no response → provider hung/errored
+		//     (5xx, rate limit drop, stream closed before token). This is
+		//     a *provider* failure, retriable via --retry-invalid. The
+		//     model itself never got to try.
+		//   - had_llm_request=false / unknown → never reached the model
+		//     (setup error before request). Stays invalid_setup.
 		if !hasAttempt {
+			if report.HadLLMRequest != nil && *report.HadLLMRequest &&
+				(report.TerminatedMidWork == nil) {
+				return matrixInvalidProvider
+			}
 			return matrixInvalidSetup
 		}
 		// Even with some turns, if output tokens are zero AND wall is

@@ -27,7 +27,7 @@ func TestLoadSweepPlanParsesAllPhases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	wantPhases := []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"}
+	wantPhases := []string{"canary", "local-qwen", "or-passing", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"}
 	if len(plan.Phases) != len(wantPhases) {
 		t.Fatalf("phases = %d, want %d", len(plan.Phases), len(wantPhases))
 	}

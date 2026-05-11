@@ -67,7 +67,13 @@ type matrixRunReport struct {
 	// itself done with finish_reason=stop. Lets the matrix distinguish
 	// "ran out of time" from "claimed a solution and failed". Pointer so
 	// absent (no session data) is distinct from explicitly-false.
-	TerminatedMidWork       *bool                    `json:"terminated_mid_work,omitempty"`
+	TerminatedMidWork *bool `json:"terminated_mid_work,omitempty"`
+	// HadLLMRequest is true when the trial issued at least one llm.request,
+	// regardless of whether a response came back. Combined with
+	// TerminatedMidWork lets the classifier distinguish:
+	//   - request fired, no response → invalid_provider (provider hang/error)
+	//   - no request at all          → invalid_setup (failed before reaching model)
+	HadLLMRequest           *bool                    `json:"had_llm_request,omitempty"`
 	CostUSD                 float64                  `json:"cost_usd"`
 	PricingSource           string                   `json:"pricing_source"`
 	AdapterTranslationNotes []string                 `json:"adapter_translation_notes,omitempty"`
@@ -523,14 +529,16 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 					report.GradingOutcome = "ungraded"
 				}
 			}
-			// Read finish_reason of the last llm.response from the trial's
-			// session jsonl to populate terminated_mid_work. The harbor agent
-			// (FizeauAgent) writes to <cellDir>/<jobName>/<trial-hash>/agent/
-			// sessions/svc-*.jsonl; we don't know the trial-hash up front so
-			// glob for the newest. Mirrors backfill-terminated-mid-work.py.
-			if tmw := readTerminatedMidWorkFromCell(filepath.Join(cellDir, jobName)); tmw != nil {
+			// Read session-jsonl signals (terminated_mid_work + had_llm_request)
+			// from the trial's session jsonl. The harbor agent (FizeauAgent)
+			// writes to <cellDir>/<jobName>/<trial-hash>/agent/sessions/
+			// svc-*.jsonl; glob for the newest since the trial-hash isn't
+			// known up front. Mirrors backfill-terminated-mid-work.py.
+			tmw, hadReq := readSessionSignalsFromCell(filepath.Join(cellDir, jobName))
+			if tmw != nil {
 				report.TerminatedMidWork = tmw
 			}
+			report.HadLLMRequest = &hadReq
 		}
 	} else {
 		result, err := runMatrixAdapter(opts.workDir, report.AdapterModule, opts.profile, matrixPrompt(opts.task), opts.task.ID, workDir)
@@ -1313,17 +1321,28 @@ func boolPointerField(m map[string]any, key string) *bool {
 	return nil
 }
 
-// readTerminatedMidWorkFromCell streams the trial's session jsonl, finds
-// the last llm.response event's finish_reason, and returns true when the
-// model was actively producing output (tool_calls, length, function_call)
-// vs false when it voluntarily stopped (stop, end_turn). Returns nil when
-// no session jsonl was written or no llm.response events were emitted.
-// jobDir = <cellDir>/<jobName>; the harbor agent writes to
+// readSessionSignalsFromCell streams the trial's session jsonl and
+// returns three signals:
+//
+//	tmw          : terminated_mid_work — true if last llm.response had
+//	               finish_reason in (tool_calls, length, function_call);
+//	               false on (stop, end_turn); nil when no llm.response.
+//	hadLLMRequest: true when the agent issued at least one llm.request,
+//	               whether or not a response came back.
+//
+// The combination distinguishes three failure shapes:
+//   - tmw set true|false  → model attempted (real graded result)
+//   - tmw nil + hadReq true → request fired but no response (provider hang
+//     or stream error). Tag invalid_provider.
+//   - tmw nil + hadReq false → never even sent a request (setup failure
+//     before reaching the model).
+//
+// jobDir = <cellDir>/<jobName>; harbor writes to
 // <jobDir>/<trial-hash>/agent/sessions/svc-*.jsonl.
-func readTerminatedMidWorkFromCell(jobDir string) *bool {
+func readSessionSignalsFromCell(jobDir string) (tmw *bool, hadLLMRequest bool) {
 	matches, err := filepath.Glob(filepath.Join(jobDir, "*", "agent", "sessions", "svc-*.jsonl"))
 	if err != nil || len(matches) == 0 {
-		return nil
+		return nil, false
 	}
 	// Newest by mtime — matches the trial we just ran.
 	sessPath := matches[0]
@@ -1339,7 +1358,7 @@ func readTerminatedMidWorkFromCell(jobDir string) *bool {
 	}
 	f, err := os.Open(sessPath) // #nosec G304 -- jobDir is a benchmark output path
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	defer f.Close()
 	var lastFinish string
@@ -1355,20 +1374,24 @@ func readTerminatedMidWorkFromCell(jobDir string) *bool {
 		if err := json.Unmarshal(scanner.Bytes(), &ev); err != nil {
 			continue
 		}
-		if ev.Type == "llm.response" && ev.Data.FinishReason != "" {
-			lastFinish = ev.Data.FinishReason
+		switch ev.Type {
+		case "llm.request":
+			hadLLMRequest = true
+		case "llm.response":
+			if ev.Data.FinishReason != "" {
+				lastFinish = ev.Data.FinishReason
+			}
 		}
 	}
 	switch lastFinish {
 	case "tool_calls", "length", "function_call":
 		t := true
-		return &t
+		tmw = &t
 	case "stop", "end_turn":
-		f := false
-		return &f
-	default:
-		return nil
+		fv := false
+		tmw = &fv
 	}
+	return tmw, hadLLMRequest
 }
 
 func deriveMatrixFinalStatus(processOutcome, gradingOutcome string, reward *int, retriable bool) string {

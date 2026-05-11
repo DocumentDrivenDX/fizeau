@@ -451,6 +451,7 @@
       "resolved_at": "2026-05-08",
       "snapshot": "qwen/qwen3.6-27b via OpenRouter /api/v1/models"
     },
+    "agent_timeout_multiplier": 2.5,
     "_header_comment": "fiz provider lane through OpenRouter to Qwen3.6 27B.",
     "_path": "scripts/benchmark/profiles/fiz-openrouter-qwen3-6-27b.yaml"
   },
@@ -602,6 +603,48 @@
     "_header_comment": "Noop profile \u2014 fixture used by adapter unit tests. Points at a non-routable",
     "_path": "scripts/benchmark/profiles/noop.yaml"
   },
+  "sindri-club-3090-llamacpp": {
+    "id": "sindri-club-3090-llamacpp",
+    "metadata": {
+      "model_family": "qwen3-6-27b",
+      "model_id": "Qwen3.6-27B-UD-Q3_K_XL.gguf",
+      "quant_label": "gguf-q3-k-xl-unsloth",
+      "provider_surface": "sindri-club-llamacpp",
+      "runtime": "llama-server",
+      "hardware_label": "sindri-club-3090",
+      "endpoint": "http://sindri:8020/v1",
+      "server": "sindri"
+    },
+    "provider": {
+      "type": "llama-server",
+      "model": "Qwen3.6-27B-UD-Q3_K_XL.gguf",
+      "base_url": "http://sindri:8020/v1",
+      "api_key_env": "LLAMACPP_API_KEY"
+    },
+    "pricing": {
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "cached_input_usd_per_mtok": 0.0
+    },
+    "limits": {
+      "max_output_tokens": 32768,
+      "context_tokens": 180000,
+      "rate_limit_rpm": 60,
+      "rate_limit_tpm": 100000
+    },
+    "sampling": {
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "top_k": 20
+    },
+    "versioning": {
+      "resolved_at": "2026-05-10",
+      "snapshot": "Qwen3.6-27B-UD-Q3_K_XL.gguf"
+    },
+    "agent_timeout_multiplier": 5.0,
+    "_header_comment": "Qwen3.6-27B Unsloth Q3_K_XL GGUF via llama.cpp's llama-server on sindri,",
+    "_path": "scripts/benchmark/profiles/sindri-club-3090-llamacpp.yaml"
+  },
   "sindri-club-3090": {
     "id": "sindri-club-3090",
     "metadata": {
@@ -704,7 +747,7 @@
       "rate_limit_rpm": 60,
       "rate_limit_tpm": 100000
     },
-    "agent_timeout_multiplier": 3.7,
+    "agent_timeout_multiplier": 8.0,
     "sampling": {
       "temperature": 0.6,
       "reasoning": "low",

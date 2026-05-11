@@ -35,6 +35,7 @@ func TestClassifyMatrixInvalidFromFixtures(t *testing.T) {
 		{name: "graded-fail-real-attempt-with-wrapper-bash.json", want: ""},
 		{name: "harness-crash-context-canceled.json", want: matrixInvalidSetup},
 		{name: "ran-no-attempt-docker-pull-fail.json", want: matrixInvalidSetup},
+		{name: "graded-fail-no-llm-response.json", want: matrixInvalidProvider},
 		{name: "provider-transport.json", want: matrixInvalidProvider},
 		{name: "verifier-fail-after-attempt.json", want: ""},
 	}

@@ -93,6 +93,10 @@ def classify(r: dict) -> str:
         return "invalid_setup"
     if fs == "graded_fail":
         if not has_attempt:
+            # Sub-classify: provider hang (request fired, no response) vs
+            # setup failure (never reached the model). Mirrors Go classifier.
+            if r.get("had_llm_request") is True and r.get("terminated_mid_work") is None:
+                return "invalid_provider"
             return "invalid_setup"
         if (r.get("output_tokens") or 0) == 0 and (r.get("turns") or 0) <= 2:
             wall = r.get("wall_seconds")

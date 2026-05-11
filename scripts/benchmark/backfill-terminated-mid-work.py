@@ -43,9 +43,10 @@ def find_session_jsonl(report_path: Path) -> Path | None:
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
-def last_finish_reason(session_path: Path) -> str | None:
-    """Stream through the jsonl and return finish_reason of the last llm.response."""
+def session_signals(session_path: Path) -> tuple[str | None, bool]:
+    """Return (last_finish_reason, had_llm_request)."""
     last = None
+    had_request = False
     try:
         with session_path.open() as f:
             for line in f:
@@ -53,14 +54,16 @@ def last_finish_reason(session_path: Path) -> str | None:
                     r = json.loads(line)
                 except Exception:
                     continue
-                if r.get("type") != "llm.response":
-                    continue
-                fr = (r.get("data") or {}).get("finish_reason")
-                if fr:
-                    last = fr
+                t = r.get("type")
+                if t == "llm.request":
+                    had_request = True
+                elif t == "llm.response":
+                    fr = (r.get("data") or {}).get("finish_reason")
+                    if fr:
+                        last = fr
     except Exception:
-        return None
-    return last
+        return None, False
+    return last, had_request
 
 
 def main() -> int:
@@ -71,8 +74,8 @@ def main() -> int:
     paths = glob.glob(f"{CELLS}/*/*/*/rep-*/report.json")
     transitions: Counter = Counter()
     no_session = 0
-    no_finish = 0
-    deltas: list[tuple[Path, dict, bool]] = []
+    # Per-report deltas. Each entry is (path, report, {field: new_value}).
+    deltas: list[tuple[Path, dict, dict]] = []
     unchanged = 0
 
     for p_str in paths:
@@ -87,41 +90,41 @@ def main() -> int:
         if sess is None:
             no_session += 1
             continue
-        fr = last_finish_reason(sess)
-        if fr is None:
-            no_finish += 1
-            continue
+        fr, had_req = session_signals(sess)
 
+        new_tmw = None
         if fr in TRUNCATED_REASONS:
-            new_val = True
+            new_tmw = True
         elif fr in CLEAN_REASONS:
-            new_val = False
-        else:
-            # Unknown finish_reason — leave as absent rather than guess
-            transitions[(r.get("terminated_mid_work"), f"unknown:{fr}")] += 1
-            continue
+            new_tmw = False
+        # else: unknown / no finish_reason — leave tmw unchanged (absent)
 
-        old_val = r.get("terminated_mid_work")
-        if old_val == new_val:
+        changes: dict = {}
+        if new_tmw is not None and r.get("terminated_mid_work") != new_tmw:
+            changes["terminated_mid_work"] = new_tmw
+        if r.get("had_llm_request") != had_req:
+            changes["had_llm_request"] = had_req
+        if not changes:
             unchanged += 1
             continue
-        deltas.append((p, r, new_val))
-        transitions[(old_val, new_val)] += 1
+        deltas.append((p, r, changes))
+        for k, v in changes.items():
+            transitions[(k, r.get(k), v)] += 1
 
     print(f"scanned {len(paths)} reports", file=sys.stderr)
     print(f"unchanged: {unchanged}", file=sys.stderr)
     print(f"would change: {len(deltas)}", file=sys.stderr)
     print(f"no session jsonl found: {no_session}", file=sys.stderr)
-    print(f"no llm.response events: {no_finish}", file=sys.stderr)
-    print("transition counts:", file=sys.stderr)
-    for (old, new), n in transitions.most_common():
-        print(f"  {old!s:8s} -> {new!s:20s}  {n:>5}", file=sys.stderr)
+    print("transition counts (field, old → new):", file=sys.stderr)
+    for (field, old, new), n in transitions.most_common():
+        print(f"  {field:22s} {old!s:8s} -> {new!s:8s}  {n:>5}", file=sys.stderr)
 
     if args.dry_run:
         return 0
 
-    for p, r, new_val in deltas:
-        r["terminated_mid_work"] = new_val
+    for p, r, changes in deltas:
+        for k, v in changes.items():
+            r[k] = v
         p.write_text(json.dumps(r, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {len(deltas)} updated report.json files", file=sys.stderr)
     return 0
