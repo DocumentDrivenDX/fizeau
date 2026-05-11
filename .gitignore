@@ -74,3 +74,4 @@ coverage.html
 # Hugo build output
 website/public/
 /public/
+.ddx/worker-logs/
