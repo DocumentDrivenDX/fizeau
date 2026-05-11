@@ -90,6 +90,8 @@ const (
 	ReasoningWireProvider = "provider"
 	ReasoningWireModelID  = "model_id"
 	ReasoningWireNone     = "none"
+	ReasoningWireEffort   = "effort"
+	ReasoningWireTokens   = "tokens"
 )
 
 // Sampling-control values for ModelEntry.SamplingControl. See ADR-007 §4.
@@ -278,9 +280,9 @@ func validateManifest(m manifest) error {
 			return fmt.Errorf("model %q has invalid reasoning_control %q (must be one of tunable, fixed, none)", modelID, model.ReasoningControl)
 		}
 		switch model.ReasoningWire {
-		case "", ReasoningWireProvider, ReasoningWireModelID, ReasoningWireNone:
+		case "", ReasoningWireProvider, ReasoningWireModelID, ReasoningWireNone, ReasoningWireEffort, ReasoningWireTokens:
 		default:
-			return fmt.Errorf("model %q has invalid reasoning_wire %q (must be one of provider, model_id, none)", modelID, model.ReasoningWire)
+			return fmt.Errorf("model %q has invalid reasoning_wire %q (must be one of provider, model_id, none, effort, tokens)", modelID, model.ReasoningWire)
 		}
 		switch model.SamplingControl {
 		case "", SamplingControlClientSettable, SamplingControlHarnessPinned, SamplingControlPartial:

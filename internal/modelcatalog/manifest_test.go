@@ -398,6 +398,57 @@ models:
 	assert.Equal(t, SamplingControlHarnessPinned, pinned.SamplingControl)
 }
 
+func TestManifestAcceptsReasoningWireEffortAndTokens(t *testing.T) {
+	src := `
+version: 5
+generated_at: 2026-05-11T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  effort-model:
+    family: example
+    status: active
+    power: 8
+    reasoning_wire: effort
+    surfaces:
+      agent.openai: effort-model
+  tokens-model:
+    family: example
+    status: active
+    power: 8
+    reasoning_wire: tokens
+    surfaces:
+      agent.openai: tokens-model
+`
+
+	path := writeFixtureManifest(t, src)
+	catalog, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.NoError(t, err)
+
+	models := catalog.AllModels()
+
+	effortModel, ok := models["effort-model"]
+	require.True(t, ok, "effort-model present")
+	assert.Equal(t, ReasoningWireEffort, effortModel.ReasoningWire)
+
+	tokensModel, ok := models["tokens-model"]
+	require.True(t, ok, "tokens-model present")
+	assert.Equal(t, ReasoningWireTokens, tokensModel.ReasoningWire)
+
+	out, err := yaml.Marshal(map[string]ModelEntry{
+		"effort-model": effortModel,
+		"tokens-model": tokensModel,
+	})
+	require.NoError(t, err)
+
+	var roundTrip map[string]ModelEntry
+	require.NoError(t, yaml.Unmarshal(out, &roundTrip))
+	assert.Equal(t, ReasoningWireEffort, roundTrip["effort-model"].ReasoningWire)
+	assert.Equal(t, ReasoningWireTokens, roundTrip["tokens-model"].ReasoningWire)
+}
+
 func TestManifestRejectsInvalidSamplingControl(t *testing.T) {
 	path := writeFixtureManifest(t, `
 version: 5
