@@ -1474,6 +1474,25 @@ default: vidar-omlx
 	assert.NotNil(t, p)
 }
 
+// TestModelReasoningWireMap_SurfaceID asserts that modelReasoningWireMap keys
+// results by surface ID (e.g., "qwen/qwen3.6-27b") rather than catalog ID
+// ("qwen3.6-27b"), so provider lookups — which use the wire model string —
+// resolve correctly. Regression test for the catalog-ID vs surface-ID mismatch
+// described in ADR-010.
+func TestModelReasoningWireMap_SurfaceID(t *testing.T) {
+	wireMap := modelReasoningWireMap()
+	require.NotNil(t, wireMap, "modelReasoningWireMap must return non-nil for embedded catalog")
+
+	const surface = "agent.openai"
+	surfaceMap, ok := wireMap[surface]
+	require.True(t, ok, "surface %q missing from wire map", surface)
+
+	wire, ok := surfaceMap["qwen/qwen3.6-27b"]
+	require.True(t, ok, "surface ID qwen/qwen3.6-27b not found in agent.openai wire map")
+	assert.NotEmpty(t, wire, "reasoning_wire for qwen/qwen3.6-27b must not be empty")
+	assert.Equal(t, "tokens", wire, "qwen3.6-27b reasoning_wire should be tokens per probe verdict")
+}
+
 func TestLoad_NewFields_AbsentUseZeroDefaults(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()

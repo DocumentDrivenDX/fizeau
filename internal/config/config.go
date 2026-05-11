@@ -895,7 +895,7 @@ func buildProviderFromConfig(pc ProviderConfig) (agent.Provider, error) {
 		KnownModels:        openAIKnownModels(),
 		Headers:            pc.Headers,
 		Reasoning:          pc.Reasoning,
-		ModelReasoningWire: modelReasoningWireMap(),
+		ModelReasoningWire: modelReasoningWireMap()[string(modelcatalog.SurfaceAgentOpenAI)],
 	}), nil
 }
 
@@ -922,10 +922,14 @@ func openAIKnownModels() map[string]string {
 	return nil
 }
 
-// modelReasoningWireMap returns a model_id → reasoning_wire map sourced from
-// the embedded catalog. Models without an explicit reasoning_wire field are
-// omitted (the provider treats absence as the "provider" default).
-func modelReasoningWireMap() map[string]string {
+// modelReasoningWireMap returns a surface-system → surface-model-ID → reasoning_wire
+// map sourced from the embedded catalog. Models without an explicit reasoning_wire
+// field are omitted (the provider treats absence as the "provider" default).
+//
+// Keying by surface ID (e.g., "qwen/qwen3.6-27b") rather than catalog ID
+// ("qwen3.6-27b") fixes the lookup mismatch: providers query by the model string
+// they actually send on the wire, which is the surface ID, not the catalog key.
+func modelReasoningWireMap() map[string]map[string]string {
 	cat, err := modelcatalog.Default()
 	if err != nil {
 		return nil
@@ -934,10 +938,16 @@ func modelReasoningWireMap() map[string]string {
 	if len(all) == 0 {
 		return nil
 	}
-	out := make(map[string]string, len(all))
-	for id, entry := range all {
-		if entry.ReasoningWire != "" {
-			out[id] = entry.ReasoningWire
+	out := make(map[string]map[string]string)
+	for _, entry := range all {
+		if entry.ReasoningWire == "" {
+			continue
+		}
+		for surface, surfaceID := range entry.Surfaces {
+			if out[surface] == nil {
+				out[surface] = make(map[string]string)
+			}
+			out[surface][surfaceID] = entry.ReasoningWire
 		}
 	}
 	return out
