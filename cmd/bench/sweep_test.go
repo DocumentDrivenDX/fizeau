@@ -179,6 +179,7 @@ func TestSweepResolveSubsetPathKnownIDs(t *testing.T) {
 		"terminalbench-2-1-full":         "scripts/benchmark/task-subset-tb21-full.yaml",
 		"terminalbench-2-1-all":          "scripts/benchmark/task-subset-tb21-all.yaml",
 		"terminalbench-2-1-openai-cheap": "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
+		"terminalbench-2-1-or-passing":   "scripts/benchmark/task-subset-tb21-or-passing.yaml",
 	}
 	for id, rel := range cases {
 		got := sweepResolveSubsetPath(wd, id)

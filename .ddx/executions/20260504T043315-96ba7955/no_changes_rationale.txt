@@ -1,6 +1,0 @@
-status: needs_investigation
-reason: agent-d7d2e4dd is an epic whose acceptance requires all child blocker beads to be closed and a subsequent live Phase A.1 matrix run to execute without prerequisite failures. The prerequisite blocker agent-73f90363 is closed, but the live matrix child agent-5b6f5872 remains open and must perform 27 paid live runs plus publish matrix artifacts before this parent can satisfy acceptance. This pass corrected the parent dependency edge so agent-d7d2e4dd is blocked by agent-5b6f5872 rather than appearing ready prematurely.
-
-decomposition:
-- agent-73f90363: Provision Phase A.1 live matrix prerequisites (closed at d252fdba44fef4f6f05c1ea3f4afd84bc53674fe).
-- agent-5b6f5872: Run Phase A.1 live matrix after prerequisites (open; required before parent acceptance can be met).

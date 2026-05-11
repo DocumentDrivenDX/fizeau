@@ -155,6 +155,7 @@ var sweepSubsetPaths = map[string]string{
 	"terminalbench-2-1-full":         "scripts/benchmark/task-subset-tb21-full.yaml",
 	"terminalbench-2-1-all":          "scripts/benchmark/task-subset-tb21-all.yaml",
 	"terminalbench-2-1-openai-cheap": "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
+	"terminalbench-2-1-or-passing":   "scripts/benchmark/task-subset-tb21-or-passing.yaml",
 }
 
 func cmdSweep(args []string) int {
