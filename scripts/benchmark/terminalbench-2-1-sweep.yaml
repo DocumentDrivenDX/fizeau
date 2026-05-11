@@ -98,17 +98,21 @@ phases:
     description: >-
       8-task limited-scope subset hand-picked from OR-passing to span the
       OR-Qwen pass-wall difficulty distribution (2 quick / 2 medium-low /
-      2 medium-high / 2 long). Used to land enough vidar-ds4 (DeepSeek V4
-      Flash) data to tune the agent_timeout_multiplier before committing
-      to the full 52-task or-passing sweep. Run with `--phase timing-baseline
-      --lanes ds4`.
+      2 medium-high / 2 long). Originally scoped to vidar-ds4 alone for
+      timeout tuning; expanded 2026-05-11 to also cover sindri-llamacpp
+      and OR-Qwen3 to verify post-wire-fix (commit cfdcdcc4) reasoning
+      control across all three benchmark lanes before committing to a
+      full 52-task or-passing sweep.
     reps: 3
     subset: terminalbench-2-1-timing-baseline
     lanes:
+      - fiz-openrouter-qwen3-6-27b
+      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
       - fiz-vidar-ds4
     parallel_policy: >-
-      Single-lane experiment. ds4 serializes to one cell at a time
-      regardless of harness concurrency.
+      ds4 serializes to one cell at a time regardless of harness
+      concurrency. sindri-llamacpp and OR run in their own resource groups
+      and can proceed in parallel with ds4.
 
   - id: or-passing
     description: >-

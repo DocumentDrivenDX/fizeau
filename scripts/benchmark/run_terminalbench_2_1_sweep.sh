@@ -351,6 +351,19 @@ prepare_agent_runtime_bundle() {
   local context_dir image tag container_id tmp_bundle_dir node_version claude_version codex_version pi_version opencode_version
   context_dir="${REPO_ROOT}/benchmark-results/bin/agent-runtime-context-${CONTAINER_GOARCH}"
   HARBOR_AGENT_RUNTIME_BUNDLE="${REPO_ROOT}/benchmark-results/bin/agent-runtime-linux-${CONTAINER_GOARCH}.tgz"
+
+  # Operator escape hatch: skip docker rebuild and reuse the existing bundle.
+  # Useful when the upstream agent image fails to build (e.g., transitive npm
+  # deps with bun installs) but the existing bundle is sufficient. Set
+  # SKIP_AGENT_RUNTIME_REBUILD=1 to enable.
+  if [[ "${SKIP_AGENT_RUNTIME_REBUILD:-0}" = "1" && -f "${HARBOR_AGENT_RUNTIME_BUNDLE}" ]]; then
+    echo "Reusing existing agent runtime bundle: ${HARBOR_AGENT_RUNTIME_BUNDLE} (SKIP_AGENT_RUNTIME_REBUILD=1)"
+    export HARBOR_AGENT_RUNTIME_BUNDLE
+    prepare_home_tarball "HARBOR_CLAUDE_HOME_TARBALL" ".claude" "claude-home.tgz"
+    prepare_home_tarball "HARBOR_CODEX_HOME_TARBALL" ".codex" "codex-home.tgz"
+    return
+  fi
+
   image="fizeau/terminalbench-agent-runtime"
   tag="${image}:$(git rev-parse --short HEAD 2>/dev/null || echo local)-${CONTAINER_GOARCH}"
   node_version="${HARBOR_NODE_VERSION:-20.19.2}"
