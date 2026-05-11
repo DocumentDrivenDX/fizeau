@@ -32,3 +32,16 @@ sampling:
 versioning:
   resolved_at: "2026-05-08"
   snapshot: "qwen/qwen3.6-27b via OpenRouter /api/v1/models"
+
+# QWEN_BASE: amount of extra wall budget Qwen3.6-27B-the-model needs over
+# the harbor-default per-task agent.timeout_sec to converge. 48% of OR-Qwen's
+# real graded_fails at 1.0x are truncated mid-work (terminated_mid_work=True);
+# the truncated walls cluster at p90=1832s, max=2025s vs harbor's median 900s
+# task base. 2.5x rescues p95 truncations with a small safety margin.
+#
+# This is the BASE term in the per-lane formula:
+#   multiplier = QWEN_BASE × LANE_PENALTY
+# where LANE_PENALTY=1.0 for cloud OR (the reference lane). For local lanes
+# (sindri-llamacpp, vidar) the same QWEN_BASE compounds with a slowdown
+# factor empirically derived from joint-pass walls.
+agent_timeout_multiplier: 2.5
