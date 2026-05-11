@@ -8,7 +8,7 @@
 id: sindri-club-3090-llamacpp
 metadata:
   model_family: qwen3-6-27b
-  model_id: unsloth-q3kxl/Qwen3.6-27B-UD-Q3_K_XL.gguf
+  model_id: Qwen3.6-27B-UD-Q3_K_XL.gguf
   quant_label: gguf-q3-k-xl-unsloth
   provider_surface: sindri-club-llamacpp
   runtime: llama-server
@@ -18,7 +18,7 @@ metadata:
 
 provider:
   type: llama-server
-  model: unsloth-q3kxl/Qwen3.6-27B-UD-Q3_K_XL.gguf
+  model: Qwen3.6-27B-UD-Q3_K_XL.gguf
   base_url: http://sindri:8020/v1
   api_key_env: LLAMACPP_API_KEY
 pricing:
@@ -39,9 +39,9 @@ versioning:
   resolved_at: "2026-05-10"
   snapshot: "Qwen3.6-27B-UD-Q3_K_XL.gguf"
 
-# Starting multiplier matches the vLLM lane (2.7x) since we have no llama.cpp
-# wall-time data yet. Q3_K_XL weights are smaller than int4-AWQ but llama.cpp
-# is typically slower per token than vLLM, so net throughput is uncertain.
-# Re-tune from the first batch of jointly-passed tasks (see how the vLLM
-# multiplier was computed in sindri-club-3090.yaml).
-agent_timeout_multiplier: 2.7
+# Multiplier set from the smoke-test decode rate: 13.2 tok/s on Q3_K_XL via
+# llama.cpp vs ~52 tok/s on OR cloud Qwen → 52/13 ≈ 4.0x expected wall
+# expansion. This is materially slower than the vLLM autoround int4 lane
+# (which managed ~69 tok/s); re-tune downward from the first batch of
+# jointly-passed tasks if observed walls are well under budget.
+agent_timeout_multiplier: 4.0

@@ -690,11 +690,11 @@ lanes:
     resource_group: rg-sindri-club-3090-llamacpp
     fizeau_env:
       FIZEAU_PROVIDER: llama-server
-      FIZEAU_MODEL: "unsloth-q3kxl/Qwen3.6-27B-UD-Q3_K_XL.gguf"
+      FIZEAU_MODEL: "Qwen3.6-27B-UD-Q3_K_XL.gguf"
       FIZEAU_BASE_URL: "http://sindri:8020/v1"
       FIZEAU_API_KEY_ENV: LLAMACPP_API_KEY
     model_family: qwen3-6-27b
-    model_id: "unsloth-q3kxl/Qwen3.6-27B-UD-Q3_K_XL.gguf"
+    model_id: "Qwen3.6-27B-UD-Q3_K_XL.gguf"
     quant_label: gguf-q3-k-xl-unsloth
     provider_surface: sindri-club-llamacpp
     runtime: llama-server
