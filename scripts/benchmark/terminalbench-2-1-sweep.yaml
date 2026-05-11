@@ -94,6 +94,26 @@ phases:
       all three may run in parallel since they use different servers/endpoints.
       Within each resource group max_concurrency=1.
 
+  - id: or-passing
+    description: >-
+      Curated 52-task subset where fiz-openrouter-qwen3-6-27b has been
+      observed to pass at least one rep. Use this to focus local-Qwen lane
+      experiments on tasks the cloud baseline can solve, so we don't burn
+      compute on tasks where even cloud Qwen never converges. Lane-filter
+      at runtime, e.g. `--phase or-passing --lanes sindri-llamacpp,vidar`.
+    reps: 3
+    subset: terminalbench-2-1-or-passing
+    lanes:
+      - fiz-vidar-omlx-qwen3-6-27b
+      - fiz-bragi-club-3090-qwen3-6-27b
+      - fiz-sindri-club-3090-qwen3-6-27b
+      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
+    parallel_policy: >-
+      Local resource groups serialize at one cell per endpoint; lanes from
+      different resource groups may run in parallel. No managed-cloud
+      lanes here — this phase is the "is local Qwen capable on tasks
+      cloud Qwen can solve" experiment, so OR is held out as the baseline.
+
   - id: tb21-all
     description: >-
       Real full TB-2.1 catalog run over all 89 tasks. This phase is intended
@@ -864,3 +884,11 @@ profile_inventory:
       notes: >-
         Full TB-2.1 subset used for local-qwen, sonnet-comparison, and
         gpt-comparison phases.
+    - id: terminalbench-2-1-or-passing
+      path: scripts/benchmark/task-subset-tb21-or-passing.yaml
+      status: active
+      notes: >-
+        Curated 52-task subset where fiz-openrouter-qwen3-6-27b passed >=1
+        rep as of 2026-05-11. Used by the or-passing phase to focus local-
+        Qwen runs on tasks the cloud baseline can solve, so we don't burn
+        local compute on tasks no Qwen3.6-27B has been observed to pass.

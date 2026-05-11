@@ -46,9 +46,10 @@ versioning:
   resolved_at: "2026-05-10"
   snapshot: "Qwen3.6-27B-UD-Q3_K_XL.gguf"
 
-# Multiplier set from the smoke-test decode rate: 13.2 tok/s on Q3_K_XL via
-# llama.cpp vs ~52 tok/s on OR cloud Qwen → 52/13 ≈ 4.0x expected wall
-# expansion. This is materially slower than the vLLM autoround int4 lane
-# (which managed ~69 tok/s); re-tune downward from the first batch of
-# jointly-passed tasks if observed walls are well under budget.
-agent_timeout_multiplier: 4.0
+# Budget derived from OR's observed passing walls on the 52-task or-passing
+# subset (the curated set where cloud Qwen has demonstrated it can solve
+# the task at all). OR p90 pass-wall = 1066s; throughput ratio ~4x
+# (sindri-llamacpp 13-16 tok/s vs OR ~52 tok/s) ⇒ target effective per-cell
+# budget ~4264s. Divided by median harbor task base (900s) ⇒ ~3.0x.
+# Bump back up if observed truncation rate on or-passing exceeds 15%.
+agent_timeout_multiplier: 3.0
