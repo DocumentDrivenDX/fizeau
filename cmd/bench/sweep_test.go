@@ -27,7 +27,7 @@ func TestLoadSweepPlanParsesAllPhases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	wantPhases := []string{"canary", "local-qwen", "or-passing", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"}
+	wantPhases := []string{"canary", "local-qwen", "timing-baseline", "or-passing", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"}
 	if len(plan.Phases) != len(wantPhases) {
 		t.Fatalf("phases = %d, want %d", len(plan.Phases), len(wantPhases))
 	}
@@ -182,6 +182,7 @@ func TestSweepResolveSubsetPathKnownIDs(t *testing.T) {
 		"terminalbench-2-1-all":          "scripts/benchmark/task-subset-tb21-all.yaml",
 		"terminalbench-2-1-openai-cheap": "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
 		"terminalbench-2-1-or-passing":   "scripts/benchmark/task-subset-tb21-or-passing.yaml",
+		"terminalbench-2-1-timing-baseline":     "scripts/benchmark/task-subset-tb21-timing-baseline.yaml",
 	}
 	for id, rel := range cases {
 		got := sweepResolveSubsetPath(wd, id)

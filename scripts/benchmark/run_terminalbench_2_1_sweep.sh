@@ -187,7 +187,7 @@ if [[ -n "${LANES}" ]]; then
 fi
 
 case "${PHASE}" in
-  canary|openai-cheap|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|or-passing|all) ;;
+  canary|openai-cheap|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|or-passing|timing-baseline|all) ;;
   *)
     echo "unknown --phase ${PHASE}" >&2
     exit 2 ;;
@@ -405,6 +405,7 @@ subset_for_phase() {
     local-qwen|sonnet-comparison|gpt-comparison) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-full.yaml" ;;
     tb21-all) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-all.yaml" ;;
     or-passing) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-or-passing.yaml" ;;
+    timing-baseline) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-timing-baseline.yaml" ;;
     *) return 1 ;;
   esac
 }

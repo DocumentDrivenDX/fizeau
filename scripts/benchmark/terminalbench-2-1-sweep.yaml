@@ -94,6 +94,22 @@ phases:
       all three may run in parallel since they use different servers/endpoints.
       Within each resource group max_concurrency=1.
 
+  - id: timing-baseline
+    description: >-
+      8-task limited-scope subset hand-picked from OR-passing to span the
+      OR-Qwen pass-wall difficulty distribution (2 quick / 2 medium-low /
+      2 medium-high / 2 long). Used to land enough vidar-ds4 (DeepSeek V4
+      Flash) data to tune the agent_timeout_multiplier before committing
+      to the full 52-task or-passing sweep. Run with `--phase timing-baseline
+      --lanes ds4`.
+    reps: 3
+    subset: terminalbench-2-1-timing-baseline
+    lanes:
+      - fiz-vidar-ds4
+    parallel_policy: >-
+      Single-lane experiment. ds4 serializes to one cell at a time
+      regardless of harness concurrency.
+
   - id: or-passing
     description: >-
       Curated 52-task subset where fiz-openrouter-qwen3-6-27b has been
@@ -941,3 +957,11 @@ profile_inventory:
         rep as of 2026-05-11. Used by the or-passing phase to focus local-
         Qwen runs on tasks the cloud baseline can solve, so we don't burn
         local compute on tasks no Qwen3.6-27B has been observed to pass.
+    - id: terminalbench-2-1-timing-baseline
+      path: scripts/benchmark/task-subset-tb21-timing-baseline.yaml
+      status: active
+      notes: >-
+        8-task limited-scope subset (2 quick / 2 medium-low / 2 medium-high /
+        2 long, hand-picked from OR-passing by OR p50 wall) used to land
+        enough vidar-ds4 data to tune agent_timeout_multiplier before
+        committing to a full 52-task or-passing sweep.
