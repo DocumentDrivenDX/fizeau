@@ -627,12 +627,13 @@ lanes:
     endpoint: "http://vidar:1236/v1"
     sampling:
       temperature: 0.6
+      reasoning: low
       top_p: 0.95
       top_k: 20
-      # No reasoning param — ds4 only honors reasoning_effort when --ctx
-      # is >= 393216 (README §thinking-modes). Default startup ctx 32768
-      # → param ignored. Thinking mode is on by default at high effort
-      # anyway; alias model "deepseek-chat" disables thinking.
+      # vidar's ds4 was started with --ctx 393216 (verified via /v1/models
+      # 2026-05-11: supported_parameters includes "reasoning_effort"), so
+      # the reasoning param is honored. For parity with Qwen lanes, use
+      # reasoning: low.
     equivalence_note: >-
       DeepSeek V4 Flash via ds4-server on vidar (replaces the retired
       oMLX 8-bit Qwen lane). 284B-param MoE — different model FAMILY

@@ -30,19 +30,14 @@ pricing:
   cached_input_usd_per_mtok: 0.0
 limits:
   max_output_tokens: 32768
-  context_tokens: 32768                  # ds4 default; raise via --ctx if the server was started with more
+  context_tokens: 393216                 # server was started with --ctx 393216 (verified via /v1/models)
   rate_limit_rpm: 60
   rate_limit_tpm: 100000
 sampling:
   temperature: 0.6
+  reasoning: low                         # supported here — server confirmed reasoning_effort in supported_parameters (ctx >= 393216 unlocks it)
   top_p: 0.95
   top_k: 20
-  # NOTE: no `reasoning:` field. ds4 honors OpenAI's `reasoning_effort`
-  # only when --ctx >= 393216 (README §thinking-modes); otherwise it's
-  # ignored. Thinking mode is on by default at high effort; to force
-  # non-thinking, request model="deepseek-chat" or pass
-  # thinking:{type:"disabled"}. Keep this lane on the default (thinking)
-  # for parity with the QWEN lanes that ran with reasoning=low.
 versioning:
   resolved_at: "2026-05-11"
   snapshot: "deepseek-v4-flash via ds4-server (antirez/ds4)"
