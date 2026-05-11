@@ -1,4 +1,4 @@
-# DeepSeek V4 Flash via DwarfStar 4 (antirez/ds4) on vidar, port 8000.
+# DeepSeek V4 Flash via DwarfStar 4 (antirez/ds4) on vidar, port 1236.
 # Replaces the prior vidar oMLX 8-bit Qwen3.6-27B lane on 2026-05-11; oMLX
 # crashed, vidar is being moved to ds4-server hosting DeepSeek V4 Flash
 # (the model ds4 is hardcoded for — see DefaultBaseURL note in
@@ -16,13 +16,13 @@ metadata:
   provider_surface: vidar-ds4
   runtime: ds4
   hardware_label: vidar-apple-m
-  endpoint: http://vidar:8000/v1
+  endpoint: http://vidar:1236/v1
   server: vidar
 
 provider:
   type: ds4
   model: deepseek-v4-flash
-  base_url: http://vidar:8000/v1
+  base_url: http://vidar:1236/v1
   api_key_env: DS4_API_KEY               # server ignores it; clients just need to send *something*
 pricing:
   input_usd_per_mtok: 0.0

@@ -286,7 +286,7 @@ comparison_groups:
 resource_groups:
   - id: rg-vidar-ds4
     server: vidar
-    base_url: "http://vidar:8000/v1"
+    base_url: "http://vidar:1236/v1"
     provider_type: ds4
     hardware: "Apple Silicon M-class"
     max_concurrency: 1
@@ -616,7 +616,7 @@ lanes:
     fizeau_env:
       FIZEAU_PROVIDER: ds4
       FIZEAU_MODEL: "deepseek-v4-flash"
-      FIZEAU_BASE_URL: "http://vidar:8000/v1"
+      FIZEAU_BASE_URL: "http://vidar:1236/v1"
       FIZEAU_API_KEY_ENV: DS4_API_KEY
     model_family: deepseek-v4-flash
     model_id: "deepseek-v4-flash"
@@ -624,7 +624,7 @@ lanes:
     provider_surface: vidar-ds4
     runtime: ds4
     hardware_label: vidar-apple-m
-    endpoint: "http://vidar:8000/v1"
+    endpoint: "http://vidar:1236/v1"
     sampling:
       temperature: 0.6
       top_p: 0.95
