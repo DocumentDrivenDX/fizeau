@@ -910,7 +910,7 @@ func anyProviderSupportsTools(providers []routing.ProviderEntry) bool {
 
 func providerUsesLiveDiscovery(providerType string) bool {
 	switch normalizeServiceProviderType(providerType) {
-	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "rapid-mlx", "ollama", "lucebox", "vllm", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "llama-server", "ds4", "omlx", "rapid-mlx", "ollama", "lucebox", "vllm", "minimax", "qwen", "zai":
 		return true
 	default:
 		return false

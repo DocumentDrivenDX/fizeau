@@ -18,6 +18,7 @@ const (
 	SourceLlamaMetrics   Source = "llama-server.metrics"
 	SourceLlamaSlots     Source = "llama-server.slots"
 	SourceRapidMLXStatus Source = "rapid-mlx.status"
+	SourceDS4Models      Source = "ds4.models"
 )
 
 // Freshness describes whether a sample was observed just now, reused after a

@@ -17,7 +17,7 @@ const (
 // manifests can require an explicit provider billing field.
 func BillingForProviderSystem(system string) BillingModel {
 	switch normalizeBillingKey(system) {
-	case "lmstudio", "llama-server", "omlx", "vllm", "rapid-mlx", "ollama", "lucebox":
+	case "lmstudio", "llama-server", "ds4", "omlx", "vllm", "rapid-mlx", "ollama", "lucebox":
 		return BillingModelFixed
 	case "openai", "openrouter", "anthropic", "google":
 		return BillingModelPerToken

@@ -1,0 +1,57 @@
+# DeepSeek V4 Flash via DwarfStar 4 (antirez/ds4) on vidar, port 8000.
+# Replaces the prior vidar oMLX 8-bit Qwen3.6-27B lane on 2026-05-11; oMLX
+# crashed, vidar is being moved to ds4-server hosting DeepSeek V4 Flash
+# (the model ds4 is hardcoded for — see DefaultBaseURL note in
+# internal/provider/ds4/ds4.go).
+#
+# ds4 is single-graph-worker (no batching, no slots, no /metrics), so
+# fizeau's max_concurrency for this resource group is 1 and the
+# utilization probe is liveness-only via GET /v1/models. The server
+# ignores API keys — any non-empty value is accepted.
+id: vidar-ds4
+metadata:
+  model_family: deepseek-v4-flash
+  model_id: deepseek-v4-flash
+  quant_label: ds4-native-bf16          # antirez/deepseek-v4-gguf weights, ds4-native graph
+  provider_surface: vidar-ds4
+  runtime: ds4
+  hardware_label: vidar-apple-m
+  endpoint: http://vidar:8000/v1
+  server: vidar
+
+provider:
+  type: ds4
+  model: deepseek-v4-flash
+  base_url: http://vidar:8000/v1
+  api_key_env: DS4_API_KEY               # server ignores it; clients just need to send *something*
+pricing:
+  input_usd_per_mtok: 0.0
+  output_usd_per_mtok: 0.0
+  cached_input_usd_per_mtok: 0.0
+limits:
+  max_output_tokens: 32768
+  context_tokens: 32768                  # ds4 default; raise via --ctx if the server was started with more
+  rate_limit_rpm: 60
+  rate_limit_tpm: 100000
+sampling:
+  temperature: 0.6
+  top_p: 0.95
+  top_k: 20
+  # NOTE: no `reasoning:` field. ds4 honors OpenAI's `reasoning_effort`
+  # only when --ctx >= 393216 (README §thinking-modes); otherwise it's
+  # ignored. Thinking mode is on by default at high effort; to force
+  # non-thinking, request model="deepseek-chat" or pass
+  # thinking:{type:"disabled"}. Keep this lane on the default (thinking)
+  # for parity with the QWEN lanes that ran with reasoning=low.
+versioning:
+  resolved_at: "2026-05-11"
+  snapshot: "deepseek-v4-flash via ds4-server (antirez/ds4)"
+
+# DeepSeek V4 Flash is a 284B-param MoE — substantially larger than Qwen3.6-
+# 27B. The QWEN_BASE × LANE_PENALTY formula doesn't apply directly because
+# we don't have joint-pass wall data for deepseek-v4-flash on TB-2.1 yet.
+# Start with a conservative 5.0x (between sindri-llamacpp's 5.0 and vidar's
+# old 8.0); re-tune after the first batch of joint-pass cells lands. ds4's
+# single-graph-worker serialization means the multiplier directly bounds
+# wall, no batching headroom to recover.
+agent_timeout_multiplier: 5.0

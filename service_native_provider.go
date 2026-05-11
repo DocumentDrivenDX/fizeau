@@ -14,6 +14,7 @@ import (
 	// the case branches and stayed even after agent-8e4eb44c collapsed
 	// them — they're load-bearing for the init() registration.
 	_ "github.com/easel/fizeau/internal/provider/anthropic"
+	_ "github.com/easel/fizeau/internal/provider/ds4"
 	_ "github.com/easel/fizeau/internal/provider/llamaserver"
 	_ "github.com/easel/fizeau/internal/provider/lmstudio"
 	_ "github.com/easel/fizeau/internal/provider/lucebox"

@@ -8,6 +8,7 @@ import (
 	// graph (cmd/fiz transitively imports all providers via service)
 	// without depending on those packages directly here.
 	_ "github.com/easel/fizeau/internal/provider/anthropic"
+	_ "github.com/easel/fizeau/internal/provider/ds4"
 	_ "github.com/easel/fizeau/internal/provider/llamaserver"
 	_ "github.com/easel/fizeau/internal/provider/lmstudio"
 	_ "github.com/easel/fizeau/internal/provider/lucebox"
@@ -33,6 +34,7 @@ import (
 // a minimal-but-valid Inputs.
 var expectedTypes = []string{
 	"anthropic",
+	"ds4",
 	"lmstudio",
 	"llama-server",
 	"lucebox",

@@ -15,6 +15,7 @@ import (
 	agent "github.com/easel/fizeau/internal/core"
 	"github.com/easel/fizeau/internal/modelcatalog"
 	_ "github.com/easel/fizeau/internal/provider/anthropic"
+	"github.com/easel/fizeau/internal/provider/ds4"
 	"github.com/easel/fizeau/internal/provider/limits"
 	"github.com/easel/fizeau/internal/provider/llamaserver"
 	"github.com/easel/fizeau/internal/provider/lmstudio"
@@ -36,7 +37,7 @@ import (
 
 // ProviderConfig describes a single named provider.
 type ProviderConfig struct {
-	Type           string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", or "anthropic"
+	Type           string             `yaml:"type"`               // "openai", "openrouter", "lmstudio", "llama-server", "ds4", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", or "anthropic"
 	BaseURL        string             `yaml:"base_url,omitempty"` // shorthand for one endpoint
 	ServerInstance string             `yaml:"server_instance,omitempty"`
 	Endpoints      []ProviderEndpoint `yaml:"endpoints,omitempty"`
@@ -1076,6 +1077,8 @@ func defaultEndpointPort(providerType string) int {
 		return 1234
 	case "llama-server":
 		return 8080
+	case "ds4":
+		return 8000
 	case "omlx":
 		return 1235
 	case "lucebox":
@@ -1151,6 +1154,10 @@ func normalizeProviderConfig(pc ProviderConfig) ProviderConfig {
 		if pc.BaseURL == "" {
 			pc.BaseURL = llamaserver.DefaultBaseURL
 		}
+	case "ds4":
+		if pc.BaseURL == "" {
+			pc.BaseURL = ds4.DefaultBaseURL
+		}
 	case "omlx":
 		if pc.BaseURL == "" {
 			pc.BaseURL = omlx.DefaultBaseURL
@@ -1222,7 +1229,7 @@ func inferProviderTypeFromBaseURL(baseURL string) string {
 
 func providerUsesEndpoint(providerType string) bool {
 	switch providerType {
-	case "openai", "openrouter", "lmstudio", "llama-server", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "lmstudio", "llama-server", "ds4", "omlx", "lucebox", "vllm", "rapid-mlx", "ollama", "minimax", "qwen", "zai":
 		return true
 	default:
 		return false

@@ -105,6 +105,7 @@ phases:
     subset: terminalbench-2-1-or-passing
     lanes:
       - fiz-vidar-omlx-qwen3-6-27b
+      - fiz-vidar-ds4
       - fiz-bragi-club-3090-qwen3-6-27b
       - fiz-sindri-club-3090-qwen3-6-27b
       - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
@@ -125,6 +126,7 @@ phases:
       - fiz-openai-gpt-5-5
       - fiz-openrouter-qwen3-6-27b
       - fiz-vidar-omlx-qwen3-6-27b
+      - fiz-vidar-ds4
       - fiz-harness-pi-vidar-qwen3-6-27b
       - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
@@ -282,6 +284,18 @@ comparison_groups:
 # The runner must honor max_concurrency per group across all active cells.
 
 resource_groups:
+  - id: rg-vidar-ds4
+    server: vidar
+    base_url: "http://vidar:8000/v1"
+    provider_type: ds4
+    hardware: "Apple Silicon M-class"
+    max_concurrency: 1
+    notes: >-
+      DwarfStar 4 (antirez/ds4) hosting DeepSeek V4 Flash. Single graph
+      worker — strictly max_concurrency=1. Mutually exclusive with
+      rg-vidar-omlx on the same hardware; the oMLX lane was retired
+      on 2026-05-11.
+
   - id: rg-vidar-omlx
     server: vidar
     base_url: "http://vidar:1235/v1"
@@ -592,6 +606,40 @@ lanes:
       reasoning: medium
 
   # --- Local Qwen fiz native/provider lanes ---
+
+  - id: fiz-vidar-ds4
+    profile_id: vidar-ds4
+    lane_type: fiz_provider_native
+    phases: [canary, local-qwen]
+    comparison_groups: []
+    resource_group: rg-vidar-ds4
+    fizeau_env:
+      FIZEAU_PROVIDER: ds4
+      FIZEAU_MODEL: "deepseek-v4-flash"
+      FIZEAU_BASE_URL: "http://vidar:8000/v1"
+      FIZEAU_API_KEY_ENV: DS4_API_KEY
+    model_family: deepseek-v4-flash
+    model_id: "deepseek-v4-flash"
+    quant_label: ds4-native-bf16
+    provider_surface: vidar-ds4
+    runtime: ds4
+    hardware_label: vidar-apple-m
+    endpoint: "http://vidar:8000/v1"
+    sampling:
+      temperature: 0.6
+      top_p: 0.95
+      top_k: 20
+      # No reasoning param — ds4 only honors reasoning_effort when --ctx
+      # is >= 393216 (README §thinking-modes). Default startup ctx 32768
+      # → param ignored. Thinking mode is on by default at high effort
+      # anyway; alias model "deepseek-chat" disables thinking.
+    equivalence_note: >-
+      DeepSeek V4 Flash via ds4-server on vidar (replaces the retired
+      oMLX 8-bit Qwen lane). 284B-param MoE — different model FAMILY
+      from the Qwen lanes, so this is NOT in cg-local-qwen-provider-quant.
+      Treat as a separate comparator; the cross-family comparison goes
+      through the headline pass-rate table, not the within-Qwen
+      comparison group.
 
   - id: fiz-vidar-omlx-qwen3-6-27b
     profile_id: vidar-qwen3-6-27b

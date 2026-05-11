@@ -60,7 +60,7 @@ type ServiceConfig interface {
 
 // ServiceProviderEntry carries the minimal provider data the service needs.
 type ServiceProviderEntry struct {
-	Type           string // "openai" | "openrouter" | "lmstudio" | "llama-server" | "omlx" | "lucebox" | "vllm" | "rapid-mlx" | "ollama" | "anthropic"
+	Type           string // "openai" | "openrouter" | "lmstudio" | "llama-server" | "ds4" | "omlx" | "lucebox" | "vllm" | "rapid-mlx" | "ollama" | "anthropic"
 	BaseURL        string
 	ServerInstance string
 	Endpoints      []ServiceProviderEndpoint

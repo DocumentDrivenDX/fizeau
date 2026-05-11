@@ -52,9 +52,11 @@ func TestLoadSweepPlanHasAllLanes(t *testing.T) {
 		"fiz-openai-gpt-5-5",
 		"fiz-openrouter-qwen3-6-27b",
 		"fiz-vidar-omlx-qwen3-6-27b",
+		"fiz-vidar-ds4",
 		"fiz-bragi-club-3090-qwen3-6-27b",
 		"fiz-grendel-rapid-mlx-qwen3-6-27b",
 		"fiz-sindri-club-3090-qwen3-6-27b",
+		"fiz-sindri-club-3090-llamacpp-qwen3-6-27b",
 	}
 	byID := sweepLaneMap(plan)
 	for _, id := range wantLanes {
