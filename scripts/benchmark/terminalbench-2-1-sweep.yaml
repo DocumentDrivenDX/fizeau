@@ -643,13 +643,12 @@ lanes:
     endpoint: "http://vidar:1236/v1"
     sampling:
       temperature: 0.6
-      reasoning: low
       top_p: 0.95
       top_k: 20
-      # vidar's ds4 was started with --ctx 393216 (verified via /v1/models
-      # 2026-05-11: supported_parameters includes "reasoning_effort"), so
-      # the reasoning param is honored. For parity with Qwen lanes, use
-      # reasoning: low.
+      # NO reasoning param — fizeau's openai provider has Thinking=false
+      # for the ds4 provider type and rejects explicit reasoning even
+      # though ds4-server itself supports it. See vidar-ds4 profile
+      # for the full note + the follow-up fix shape.
     equivalence_note: >-
       DeepSeek V4 Flash via ds4-server on vidar (replaces the retired
       oMLX 8-bit Qwen lane). 284B-param MoE — different model FAMILY

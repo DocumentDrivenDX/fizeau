@@ -58,9 +58,22 @@ limits:
   rate_limit_tpm: 100000
 sampling:
   temperature: 0.6
-  reasoning: low                         # supported here — server confirmed reasoning_effort in supported_parameters (ctx >= 393216 unlocks it)
   top_p: 0.95
   top_k: 20
+  # NO reasoning param. Despite ds4 advertising reasoning_effort in
+  # /v1/models supported_parameters (since --ctx >= 393216), fizeau's
+  # openai provider treats the ds4 provider type as having Thinking=false
+  # in its ProtocolCapabilities — so any explicit reasoning field on
+  # the request triggers "openai: reasoning=... is not supported by
+  # provider type ds4" (we hit this 7 times on 2026-05-11; classifier
+  # bead fizeau-25c4aea8 catches retry-spam now but the underlying
+  # config bug remains).
+  #
+  # ds4 thinks at high effort by default (README §thinking-modes), so
+  # dropping the explicit control loses *control* but not thinking
+  # itself. Proper fix is to register deepseek-v4-flash in modelcatalog
+  # with reasoning_wire="model_id" so the catalog-driven path bypasses
+  # the SupportsThinking check. File as follow-up.
 versioning:
   resolved_at: "2026-05-11"
   # ds4 doesn't expose a version, GGUF hash, or KV-cache state via any
