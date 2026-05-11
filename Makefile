@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs capture-machine-info
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs capture-machine-info probe-reasoning
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -18,6 +18,18 @@ catalog-dist:
 
 rename-noise-check:
 	go run ./cmd/renamecheck --repo . --fail
+
+# probe-reasoning sends a 6-row reasoning matrix to a live endpoint and prints
+# a verdict table showing which reasoning wire knob the upstream actually honors.
+#
+# Usage:
+#   make probe-reasoning PROFILE=scripts/benchmark/profiles/fiz-openrouter-qwen3-6-27b.yaml
+#   make probe-reasoning PROFILE=<path> PROBE_ARGS="--json --artifact-dir /tmp/my-probe"
+#
+# Requires: OPENROUTER_API_KEY (or the api_key_env named in the profile) to be set.
+PROBE_ARGS ?=
+probe-reasoning:
+	go run ./cmd/fizeau-probe-reasoning $(if $(PROFILE),--profile $(PROFILE),) $(PROBE_ARGS)
 
 # docs-cli regenerates the Hugo CLI reference at website/content/docs/cli/
 # from the live Cobra command tree. Run after changing fiz commands or flags.
