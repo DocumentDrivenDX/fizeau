@@ -37,7 +37,7 @@ defaults:
 # ---------------------------------------------------------------------------
 # Phases
 # ---------------------------------------------------------------------------
-# Phases run in order: canary → local-qwen → sonnet-comparison → gpt-comparison.
+# Phases run in order: canary → local-qwen → sonnet-comparison → gpt-comparison → medium-model-canary → medium-model.
 # User-facing aliases in ./benchmark map preferred → local-qwen and full →
 # tb21-all. Use --lanes to restrict tb21-all to specific targets.
 # Each phase can be invoked independently. The runner must produce per-cell
@@ -206,6 +206,43 @@ phases:
       cap total concurrency at 5 for this phase because Codex-harness lanes
       are heavier than raw provider calls.
 
+  - id: medium-model-canary
+    description: >-
+      Canary slice for the official medium-model fiz-wrapper comparison. This
+      phase proves the six intended lanes can start and write artifacts without
+      launching the full 15-task sweep.
+    reps: 1
+    subset: terminalbench-2-1-canary
+    lanes:
+      - fiz-harness-claude-sonnet-4-6
+      - fiz-harness-codex-gpt-5-4-mini
+      - fiz-harness-pi-gpt-5-4-mini
+      - fiz-harness-opencode-gpt-5-4-mini
+      - fiz-openrouter-claude-sonnet-4-6
+      - fiz-openrouter-gpt-5-4-mini
+    parallel_policy: >-
+      One Harbor-installed fiz agent handles all six official lanes. The
+      canary keeps the task set small while still exercising the harness pins
+      and provider-path cells that define the comparison.
+
+  - id: medium-model
+    description: >-
+      Full medium-model fiz-wrapper comparison across Claude, Codex, pi,
+      opencode, and the matching OpenRouter provider lanes.
+    reps: 1
+    subset: terminalbench-2-1-full
+    lanes:
+      - fiz-harness-claude-sonnet-4-6
+      - fiz-harness-codex-gpt-5-4-mini
+      - fiz-harness-pi-gpt-5-4-mini
+      - fiz-harness-opencode-gpt-5-4-mini
+      - fiz-openrouter-claude-sonnet-4-6
+      - fiz-openrouter-gpt-5-4-mini
+    parallel_policy: >-
+      One Harbor-installed fiz agent handles all six official lanes. The full
+      comparison uses the 15-task TB-2.1 subset and remains lane-filterable
+      through the existing sweep machinery.
+
 # ---------------------------------------------------------------------------
 # Comparison Groups
 # ---------------------------------------------------------------------------
@@ -263,20 +300,23 @@ comparison_groups:
     type: harness_delta
     subtype: frontier_harness_vs_fiz
     question: >-
-      How does fiz's native provider path compare to fiz's Codex-harness
-      path when Codex uses its authenticated subscription session?
+      How does fiz's native provider path compare to fiz's Codex/pi/opencode
+      harness paths when those harnesses use their authenticated subscription
+      sessions?
     lanes:
       - fiz-openrouter-gpt-5-4-mini        # fiz native/provider lane
       - fiz-harness-codex-gpt-5-4-mini     # fiz Codex-harness lane
+      - fiz-harness-pi-gpt-5-4-mini
+      - fiz-harness-opencode-gpt-5-4-mini
     equivalence: approximate_same_model_family
     equivalence_note: >-
-      Native lane routes through OpenRouter. Harness lane delegates to Codex
-      CLI and uses the mounted authenticated Codex subscription home. This is
-      NOT a same-provider or pure model control: Codex adds its own system
-      prompt, tool schema, permission semantics, context handling, auth/session
-      state, and quota behavior. Published memos must state this caveat per the
-      fiz-wrapper comparison decision
-      (terminalbench-fiz-wrapper-comparison-2026-05-06).
+      Native lane routes through OpenRouter. Harness lanes delegate to Codex,
+      Pi, or OpenCode and use the mounted authenticated subscription home for
+      each wrapper. This is NOT a same-provider or pure model control: the
+      harnesses add their own system prompts, tool schemas, permission
+      semantics, context handling, auth/session state, and quota behavior.
+      Published memos must state this caveat per the fiz-wrapper comparison
+      decision (terminalbench-fiz-wrapper-comparison-2026-05-06).
     same_model_control: false
 
   - id: cg-local-qwen-harness-delta
@@ -441,7 +481,7 @@ lanes:
   - id: fiz-harness-claude-sonnet-4-6
     profile_id: fiz-harness-claude-sonnet-4-6
     lane_type: fiz_harness_pinned
-    phases: [canary, sonnet-comparison]
+    phases: [canary, sonnet-comparison, medium-model-canary, medium-model]
     comparison_groups: [cg-sonnet-harness-fiz]
     resource_group: rg-openrouter
     fizeau_env:
@@ -467,7 +507,7 @@ lanes:
   - id: fiz-harness-codex-gpt-5-4-mini
     profile_id: fiz-harness-codex-gpt-5-4-mini
     lane_type: fiz_harness_pinned
-    phases: [canary, gpt-comparison]
+    phases: [canary, gpt-comparison, medium-model-canary, medium-model]
     comparison_groups: [cg-gpt-harness-fiz]
     resource_group: rg-openrouter
     fizeau_env:
@@ -487,6 +527,46 @@ lanes:
     model_id: "openai/gpt-5.4-mini"
     quant_label: cloud-hosted
     provider_surface: codex-subscription
+    sampling:
+      temperature: 0.0
+      reasoning: medium
+
+  - id: fiz-harness-pi-gpt-5-4-mini
+    profile_id: fiz-harness-pi-gpt-5-4-mini
+    lane_type: fiz_harness_pinned
+    phases: [medium-model-canary, medium-model]
+    comparison_groups: [cg-gpt-harness-fiz]
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_HARNESS: pi
+      FIZEAU_PROVIDER: openrouter
+      FIZEAU_MODEL: "openai/gpt-5.4-mini"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: gpt-5-mini
+    model_id: "openai/gpt-5.4-mini"
+    quant_label: cloud-hosted
+    provider_surface: pi-subscription
+    sampling:
+      temperature: 0.0
+      reasoning: medium
+
+  - id: fiz-harness-opencode-gpt-5-4-mini
+    profile_id: fiz-harness-opencode-gpt-5-4-mini
+    lane_type: fiz_harness_pinned
+    phases: [medium-model-canary, medium-model]
+    comparison_groups: [cg-gpt-harness-fiz]
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_HARNESS: opencode
+      FIZEAU_PROVIDER: openrouter
+      FIZEAU_MODEL: "openai/gpt-5.4-mini"
+      FIZEAU_BASE_URL: "https://openrouter.ai/api/v1"
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: gpt-5-mini
+    model_id: "openai/gpt-5.4-mini"
+    quant_label: cloud-hosted
+    provider_surface: opencode-subscription
     sampling:
       temperature: 0.0
       reasoning: medium
@@ -591,7 +671,7 @@ lanes:
   - id: fiz-openrouter-claude-sonnet-4-6
     profile_id: fiz-openrouter-claude-sonnet-4-6
     lane_type: fiz_provider_native
-    phases: [canary, sonnet-comparison]
+    phases: [canary, sonnet-comparison, medium-model-canary, medium-model]
     comparison_groups: [cg-sonnet-harness-fiz]
     resource_group: rg-openrouter
     fizeau_env:
@@ -609,7 +689,7 @@ lanes:
   - id: fiz-openrouter-gpt-5-4-mini
     profile_id: fiz-openrouter-gpt-5-4-mini
     lane_type: fiz_provider_native
-    phases: [canary, gpt-comparison]
+    phases: [canary, gpt-comparison, medium-model-canary, medium-model]
     comparison_groups: [cg-gpt-harness-fiz]
     resource_group: rg-openrouter
     fizeau_env:
@@ -895,16 +975,22 @@ profile_inventory:
   existing_reusable:
     - id: fiz-harness-claude-sonnet-4-6
       path: scripts/benchmark/profiles/fiz-harness-claude-sonnet-4-6.yaml
-      used_in_phases: [canary, sonnet-comparison]
+      used_in_phases: [canary, sonnet-comparison, medium-model-canary, medium-model]
     - id: fiz-harness-codex-gpt-5-4-mini
       path: scripts/benchmark/profiles/fiz-harness-codex-gpt-5-4-mini.yaml
-      used_in_phases: [canary, gpt-comparison]
+      used_in_phases: [canary, gpt-comparison, medium-model-canary, medium-model]
+    - id: fiz-harness-pi-gpt-5-4-mini
+      path: scripts/benchmark/profiles/fiz-harness-pi-gpt-5-4-mini.yaml
+      used_in_phases: [medium-model-canary, medium-model]
+    - id: fiz-harness-opencode-gpt-5-4-mini
+      path: scripts/benchmark/profiles/fiz-harness-opencode-gpt-5-4-mini.yaml
+      used_in_phases: [medium-model-canary, medium-model]
     - id: fiz-openrouter-claude-sonnet-4-6
       path: scripts/benchmark/profiles/fiz-openrouter-claude-sonnet-4-6.yaml
-      used_in_phases: [canary, sonnet-comparison]
+      used_in_phases: [canary, sonnet-comparison, medium-model-canary, medium-model]
     - id: fiz-openrouter-gpt-5-4-mini
       path: scripts/benchmark/profiles/fiz-openrouter-gpt-5-4-mini.yaml
-      used_in_phases: [canary, gpt-comparison]
+      used_in_phases: [canary, gpt-comparison, medium-model-canary, medium-model]
     - id: fiz-openai-gpt-5-5
       path: scripts/benchmark/profiles/fiz-openai-gpt-5-5.yaml
       used_in_phases: [openai-cheap, tb21-all]

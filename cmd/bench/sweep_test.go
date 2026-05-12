@@ -14,6 +14,37 @@ import (
 	"time"
 )
 
+func captureStdout(t *testing.T, fn func() int) (int, string) {
+	t.Helper()
+
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&buf, r) //nolint:errcheck
+		close(done)
+	}()
+
+	code := fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stdout pipe: %v", err)
+	}
+	os.Stdout = old
+	<-done
+
+	if err := r.Close(); err != nil {
+		t.Fatalf("close stdout reader: %v", err)
+	}
+	return code, buf.String()
+}
+
 // sweepPlanPath returns the path to the TB-2.1 sweep plan in the repo.
 func sweepPlanPath(t *testing.T) string {
 	t.Helper()
@@ -27,7 +58,7 @@ func TestLoadSweepPlanParsesAllPhases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	wantPhases := []string{"canary", "local-qwen", "timing-baseline", "or-passing", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"}
+	wantPhases := []string{"canary", "local-qwen", "timing-baseline", "or-passing", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"}
 	if len(plan.Phases) != len(wantPhases) {
 		t.Fatalf("phases = %d, want %d", len(plan.Phases), len(wantPhases))
 	}
@@ -47,6 +78,8 @@ func TestLoadSweepPlanHasAllLanes(t *testing.T) {
 	wantLanes := []string{
 		"fiz-harness-claude-sonnet-4-6",
 		"fiz-harness-codex-gpt-5-4-mini",
+		"fiz-harness-pi-gpt-5-4-mini",
+		"fiz-harness-opencode-gpt-5-4-mini",
 		"fiz-openrouter-claude-sonnet-4-6",
 		"fiz-openrouter-gpt-5-4-mini",
 		"fiz-openai-gpt-5-5",
@@ -125,6 +158,19 @@ func TestSweepCGByLanePopulatesCorrectly(t *testing.T) {
 			t.Errorf("lane %s not in cg-local-qwen-provider-quant", id)
 		}
 	}
+
+	for _, id := range []string{"fiz-harness-codex-gpt-5-4-mini", "fiz-harness-pi-gpt-5-4-mini", "fiz-harness-opencode-gpt-5-4-mini", "fiz-openrouter-gpt-5-4-mini"} {
+		cgs := cgByLane[id]
+		found := false
+		for _, cg := range cgs {
+			if cg == "cg-gpt-harness-fiz" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("lane %s not in cg-gpt-harness-fiz", id)
+		}
+	}
 }
 
 // TestSelectSweepPhasesAllReturnsAll verifies --phase=all returns all phases.
@@ -148,7 +194,7 @@ func TestSelectSweepPhasesSinglePhase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	for _, phaseID := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"} {
+	for _, phaseID := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"} {
 		phases, err := selectSweepPhases(plan, phaseID)
 		if err != nil {
 			t.Errorf("selectSweepPhases(%q): %v", phaseID, err)
@@ -177,12 +223,12 @@ func TestSelectSweepPhasesUnknownReturnsError(t *testing.T) {
 func TestSweepResolveSubsetPathKnownIDs(t *testing.T) {
 	wd := benchRepoRoot(t)
 	cases := map[string]string{
-		"terminalbench-2-1-canary":       "scripts/benchmark/task-subset-tb21-canary.yaml",
-		"terminalbench-2-1-full":         "scripts/benchmark/task-subset-tb21-full.yaml",
-		"terminalbench-2-1-all":          "scripts/benchmark/task-subset-tb21-all.yaml",
-		"terminalbench-2-1-openai-cheap": "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
-		"terminalbench-2-1-or-passing":   "scripts/benchmark/task-subset-tb21-or-passing.yaml",
-		"terminalbench-2-1-timing-baseline":     "scripts/benchmark/task-subset-tb21-timing-baseline.yaml",
+		"terminalbench-2-1-canary":          "scripts/benchmark/task-subset-tb21-canary.yaml",
+		"terminalbench-2-1-full":            "scripts/benchmark/task-subset-tb21-full.yaml",
+		"terminalbench-2-1-all":             "scripts/benchmark/task-subset-tb21-all.yaml",
+		"terminalbench-2-1-openai-cheap":    "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
+		"terminalbench-2-1-or-passing":      "scripts/benchmark/task-subset-tb21-or-passing.yaml",
+		"terminalbench-2-1-timing-baseline": "scripts/benchmark/task-subset-tb21-timing-baseline.yaml",
 	}
 	for id, rel := range cases {
 		got := sweepResolveSubsetPath(wd, id)
@@ -271,23 +317,15 @@ func TestSweepDryRunCanaryPrints(t *testing.T) {
 	repoRoot := benchRepoRoot(t)
 	outDir := t.TempDir()
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	code := cmdSweep([]string{
-		"--work-dir", repoRoot,
-		"--sweep-plan", filepath.Join(repoRoot, defaultSweepPlanPath),
-		"--phase", "canary",
-		"--dry-run",
-		"--out", outDir,
+	code, output := captureStdout(t, func() int {
+		return cmdSweep([]string{
+			"--work-dir", repoRoot,
+			"--sweep-plan", filepath.Join(repoRoot, defaultSweepPlanPath),
+			"--phase", "canary",
+			"--dry-run",
+			"--out", outDir,
+		})
 	})
-
-	w.Close()
-	os.Stdout = old
-	var buf bytes.Buffer
-	io.Copy(&buf, r) //nolint:errcheck
-	output := buf.String()
 
 	if code != 0 {
 		t.Fatalf("cmdSweep dry-run exit = %d, want 0\noutput:\n%s", code, output)
@@ -332,27 +370,19 @@ func TestSweepDryRunAllPhasesContainsAllPhaseHeaders(t *testing.T) {
 	repoRoot := benchRepoRoot(t)
 	outDir := t.TempDir()
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	code := cmdSweep([]string{
-		"--work-dir", repoRoot,
-		"--phase", "all",
-		"--dry-run",
-		"--out", outDir,
+	code, output := captureStdout(t, func() int {
+		return cmdSweep([]string{
+			"--work-dir", repoRoot,
+			"--phase", "all",
+			"--dry-run",
+			"--out", outDir,
+		})
 	})
-
-	w.Close()
-	os.Stdout = old
-	var buf bytes.Buffer
-	io.Copy(&buf, r) //nolint:errcheck
-	output := buf.String()
 
 	if code != 0 {
 		t.Fatalf("cmdSweep dry-run all exit = %d\noutput:\n%s", code, output)
 	}
-	for _, phase := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison"} {
+	for _, phase := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"} {
 		if !strings.Contains(output, "Phase: "+phase) {
 			t.Errorf("dry-run output missing Phase: %s", phase)
 		}
@@ -363,23 +393,16 @@ func TestSweepDryRunFullWithLaneFilterPrintsOnlySelectedLanes(t *testing.T) {
 	repoRoot := benchRepoRoot(t)
 	outDir := t.TempDir()
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	code := cmdSweep([]string{
-		"--work-dir", repoRoot,
-		"--phase", "tb21-all",
-		"--lanes", "fiz-sindri-vllm-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
-		"--dry-run",
-		"--out", outDir,
+	code, output := captureStdout(t, func() int {
+		return cmdSweep([]string{
+			"--work-dir", repoRoot,
+			"--sweep-plan", filepath.Join(repoRoot, defaultSweepPlanPath),
+			"--phase", "tb21-all",
+			"--lanes", "fiz-sindri-vllm-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
+			"--dry-run",
+			"--out", outDir,
+		})
 	})
-
-	w.Close()
-	os.Stdout = old
-	var buf bytes.Buffer
-	io.Copy(&buf, r) //nolint:errcheck
-	output := buf.String()
 
 	if code != 0 {
 		t.Fatalf("cmdSweep dry-run filtered full exit = %d\noutput:\n%s", code, output)
@@ -406,24 +429,16 @@ func TestSweepDryRunFourLaneFullShowsManagedJobCaps(t *testing.T) {
 	repoRoot := benchRepoRoot(t)
 	outDir := t.TempDir()
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	code := cmdSweep([]string{
-		"--work-dir", repoRoot,
-		"--phase", "tb21-all",
-		"--lanes", "fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-llamacpp-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
-		"--matrix-jobs-managed", "16",
-		"--dry-run",
-		"--out", outDir,
+	code, output := captureStdout(t, func() int {
+		return cmdSweep([]string{
+			"--work-dir", repoRoot,
+			"--phase", "tb21-all",
+			"--lanes", "fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-llamacpp-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
+			"--matrix-jobs-managed", "16",
+			"--dry-run",
+			"--out", outDir,
+		})
 	})
-
-	w.Close()
-	os.Stdout = old
-	var buf bytes.Buffer
-	io.Copy(&buf, r) //nolint:errcheck
-	output := buf.String()
 
 	if code != 0 {
 		t.Fatalf("cmdSweep dry-run four-lane full exit = %d\noutput:\n%s", code, output)
