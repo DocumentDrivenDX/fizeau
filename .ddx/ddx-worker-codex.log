@@ -2299,3 +2299,152 @@ bead readiness blocked: score 0.25 below threshold 0.50 (1/4 verifiable ACs) (re
 13:31:41 readiness check: starting route: harness=codex model=gpt-5.4-mini
 13:32:22 readiness check unavailable: readiness route unavailable: runner error: agent: provider error: openai: POST "https://openrouter.ai/api/v1/chat/completions": 402 Payment Required {"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402} (continuing) route: harness=codex model=gpt-5.4-mini
 13:33:02 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+17:33:15 do route codex/gpt-5.4-mini reason=explicit
+17:33:15 do fizeau-7c4b7647 route codex/gpt-5.4-mini power=8
+17:33:15 do thinking ...
+17:33:24 do ok 1 inspect lines 1,260 in internal/modelcatalog/catalog/models.y… < out=6.6KB 260 lines "version: 5"
+17:33:24 do ok 2 inspect lines 1,220 in docs/helix/02-design/adr/ADR-010-reaso… < out=9.4KB 220 lines "---"
+17:33:24 do ok 3 pwd < out=10.2KB 135 lines "docs/research/terminalbench-2-1-s… 215ms
+17:33:33 do ok 4 inspect lines 1,220 in docs/research/reasoning-wire-form-runb… < out=2.6KB 43 lines "# Reasoning…
+17:33:33 do ok 5 inspect lines 1,220 in docs/research/probe-reasoning-2026-05-… < out=4.0KB 91 lines "# Probe Rea…
+17:33:34 do ok 6 inspect lines 1,220 in docs/research/probe-reasoning-2026-05-… < out=14.2KB 265 lines "{"
+17:33:42 do ok 7 search "deepseek-v4-flash|reasoning_w..." in internal/modelca… < out=352B 11 lines "49: provider…
+17:33:42 do ok 8 'for d in docs/research/probe-reasoning-2026-05-11-v2/fiz-ope… < out=4.2KB 52 lines "== docs/res…
+17:33:42 do ok 9 inspect lines 1,220 in docs/research/probe-reasoning-2026-05-… < out=4.4KB 124 lines "{"
+17:33:50 do ok 10 search "ReasoningWire|reasoning_wire|..." in internal < out=20.7KB 196 lines "internal/provider/v…
+17:33:50 do ok 11 inspect lines 1,260 in internal/modelcatalog/manifest.go < out=13.2KB 348 lines "package modelcat…
+17:33:50 do ok 12 search "fizeau-probe-reasoning|verifi..." in docs < out=8.8KB 68 lines "scripts/benchmark/termina…
+17:33:54 do ok 13 inspect lines 1450,1605 in internal/provider/openai/openai_t… < out=6.3KB 147 lines "caps.Suppo…
+17:33:54 do ok 14 inspect lines 320,370 in internal/modelcatalog/catalog/model… < out=1.4KB 51 lines "context_win…
+17:33:54 do ok 15 inspect lines 1460,1515 in internal/config/config_test.go < out=3.0KB 93 lines "cfg, err := Load(…
+17:34:00 do ok 16 'for f in docs/research/probe-reasoning-2026-05-11-v2/fiz-op… < out=3.3KB 78 lines "== docs/res…
+17:34:00 do ok 17 'for f in docs/research/probe-reasoning-2026-05-11-v2/fiz-op… < out=30.4KB 665 lines "== do… 1ms
+17:34:00 do ok 18 'go test ./internal/modelcatalog/...' < out=57B 1 line "ok \tgithub.com/easel/fizeau/intern… 421ms
+17:34:06 do ok 19 inspect lines 1,220 in docs/research/probe-reasoning-2026-05… < out=293B 9 lines "version: \"1\…
+17:34:06 do ok 20 inspect lines 1,260 in scripts/benchmark/README.md < out=5.0KB 133 lines "# Fizeau Benchmark Scri…
+17:34:06 do ok 21 inspect lines 1,260 in cmd/fizeau-probe-reasoning/main.go < out=8.3KB 260 lines "// Command f… 1ms
+17:34:12 do ok 22 env | rg '"'^(OPENROUTER|OPENAI|ANTHROPIC|VIDAR|SINDRI|DS4|F… < out=92B 1 line "OPENROUTER_API_…
+17:34:12 do ok 23 inspect lines 1,220 in scripts/benchmark/profiles/fiz-openro… < out=2.5KB 61 lines "# fiz provi…
+17:34:12 do ok 24 inspect lines 1,260 in scripts/benchmark/run_terminalbench_2… < out=6.7KB 260 lines "#!/usr/bin…
+17:34:15 do ok 25 inspect lines 1,220 in scripts/benchmark/profiles/fiz-sindri… < out=106B 1 line "sed: can't rea…
+17:34:15 do ok 26 'rg -n "single short timing-baseline task|verification-subse… < out=47B 1 line "zsh:1: no match…
+17:34:15 do ok 27 search "scripts/benchmark/profiles" in '1,200p' < out=1.1KB 21 lines "scripts/benchmark/profiles/…
+17:34:19 do ok 28 inspect lines 1,220 in scripts/benchmark/profiles/sindri-lla… < out=7.2KB 163 lines "# Qwen3.6-…
+17:34:19 do ok 29 search "verification-subset|single" in internal < out=1.1KB 9 lines "cmd/fizeau-probe-reasoning/p…
+17:34:19 do ok 30 search "probe-reasoning-2026-05-11-v2..." in docs/research < out=2.0KB 7 lines "docs/research/rea…
+17:34:28 do ok 31 inspect lines 1,260 in cmd/bench/main.go < out=13.9KB 358 lines "// Command bench discovers (harn…
+17:34:28 do ok 32 search "verification-subset|task-subs..." in scripts/benchma… < out=5.2KB 49 lines "scripts/ben…
+17:34:28 do ok 33 inspect lines 1,260 in docs/research/probe-reasoning-2026-05… < out=3.7KB 105 lines "{"
+17:34:33 do ok 34 'rg -n "invalid_setup|final_status|HadLLMRequest|ReasoningTo… < out=3.4KB 35 lines "cmd/bench/m…
+17:34:33 do ok 35 inspect lines 760,980 in cmd/bench/matrix.go < out=8.0KB 221 lines "}"
+17:34:33 do ok 36 inspect lines 980,1220 in cmd/bench/matrix.go < out=7.3KB 241 lines "env = append(env, \"PYTHONPA…
+17:34:49 do ok 37 inspect lines 1,220 in docs/research/probe-reasoning-2026-05… < out=735B 16 lines "{"
+17:34:49 do ok 38 inspect lines 1,220 in docs/research/probe-reasoning-2026-05… < out=1.9KB 36 lines "# Probe Rea…
+17:34:49 do ok 39 inspect lines 1,220 in docs/research/probe-reasoning-2026-05… < out=668B 17 lines "{"
+17:34:59 do ok 40 inspect lines 280,315 in internal/modelcatalog/catalog/model… < out=926B 36 lines "recency: '20…
+17:34:59 do ok 41 inspect lines 1,220 in internal/modelcatalog/manifest_test.go < out=6.0KB 220 lines "package mode…
+17:34:59 do ok 42 search "qwen3\\.6-27b|deepseek-v4-flas..." in internal/confi… < out=1.6KB 18 lines "internal/co…
+17:35:05 do ok 43 'test -d benchmark-results/external/terminal-bench-2-1 < out=10B 2 lines
+17:35:07 do ok 44 go run ./cmd/bench matrix -h | sed -n '1,220p' < out=1.5KB 36 lines "Usage of matrix:" 2.468s
+17:35:07 do ok 45 go run ./cmd/bench sweep -h | sed -n '1,220p' < out=1.0KB 26 lines "Usage of sweep:" 2.463s
+17:35:11 do ok 46 find . -path '*terminal-bench-2-1*task.toml' | sed -n '1,120p'
+17:35:11 do ok 47 find docs/research -path '*verification/cells*report.json' |… < out=136B 1 line "docs/resea… 1ms
+17:35:11 do ok 48 find benchmark-results -maxdepth 4 -name task.toml -o -name report.json | se…
+17:35:27 do ok 49 inspect lines 1,220 in docs/research/probe-reasoning-2026-05… < out=4.5KB 68 lines "{"
+17:35:27 do ok 50 inspect lines 1,220 in docs/research/probe-reasoning-2026-05… < out=4.2KB 25 lines "10: \"WireB…
+17:35:27 do ok 51 inspect lines 1,220 in docs/research/probe-reasoning-2026-05… < out=1.6KB 67 lines "{" 1ms
+17:36:34 do ok 52 'git diff --check'
+17:36:34 do ok 53 'python3 -m json.tool docs/research/probe-reasoning-2026-05-11-v2/verificati…
+17:36:40 do ok 54 'git diff -- docs/research/probe-reasoning-2026-05-11-v2/ver… < out=4.5KB 66 lines "diff --git …
+17:36:40 do ok 55 'git status --short' < out=214B 3 lines "M docs/research/probe-reasoning-2026-…
+17:36:45 do ok 56 'git add docs/research/probe-reasoning-2026-05-11-v2/VERDICT… < out=132B 2 lines "[detached HEA…
+17:36:55 do response complete 24062 tok in 3m39.835s, 109.5 tok/s
+✓ fizeau-7c4b7647 → merged (d7e9d543)
+
+▶ fizeau-d18e11f5: Wire ProviderConfig.IncludeByDefault into routing eligibility filter
+13:36:59 readiness check: starting route: harness=codex model=gpt-5.4-mini
+bead readiness blocked: score 0.33 below threshold 0.50 (1/3 verifiable ACs) (releasing fizeau-d18e11f5)
+
+▶ fizeau-a0c58cbf: benchmark page: improve table, chart, and responsive layout
+13:36:59 readiness check: starting route: harness=codex model=gpt-5.4-mini
+bead readiness blocked: score 0.25 below threshold 0.50 (1/4 verifiable ACs) (releasing fizeau-a0c58cbf)
+13:36:59 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:37:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:37:59 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:38:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:38:59 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:39:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:39:59 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:40:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:40:59 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:41:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:41:59 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:42:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:43:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:43:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:44:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:44:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:45:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:45:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:46:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:46:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:47:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:47:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:48:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:48:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:49:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:49:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:50:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:50:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:51:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:51:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:52:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:52:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:53:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:53:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:54:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:54:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:55:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:55:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:56:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:56:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:57:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:57:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:58:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:58:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:59:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+13:59:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:00:00 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:00:30 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:01:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:01:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:02:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:02:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:03:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:03:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:04:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:04:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:05:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:05:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:06:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:06:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:07:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:07:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:08:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:08:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:09:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:09:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:10:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:10:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:11:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:11:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:12:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:12:31 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+14:13:01 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=5 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=3
+
+14:13:31 taking next ready bead from queue: fizeau-d18e11f5 — Wire ProviderConfig.IncludeByDefault into routing eligibility filter
+
+▶ fizeau-d18e11f5: Wire ProviderConfig.IncludeByDefault into routing eligibility filter
+14:13:31 readiness check: starting route: harness=codex model=gpt-5.4-mini
+14:14:13 readiness check unavailable: readiness route unavailable: runner error: agent: provider error: openai: POST "https://openrouter.ai/api/v1/chat/completions": 402 Payment Required {"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402} (continuing) route: harness=codex model=gpt-5.4-mini
+14:14:53 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
