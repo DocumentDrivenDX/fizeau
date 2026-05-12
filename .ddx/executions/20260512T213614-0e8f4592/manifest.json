@@ -1,0 +1,57 @@
+{
+  "attempt_id": "20260512T213614-0e8f4592",
+  "bead_id": "fizeau-26e77f71",
+  "base_rev": "1838555cb7c8e9f6986ae1affeb91f99455db703",
+  "created_at": "2026-05-12T21:36:17.26438644Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-26e77f71",
+    "title": "routing: align score components with SD-005 evidence names",
+    "description": "CONTEXT\nThe routing engine already scores with power, cost, quota, locality, utilization, performance, context headroom, cooldown, and sticky affinity. SD-005 names the public evidence components as `power_weighted_capability`, `power_hint_fit`, `latency_weight`, `placement_bonus`, `quota_bonus`, `marginal_cost_penalty`, `availability_penalty`, and `stale_signal_penalty`. Today those facts are present indirectly through buckets such as `power`, `cost`, `quota_health`, and `performance`, which makes route explanations harder to compare to the design.\n\nCHANGE\nAlign public route candidate score component evidence with SD-005 vocabulary while preserving existing route-order behavior unless a test explicitly documents a deliberate change. Keep typed filter reasons separate from scoring. Power hints must remain asymmetric: being below `MinPower` is penalized more strongly than being above `MaxPower`.\n\nIN-SCOPE FILES\n- internal/routing/score.go\n- internal/routing/*score*_test.go or routing preference tests\n- service_routing.go candidate component mapping\n- service_events.go if event JSON mirrors component names\n\nOUT-OF-SCOPE\n- Snapshot assembly.\n- Rewriting eligibility gates.\n- Changing public request field names.",
+    "acceptance": "1. `go test ./internal/routing/... -run \"Score|Power|Preference\" -count=1` passes with tests asserting score components sum to candidate score.\n2. `go test . -run \"TestRoutingDecision.*Components|TestRouteCandidate.*Components\" -count=1` passes and verifies public evidence includes SD-005 component names.\n3. A focused test proves below-MinPower penalty is greater per power point than above-MaxPower penalty.\n4. Existing golden/behavioral route-order tests continue to pass, or any changed ordering is documented in test names and bead notes.",
+    "parent": "fizeau-e6145528",
+    "labels": [
+      "area:routing",
+      "kind:refactor",
+      "plan-2026-05-12-sd005"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T21:33:12Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T21:36:14.209502375Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T21:33:12.423013597Z",
+      "spec-id": "SD-005"
+    }
+  },
+  "governing": [
+    {
+      "id": "SD-005",
+      "path": "docs/helix/02-design/solution-designs/SD-005-provider-config.md",
+      "title": "Solution Design: SD-005 — Provider Sources, Model Catalog, and Power Routing"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T213614-0e8f4592",
+    "prompt": ".ddx/executions/20260512T213614-0e8f4592/prompt.md",
+    "manifest": ".ddx/executions/20260512T213614-0e8f4592/manifest.json",
+    "result": ".ddx/executions/20260512T213614-0e8f4592/result.json",
+    "checks": ".ddx/executions/20260512T213614-0e8f4592/checks.json",
+    "usage": ".ddx/executions/20260512T213614-0e8f4592/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-26e77f71-20260512T213614-0e8f4592"
+  },
+  "prompt_sha": "062ebbb709b5db65e8eb07089ccb6255b20808872fffddf191d2e6dbe4239cfa"
+}
