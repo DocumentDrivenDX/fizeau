@@ -43,7 +43,7 @@ Fizeau keeps two layers above the runtime boundary:
 There is no user-authored routing-rule layer in the target design. Per-request
 routing follows ADR-005: the service discovers what each configured source can
 serve, joins that inventory with the catalog, applies hard caller constraints
-and optional power bounds, scores survivors, dispatches the top candidate once,
+and optional power hints, scores survivors, dispatches the top candidate once,
 and reports the attempted route outcome.
 
 After resolution, the service builds exactly one concrete native provider
@@ -54,8 +54,8 @@ Caller boundary (see CONTRACT-003):
 
 - Callers choose a harness only when they need to constrain the execution
   surface. Otherwise the service may consider all eligible harnesses.
-- Callers pass routing intent through public request fields (`Provider`,
-  `Model`, `ModelRef`, `MinPower`, `MaxPower`) plus optional auto-selection
+- Callers pass routing intent through public request fields (`Policy`,
+  `Provider`, `Model`, `MinPower`, `MaxPower`) plus optional auto-selection
   inputs (`EstimatedPromptTokens`, `RequiresTools`, `Reasoning`).
 - Explicit model, provider-source/endpoint, and harness pins always win over
   automatic selection. If a hard pin cannot be satisfied, routing fails with
@@ -251,10 +251,15 @@ a managed cloud frontier model solely because one benchmark is high.
 
 ## Resolution Model
 
+This section is the implementation plan for the behavior FEAT-004 requires.
+FEAT-004 owns the public routing contract; this design owns the sequence of
+snapshot assembly, eligibility filtering, scoring, dispatch, and evidence
+projection.
+
 Per request, the service:
 
 1. Loads provider source config and the agent model catalog.
-2. Builds an available-model inventory:
+2. Assembles or reads the current available-model snapshot:
    1. Enumerates every configured harness, provider source, endpoint, and
       discovered concrete model.
    2. Joins each concrete model to the model catalog. Matched entries provide
@@ -265,36 +270,49 @@ Per request, the service:
    3. Joins live operational signals: source/endpoint health, endpoint
       cooldown, observed latency, prepaid quota remaining/reset time, and known
       marginal cost.
-3. Applies caller intent:
-   - `--min-power` and `--max-power` select the allowed catalog power range.
-     If unset, there is no power bound and the router selects the best
-     lowest-cost viable auto-routable model from discovered inventory.
-   - `--model-ref` resolves through the catalog. A reference to a concrete
-     model entry is an exact model constraint. Catalog aliases are for exact
-     model identity and migration, not routing personas.
-   - `--model` is an exact concrete model constraint. If the caller asks for
-     `qwen-3.6-27b`, the router may choose among provider sources/endpoints
-     that serve that model, but it must not substitute a different model.
-   - `--provider` is a hard provider-source or endpoint constraint, depending
-     on the request surface. `--provider lmstudio` means only the LM Studio
-     source is considered; an endpoint selector means only that endpoint is
-     considered.
-   - `--harness` is a hard harness constraint.
-   - `--harness + --provider + --model` bypasses scoring after validation,
-     except for multiple endpoints under the same constrained source that can
-     satisfy the same concrete model.
-4. Filters candidates:
+   4. Uses ADR-012 cache semantics: stale snapshot data can be returned
+      immediately while refresh runs in the background; explicit refresh waits
+      for a current snapshot.
+3. Expands snapshot rows into route candidates. A candidate is the concrete
+   `(harness, provider source, endpoint/server instance, model)` tuple that can
+   be dispatched. Harness-as-provider snapshot rows are projected back onto the
+   `Harness` hard-pin axis while retaining provider/source identity for scoring
+   and evidence.
+4. Applies caller intent:
+   - `Policy` selects policy baseline, local allowance, and hard requirements.
+   - `MinPower` and `MaxPower` are score-shaping hints. They do not remove an
+     otherwise eligible candidate solely for being above or below the requested
+     band; undershooting is penalized more heavily than overshooting.
+   - `Model` is an exact concrete model constraint. If the caller asks for
+     `qwen-3.6-27b`, the router may choose among provider sources/endpoints that
+     serve that model, but it must not substitute a different model.
+   - `Provider` is a hard provider-source or endpoint constraint, depending on
+     the request surface. `Provider=lmstudio` means only the LM Studio source is
+     considered; an endpoint selector means only that endpoint is considered.
+   - `Harness` is a hard harness constraint.
+   - Fully pinned requests still run validation gates. They bypass comparative
+     scoring only when a single candidate remains; multiple endpoints under the
+     same constrained source are still ranked.
+5. Filters candidates:
    1. Hard constraints remove all candidates outside requested harness,
       provider-source/endpoint, and exact-model axes. These constraints are
       never relaxed by power scoring.
-   2. Power bounds remove models outside `MinPower..MaxPower` when either bound
-      is set. Models without catalog power are removed unless exactly pinned.
-   3. Liveness/model-discovery removes endpoints that are down or do not serve
+   2. Policy requirements remove candidates that cannot satisfy the selected
+      policy, such as `air-gapped` rejecting remote or account-billed
+      candidates.
+   3. Default inclusion removes default-deny providers from unpinned automatic
+      routing, but explicit `Harness`, `Provider`, or exact `Model` pins can
+      consider them.
+   4. Auto-routability removes missing-power, inactive, deprecated,
+      exact-pin-only, and catalog-unknown models from unpinned automatic routing.
+      Exact model pins may still use them when the selected source can serve the
+      model.
+   5. Liveness/model-discovery removes endpoints that are down or do not serve
       the candidate model.
-   4. Capability removes candidates with too-small context windows, missing
+   6. Capability removes candidates with too-small context windows, missing
       tool support for `RequiresTools`, unsupported explicit reasoning, or
       stale/deprecated catalog status when not explicitly allowed.
-5. Applies sticky endpoint assignment for equivalent local/free endpoints:
+6. Applies sticky endpoint assignment for equivalent local/free endpoints:
    1. If the request has a live sticky route key with a valid lease, reuse that
       `(provider source, endpoint, model)` assignment before new load balancing.
    2. If no valid lease exists, use normalized endpoint utilization plus
@@ -302,10 +320,11 @@ Per request, the service:
       local endpoint.
    3. Existing sticky assignments move only when the endpoint disappears, stops
       serving the model, enters cooldown, or crosses a hard saturation threshold.
-6. Scores survivors with explicit components:
+7. Scores survivors with explicit components:
 
    ```text
    score = power_weighted_capability
+         + power_hint_fit
          + latency_weight
          + placement_bonus
          + quota_bonus
@@ -314,15 +333,17 @@ Per request, the service:
          - stale_signal_penalty
    ```
 
-7. Dispatches the top candidate exactly once. On provider/harness failure, the
+   `power_hint_fit` applies the FEAT-004 asymmetric rule: candidates below
+   `MinPower` receive a stronger penalty than candidates above `MaxPower`.
+8. Dispatches the top candidate exactly once. On provider/harness failure, the
    service records the attempted route outcome and returns the full ranked
    trace. It does not try the next eligible candidate and it does not widen
    power bounds inside the same request.
 
 The full ranked candidate trace and per-candidate score components are emitted
 as part of the routing-decision event (CONTRACT-003). Operators explain a
-decision through `route-status` and `fiz --list-models`, not by reading
-route order in config.
+decision through `route-status` and `fiz models`, not by reading route order in
+config.
 
 ## Failure Evidence and Retry Boundary
 
@@ -351,9 +372,9 @@ provider sources/endpoints rather than recommending an unrelated model.
 
 ## Available Model Inventory
 
-The service exposes the joined inventory through `FizeauService.ListModels`. The CLI
-exposes the operator-facing equivalent as `fiz --list-models`; JSON
-output is the contract and text output is a rendering.
+The service exposes the joined inventory through `FizeauService.ListModels`.
+The CLI exposes the operator-facing equivalent as `fiz models`; JSON output is
+the contract and text output is a rendering.
 
 Each row contains:
 
@@ -369,8 +390,8 @@ Each row contains:
 - routing: power filter reasons and score components for supplied power bounds
 
 This surface is the debugging contract for routing. If `route-status` says a
-candidate lost, `fiz --list-models --min-power <n> --json` must show the
-raw facts that caused the loss.
+candidate lost, `fiz models --power-min <n> --json` plus the route decision
+trace must show the raw facts that caused the loss.
 
 ## Key Design Decisions
 
@@ -394,8 +415,8 @@ replacement metadata, ordered candidates, and per-surface defaults.
 
 **D3: Preserve prompt preset terminology for prompts only.** The top-level
 `preset` field and CLI `--preset` flag refer to system prompt presets defined
-in SD-003. Model policy uses `model_ref`, numeric power bounds, exact model
-pins, or catalog entries, never `preset`.
+in SD-003. Routing policy uses `Policy`, numeric power hints, exact model pins,
+and catalog entries, never `preset`.
 
 **D4: Power routing replaces the removed route-table field.** Per ADR-005, the service
 combines catalog power, provider/harness model inventory, placement, cost,
@@ -404,11 +425,10 @@ request. Users do not author per-candidate route order. the removed route-table 
 is rejected as a removed legacy surface.
 
 **D5: Power is routing intent; model/provider/harness are constraints.**
-`--min-power` and `--max-power` select the model-strength range. `--model-ref`
-is exact when it names a concrete catalog model. `--model`, provider
-source/endpoint selection, and `--harness` are hard constraints. Routing may
-optimize cost and availability inside those constraints but must fail with a
-detailed candidate trace when they cannot be met.
+`MinPower` and `MaxPower` express desired model strength and shape scoring.
+`Model`, provider source/endpoint selection, and `Harness` are hard constraints.
+Routing may optimize cost and availability inside those constraints but must
+fail with a detailed candidate trace when they cannot be met.
 
 **D6: Auto-selection inputs are deterministic.** Auto-selection signals are
 `EstimatedPromptTokens` (filter by context window), `RequiresTools` (filter by
@@ -554,8 +574,6 @@ Built-in preset details are defined by SD-003 and implemented in
 ```bash
 fiz run --provider lmstudio "prompt"
 fiz run --provider anthropic --model opus-4.7 "prompt"
-fiz run --model-ref code-high "prompt"
-fiz run --model-ref code-high --reasoning max "prompt"
 fiz run --model qwen-3.6-27b "prompt"
 fiz run --provider lmstudio --reasoning 8192 "prompt"
 ```
@@ -570,7 +588,7 @@ fiz run --model qwen3.5-27b "prompt"  # pin a concrete model
 fiz run --min-power 5 "prompt"        # request stronger automatic candidates
 fiz run --min-power 8 "prompt"        # retry with a stronger floor
 fiz run "prompt"                      # automatic routing over eligible candidates
-fiz --list-models --json              # inspect joined inventory
+fiz models --json                     # inspect joined inventory
 ```
 
 Compatibility:
@@ -595,8 +613,8 @@ package split:
 - `internal/reasoning/` — shared leaf package for the Reasoning scalar,
   parser, normalization, constants, `ReasoningTokens(n)`, and resolved policy
   representation
-- `cmd/fiz/` — resolve hard pins and power bounds into one concrete
-  provider/model/reasoning policy
+- `cmd/fiz/` and `agentcli/` — translate CLI flags into request intent and
+  expose `fiz models`; routing resolution remains service-owned
 
 ## Traceability
 
