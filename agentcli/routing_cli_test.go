@@ -24,6 +24,7 @@ type routingChatRequest struct {
 type countedOpenAIServer struct {
 	server          *httptest.Server
 	mu              sync.Mutex
+	modelsCalls     int
 	chatCalls       int
 	lastModel       string
 	responseStatus  int
@@ -45,6 +46,7 @@ func newCountedOpenAIServer(t *testing.T, responseStatus int, responseModel, res
 		switch r.URL.Path {
 		case "/v1/models":
 			s.mu.Lock()
+			s.modelsCalls++
 			models := append([]string(nil), s.models...)
 			responseModel := s.responseModel
 			modelsStatus := s.modelsStatus
@@ -120,6 +122,12 @@ func (s *countedOpenAIServer) chatCallCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.chatCalls
+}
+
+func (s *countedOpenAIServer) modelsCallCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.modelsCalls
 }
 
 func (s *countedOpenAIServer) requestedModel() string {
