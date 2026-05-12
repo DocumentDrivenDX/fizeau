@@ -1,0 +1,58 @@
+{
+  "attempt_id": "20260512T194317-ed47faf1",
+  "bead_id": "fizeau-b2ce499c",
+  "base_rev": "7211f1cd809eb5d674e849b873d3b72cf43ed8dd",
+  "created_at": "2026-05-12T19:43:20.201415964Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-b2ce499c",
+    "title": "modelregistry: carry endpoint and harness identity in KnownModel",
+    "description": "CONTEXT\nSD-005 requires auto-routing to consume the same enriched available-model snapshot exposed by `fiz models`. The current `internal/modelregistry.KnownModel` is centered on `(provider, model)` and lacks enough dispatch identity for multi-endpoint routing: harness, provider type, endpoint name/base URL, server instance, billing/default-inclusion evidence, and route-facing capability fields. This blocks replacing the duplicate service routing discovery path.\n\nCHANGE\nExtend `internal/modelregistry.KnownModel` and snapshot assembly so each discovered row carries the identity/facts needed to expand into a dispatch candidate. Preserve the operator-facing canonical provider/model identity while representing multiple endpoint/server-instance rows when a provider has multiple endpoints serving the same model. Subscription harness rows must retain harness-as-provider identity.\n\nIN-SCOPE FILES\n- internal/modelregistry/types.go\n- internal/modelregistry/assemble.go\n- internal/modelregistry/discovery.go\n- internal/modelregistry/*_test.go\n- agentcli/models.go and tests only as needed to render/assert new JSON fields\n\nOUT-OF-SCOPE\n- Rewiring ResolveRoute or RouteStatus to consume the snapshot.\n- Changing scoring behavior.\n- Removing legacy service discovery helpers; that is a downstream cleanup bead.",
+    "acceptance": "1. `go test ./internal/modelregistry/... -run \"KnownModel|Assemble|Endpoint|Harness\" -count=1` passes and includes a multi-endpoint fixture proving distinct rows preserve endpoint_name, endpoint_base_url, and server_instance for the same provider/model.\n2. `go test ./agentcli -run \"TestModelsListJSONEmitsSnapshot|TestModelsDetailRuntimeFields\" -count=1` passes and asserts the new identity fields remain present alongside quota_remaining/recent latency fields.\n3. `rg -n \"EndpointName|EndpointBaseURL|ServerInstance|Harness\" internal/modelregistry/types.go agentcli/models.go` shows the enriched model identity fields are part of the unified snapshot surface.",
+    "parent": "fizeau-e6145528",
+    "labels": [
+      "area:modelregistry",
+      "area:routing",
+      "kind:feature",
+      "plan-2026-05-12-sd005"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T19:40:01Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T19:43:17.812119691Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T19:40:01.701544672Z",
+      "spec-id": "SD-005"
+    }
+  },
+  "governing": [
+    {
+      "id": "SD-005",
+      "path": "docs/helix/02-design/solution-designs/SD-005-provider-config.md",
+      "title": "Solution Design: SD-005 — Provider Sources, Model Catalog, and Power Routing"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T194317-ed47faf1",
+    "prompt": ".ddx/executions/20260512T194317-ed47faf1/prompt.md",
+    "manifest": ".ddx/executions/20260512T194317-ed47faf1/manifest.json",
+    "result": ".ddx/executions/20260512T194317-ed47faf1/result.json",
+    "checks": ".ddx/executions/20260512T194317-ed47faf1/checks.json",
+    "usage": ".ddx/executions/20260512T194317-ed47faf1/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-b2ce499c-20260512T194317-ed47faf1"
+  },
+  "prompt_sha": "45b85696578193c00b7090089d48be6e95342722ba86ac71699a475a4b433d28"
+}
