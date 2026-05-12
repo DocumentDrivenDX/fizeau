@@ -366,3 +366,58 @@ bead readiness blocked: score 0.00 below threshold 0.50 (0/4 verifiable ACs) (re
 03:25:20 readiness check: starting route: harness=codex model=gpt-5.5
 03:27:27 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.5
 03:28:07 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
+07:28:20 do route codex/gpt-5.5 reason=explicit
+07:28:20 do fizeau-c04be6b0 route codex/gpt-5.5 power=10
+07:28:20 do thinking ...
+07:28:31 do ok 1 inspect lines 1,220 in /var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-c04be6b0-… 260ms
+07:28:38 do ok 2 inspect lines 1,260 in .agents/skills/ddx/reference/work.md < out=6.6KB 155 lines "# Work — Drai…
+07:28:56 do ok 3 inspect lines 1,260 in internal/modelcatalog/manifest.go < out=10.2KB 260 lines "package modelcata…
+07:28:56 do ok 4 inspect lines 1,220 in docs/helix/02-design/adr/ADR-005-smart… < out=11.5KB 220 lines "---"
+07:28:56 do ok 5 inspect lines 1,360 in internal/modelcatalog/manifest_test.go < out=8.8KB 360 lines "package model…
+07:28:56 do ok 6 search "gpt-5\\.3-codex-spark|models:|..." in internal/modelc… < out=1.3KB 40 lines "9:models:"
+07:29:18 do ok 7 inspect lines 360,760 in internal/modelcatalog/manifest_test.… < out=3.1KB 113 lines "models:"
+07:29:18 do ok 8 inspect lines 260,620 in internal/modelcatalog/manifest.go < out=1.9KB 53 lines "}"
+07:29:18 do ok 9 inspect lines 1,120 in internal/modelcatalog/catalog/models.y… < out=7.6KB 291 lines "version: 5"
+07:29:18 do ok 10 'rg -n "ProviderSystem|Effective.*Pool|quota|validate.*Name|… < out=3.9KB 45 lines "internal/mo…
+07:29:48 do ok 11 inspect lines 1,90 in internal/modelcatalog/catalog_test.go < out=1.9KB 90 lines "package modelca…
+07:29:48 do ok 12 'rg -n "''^ [a-zA-Z0-9_.-]+:" internal/modelcatalog/catalog/… < out=634B 35 lines "5: code:"
+07:29:48 do ok 13 inspect lines 1,90 in internal/modelcatalog/billing.go < out=1.7KB 56 lines "package modelcatalog"
+07:29:48 do ok 14 inspect lines 730,770 in internal/modelcatalog/catalog.go < out=1015B 41 lines "switch {"
+07:30:12 do ok 15 inspect lines 120,180 in internal/modelcatalog/embedded_powe… < out=1.6KB 61 lines "catalog, er…
+07:30:12 do ok 16 inspect lines 45,78 in internal/modelcatalog/catalog/models.… < out=812B 34 lines "gpt-5.5:"
+07:30:12 do ok 17 inspect lines 165,188 in internal/modelcatalog/catalog/model… < out=645B 24 lines "gpt-5.4-mini…
+07:30:12 do ok 18 search "func" in internal/modelcatalog < out=6.8KB 66 lines "internal/modelcatalog/power.go:80:\�…
+07:30:17 do ok 19 inspect lines 781,815 in internal/modelcatalog/catalog.go < out=731B 27 lines "func (m ModelEntry…
+07:31:58 do ok 20 'gofmt -w internal/modelcatalog/manifest.go internal/modelcatalog/manifest_t… 7ms
+07:31:58 do ok 21 'git diff -- internal/modelcatalog/manifest.go internal/mode… < out=6.0KB 181 lines "diff --git…
+07:32:12 do ok 22 'go test ./internal/modelcatalog/...' < out=57B 1 line "ok \tgithub.com/easel/fizeau/intern… 474ms
+07:32:23 do ok 23 'go vet ./...' 2.608s
+07:34:18 do ok 24 'go test ./...' < out=6.0KB 110 lines "ok \tgithub.com/easel/fizeau\t6.67… 1m42.649s
+07:34:48 do ok 26 'go test ./internal/sdk/openaicompat -run TestExtractReasoni… < out=252B 6 lines "--- FAI… 309ms
+07:34:53 do ok 25 'go test ./agentcli -run TestCLI_ReasoningCatalogMaxOverride… < out=766B 16 lines "--- F… 5.021s
+07:35:13 do ok 27 'git diff --stat' < out=243B 4 lines "internal/modelcatalog/catalog/models.…
+07:35:13 do ok 28 'git diff --name-only' < out=114B 3 lines "internal/modelcatalog/catalog/models.…
+07:35:13 do ok 29 'git status --short' < out=122B 3 lines "M internal/modelcatalog/catalog/model…
+07:35:57 do ok 30 'gofmt -w internal/modelcatalog/manifest.go internal/modelcatalog/manifest_t…
+07:36:08 do ok 31 'git diff --check'
+07:36:09 do ok 32 'go test ./internal/modelcatalog/...' < out=57B 1 line "ok \tgithub.com/easel/fizeau/intern… 686ms
+07:36:11 do ok 33 'go vet ./...' 2.508s
+07:36:28 do ok 34 'git diff -- internal/modelcatalog/manifest.go internal/mode… < out=6.1KB 182 lines "diff --git…
+07:37:01 do ok 35 'git add internal/modelcatalog/manifest.go internal/modelcat… < out=123B 3 lines "M internal/mo…
+07:37:13 do ok 36 'git commit -m "feat: add catalog quota pool field [fizeau-c… < out=129B 2 lines "[detached HEA…
+07:37:27 do ok 37 'git status --short'
+07:37:43 do response complete 10144 tok in 9m22.972s, 18.0 tok/s
+✓ fizeau-c04be6b0 → merged (b06824ac)
+
+▶ fizeau-5b6512ef: ADR-011: Cost-based routing with quota-pool-aware fallback
+03:37:47 readiness check: starting route: harness=codex model=gpt-5.5
+bead readiness blocked: score 0.25 below threshold 0.50 (1/4 verifiable ACs) (releasing fizeau-5b6512ef)
+
+▶ fizeau-7c8b1856: Snapshot assembler: enumerate providers + harnesses, discover via cache, enrich from catalog
+03:37:48 readiness check: starting route: harness=codex model=gpt-5.5
+bead readiness blocked: score 0.33 below threshold 0.50 (2/6 verifiable ACs) (releasing fizeau-7c8b1856)
+
+▶ fizeau-72d18004: bench: matrix runner halts lane after 5 consecutive identical failures
+03:37:48 readiness check: starting route: harness=codex model=gpt-5.5
+03:39:47 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.5
+03:40:27 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
