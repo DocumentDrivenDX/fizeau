@@ -1,0 +1,49 @@
+{
+  "attempt_id": "20260512T074027-ed0936a6",
+  "bead_id": "fizeau-72d18004",
+  "base_rev": "6fc99c64f379fcae9a9c41be21b23c569e1ca1cd",
+  "created_at": "2026-05-12T07:40:30.34929559Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.5",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-72d18004",
+    "title": "bench: matrix runner halts lane after 5 consecutive identical failures",
+    "description": "Add a consecutive-failure halt to the matrix runner (cmd/bench/matrix.go) that aborts the entire lane after N=5 cells fail with byte-identical error fingerprints in a row. Writes a single `lane_aborted` summary cell explaining why; subsequent cells in the lane are skipped (not run, not written).\n\nWhy this matters: see parent epic. The preflight smoke test (sibling bead fizeau-586e476a) catches misconfigured lanes at sweep startup. This bead is the defense-in-depth piece for cases where preflight passed but the endpoint dies mid-sweep — e.g. vLLM model engine enters a degraded state after running fine for a while, or a model server gets OOM-killed and the wrapper restarts it broken. Today such regressions cause every remaining cell in the lane to fail identically until human intervention.\n\nBehavior:\n\n- After each cell in a lane completes, compute a fingerprint = SHA256 of the report's `error` field (truncated to first 256 bytes) + `final_status`. Store the last N=5 fingerprints in lane-scoped state inside the existing per-lane matrix runner process (no on-disk state).\n- When 5 consecutive cells share the same fingerprint AND are all `graded_fail` or `harness_crash` (not `graded_pass`), halt the lane:\n  * Write one synthetic `report.json` to a path like `\u003ccells_root\u003e/.lane_aborted/\u003clane_id\u003e/aborted.json` with `final_status: \"lane_aborted\"`, `error: \"halted after 5 consecutive identical failures: \u003cfingerprint preview\u003e\"`, plus the fingerprint and the list of the 5 task ids that triggered.\n  * Print `[matrix] lane=\u003clane_id\u003e ABORTED after 5 consecutive identical failures (last task: \u003ctask\u003e): \u003cerror preview\u003e` to stderr.\n  * Exit the matrix runner with a distinct exit code (e.g. 75 / EX_TEMPFAIL) so the sweep script can attribute the abort to this cause vs a normal lane completion.\n- Add `final_status: \"lane_aborted\"` to the matrix invalid-class machinery so the website / aggregates display these explicitly (not as silent missing cells).\n- Add a `--no-consecutive-failure-halt` flag to disable the safety net for operators debugging a known-broken lane.\n\nFailure-mode test cases (must all be covered):\n\n- 5 cells with identical `agent: provider error: ...` errors → halt fires.\n- 5 cells with identical `harness_crash: context canceled` (the docker subnet exhaustion pattern from earlier in this codebase) → halt fires.\n- 4 identical errors then 1 graded_pass → halt does NOT fire; counter resets.\n- 4 identical errors then a 5th error with even one byte different → halt does NOT fire.\n- `--no-consecutive-failure-halt` flag → halt never fires regardless.\n\nIn-scope files:\n- cmd/bench/matrix.go — add ConsecutiveFailureTracker (or inline state) inside the matrix-runner main loop; integrate into the per-cell write path; add the flag.\n- cmd/bench/matrix_invalid.go — register `lane_aborted` as a known invalid class (so summarizeMatrixCells counts it correctly, and the regen pipeline treats it as systemic, not model failure).\n- cmd/bench/matrix_test.go — add the four behavior tests above using the existing test fixture pattern.\n\nOut-of-scope (file separate beads):\n- Auto-restart of the lane after the user fixes the issue. (For now, operator manually re-runs.)\n- Cross-lane abort cascade (one lane's repeated failures shouldn't halt other lanes).\n- Surfacing the halt count in the website data — that's a follow-up once we see how often this fires in practice.\n\nAcceptance is a command:\n\n1. `go test ./cmd/bench/... -run TestConsecutiveFailureHalt` passes (covers the four behaviors above).\n2. With a deliberately-misconfigured fixture profile that produces identical errors, `fiz-bench matrix --profiles broken-fixture --reps 10 --out /tmp/abort-test` exits with code 75 after exactly 5 cells, writes `aborted.json` under `\u003cout\u003e/.lane_aborted/`, and the remaining 5 cells are not present in the output dir.\n3. The same fixture with `--no-consecutive-failure-halt` runs all 10 cells to completion (each failing) without aborting.",
+    "acceptance": "1. go test ./cmd/bench/... -run TestConsecutiveFailureHalt covers the four behaviors above and passes. 2. Misconfigured fixture sweep exits code 75 after exactly 5 cells with aborted.json written. 3. --no-consecutive-failure-halt runs all cells without aborting. 4. lane_aborted appears as a known invalid class in matrix.json's invalid_by_class breakdown.",
+    "parent": "fizeau-1a5353cd",
+    "labels": [
+      "area:benchmark",
+      "kind:reliability",
+      "kind:hardening"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T07:37:48Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "1864078",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T07:40:27.39304641Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T07:37:48.433700962Z"
+    }
+  },
+  "paths": {
+    "dir": ".ddx/executions/20260512T074027-ed0936a6",
+    "prompt": ".ddx/executions/20260512T074027-ed0936a6/prompt.md",
+    "manifest": ".ddx/executions/20260512T074027-ed0936a6/manifest.json",
+    "result": ".ddx/executions/20260512T074027-ed0936a6/result.json",
+    "checks": ".ddx/executions/20260512T074027-ed0936a6/checks.json",
+    "usage": ".ddx/executions/20260512T074027-ed0936a6/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-72d18004-20260512T074027-ed0936a6"
+  },
+  "prompt_sha": "1e9f097670d68700dd45f0e21d3c27e0d33fc486d75197a9944ec376ca10b47f"
+}
