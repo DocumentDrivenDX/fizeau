@@ -18,6 +18,7 @@ import (
 
 type matrixIndexRow struct {
 	Dataset         string  `json:"dataset"`
+	DatasetVersion  string  `json:"dataset_version,omitempty"`
 	TaskID          string  `json:"task_id"`
 	Provider        string  `json:"provider"`
 	Model           string  `json:"model"`
@@ -41,20 +42,21 @@ type matrixIndexRow struct {
 }
 
 type matrixIndexSummaryRow struct {
-	Dataset      string
-	Provider     string
-	Model        string
-	Harness      string
-	ProfileID    string
-	Reports      int
-	Pass         int
-	GradedFail   int
-	Invalid      int
-	Crash        int
-	InputTokens  int
-	OutputTokens int
-	CostUSD      float64
-	WallSeconds  float64
+	Dataset        string
+	DatasetVersion string
+	Provider       string
+	Model          string
+	Harness        string
+	ProfileID      string
+	Reports        int
+	Pass           int
+	GradedFail     int
+	Invalid        int
+	Crash          int
+	InputTokens    int
+	OutputTokens   int
+	CostUSD        float64
+	WallSeconds    float64
 }
 
 type profileProviderInfo struct {
@@ -314,8 +316,10 @@ func matrixIndexRowFromReport(path string, report matrixRunReport, fallbackVersi
 	if toolsVersion == 0 {
 		toolsVersion = fallbackVersion
 	}
+	reportDataset := firstNonEmpty(report.Dataset, dataset)
 	return matrixIndexRow{
-		Dataset:         dataset,
+		Dataset:         matrixDatasetSegment(reportDataset),
+		DatasetVersion:  firstNonEmpty(report.DatasetVersion, matrixDatasetVersion(reportDataset)),
 		TaskID:          report.TaskID,
 		Provider:        provider,
 		Model:           model,
@@ -395,6 +399,7 @@ func assignMatrixIndexRunIndexes(rows []matrixIndexRow) {
 	for i := range rows {
 		key := strings.Join([]string{
 			rows[i].Dataset,
+			rows[i].DatasetVersion,
 			rows[i].TaskID,
 			rows[i].Provider,
 			rows[i].Model,
@@ -512,10 +517,10 @@ func writeMatrixIndexJSONL(path string, rows []matrixIndexRow) error {
 func summarizeMatrixIndexRows(rows []matrixIndexRow) []matrixIndexSummaryRow {
 	byKey := map[string]*matrixIndexSummaryRow{}
 	for _, row := range rows {
-		key := strings.Join([]string{row.Dataset, row.Provider, row.Model, row.Harness, row.ProfileID}, "\x00")
+		key := strings.Join([]string{row.Dataset, row.DatasetVersion, row.Provider, row.Model, row.Harness, row.ProfileID}, "\x00")
 		s := byKey[key]
 		if s == nil {
-			s = &matrixIndexSummaryRow{Dataset: row.Dataset, Provider: row.Provider, Model: row.Model, Harness: row.Harness, ProfileID: row.ProfileID}
+			s = &matrixIndexSummaryRow{Dataset: row.Dataset, DatasetVersion: row.DatasetVersion, Provider: row.Provider, Model: row.Model, Harness: row.Harness, ProfileID: row.ProfileID}
 			byKey[key] = s
 		}
 		s.Reports++
@@ -540,8 +545,8 @@ func summarizeMatrixIndexRows(rows []matrixIndexRow) []matrixIndexSummaryRow {
 		out = append(out, *row)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return strings.Join([]string{out[i].Dataset, out[i].Provider, out[i].Model, out[i].Harness, out[i].ProfileID}, "\x00") <
-			strings.Join([]string{out[j].Dataset, out[j].Provider, out[j].Model, out[j].Harness, out[j].ProfileID}, "\x00")
+		return strings.Join([]string{out[i].Dataset, out[i].DatasetVersion, out[i].Provider, out[i].Model, out[i].Harness, out[i].ProfileID}, "\x00") <
+			strings.Join([]string{out[j].Dataset, out[j].DatasetVersion, out[j].Provider, out[j].Model, out[j].Harness, out[j].ProfileID}, "\x00")
 	})
 	return out
 }
@@ -553,12 +558,13 @@ func writeMatrixIndexCSV(path string, rows []matrixIndexSummaryRow) error {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	if err := w.Write([]string{"dataset", "provider", "model", "harness", "profile_id", "reports", "pass", "graded_fail", "invalid", "crash", "input_tokens", "output_tokens", "cost_usd", "wall_seconds"}); err != nil {
+	if err := w.Write([]string{"dataset", "dataset_version", "provider", "model", "harness", "profile_id", "reports", "pass", "graded_fail", "invalid", "crash", "input_tokens", "output_tokens", "cost_usd", "wall_seconds"}); err != nil {
 		return err
 	}
 	for _, row := range rows {
 		if err := w.Write([]string{
 			row.Dataset,
+			row.DatasetVersion,
 			row.Provider,
 			row.Model,
 			row.Harness,
@@ -582,11 +588,11 @@ func writeMatrixIndexCSV(path string, rows []matrixIndexSummaryRow) error {
 
 func renderMatrixIndexMarkdown(rows []matrixIndexSummaryRow) string {
 	var b strings.Builder
-	b.WriteString("| Dataset | Provider | Model | Harness | Profile | Reports | Pass | Fail | Invalid | Crash | Cost ($) |\n")
-	b.WriteString("|---|---|---|---|---|---:|---:|---:|---:|---:|---:|\n")
+	b.WriteString("| Dataset | Version | Provider | Model | Harness | Profile | Reports | Pass | Fail | Invalid | Crash | Cost ($) |\n")
+	b.WriteString("|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|\n")
 	for _, row := range rows {
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %.4f |\n",
-			row.Dataset, row.Provider, row.Model, row.Harness, row.ProfileID, row.Reports, row.Pass, row.GradedFail, row.Invalid, row.Crash, row.CostUSD)
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %.4f |\n",
+			row.Dataset, row.DatasetVersion, row.Provider, row.Model, row.Harness, row.ProfileID, row.Reports, row.Pass, row.GradedFail, row.Invalid, row.Crash, row.CostUSD)
 	}
 	return b.String()
 }

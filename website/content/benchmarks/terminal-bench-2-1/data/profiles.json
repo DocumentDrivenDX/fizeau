@@ -436,14 +436,14 @@
       "cached_input_usd_per_mtok": 0.32
     },
     "limits": {
-      "max_output_tokens": 32768,
+      "max_output_tokens": 65536,
       "context_tokens": 262144,
       "rate_limit_rpm": 500,
       "rate_limit_tpm": 1000000
     },
     "sampling": {
       "temperature": 0.6,
-      "reasoning": "low",
+      "reasoning": 4096,
       "top_p": 0.95,
       "top_k": 20
     },
@@ -603,13 +603,13 @@
     "_header_comment": "Noop profile \u2014 fixture used by adapter unit tests. Points at a non-routable",
     "_path": "scripts/benchmark/profiles/noop.yaml"
   },
-  "sindri-club-3090-llamacpp": {
-    "id": "sindri-club-3090-llamacpp",
+  "sindri-llamacpp": {
+    "id": "sindri-llamacpp",
     "metadata": {
       "model_family": "qwen3-6-27b",
       "model_id": "Qwen3.6-27B-UD-Q3_K_XL.gguf",
       "quant_label": "gguf-q3-k-xl-unsloth",
-      "provider_surface": "sindri-club-llamacpp",
+      "provider_surface": "sindri-llamacpp",
       "runtime": "llama-server",
       "hardware_label": "sindri-club-3090",
       "endpoint": "http://sindri:8020/v1",
@@ -627,13 +627,14 @@
       "cached_input_usd_per_mtok": 0.0
     },
     "limits": {
-      "max_output_tokens": 32768,
+      "max_output_tokens": 65536,
       "context_tokens": 180000,
       "rate_limit_rpm": 60,
       "rate_limit_tpm": 100000
     },
     "sampling": {
       "temperature": 0.6,
+      "reasoning": 4096,
       "top_p": 0.95,
       "top_k": 20
     },
@@ -643,15 +644,15 @@
     },
     "agent_timeout_multiplier": 5.0,
     "_header_comment": "Qwen3.6-27B Unsloth Q3_K_XL GGUF via llama.cpp's llama-server on sindri,",
-    "_path": "scripts/benchmark/profiles/sindri-club-3090-llamacpp.yaml"
+    "_path": "scripts/benchmark/profiles/sindri-llamacpp.yaml"
   },
-  "sindri-club-3090": {
-    "id": "sindri-club-3090",
+  "sindri-vllm": {
+    "id": "sindri-vllm",
     "metadata": {
       "model_family": "qwen3-6-27b",
       "model_id": "qwen3.6-27b-autoround",
       "quant_label": "vllm-autoround",
-      "provider_surface": "sindri-club-vllm",
+      "provider_surface": "sindri-vllm",
       "runtime": "vllm",
       "hardware_label": "sindri-club-3090",
       "endpoint": "http://sindri:8020/v1",
@@ -685,8 +686,8 @@
       "resolved_at": "2026-05-07",
       "snapshot": "qwen3.6-27b-autoround"
     },
-    "_header_comment": "Qwen3.6-27B AutoRound via club-3090 on sindri (vLLM-compatible, port 8020).",
-    "_path": "scripts/benchmark/profiles/sindri-club-3090.yaml"
+    "_header_comment": "Qwen3.6-27B AutoRound via vLLM on sindri (RTX 3090, port 8020).",
+    "_path": "scripts/benchmark/profiles/sindri-vllm.yaml"
   },
   "smoke": {
     "id": "smoke",
@@ -718,6 +719,53 @@
     "_header_comment": "Smoke profile \u2014 cheapest OpenAI-compat target used to validate matrix",
     "_path": "scripts/benchmark/profiles/smoke.yaml"
   },
+  "vidar-ds4": {
+    "id": "vidar-ds4",
+    "metadata": {
+      "model_family": "deepseek-v4-flash",
+      "model_id": "deepseek-v4-flash",
+      "gguf_filename": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf",
+      "quant_label": "gguf-iq2xxs-mixed-q2k-q8",
+      "provider_surface": "vidar-ds4",
+      "runtime": "ds4",
+      "backend": "metal",
+      "kv_disk_dir": "/Volumes/Samsung/ds4-kv",
+      "kv_disk_space_mb": 131072,
+      "hardware_label": "vidar-m2-ultra-192gb",
+      "endpoint": "http://vidar:1236/v1",
+      "server": "vidar"
+    },
+    "provider": {
+      "type": "ds4",
+      "model": "deepseek-v4-flash",
+      "base_url": "http://vidar:1236/v1",
+      "api_key_env": "DS4_API_KEY"
+    },
+    "pricing": {
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "cached_input_usd_per_mtok": 0.0
+    },
+    "limits": {
+      "max_output_tokens": 32768,
+      "context_tokens": 393216,
+      "rate_limit_rpm": 60,
+      "rate_limit_tpm": 100000
+    },
+    "sampling": {
+      "temperature": 0.6,
+      "reasoning": 4096,
+      "top_p": 0.95,
+      "top_k": 20
+    },
+    "versioning": {
+      "resolved_at": "2026-05-11",
+      "snapshot": "deepseek-v4-flash via ds4-server antirez/ds4@ae302c2f | gguf=DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf | hw=apple-m2-ultra-192gb | backend=metal | kv_disk=/Volumes/Samsung/ds4-kv@131072MB | ctx=393216"
+    },
+    "agent_timeout_multiplier": 5.0,
+    "_header_comment": "DeepSeek V4 Flash via DwarfStar 4 (antirez/ds4) on vidar, port 1236.",
+    "_path": "scripts/benchmark/profiles/vidar-ds4.yaml"
+  },
   "vidar-qwen3-6-27b": {
     "id": "vidar-qwen3-6-27b",
     "metadata": {
@@ -742,7 +790,7 @@
       "cached_input_usd_per_mtok": 0.0
     },
     "limits": {
-      "max_output_tokens": 32768,
+      "max_output_tokens": 65536,
       "context_tokens": 128000,
       "rate_limit_rpm": 60,
       "rate_limit_tpm": 100000
@@ -750,7 +798,7 @@
     "agent_timeout_multiplier": 8.0,
     "sampling": {
       "temperature": 0.6,
-      "reasoning": "low",
+      "reasoning": 4096,
       "top_p": 0.95,
       "top_k": 20
     },

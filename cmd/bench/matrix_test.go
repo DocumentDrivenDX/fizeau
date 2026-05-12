@@ -110,10 +110,29 @@ func TestMatrixTupleDirForCanonicalCellsRoot(t *testing.T) {
 			Model: "qwen/qwen3.6-27b",
 		},
 	}
-	got := matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 2, "break-filter-js-from-html")
+	got := matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 2, "break-filter-js-from-html", "terminal-bench/terminal-bench-2-1")
 	want := filepath.Join(cellsRoot, "terminal-bench-2-1", "break-filter-js-from-html", "fiz-openrouter-qwen3-6-27b", "rep-002")
 	if got != want {
 		t.Fatalf("canonical cell dir = %q, want %q", got, want)
+	}
+
+	got = matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 1, "legacy-task", "terminal-bench@2.0")
+	want = filepath.Join(cellsRoot, "terminal-bench-2-0", "legacy-task", "fiz-openrouter-qwen3-6-27b", "rep-001")
+	if got != want {
+		t.Fatalf("canonical legacy cell dir = %q, want %q", got, want)
+	}
+}
+
+func TestMatrixDatasetVersion(t *testing.T) {
+	tests := map[string]string{
+		"terminal-bench/terminal-bench-2-1": "2.1",
+		"terminal-bench@2.0":                "2.0",
+		"terminal-bench/2.0":                "2.0",
+	}
+	for dataset, want := range tests {
+		if got := matrixDatasetVersion(dataset); got != want {
+			t.Fatalf("matrixDatasetVersion(%q) = %q, want %q", dataset, got, want)
+		}
 	}
 }
 

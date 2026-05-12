@@ -233,6 +233,20 @@ def load_subsets() -> dict[str, dict[str, Any]]:
     return out
 
 
+def filter_reports_to_declared_subset_tasks(reports: list[dict[str, Any]], subsets: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop reports whose task id is not in the declared TB-2.1 subset catalog.
+
+    Older runner builds hardcoded the canonical cells dataset path, so aborted
+    TB-2.0/bootstrap experiments can be present below the TB-2.1 storage root.
+    The website summarizer is scoped to Terminal-Bench 2.1 and should only
+    aggregate tasks that appear in the current TB-2.1 manifests.
+    """
+    known_tasks = {task for subset in subsets.values() for task in subset.get("tasks", [])}
+    if not known_tasks:
+        return reports
+    return [r for r in reports if r.get("_task") in known_tasks]
+
+
 def load_machines() -> dict[str, dict[str, Any]]:
     """Load the machine registry. Keys are server hostnames matching profile metadata.server."""
     if not MACHINES_YAML.is_file():
@@ -412,6 +426,21 @@ def aggregate_external_per_subset(leaderboard: list[dict[str, Any]], subsets: di
     return out
 
 
+def subset_pass_counts(per_subset: dict[str, dict[str, dict[str, Any]]], profile_id: str, subset: str = "all") -> tuple[int | None, int | None]:
+    """Return pass@k numerator/denominator for one declared subset.
+
+    Profile-wide task directories can include historical canaries, aborted
+    experiments, or other benchmark versions that share an old cells root.
+    Headline TB-2.1 numbers must therefore come from the subset rollup, not
+    from aggregate_per_profile(tasks_touched).
+    """
+    d = per_subset.get(profile_id, {}).get(subset, {})
+    attempted = d.get("tasks_attempted") or 0
+    if attempted <= 0:
+        return None, None
+    return d.get("tasks_passed") or 0, attempted
+
+
 def compute_per_profile_timing(profiles_to_scan: list[str]) -> dict[str, dict[str, Any]]:
     """For each profile, compute headline TTFT/decode p50 (median-of-task-medians)
     plus per-context-bucket TTFT/decode p50."""
@@ -572,6 +601,7 @@ def chart_pass_rate_by_subset(per_subset: dict[str, dict[str, dict[str, Any]]],
 
 
 def chart_model_power_scatter(per_profile: dict[str, dict[str, Any]],
+                              per_subset: dict[str, dict[str, dict[str, Any]]],
                               ext_per_subset: dict[str, dict[str, dict[str, Any]]],
                               profiles: dict[str, dict[str, Any]],
                               model_power: dict[str, dict[str, Any]],
@@ -600,13 +630,14 @@ def chart_model_power_scatter(per_profile: dict[str, dict[str, Any]],
     pts = []
     for pid, a in per_profile.items():
         if pid in EXCLUDED_PROFILES: continue
-        if a["tasks_touched"] < 5: continue
+        passed, attempted = subset_pass_counts(per_subset, pid, "all")
+        if not attempted or attempted < 5: continue
         meta = profiles.get(pid)
         pwr = power_for(pid, meta)
         if pwr is None: continue
         pts.append({
             "x": pwr + 0.05 * ((hash(pid) % 11) - 5),
-            "y": a["tasks_passed_any"] / max(1, a["tasks_touched"]),
+            "y": passed / attempted,
             "label": pid.replace("fiz-", "").replace("-qwen3-6-27b", "/Q27b").replace("-claude-sonnet-4-6", "/Sonnet"),
             "color": color_for_profile(pid, meta),
             "size": 30 + (a["median_turns"] or 0) * 4,
@@ -980,12 +1011,13 @@ def render_body(*,
     for pid in pid_active:
         a = per_profile[pid]
         td = timing.get(pid, {})
+        passed, attempted = subset_pass_counts(per_subset, pid, "all")
         parts.append('<tr>')
         parts.append(f'<td>{html.escape(pid)}</td>')
         parts.append(f'<td><span class="meta">{html.escape(harness_label(pid, profiles.get(pid)))}</span></td>')
         parts.append(f'<td>{a["n_attempts"]}</td><td>{a["n_real"]}</td>')
         parts.append(f'<td>{_fmt_pct(a["n_pass"], a["n_graded"])}</td>')
-        parts.append(f'<td>{_fmt_pct(a["tasks_passed_any"], a["tasks_touched"])}</td>')
+        parts.append(f'<td>{_fmt_pct(passed, attempted)}</td>')
         parts.append(f'<td>{_fmt_num(a["median_turns"], 0)}</td>')
         parts.append(f'<td>{_fmt_int(a["median_in_tok"])}</td>')
         parts.append(f'<td>{_fmt_int(a["median_out_tok"])}</td>')
@@ -1082,7 +1114,7 @@ def _render_pass_table(pids: list[str], subsets, per_subset, profiles,
     return "".join(s)
 
 
-def _render_detailed_table(pids: list[str], per_profile, profiles, timing, label_for=None) -> str:
+def _render_detailed_table(pids: list[str], per_profile, per_subset, profiles, timing, label_for=None) -> str:
     def _fmt_int(x): return "—" if x is None else f"{int(x):,}"
     def _fmt_num(x, dp=1): return "—" if x is None else f"{x:.{dp}f}"
     def _fmt_pct(p, t): return "—" if not t else f"{p/t*100:.1f}%"
@@ -1094,12 +1126,13 @@ def _render_detailed_table(pids: list[str], per_profile, profiles, timing, label
         td = timing.get(pid, {})
         prof = profiles.get(pid)
         label = label_for(pid, prof) if label_for else pid
+        passed, attempted = subset_pass_counts(per_subset, pid, "all")
         s.append('<tr>')
         s.append(f'<td>{html.escape(label)}</td>')
         s.append(f'<td><span class="meta">{html.escape(harness_label(pid, prof))}</span></td>')
         s.append(f'<td>{a["n_attempts"]}</td><td>{a["n_real"]}</td>')
         s.append(f'<td>{_fmt_pct(a["n_pass"], a["n_graded"])}</td>')
-        s.append(f'<td>{_fmt_pct(a["tasks_passed_any"], a["tasks_touched"])}</td>')
+        s.append(f'<td>{_fmt_pct(passed, attempted)}</td>')
         s.append(f'<td>{_fmt_num(a["median_turns"], 0)}</td>')
         s.append(f'<td>{_fmt_int(a["median_in_tok"])}</td>')
         s.append(f'<td>{_fmt_int(a["median_out_tok"])}</td>')
@@ -1149,7 +1182,7 @@ def render_models_body(*, snapshot_ts, profiles, subsets, per_profile,
         '<h2>Pass-rate</h2>',
         _render_pass_table(pids, subsets, per_subset, profiles),
         '<h2>Detailed metrics</h2>',
-        _render_detailed_table(pids, per_profile, profiles, timing),
+        _render_detailed_table(pids, per_profile, per_subset, profiles, timing),
         '<h2>Cost to extend coverage</h2>',
         f'<div class="narrative">{_read_section("models-coverage-cost.md")}</div>',
         '<h2>Model power vs pass-rate</h2>',
@@ -1178,7 +1211,7 @@ def render_harnesses_body(*, snapshot_ts, profiles, subsets, per_profile,
                            include_external=True, ext_per_subset=ext_per_subset,
                            ext_filter=harness_ext_filter),
         '<h2>Detailed metrics</h2>',
-        _render_detailed_table(pids, per_profile, profiles, timing),
+        _render_detailed_table(pids, per_profile, per_subset, profiles, timing),
         '<h2>Side-by-side coverage and gaps</h2>',
         f'<div class="narrative">{_read_section("harnesses-side-by-side.md")}</div>',
     ]
@@ -1200,7 +1233,7 @@ def render_providers_body(*, snapshot_ts, profiles, machines, subsets,
         '<h2>Pass-rate</h2>',
         _render_pass_table(pids, subsets, per_subset, profiles),
         '<h2>Detailed metrics</h2>',
-        _render_detailed_table(pids, per_profile, profiles, timing, label_for=label),
+        _render_detailed_table(pids, per_profile, per_subset, profiles, timing, label_for=label),
         '<h2>Performance vs context length</h2>',
         f'<div class="narrative">{_read_section("07-context-length-observations.md")}</div>',
         f'<h3>TTFT (seconds, lower is better)</h3><div class="chart">{chart_emitter("ttft-by-context.svg")}</div>',
@@ -1270,6 +1303,10 @@ def main():
     print(f"      {len(profiles)} profile YAMLs", file=sys.stderr)
     subsets = load_subsets()
     print(f"      {len(subsets)} subsets: {sorted(subsets.keys())}", file=sys.stderr)
+    raw_report_count = len(reports)
+    reports = filter_reports_to_declared_subset_tasks(reports, subsets)
+    if len(reports) != raw_report_count:
+        print(f"      filtered {raw_report_count - len(reports)} report(s) outside declared TB-2.1 subsets", file=sys.stderr)
     leaderboard = load_leaderboard(refresh=args.refresh_leaderboard)
     print(f"      {len(leaderboard)} external trial records", file=sys.stderr)
     model_power = load_model_power()
@@ -1316,6 +1353,7 @@ def main():
     HERO_PROFILE = "fiz-openrouter-qwen3-6-27b"  # benchmark "throughput reference"
     a = per_profile.get(HERO_PROFILE, {})
     t = timing.get(HERO_PROFILE, {})
+    hero_pass, hero_attempted = subset_pass_counts(per_subset, HERO_PROFILE, "all")
     bench_latest = {
         "snapshot_ts": snapshot_ts,
         "subset": "all",
@@ -1326,9 +1364,9 @@ def main():
         "hero": {
             "decode_tps_p50": t.get("decode_tps_p50"),
             "ttft_p50_s": t.get("ttft_p50"),
-            "pass_at_k_pct": (a.get("tasks_passed_any") / a["tasks_touched"] * 100) if a.get("tasks_touched") else None,
-            "pass_at_k_num": a.get("tasks_passed_any"),
-            "pass_at_k_den": a.get("tasks_touched"),
+            "pass_at_k_pct": (hero_pass / hero_attempted * 100) if hero_attempted else None,
+            "pass_at_k_num": hero_pass,
+            "pass_at_k_den": hero_attempted,
             "median_wall_s": a.get("median_wall"),
             "median_turns": a.get("median_turns"),
             "median_in_tok": a.get("median_in_tok"),
@@ -1349,20 +1387,24 @@ def main():
     # top external comparators by pass@k (different model, same TB-2.1
     # task set).
     QWEN_LANES = [
-        ("fiz-openrouter-qwen3-6-27b", "OpenRouter (cloud)"),
-        ("sindri-llamacpp",             "llama.cpp Q3_K_XL (sindri / RTX 3090)"),
-        ("vidar-qwen3-6-27b",           "oMLX 8-bit (vidar / Mac Studio)"),
+        ("fiz-openrouter-qwen3-6-27b", ["fiz-openrouter-qwen3-6-27b"], "OpenRouter (cloud)"),
+        ("sindri-vllm",                ["sindri-vllm", "sindri-club-3090"], "vLLM int4 (sindri / RTX 5090)"),
+        ("sindri-llamacpp",            ["sindri-llamacpp", "sindri-club-3090-llamacpp"], "llama.cpp Q3_K_XL (sindri / RTX 3090)"),
+        ("vidar-qwen3-6-27b",          ["vidar-qwen3-6-27b"], "oMLX 8-bit (vidar / Mac Studio)"),
     ]
     qwen_rows = []
-    for pid, label in QWEN_LANES:
-        a = per_profile.get(pid, {})
-        t = timing.get(pid, {})
+    for public_pid, data_pids, label in QWEN_LANES:
+        data_pid = next((pid for pid in data_pids if pid in per_profile), public_pid)
+        a = per_profile.get(data_pid, {})
+        t = timing.get(data_pid, {})
+        passed, attempted = subset_pass_counts(per_subset, data_pid, "all")
         qwen_rows.append({
-            "profile_id": pid,
+            "profile_id": public_pid,
+            "source_profile_id": data_pid,
             "label": label,
-            "pass_at_k_pct": (a.get("tasks_passed_any") / a["tasks_touched"] * 100) if a.get("tasks_touched") else None,
-            "pass_at_k_num": a.get("tasks_passed_any"),
-            "pass_at_k_den": a.get("tasks_touched"),
+            "pass_at_k_pct": (passed / attempted * 100) if attempted else None,
+            "pass_at_k_num": passed,
+            "pass_at_k_den": attempted,
             "median_wall_s": a.get("median_wall"),
             "decode_tps_p50": t.get("decode_tps_p50"),
             "ttft_p50_s": t.get("ttft_p50"),
@@ -1431,13 +1473,18 @@ def main():
         json.dumps(bench_overview, indent=2, default=str), encoding="utf-8"
     )
 
+    HUGO_BUNDLE.mkdir(parents=True, exist_ok=True)
+    (HUGO_BUNDLE / "data").mkdir(exist_ok=True)
+    for js in DATA_DIR.glob("*.json"):
+        (HUGO_BUNDLE / "data" / js.name).write_bytes(js.read_bytes())
+
     if args.emit_data_only:
         print(f"[done, data-only] data/ written. Edit sections/*.md, then re-run without --emit-data-only.", file=sys.stderr)
         return
 
     print("[5/5] rendering charts (matplotlib) and HTML …", file=sys.stderr)
     chart_pass_rate_by_subset(per_subset, ext_per_subset, profiles, CHARTS_DIR / "pass-rate.svg")
-    chart_model_power_scatter(per_profile, ext_per_subset, profiles, model_power, CHARTS_DIR / "model-power-scatter.svg")
+    chart_model_power_scatter(per_profile, per_subset, ext_per_subset, profiles, model_power, CHARTS_DIR / "model-power-scatter.svg")
     chart_lines_over_context(timing, profiles, "ttft_p50", "median TTFT (s)", CHARTS_DIR / "ttft-by-context.svg")
     chart_lines_over_context(timing, profiles, "decode_tps_p50", "median decode tok/s", CHARTS_DIR / "decode-by-context.svg")
 
@@ -1455,13 +1502,9 @@ def main():
     # comparison axis (models / harnesses / providers) gets its own URL and
     # left-nav entry. Charts and data live at the parent bundle and are
     # referenced via absolute Hugo URLs from the sub-pages.
-    HUGO_BUNDLE.mkdir(parents=True, exist_ok=True)
     (HUGO_BUNDLE / "charts").mkdir(exist_ok=True)
-    (HUGO_BUNDLE / "data").mkdir(exist_ok=True)
     for svg in CHARTS_DIR.glob("*.svg"):
         (HUGO_BUNDLE / "charts" / svg.name).write_bytes(svg.read_bytes())
-    for js in DATA_DIR.glob("*.json"):
-        (HUGO_BUNDLE / "data" / js.name).write_bytes(js.read_bytes())
 
     # Sub-pages reference charts via absolute Hugo URLs (charts live at the
     # parent bundle's charts/ dir).

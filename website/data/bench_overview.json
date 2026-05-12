@@ -1,46 +1,62 @@
 {
-  "snapshot_ts": "2026-05-11 15:37:18 UTC",
-  "n_reports_total": 3450,
-  "n_profiles_active": 21,
+  "snapshot_ts": "2026-05-12 12:45:14 UTC",
+  "n_reports_total": 2614,
+  "n_profiles_active": 22,
   "n_external_comparators": 45,
   "n_external_trials": 18484,
   "subset_size_all": 89,
   "qwen_across_providers": [
     {
       "profile_id": "fiz-openrouter-qwen3-6-27b",
+      "source_profile_id": "fiz-openrouter-qwen3-6-27b",
       "label": "OpenRouter (cloud)",
-      "pass_at_k_pct": 75.36231884057972,
-      "pass_at_k_num": 52,
-      "pass_at_k_den": 69,
-      "median_wall_s": 296.89909543,
-      "decode_tps_p50": 55.796549580661946,
-      "ttft_p50_s": 0.8164945840835571,
-      "avg_cost_usd": 0.11740432473372782,
-      "n_attempts": 204
+      "pass_at_k_pct": 61.79775280898876,
+      "pass_at_k_num": 55,
+      "pass_at_k_den": 89,
+      "median_wall_s": 540.944919253,
+      "decode_tps_p50": 46.57256452100161,
+      "ttft_p50_s": 0.9076559543609619,
+      "avg_cost_usd": 0.14674651959044369,
+      "n_attempts": 334
     },
     {
-      "profile_id": "sindri-club-3090",
+      "profile_id": "sindri-vllm",
+      "source_profile_id": "sindri-club-3090",
       "label": "vLLM int4 (sindri / RTX 5090)",
-      "pass_at_k_pct": 28.865979381443296,
+      "pass_at_k_pct": 34.146341463414636,
       "pass_at_k_num": 28,
-      "pass_at_k_den": 97,
+      "pass_at_k_den": 82,
       "median_wall_s": 845.057554762,
       "decode_tps_p50": 66.32310639368131,
       "ttft_p50_s": 18.980042934417725,
       "avg_cost_usd": 0.0,
-      "n_attempts": 305
+      "n_attempts": 197
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "source_profile_id": "sindri-club-3090-llamacpp",
+      "label": "llama.cpp Q3_K_XL (sindri / RTX 3090)",
+      "pass_at_k_pct": 70.96774193548387,
+      "pass_at_k_num": 22,
+      "pass_at_k_den": 31,
+      "median_wall_s": 443.980837015,
+      "decode_tps_p50": 20.263227629338566,
+      "ttft_p50_s": 2.402945876121521,
+      "avg_cost_usd": 0.0,
+      "n_attempts": 53
     },
     {
       "profile_id": "vidar-qwen3-6-27b",
+      "source_profile_id": "vidar-qwen3-6-27b",
       "label": "oMLX 8-bit (vidar / Mac Studio)",
-      "pass_at_k_pct": 31.958762886597935,
+      "pass_at_k_pct": 38.2716049382716,
       "pass_at_k_num": 31,
-      "pass_at_k_den": 97,
+      "pass_at_k_den": 81,
       "median_wall_s": 929.900420096,
       "decode_tps_p50": 15.417730723405935,
-      "ttft_p50_s": 10.111177504062653,
+      "ttft_p50_s": 10.146856188774109,
       "avg_cost_usd": 0.0,
-      "n_attempts": 292
+      "n_attempts": 179
     }
   ],
   "frontier_comparators": [

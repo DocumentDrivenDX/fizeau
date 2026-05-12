@@ -1,13 +1,14 @@
 {
-  "generated_at": "2026-05-11 15:37:18 UTC",
-  "n_reports": 3450,
-  "n_profiles_active": 21,
+  "generated_at": "2026-05-12 12:45:14 UTC",
+  "n_reports": 2614,
+  "n_profiles_active": 22,
   "subset_sizes": {
     "all": 89,
     "canary": 3,
     "full": 15,
     "openai-cheap": 35,
-    "or-passing": 52
+    "or-passing": 52,
+    "timing-baseline": 8
   },
   "model_power_keys": [
     "AfterQuery-GPT-OSS-20B",

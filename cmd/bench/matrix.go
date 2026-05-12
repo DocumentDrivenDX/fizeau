@@ -37,6 +37,8 @@ const (
 )
 
 type matrixRunReport struct {
+	Dataset            string   `json:"dataset,omitempty"`
+	DatasetVersion     string   `json:"dataset_version,omitempty"`
 	Harness            string   `json:"harness"`
 	ProfileID          string   `json:"profile_id"`
 	ProfilePath        string   `json:"profile_path"`
@@ -339,6 +341,8 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 			profile:           spec.prof,
 			rep:               spec.rep,
 			task:              spec.task,
+			dataset:           subsetData.Dataset,
+			datasetVersion:    matrixDatasetVersion(subsetData.Dataset),
 			budgetUSD:         *budgetUSD,
 			perRunBudgetUSD:   *perRunBudgetUSD,
 			accumulatedCost:   cost,
@@ -466,6 +470,8 @@ type matrixTupleOptions struct {
 	profile           *profile.Profile
 	rep               int
 	task              termbenchSubsetEntry
+	dataset           string
+	datasetVersion    string
 	budgetUSD         float64
 	perRunBudgetUSD   float64
 	accumulatedCost   float64
@@ -622,7 +628,7 @@ func writeMatrixLaneAbortReport(outDir, cellsRoot, laneID string, last matrixRun
 }
 
 func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
-	cellDir := matrixTupleDirFor(opts.outDir, opts.cellsRoot, opts.harness, opts.profile, opts.rep, opts.task.ID)
+	cellDir := matrixTupleDirFor(opts.outDir, opts.cellsRoot, opts.harness, opts.profile, opts.rep, opts.task.ID, opts.dataset)
 	reportPath := filepath.Join(cellDir, matrixReportName)
 	if !opts.forceRerun {
 		if existing, ok, err := loadExistingMatrixReport(reportPath); err != nil {
@@ -640,6 +646,8 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 
 	started := time.Now().UTC()
 	report := matrixRunReport{
+		Dataset:         opts.dataset,
+		DatasetVersion:  opts.datasetVersion,
 		Harness:         opts.harness,
 		ProfileID:       opts.profile.ID,
 		ProfilePath:     opts.profile.Path,
@@ -1339,7 +1347,7 @@ func resolveCanonicalFizRoot(workDir string) string {
 	return filepath.Join(workDir, "benchmark-results", fmt.Sprintf("fiz-tools-v%d", fiztools.Version))
 }
 
-func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, rep int, taskID string) string {
+func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, rep int, taskID, dataset string) string {
 	if cellsRoot == "" {
 		return matrixTupleDir(outDir, harness, p.ID, rep, taskID)
 	}
@@ -1350,11 +1358,35 @@ func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, re
 	// fiz_tools_version) are stamped on report.json for index-time grouping.
 	return filepath.Join(
 		cellsRoot,
-		"terminal-bench-2-1",
+		matrixDatasetSegment(dataset),
 		safeMatrixSegment(taskID),
 		safeMatrixSegment(p.ID),
 		fmt.Sprintf("rep-%03d", rep),
 	)
+}
+
+func matrixDatasetSegment(dataset string) string {
+	dataset = strings.TrimSpace(dataset)
+	if dataset == "" {
+		return "terminal-bench-unknown"
+	}
+	if i := strings.LastIndex(dataset, "/"); i >= 0 {
+		dataset = dataset[i+1:]
+	}
+	replacer := strings.NewReplacer("@", "-", ".", "-", "/", "-", "\\", "-", ":", "-", " ", "-")
+	return replacer.Replace(dataset)
+}
+
+func matrixDatasetVersion(dataset string) string {
+	dataset = strings.TrimSpace(strings.ToLower(dataset))
+	switch {
+	case strings.Contains(dataset, "terminal-bench-2-1"):
+		return "2.1"
+	case strings.Contains(dataset, "terminal-bench@2.0"), strings.Contains(dataset, "terminal-bench/2.0"), strings.Contains(dataset, "terminal-bench-2-0"):
+		return "2.0"
+	default:
+		return ""
+	}
 }
 
 func safeMatrixSegment(s string) string {

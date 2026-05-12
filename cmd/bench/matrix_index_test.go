@@ -51,6 +51,20 @@ func TestMatrixIndexRecordsWrappedHarness(t *testing.T) {
 	}
 }
 
+func TestMatrixIndexPrefersReportDatasetProvenance(t *testing.T) {
+	report := matrixRunReport{
+		Dataset:        "terminal-bench/terminal-bench-2-1",
+		DatasetVersion: "2.1",
+		Harness:        "fiz",
+		ProfileID:      "fiz-openrouter-qwen3-6-27b",
+		TaskID:         "hello-world",
+	}
+	row := matrixIndexRowFromReport("report.json", report, 1, "terminal-bench@2.0", map[string]profileProviderInfo{})
+	if row.Dataset != "terminal-bench-2-1" || row.DatasetVersion != "2.1" {
+		t.Fatalf("dataset provenance = %q/%q, want terminal-bench-2-1/2.1", row.Dataset, row.DatasetVersion)
+	}
+}
+
 func TestMatrixIndexRunIndexesUseCanonicalIdentity(t *testing.T) {
 	rows := []matrixIndexRow{
 		{Dataset: "terminal-bench-2-1", TaskID: "hello-world", Provider: "openrouter", Model: "anthropic/claude-sonnet-4.6", Harness: "fiz", ProfileID: "claude-sonnet-4-6"},

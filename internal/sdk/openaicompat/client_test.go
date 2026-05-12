@@ -2,6 +2,7 @@ package openaicompat
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -42,9 +43,8 @@ func TestExtractReasoningTokens(t *testing.T) {
 				"completion_tokens": 50,
 				"total_tokens":      60,
 			}),
-			// Exactly 92 chars:
-			reasoningContent: "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567",
-			wantTokens:       23, // 92 / 4
+			reasoningContent: strings.Repeat("0123456789", 9) + "01", // exactly 92 chars
+			wantTokens:       23,                                     // 92 / 4
 			wantApprox:       true,
 		},
 		{

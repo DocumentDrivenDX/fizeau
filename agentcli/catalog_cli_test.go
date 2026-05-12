@@ -29,10 +29,11 @@ func legacyCLIName() string {
 }
 
 type recordedChatRequest struct {
-	Model          string         `json:"model"`
-	Thinking       map[string]any `json:"thinking,omitempty"`
-	EnableThinking *bool          `json:"enable_thinking,omitempty"`
-	ThinkingBudget *int           `json:"thinking_budget,omitempty"`
+	Model              string         `json:"model"`
+	Thinking           map[string]any `json:"thinking,omitempty"`
+	EnableThinking     *bool          `json:"enable_thinking,omitempty"`
+	ThinkingBudget     *int           `json:"thinking_budget,omitempty"`
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 type fakeOpenAIServer struct {
@@ -59,11 +60,16 @@ func newFakeOpenAIServer(t *testing.T) *fakeOpenAIServer {
 
 			fake.mu.Lock()
 			fake.modelsSeen = append(fake.modelsSeen, req.Model)
-			// Accept either the Anthropic-style `thinking` map or the Qwen
-			// `thinking_budget` scalar: OMLX uses the Qwen wire format for Qwen
-			// models, so a catalog-driven budget flows through as
-			// `thinking_budget` instead of `thinking.budget_tokens`.
+			// Accept the provider wire shapes used by OpenAI-compatible
+			// backends: the Anthropic-style `thinking` map, legacy top-level
+			// Qwen fields, or the current Qwen `chat_template_kwargs` envelope.
 			switch {
+			case req.ChatTemplateKwargs["thinking_budget"] != nil:
+				if budget, ok := req.ChatTemplateKwargs["thinking_budget"].(float64); ok {
+					fake.thinkingBudgets = append(fake.thinkingBudgets, int(budget))
+				} else {
+					fake.thinkingBudgets = append(fake.thinkingBudgets, 0)
+				}
 			case req.ThinkingBudget != nil:
 				fake.thinkingBudgets = append(fake.thinkingBudgets, *req.ThinkingBudget)
 			default:
