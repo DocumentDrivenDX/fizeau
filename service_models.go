@@ -4,18 +4,15 @@ package fizeau
 // It lives in the root package to avoid import cycles; provider and catalog
 // data is injected via ServiceConfig (defined in service.go).
 //
-// Provider-backed models are discovered through /v1/models. Codex and Claude
-// expose a separate harness-native surface backed by PTY/CLI evidence.
+// Provider-backed models are assembled from the unified model snapshot used by
+// the CLI model inventory path. Codex and Claude expose a separate
+// harness-native surface backed by PTY/CLI evidence.
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 
 	"github.com/easel/fizeau/internal/compaction"
 	"github.com/easel/fizeau/internal/harnesses"
@@ -23,6 +20,7 @@ import (
 	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
 	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/provider/lmstudio"
 	"github.com/easel/fizeau/internal/provider/omlx"
 	"github.com/easel/fizeau/internal/provider/openrouter"
@@ -43,53 +41,15 @@ func (s *service) ListModels(ctx context.Context, filter ModelFilter) ([]ModelIn
 
 	// Load the model catalog once for cross-referencing.
 	cat, _ := modelcatalog.Default() // ignore error: catalog miss is non-fatal
-
-	defaultProviderName := sc.DefaultProviderName()
-
-	names := sc.ProviderNames()
-
-	type indexedModels struct {
-		idx    int
-		models []ModelInfo
+	cacheRoot, err := serviceSnapshotCacheRoot()
+	if err != nil {
+		return nil, err
 	}
-	results := make([]indexedModels, len(names))
-	var wg sync.WaitGroup
-
-	for i, name := range names {
-		// Apply provider filter.
-		if filter.Provider != "" && filter.Provider != name {
-			results[i] = indexedModels{idx: i, models: nil}
-			continue
-		}
-		// Apply harness filter: providers are served by the "fiz" harness.
-		if filter.Harness != "" && harnesses.ResolveHarnessAlias(filter.Harness) != "fiz" {
-			results[i] = indexedModels{idx: i, models: nil}
-			continue
-		}
-
-		wg.Add(1)
-		go func(idx int, providerName string) {
-			defer wg.Done()
-
-			entry, ok := sc.Provider(providerName)
-			if !ok {
-				results[idx] = indexedModels{idx: idx, models: nil}
-				return
-			}
-
-			isDefaultProvider := providerName == defaultProviderName
-			models := listModelsForProvider(ctx, providerName, entry, isDefaultProvider, sc, cat, s.routeUtilizationEvidence)
-			results[idx] = indexedModels{idx: idx, models: models}
-		}(i, name)
+	snapshot, err := assembleModelSnapshotFromServiceConfigWithOptions(ctx, sc, cat, cacheRoot, modelsnapshot.AssembleOptions{Refresh: modelsnapshot.RefreshForce})
+	if err != nil {
+		return nil, err
 	}
-	wg.Wait()
-
-	// Flatten in stable provider order.
-	var out []ModelInfo
-	for _, r := range results {
-		out = append(out, r.models...)
-	}
-	return out, nil
+	return s.listModelsFromSnapshot(ctx, sc, cat, snapshot, filter), nil
 }
 
 func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo {
@@ -209,135 +169,85 @@ func appendUniqueModelIDs(values []string, additions ...string) []string {
 	return values
 }
 
-// listModelsForProvider discovers and annotates models for a single provider.
-func listModelsForProvider(
-	ctx context.Context,
-	providerName string,
-	entry ServiceProviderEntry,
-	isDefaultProvider bool,
-	sc ServiceConfig,
-	cat *modelcatalog.Catalog,
-	utilizationEvidence func(provider, serverInstance, endpoint, model string) RouteUtilizationState,
-) []ModelInfo {
-	if entry.ConfigError != "" {
-		return nil
-	}
-	// Discover model IDs from the provider.
-	discoveries := discoverAndRankModels(ctx, entry)
-	if len(discoveries) == 0 {
-		return nil
-	}
-
-	configuredDefaultModel := entry.Model
-	providerType := normalizeServiceProviderType(entry.Type)
-
-	outLen := 0
-	for _, discovery := range discoveries {
-		outLen += len(discovery.IDs)
-	}
-	out := make([]ModelInfo, 0, outLen)
-	for _, discovery := range discoveries {
-		// Build a position map from the ranked list.
-		rankPos := make(map[string]int, len(discovery.Ranked))
-		for pos, sm := range discovery.Ranked {
-			rankPos[sm.ID] = pos
+func (s *service) listModelsFromSnapshot(ctx context.Context, sc ServiceConfig, cat *modelcatalog.Catalog, snapshot modelsnapshot.ModelSnapshot, filter ModelFilter) []ModelInfo {
+	defaultProviderName := sc.DefaultProviderName()
+	entries := make(map[string]ServiceProviderEntry, len(sc.ProviderNames()))
+	for _, name := range sc.ProviderNames() {
+		if filter.Provider != "" && filter.Provider != name {
+			continue
 		}
+		entry, ok := sc.Provider(name)
+		if !ok {
+			continue
+		}
+		entries[name] = entry
+	}
 
-		for _, id := range discovery.IDs {
-			info := ModelInfo{
-				ID:              id,
-				Provider:        providerName,
-				ProviderType:    providerType,
-				Harness:         "fiz",
-				EndpointName:    discovery.EndpointName,
-				EndpointBaseURL: discovery.EndpointBaseURL,
-				ServerInstance:  discovery.ServerInstance,
-				Available:       true,
-				Billing:         serviceProviderBilling(entry),
-			}
+	modelsByProvider := make(map[string][]modelsnapshot.KnownModel, len(snapshot.Models))
+	for _, model := range snapshot.Models {
+		if filter.Provider != "" && filter.Provider != model.Provider {
+			continue
+		}
+		if _, ok := entries[model.Provider]; !ok {
+			continue
+		}
+		modelsByProvider[model.Provider] = append(modelsByProvider[model.Provider], model)
+	}
 
-			// Resolve context length: provider config > provider API > catalog > default.
-			info.ContextLength, info.ContextSource = resolveContextEvidence(ctx, entry, id, cat)
-
-			// Capabilities from provider type.
-			info.Capabilities = providerCapabilities(entry)
-
-			// Cost and PerfSignal from catalog.
-			if cat != nil {
-				info.Cost, info.PerfSignal = catalogCostAndPerf(cat, id)
-				info.Power, info.AutoRoutable, info.ExactPinOnly = catalogPowerEligibility(cat, id)
-			}
-			if utilizationEvidence != nil {
-				info.Utilization = utilizationEvidence(providerName, info.ServerInstance, info.EndpointName, id)
-			}
-
-			// IsDefault: provider is default AND this model is the configured default model.
-			info.IsDefault = isDefaultProvider && configuredDefaultModel != "" && id == configuredDefaultModel
-
-			// RankPosition from discovery ranking.
-			if pos, ok := rankPos[id]; ok {
-				info.RankPosition = pos
-			} else {
-				info.RankPosition = -1
-			}
-
-			out = append(out, info)
+	rankByEndpoint := make(map[string]int, len(snapshot.Models))
+	out := make([]ModelInfo, 0, len(snapshot.Models))
+	for _, providerName := range sc.ProviderNames() {
+		if filter.Provider != "" && filter.Provider != providerName {
+			continue
+		}
+		entry, ok := entries[providerName]
+		if !ok {
+			continue
+		}
+		for _, model := range modelsByProvider[providerName] {
+			normalizedModel := model
+			normalizedModel.ServerInstance = serverinstance.Normalize(model.EndpointBaseURL, model.ServerInstance)
+			rankKey := strings.Join([]string{normalizedModel.Provider, normalizedModel.EndpointName, normalizedModel.EndpointBaseURL, normalizedModel.ServerInstance}, "\x00")
+			rank := rankByEndpoint[rankKey]
+			rankByEndpoint[rankKey] = rank + 1
+			out = append(out, s.modelInfoFromSnapshotModel(ctx, providerName, entry, defaultProviderName, cat, normalizedModel, rank))
 		}
 	}
 	return out
 }
 
-type discoveredModelSet struct {
-	EndpointName    string
-	EndpointBaseURL string
-	ServerInstance  string
-	IDs             []string
-	Ranked          []scoredModel
-}
-
-// discoverAndRankModels fetches the model list from each provider endpoint.
-// IDs and rank positions preserve discovery order per endpoint.
-func discoverAndRankModels(ctx context.Context, entry ServiceProviderEntry) []discoveredModelSet {
-	switch normalizeServiceProviderType(entry.Type) {
-	case "openai", "openrouter", "lmstudio", "llama-server", "ds4", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai":
-		endpoints := modelDiscoveryEndpoints(entry)
-		if len(endpoints) == 0 {
-			return nil
-		}
-		out := make([]discoveredModelSet, 0, len(endpoints))
-		for _, endpoint := range endpoints {
-			ids, err := discoverModelsInline(ctx, endpoint.BaseURL, entry.APIKey)
-			if err != nil || len(ids) == 0 {
-				continue
-			}
-			out = append(out, discoveredModelSet{
-				EndpointName:    endpoint.Name,
-				EndpointBaseURL: endpoint.BaseURL,
-				ServerInstance:  endpoint.ServerInstance,
-				IDs:             ids,
-				Ranked:          rankModelsInline(ids),
-			})
-		}
-		return out
-
-	case "anthropic":
-		// Anthropic does not expose /v1/models for discovery.
-		// If a default model is configured, surface it.
-		if entry.Model != "" {
-			sm := scoredModel{ID: entry.Model, RankPosition: 0}
-			return []discoveredModelSet{{
-				EndpointName:    "default",
-				EndpointBaseURL: entry.BaseURL,
-				ServerInstance:  serverinstance.Normalize(entry.BaseURL, entry.ServerInstance),
-				IDs:             []string{entry.Model},
-				Ranked:          []scoredModel{sm},
-			}}
-		}
-		return nil
-
-	default:
-		return nil
+func (s *service) modelInfoFromSnapshotModel(ctx context.Context, providerName string, entry ServiceProviderEntry, defaultProviderName string, cat *modelcatalog.Catalog, model modelsnapshot.KnownModel, rankPosition int) ModelInfo {
+	info := ModelInfo{
+		ID:              model.ID,
+		Provider:        providerName,
+		ProviderType:    model.ProviderType,
+		Harness:         model.Harness,
+		EndpointName:    model.EndpointName,
+		EndpointBaseURL: model.EndpointBaseURL,
+		ServerInstance:  model.ServerInstance,
+		ContextLength:   model.ContextWindow,
+		Utilization:     s.routeUtilizationEvidence(providerName, model.ServerInstance, model.EndpointName, model.ID),
+		Capabilities:    providerCapabilities(entry),
+		Cost: CostInfo{
+			InputPerMTok:  model.CostInputPerM,
+			OutputPerMTok: model.CostOutputPerM,
+		},
+		Power:        model.Power,
+		AutoRoutable: model.AutoRoutable,
+		ExactPinOnly:  model.ExactPinOnly,
+		Billing:      model.Billing,
+		Available:    true,
+		RankPosition: rankPosition,
 	}
+	if info.Harness == "" {
+		info.Harness = "fiz"
+	}
+	info.ContextLength, info.ContextSource = resolveContextEvidence(ctx, entry, model.ID, cat)
+	if cat != nil {
+		_, info.PerfSignal = catalogCostAndPerf(cat, model.ID)
+	}
+	info.IsDefault = providerName == defaultProviderName && entry.Model != "" && model.ID == entry.Model
+	return info
 }
 
 type modelDiscoveryEndpoint struct {
@@ -380,65 +290,6 @@ func endpointDisplayName(name, baseURL string) string {
 		return u.Host
 	}
 	return "default"
-}
-
-// discoverModelsInline queries /v1/models and returns model IDs.
-// Mirrors the inline impl in service_providers.go to avoid import cycle.
-func discoverModelsInline(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-	base := strings.TrimRight(baseURL, "/")
-	endpoint := base + "/models"
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("discovery: build request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("discovery: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	var mr struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
-		return nil, fmt.Errorf("discovery: decode response: %w", err)
-	}
-
-	ids := make([]string, 0, len(mr.Data))
-	for _, m := range mr.Data {
-		if m.ID != "" {
-			ids = append(ids, m.ID)
-		}
-	}
-	return ids, nil
-}
-
-// scoredModel mirrors provider/openai.ScoredModel to avoid the import cycle.
-type scoredModel struct {
-	ID           string
-	RankPosition int
-}
-
-// rankModelsInline records discovered model IDs in provider-returned order.
-func rankModelsInline(ids []string) []scoredModel {
-	scored := make([]scoredModel, 0, len(ids))
-	for pos, id := range ids {
-		scored = append(scored, scoredModel{ID: id, RankPosition: pos})
-	}
-	return scored
 }
 
 // resolveContextEvidence resolves the context window for a model using the

@@ -2,6 +2,9 @@ package fizeau
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/modelcatalog"
@@ -19,6 +22,17 @@ func assembleModelSnapshotFromServiceConfigWithOptions(ctx context.Context, sc S
 	}
 	cache := &discoverycache.Cache{Root: cacheRoot}
 	return modelsnapshot.AssembleWithOptions(ctx, cfg, cat, cache, opts)
+}
+
+func serviceSnapshotCacheRoot() (string, error) {
+	if override := strings.TrimSpace(os.Getenv("FIZEAU_CACHE_DIR")); override != "" {
+		return override, nil
+	}
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cacheDir, "fizeau"), nil
 }
 
 func serviceConfigToModelSnapshotConfig(sc ServiceConfig) *modelsnapshot.Config {
