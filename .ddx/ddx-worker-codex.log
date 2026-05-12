@@ -1077,3 +1077,39 @@ bead readiness blocked: score 0.10 below threshold 0.50 (1/10 verifiable ACs) (r
 09:14:04 readiness check: starting route: harness=codex model=gpt-5.5
 09:16:07 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.5
 09:16:47 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
+13:16:59 do route codex/gpt-5.5 reason=explicit
+13:16:59 do fizeau-c2a23daa route codex/gpt-5.5 power=10
+13:16:59 do thinking ...
+13:17:20 do ok 1 inspect lines 1,220 in /var/tmp/ddx-exec-wt/.execute-bead-wt-… < out=2.4KB 65 lines "ID: f… 392ms
+13:17:34 do ok 2 inspect lines 1,260 in .agents/skills/ddx/reference/work.md < out=6.6KB 155 lines "# Work — Drai…
+13:17:34 do ok 3 inspect lines 1,260 in docs/helix/02-design/adr/ADR-012-per-s… < out=9.5KB 259 lines "---"
+13:17:34 do ok 4 'git status --short'
+13:17:48 do ok 5 inspect lines 260,620 in docs/helix/02-design/adr/ADR-012-per… < out=9.7KB 197 lines "```"
+13:17:48 do ok 6 'rg -n "sub-provider|sub_provider|openrouter|@|canonical|mode… < out=1.6KB 26 lines "16:The `fiz…
+13:17:48 do ok 7 'ls -la .ddx/executions/20260512T131647-210e9d95' < out=251B 6 lines "total 12"
+13:18:36 do ok 8 inspect lines 1,220 in .ddx/executions/20260512T131647-210e9d… < out=3.8KB 57 lines "{"
+13:18:36 do ok 9 inspect lines 1,260 in .ddx/executions/20260512T131647-210e9d… < out=7.0KB 19 lines "<execute-be…
+13:18:36 do ok 10 ddx bead update --help | sed -n '1,220p' < out=1.1KB 25 lines "Update a bead"
+13:19:17 do ok 11 inspect lines 1,220 in .ddx/executions/20260512T131647-210e9… < out=847B 10 lines "status: prop…
+13:19:17 do ok 12 'git status --short'
+13:19:27 do response complete 3587 tok in 2m27.555s, 24.3 tok/s
+• fizeau-c2a23daa → no_changes: status: proposed
+reason: operator needed; this bead is explicitly deferred future work and its acceptance says no implementation should be done in this bead.
+
+What was checked:
+- Bead fizeau-c2a23daa acceptance is "DEFERRED -- no implementation in this bead."
+- ADR-012 keeps OR sub-provider cache out of scope and defers it to a future bead, noting that sub-provider routing metadata needs a separate cache tier and TTL strategy.
+- The bead's own re-evaluation triggers remain policy decisions: cost-based routing/quota relevance, measured OR-Qwen3 sub-provider differences, or explicit operator request.
+
+Follow-up needed:
+- When an operator decides one of those triggers has fired, promote/refine this work into implementation beads scoped around endpoint discovery, snapshot cardinality, routing-layer use of sub-provider selection, and tests.
+09:19:27 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=2 needs-human/investigation=1 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=1 epic-closure-candidates=1; 1 beads blocked behind 1 needs-human blockers
+  1. fizeau-491dd1e3 fiz models top-level CLI subcommand with shortform fuzzy resolution (1 downstream)
+09:19:57 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=2 needs-human/investigation=1 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=1 epic-closure-candidates=1; 1 beads blocked behind 1 needs-human blockers
+09:20:28 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=2 needs-human/investigation=1 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=1 epic-closure-candidates=1; 1 beads blocked behind 1 needs-human blockers
+09:20:58 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=2 needs-human/investigation=1 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=1 epic-closure-candidates=1; 1 beads blocked behind 1 needs-human blockers
+09:21:28 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=2 needs-human/investigation=1 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=1 epic-closure-candidates=1; 1 beads blocked behind 1 needs-human blockers
+09:21:58 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=2 needs-human/investigation=1 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=1 epic-closure-candidates=1; 1 beads blocked behind 1 needs-human blockers
+09:22:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=2 needs-human/investigation=1 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=1 epic-closure-candidates=1; 1 beads blocked behind 1 needs-human blockers
+09:22:59 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=1 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=1 superseded=0 epics=1 epic-closure-candidates=1
+09:23:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=1 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=1 superseded=0 epics=1 epic-closure-candidates=1
