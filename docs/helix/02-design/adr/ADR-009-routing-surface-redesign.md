@@ -163,6 +163,14 @@ The dropped policy/alias names are: `fast`, `code-fast`, `code-economy`,
 Compatibility errors should point to `--policy default`, `--policy smart`,
 `--policy cheap`, or numeric power bounds as appropriate.
 
+### ADR-012 Addendum: Harness-as-Provider Identity
+
+ADR-012's assembled snapshot treats built-in harnesses as
+harness-as-provider identity during candidate assembly. That lets `claude`,
+`codex`, and `gemini` appear in the same provider/model snapshot that routing
+consumes, while still keeping `Harness` as the explicit hard-pin axis and
+`Provider` as the provider-system axis.
+
 ## Related
 
 - `ADR-005` — superseded in part: power-routing mechanics remain useful, but

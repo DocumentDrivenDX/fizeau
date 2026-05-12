@@ -199,6 +199,13 @@ surface policy projections are not public routing controls.
 - `FEAT-006` for the CLI surface.
 - `ADR-009` for the v0.11 naming and migration decision.
 
+### ADR-012 Addendum: Assembled Snapshot Consumption
+
+`fiz models` publishes the assembled snapshot that routing reads. `ResolveRoute`
+and `RouteStatus` consume that snapshot, not a separate discovery view, so the
+router sees the same provider, model, endpoint, quota, and runtime evidence
+that `KnownModel` rows carry after enrichment.
+
 ## Out of Scope
 
 - User-authored route tables or per-request fallback chains.
