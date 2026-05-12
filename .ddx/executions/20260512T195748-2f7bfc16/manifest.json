@@ -1,0 +1,58 @@
+{
+  "attempt_id": "20260512T195748-2f7bfc16",
+  "bead_id": "fizeau-ab20bdb8",
+  "base_rev": "4027d22608e61a105ab017ebd56d58347824ff59",
+  "created_at": "2026-05-12T19:57:52.052259873Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-ab20bdb8",
+    "title": "service: assemble routing model snapshots from ServiceConfig",
+    "description": "CONTEXT\nThe unified enriched model view currently has a CLI-oriented assembly path: `agentcli/models.go` loads `internal/config.Config`, catalog, discovery cache, then calls `modelregistry.AssembleWithOptions`. Root service routing uses `ServiceConfig` and still builds `routing.Inputs` directly. SD-005 requires `ResolveRoute`, `RouteStatus`, root `ListModels`, and `fiz models` to share the same assembled snapshot.\n\nCHANGE\nAdd a service-side snapshot assembly helper that accepts root `ServiceConfig`, catalog, cache root/refresh policy, and returns `modelregistry.ModelSnapshot` without importing `agentcli`. The helper should preserve ADR-012 stale-while-revalidate/default refresh semantics and make cache root injectable for tests.\n\nIN-SCOPE FILES\n- internal/modelregistry/ or a new internal service snapshot adapter package\n- internal/config/serviceconfig.go if conversion helpers are needed\n- service_* test fixtures needed for parity\n\nOUT-OF-SCOPE\n- Rewriting root `ListModels`.\n- Rewriting `ResolveRoute`.\n- Changing public ServiceConfig methods unless absolutely required and covered by tests.",
+    "acceptance": "1. `go test ./internal/modelregistry/... -run \"ServiceConfig|Snapshot|Assemble\" -count=1` passes with fixture coverage proving an equivalent `ServiceConfig` and `internal/config.Config` produce the same provider/model/endpoint rows.\n2. `go test . -run \"Test.*Snapshot.*ServiceConfig|Test.*ServiceConfig.*Snapshot\" -count=1` passes or the equivalent root package test name added by the implementation passes.\n3. `rg -n \"agentcli\" internal/modelregistry service_*.go` returns no matches, proving the root service snapshot path does not import CLI code.",
+    "parent": "fizeau-e6145528",
+    "labels": [
+      "area:service",
+      "area:modelregistry",
+      "kind:feature",
+      "plan-2026-05-12-sd005"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T19:54:47Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T19:57:48.38191839Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T19:54:47.794589283Z",
+      "spec-id": "SD-005"
+    }
+  },
+  "governing": [
+    {
+      "id": "SD-005",
+      "path": "docs/helix/02-design/solution-designs/SD-005-provider-config.md",
+      "title": "Solution Design: SD-005 — Provider Sources, Model Catalog, and Power Routing"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T195748-2f7bfc16",
+    "prompt": ".ddx/executions/20260512T195748-2f7bfc16/prompt.md",
+    "manifest": ".ddx/executions/20260512T195748-2f7bfc16/manifest.json",
+    "result": ".ddx/executions/20260512T195748-2f7bfc16/result.json",
+    "checks": ".ddx/executions/20260512T195748-2f7bfc16/checks.json",
+    "usage": ".ddx/executions/20260512T195748-2f7bfc16/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-ab20bdb8-20260512T195748-2f7bfc16"
+  },
+  "prompt_sha": "10b312b3d154b60b28c4e454146273688c5d870e9dc25cb2633f35d5c54eac64"
+}
