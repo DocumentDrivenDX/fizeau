@@ -14,8 +14,8 @@ benchmark script entry point.
 ./benchmark --phase openai-cheap
 ./benchmark --phase full --lanes openai-gpt55
 ./benchmark --phase full --lanes openrouter-qwen36
-./benchmark --phase full --lanes sindri,vidar
-./benchmark --phase full --lanes openrouter-qwen36,sindri,vidar
+./benchmark --phase full --lanes sindri-llamacpp,vidar
+./benchmark --phase full --lanes openrouter-qwen36,sindri-llamacpp,vidar
 ./benchmark --phase qwen36-gpt55-full
 ```
 
@@ -23,7 +23,8 @@ Short lane aliases:
 
 - `openai-gpt55` -> `fiz-openai-gpt-5-5`
 - `openrouter-qwen36` -> `fiz-openrouter-qwen3-6-27b`
-- `sindri` -> `fiz-sindri-club-3090-qwen3-6-27b`
+- `sindri-llamacpp` -> `fiz-sindri-llamacpp-qwen3-6-27b`
+- `sindri-vllm` -> `fiz-sindri-vllm-qwen3-6-27b`
 - `vidar` -> `fiz-vidar-omlx-qwen3-6-27b`
 
 ## Prerequisites

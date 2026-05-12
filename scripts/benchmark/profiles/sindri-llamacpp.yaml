@@ -3,14 +3,14 @@
 # Switched from vLLM autoround on 2026-05-10 because the vLLM engine
 # repeatedly stalled mid-generation (model never streamed tokens after
 # accepting requests, wasted full agent budget). The vLLM lane profile
-# at sindri-club-3090.yaml is kept alongside for historical comparison
+# at sindri-vllm.yaml is kept alongside for historical comparison
 # but should not run concurrently — both share the same hardware/port.
-id: sindri-club-3090-llamacpp
+id: sindri-llamacpp
 metadata:
   model_family: qwen3-6-27b
   model_id: Qwen3.6-27B-UD-Q3_K_XL.gguf
   quant_label: gguf-q3-k-xl-unsloth
-  provider_surface: sindri-club-llamacpp
+  provider_surface: sindri-llamacpp
   runtime: llama-server
   hardware_label: sindri-club-3090
   endpoint: http://sindri:8020/v1
@@ -36,9 +36,8 @@ sampling:
   # via ThinkingWireFormatQwen (chat_template_kwargs envelope, not top-level fields —
   # top-level enable_thinking/thinking_budget are silently dropped by llama-server).
   # thinking_budget is a soft template hint; it doesn't bind — max_tokens caps
-  # actual output tokens. The 2026-05-11 probe showed the Q3_K_XL GGUF currently
-  # emits empty `<think> </think>` regardless of this setting (server-side template
-  # suppresses thinking); operator decision whether to flip the server-side template.
+  # actual output tokens. The 2026-05-11 v2 probe verified this now emits
+  # reasoning_content on sindri after the server/template reconfiguration.
   reasoning: 4096
   top_p: 0.95
   top_k: 20

@@ -1350,7 +1350,7 @@ def main():
     # task set).
     QWEN_LANES = [
         ("fiz-openrouter-qwen3-6-27b", "OpenRouter (cloud)"),
-        ("sindri-club-3090",            "vLLM int4 (sindri / RTX 5090)"),
+        ("sindri-llamacpp",             "llama.cpp Q3_K_XL (sindri / RTX 3090)"),
         ("vidar-qwen3-6-27b",           "oMLX 8-bit (vidar / Mac Studio)"),
     ]
     qwen_rows = []

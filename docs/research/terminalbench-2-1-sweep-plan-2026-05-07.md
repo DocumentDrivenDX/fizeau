@@ -56,7 +56,7 @@ The sweep is staged. Each phase can run and resume independently.
 - `fiz-openrouter-gpt-5-4-mini`
 - `fiz-vidar-omlx-qwen3-6-27b`
 - `fiz-bragi-club-3090-qwen3-6-27b`
-- `fiz-sindri-club-3090-qwen3-6-27b`
+- `fiz-sindri-vllm-qwen3-6-27b`
 
 **Gate:** canary must complete before starting phases 2–4.
 
@@ -73,7 +73,7 @@ The sweep is staged. Each phase can run and resume independently.
 **Lanes (3):**
 - `fiz-vidar-omlx-qwen3-6-27b` → `rg-vidar-omlx` (max 1 concurrent)
 - `fiz-bragi-club-3090-qwen3-6-27b` → `rg-bragi-club-3090` (max 1 concurrent)
-- `fiz-sindri-club-3090-qwen3-6-27b` → `rg-sindri-club-3090` (max 1 concurrent)
+- `fiz-sindri-vllm-qwen3-6-27b` → `rg-sindri-club-3090` (max 1 concurrent)
 
 **Parallelism:** The three lanes use distinct resource groups (different servers); they may run in parallel.
 
@@ -119,7 +119,7 @@ The sweep is staged. Each phase can run and resume independently.
 |------|-----------------|----------|-------------|-------|---------|----------|
 | `fiz-vidar-omlx-qwen3-6-27b` | vidar-omlx | `http://vidar:1235/v1` | `Qwen3.6-27B-MLX-8bit` | mlx-8bit | oMLX | Apple Silicon M-class |
 | `fiz-bragi-club-3090-qwen3-6-27b` | bragi-club-vllm | `http://bragi:8020/v1` | `qwen3.6-27b-autoround` | vllm-autoround | vLLM | RTX 3090 |
-| `fiz-sindri-club-3090-qwen3-6-27b` | sindri-club-vllm | `http://sindri:8020/v1` | `qwen3.6-27b-autoround` | vllm-autoround | vLLM | RTX 3090 |
+| `fiz-sindri-vllm-qwen3-6-27b` | sindri-club-vllm | `http://sindri:8020/v1` | `qwen3.6-27b-autoround` | vllm-autoround | vLLM | RTX 3090 |
 
 **Equivalence:** `approximate_same_family` — same Qwen3.6-27B Instruct weights lineage but different quant methods, runtimes, and server hardware. **Not a true same-model comparison.** Published memos must report per-lane breakdowns and must not average across these rows without disclosing the metadata differences.
 
@@ -157,7 +157,8 @@ All lane details (profile IDs, FIZEAU_* inputs, metadata) are normative in `scri
 | `fiz-openrouter-gpt-5-4-mini` | `fiz-openrouter-gpt-5-4-mini` | fiz_provider_native | canary, gpt-comparison | *(not set)* | openrouter | `openai/gpt-5.4-mini` | `https://openrouter.ai/api/v1` | rg-openrouter |
 | `fiz-vidar-omlx-qwen3-6-27b` | `vidar-qwen3-6-27b` | fiz_provider_native | canary, local-qwen | *(not set)* | omlx | `Qwen3.6-27B-MLX-8bit` | `http://vidar:1235/v1` | rg-vidar-omlx |
 | `fiz-bragi-club-3090-qwen3-6-27b` | `bragi-club-3090` | fiz_provider_native | canary, local-qwen | *(not set)* | openai-compat | `qwen3.6-27b-autoround` | `http://bragi:8020/v1` | rg-bragi-club-3090 |
-| `fiz-sindri-club-3090-qwen3-6-27b` | `sindri-club-3090` | fiz_provider_native | canary, local-qwen | *(not set)* | openai-compat | `qwen3.6-27b-autoround` | `http://sindri:8020/v1` | rg-sindri-club-3090 |
+| `fiz-sindri-vllm-qwen3-6-27b` | `sindri-vllm` | fiz_provider_native | canary, local-qwen | *(not set)* | vllm | `qwen3.6-27b-autoround` | `http://sindri:8020/v1` | rg-sindri-club-3090 |
+| `fiz-sindri-llamacpp-qwen3-6-27b` | `sindri-llamacpp` | fiz_provider_native | canary, local-qwen, timing-baseline, or-passing, tb21-all | *(not set)* | llama-server | `Qwen3.6-27B-UD-Q3_K_XL.gguf` | `http://sindri:8020/v1` | rg-sindri-club-3090-llamacpp |
 
 ### Harness-pinned vs native: what changes
 

@@ -1,11 +1,11 @@
-# Qwen3.6-27B AutoRound via club-3090 on sindri (vLLM-compatible, port 8020).
+# Qwen3.6-27B AutoRound via vLLM on sindri (RTX 3090, port 8020).
 # Verified /v1/models on 2026-05-07: qwen3.6-27b-autoround.
-id: sindri-club-3090
+id: sindri-vllm
 metadata:
   model_family: qwen3-6-27b
   model_id: qwen3.6-27b-autoround
   quant_label: vllm-autoround
-  provider_surface: sindri-club-vllm
+  provider_surface: sindri-vllm
   runtime: vllm
   hardware_label: sindri-club-3090
   endpoint: http://sindri:8020/v1

@@ -16,7 +16,7 @@ cd "${REPO_ROOT}"
 
 PHASE="all"
 LANES=""
-FOUR_FULL_LANES="fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-club-3090-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b"
+FOUR_FULL_LANES="fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-llamacpp-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b"
 OUT=""
 TASKS_DIR="${REPO_ROOT}/benchmark-results/external/terminal-bench-2-1"
 SWEEP_PLAN="${REPO_ROOT}/scripts/benchmark/terminalbench-2-1-sweep.yaml"
@@ -51,7 +51,7 @@ prints the exact target plan, waits briefly for Ctrl-C, then runs the sweep.
 catalog.
 
 Short lane aliases:
-  openai-gpt55, openrouter-qwen36, sindri, vidar
+  openai-gpt55, openrouter-qwen36, sindri-llamacpp, sindri-vllm, vidar
 EOF
 }
 
@@ -158,8 +158,8 @@ expand_lane_alias() {
   case "$1" in
     openai-gpt55|gpt55|openai) echo "fiz-openai-gpt-5-5" ;;
     openrouter-qwen36|or-qwen36|qwen36-or) echo "fiz-openrouter-qwen3-6-27b" ;;
-    sindri|sindri-vllm) echo "fiz-sindri-club-3090-qwen3-6-27b" ;;
-    sindri-llamacpp|sindri-llcpp) echo "fiz-sindri-club-3090-llamacpp-qwen3-6-27b" ;;
+    sindri-llamacpp|sindri-llcpp) echo "fiz-sindri-llamacpp-qwen3-6-27b" ;;
+    sindri-vllm) echo "fiz-sindri-vllm-qwen3-6-27b" ;;
     vidar|vidar-omlx) echo "fiz-vidar-omlx-qwen3-6-27b" ;;
     vidar-ds4|ds4) echo "fiz-vidar-ds4" ;;
     *) echo "$1" ;;

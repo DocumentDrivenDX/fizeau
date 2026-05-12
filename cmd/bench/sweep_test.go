@@ -55,8 +55,8 @@ func TestLoadSweepPlanHasAllLanes(t *testing.T) {
 		"fiz-vidar-ds4",
 		"fiz-bragi-club-3090-qwen3-6-27b",
 		"fiz-grendel-rapid-mlx-qwen3-6-27b",
-		"fiz-sindri-club-3090-qwen3-6-27b",
-		"fiz-sindri-club-3090-llamacpp-qwen3-6-27b",
+		"fiz-sindri-vllm-qwen3-6-27b",
+		"fiz-sindri-llamacpp-qwen3-6-27b",
 	}
 	byID := sweepLaneMap(plan)
 	for _, id := range wantLanes {
@@ -113,7 +113,7 @@ func TestSweepCGByLanePopulatesCorrectly(t *testing.T) {
 	cgByLane := sweepCGByLane(plan)
 
 	// Active local Qwen lanes should belong to cg-local-qwen-provider-quant.
-	for _, id := range []string{"fiz-vidar-omlx-qwen3-6-27b", "fiz-bragi-club-3090-qwen3-6-27b", "fiz-sindri-club-3090-qwen3-6-27b"} {
+	for _, id := range []string{"fiz-vidar-omlx-qwen3-6-27b", "fiz-bragi-club-3090-qwen3-6-27b", "fiz-sindri-vllm-qwen3-6-27b"} {
 		cgs := cgByLane[id]
 		found := false
 		for _, cg := range cgs {
@@ -370,7 +370,7 @@ func TestSweepDryRunFullWithLaneFilterPrintsOnlySelectedLanes(t *testing.T) {
 	code := cmdSweep([]string{
 		"--work-dir", repoRoot,
 		"--phase", "tb21-all",
-		"--lanes", "fiz-sindri-club-3090-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
+		"--lanes", "fiz-sindri-vllm-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
 		"--dry-run",
 		"--out", outDir,
 	})
@@ -389,7 +389,7 @@ func TestSweepDryRunFullWithLaneFilterPrintsOnlySelectedLanes(t *testing.T) {
 		"Subset ID:     terminalbench-2-1-all",
 		"Task Count:    89",
 		"Total Cells:   534",
-		"Lane: fiz-sindri-club-3090-qwen3-6-27b",
+		"Lane: fiz-sindri-vllm-qwen3-6-27b",
 		"Lane: fiz-vidar-omlx-qwen3-6-27b",
 	}
 	for _, want := range required {
@@ -413,7 +413,7 @@ func TestSweepDryRunFourLaneFullShowsManagedJobCaps(t *testing.T) {
 	code := cmdSweep([]string{
 		"--work-dir", repoRoot,
 		"--phase", "tb21-all",
-		"--lanes", "fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-club-3090-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
+		"--lanes", "fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-llamacpp-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
 		"--matrix-jobs-managed", "16",
 		"--dry-run",
 		"--out", outDir,
@@ -432,7 +432,7 @@ func TestSweepDryRunFourLaneFullShowsManagedJobCaps(t *testing.T) {
 		"Total Cells:   1068",
 		"Lane: fiz-openai-gpt-5-5",
 		"Lane: fiz-openrouter-qwen3-6-27b",
-		"Lane: fiz-sindri-club-3090-qwen3-6-27b",
+		"Lane: fiz-sindri-llamacpp-qwen3-6-27b",
 		"Lane: fiz-vidar-omlx-qwen3-6-27b",
 		"--profiles fiz-openai-gpt-5-5",
 		"--profiles fiz-openrouter-qwen3-6-27b",

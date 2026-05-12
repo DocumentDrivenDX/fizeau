@@ -61,8 +61,8 @@ phases:
       - fiz-openrouter-gpt-5-4-mini
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
+      - fiz-sindri-vllm-qwen3-6-27b
+      - fiz-sindri-llamacpp-qwen3-6-27b
     preflight:
       - "Verify all local endpoints are reachable before starting canary"
       - "Active 2026-05-07 targets: vidar:1235, bragi:8020, sindri:8020. Grendel is held out until laptop resource tuning is stable."
@@ -86,8 +86,8 @@ phases:
       - fiz-harness-pi-vidar-qwen3-6-27b
       - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
+      - fiz-sindri-vllm-qwen3-6-27b
+      - fiz-sindri-llamacpp-qwen3-6-27b
     parallel_policy: >-
       Each lane belongs to a distinct resource group (rg-vidar-omlx,
       rg-bragi-club-3090, rg-sindri-club-3090, rg-sindri-club-3090-llamacpp);
@@ -107,7 +107,7 @@ phases:
     subset: terminalbench-2-1-timing-baseline
     lanes:
       - fiz-openrouter-qwen3-6-27b
-      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
+      - fiz-sindri-llamacpp-qwen3-6-27b
       - fiz-vidar-ds4
     parallel_policy: >-
       ds4 serializes to one cell at a time regardless of harness
@@ -127,8 +127,8 @@ phases:
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-vidar-ds4
       - fiz-bragi-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
+      - fiz-sindri-vllm-qwen3-6-27b
+      - fiz-sindri-llamacpp-qwen3-6-27b
     parallel_policy: >-
       Local resource groups serialize at one cell per endpoint; lanes from
       different resource groups may run in parallel. No managed-cloud
@@ -139,7 +139,7 @@ phases:
     description: >-
       Real full TB-2.1 catalog run over all 89 tasks. This phase is intended
       for targeted lane-filtered runs, for example:
-      ./benchmark --phase full --lanes fiz-sindri-club-3090-qwen3-6-27b.
+      ./benchmark --phase full --lanes fiz-sindri-llamacpp-qwen3-6-27b.
     reps: 3
     subset: terminalbench-2-1-all
     lanes:
@@ -150,8 +150,8 @@ phases:
       - fiz-harness-pi-vidar-qwen3-6-27b
       - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-llamacpp-qwen3-6-27b
+      - fiz-sindri-vllm-qwen3-6-27b
+      - fiz-sindri-llamacpp-qwen3-6-27b
       - fiz-openrouter-claude-sonnet-4-6
       - fiz-openrouter-gpt-5-4-mini
       - fiz-harness-claude-sonnet-4-6
@@ -221,7 +221,7 @@ comparison_groups:
     lanes:
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
-      - fiz-sindri-club-3090-qwen3-6-27b
+      - fiz-sindri-vllm-qwen3-6-27b
     equivalence: approximate_same_family
     equivalence_note: >-
       NOT a true same-model comparison. Rows share the same weights lineage
@@ -742,8 +742,8 @@ lanes:
       2026-05-07. Same weights lineage as vidar-omlx and club-3090 lanes;
       different runtime — approximate_same_family only.
 
-  - id: fiz-sindri-club-3090-qwen3-6-27b
-    profile_id: sindri-club-3090
+  - id: fiz-sindri-vllm-qwen3-6-27b
+    profile_id: sindri-vllm
     lane_type: fiz_provider_native
     phases: [canary, local-qwen]
     comparison_groups: [cg-local-qwen-provider-quant]
@@ -756,7 +756,7 @@ lanes:
     model_family: qwen3-6-27b
     model_id: "qwen3.6-27b-autoround"
     quant_label: vllm-autoround
-    provider_surface: sindri-club-vllm
+    provider_surface: sindri-vllm
     runtime: vllm
     hardware_label: sindri-club-3090
     endpoint: "http://sindri:8020/v1"
@@ -770,8 +770,8 @@ lanes:
       Same weights lineage and quant method as bragi-club-3090; different
       server — approximate_same_family only.
 
-  - id: fiz-sindri-club-3090-llamacpp-qwen3-6-27b
-    profile_id: sindri-club-3090-llamacpp
+  - id: fiz-sindri-llamacpp-qwen3-6-27b
+    profile_id: sindri-llamacpp
     lane_type: fiz_provider_native
     phases: [canary, local-qwen]
     comparison_groups: [cg-local-qwen-provider-quant]
@@ -784,16 +784,15 @@ lanes:
     model_family: qwen3-6-27b
     model_id: "Qwen3.6-27B-UD-Q3_K_XL.gguf"
     quant_label: gguf-q3-k-xl-unsloth
-    provider_surface: sindri-club-llamacpp
+    provider_surface: sindri-llamacpp
     runtime: llama-server
     hardware_label: sindri-club-3090
     endpoint: "http://sindri:8020/v1"
     sampling:
       temperature: 0.6
+      reasoning: 4096
       top_p: 0.95
       top_k: 20
-      # No `reasoning:` — fiz's llama-server provider rejects the OpenAI
-      # reasoning_effort param. See note in the matching profile YAML.
     equivalence_note: >-
       RTX 3090, llama.cpp's llama-server hosting Unsloth Q3_K_XL GGUF.
       Replaces the vLLM autoround engine on the same machine. Different
@@ -930,13 +929,20 @@ profile_inventory:
       notes: >-
         Verified 2026-05-07: /v1/models lists mlx-community/Qwen3.6-27B-8bit;
         /health reports ready at http://grendel:8000/v1.
-    - id: sindri-club-3090
-      path: scripts/benchmark/profiles/sindri-club-3090.yaml
+    - id: sindri-vllm
+      path: scripts/benchmark/profiles/sindri-vllm.yaml
       status: verified
       used_in_phases: [canary, local-qwen]
       notes: >-
         Verified 2026-05-07: /v1/models lists qwen3.6-27b-autoround at
-        http://sindri:8020/v1.
+        http://sindri:8020/v1 when the vLLM runtime is mounted.
+    - id: sindri-llamacpp
+      path: scripts/benchmark/profiles/sindri-llamacpp.yaml
+      status: verified
+      used_in_phases: [canary, local-qwen, timing-baseline, or-passing, tb21-all]
+      notes: >-
+        Verified 2026-05-12: /v1/models lists Qwen3.6-27B-UD-Q3_K_XL.gguf at
+        http://sindri:8020/v1. This is the current sindri runtime.
     - id: terminalbench-2-1-canary
       path: scripts/benchmark/task-subset-tb21-canary.yaml
       status: active

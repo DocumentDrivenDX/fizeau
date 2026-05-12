@@ -90,6 +90,14 @@ Return JSON only:
       "fix": "specific amendment, split, or operator action"
     }
   ],
+  "rewrite": {
+    "changed_fields": [
+      "description",
+      "acceptance"
+    ],
+    "description": "complete replacement description when changed_fields includes description",
+    "acceptance": "complete replacement acceptance when changed_fields includes acceptance"
+  },
   "suggested_child_beads": [
     {
       "title": "imperative child title",
@@ -127,6 +135,14 @@ when child beads are required. Use `needs_human` when intent, scope, or
 external state cannot be safely inferred. Use `system_unready` only when the
 readiness assessment itself cannot run or the provided context proves an
 infrastructure blocker rather than a bead defect.
+
+When returning `needs_refine` with a `rewrite`, `rewrite.changed_fields` is
+mandatory and must list every supplied replacement field. Never include
+`rewrite.description` unless `changed_fields` includes `description`, and never
+include `rewrite.acceptance` unless `changed_fields` includes `acceptance`.
+If you cannot produce a complete, intent-preserving replacement for every
+changed field, return `needs_human` with `suggested_fixes` instead of a partial
+or schema-incomplete rewrite.
 
 ## LINT MODE
 
