@@ -2,7 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	reasoning "github.com/easel/fizeau/internal/reasoning"
 )
@@ -414,5 +421,167 @@ func TestBudgetsDifferProportionally(t *testing.T) {
 			t.Errorf("budgetsDifferProportionally(%d,%d,%d,%d,%.0f) = %v, want %v",
 				tt.toks1, tt.toks2, tt.budget1, tt.budget2, tt.pct, got, tt.want)
 		}
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func testJSONResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func TestBuildWireBody_SeedAndDeterministic(t *testing.T) {
+	cfg := probeConfig{
+		baseURL: "https://example.invalid/v1",
+		model:   "qwen/qwen3.6-27b",
+		format:  wireOpenRouter,
+		seed:    4242,
+	}
+	policy := reasoning.Policy{Kind: reasoning.KindNamed, Value: reasoning.ReasoningLow}
+
+	raw1, err := buildWireBody(cfg, policy)
+	if err != nil {
+		t.Fatalf("buildWireBody first: %v", err)
+	}
+	raw2, err := buildWireBody(cfg, policy)
+	if err != nil {
+		t.Fatalf("buildWireBody second: %v", err)
+	}
+	if string(raw1) != string(raw2) {
+		t.Fatalf("buildWireBody should be deterministic for identical inputs:\n%s\n---\n%s", raw1, raw2)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(raw1, &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body["seed"] != float64(4242) {
+		t.Fatalf("seed = %v, want 4242", body["seed"])
+	}
+	msgs, ok := body["messages"].([]any)
+	if !ok || len(msgs) != 1 {
+		t.Fatalf("messages = %#v, want one user message", body["messages"])
+	}
+	msg, ok := msgs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("message = %#v, want object", msgs[0])
+	}
+	if msg["content"] != probePrompt {
+		t.Fatalf("prompt = %v, want %q", msg["content"], probePrompt)
+	}
+}
+
+func TestUsageListsSnapshotAndMatrixModes(t *testing.T) {
+	usage := renderUsage()
+	for _, want := range []string{"snapshot-only", "matrix-only", "full (default)", "-seed", "-mode"} {
+		if !strings.Contains(usage, want) {
+			t.Fatalf("usage output missing %q:\n%s", want, usage)
+		}
+	}
+}
+
+func TestSnapshotAndMatrixArtifactsFromFixture(t *testing.T) {
+	oldClient := probeHTTPClient
+	oldNow := probeNow
+	probeHTTPClient = &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			switch {
+			case req.Method == http.MethodGet && strings.Contains(req.URL.Path, "/models/"):
+				return testJSONResponse(http.StatusOK, `{
+  "id": "qwen/qwen3.6-27b",
+  "supported_parameters": ["max_tokens", "reasoning", "seed"],
+  "top_provider": {"max_completion_tokens": 81920}
+}`), nil
+			case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/chat/completions"):
+				return testJSONResponse(http.StatusOK, `{
+  "choices": [{
+    "finish_reason": "stop",
+    "message": {"content": "4", "reasoning": "thinking"}
+  }],
+  "usage": {
+    "completion_tokens_details": {"reasoning_tokens": 123}
+  }
+}`), nil
+			default:
+				return nil, fmt.Errorf("unexpected request: %s %s", req.Method, req.URL.Path)
+			}
+		}),
+	}
+	probeNow = func() time.Time {
+		return time.Date(2026, 5, 12, 5, 43, 47, 0, time.UTC)
+	}
+	defer func() {
+		probeHTTPClient = oldClient
+		probeNow = oldNow
+	}()
+
+	artDir := t.TempDir()
+	code := run([]string{
+		"--provider", "openrouter",
+		"--base-url", "https://example.invalid/api/v1",
+		"--model", "qwen/qwen3.6-27b",
+		"--artifact-dir", artDir,
+		"--mode", "full",
+		"--seed", "99",
+	})
+	if code != 0 {
+		t.Fatalf("run returned %d", code)
+	}
+
+	for _, name := range []string{"introspection.json", "summary.json", "matrix.md", "off-request.json", "off-response.json"} {
+		if _, err := os.Stat(filepath.Join(artDir, name)); err != nil {
+			t.Fatalf("expected artifact %s: %v", name, err)
+		}
+	}
+
+	summaryBytes, err := os.ReadFile(filepath.Join(artDir, "summary.json"))
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	var report probeReport
+	if err := json.Unmarshal(summaryBytes, &report); err != nil {
+		t.Fatalf("unmarshal summary: %v", err)
+	}
+	if len(report.Snapshot) == 0 {
+		t.Fatal("summary snapshot should be present")
+	}
+	if report.Mode != string(probeModeFull) {
+		t.Fatalf("mode = %q, want %q", report.Mode, probeModeFull)
+	}
+	if report.Seed != 99 {
+		t.Fatalf("seed = %d, want 99", report.Seed)
+	}
+	if len(report.Results) != len(probeMatrix) {
+		t.Fatalf("results = %d, want %d", len(report.Results), len(probeMatrix))
+	}
+	if !strings.Contains(string(report.Snapshot), `"supported_parameters"`) {
+		t.Fatalf("snapshot missing supported_parameters: %s", report.Snapshot)
+	}
+
+	reqBytes, err := os.ReadFile(filepath.Join(artDir, "off-request.json"))
+	if err != nil {
+		t.Fatalf("read off request: %v", err)
+	}
+	if !strings.Contains(string(reqBytes), `"seed": 99`) {
+		t.Fatalf("off request missing seed:\n%s", reqBytes)
+	}
+	if !strings.Contains(string(reqBytes), probePrompt) {
+		t.Fatalf("off request missing deterministic prompt:\n%s", reqBytes)
+	}
+
+	matrixBytes, err := os.ReadFile(filepath.Join(artDir, "matrix.md"))
+	if err != nil {
+		t.Fatalf("read matrix: %v", err)
+	}
+	if !strings.Contains(string(matrixBytes), "Verdict") {
+		t.Fatalf("matrix output missing verdict:\n%s", matrixBytes)
 	}
 }

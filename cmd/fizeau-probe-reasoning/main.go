@@ -10,11 +10,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,13 +24,21 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/benchmark/profile"
+	"github.com/easel/fizeau/internal/provider/ds4"
+	"github.com/easel/fizeau/internal/provider/llamaserver"
+	"github.com/easel/fizeau/internal/provider/registry"
 	reasoning "github.com/easel/fizeau/internal/reasoning"
 )
 
 const (
-	probePrompt    = "Briefly explain what 2+2 equals."
+	probePrompt    = "Compute 37 + 58 and briefly explain the addition."
 	probeMaxToks   = 512 // enough for an answer + some thinking
 	requestTimeout = 5 * time.Minute
+)
+
+var (
+	probeHTTPClient = http.DefaultClient
+	probeNow        = time.Now
 )
 
 // wireFormat enumerates the provider-side reasoning wire shapes the probe can emit.
@@ -77,7 +87,17 @@ type probeConfig struct {
 	model     string
 	format    wireFormat
 	profileID string
+	provider  string
+	seed      int64
 }
+
+type probeMode string
+
+const (
+	probeModeFull         probeMode = "full"
+	probeModeSnapshotOnly probeMode = "snapshot-only"
+	probeModeMatrixOnly   probeMode = "matrix-only"
+)
 
 // verdict is the analysis result over all matrix rows.
 type verdict struct {
@@ -90,13 +110,18 @@ type verdict struct {
 
 // probeReport bundles results + verdict for serialisation.
 type probeReport struct {
-	ProfileID  string        `json:"profile_id"`
-	Model      string        `json:"model"`
-	BaseURL    string        `json:"base_url"`
-	WireFormat string        `json:"wire_format"`
-	Timestamp  string        `json:"timestamp"`
-	Results    []probeResult `json:"results"`
-	Verdict    verdict       `json:"verdict"`
+	ProfileID     string          `json:"profile_id"`
+	Model         string          `json:"model"`
+	BaseURL       string          `json:"base_url"`
+	WireFormat    string          `json:"wire_format"`
+	Mode          string          `json:"mode"`
+	Prompt        string          `json:"prompt"`
+	Seed          int64           `json:"seed,omitempty"`
+	Snapshot      json.RawMessage `json:"snapshot,omitempty"`
+	SnapshotError string          `json:"snapshot_error,omitempty"`
+	Timestamp     string          `json:"timestamp"`
+	Results       []probeResult   `json:"results"`
+	Verdict       verdict         `json:"verdict"`
 }
 
 func main() {
@@ -106,16 +131,29 @@ func main() {
 func run(args []string) int {
 	fs := flag.NewFlagSet("fizeau-probe-reasoning", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	fs.Usage = func() { fmt.Fprint(fs.Output(), renderUsage()) }
 
 	profilePath := fs.String("profile", "", "Path to fizeau benchmark profile YAML")
 	providerFlag := fs.String("provider", "", "Provider type override (openrouter|lmstudio|vllm|etc.)")
 	modelFlag := fs.String("model", "", "Model ID override")
 	baseURLFlag := fs.String("base-url", "", "API base URL override")
 	apiKeyFlag := fs.String("api-key", "", "API key (overrides api_key_env from profile)")
+	modeFlag := fs.String("mode", string(probeModeFull), "Run mode: full, snapshot-only, or matrix-only.")
+	seedFlag := fs.Int64("seed", 0, "Deterministic sampling seed for supported providers (0 leaves seed unset).")
 	jsonOut := fs.Bool("json", false, "Emit machine-readable JSON instead of markdown")
 	artifactDir := fs.String("artifact-dir", "", "Directory for per-row audit files (default: /tmp/probe-<ts>/)")
 
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+
+	mode, err := parseMode(*modeFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fs.Usage()
 		return 2
 	}
 
@@ -125,18 +163,40 @@ func run(args []string) int {
 		fs.Usage()
 		return 2
 	}
+	cfg.seed = *seedFlag
 
 	artDir := *artifactDir
 	if artDir == "" {
-		artDir = filepath.Join("/tmp", fmt.Sprintf("probe-%s", time.Now().UTC().Format("20060102T150405Z")))
+		artDir = filepath.Join("/tmp", fmt.Sprintf("probe-%s", probeNow().UTC().Format("20060102T150405Z")))
 	}
 	if err := os.MkdirAll(artDir, 0o750); err != nil {
 		fmt.Fprintf(os.Stderr, "error: create artifact dir %s: %v\n", artDir, err)
 		return 1
 	}
 
-	fmt.Fprintf(os.Stderr, "probe: model=%s base_url=%s wire=%s\n", cfg.model, cfg.baseURL, cfg.format)
+	fmt.Fprintf(os.Stderr, "probe: model=%s base_url=%s wire=%s mode=%s seed=%d\n", cfg.model, cfg.baseURL, cfg.format, mode, cfg.seed)
 	fmt.Fprintf(os.Stderr, "probe: artifacts → %s\n", artDir)
+
+	var snapshot json.RawMessage
+	var snapshotErr error
+	if mode != probeModeMatrixOnly {
+		snapshot, snapshotErr = collectSnapshot(cfg)
+		if snapshotErr != nil {
+			fmt.Fprintf(os.Stderr, "probe: snapshot unavailable: %v\n", snapshotErr)
+			if mode == probeModeSnapshotOnly {
+				return 1
+			}
+		} else if len(snapshot) > 0 {
+			writeArtifact(artDir, "introspection.json", prettyJSON(snapshot))
+		}
+	}
+
+	if mode == probeModeSnapshotOnly {
+		if *jsonOut {
+			return outputSnapshotJSON(snapshot)
+		}
+		return outputSnapshotMarkdown(cfg, snapshot, snapshotErr)
+	}
 
 	results := runMatrix(cfg, artDir)
 	v := computeVerdict(results)
@@ -146,13 +206,21 @@ func run(args []string) int {
 		Model:      cfg.model,
 		BaseURL:    cfg.baseURL,
 		WireFormat: string(cfg.format),
-		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Mode:       string(mode),
+		Prompt:     probePrompt,
+		Seed:       cfg.seed,
+		Snapshot:   snapshot,
+		Timestamp:  probeNow().UTC().Format(time.RFC3339),
 		Results:    results,
 		Verdict:    v,
+	}
+	if snapshotErr != nil {
+		report.SnapshotError = snapshotErr.Error()
 	}
 
 	// Write a summary artifact.
 	writeArtifact(artDir, "summary.json", mustMarshalIndent(report))
+	writeArtifact(artDir, "matrix.md", []byte(renderMarkdown(report)))
 
 	if *jsonOut {
 		return outputJSON(report)
@@ -186,16 +254,18 @@ func resolveConfig(profilePath, providerType, model, baseURL, apiKey string) (pr
 			model:     model,
 			format:    wireFormatFor(providerType),
 			profileID: p.ID,
+			provider:  strings.ToLower(providerType),
 		}
 		return cfg, cfg.validate()
 	}
 
 	// Flags-only mode.
 	cfg := probeConfig{
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		model:   model,
-		format:  wireFormatFor(providerType),
+		baseURL:  baseURL,
+		apiKey:   apiKey,
+		model:    model,
+		format:   wireFormatFor(providerType),
+		provider: strings.ToLower(providerType),
 	}
 	return cfg, cfg.validate()
 }
@@ -208,6 +278,99 @@ func (c probeConfig) validate() error {
 		return fmt.Errorf("--model (or profile.provider.model) is required")
 	}
 	return nil
+}
+
+func parseMode(raw string) (probeMode, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", string(probeModeFull):
+		return probeModeFull, nil
+	case string(probeModeSnapshotOnly), "snapshot":
+		return probeModeSnapshotOnly, nil
+	case string(probeModeMatrixOnly), "matrix":
+		return probeModeMatrixOnly, nil
+	default:
+		return "", fmt.Errorf("unsupported mode %q (want full, snapshot-only, or matrix-only)", raw)
+	}
+}
+
+func renderUsage() string {
+	var b strings.Builder
+	fmt.Fprintln(&b, "Usage: fizeau-probe-reasoning [flags]")
+	fmt.Fprintln(&b, "")
+	fmt.Fprintln(&b, "Probe a provider/model pair for the reasoning wire form it actually honors.")
+	fmt.Fprintln(&b, "Modes: full (default), snapshot-only, matrix-only.")
+	fmt.Fprintln(&b, "  full: capture introspection snapshot and run the reasoning matrix.")
+	fmt.Fprintln(&b, "  snapshot-only: capture introspection snapshot and stop.")
+	fmt.Fprintln(&b, "  matrix-only: run the reasoning matrix without introspection.")
+	fmt.Fprintln(&b, "")
+	fmt.Fprintln(&b, "Flags:")
+	fs := flag.NewFlagSet("fizeau-probe-reasoning", flag.ContinueOnError)
+	fs.SetOutput(&b)
+	_ = fs.Bool("json", false, "Emit machine-readable JSON instead of markdown")
+	_ = fs.String("profile", "", "Path to fizeau benchmark profile YAML")
+	_ = fs.String("provider", "", "Provider type override (openrouter|lmstudio|vllm|etc.)")
+	_ = fs.String("model", "", "Model ID override")
+	_ = fs.String("base-url", "", "API base URL override")
+	_ = fs.String("api-key", "", "API key (overrides api_key_env from profile)")
+	_ = fs.String("mode", string(probeModeFull), "Run mode: full, snapshot-only, or matrix-only.")
+	_ = fs.Int64("seed", 0, "Deterministic sampling seed for supported providers (0 leaves seed unset).")
+	_ = fs.String("artifact-dir", "", "Directory for per-row audit files (default: /tmp/probe-<ts>/)")
+	fs.PrintDefaults()
+	return b.String()
+}
+
+func collectSnapshot(cfg probeConfig) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+
+	switch cfg.provider {
+	case "openrouter":
+		return collectOpenRouterSnapshot(ctx, cfg)
+	case "ds4":
+		return collectProviderSnapshot(ctx, cfg, ds4.Introspect)
+	case "llama-server":
+		return collectProviderSnapshot(ctx, cfg, llamaserver.Introspect)
+	default:
+		return nil, fmt.Errorf("snapshot mode does not support provider %q", cfg.provider)
+	}
+}
+
+func collectOpenRouterSnapshot(ctx context.Context, cfg probeConfig) (json.RawMessage, error) {
+	endpoint := strings.TrimRight(cfg.baseURL, "/") + "/models/" + url.PathEscape(cfg.model)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build snapshot request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if cfg.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.apiKey)
+	}
+
+	resp, err := probeHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("openrouter snapshot: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("openrouter snapshot: read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("openrouter snapshot: http %d: %s", resp.StatusCode, truncate(string(respBytes), 200))
+	}
+	return json.RawMessage(respBytes), nil
+}
+
+func collectProviderSnapshot(ctx context.Context, cfg probeConfig, fn func(context.Context, string, string, *http.Client) (*registry.ProviderIntrospection, error)) (json.RawMessage, error) {
+	intro, err := fn(ctx, cfg.baseURL, cfg.model, probeHTTPClient)
+	if err != nil {
+		return nil, err
+	}
+	if intro == nil || len(intro.Raw) == 0 {
+		return nil, fmt.Errorf("provider snapshot missing raw payload")
+	}
+	return json.MarshalIndent(intro.Raw, "", "  ")
 }
 
 // wireFormatFor maps a profile provider type string to the correct wire format.
@@ -264,7 +427,7 @@ func sendProbe(cfg probeConfig, pc probeCase) probeResult {
 	}
 
 	start := time.Now()
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := probeHTTPClient.Do(req)
 	r.WallTime = time.Since(start)
 	if err != nil {
 		r.Error = fmt.Sprintf("http: %v", err)
@@ -297,6 +460,9 @@ func buildWireBody(cfg probeConfig, policy reasoning.Policy) (json.RawMessage, e
 			{"role": "user", "content": probePrompt},
 		},
 		"max_tokens": probeMaxToks,
+	}
+	if cfg.seed != 0 {
+		body["seed"] = cfg.seed
 	}
 
 	if err := addReasoningFields(body, cfg.format, policy); err != nil {
@@ -594,16 +760,22 @@ func budgetsDifferProportionally(toks1, toks2, budget1, budget2 int, tolerancePc
 	return math.Abs(observedRatio-expectedRatio)/expectedRatio*100 <= tolerancePct
 }
 
-func outputMarkdown(report probeReport) int {
-	fmt.Printf("# fizeau-probe-reasoning\n\n")
-	fmt.Printf("**Profile:** %s  \n", report.ProfileID)
-	fmt.Printf("**Model:** `%s`  \n", report.Model)
-	fmt.Printf("**Endpoint:** `%s`  \n", report.BaseURL)
-	fmt.Printf("**Wire format:** `%s`  \n", report.WireFormat)
-	fmt.Printf("**Timestamp:** %s\n\n", report.Timestamp)
+func renderMarkdown(report probeReport) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# fizeau-probe-reasoning\n\n")
+	fmt.Fprintf(&b, "**Profile:** %s  \n", report.ProfileID)
+	fmt.Fprintf(&b, "**Model:** `%s`  \n", report.Model)
+	fmt.Fprintf(&b, "**Endpoint:** `%s`  \n", report.BaseURL)
+	fmt.Fprintf(&b, "**Wire format:** `%s`  \n", report.WireFormat)
+	fmt.Fprintf(&b, "**Mode:** `%s`  \n", report.Mode)
+	fmt.Fprintf(&b, "**Prompt:** `%s`  \n", report.Prompt)
+	if report.Seed != 0 {
+		fmt.Fprintf(&b, "**Seed:** `%d`  \n", report.Seed)
+	}
+	fmt.Fprintf(&b, "**Timestamp:** %s\n\n", report.Timestamp)
 
-	fmt.Printf("| Reasoning | finish_reason | reasoning_tokens | wall_time | think_hash | error |\n")
-	fmt.Printf("|-----------|---------------|-----------------|-----------|------------|-------|\n")
+	fmt.Fprintf(&b, "| Reasoning | finish_reason | reasoning_tokens | wall_time | think_hash | error |\n")
+	fmt.Fprintf(&b, "|-----------|---------------|-----------------|-----------|------------|-------|\n")
 	for _, r := range report.Results {
 		errCol := r.Error
 		if errCol == "" {
@@ -613,7 +785,7 @@ func outputMarkdown(report probeReport) int {
 		if thinkCol == "" {
 			thinkCol = "—"
 		}
-		fmt.Printf("| `%s` | %s | %d | %s | `%s` | %s |\n",
+		fmt.Fprintf(&b, "| `%s` | %s | %d | %s | `%s` | %s |\n",
 			r.Label,
 			r.FinishReason,
 			r.ReasoningToks,
@@ -624,7 +796,12 @@ func outputMarkdown(report probeReport) int {
 	}
 
 	v := report.Verdict
-	fmt.Printf("\n**Verdict:** recommended `reasoning_wire=%s`\n\n> %s\n", v.Wire, v.Explanation)
+	fmt.Fprintf(&b, "\n**Verdict:** recommended `reasoning_wire=%s`\n\n> %s\n", v.Wire, v.Explanation)
+	return b.String()
+}
+
+func outputMarkdown(report probeReport) int {
+	fmt.Print(renderMarkdown(report))
 	return 0
 }
 
@@ -636,6 +813,32 @@ func outputJSON(report probeReport) int {
 		fmt.Fprintf(os.Stderr, "error: encode json: %v\n", err)
 		return 1
 	}
+	return 0
+}
+
+func outputSnapshotMarkdown(cfg probeConfig, snapshot json.RawMessage, snapshotErr error) int {
+	fmt.Printf("# fizeau-probe-reasoning snapshot\n\n")
+	fmt.Printf("**Provider:** `%s`  \n", cfg.provider)
+	fmt.Printf("**Model:** `%s`  \n", cfg.model)
+	fmt.Printf("**Endpoint:** `%s`  \n", cfg.baseURL)
+	if snapshotErr != nil {
+		fmt.Printf("**Status:** `%s`\n\n", snapshotErr)
+		return 1
+	}
+	if len(snapshot) == 0 {
+		fmt.Printf("**Status:** `empty snapshot`\n\n")
+		return 0
+	}
+	fmt.Printf("```json\n%s\n```\n", string(snapshot))
+	return 0
+}
+
+func outputSnapshotJSON(snapshot json.RawMessage) int {
+	if len(snapshot) == 0 {
+		fmt.Println("null")
+		return 0
+	}
+	fmt.Println(string(snapshot))
 	return 0
 }
 
