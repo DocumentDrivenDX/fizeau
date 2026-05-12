@@ -240,6 +240,17 @@ type RouteDecision struct {
 }
 ```
 
+Raw `Model` constraints are normalized against provider-discovered model IDs
+before route selection. The resolver uses the canonical fuzzy matcher for
+case, vendor-prefix, separator, accelerator, and packaging differences when
+the mapping is unambiguous. Ambiguous matches fail with
+`ErrModelConstraintAmbiguous`; no match requests fail with
+`ErrModelConstraintNoMatch` and return nearby candidates instead of silently
+falling back to a different model.
+
+See FEAT-004's candidate-construction rules for the routing-side reference
+behavior this contract preserves.
+
 `ListPolicies` returns the canonical v0.11 policy set: `cheap`, `default`,
 `smart`, and `air-gapped`. Dropped compatibility names are not listed.
 
