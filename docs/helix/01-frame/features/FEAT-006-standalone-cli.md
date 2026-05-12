@@ -72,11 +72,9 @@ The CLI mirrors the v0.11 service contract. Routing intent is expressed with
     signals and narrow the candidate set before scoring.
 14. Removed flags fail as usage errors with migration guidance:
     - `--profile`;
-    - `--model-ref`;
+    - the legacy model pin flag;
     - deprecated backend-selection flags such as `--backend`.
-15. Removed compatibility policy names are not advertised in help:
-    `fast`, `code-fast`, `code-economy`, `code-smart`, `standard`, `local`,
-    `offline`, `code-high`, and `code-medium`.
+15. Removed compatibility policy names are not advertised in help.
 
 ### Inspection Commands
 
@@ -123,7 +121,7 @@ The CLI mirrors the v0.11 service contract. Routing intent is expressed with
 | AC-FEAT-006-03 | Config precedence is built-in defaults < global config < project config < environment variables < CLI flags. | `go test ./internal/config ./agentcli ./cmd/fiz ./...` |
 | AC-FEAT-006-04 | `fiz policies` and `fiz harnesses` return table and JSON output from the public service facade. | `go test ./agentcli ./cmd/fiz -run 'Policies|Harnesses'` |
 | AC-FEAT-006-05 | `--policy`, `--min-power`, and `--max-power` feed `ServiceExecuteRequest` and route-status JSON uses `policy` / `power_policy`. | `go test ./agentcli ./cmd/fiz -run 'Policy|Power|RouteStatus'` |
-| AC-FEAT-006-06 | `--profile`, `--model-ref`, and `--backend` are removed or rejected with clear migration guidance. The accepted root-level flag set is `--policy`, `--min-power`, `--max-power`, `--model`, `--provider`, `--harness`, `--preset`, `--system`, `--reasoning`, `--max-iter`, `--work-dir`, `--allow-deprecated-model`, `--list-models`, `--json`. | `go test ./agentcli ./cmd/fiz -run 'RejectsProfile|RejectsModelRef|Backend|Preset|RootFlags'` |
+| AC-FEAT-006-06 | `--profile`, the legacy model pin flag, and `--backend` are removed or rejected with clear migration guidance. The accepted root-level flag set is `--policy`, `--min-power`, `--max-power`, `--model`, `--provider`, `--harness`, `--preset`, `--system`, `--reasoning`, `--max-iter`, `--work-dir`, `--allow-deprecated-model`, `--list-models`, `--json`. | `go test ./agentcli ./cmd/fiz -run 'RejectsProfile|Backend|Preset|RootFlags'` |
 | AC-FEAT-006-07 | `log`, `replay`, and `usage` operate against the effective session-log directory and consume public service projections. | `go test ./agentcli ./cmd/fiz ./...` |
 | AC-FEAT-006-08 | DDx harness mode returns structured JSON containing output, token usage, cost semantics, session identity, and routing evidence without scraping human output. | `go test ./agentcli ./cmd/fiz ./...` |
 

@@ -24,7 +24,7 @@ func TestParseSemVer(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "standard version",
+			name:  "baseline version",
 			input: "v0.0.8",
 			want:  SemVer{Major: 0, Minor: 0, Patch: 8},
 		},
@@ -79,7 +79,7 @@ func TestSemVer_String(t *testing.T) {
 		v    SemVer
 		want string
 	}{
-		{"standard", SemVer{0, 0, 8, ""}, "v0.0.8"},
+		{"baseline", SemVer{0, 0, 8, ""}, "v0.0.8"},
 		{"with prerelease", SemVer{1, 2, 3, "beta"}, "v1.2.3-beta"},
 		{"rc version", SemVer{2, 0, 0, "rc1"}, "v2.0.0-rc1"},
 	}

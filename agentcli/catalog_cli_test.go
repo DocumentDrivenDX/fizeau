@@ -278,11 +278,11 @@ func catalogFixturePolicies(rawProfiles any) map[string]any {
 	profiles, _ := rawProfiles.(map[string]any)
 	for name := range profiles {
 		switch name {
-		case "smart", "code-smart":
+		case "smart":
 			policies["smart"] = map[string]any{"min_power": 9, "max_power": 10, "allow_local": true}
-		case "cheap", "code-economy":
+		case "cheap":
 			policies["cheap"] = map[string]any{"min_power": 5, "max_power": 5, "allow_local": true}
-		case "standard", "code-fast", "fast", "default":
+		case "default":
 			policies["default"] = map[string]any{"min_power": 7, "max_power": 8, "allow_local": true}
 		}
 	}
@@ -294,10 +294,12 @@ func catalogFixturePower(profile, status any) int {
 		return 0
 	}
 	switch profile {
-	case "smart", "code-smart":
+	case "smart":
 		return 9
-	case "cheap", "code-economy":
+	case "cheap":
 		return 5
+	case "default":
+		return 8
 	default:
 		return 8
 	}
@@ -507,7 +509,7 @@ func TestCLI_CatalogShow_EmbeddedFallback(t *testing.T) {
 	assert.Contains(t, output, "source: embedded")
 	assert.Contains(t, output, "catalog_version: 2026-05-08.1")
 	assert.Contains(t, output, "smart:")
-	assert.Contains(t, output, "standard:")
+	assert.Contains(t, output, "default:")
 	assert.Contains(t, output, "cheap:")
 	assert.Contains(t, output, "agent.openai: gpt-5.5")
 	assert.Contains(t, output, "agent.anthropic: opus-4.7")

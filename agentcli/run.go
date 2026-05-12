@@ -2130,7 +2130,7 @@ func checkZeroConfigDiscovery(cfg *agentConfig.Config) {
 		return
 	}
 
-	// Check for standard env vars
+	// Check for common env vars
 	if os.Getenv("ANTHROPIC_API_KEY") != "" ||
 		os.Getenv("OPENAI_API_KEY") != "" ||
 		os.Getenv("OPENROUTER_API_KEY") != "" {

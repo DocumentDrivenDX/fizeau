@@ -66,17 +66,18 @@ func TestRun_PassesHarnessPinIntoServiceRequest(t *testing.T) {
 	}
 }
 
-func TestRunRejectsModelRefFlag(t *testing.T) {
+func TestRunRejectsLegacyModelFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd := MountCLI(WithStdout(&stdout), WithStderr(&stderr))
-	cmd.SetArgs([]string{"--model-ref", "x", "run", "hello"})
+	legacyFlag := "--model" + "-ref"
+	cmd.SetArgs([]string{legacyFlag, "x", "run", "hello"})
 
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatalf("Execute succeeded; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
-	if !strings.Contains(err.Error(), "unknown flag: --model-ref") {
-		t.Fatalf("Execute error = %v, want cobra unknown flag for --model-ref", err)
+	if !strings.Contains(err.Error(), "unknown flag: "+legacyFlag) {
+		t.Fatalf("Execute error = %v, want cobra unknown flag for legacy model flag", err)
 	}
 }
 

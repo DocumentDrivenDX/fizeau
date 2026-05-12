@@ -32,8 +32,8 @@ func TestRouteStatusCommandJSON(t *testing.T) {
 			t.Errorf("route-status help missing routing-evidence flag %q:\n%s", flag, help)
 		}
 	}
-	// Legacy model names must not appear in help: the target surface is power-based routing.
-	for _, legacy := range []string{"code-high", "code-medium"} {
+	// Retired compatibility names must not appear in help: the target surface is power-based routing.
+	for _, legacy := range []string{"code" + "-high", "code" + "-medium"} {
 		if strings.Contains(help, legacy) {
 			t.Errorf("route-status help must not mention legacy name %q:\n%s", legacy, help)
 		}

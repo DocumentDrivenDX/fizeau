@@ -14,9 +14,9 @@ import (
 
 func TestRouteStatusOutputIncludesPowerPolicy(t *testing.T) {
 	out := routeStatusOutput{
-		Policy: "standard",
+		Policy: "default",
 		PowerPolicy: routeStatusPowerPolicy{
-			PolicyName: "standard",
+			PolicyName: "default",
 		},
 	}
 	data, err := json.Marshal(out)
@@ -26,10 +26,10 @@ func TestRouteStatusOutputIncludesPowerPolicy(t *testing.T) {
 	if !strings.Contains(string(data), `"power_policy"`) {
 		t.Fatalf("JSON missing power_policy field: %s", data)
 	}
-	if !strings.Contains(string(data), `"policy":"standard"`) {
+	if !strings.Contains(string(data), `"policy":"default"`) {
 		t.Fatalf("JSON missing policy evidence: %s", data)
 	}
-	if !strings.Contains(string(data), `"policy_name":"standard"`) {
+	if !strings.Contains(string(data), `"policy_name":"default"`) {
 		t.Fatalf("JSON missing power policy name evidence: %s", data)
 	}
 }

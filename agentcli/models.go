@@ -299,7 +299,7 @@ func suppressModelNoise(models []modelregistry.KnownModel) []modelregistry.Known
 }
 
 func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Config, cat *modelcatalog.Catalog, cache *discoverycache.Cache, opts modelsCommandOptions) int {
-	model, err := resolveModelRef(snapshot.Models, opts.Ref)
+	model, err := resolveModel(snapshot.Models, opts.Ref)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -343,19 +343,19 @@ func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Conf
 	return 0
 }
 
-func resolveModelRef(models []modelregistry.KnownModel, ref string) (modelregistry.KnownModel, error) {
+func resolveModel(models []modelregistry.KnownModel, ref string) (modelregistry.KnownModel, error) {
 	ref = strings.TrimSpace(ref)
 	if strings.Contains(ref, "/") {
 		provider, id, ok := strings.Cut(ref, "/")
 		if !ok || provider == "" || id == "" {
-			return modelregistry.KnownModel{}, fmt.Errorf("invalid model ref %q", ref)
+			return modelregistry.KnownModel{}, fmt.Errorf("invalid model %q", ref)
 		}
 		for _, model := range models {
 			if model.Provider == provider && model.ID == id {
 				return model, nil
 			}
 		}
-		return modelregistry.KnownModel{}, fmt.Errorf("unknown model ref %q", ref)
+		return modelregistry.KnownModel{}, fmt.Errorf("unknown model %q", ref)
 	}
 
 	var matches []modelregistry.KnownModel
@@ -373,7 +373,7 @@ func resolveModelRef(models []modelregistry.KnownModel, ref string) (modelregist
 	case 1:
 		return matches[0], nil
 	default:
-		return modelregistry.KnownModel{}, fmt.Errorf("ambiguous model ref %q\nCandidates:\n%s", ref, formatModelCandidates(matches))
+		return modelregistry.KnownModel{}, fmt.Errorf("ambiguous model %q\nCandidates:\n%s", ref, formatModelCandidates(matches))
 	}
 }
 
@@ -511,7 +511,7 @@ func formatTier(tier modelcatalog.Tier) string {
 	case modelcatalog.TierSmart:
 		return "smart"
 	case modelcatalog.TierStandard:
-		return "standard"
+		return "default"
 	case modelcatalog.TierCheap:
 		return "cheap"
 	default:

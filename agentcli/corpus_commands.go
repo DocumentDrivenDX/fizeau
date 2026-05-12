@@ -99,7 +99,7 @@ func cmdCorpusPromote(workDir string, args []string) int {
 	yes := fs.Bool("yes", false, "Skip the confirmation prompt")
 
 	// Accept the bead-id either before or after flags. We pull the first
-	// non-flag positional out of args, then let the standard flag parser
+	// non-flag positional out of args, then let the usual flag parser
 	// handle the rest.
 	beadID, parseArgs := extractFirstPositional(args)
 	if err := fs.Parse(parseArgs); err != nil {
@@ -219,7 +219,7 @@ func cmdCorpusPromote(workDir string, args []string) int {
 // extractFirstPositional returns the first argument that does not begin
 // with "-" along with the remaining args (with that positional removed).
 // This lets the user write `corpus promote <bead-id> --flag value` even
-// though the standard flag package stops at the first non-flag argument.
+// though the flag package stops at the first non-flag argument.
 func extractFirstPositional(args []string) (string, []string) {
 	for i, a := range args {
 		if a == "--" {

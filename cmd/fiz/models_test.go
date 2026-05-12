@@ -312,7 +312,7 @@ func TestModelsDetailShortformResolution(t *testing.T) {
 	if ambiguous.exitCode != 1 {
 		t.Fatalf("ambiguous shortform exit=%d, want 1 stdout=%s stderr=%s", ambiguous.exitCode, ambiguous.stdout, ambiguous.stderr)
 	}
-	for _, want := range []string{"ambiguous model ref", "alpha/gpt-5.5", "beta/gpt-5.5"} {
+	for _, want := range []string{"ambiguous model", "alpha/gpt-5.5", "beta/gpt-5.5"} {
 		if !strings.Contains(ambiguous.stderr, want) {
 			t.Fatalf("ambiguous output missing %q:\n%s", want, ambiguous.stderr)
 		}
