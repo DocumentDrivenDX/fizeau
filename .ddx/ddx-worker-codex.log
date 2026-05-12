@@ -1003,3 +1003,8 @@ bead readiness blocked: score 0.33 below threshold 0.50 (2/6 verifiable ACs) (re
 
 ▶ fizeau-7c8b1856: Snapshot assembler: enumerate providers + harnesses, discover via cache, enrich from catalog
 08:21:43 readiness check: starting route: harness=codex model=gpt-5.5
+
+▶ fizeau-7c8b1856: Snapshot assembler: enumerate providers + harnesses, discover via cache, enrich from catalog
+08:52:26 readiness check: starting route: harness=codex model=gpt-5.5
+08:54:25 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.5
+08:55:05 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
