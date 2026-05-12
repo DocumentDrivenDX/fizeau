@@ -1222,3 +1222,19 @@ Follow-up needed:
 10:01:51 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=1
 10:02:21 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=2 epic-closure-candidates=1
 10:02:51 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:03:21 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:03:52 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:04:22 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:04:52 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:05:22 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:05:53 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:06:23 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:06:53 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:07:23 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:07:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+10:08:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=0
+
+▶ fizeau-c6c8bc9e: service: rename Profile→Policy public surface + drop ModelRef + new error types + target scrub
+10:46:00 readiness check: starting route: harness=codex model=gpt-5.4-mini
+10:47:51 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.4-mini
+10:48:32 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
