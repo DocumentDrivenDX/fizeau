@@ -7,6 +7,9 @@
 package ds4
 
 import (
+	"context"
+	"time"
+
 	agentcore "github.com/easel/fizeau/internal/core"
 	"github.com/easel/fizeau/internal/provider/openai"
 	"github.com/easel/fizeau/internal/provider/registry"
@@ -33,13 +36,15 @@ func init() {
 				Reasoning:    in.Reasoning,
 			})
 		},
-		DefaultBaseURL: DefaultBaseURL,
-		DefaultPort:    8000,
+		DefaultBaseURL:  DefaultBaseURL,
+		DefaultPort:     8000,
+		IntrospectionFn: Introspect,
 	})
 }
 
-// ProtocolCapabilities extends the standard OpenAI-compatible surface with
-// thinking-control support. ds4's verified wire surface (via /props):
+// ProtocolCapabilities is the L3 static default for ds4. It is used as the
+// base when no live introspection is available. ds4's verified wire surface
+// (via /props):
 //   - `reasoning_effort: "low"|"medium"|"high"|"max"|"xhigh"` (flat top-level, OpenAI-style)
 //   - `think: false` (boolean shortcut for direct-reply / disable)
 //   - model alias `deepseek-chat` for non-thinking
@@ -69,11 +74,26 @@ type Config struct {
 	Reasoning    reasoning.Reasoning
 }
 
+// New constructs a ds4 provider. It first attempts L1 live introspection via
+// /props to override static capability defaults (e.g. ThinkingFormat). On
+// introspection failure the static ProtocolCapabilities are used unchanged.
 func New(cfg Config) *openai.Provider {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
 	}
+
+	// Start from the L3 static defaults; L1 introspection may override.
+	caps := ProtocolCapabilities
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if intro, ok := registry.IntrospectProvider(ctx, "ds4", baseURL, cfg.Model); ok {
+		if intro.EffectiveThinkingFormat != "" {
+			caps.ThinkingFormat = openai.ThinkingWireFormat(intro.EffectiveThinkingFormat)
+		}
+	}
+
 	return openai.New(openai.Config{
 		BaseURL:        baseURL,
 		APIKey:         cfg.APIKey,
@@ -84,6 +104,6 @@ func New(cfg Config) *openai.Provider {
 		KnownModels:    cfg.KnownModels,
 		Headers:        cfg.Headers,
 		Reasoning:      cfg.Reasoning,
-		Capabilities:   &ProtocolCapabilities,
+		Capabilities:   &caps,
 	})
 }

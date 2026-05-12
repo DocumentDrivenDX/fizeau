@@ -98,6 +98,11 @@ type Descriptor struct {
 	// DefaultPort is used by endpoint-config inference when only a
 	// host is supplied. 0 means "no inference; require explicit BaseURL".
 	DefaultPort int
+
+	// IntrospectionFn, when non-nil, is the L1 live-introspection adapter
+	// for this provider type. Register automatically wires it into the
+	// introspection adapter map so IntrospectProvider can invoke it.
+	IntrospectionFn IntrospectionFn
 }
 
 var (
@@ -121,6 +126,9 @@ func Register(d Descriptor) {
 		panic("provider/registry: duplicate registration for type " + d.Type)
 	}
 	entries[d.Type] = d
+	if d.IntrospectionFn != nil {
+		RegisterIntrospectionAdapter(d.Type, d.IntrospectionFn)
+	}
 }
 
 // Lookup returns the Descriptor for a provider type, or false if the
