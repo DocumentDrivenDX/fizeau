@@ -40,12 +40,13 @@ limits:
 agent_timeout_multiplier: 8.0
 sampling:
   temperature: 0.6
-  # Explicit token budget (matches other Qwen lanes for cross-lane parity).
+  # Named tier — catalog owns the wire shape (ADR-010).
   # fizeau emits Anthropic-style `thinking: {type: enabled, budget_tokens:
-  # 4096}` to oMLX. Reminder: vidar's active backend on port 1235 (oMLX)
-  # was retired on 2026-05-11 in favor of ds4 on port 1236; this profile
-  # is kept for historical reruns / re-import.
-  reasoning: 4096
+  # 2048}` to oMLX (PortableBudgets low=2048). Reverted from
+  # `reasoning: 4096` (explicit KindTokens) per ADR-010. Reminder: vidar's
+  # active backend on port 1235 (oMLX) was retired on 2026-05-11 in favor
+  # of ds4 on port 1236; this profile is kept for historical reruns.
+  reasoning: low
   top_p: 0.95
   top_k: 20
 versioning:

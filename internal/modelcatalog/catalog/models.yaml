@@ -328,7 +328,7 @@ models:
     reasoning_levels:
     - high
     reasoning_control: fixed
-    reasoning_wire: model_id
+    reasoning_wire: tokens
     surfaces:
       agent.openai: qwen/qwen3.6-27b
     reasoning_default: 'off'
