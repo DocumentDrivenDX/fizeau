@@ -1387,3 +1387,51 @@ Follow-up needed:
 11:01:58 readiness check: starting route: harness=codex model=gpt-5.4-mini
 11:04:00 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.4-mini
 11:04:41 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+15:04:54 do route codex/gpt-5.4-mini reason=explicit
+15:04:54 do fizeau-22a93208 route codex/gpt-5.4-mini power=8
+15:04:54 do thinking ...
+15:04:59 do ok 1 pwd < out=4.4KB 50 lines "/var/tmp/ddx-exec-wt/.execute-bead-…
+15:05:04 do ok 2 inspect lines 320,520 in service.go < out=7.2KB 201 lines "type ModelFilter struct {"
+15:05:04 do ok 3 inspect lines 600,760 in service_routing.go < out=4.1KB 161 lines "if !ok {"
+15:05:04 do ok 4 inspect lines 1120,1215 in service_routing.go < out=2.0KB 66 lines "}"
+15:05:04 do ok 5 inspect lines 1,220 in routing_errors.go < out=6.8KB 220 lines "package fizeau"
+15:05:09 do ok 6 inspect lines 1,260 in service_routing_test.go < out=8.0KB 260 lines "package fizeau"
+15:05:09 do ok 7 inspect lines 1,180 in service_policies.go < out=1.6KB 62 lines "package fizeau"
+15:05:09 do ok 8 inspect lines 1,260 in service_execute_test.go < out=6.8KB 260 lines "//go:build testseam"
+15:05:09 do ok 9 inspect lines 1,240 in service_routing_errors_test.go < out=8.3KB 240 lines "package fizeau"
+15:05:10 do ok 10 inspect lines 240,360 in service_routing_errors_test.go < out=3.0KB 87 lines "AttemptedPin: \"Pro…
+15:05:14 do ok 11 inspect lines 120,220 in service.go < out=3.7KB 101 lines "// and service activity."
+15:05:14 do ok 12 inspect lines 240,340 in service_execute.go < out=2.9KB 101 lines "}"
+15:05:17 do ok 13 inspect lines 1,220 in service_execute.go < out=9.3KB 220 lines "package fizeau"
+15:05:17 do ok 14 search "policyForName\\(|routingPolicy..." in '*.go' < out=97.8KB 1067 lines "./telemetry/tel… 2ms
+15:05:17 do ok 15 inspect lines 220,420 in service_routing_test.go < out=6.1KB 201 lines "t.Cleanup(replaceRoutingC…
+15:05:22 do ok 17 search "deprecated|alias|Policy\\(|Pol..." in '*.go' < out=14.2KB 154 lines "internal/routing/sti…
+15:05:22 do ok 16 inspect lines 1,220 in service_routing.go < out=7.4KB 220 lines "package fizeau"
+15:05:22 do ok 18 inspect lines 860,930 in service_routing_test.go < out=1.5KB 71 lines "}"
+15:05:29 do ok 19 inspect lines 1,220 in internal/routing/engine.go < out=7.6KB 220 lines "package routing"
+15:05:29 do ok 20 search "routingFixturePolicyName\\(" in service_*_test.go < out=313B 4 lines "service_routing_tes…
+15:05:29 do ok 21 inspect lines 620,700 in internal/routing/engine.go < out=2.4KB 81 lines "if len(exhausted) == 0 …
+15:05:32 do ok 22 inspect lines 1,240 in internal/modelcatalog/catalog.go < out=7.0KB 240 lines "package modelcatal…
+15:05:32 do ok 23 inspect lines 240,520 in internal/modelcatalog/catalog.go < out=8.4KB 281 lines "return ResolvedT…
+15:05:32 do ok 24 inspect lines 1,120 in service_policies_test.go < out=1.7KB 61 lines "package fizeau_test"
+15:05:43 do ok 25 inspect lines 780,880 in service_routing_test.go < out=3.6KB 101 lines "dec, err := routing.Resol…
+15:05:43 do ok 26 inspect lines 880,930 in service_routing_test.go < out=1.1KB 51 lines "delete(doc, \"profiles\")"
+15:05:46 do ok 27 'rg -n "profiles:|standard|code-fast|fast|code-smart|code-ec… < out=2.4KB 51 lines "24:\t\tProv…
+15:05:53 do ok 29 inspect lines 960,1035 in service_routing_test.go < out=2.5KB 76 lines "// gateFixtureCatalog ret…
+15:05:53 do ok 28 inspect lines 620,670 in service_routing_test.go < out=1.5KB 51 lines "defaultName: \"alpha\","
+15:06:43 do ok 30 search "profiles:" in '*.yml' < out=1.3KB 15 lines "./internal/modelcatalog/manifest_te…
+15:06:43 do ok 31 'rg -n "routingFixturePolicyName|standard|code-fast|code-sma… < out=4.6KB 60 lines "service… 3ms
+15:06:45 do ok 32 'gofmt -w service_routing_test.go service_routing_errors_test.go'
+15:06:50 do ok 33 search "RequestedProfile\\|RoutePowerP..." in routing_errors.go
+15:06:52 do ok 34 test . -run 'TestServiceTranslatesPolicyAirGappedToRequireNo… < out=35B 1 line 2.13s
+15:08:33 do ok 35 'go test ./... -count=1' < out=5.1KB 89 lines "ok \tgithub.com/easel/fizeau\t6.471… 1m37.632s
+15:08:36 do ok 36 'git status --short' < out=59B 2 lines "M service_routing_errors_test.go"
+15:08:36 do ok 37 'git diff -- service_routing_test.go service_routing_errors_… < out=2.8KB 94 lines "diff --git …
+15:08:40 do ok 38 'git add service_routing_test.go service_routing_errors_test… < out=136B 2 lines "[detached HEA…
+15:08:44 do response complete 12677 tok in 3m50.404s, 55.0 tok/s
+✓ fizeau-22a93208 → merged (3a16167c)
+
+▶ fizeau-144bd2f9: Translator: consult catalog reasoning_wire with bidirectional PortableBudgets
+11:08:48 readiness check: starting route: harness=codex model=gpt-5.4-mini
+11:10:32 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.4-mini
+11:11:12 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
