@@ -135,7 +135,8 @@ providers:
 		"claude-opus-4.5",
 		"gpt-5.5",
 	})
-	writeRuntimeCache(t, fixture.cacheRoot, "beta", "exhausted")
+	writeRuntimeCache(t, fixture.cacheRoot, "alpha", "available", 9, 75*time.Millisecond)
+	writeRuntimeCache(t, fixture.cacheRoot, "beta", "exhausted", 0, 120*time.Millisecond)
 	fixture.env = testEnv(fixture.homeDir, fixture.cacheRoot)
 	return fixture
 }
@@ -170,16 +171,18 @@ func writeDiscoveryCache(t *testing.T, cacheRoot, source string, models []string
 	}
 }
 
-func writeRuntimeCache(t *testing.T, cacheRoot, provider, status string) {
+func writeRuntimeCache(t *testing.T, cacheRoot, provider, status string, quotaRemaining int, latency time.Duration) {
 	t.Helper()
 	dir := filepath.Join(cacheRoot, "runtime")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	payload := map[string]any{
-		"provider":    provider,
-		"status":      status,
-		"recorded_at": time.Date(2026, 5, 12, 10, 1, 0, 0, time.UTC).Format(time.RFC3339),
+		"provider":              provider,
+		"status":                status,
+		"quota_remaining":       quotaRemaining,
+		"recent_p50_latency_ns": latency,
+		"recorded_at":           time.Date(2026, 5, 12, 10, 1, 0, 0, time.UTC).Format(time.RFC3339),
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -196,7 +199,7 @@ func TestModelsListDefaultColumns(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("exit=%d stderr=%s stdout=%s", res.exitCode, res.stderr, res.stdout)
 	}
-	for _, column := range []string{"PROVIDER", "MODEL", "FAMILY", "VERSION", "TIER", "POWER", "COST/M", "STATUS", "QUOTA", "AUTO"} {
+	for _, column := range []string{"PROVIDER", "MODEL", "FAMILY", "VERSION", "TIER", "POWER", "COST/M", "STATUS", "CATALOG QUOTA", "RUNTIME QUOTA", "AUTO"} {
 		if !strings.Contains(res.stdout, column) {
 			t.Fatalf("missing column %q in:\n%s", column, res.stdout)
 		}
@@ -205,6 +208,30 @@ func TestModelsListDefaultColumns(t *testing.T) {
 		if !strings.Contains(res.stdout, want) {
 			t.Fatalf("missing fixture entry %q in:\n%s", want, res.stdout)
 		}
+	}
+}
+
+func TestModelsListQuotaColumns(t *testing.T) {
+	fixture := newFizFixture(t)
+	res := runFiz(t, fixture, "models")
+	if res.exitCode != 0 {
+		t.Fatalf("exit=%d stderr=%s stdout=%s", res.exitCode, res.stderr, res.stdout)
+	}
+	var alphaLine string
+	for _, line := range strings.Split(res.stdout, "\n") {
+		if strings.Contains(line, "alpha") && strings.Contains(line, "gpt-5.5") {
+			alphaLine = line
+			break
+		}
+	}
+	if alphaLine == "" {
+		t.Fatalf("missing alpha/gpt-5.5 row in:\n%s", res.stdout)
+	}
+	if !strings.Contains(alphaLine, "openai-frontier") {
+		t.Fatalf("catalog quota pool not rendered in row:\n%s", alphaLine)
+	}
+	if !strings.Contains(alphaLine, "9") {
+		t.Fatalf("runtime quota remaining not rendered in row:\n%s", alphaLine)
 	}
 }
 
@@ -254,6 +281,19 @@ func TestModelsDetailCanonicalRef(t *testing.T) {
 		t.Fatalf("exit=%d stderr=%s stdout=%s", res.exitCode, res.stderr, res.stdout)
 	}
 	for _, want := range []string{"Canonical: alpha/gpt-5.5", "KnownModel:", "CatalogEntry:", "RawDiscoveryData:", "AutoRoutable: true"} {
+		if !strings.Contains(res.stdout, want) {
+			t.Fatalf("detail output missing %q:\n%s", want, res.stdout)
+		}
+	}
+}
+
+func TestModelsDetailRuntimeFields(t *testing.T) {
+	fixture := newFizFixture(t)
+	res := runFiz(t, fixture, "models", "alpha/gpt-5.5")
+	if res.exitCode != 0 {
+		t.Fatalf("exit=%d stderr=%s stdout=%s", res.exitCode, res.stderr, res.stdout)
+	}
+	for _, want := range []string{"RuntimeQuotaRemaining: 9", "RecentP50Latency: 75ms"} {
 		if !strings.Contains(res.stdout, want) {
 			t.Fatalf("detail output missing %q:\n%s", want, res.stdout)
 		}
@@ -328,7 +368,7 @@ func TestModelsListFiltersAndIncludeNoise(t *testing.T) {
 func TestCachePruneRemovesUnknownSources(t *testing.T) {
 	fixture := newFizFixture(t)
 	writeDiscoveryCache(t, fixture.cacheRoot, "stale-source", []string{"old-model"})
-	writeRuntimeCache(t, fixture.cacheRoot, "stale-runtime", "available")
+	writeRuntimeCache(t, fixture.cacheRoot, "stale-runtime", "available", 7, 44*time.Millisecond)
 
 	res := runFiz(t, fixture, "cache", "prune")
 	if res.exitCode != 0 {

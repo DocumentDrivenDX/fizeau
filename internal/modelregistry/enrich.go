@@ -54,6 +54,19 @@ func enrichModel(model KnownModel, includeByDefault bool, cat *modelcatalog.Cata
 	return model
 }
 
+func attachRuntimeSignals(model KnownModel, cache *discoverycache.Cache) KnownModel {
+	if cache == nil {
+		return model
+	}
+	sig, ok := runtimesignals.ReadCached(cache, model.Provider)
+	if !ok || sig == nil {
+		return model
+	}
+	model.QuotaRemaining = sig.QuotaRemaining
+	model.RecentP50Latency = sig.RecentP50Latency
+	return model
+}
+
 func statusAllowsRouting(status ModelStatus) bool {
 	return status != StatusUnreachable && status != StatusUnknown
 }

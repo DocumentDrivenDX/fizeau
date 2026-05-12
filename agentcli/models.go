@@ -182,9 +182,9 @@ func cmdModelsList(snapshot modelregistry.ModelSnapshot, opts modelsCommandOptio
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "PROVIDER\tMODEL\tFAMILY\tVERSION\tTIER\tPOWER\tCOST/M\tSTATUS\tQUOTA\tAUTO")
+	fmt.Fprintln(tw, "PROVIDER\tMODEL\tFAMILY\tVERSION\tTIER\tPOWER\tCOST/M\tSTATUS\tCATALOG QUOTA\tRUNTIME QUOTA\tAUTO")
 	for _, model := range models {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			model.Provider,
 			model.ID,
 			emptyDash(model.Family),
@@ -194,6 +194,7 @@ func cmdModelsList(snapshot modelregistry.ModelSnapshot, opts modelsCommandOptio
 			formatModelCost(model.CostInputPerM, model.CostOutputPerM),
 			model.Status,
 			emptyDash(model.QuotaPool),
+			formatRuntimeQuota(model.QuotaRemaining),
 			formatAuto(model),
 		)
 	}
@@ -317,6 +318,8 @@ func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Conf
 
 	fmt.Printf("Canonical: %s\n", detail.CanonicalID)
 	fmt.Printf("KnownModel: %+v\n", detail.KnownModel)
+	fmt.Printf("RuntimeQuotaRemaining: %s\n", formatRuntimeQuota(detail.KnownModel.QuotaRemaining))
+	fmt.Printf("RecentP50Latency: %s\n", formatLatency(detail.KnownModel.RecentP50Latency))
 	if detail.CatalogEntry != nil {
 		fmt.Printf("CatalogEntry: %+v\n", *detail.CatalogEntry)
 	} else {
@@ -521,6 +524,20 @@ func formatModelPower(power int) string {
 		return "-"
 	}
 	return strconv.Itoa(power)
+}
+
+func formatRuntimeQuota(quota *int) string {
+	if quota == nil {
+		return "-"
+	}
+	return strconv.Itoa(*quota)
+}
+
+func formatLatency(latency time.Duration) string {
+	if latency <= 0 {
+		return "-"
+	}
+	return latency.String()
 }
 
 func formatModelCost(input, output float64) string {

@@ -40,12 +40,14 @@ type KnownModel struct {
 	Tier       modelcatalog.Tier
 	PreRelease bool
 
-	Power           int
-	CostInputPerM   float64
-	CostOutputPerM  float64
-	ContextWindow   int
-	ReasoningLevels []string
-	QuotaPool       string
+	Power            int
+	CostInputPerM    float64
+	CostOutputPerM   float64
+	ContextWindow    int
+	ReasoningLevels  []string
+	QuotaPool        string
+	QuotaRemaining   *int
+	RecentP50Latency time.Duration
 
 	Status          ModelStatus
 	AutoRoutable    bool

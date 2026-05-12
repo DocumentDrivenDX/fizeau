@@ -11,6 +11,7 @@ import (
 	"github.com/easel/fizeau/internal/config"
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/runtimesignals"
 )
 
 func TestAssembleFixtureIncludesDiscoveredProviderModels(t *testing.T) {
@@ -74,6 +75,44 @@ func TestAssembleSuppressesCatalogOnlyModels(t *testing.T) {
 	}
 	if len(snapshot.Models) != 1 {
 		t.Fatalf("Assemble() returned %d models, want exactly discovered model", len(snapshot.Models))
+	}
+}
+
+func TestAssembleSnapshotIncludesRuntimeQuotaAndLatency(t *testing.T) {
+	t.Setenv("PATH", "")
+	cache := &discoverycache.Cache{Root: t.TempDir()}
+	capturedAt := time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)
+	writeDiscoveryFixture(t, cache, "openrouter", capturedAt, []string{"gpt-5.5"})
+	remaining := 42
+	requireRuntimeSignal(t, cache, runtimesignals.Signal{
+		Provider:         "openrouter",
+		Status:           runtimesignals.StatusAvailable,
+		QuotaRemaining:   &remaining,
+		RecentP50Latency: 75 * time.Millisecond,
+		RecordedAt:       capturedAt.Add(2 * time.Minute),
+	})
+
+	cfg := &config.Config{Providers: map[string]config.ProviderConfig{
+		"openrouter": {Type: "openrouter", Billing: string(modelcatalog.BillingModelFixed)},
+	}}
+	cat := loadTestCatalog(t)
+
+	snapshot, err := Assemble(context.Background(), cfg, cat, cache)
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	if len(snapshot.Models) != 1 {
+		t.Fatalf("Assemble() returned %d models, want 1", len(snapshot.Models))
+	}
+	model := snapshot.Models[0]
+	if model.QuotaRemaining == nil {
+		t.Fatalf("QuotaRemaining = nil, want populated runtime quota: %#v", model)
+	}
+	if got := *model.QuotaRemaining; got != 42 {
+		t.Fatalf("QuotaRemaining = %d, want 42", got)
+	}
+	if model.RecentP50Latency != 75*time.Millisecond {
+		t.Fatalf("RecentP50Latency = %v, want 75ms", model.RecentP50Latency)
 	}
 }
 
@@ -160,4 +199,11 @@ models:
 		t.Fatal(err)
 	}
 	return cat
+}
+
+func requireRuntimeSignal(t *testing.T, cache *discoverycache.Cache, sig runtimesignals.Signal) {
+	t.Helper()
+	if err := runtimesignals.Write(cache, sig); err != nil {
+		t.Fatal(err)
+	}
 }

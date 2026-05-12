@@ -71,7 +71,9 @@ func AssembleWithOptions(ctx context.Context, cfg *config.Config, cat *modelcata
 				DiscoveredAt:  discoveredModel.DiscoveredAt,
 				Status:        status,
 			}
-			snapshot.Models = append(snapshot.Models, enrichModel(model, includeByDefault, cat))
+			model = enrichModel(model, includeByDefault, cat)
+			model = attachRuntimeSignals(model, cache)
+			snapshot.Models = append(snapshot.Models, model)
 		}
 	}
 	sort.Slice(snapshot.Models, func(i, j int) bool {
