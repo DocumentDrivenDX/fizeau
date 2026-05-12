@@ -1,4 +1,4 @@
-_Regenerate this section against the latest data — see `data/timing.json` and the charts below._
+_Regenerate this section against the latest per-turn timing aggregates and the charts below._
 
 Per-turn TTFT (first-token latency) and steady-state decode tok/s, bucketed by **input-token length of that turn**. We bucket per turn rather than per task because the agent loop's input grows monotonically inside a single task — buckets reveal how each provider scales prefill and decode under increasing context.
 

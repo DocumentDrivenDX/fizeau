@@ -1,4 +1,4 @@
-_Estimates below use observed per-run costs from lanes that already produced real reps; see `data/aggregates.json` for the underlying numbers. Prices come from `scripts/benchmark/profiles/*.yaml`. Where a lane has no real reps yet, the estimate is a back-of-envelope `pricing × median-tokens` from a comparable lane on the same model._
+_Estimates below use observed per-run costs from lanes that already produced real reps. Prices come from the benchmark profile registry. Where a lane has no real reps yet, the estimate is a back-of-envelope `pricing × median-tokens` from a comparable lane on the same model._
 
 ### What it would cost to close the gaps
 

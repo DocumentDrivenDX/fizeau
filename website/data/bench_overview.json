@@ -1,5 +1,5 @@
 {
-  "snapshot_ts": "2026-05-12 13:16:06 UTC",
+  "snapshot_ts": "2026-05-12 13:20:24 UTC",
   "n_reports_total": 2614,
   "n_profiles_active": 22,
   "n_external_comparators": 45,
@@ -8,7 +8,6 @@
   "qwen_across_providers": [
     {
       "profile_id": "fiz-openrouter-qwen3-6-27b",
-      "source_profile_id": "fiz-openrouter-qwen3-6-27b",
       "label": "OpenRouter (cloud)",
       "pass_at_k_pct": 61.79775280898876,
       "pass_at_k_num": 55,
@@ -21,7 +20,6 @@
     },
     {
       "profile_id": "sindri-vllm",
-      "source_profile_id": "sindri-club-3090",
       "label": "vLLM int4 local CUDA",
       "pass_at_k_pct": 34.146341463414636,
       "pass_at_k_num": 28,
@@ -34,7 +32,6 @@
     },
     {
       "profile_id": "sindri-llamacpp",
-      "source_profile_id": "sindri-club-3090-llamacpp",
       "label": "llama.cpp Q3_K_XL local CUDA",
       "pass_at_k_pct": 70.96774193548387,
       "pass_at_k_num": 22,
@@ -47,7 +44,6 @@
     },
     {
       "profile_id": "local-omlx-qwen3-6-27b",
-      "source_profile_id": "vidar-qwen3-6-27b",
       "label": "oMLX 8-bit local Apple Silicon",
       "pass_at_k_pct": 38.2716049382716,
       "pass_at_k_num": 31,

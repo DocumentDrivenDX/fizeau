@@ -1,3 +1,3 @@
-_Regenerate this section against the latest data — see `data/aggregates.json` and the chart below. Open in a pull request when refreshed._
+_Regenerate this section against the latest benchmark aggregates and the chart below. Open in a pull request when refreshed._
 
 Each marker is a lane (or external submission) plotted at its model-power score (1 = weak, 10 = frontier per `scripts/benchmark/terminalbench_model_power.json`) against pass@k on the `all` subset. Marker size scales with median turns (larger = the agent worked harder before converging or giving up). Distance below the trend line at a given x-value is the *harness loss* for that lane: how much pass-rate the lane leaves on the floor relative to what the underlying model delivers elsewhere.

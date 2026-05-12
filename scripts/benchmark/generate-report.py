@@ -938,7 +938,6 @@ def render_body(*,
         provider = prof.get("provider") or {}
         sampling = prof.get("sampling") or {}
         pricing = prof.get("pricing") or {}
-        rationale = prof.get("_header_comment", "")
         color = color_for_profile(pid, prof)
         harness = harness_label(pid, prof)
         parts.append(f'<div class="profile-card" style="border-left: 4px solid {color}">')
@@ -953,25 +952,11 @@ def render_body(*,
             parts.append(f'<div class="meta">sampling: {html.escape(json.dumps(sampling, separators=(",", ":")))}</div>')
         if pricing.get("input_usd_per_mtok") is not None:
             parts.append(f'<div class="meta">pricing: ${pricing.get("input_usd_per_mtok",0):g} in / ${pricing.get("output_usd_per_mtok",0):g} out per Mtok</div>')
-        if rationale:
-            parts.append(f'<div class="desc">{html.escape(rationale)}</div>')
-        # Hardware (only for self-hosted lanes whose server resolves in the machine registry)
+        # Hardware (only for self-hosted lanes whose server resolves in the machine registry).
+        # Render a public hardware-class label, not raw hostnames/endpoints or inventory keys.
         machine = machine_for_profile(prof, machines)
         if machine:
-            hw_rows: list[tuple[str, str]] = []
-            for k in ("chassis", "cpu", "gpu", "memory", "os", "network"):
-                v = machine.get(k) or ""
-                if v:
-                    hw_rows.append((k, str(v)))
-            if hw_rows or machine.get("notes"):
-                parts.append('<div class="machine"><b>hardware</b>')
-                parts.append('<dl>')
-                for k, v in hw_rows:
-                    parts.append(f'<dt>{html.escape(k)}</dt><dd>{html.escape(v)}</dd>')
-                parts.append('</dl>')
-                if machine.get("notes"):
-                    parts.append(f'<div class="meta" style="margin-top:4px;">{html.escape(machine["notes"])}</div>')
-                parts.append('</div>')
+            parts.append(f'<div class="machine"><b>hardware class</b><div class="meta">{html.escape(_provider_descriptive_label(pid, prof, machine))}</div></div>')
         if agg:
             pass1 = (agg["n_pass"]/agg["n_graded"]*100) if agg["n_graded"] else 0
             parts.append(f'<div class="meta" style="margin-top:6px;">attempts: <b>{agg["n_attempts"]}</b> · graded: {agg["n_graded"]} · pass@1: <b>{pass1:.1f}%</b></div>')
@@ -1416,7 +1401,6 @@ def main():
         passed, attempted = subset_pass_counts(per_subset, data_pid, "all")
         qwen_rows.append({
             "profile_id": public_pid,
-            "source_profile_id": data_pid,
             "label": label,
             "pass_at_k_pct": (passed / attempted * 100) if attempted else None,
             "pass_at_k_num": passed,
@@ -1490,9 +1474,11 @@ def main():
     )
 
     HUGO_BUNDLE.mkdir(parents=True, exist_ok=True)
-    (HUGO_BUNDLE / "data").mkdir(exist_ok=True)
-    for js in DATA_DIR.glob("*.json"):
-        (HUGO_BUNDLE / "data" / js.name).write_bytes(js.read_bytes())
+    hugo_data = HUGO_BUNDLE / "data"
+    hugo_data.mkdir(exist_ok=True)
+    for js in hugo_data.glob("*.json"):
+        js.unlink()
+    (hugo_data / "snapshot.json").write_bytes((DATA_DIR / "snapshot.json").read_bytes())
 
     if args.emit_data_only:
         print(f"[done, data-only] data/ written. Edit sections/*.md, then re-run without --emit-data-only.", file=sys.stderr)

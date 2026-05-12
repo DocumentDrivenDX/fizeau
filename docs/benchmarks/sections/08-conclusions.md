@@ -1,4 +1,4 @@
-_Editorial summary. Regenerate against the data in `data/aggregates.json` and `data/timing.json`. The numbers here go stale as more cells land — re-run `scripts/benchmark/generate-report.py` and refresh this section._
+_Editorial summary. Regenerate against the latest benchmark aggregates and timing data. The numbers here go stale as more cells land — re-run `scripts/benchmark/generate-report.py` and refresh this section._
 
 ### Qwen3.6-27B across providers (the headline question)
 

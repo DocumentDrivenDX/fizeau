@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-12 13:16:06 UTC · Qwen3.6-27B across 5 provider/runtime combinations</div>
+<div class="meta">Snapshot: 2026-05-12 13:20:24 UTC · Qwen3.6-27B across 5 provider/runtime combinations</div>
 <div class="narrative">
 <p>The model weights are the same across every row here — Qwen3.6-27B in some quantization. The variable is everything else: where the bytes get computed, which serving engine runs them, what sampling defaults the server applies, whether prefix-cache is hit, and how much round-trip latency the network adds.</p>
 <p>Hostnames are abstracted to the substantive characteristics. The descriptive label captures engine + quantization + GPU/CPU + OS — enough to map to a known-good machine spec without leaking inventory.</p>
@@ -15,7 +15,7 @@ toc: true
 <h2>Detailed metrics</h2>
 <table><thead><tr><th>Profile</th><th>Harness</th><th>Attempts</th><th>Real</th><th>pass@1</th><th>pass@k</th><th>med turns</th><th>med in</th><th>med out</th><th>med wall (s)</th><th>cost ($)</th><th>p50 TTFT (s)</th><th>p50 decode (tok/s)</th></tr></thead><tbody><tr><td>vLLM int4 / NVIDIA GeForce RTX 5090 Laptop GPU (24 GB) / Ubuntu 24.04.4 LTS (Noble Numbat) on WSL2 / Windows 11 host</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>88</td><td>7</td><td>2.9%</td><td>12.5%</td><td>2</td><td>3,049</td><td>1,073</td><td>90</td><td>0.000</td><td>30.01</td><td>89.4</td></tr><tr><td>lmstudio / NVIDIA GeForce RTX 5090 Laptop GPU (24 GB) / Ubuntu 24.04.4 LTS (Noble Numbat) on WSL2 / Windows 11 host</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>267</td><td>0</td><td>0.0%</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>OpenRouter (cloud aggregator)</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>334</td><td>293</td><td>64.4%</td><td>61.8%</td><td>15</td><td>98,989</td><td>5,697</td><td>541</td><td>0.147</td><td>0.91</td><td>46.6</td></tr><tr><td>RapidMLX 8-bit / Apple M1 Max (64 GB unified)</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>70</td><td>0</td><td>3.6%</td><td>6.2%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>30.02</td><td>15.7</td></tr><tr><td>oMLX 8-bit / Apple M2 Ultra (24-core CPU) (192 GB unified)</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>179</td><td>109</td><td>38.8%</td><td>38.3%</td><td>14</td><td>95,916</td><td>5,175</td><td>930</td><td>0.000</td><td>10.15</td><td>15.4</td></tr></tbody></table>
 <h2>Performance vs context length</h2>
-<div class="narrative"><p><em>Regenerate this section against the latest data — see <code>data/timing.json</code> and the charts below.</em></p>
+<div class="narrative"><p><em>Regenerate this section against the latest per-turn timing aggregates and the charts below.</em></p>
 <p>Per-turn TTFT (first-token latency) and steady-state decode tok/s, bucketed by <strong>input-token length of that turn</strong>. We bucket per turn rather than per task because the agent loop's input grows monotonically inside a single task — buckets reveal how each provider scales prefill and decode under increasing context.</p>
 <p>Buckets: 0–10k, 10–30k, 30–60k, 60–120k, 120k+ tokens. Buckets with fewer than 5 turns of data are dropped to avoid noise.</p>
 <p>Read this as: a lane that holds steady across buckets has a working KV-cache / prefix-cache; a lane whose TTFT slopes up sharply is recomputing prefill on every turn.</p></div>
