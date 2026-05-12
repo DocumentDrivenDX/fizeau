@@ -10,7 +10,8 @@
   "wire_check": {
     "selected_surface": "agent.openai",
     "selected_model": "qwen/qwen3.6-27b",
-    "catalog_reasoning_wire": "model_id",
-    "observed_session_policy": "catalog sampling with qwen profile defaults"
+    "catalog_reasoning_wire": "tokens",
+    "wire_body": "reasoning.max_tokens=2048",
+    "request_artifact": "docs/research/probe-reasoning-2026-05-11-v2/fiz-openrouter-qwen3-6-27b/low-request.json"
   }
 }

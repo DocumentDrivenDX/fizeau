@@ -3,14 +3,14 @@
 ## Findings
 
 The 2026-05-11 reasoning probe confirmed that reasoning control is a
-model/catalog property, not just a provider transport property. OpenRouter Qwen
-continues to expose reasoning tokens, but its catalog entry must avoid treating
-plain effort tiers as a precise client budget. Sindri's llama.cpp Qwen endpoint
-requires the `chat_template_kwargs` envelope; top-level Qwen fields do not
-activate thinking. Vidar ds4 exposes DeepSeek V4 Flash through a flat
-OpenAI-compatible `reasoning_effort` field, with `reasoning_content` present in
-responses but no native `usage.completion_tokens_details.reasoning_tokens`, so
-Fizeau must use the reasoning-content fallback token estimate.
+model/catalog property, not just a provider transport property. OpenRouter
+`qwen/qwen3.6-27b` now uses the token-budget wire (`reasoning.max_tokens:
+2048` on the low row) while Sindri's llama.cpp Qwen endpoint requires the
+`chat_template_kwargs` envelope; top-level Qwen fields do not activate
+thinking. Vidar ds4 exposes DeepSeek V4 Flash through a flat OpenAI-compatible
+`reasoning_effort` field, with `reasoning_content` present in responses but no
+native `usage.completion_tokens_details.reasoning_tokens`, so Fizeau must use
+the reasoning-content fallback token estimate.
 
 ## Probe Artifacts
 
