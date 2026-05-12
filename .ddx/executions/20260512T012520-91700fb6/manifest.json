@@ -1,0 +1,136 @@
+{
+  "attempt_id": "20260512T012520-91700fb6",
+  "bead_id": "fizeau-e80c156e",
+  "base_rev": "4c741f0c6904640576a4faeadcd98b3da0d262e2",
+  "created_at": "2026-05-12T01:25:23.602497312Z",
+  "requested": {
+    "harness": "claude",
+    "model": "claude-sonnet-4-6",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-e80c156e",
+    "title": "Provider introspection adapters: read /props at construction and merge into ProtocolCapabilities",
+    "description": "P1 refinement on top of the dialect-fix bead fizeau-073fe18b.\nIntrospection adapters read provider /props at construction time and\noverride the static ThinkingFormat default with what the live server\nactually claims.\n\nPer ADR-010 Amendment 2026-05-11 the L1 layer (live introspection) is the\nauthoritative source where available; this bead implements L1 for ds4 and\nllama-server. The static defaults that fizeau-073fe18b sets become the L3\nfloor; L2 (catalog reasoning_wire) sits in between.\n\nAfter this bead lands, fizeau auto-detects:\n- ds4's alias map → effective reasoning_levels without catalog curation\n- llama-server's chat_template variant → auto-detect kwargs vs top-level\n  envelope (today's wire choice is hardcoded by fizeau-073fe18b)\n- server-side reasoning_format default → can override per-request only\n  when needed\n\nCost model (measured 2026-05-11):\n  ds4 /props on LAN:         p50=13ms  max=51ms  (n=10)\n  sindri /props on LAN:      p50=9ms   max=13ms  (n=10)\n  OR /api/v1/models cloud:   p50=316ms max=325ms (n=5)\n\nThree adapters in this bead:\n\n1. **ds4 adapter** (internal/provider/ds4/introspection.go, new):\n   GET http://\u003cbase\u003e/props. Parse reasoning.{supported_efforts, aliases,\n   default, effective_default, think_max_min_context},\n   api.supported_request_parameters, sampling, runtime. Derive effective\n   ThinkingFormat=OpenAIEffort and effective reasoning_levels from\n   supported_efforts minus aliased duplicates.\n\n2. **llama-server adapter** (internal/provider/llamaserver/introspection.go,\n   new): GET http://\u003cbase\u003e/props. Parse\n   default_generation_settings.params.reasoning_format, chat_template\n   (substring match for `enable_thinking` to detect kwargs envelope),\n   chat_template_caps.supports_preserve_reasoning, build_info.\n\n3. **Common plumbing** (internal/provider/registry/introspection.go, new):\n   ProviderIntrospection struct, registry of adapters by provider type,\n   cache by (base_url, model), non-fatal failure with structured warning.\n\nConstruction order: instantiate provider → run introspection adapter (if\nregistered) → merge into capabilities → ready. Per-request path is\nunchanged; no introspection IO at request time.\n\nIn-scope files:\n- internal/provider/ds4/introspection.go (new)\n- internal/provider/ds4/introspection_test.go (new)\n- internal/provider/llamaserver/introspection.go (new)\n- internal/provider/llamaserver/introspection_test.go (new)\n- internal/provider/registry/introspection.go (new)\n- internal/provider/registry/registry.go (wire adapter invocation)\n- internal/provider/ds4/ds4.go (consume introspection)\n- internal/provider/llamaserver/llamaserver.go (consume introspection)\n- internal/provider/ds4/testdata/props/ (recorded fixtures)\n- internal/provider/llamaserver/testdata/props/ (recorded fixtures)\n\nOut-of-scope (separate beads):\n- OR adapter (introspection thin; catalog L2 covers it).\n- Anthropic-native / OpenAI-native adapters.\n- vLLM adapter (defer until lane re-added).\n\nDepends on: fizeau-073fe18b (wire-format dialect fixes — adapters set\nthe EFFECTIVE ThinkingFormat to the new variants).",
+    "acceptance": "1. `go test ./internal/provider/ds4/...` passes including a new test\n   that parses a recorded /props fixture and asserts:\n   - EffectiveReasoningLevels == [\\\"high\\\", \\\"max\\\"]\n   - AliasMap reflects {low→high, medium→high, xhigh→high}\n   - ThinkingFormat == OpenAIEffort\n   - SupportedRequestParams contains \\\"reasoning_effort\\\"\n2. `go test ./internal/provider/llamaserver/...` passes including a new\n   test that parses a recorded /props fixture and asserts:\n   - ThinkingFormat == Qwen (with chat_template_kwargs envelope after\n     fizeau-073fe18b)\n   - ServerSideReasoningFormat reflects the value in the fixture\n3. `go test ./internal/provider/registry/...` passes including:\n   - Adapter failure does not fail provider construction.\n   - Cache hit: two providers at the same (base_url, model) trigger\n     exactly one introspection call.\n4. `go vet ./...` passes.\n5. Manual smoke: operator script constructs ds4 + llama-server providers\n   against live endpoints and prints the effective capabilities. Output\n   includes the alias map, supported params, server-side reasoning_format.",
+    "labels": [
+      "area:provider",
+      "area:reasoning",
+      "kind:feature"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T01:23:09Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "525134",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-11T22:09:19.824894543Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"staging tracker: fatal: Unable to create '/Users/erik/Projects/fizeau/.git/index.lock': File exists.\\n\\nAnother git process seems to be running in this repository, or the lock file may be stale: exit status 128\",\"harness\":\"\",\"model\":\"\",\"reason\":\"lock_contention\"}",
+          "created_at": "2026-05-11T22:09:19.857803984Z",
+          "kind": "disruption_detected",
+          "source": "ddx agent execute-loop",
+          "summary": "lock_contention"
+        },
+        {
+          "actor": "ddx",
+          "body": "{\"actual_harness\":\"\",\"actual_model\":\"\",\"actual_power\":0,\"actual_provider\":\"\",\"attempt_id\":\"\",\"bead_id\":\"fizeau-e80c156e\",\"rejected_route_pins\":null,\"requested_tier\":\"standard\",\"routing_intent_degraded\":true,\"routing_intent_note\":\"actual route facts unavailable\",\"routing_intent_source\":\"heuristic\",\"smart_justification\":\"\"}",
+          "created_at": "2026-05-11T22:09:19.863736015Z",
+          "kind": "execution-routing-intent",
+          "source": "ddx agent execute-loop",
+          "summary": "source=heuristic tier=standard note=actual route facts unavailable"
+        },
+        {
+          "actor": "erik",
+          "body": "staging tracker: fatal: Unable to create '/Users/erik/Projects/fizeau/.git/index.lock': File exists.\n\nAnother git process seems to be running in this repository, or the lock file may be stale: exit status 128\noutcome_reason=lock_contention",
+          "created_at": "2026-05-11T22:09:19.882982146Z",
+          "kind": "execute-bead",
+          "source": "ddx agent execute-loop",
+          "summary": "execution_failed"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-11T22:14:25.927161267Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"staging tracker: fatal: Unable to create '/Users/erik/Projects/fizeau/.git/index.lock': File exists.\\n\\nAnother git process seems to be running in this repository, or the lock file may be stale: exit status 128\",\"harness\":\"\",\"model\":\"\",\"reason\":\"lock_contention\"}",
+          "created_at": "2026-05-11T22:14:25.963519751Z",
+          "kind": "disruption_detected",
+          "source": "ddx agent execute-loop",
+          "summary": "lock_contention"
+        },
+        {
+          "actor": "ddx",
+          "body": "{\"actual_harness\":\"\",\"actual_model\":\"\",\"actual_power\":0,\"actual_provider\":\"\",\"attempt_id\":\"\",\"bead_id\":\"fizeau-e80c156e\",\"rejected_route_pins\":null,\"requested_tier\":\"standard\",\"routing_intent_degraded\":true,\"routing_intent_note\":\"actual route facts unavailable\",\"routing_intent_source\":\"heuristic\",\"smart_justification\":\"\"}",
+          "created_at": "2026-05-11T22:14:25.969294582Z",
+          "kind": "execution-routing-intent",
+          "source": "ddx agent execute-loop",
+          "summary": "source=heuristic tier=standard note=actual route facts unavailable"
+        },
+        {
+          "actor": "erik",
+          "body": "staging tracker: fatal: Unable to create '/Users/erik/Projects/fizeau/.git/index.lock': File exists.\n\nAnother git process seems to be running in this repository, or the lock file may be stale: exit status 128\noutcome_reason=lock_contention",
+          "created_at": "2026-05-11T22:14:25.983712992Z",
+          "kind": "execute-bead",
+          "source": "ddx agent execute-loop",
+          "summary": "execution_failed"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"acceptance criteria dropped or altered\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-11T22:19:42.31182505Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T01:25:20.811890643Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T01:23:09.515971671Z",
+      "execute-loop-last-detail": "landing worktree has staged changes after waiting 2s:\nD\t.ddx/executions/20260511T202020-ee50d8eb/manifest.json\nD\t.ddx/executions/20260511T202020-ee50d8eb/prompt.md\nD\t.ddx/executions/20260511T202020-ee50d8eb/result.json\nD\t.ddx/executions/20260511T202020-ee50d8eb/usage.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/16384-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/16384-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/4096-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/4096-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/high-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/high-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/low-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/low-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/medium-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/medium-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/off-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/off-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/probe.log\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/fiz-openrouter/summary.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/probe-verdict.md\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/16384-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/16384-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/4096-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/4096-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/high-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/high-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/low-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/low-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/medium-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/medium-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/off-request.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/off-response.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/probe.log\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/sindri-club-3090-llamacpp/summary.json\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/vidar-ds4/NOT-PROBED.md\nD\tdocs/research/probe-reasoning-qwen3-6-27b-2026-05-11/vidar-qwen3-6-27b/NOT-PROBED.md\nM\tinternal/config/config.go\nM\tinternal/config/config_test.go\nM\tinternal/modelcatalog/catalog/models.yaml\nM\tscripts/benchmark/profiles/fiz-openrouter-qwen3-6-27b.yaml\nM\tscripts/benchmark/profiles/sindri-club-3090-llamacpp.yaml\nM\tscripts/benchmark/profiles/vidar-ds4.yaml\nM\tscripts/benchmark/profiles/vidar-qwen3-6-27b.yaml",
+      "execute-loop-last-status": "preclaim-hook-failed",
+      "execute-loop-retry-after": "2026-05-11T21:16:31Z",
+      "needs-human-reason": "acceptance criteria dropped or altered",
+      "needs-human-since": "2026-05-11T22:19:42Z",
+      "needs-human-source": "ddx agent execute-loop",
+      "needs-human-suggested-action": "review intake result and accept, rewrite, split, block, or cancel",
+      "needs-human-summary": "pre-claim intake blocked execution",
+      "spec-id": "ADR-010"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-010",
+      "path": "docs/helix/02-design/adr/ADR-010-reasoning-wire-form-from-catalog.md",
+      "title": "ADR-010: Reasoning Wire Form Belongs in the Model Catalog"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T012520-91700fb6",
+    "prompt": ".ddx/executions/20260512T012520-91700fb6/prompt.md",
+    "manifest": ".ddx/executions/20260512T012520-91700fb6/manifest.json",
+    "result": ".ddx/executions/20260512T012520-91700fb6/result.json",
+    "checks": ".ddx/executions/20260512T012520-91700fb6/checks.json",
+    "usage": ".ddx/executions/20260512T012520-91700fb6/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-e80c156e-20260512T012520-91700fb6"
+  },
+  "prompt_sha": "7058fef78983dbacd43bfda0aef11ab2a91d293ce5488c52101ad2db55b8529b"
+}
