@@ -103,6 +103,72 @@ EOF
 	}
 }
 
+func TestRunner_Execute_SnapsReasoningToDiscoveryLevels(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	dir := t.TempDir()
+	capture := filepath.Join(dir, "capture.txt")
+	script := fmt.Sprintf(`#!/bin/sh
+{
+  i=0
+  for arg in "$@"; do
+    printf 'ARG[%%s]=%%s\n' "$i" "$arg"
+    i=$((i + 1))
+  done
+} > %q
+cat <<'EOF'
+{"type":"output","item":{"type":"agent_message","text":"ok"}}
+{"type":"turn.completed","usage":{"input_tokens":3,"output_tokens":2}}
+EOF
+`, capture)
+	binary := filepath.Join(dir, "fake-codex")
+	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cache := harnesses.NewModelDiscoveryCache(func(harnessName, source string) (harnesses.ModelDiscoverySnapshot, error) {
+		return harnesses.ModelDiscoverySnapshot{
+			CapturedAt:      time.Now().UTC(),
+			Models:          []string{"gpt-5.4"},
+			ReasoningLevels: []string{"low", "medium"},
+			Source:          source,
+		}, nil
+	})
+
+	r := &Runner{Binary: binary, DiscoveryCache: cache}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ch, err := r.Execute(ctx, harnesses.ExecuteRequest{
+		Prompt:    "hello prompt",
+		Model:     "gpt-5.4",
+		Reasoning: "high",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	var reasoning *harnesses.ReasoningActual
+	for ev := range ch {
+		if ev.Type != harnesses.EventTypeRoutingDecision {
+			continue
+		}
+		var data harnesses.ReasoningActual
+		if err := json.Unmarshal(ev.Data, &data); err == nil && data.ResolvedReasoning != "" {
+			reasoning = &data
+		}
+	}
+	raw, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(raw); !strings.Contains(got, "reasoning.effort=medium") {
+		t.Fatalf("capture missing snapped reasoning:\n%s", got)
+	}
+	if reasoning == nil || reasoning.ResolvedReasoning != "medium" || reasoning.Source != "snapped" || reasoning.Warning == "" {
+		t.Fatalf("reasoning resolution = %#v", reasoning)
+	}
+}
+
 func TestRunner_Execute_UsesDiscoveryDefaultWhenModelUnpinned(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not available")

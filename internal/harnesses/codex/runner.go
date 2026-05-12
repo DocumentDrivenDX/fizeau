@@ -40,6 +40,9 @@ type Runner struct {
 
 	// EventBuffer overrides the per-Execute channel buffer size.
 	EventBuffer int
+
+	// DiscoveryCache overrides model/reasoning discovery evidence in tests.
+	DiscoveryCache *harnesses.ModelDiscoveryCache
 }
 
 // Info returns identity + capability metadata for this harness.
@@ -129,6 +132,10 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 		ExitCode:   exitCode,
 		DurationMS: time.Since(start).Milliseconds(),
 	}
+	reasoningResolution := harnesses.ResolveRunnerReasoningWithCache(r.DiscoveryCache, "codex", req.Reasoning)
+	if harnesses.ShouldEmitRunnerReasoningResolution(reasoningResolution) {
+		final.Reasoning = &reasoningResolution
+	}
 	if runErr != nil && status != "success" {
 		final.Error = runErr.Error()
 	} else if stderr != "" && status != "success" {
@@ -189,7 +196,8 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 		base = []string{"exec", "--json"}
 	}
 	args := append([]string{}, base...)
-	modelResolution := harnesses.ResolveRunnerModel("codex", modelcatalog.SurfaceCodex, req.Model, fallbackDefaultModel)
+	modelResolution := harnesses.ResolveRunnerModelWithCache(r.DiscoveryCache, "codex", modelcatalog.SurfaceCodex, req.Model, fallbackDefaultModel)
+	reasoningResolution := harnesses.ResolveRunnerReasoningWithCache(r.DiscoveryCache, "codex", req.Reasoning)
 
 	// Permission args: unrestricted adds --dangerously-bypass-approvals-and-sandbox
 	if req.Permissions == "unrestricted" {
@@ -207,7 +215,7 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	}
 
 	// Reasoning flag: -c reasoning.effort=<reasoning>
-	if value := harnesses.AdapterReasoningValue(req); value != "" {
+	if value := reasoningResolution.ResolvedReasoning; value != "" {
 		args = append(args, "-c", fmt.Sprintf("reasoning.effort=%s", value))
 	}
 
@@ -250,6 +258,16 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	}
 	if harnesses.ShouldEmitRunnerDefaultResolution(modelResolution) {
 		ev := harnesses.RunnerDefaultResolutionEvent(modelResolution, req.Metadata, seq)
+		harnesses.WriteProgressEvent(progressLog, ev)
+		select {
+		case out <- ev:
+		case <-ctx.Done():
+			return nil, -1, "", ctx.Err(), "cancelled"
+		}
+	}
+	if harnesses.ShouldEmitRunnerReasoningResolution(reasoningResolution) {
+		harnesses.LogRunnerReasoningWarning(reasoningResolution)
+		ev := harnesses.RunnerReasoningResolutionEvent(reasoningResolution, req.Metadata, seq)
 		harnesses.WriteProgressEvent(progressLog, ev)
 		select {
 		case out <- ev:

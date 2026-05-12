@@ -499,6 +499,23 @@ func TestRunnerBuildArgs_AppliesRequestControls(t *testing.T) {
 	assert.Equal(t, []string{"--print", "--permission-mode", "default", "--model", "opus-4.7"}, args)
 }
 
+func TestRunnerBuildArgs_SnapsReasoningToDiscoveryLevels(t *testing.T) {
+	cache := harnesses.NewModelDiscoveryCache(func(harnessName, source string) (harnesses.ModelDiscoverySnapshot, error) {
+		return harnesses.ModelDiscoverySnapshot{
+			CapturedAt:      time.Now().UTC(),
+			Models:          []string{"claude-sonnet-4-6"},
+			ReasoningLevels: []string{"low", "medium"},
+			Source:          source,
+		}, nil
+	})
+	r := &Runner{DiscoveryCache: cache}
+	args := r.buildArgs([]string{"--print"}, harnesses.ExecuteRequest{
+		Model:     "claude-sonnet-4-6",
+		Reasoning: "high",
+	})
+	assert.Equal(t, []string{"--print", "--model", "claude-sonnet-4-6", "--effort", "medium"}, args)
+}
+
 func TestRunnerExecute_AppliesRequestControlsAndWorkdir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake claude binary relies on POSIX shell")

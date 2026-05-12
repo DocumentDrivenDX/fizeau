@@ -52,6 +52,9 @@ type Runner struct {
 	// EventBuffer overrides the per-Execute channel buffer size. Zero
 	// selects defaultEventBuffer.
 	EventBuffer int
+
+	// DiscoveryCache overrides model/reasoning discovery evidence in tests.
+	DiscoveryCache *harnesses.ModelDiscoveryCache
 }
 
 // Info returns identity + capability metadata for this harness.
@@ -170,6 +173,10 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 		ExitCode:   exitCode,
 		DurationMS: time.Since(start).Milliseconds(),
 	}
+	reasoningResolution := harnesses.ResolveRunnerReasoningWithCache(r.DiscoveryCache, "claude", req.Reasoning)
+	if harnesses.ShouldEmitRunnerReasoningResolution(reasoningResolution) {
+		final.Reasoning = &reasoningResolution
+	}
 	quotaMessage := claudeQuotaMessage(stderr, runErr, agg)
 	if quotaMessage != "" {
 		MarkClaudeQuotaExhaustedFromMessage(quotaMessage, time.Now())
@@ -281,9 +288,20 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	if progressLog != nil {
 		defer progressLog.Close()
 	}
-	modelResolution := harnesses.ResolveRunnerModel("claude", modelcatalog.SurfaceClaudeCode, req.Model, fallbackDefaultModel)
+	modelResolution := harnesses.ResolveRunnerModelWithCache(r.DiscoveryCache, "claude", modelcatalog.SurfaceClaudeCode, req.Model, fallbackDefaultModel)
+	reasoningResolution := harnesses.ResolveRunnerReasoningWithCache(r.DiscoveryCache, "claude", req.Reasoning)
 	if harnesses.ShouldEmitRunnerDefaultResolution(modelResolution) {
 		ev := harnesses.RunnerDefaultResolutionEvent(modelResolution, req.Metadata, seq)
+		harnesses.WriteProgressEvent(progressLog, ev)
+		select {
+		case out <- ev:
+		case <-ctx.Done():
+			return nil, -1, "", ctx.Err(), "cancelled"
+		}
+	}
+	if harnesses.ShouldEmitRunnerReasoningResolution(reasoningResolution) {
+		harnesses.LogRunnerReasoningWarning(reasoningResolution)
+		ev := harnesses.RunnerReasoningResolutionEvent(reasoningResolution, req.Metadata, seq)
 		harnesses.WriteProgressEvent(progressLog, ev)
 		select {
 		case out <- ev:
@@ -451,7 +469,8 @@ func (r *Runner) runLegacy(ctx context.Context, binary string, req harnesses.Exe
 
 func (r *Runner) buildArgs(base []string, req harnesses.ExecuteRequest) []string {
 	args := append([]string{}, base...)
-	modelResolution := harnesses.ResolveRunnerModel("claude", modelcatalog.SurfaceClaudeCode, req.Model, fallbackDefaultModel)
+	modelResolution := harnesses.ResolveRunnerModelWithCache(r.DiscoveryCache, "claude", modelcatalog.SurfaceClaudeCode, req.Model, fallbackDefaultModel)
+	reasoningResolution := harnesses.ResolveRunnerReasoningWithCache(r.DiscoveryCache, "claude", req.Reasoning)
 	switch req.Permissions {
 	case "supervised":
 		args = append(args, "--permission-mode", "default")
@@ -461,7 +480,7 @@ func (r *Runner) buildArgs(base []string, req harnesses.ExecuteRequest) []string
 	if modelResolution.ResolvedModel != "" {
 		args = append(args, "--model", modelResolution.ResolvedModel)
 	}
-	if value := harnesses.AdapterReasoningValue(req); value != "" {
+	if value := reasoningResolution.ResolvedReasoning; value != "" {
 		args = append(args, "--effort", value)
 	}
 	return args

@@ -3,6 +3,7 @@ package reasoning
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -50,6 +51,22 @@ type Policy struct {
 	Kind   Kind
 	Value  Reasoning
 	Tokens int
+}
+
+type ResolutionSource string
+
+const (
+	ResolutionSourceCaller  ResolutionSource = "caller"
+	ResolutionSourceSnapped ResolutionSource = "snapped"
+	ResolutionSourceDefault ResolutionSource = "default"
+)
+
+type SupportedResolution struct {
+	Policy    Policy
+	Source    ResolutionSource
+	Warning   string
+	Reason    string
+	Supported []Reasoning
 }
 
 func (p Policy) IsSet() bool {
@@ -149,6 +166,124 @@ func NearestTierForTokens(n int) Reasoning {
 		return ReasoningMedium
 	}
 	return ReasoningHigh
+}
+
+// ResolveAgainstSupportedLevels validates a caller policy against discovered
+// harness reasoning levels. Empty or unparsable support lists deliberately keep
+// the existing behavior: the caller policy is returned unchanged.
+func ResolveAgainstSupportedLevels(policy Policy, supportedLevels []string) (SupportedResolution, error) {
+	supported := normalizeSupportedLevels(supportedLevels)
+	source := ResolutionSourceCaller
+	if policy.Kind == KindUnset || policy.Kind == KindAuto {
+		source = ResolutionSourceDefault
+	}
+	out := SupportedResolution{
+		Policy:    policy,
+		Source:    source,
+		Supported: supported,
+	}
+	if len(supported) == 0 {
+		return out, nil
+	}
+	switch policy.Kind {
+	case KindUnset, KindAuto, KindOff:
+		return out, nil
+	case KindTokens:
+		tier := NearestTierForTokens(policy.Tokens)
+		if containsReasoning(supported, tier) {
+			out.Policy = Policy{Kind: KindNamed, Value: tier}
+			out.Source = ResolutionSourceSnapped
+			out.Reason = "tokens_converted_to_effort"
+			return out, nil
+		}
+		snapped, ok := nearestSupportedTier(tier, supported)
+		if !ok {
+			return out, nil
+		}
+		out.Policy = Policy{Kind: KindNamed, Value: snapped}
+		out.Source = ResolutionSourceSnapped
+		out.Reason = "tokens_converted_and_snapped_to_supported_effort"
+		out.Warning = fmt.Sprintf("reasoning effort %q from %d tokens is not supported; snapped to %q", tier, policy.Tokens, snapped)
+		return out, nil
+	case KindNamed:
+		if containsReasoning(supported, policy.Value) {
+			return out, nil
+		}
+		snapped, ok := nearestSupportedTier(policy.Value, supported)
+		if !ok {
+			return out, nil
+		}
+		out.Policy = Policy{Kind: KindNamed, Value: snapped}
+		out.Source = ResolutionSourceSnapped
+		out.Reason = "unsupported_effort_snapped_to_nearest_supported"
+		out.Warning = fmt.Sprintf("reasoning effort %q is not supported; snapped to %q", policy.Value, snapped)
+		return out, nil
+	default:
+		return SupportedResolution{}, fmt.Errorf("reasoning: unsupported policy kind %q", policy.Kind)
+	}
+}
+
+func normalizeSupportedLevels(levels []string) []Reasoning {
+	out := make([]Reasoning, 0, len(levels))
+	for _, level := range levels {
+		policy, err := ParseString(level)
+		if err != nil {
+			continue
+		}
+		switch policy.Kind {
+		case KindOff, KindNamed:
+			if !containsReasoning(out, policy.Value) {
+				out = append(out, policy.Value)
+			}
+		}
+	}
+	return out
+}
+
+func containsReasoning(values []Reasoning, value Reasoning) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
+}
+
+func nearestSupportedTier(requested Reasoning, supported []Reasoning) (Reasoning, bool) {
+	requestBudget, ok := distanceBudget(requested)
+	if !ok {
+		return "", false
+	}
+	var best Reasoning
+	var bestBudget int
+	bestDistance := math.Inf(1)
+	for _, candidate := range supported {
+		candidateBudget, ok := distanceBudget(candidate)
+		if !ok {
+			continue
+		}
+		distance := math.Abs(math.Log2(float64(candidateBudget)) - math.Log2(float64(requestBudget)))
+		if best == "" || distance < bestDistance || (distance == bestDistance && candidateBudget > bestBudget) {
+			best = candidate
+			bestBudget = candidateBudget
+			bestDistance = distance
+		}
+	}
+	return best, best != ""
+}
+
+func distanceBudget(value Reasoning) (int, bool) {
+	switch value {
+	case ReasoningMinimal:
+		return PortableBudgets[ReasoningLow], true
+	case ReasoningXHigh, ReasoningMax:
+		return PortableBudgets[ReasoningHigh], true
+	}
+	budget, ok := PortableBudgets[value]
+	if !ok || budget <= 0 {
+		return 0, false
+	}
+	return budget, true
 }
 
 func BudgetFor(policy Policy, budgets map[Reasoning]int, maxTokens int) (int, error) {

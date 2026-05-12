@@ -132,3 +132,60 @@ func TestNearestTierForTokens(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveAgainstSupportedLevelsSnapsUnsupportedNamedTier(t *testing.T) {
+	policy, err := ParseString("high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveAgainstSupportedLevels(policy, []string{"low", "medium"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Policy.Value != ReasoningMedium {
+		t.Fatalf("resolved effort = %q, want medium", got.Policy.Value)
+	}
+	if got.Source != ResolutionSourceSnapped {
+		t.Fatalf("source = %q, want snapped", got.Source)
+	}
+	if got.Warning == "" {
+		t.Fatal("expected warning")
+	}
+}
+
+func TestResolveAgainstSupportedLevelsKeepsSupportedNamedTier(t *testing.T) {
+	policy, err := ParseString("high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveAgainstSupportedLevels(policy, []string{"low", "medium", "high"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Policy.Value != ReasoningHigh {
+		t.Fatalf("resolved effort = %q, want high", got.Policy.Value)
+	}
+	if got.Source != ResolutionSourceCaller {
+		t.Fatalf("source = %q, want caller", got.Source)
+	}
+	if got.Warning != "" {
+		t.Fatalf("warning = %q, want empty", got.Warning)
+	}
+}
+
+func TestResolveAgainstSupportedLevelsEmptySupportFallsThrough(t *testing.T) {
+	policy, err := ParseString("high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveAgainstSupportedLevels(policy, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Policy != policy {
+		t.Fatalf("policy = %#v, want unchanged %#v", got.Policy, policy)
+	}
+	if got.Warning != "" {
+		t.Fatalf("warning = %q, want empty", got.Warning)
+	}
+}

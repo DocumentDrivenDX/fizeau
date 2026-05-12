@@ -3,12 +3,14 @@ package harnesses
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/reasoning"
 )
 
 const EmbeddedDiscoverySource = "embedded-cassette"
@@ -118,6 +120,13 @@ type modelCandidate struct {
 
 func ResolveRunnerModel(harnessName string, surface modelcatalog.Surface, requestedModel, fallbackDefault string) RunnerModelResolution {
 	return resolveRunnerModel(defaultDiscoveryCache, harnessName, surface, requestedModel, fallbackDefault)
+}
+
+func ResolveRunnerModelWithCache(cache *ModelDiscoveryCache, harnessName string, surface modelcatalog.Surface, requestedModel, fallbackDefault string) RunnerModelResolution {
+	if cache == nil {
+		cache = defaultDiscoveryCache
+	}
+	return resolveRunnerModel(cache, harnessName, surface, requestedModel, fallbackDefault)
 }
 
 func resolveRunnerModel(cache *ModelDiscoveryCache, harnessName string, surface modelcatalog.Surface, requestedModel, fallbackDefault string) RunnerModelResolution {
@@ -248,4 +257,98 @@ func RunnerDefaultResolutionEvent(resolution RunnerModelResolution, metadata map
 func ShouldEmitRunnerDefaultResolution(resolution RunnerModelResolution) bool {
 	return resolution.Warning != "" ||
 		(!resolution.ExplicitPin && resolution.PriorDefaultModel != "" && resolution.ResolvedModel != "" && resolution.ResolvedModel != resolution.PriorDefaultModel)
+}
+
+func ResolveRunnerReasoning(harnessName, requestedReasoning string) ReasoningActual {
+	return ResolveRunnerReasoningWithCache(defaultDiscoveryCache, harnessName, requestedReasoning)
+}
+
+func ResolveRunnerReasoningWithCache(cache *ModelDiscoveryCache, harnessName, requestedReasoning string) ReasoningActual {
+	if cache == nil {
+		cache = defaultDiscoveryCache
+	}
+	resolution := ReasoningActual{
+		Harness:            strings.TrimSpace(harnessName),
+		RequestedReasoning: strings.TrimSpace(requestedReasoning),
+		Source:             string(reasoning.ResolutionSourceCaller),
+	}
+	policy, err := reasoning.ParseString(requestedReasoning)
+	if err != nil {
+		resolution.ResolvedReasoning = requestedReasoning
+		return resolution
+	}
+	if policy.Kind == reasoning.KindUnset || policy.Kind == reasoning.KindAuto {
+		resolution.Source = string(reasoning.ResolutionSourceDefault)
+	}
+
+	snapshot, err := cache.Snapshot(harnessName, EmbeddedDiscoverySource)
+	if err != nil || len(snapshot.ReasoningLevels) == 0 {
+		resolution.ResolvedReasoning = adapterReasoningPolicy(policy, requestedReasoning)
+		return resolution
+	}
+	resolution.DiscoverySource = snapshot.Source
+	resolution.SupportedReasoning = append([]string(nil), snapshot.ReasoningLevels...)
+
+	supported, err := reasoning.ResolveAgainstSupportedLevels(policy, snapshot.ReasoningLevels)
+	if err != nil {
+		resolution.ResolvedReasoning = adapterReasoningPolicy(policy, requestedReasoning)
+		return resolution
+	}
+	resolution.ResolvedReasoning = adapterReasoningPolicy(supported.Policy, requestedReasoning)
+	resolution.Source = string(supported.Source)
+	resolution.Reason = supported.Reason
+	resolution.Warning = supported.Warning
+	return resolution
+}
+
+func adapterReasoningPolicy(policy reasoning.Policy, fallback string) string {
+	switch policy.Kind {
+	case reasoning.KindUnset, reasoning.KindAuto, reasoning.KindOff:
+		return ""
+	case reasoning.KindTokens:
+		if policy.Tokens == 0 {
+			return ""
+		}
+		return string(policy.Value)
+	case reasoning.KindNamed:
+		return string(policy.Value)
+	default:
+		return fallback
+	}
+}
+
+func RunnerReasoningResolutionEvent(resolution ReasoningActual, metadata map[string]string, seq *int64) Event {
+	raw, err := json.Marshal(resolution)
+	if err != nil {
+		raw = []byte(`{"warning":"marshal runner reasoning resolution"}`)
+	}
+	ev := Event{
+		Type:     EventTypeRoutingDecision,
+		Time:     time.Now().UTC(),
+		Metadata: metadata,
+		Data:     raw,
+	}
+	if seq != nil {
+		ev.Sequence = *seq
+		*seq++
+	}
+	return ev
+}
+
+func ShouldEmitRunnerReasoningResolution(resolution ReasoningActual) bool {
+	return resolution.ResolvedReasoning != "" || resolution.Warning != ""
+}
+
+func LogRunnerReasoningWarning(resolution ReasoningActual) {
+	if resolution.Warning == "" {
+		return
+	}
+	slog.Warn("harness reasoning effort snapped",
+		"harness", resolution.Harness,
+		"requested_reasoning", resolution.RequestedReasoning,
+		"resolved_reasoning", resolution.ResolvedReasoning,
+		"reason", resolution.Reason,
+		"discovery_source", resolution.DiscoverySource,
+		"supported_reasoning", resolution.SupportedReasoning,
+	)
 }

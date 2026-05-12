@@ -151,6 +151,10 @@ func (sl *serviceSessionLog) writeEnd(req ServiceExecuteRequest, meta map[string
 				end.FailoverCount = len(end.AttemptedProviders) - 1
 			}
 		}
+		if final.Reasoning != nil {
+			end.ResolvedReasoning = agentcore.Reasoning(final.Reasoning.ResolvedReasoning)
+			end.ReasoningSource = final.Reasoning.Source
+		}
 		if end.SelectedServerInstance == "" {
 			end.SelectedServerInstance = sl.decision.ServerInstance
 		}

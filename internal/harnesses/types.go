@@ -108,6 +108,7 @@ type FinalData struct {
 	CostUSD        float64           `json:"cost_usd,omitempty"`
 	SessionLogPath string            `json:"session_log_path,omitempty"`
 	RoutingActual  *RoutingActual    `json:"routing_actual,omitempty"`
+	Reasoning      *ReasoningActual  `json:"reasoning,omitempty"`
 	Extra          map[string]string `json:"-"`
 }
 
@@ -186,6 +187,17 @@ type RoutingActual struct {
 	// Power is the catalog-projected power of the actually-dispatched
 	// Model. 0 means unknown/exact-pin-only/no catalog entry.
 	Power int `json:"power,omitempty"`
+}
+
+type ReasoningActual struct {
+	Harness            string   `json:"harness,omitempty"`
+	RequestedReasoning string   `json:"requested_reasoning,omitempty"`
+	ResolvedReasoning  string   `json:"resolved_reasoning,omitempty"`
+	Source             string   `json:"source,omitempty"`
+	DiscoverySource    string   `json:"discovery_source,omitempty"`
+	Reason             string   `json:"reason,omitempty"`
+	Warning            string   `json:"warning,omitempty"`
+	SupportedReasoning []string `json:"supported_reasoning,omitempty"`
 }
 
 // HarnessInfo describes a registered harness. Mirrors the public
