@@ -2,8 +2,12 @@ package discoverycache
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -124,6 +128,110 @@ func TestReadIsSubHundredMs(t *testing.T) {
 	}
 	if maxDuration > 100*time.Millisecond {
 		t.Errorf("Read() max = %v, want < 100ms", maxDuration)
+	}
+}
+
+func TestReadP99Contention(t *testing.T) {
+	c := newTestCache(t)
+	s := testSource("contention", time.Hour, 10*time.Second)
+	if err := os.MkdirAll(filepath.Join(c.Root, s.Tier), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWrite(c.dataPath(s), []byte(`{"v":0,"pad":"seed"}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		numReaders     = 32
+		readsPerReader = 200
+		numWrites      = 200
+	)
+
+	start := make(chan struct{})
+	done := make(chan struct{})
+	var once sync.Once
+	reportErr := func(err error) {
+		if err == nil {
+			return
+		}
+		once.Do(func() {
+			close(done)
+		})
+		t.Error(err)
+	}
+
+	samples := make(chan time.Duration, numReaders*readsPerReader)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		select {
+		case <-start:
+		case <-done:
+			return
+		}
+		for i := 0; i < numWrites; i++ {
+			pad := strings.Repeat(fmt.Sprintf("%04d", i), 256)
+			payload := []byte(fmt.Sprintf(`{"v":%d,"pad":"%s"}`, i, pad))
+			if err := c.Refresh(s, func(context.Context) ([]byte, error) {
+				time.Sleep(2 * time.Millisecond)
+				return payload, nil
+			}); err != nil {
+				reportErr(err)
+				return
+			}
+		}
+	}()
+
+	for range numReaders {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case <-start:
+			case <-done:
+				return
+			}
+			for i := 0; i < readsPerReader; i++ {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				begin := time.Now()
+				if _, err := c.Read(s); err != nil {
+					reportErr(err)
+					return
+				}
+				select {
+				case samples <- time.Since(begin):
+				case <-done:
+					return
+				}
+			}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(samples)
+
+	durations := make([]time.Duration, 0, numReaders*readsPerReader)
+	for d := range samples {
+		durations = append(durations, d)
+	}
+	if len(durations) == 0 {
+		t.Fatal("no contention samples collected")
+	}
+	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+	idx := int(float64(len(durations)) * 0.99)
+	if idx >= len(durations) {
+		idx = len(durations) - 1
+	}
+	p99 := durations[idx]
+	if p99 > 100*time.Millisecond {
+		t.Fatalf("Read p99 under contention = %v, want <= 100ms", p99)
 	}
 }
 
