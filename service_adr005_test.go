@@ -94,8 +94,20 @@ func TestRouteCandidateExposesComponentScores(t *testing.T) {
 		LatencyMS:          150,
 		SuccessRate:        0.95,
 		CostClass:          "cheap",
+		StickyAffinity:     250,
+		ScoreComponents: map[string]float64{
+			"base":                100,
+			"cost":                -6,
+			"deployment_locality": 15,
+			"quota_health":        12,
+			"utilization":         -4,
+			"performance":         9,
+			"power":               21,
+			"context_headroom":    0,
+			"sticky_affinity":     250,
+		},
 	}
-	got := routeCandidateFromInternal(cand)
+	got := routeCandidateFromInternal(cand, RoutePowerPolicy{MinPower: 6, MaxPower: 8})
 	if got.Components.Cost != 0.012 {
 		t.Errorf("Components.Cost=%v, want 0.012", got.Components.Cost)
 	}
@@ -108,14 +120,52 @@ func TestRouteCandidateExposesComponentScores(t *testing.T) {
 	if got.Components.SuccessRate != 0.95 {
 		t.Errorf("Components.SuccessRate=%v, want 0.95", got.Components.SuccessRate)
 	}
-	if got.Components.StickyAffinity != 0 {
-		t.Errorf("Components.StickyAffinity=%v, want 0 when no sticky match exists", got.Components.StickyAffinity)
+	if got.Components.StickyAffinity != 250 {
+		t.Errorf("Components.StickyAffinity=%v, want 250", got.Components.StickyAffinity)
 	}
 	if got.Components.Capability == 0 {
 		t.Errorf("Components.Capability=0; want non-zero for cheap class")
 	}
+	if got.Components.PowerWeightedCapability != 21 {
+		t.Errorf("Components.PowerWeightedCapability=%v, want 21", got.Components.PowerWeightedCapability)
+	}
+	if got.Components.PowerHintFit != 0 {
+		t.Errorf("Components.PowerHintFit=%v, want 0 within bounds", got.Components.PowerHintFit)
+	}
+	if got.Components.LatencyWeight != 9 {
+		t.Errorf("Components.LatencyWeight=%v, want 9", got.Components.LatencyWeight)
+	}
+	if got.Components.PlacementBonus != 265 {
+		t.Errorf("Components.PlacementBonus=%v, want 265", got.Components.PlacementBonus)
+	}
+	if got.Components.QuotaBonus != 12 {
+		t.Errorf("Components.QuotaBonus=%v, want 12", got.Components.QuotaBonus)
+	}
+	if got.Components.MarginalCostPenalty != 6 {
+		t.Errorf("Components.MarginalCostPenalty=%v, want 6", got.Components.MarginalCostPenalty)
+	}
+	if got.Components.AvailabilityPenalty != 4 {
+		t.Errorf("Components.AvailabilityPenalty=%v, want 4", got.Components.AvailabilityPenalty)
+	}
+	if got.Components.StaleSignalPenalty != 0 {
+		t.Errorf("Components.StaleSignalPenalty=%v, want 0", got.Components.StaleSignalPenalty)
+	}
 	if got.FilterReason != "" {
 		t.Errorf("eligible candidate FilterReason=%q, want empty", got.FilterReason)
+	}
+
+	raw, err := json.Marshal(got.Components)
+	if err != nil {
+		t.Fatalf("marshal components: %v", err)
+	}
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatalf("unmarshal components: %v", err)
+	}
+	for _, key := range []string{"power_weighted_capability", "power_hint_fit", "latency_weight", "placement_bonus", "quota_bonus", "marginal_cost_penalty", "availability_penalty", "stale_signal_penalty"} {
+		if _, ok := generic[key]; !ok {
+			t.Fatalf("missing SD-005 component %q in %s", key, raw)
+		}
 	}
 }
 
@@ -144,7 +194,7 @@ func TestRouteCandidateFilterReasonClassification(t *testing.T) {
 				Eligible:     false,
 				Reason:       tc.freeform,
 				FilterReason: tc.typed,
-			})
+			}, RoutePowerPolicy{})
 			if got.FilterReason != tc.want {
 				t.Errorf("typed=%q (Reason=%q): FilterReason=%q, want %q", tc.typed, tc.freeform, got.FilterReason, tc.want)
 			}
@@ -191,18 +241,26 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 			Eligible:           true,
 			Reason:             "profile=cheap; score=80.0",
 			Components: RouteCandidateComponents{
-				Power:            7,
-				Cost:             0.002,
-				CostClass:        "local",
-				LatencyMS:        120,
-				SpeedTPS:         40,
-				Utilization:      0.25,
-				SuccessRate:      0.9,
-				QuotaOK:          true,
-				QuotaPercentUsed: 20,
-				QuotaTrend:       routing.QuotaTrendHealthy,
-				Capability:       1,
-				StickyAffinity:   250,
+				Power:                   7,
+				Cost:                    0.002,
+				CostClass:               "local",
+				LatencyMS:               120,
+				SpeedTPS:                40,
+				Utilization:             0.25,
+				SuccessRate:             0.9,
+				QuotaOK:                 true,
+				QuotaPercentUsed:        20,
+				QuotaTrend:              routing.QuotaTrendHealthy,
+				Capability:              1,
+				StickyAffinity:          250,
+				PowerWeightedCapability: 19,
+				PowerHintFit:            0,
+				LatencyWeight:           12,
+				PlacementBonus:          265,
+				QuotaBonus:              12,
+				MarginalCostPenalty:     0,
+				AvailabilityPenalty:     4,
+				StaleSignalPenalty:      0,
 			},
 		},
 		{
@@ -229,6 +287,25 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 	}
 	if out[0].Components.Utilization != 0.25 || out[0].Components.StickyAffinity != 250 {
 		t.Errorf("first candidate Components=%#v, want utilization/sticky affinity carried through", out[0].Components)
+	}
+	if out[0].Components.PowerWeightedCapability != 19 || out[0].Components.LatencyWeight != 12 || out[0].Components.PlacementBonus != 265 {
+		t.Errorf("first candidate SD-005 components=%#v, want power/latency/placement carried through", out[0].Components)
+	}
+	if out[0].Components.QuotaBonus != 12 || out[0].Components.AvailabilityPenalty != 4 {
+		t.Errorf("first candidate SD-005 quota/availability components=%#v, want carry through", out[0].Components)
+	}
+	raw, err := json.Marshal(out[0].Components)
+	if err != nil {
+		t.Fatalf("marshal routing-decision components: %v", err)
+	}
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatalf("unmarshal routing-decision components: %v", err)
+	}
+	for _, key := range []string{"power_weighted_capability", "power_hint_fit", "latency_weight", "placement_bonus", "quota_bonus", "marginal_cost_penalty", "availability_penalty", "stale_signal_penalty"} {
+		if _, ok := generic[key]; !ok {
+			t.Fatalf("missing SD-005 component %q in %s", key, raw)
+		}
 	}
 	if out[0].FilterReason != "" {
 		t.Errorf("eligible candidate event FilterReason=%q, want empty", out[0].FilterReason)

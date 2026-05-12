@@ -35,18 +35,26 @@ type ServiceOverridePin struct {
 // candidate the unconstrained auto pipeline would have picked. Zero fields
 // mean "unknown / not contributing".
 type ServiceOverrideAutoComponents struct {
-	Power            int     `json:"power"`
-	Cost             float64 `json:"cost"`
-	CostClass        string  `json:"cost_class,omitempty"`
-	LatencyMS        float64 `json:"latency_ms"`
-	SpeedTPS         float64 `json:"speed_tps"`
-	Utilization      float64 `json:"utilization"`
-	SuccessRate      float64 `json:"success_rate"`
-	QuotaOK          bool    `json:"quota_ok"`
-	QuotaPercentUsed int     `json:"quota_percent_used"`
-	QuotaTrend       string  `json:"quota_trend,omitempty"`
-	Capability       float64 `json:"capability"`
-	StickyAffinity   float64 `json:"sticky_affinity"`
+	Power                   int     `json:"power"`
+	Cost                    float64 `json:"cost"`
+	CostClass               string  `json:"cost_class,omitempty"`
+	LatencyMS               float64 `json:"latency_ms"`
+	SpeedTPS                float64 `json:"speed_tps"`
+	Utilization             float64 `json:"utilization"`
+	SuccessRate             float64 `json:"success_rate"`
+	QuotaOK                 bool    `json:"quota_ok"`
+	QuotaPercentUsed        int     `json:"quota_percent_used"`
+	QuotaTrend              string  `json:"quota_trend,omitempty"`
+	Capability              float64 `json:"capability"`
+	StickyAffinity          float64 `json:"sticky_affinity"`
+	PowerWeightedCapability float64 `json:"power_weighted_capability"`
+	PowerHintFit            float64 `json:"power_hint_fit"`
+	LatencyWeight           float64 `json:"latency_weight"`
+	PlacementBonus          float64 `json:"placement_bonus"`
+	QuotaBonus              float64 `json:"quota_bonus"`
+	MarginalCostPenalty     float64 `json:"marginal_cost_penalty"`
+	AvailabilityPenalty     float64 `json:"availability_penalty"`
+	StaleSignalPenalty      float64 `json:"stale_signal_penalty"`
 }
 
 // ServiceOverridePromptFeatures captures prompt-classification inputs that
@@ -164,18 +172,26 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 			ExactPinOnly:       c.ExactPinOnly,
 			ExclusionReason:    c.ExclusionReason,
 			Components: ServiceRoutingDecisionComponents{
-				Power:            c.Components.Power,
-				Cost:             c.Components.Cost,
-				CostClass:        c.Components.CostClass,
-				LatencyMS:        c.Components.LatencyMS,
-				SpeedTPS:         c.Components.SpeedTPS,
-				Utilization:      c.Components.Utilization,
-				SuccessRate:      c.Components.SuccessRate,
-				QuotaOK:          c.Components.QuotaOK,
-				QuotaPercentUsed: c.Components.QuotaPercentUsed,
-				QuotaTrend:       c.Components.QuotaTrend,
-				Capability:       c.Components.Capability,
-				StickyAffinity:   c.Components.StickyAffinity,
+				Power:                   c.Components.Power,
+				Cost:                    c.Components.Cost,
+				CostClass:               c.Components.CostClass,
+				LatencyMS:               c.Components.LatencyMS,
+				SpeedTPS:                c.Components.SpeedTPS,
+				Utilization:             c.Components.Utilization,
+				SuccessRate:             c.Components.SuccessRate,
+				QuotaOK:                 c.Components.QuotaOK,
+				QuotaPercentUsed:        c.Components.QuotaPercentUsed,
+				QuotaTrend:              c.Components.QuotaTrend,
+				Capability:              c.Components.Capability,
+				StickyAffinity:          c.Components.StickyAffinity,
+				PowerWeightedCapability: c.Components.PowerWeightedCapability,
+				PowerHintFit:            c.Components.PowerHintFit,
+				LatencyWeight:           c.Components.LatencyWeight,
+				PlacementBonus:          c.Components.PlacementBonus,
+				QuotaBonus:              c.Components.QuotaBonus,
+				MarginalCostPenalty:     c.Components.MarginalCostPenalty,
+				AvailabilityPenalty:     c.Components.AvailabilityPenalty,
+				StaleSignalPenalty:      c.Components.StaleSignalPenalty,
 			},
 			Utilization: ServiceRoutingUtilizationState{
 				Source:         c.Utilization.Source,
@@ -240,18 +256,26 @@ type ServiceRoutingDecisionCandidate struct {
 
 // ServiceRoutingDecisionComponents exposes the per-axis score inputs.
 type ServiceRoutingDecisionComponents struct {
-	Power            int     `json:"power"`
-	Cost             float64 `json:"cost"`
-	CostClass        string  `json:"cost_class,omitempty"`
-	LatencyMS        float64 `json:"latency_ms"`
-	SpeedTPS         float64 `json:"speed_tps"`
-	Utilization      float64 `json:"utilization"`
-	SuccessRate      float64 `json:"success_rate"`
-	QuotaOK          bool    `json:"quota_ok"`
-	QuotaPercentUsed int     `json:"quota_percent_used"`
-	QuotaTrend       string  `json:"quota_trend,omitempty"`
-	Capability       float64 `json:"capability"`
-	StickyAffinity   float64 `json:"sticky_affinity"`
+	Power                   int     `json:"power"`
+	Cost                    float64 `json:"cost"`
+	CostClass               string  `json:"cost_class,omitempty"`
+	LatencyMS               float64 `json:"latency_ms"`
+	SpeedTPS                float64 `json:"speed_tps"`
+	Utilization             float64 `json:"utilization"`
+	SuccessRate             float64 `json:"success_rate"`
+	QuotaOK                 bool    `json:"quota_ok"`
+	QuotaPercentUsed        int     `json:"quota_percent_used"`
+	QuotaTrend              string  `json:"quota_trend,omitempty"`
+	Capability              float64 `json:"capability"`
+	StickyAffinity          float64 `json:"sticky_affinity"`
+	PowerWeightedCapability float64 `json:"power_weighted_capability"`
+	PowerHintFit            float64 `json:"power_hint_fit"`
+	LatencyWeight           float64 `json:"latency_weight"`
+	PlacementBonus          float64 `json:"placement_bonus"`
+	QuotaBonus              float64 `json:"quota_bonus"`
+	MarginalCostPenalty     float64 `json:"marginal_cost_penalty"`
+	AvailabilityPenalty     float64 `json:"availability_penalty"`
+	StaleSignalPenalty      float64 `json:"stale_signal_penalty"`
 }
 
 type ServiceRoutingStickyState struct {

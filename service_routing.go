@@ -108,7 +108,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			err = eerr
 		}
 	}
-	result := routeDecisionFromInternal(dec)
+	result := routeDecisionFromInternal(dec, powerPolicy)
 	if err != nil {
 		if result == nil {
 			result = &RouteDecision{}
@@ -136,7 +136,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	return result, nil
 }
 
-func routeDecisionFromInternal(dec *routing.Decision) *RouteDecision {
+func routeDecisionFromInternal(dec *routing.Decision, powerPolicy RoutePowerPolicy) *RouteDecision {
 	if dec == nil {
 		return nil
 	}
@@ -147,22 +147,52 @@ func routeDecisionFromInternal(dec *routing.Decision) *RouteDecision {
 		ServerInstance: dec.ServerInstance,
 		Model:          dec.Model,
 		Reason:         dec.Reason,
-		Candidates:     routeCandidatesFromInternal(dec.Candidates),
+		Candidates:     routeCandidatesFromInternal(dec.Candidates, powerPolicy),
 	}
 }
 
-func routeCandidatesFromInternal(candidates []routing.Candidate) []RouteCandidate {
+func routeCandidatesFromInternal(candidates []routing.Candidate, powerPolicy RoutePowerPolicy) []RouteCandidate {
 	if len(candidates) == 0 {
 		return nil
 	}
 	out := make([]RouteCandidate, len(candidates))
 	for i, candidate := range candidates {
-		out[i] = routeCandidateFromInternal(candidate)
+		out[i] = routeCandidateFromInternal(candidate, powerPolicy)
 	}
 	return out
 }
 
-func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
+func routeCandidateFromInternal(candidate routing.Candidate, powerPolicy RoutePowerPolicy) RouteCandidate {
+	components := RouteCandidateComponents{
+		Power:            candidate.Power,
+		Cost:             candidate.CostUSDPer1kTokens,
+		CostClass:        candidate.CostClass,
+		LatencyMS:        candidate.LatencyMS,
+		SpeedTPS:         candidate.SpeedTPS,
+		Utilization:      candidate.Utilization,
+		SuccessRate:      candidate.SuccessRate,
+		QuotaOK:          candidate.QuotaOK,
+		QuotaPercentUsed: candidate.QuotaPercentUsed,
+		QuotaTrend:       candidate.QuotaTrend,
+		Capability:       capabilityScoreForCostClass(candidate.CostClass),
+		ContextHeadroom:  candidate.ContextHeadroom,
+		StickyAffinity:   candidate.StickyAffinity,
+	}
+	powerHintFit := scorePowerHintFit(candidate.Power, powerPolicy)
+	scorePower := candidate.ScoreComponents["power"]
+	scoreCost := candidate.ScoreComponents["cost"]
+	scorePerformance := candidate.ScoreComponents["performance"]
+	scoreLocality := candidate.ScoreComponents["deployment_locality"]
+	scoreQuota := candidate.ScoreComponents["quota_health"]
+	scoreUtilization := candidate.ScoreComponents["utilization"]
+	components.PowerHintFit = powerHintFit
+	components.PowerWeightedCapability = scorePower - powerHintFit + positiveScorePart(scoreCost)
+	components.LatencyWeight = positiveScorePart(scorePerformance)
+	components.StaleSignalPenalty = positiveScorePart(-scorePerformance)
+	components.PlacementBonus = scoreLocality + candidate.StickyAffinity
+	components.QuotaBonus = positiveScorePart(scoreQuota)
+	components.MarginalCostPenalty = positiveScorePart(-scoreCost)
+	components.AvailabilityPenalty = positiveScorePart(-scoreQuota) + positiveScorePart(-scoreUtilization)
 	return RouteCandidate{
 		Harness:            candidate.Harness,
 		Provider:           candidate.Provider,
@@ -177,22 +207,28 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 		FilterReason:       publicFilterReason(candidate),
 		ContextLength:      candidate.ContextLength,
 		ContextSource:      candidate.ContextSource,
-		Components: RouteCandidateComponents{
-			Power:            candidate.Power,
-			Cost:             candidate.CostUSDPer1kTokens,
-			CostClass:        candidate.CostClass,
-			LatencyMS:        candidate.LatencyMS,
-			SpeedTPS:         candidate.SpeedTPS,
-			Utilization:      candidate.Utilization,
-			SuccessRate:      candidate.SuccessRate,
-			QuotaOK:          candidate.QuotaOK,
-			QuotaPercentUsed: candidate.QuotaPercentUsed,
-			QuotaTrend:       candidate.QuotaTrend,
-			Capability:       capabilityScoreForCostClass(candidate.CostClass),
-			ContextHeadroom:  candidate.ContextHeadroom,
-			StickyAffinity:   candidate.StickyAffinity,
-		},
+		Components:         components,
 	}
+}
+
+func scorePowerHintFit(power int, policy RoutePowerPolicy) float64 {
+	if power <= 0 {
+		return 0
+	}
+	if policy.MinPower > 0 && power < policy.MinPower {
+		return -float64(policy.MinPower-power) * 5
+	}
+	if policy.MaxPower > 0 && power > policy.MaxPower {
+		return -float64(power - policy.MaxPower)
+	}
+	return 0
+}
+
+func positiveScorePart(v float64) float64 {
+	if v > 0 {
+		return v
+	}
+	return 0
 }
 
 type routeSnapshotCandidateKey struct {

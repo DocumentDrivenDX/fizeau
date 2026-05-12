@@ -60,6 +60,8 @@ func TestResolvePenalizesUnknownUtilizationAndPerformance(t *testing.T) {
 	if known.Score <= unknown.Score {
 		t.Fatalf("known score %.1f should beat unknown score %.1f", known.Score, unknown.Score)
 	}
+	assertScoreComponentsSumToScore(t, known)
+	assertScoreComponentsSumToScore(t, unknown)
 	if known.ScoreComponents == nil || unknown.ScoreComponents == nil {
 		t.Fatalf("score components must be populated: known=%v unknown=%v", known.ScoreComponents, unknown.ScoreComponents)
 	}
@@ -94,6 +96,17 @@ func TestResolvePenalizesUnknownUtilizationAndPerformance(t *testing.T) {
 	}
 	if dec.Provider != "known" {
 		t.Fatalf("winner provider=%q, want known", dec.Provider)
+	}
+}
+
+func assertScoreComponentsSumToScore(t *testing.T, c Candidate) {
+	t.Helper()
+	total := 0.0
+	for _, v := range c.ScoreComponents {
+		total += v
+	}
+	if diff := total - c.Score; diff < -1e-9 || diff > 1e-9 {
+		t.Fatalf("score components sum=%v, want score=%v (candidate=%+v)", total, c.Score, c)
 	}
 }
 

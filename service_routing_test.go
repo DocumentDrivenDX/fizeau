@@ -43,9 +43,21 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 		QuotaOK:            true,
 		QuotaPercentUsed:   25,
 		QuotaTrend:         routing.QuotaTrendHealthy,
+		StickyAffinity:     10,
+		ScoreComponents: map[string]float64{
+			"base":                100,
+			"cost":                -4,
+			"deployment_locality": 12,
+			"quota_health":        6,
+			"utilization":         -3,
+			"performance":         9,
+			"power":               18,
+			"context_headroom":    0.15,
+			"sticky_affinity":     10,
+		},
 	}
 
-	got := routeCandidateFromInternal(candidate)
+	got := routeCandidateFromInternal(candidate, RoutePowerPolicy{MinPower: 6, MaxPower: 8})
 	if got.Harness != candidate.Harness ||
 		got.Provider != candidate.Provider ||
 		got.Endpoint != candidate.Endpoint ||
@@ -65,8 +77,32 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 	if got.Components.Utilization != 0 {
 		t.Fatalf("components utilization=%v, want zero when unavailable", got.Components.Utilization)
 	}
-	if got.Components.StickyAffinity != 0 {
-		t.Fatalf("components sticky affinity=%v, want zero without sticky match", got.Components.StickyAffinity)
+	if got.Components.StickyAffinity != 10 {
+		t.Fatalf("components sticky affinity=%v, want 10 from sticky match", got.Components.StickyAffinity)
+	}
+	if got.Components.PowerWeightedCapability != 18 {
+		t.Fatalf("components power_weighted_capability=%v, want 18", got.Components.PowerWeightedCapability)
+	}
+	if got.Components.PowerHintFit != 0 {
+		t.Fatalf("components power_hint_fit=%v, want 0 within bounds", got.Components.PowerHintFit)
+	}
+	if got.Components.LatencyWeight != 9 {
+		t.Fatalf("components latency_weight=%v, want 9", got.Components.LatencyWeight)
+	}
+	if got.Components.PlacementBonus != 12+10 {
+		t.Fatalf("components placement_bonus=%v, want 22", got.Components.PlacementBonus)
+	}
+	if got.Components.QuotaBonus != 6 {
+		t.Fatalf("components quota_bonus=%v, want 6", got.Components.QuotaBonus)
+	}
+	if got.Components.MarginalCostPenalty != 4 {
+		t.Fatalf("components marginal_cost_penalty=%v, want 4", got.Components.MarginalCostPenalty)
+	}
+	if got.Components.AvailabilityPenalty != 3 {
+		t.Fatalf("components availability_penalty=%v, want 3", got.Components.AvailabilityPenalty)
+	}
+	if got.Components.StaleSignalPenalty != 0 {
+		t.Fatalf("components stale_signal_penalty=%v, want 0", got.Components.StaleSignalPenalty)
 	}
 	if got.ContextLength != candidate.ContextLength || got.ContextSource != candidate.ContextSource {
 		t.Fatalf("context evidence=%d/%q, want %d/%q", got.ContextLength, got.ContextSource, candidate.ContextLength, candidate.ContextSource)
@@ -78,7 +114,7 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 	rejected := candidate
 	rejected.Eligible = false
 	rejected.Reason = "model not in harness allow-list"
-	got = routeCandidateFromInternal(rejected)
+	got = routeCandidateFromInternal(rejected, RoutePowerPolicy{})
 	if got.Reason != rejected.Reason {
 		t.Fatalf("rejected Reason=%q, want %q", got.Reason, rejected.Reason)
 	}

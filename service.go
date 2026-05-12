@@ -500,9 +500,8 @@ type RouteCandidate struct {
 	// ExclusionReason explains why the snapshot marked the candidate as
 	// excluded from automatic routing.
 	ExclusionReason string
-	// Components carries the per-axis score inputs (power, cost, latency,
-	// success rate, quota, capability) that fed the final Score. Consumers use these to
-	// explain rankings without parsing the free-form Reason.
+	// Components carries the raw score inputs plus the SD-005 score-evidence
+	// breakdown used to explain the final Score without parsing Reason.
 	Components RouteCandidateComponents
 	// Utilization carries the normalized load sample used by the router.
 	Utilization RouteUtilizationState
@@ -557,6 +556,17 @@ type RouteCandidateComponents struct {
 	// StickyAffinity is the bonus applied when the candidate matches the
 	// request's sticky server-instance assignment. Zero means no match.
 	StickyAffinity float64
+
+	// SD-005 score evidence fields. These mirror the public route trace and
+	// keep the score decomposition aligned with the design vocabulary.
+	PowerWeightedCapability float64 `json:"power_weighted_capability"`
+	PowerHintFit            float64 `json:"power_hint_fit"`
+	LatencyWeight           float64 `json:"latency_weight"`
+	PlacementBonus          float64 `json:"placement_bonus"`
+	QuotaBonus              float64 `json:"quota_bonus"`
+	MarginalCostPenalty     float64 `json:"marginal_cost_penalty"`
+	AvailabilityPenalty     float64 `json:"availability_penalty"`
+	StaleSignalPenalty      float64 `json:"stale_signal_penalty"`
 }
 
 const (

@@ -66,6 +66,35 @@ func TestSoftPowerScoring_AsymmetricUndershootHeavier(t *testing.T) {
 	}
 }
 
+func TestSoftPowerScoring_BelowMinPenaltyIsSteeperPerPoint(t *testing.T) {
+	in := softPowerInputs(map[string]int{
+		"below-min": 7,
+		"above-max": 11,
+	})
+
+	dec, err := Resolve(Request{MinPower: 8, MaxPower: 10}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	var below, above Candidate
+	for _, c := range dec.Candidates {
+		switch c.Provider {
+		case "below-min":
+			below = c
+		case "above-max":
+			above = c
+		}
+	}
+	if below.Provider != "below-min" || above.Provider != "above-max" {
+		t.Fatalf("candidates=%+v, want both power probes", dec.Candidates)
+	}
+	belowPerPoint := -below.ScoreComponents["power"] / float64(8-below.Power)
+	abovePerPoint := -above.ScoreComponents["power"] / float64(above.Power-10)
+	if belowPerPoint <= abovePerPoint {
+		t.Fatalf("below-min penalty per point=%v, want steeper than above-max=%v (below=%#v above=%#v)", belowPerPoint, abovePerPoint, below, above)
+	}
+}
+
 func TestScorePowerMinPowerIsSoftAndPinsRemainConstraints(t *testing.T) {
 	in := scorePowerInputs()
 

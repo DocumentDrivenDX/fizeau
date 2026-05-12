@@ -136,18 +136,26 @@ func (s *service) resolveAutoDecisionForOverride(ctx context.Context, req Servic
 		}
 		if c.Harness == dec.Harness && c.Provider == dec.Provider && c.Model == dec.Model {
 			return auto, c.Score, ServiceOverrideAutoComponents{
-				Power:            c.Components.Power,
-				Cost:             c.Components.Cost,
-				CostClass:        c.Components.CostClass,
-				LatencyMS:        c.Components.LatencyMS,
-				SpeedTPS:         c.Components.SpeedTPS,
-				Utilization:      c.Components.Utilization,
-				SuccessRate:      c.Components.SuccessRate,
-				QuotaOK:          c.Components.QuotaOK,
-				QuotaPercentUsed: c.Components.QuotaPercentUsed,
-				QuotaTrend:       c.Components.QuotaTrend,
-				Capability:       c.Components.Capability,
-				StickyAffinity:   c.Components.StickyAffinity,
+				Power:                   c.Components.Power,
+				Cost:                    c.Components.Cost,
+				CostClass:               c.Components.CostClass,
+				LatencyMS:               c.Components.LatencyMS,
+				SpeedTPS:                c.Components.SpeedTPS,
+				Utilization:             c.Components.Utilization,
+				SuccessRate:             c.Components.SuccessRate,
+				QuotaOK:                 c.Components.QuotaOK,
+				QuotaPercentUsed:        c.Components.QuotaPercentUsed,
+				QuotaTrend:              c.Components.QuotaTrend,
+				Capability:              c.Components.Capability,
+				StickyAffinity:          c.Components.StickyAffinity,
+				PowerWeightedCapability: c.Components.PowerWeightedCapability,
+				PowerHintFit:            c.Components.PowerHintFit,
+				LatencyWeight:           c.Components.LatencyWeight,
+				PlacementBonus:          c.Components.PlacementBonus,
+				QuotaBonus:              c.Components.QuotaBonus,
+				MarginalCostPenalty:     c.Components.MarginalCostPenalty,
+				AvailabilityPenalty:     c.Components.AvailabilityPenalty,
+				StaleSignalPenalty:      c.Components.StaleSignalPenalty,
 			}
 		}
 	}
