@@ -317,6 +317,7 @@ func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Conf
 	}
 
 	fmt.Printf("Canonical: %s\n", detail.CanonicalID)
+	fmt.Printf("Identity: %s\n", modelIdentitySummary(detail.KnownModel))
 	fmt.Printf("KnownModel: %+v\n", detail.KnownModel)
 	fmt.Printf("RuntimeQuotaRemaining: %s\n", formatRuntimeQuota(detail.KnownModel.QuotaRemaining))
 	fmt.Printf("RecentP50Latency: %s\n", formatLatency(detail.KnownModel.RecentP50Latency))
@@ -455,6 +456,26 @@ func cmdCachePrune(workDir string) int {
 
 func canonicalModelID(model modelregistry.KnownModel) string {
 	return model.Provider + "/" + model.ID
+}
+
+func modelIdentitySummary(model modelregistry.KnownModel) string {
+	parts := []string{canonicalModelID(model)}
+	if model.Harness != "" {
+		parts = append(parts, "harness="+model.Harness)
+	}
+	if model.ProviderType != "" {
+		parts = append(parts, "provider_type="+model.ProviderType)
+	}
+	if model.EndpointName != "" {
+		parts = append(parts, "endpoint_name="+model.EndpointName)
+	}
+	if model.EndpointBaseURL != "" {
+		parts = append(parts, "endpoint_base_url="+model.EndpointBaseURL)
+	}
+	if model.ServerInstance != "" {
+		parts = append(parts, "server_instance="+model.ServerInstance)
+	}
+	return strings.Join(parts, " ")
 }
 
 func formatModelCandidates(models []modelregistry.KnownModel) string {

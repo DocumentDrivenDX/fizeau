@@ -89,6 +89,30 @@ func effectiveProviderIncludeByDefault(providerName string, pc config.ProviderCo
 	return billing == modelcatalog.BillingModelFixed || billing == modelcatalog.BillingModelSubscription
 }
 
+func effectiveProviderBilling(providerName string, pc config.ProviderConfig, cat *modelcatalog.Catalog) modelcatalog.BillingModel {
+	if billing := modelcatalog.BillingModel(strings.TrimSpace(pc.Billing)); billing != modelcatalog.BillingModelUnknown {
+		return billing
+	}
+	if cat != nil {
+		name := strings.ToLower(strings.TrimSpace(providerName))
+		providerType := strings.ToLower(strings.TrimSpace(pc.Type))
+		for _, provider := range cat.Providers() {
+			catalogName := strings.ToLower(strings.TrimSpace(provider.Name))
+			catalogType := strings.ToLower(strings.TrimSpace(provider.Type))
+			if name != "" && catalogName == name {
+				return provider.Billing
+			}
+			if providerType != "" && (catalogType == providerType || catalogName == providerType) {
+				return provider.Billing
+			}
+		}
+	}
+	if billing := modelcatalog.BillingForProviderSystem(pc.Type); billing != modelcatalog.BillingModelUnknown {
+		return billing
+	}
+	return modelcatalog.BillingForHarness(pc.Type)
+}
+
 func providerStatus(cache *discoverycache.Cache, providerName string) ModelStatus {
 	if cache == nil {
 		return StatusAvailable

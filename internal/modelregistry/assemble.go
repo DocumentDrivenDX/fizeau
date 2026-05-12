@@ -61,15 +61,23 @@ func AssembleWithOptions(ctx context.Context, cfg *config.Config, cat *modelcata
 			snapshot.Sources[source] = meta
 		}
 		includeByDefault := effectiveProviderIncludeByDefault(providerName, pcfg, cat)
+		billing := effectiveProviderBilling(providerName, pcfg, cat)
 		status := providerStatus(cache, providerName)
 		for _, discoveredModel := range discovered.Models {
 			model := KnownModel{
-				Provider:      providerName,
-				ID:            discoveredModel.ID,
-				Configured:    discoveredModel.Configured,
-				DiscoveredVia: discoveredModel.Via,
-				DiscoveredAt:  discoveredModel.DiscoveredAt,
-				Status:        status,
+				Provider:         providerName,
+				ProviderType:     discoveredModel.ProviderType,
+				Harness:          discoveredModel.Harness,
+				ID:               discoveredModel.ID,
+				Configured:       discoveredModel.Configured,
+				EndpointName:     discoveredModel.EndpointName,
+				EndpointBaseURL:  discoveredModel.EndpointBaseURL,
+				ServerInstance:   discoveredModel.ServerInstance,
+				Billing:          billing,
+				IncludeByDefault: includeByDefault,
+				DiscoveredVia:    discoveredModel.Via,
+				DiscoveredAt:     discoveredModel.DiscoveredAt,
+				Status:           status,
 			}
 			model = enrichModel(model, includeByDefault, cat)
 			model = attachRuntimeSignals(model, cache)
@@ -79,6 +87,21 @@ func AssembleWithOptions(ctx context.Context, cfg *config.Config, cat *modelcata
 	sort.Slice(snapshot.Models, func(i, j int) bool {
 		if snapshot.Models[i].Provider != snapshot.Models[j].Provider {
 			return snapshot.Models[i].Provider < snapshot.Models[j].Provider
+		}
+		if snapshot.Models[i].ProviderType != snapshot.Models[j].ProviderType {
+			return snapshot.Models[i].ProviderType < snapshot.Models[j].ProviderType
+		}
+		if snapshot.Models[i].Harness != snapshot.Models[j].Harness {
+			return snapshot.Models[i].Harness < snapshot.Models[j].Harness
+		}
+		if snapshot.Models[i].EndpointName != snapshot.Models[j].EndpointName {
+			return snapshot.Models[i].EndpointName < snapshot.Models[j].EndpointName
+		}
+		if snapshot.Models[i].EndpointBaseURL != snapshot.Models[j].EndpointBaseURL {
+			return snapshot.Models[i].EndpointBaseURL < snapshot.Models[j].EndpointBaseURL
+		}
+		if snapshot.Models[i].ServerInstance != snapshot.Models[j].ServerInstance {
+			return snapshot.Models[i].ServerInstance < snapshot.Models[j].ServerInstance
 		}
 		return snapshot.Models[i].ID < snapshot.Models[j].ID
 	})
@@ -110,7 +133,9 @@ func ActiveSources(cfg *config.Config) []discoverycache.Source {
 				RefreshDeadline: discoveryRefreshDeadlinePTY,
 			})
 		case "openai", "openrouter", "vidar-ds4", "sindri-llamacpp", "ds4", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai":
-			sources = append(sources, discoverySource(providerName, discoveryTTLForProvider(pcfg), discoveryRefreshDeadlineHTTP))
+			for _, endpoint := range discoveryEndpoints(providerName, pcfg) {
+				sources = append(sources, discoverySource(endpointSourceName(providerName, endpoint.Name, endpoint.BaseURL, endpoint.ServerInstance), discoveryTTLForProvider(pcfg), discoveryRefreshDeadlineHTTP))
+			}
 			if normalizeProviderType(pcfg.Type) == "ds4" || normalizeProviderType(pcfg.Type) == "vidar-ds4" {
 				sources = append(sources, discoverySource(providerName+"-props", discoveryTTLHTTPLocal, discoveryRefreshDeadlineHTTP))
 			}

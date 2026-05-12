@@ -28,9 +28,17 @@ const (
 // KnownModel is one discovered provider/model identity enriched with catalog
 // metadata when the catalog knows the model.
 type KnownModel struct {
-	Provider   string
-	ID         string
-	Configured bool
+	Provider     string
+	ProviderType string
+	Harness      string
+	ID           string
+	Configured   bool
+
+	EndpointName     string
+	EndpointBaseURL  string
+	ServerInstance   string
+	Billing          modelcatalog.BillingModel
+	IncludeByDefault bool
 
 	DiscoveredVia Source
 	DiscoveredAt  time.Time
