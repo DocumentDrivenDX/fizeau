@@ -271,6 +271,53 @@ func TestResolveRouteUnknownPolicyIsTyped(t *testing.T) {
 	}
 }
 
+func TestResolveRouteLegacyPolicyAliasesAreRejected(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+  cheap:
+    min_power: 1
+    max_power: 5
+    allow_local: true
+  smart:
+    min_power: 6
+    max_power: 10
+    allow_local: false
+  air-gapped:
+    min_power: 1
+    max_power: 5
+    allow_local: true
+    require: [no_remote]
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := testRoutingErrorService()
+	for _, alias := range []string{"standard", "code-fast", "fast", "code-smart", "code-economy", "local", "offline"} {
+		t.Run(alias, func(t *testing.T) {
+			_, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: alias})
+			if err == nil {
+				t.Fatalf("expected legacy policy alias %q to be rejected", alias)
+			}
+			if !errors.Is(err, ErrUnknownPolicy{}) {
+				t.Fatalf("errors.Is should match ErrUnknownPolicy for %q: %T %v", alias, err, err)
+			}
+			var typed *ErrUnknownPolicy
+			if !errors.As(err, &typed) {
+				t.Fatalf("errors.As should extract ErrUnknownPolicy for %q: %T %v", alias, err, err)
+			}
+			if typed.Policy != alias {
+				t.Fatalf("Policy=%q, want %q", typed.Policy, alias)
+			}
+		})
+	}
+}
+
 func TestResolveRouteLegacyCodePoliciesRejectWithReplacementGuidance(t *testing.T) {
 	svc := testRoutingErrorService()
 

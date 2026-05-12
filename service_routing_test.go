@@ -858,9 +858,8 @@ func normalizeRoutingFixtureManifest(t *testing.T, contents string) string {
 				if !ok || maxPower <= 0 {
 					maxPower = 10
 				}
-				policyName := routingFixturePolicyName(name)
-				if _, exists := policies[policyName]; !exists {
-					policies[policyName] = map[string]any{
+				if _, exists := policies[name]; !exists {
+					policies[name] = map[string]any{
 						"min_power":   minPower,
 						"max_power":   maxPower,
 						"allow_local": true,
@@ -885,19 +884,6 @@ func normalizeRoutingFixtureManifest(t *testing.T, contents string) string {
 		t.Fatalf("marshal fixture manifest: %v", err)
 	}
 	return string(out)
-}
-
-func routingFixturePolicyName(name string) string {
-	switch name {
-	case "standard", "code-fast", "fast":
-		return "default"
-	case "code-smart":
-		return "smart"
-	case "code-economy", "local", "offline":
-		return "cheap"
-	default:
-		return name
-	}
 }
 
 func intFromYAML(v any) (int, bool) {
