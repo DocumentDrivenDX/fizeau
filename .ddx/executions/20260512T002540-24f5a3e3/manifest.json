@@ -1,0 +1,56 @@
+{
+  "attempt_id": "20260512T002540-24f5a3e3",
+  "bead_id": "fizeau-d18e11f5",
+  "base_rev": "c2e1220f9c42c83665a225786fe1bbf7f6728eb7",
+  "created_at": "2026-05-12T00:25:43.630617061Z",
+  "requested": {
+    "harness": "claude",
+    "model": "claude-sonnet-4-6",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-d18e11f5",
+    "title": "Wire ProviderConfig.IncludeByDefault into routing eligibility filter",
+    "description": "The `ProviderConfig.IncludeByDefault *bool` field at\n`internal/config/config.go:48` is plumbed to ServiceConfig at\n`internal/config/serviceconfig.go:73` but has NO consumer in\n`internal/routing/`. Half-built: operators can set\n`include_by_default: false` in their config, the value is captured, but\nrouting ignores it.\n\nThis bead wires the field into routing's eligibility filter so the\noperator's intent is honored.\n\n## Scope\n\n1. In `internal/routing/gating.go` (or the equivalent eligibility\n   filter), add a check: if the candidate's provider has\n   `IncludeByDefault == false` AND the request did not explicitly pin\n   that provider, mark the candidate as ineligible with reason\n   `provider_excluded_from_default_routing`.\n\n2. Explicit pin paths (`--provider \u003cname\u003e`, `--harness \u003cname\u003e --model\n   \u003cid\u003e` resolved to that provider) bypass the filter.\n\n3. Surface the exclusion in route-status output so operators can see\n   `provider X eligible=false reason=excluded_from_default_routing`.\n\n4. Add regression tests covering:\n   - `include_by_default: false` + unpinned request → provider excluded\n   - `include_by_default: false` + explicit `--provider X` → provider\n     selected\n   - `include_by_default: true` (default) → unchanged behavior\n\n## In-scope files\n\n- internal/routing/gating.go (or filter equivalent)\n- internal/routing/gating_test.go (or equivalent)\n- internal/config/config_test.go (extend if needed)\n\n## Out of scope\n\n- Catalog-level provider-default-eligibility (already exists at\n  `manifest.go:126` `IncludeByDefault bool`).\n- Quota-aware routing (bead E2).\n- Per-model eligibility (catalog `ExactPinOnly` already covers this).",
+    "acceptance": "1. `go test ./internal/routing/... ./internal/config/...` passes,\n   including the three regression tests above.\n2. `go vet ./...` passes.\n3. `IncludeByDefault: false` on a configured provider results in that\n   provider being absent from default-routing candidates, but still\n   reachable via explicit pin.",
+    "labels": [
+      "area:routing",
+      "area:config",
+      "kind:bug"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T00:22:47Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "525134",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T00:25:40.813085754Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T00:22:47.070258146Z",
+      "spec-id": "ADR-006"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-006",
+      "path": "docs/helix/02-design/adr/ADR-006-overrides-as-routing-failure-signals.md",
+      "title": "ADR-006: Manual Overrides Are Auto-Routing Failure Signals"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T002540-24f5a3e3",
+    "prompt": ".ddx/executions/20260512T002540-24f5a3e3/prompt.md",
+    "manifest": ".ddx/executions/20260512T002540-24f5a3e3/manifest.json",
+    "result": ".ddx/executions/20260512T002540-24f5a3e3/result.json",
+    "checks": ".ddx/executions/20260512T002540-24f5a3e3/checks.json",
+    "usage": ".ddx/executions/20260512T002540-24f5a3e3/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-d18e11f5-20260512T002540-24f5a3e3"
+  },
+  "prompt_sha": "097e7b60941fa9f425ca1335f673b778d7be78a3b924e5224a608f80d65415b6"
+}
