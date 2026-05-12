@@ -1238,3 +1238,152 @@ Follow-up needed:
 10:46:00 readiness check: starting route: harness=codex model=gpt-5.4-mini
 10:47:51 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.4-mini
 10:48:32 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+14:48:44 do route codex/gpt-5.4-mini reason=explicit
+14:48:44 do fizeau-c6c8bc9e route codex/gpt-5.4-mini power=8
+14:48:44 do thinking ...
+14:48:53 do ok 1 inspect lines 1,340 in routing_errors.go < out=9.9KB 316 lines "package fizeau"
+14:48:53 do ok 3 inspect lines 1,260 in service_profiles.go < out=62B 1 line "sed: can't read service_profiles.go: …
+14:48:53 do ok 2 inspect lines 1,220 in service.go < out=9.0KB 220 lines "package fizeau"
+14:48:53 do ok 4 pwd < out=11.0KB 319 lines "/var/tmp/ddx-exec-wt/.execute-bea…
+14:48:59 do ok 5 inspect lines 1,240 in service_policies.go < out=2.0KB 76 lines "package fizeau"
+14:48:59 do ok 6 inspect lines 1,320 in service_routing.go < out=10.5KB 320 lines "package fizeau"
+14:48:59 do ok 7 inspect lines 1,220 in internal/lint/targetlint/analyzer.go < out=4.8KB 204 lines "package targetl…
+14:48:59 do ok 8 inspect lines 1,240 in service_models.go < out=7.4KB 240 lines "package fizeau"
+14:48:59 do ok 9 inspect lines 1,220 in service_session_log.go < out=8.1KB 220 lines "package fizeau"
+14:48:59 do ok 10 inspect lines 1,200 in service_override.go < out=6.6KB 200 lines "package fizeau"
+14:49:05 do ok 11 search "\\\"type" in '"'!**/*_test.go'"' < out=1.5KB 25 lines "service.go:28:\tListPolicies(ctx c…
+14:49:05 do ok 12 inspect lines 220,520 in service.go < out=10.8KB 301 lines "ServerInstance string"
+14:49:05 do ok 13 inspect lines 520,860 in service.go < out=13.8KB 341 lines "Cost float64"
+14:49:06 do ok 14 search "\\\"requested_model_ref|resolve..." in '"'!**/*_test… < out=3.5KB 40 lines "rg: service…
+14:49:11 do ok 15 inspect lines 1,220 in service_routing_errors_test.go < out=7.6KB 220 lines "package fizeau"
+14:49:11 do ok 17 inspect lines 1,260 in service_routing_test.go < out=8.1KB 260 lines "package fizeau"
+14:49:11 do ok 16 search "\\\"ModelRef|ResolvedModelRef|R..." in '"'!**/*_test… < out=10.8KB 148 lines "servi… 1ms
+14:49:11 do ok 18 inspect lines 260,420 in service_routing_test.go < out=4.8KB 161 lines "family: example"
+14:49:11 do ok 19 inspect lines 420,520 in service_routing_test.go < out=3.2KB 100 lines "t.Fatalf(\"error=%q, want…
+14:49:17 do ok 20 search "\\\"type" in '"'!**/*_test.go'"' < out=2.1KB 26 lines "service.go:70:\tBilling BillingMod…
+14:49:17 do ok 21 inspect lines 1,220 in service_events.go < out=9.6KB 220 lines "package fizeau"
+14:49:17 do ok 22 inspect lines 1,240 in internal/modelcatalog/catalog.go < out=7.0KB 240 lines "package modelcatal…
+14:49:17 do ok 23 inspect lines 1,220 in internal/routing/errors.go < out=4.5KB 153 lines "package routing"
+14:49:17 do ok 24 inspect lines 1120,1225 in service_routing.go < out=2.2KB 72 lines "dec, err := s.ResolveRoute(co…
+14:49:22 do ok 25 search "\\\"Profile\\\\b|ModelRef\\" in '"'!**/*_test.go'"' < out=427B 4 lines "service_execute_h…
+14:49:24 do ok 26 search "\\\"ResolveProfile|ProfileAlias..." in '"'!**/*_test.go'"'
+14:49:27 do ok 27 search "\\\"catalogRefForModel|target-l..." in '"'!**/*_test… < out=3.0KB 32 lines "internal/ro…
+14:49:35 do ok 28 search "\\\"target\\" in '"'!**/*_test.go'"' < out=3.5KB 53 lines "service.go:29:\tHealthCheck(ct…
+14:49:35 do ok 29 search "\\\"catalogRefForModel|profile|..." in '"'!**/*_test… < out=834B 8 lines "internal/mode…
+14:49:35 do ok 30 inspect lines 1,220 in internal/modelcatalog/manifest.go < out=8.9KB 220 lines "package modelcata…
+14:49:39 do ok 31 inspect lines 1,220 in service_policies_test.go < out=1.7KB 61 lines "package fizeau_test"
+14:49:51 do ok 32 search "standard|code-fast|code-smart..." in '"'!**/*_test.g… < out=22.5KB 281 lines "service_n…
+14:49:51 do ok 33 search "version:" in service_execute_harness_pin_test.go < out=1.3KB 31 lines "service_execute_ha…
+14:49:51 do ok 34 search "policyForName\\\\(|policyCompat..." in '"'!**/*_test… < out=763B 9 lines "service_polic…
+14:49:54 do ok 35 inspect lines 380,460 in internal/modelcatalog/catalog.go < out=2.5KB 81 lines "// for every acti…
+14:50:03 do ok 36 inspect lines 1,260 in service_model_resolution_test.go < out=6.7KB 260 lines "package fizeau"
+14:50:03 do ok 37 inspect lines 1,240 in service_override_internal_test.go < out=8.8KB 240 lines "package fizeau"
+14:50:03 do ok 38 search "version:" in '"'!**/*_test.go'"' < out=1.7KB 37 lines "service_model_resolution_test.go:4…
+14:50:03 do ok 39 inspect lines 160,380 in service_execute_harness_pin_test.go < out=7.5KB 221 lines "}"
+14:50:09 do ok 40 'rg -n "loadRoutingFixtureCatalog|replaceRoutingCatalogForTe… < out=3.9KB 56 lines "service_ove…
+14:50:14 do ok 41 inspect lines 820,940 in service_routing_test.go < out=3.4KB 121 lines "t.Fatalf(\"claude cost me…
+14:50:24 do ok 42 inspect lines 320,380 in internal/modelcatalog/catalog_test.… < out=1.6KB 61 lines "}"
+14:50:27 do ok 43 inspect lines 240,380 in service_execute_harness_pin_test.go < out=5.2KB 141 lines "Model: req.Mo…
+14:50:29 do ok 44 inspect lines 1,220 in service_override_internal_test.go < out=8.0KB 220 lines "package fizeau"
+14:50:31 do ok 45 inspect lines 1,260 in service_model_resolution_test.go < out=6.7KB 260 lines "package fizeau"
+14:50:38 do ok 46 search "\\\"resolveExecuteRoute|provide..." in '"'!**/*_test… < out=1.2KB 13 lines "service_exe…
+14:50:40 do ok 47 inspect lines 150,260 in service_execute.go < out=4.4KB 111 lines "// Emit start-of-execution rou…
+14:50:44 do ok 48 inspect lines 1100,1165 in service_routing.go < out=2.2KB 66 lines "}"
+14:51:07 do ok 49 inspect lines 560,640 in service_routing_test.go < out=2.5KB 81 lines "registry.LookPath = func(s…
+14:51:07 do ok 50 inspect lines 640,760 in service_routing_test.go < out=3.7KB 121 lines "got := providerCostsByNam…
+14:51:07 do ok 51 inspect lines 960,1035 in service_routing_test.go < out=2.2KB 76 lines "}"
+14:51:14 do ok 52 'rg -n "catalogRefForModel|PricingFor|CostInputPerMTok|CostI… < out=188B 5 lines "505:\t// Fall…
+14:51:19 do ok 53 inspect lines 460,560 in service_models.go < out=3.1KB 101 lines "}"
+14:51:23 do ok 54 search "\\\"func" in '"'!**/*_test.go'"' < out=100B 1 line "internal/modelcatalog/catalog.go:764:…
+14:51:25 do ok 55 inspect lines 740,820 in internal/modelcatalog/catalog.go < out=1.8KB 68 lines "return out" 1ms
+14:51:32 do ok 56 search "\\\"catalogEntryInputCost|catal..." in '"'!**/*_test… < out=749B 10 lines "service_mode…
+14:51:36 do ok 57 search "\\\"Profile|profile\\" in '"'!**/*_test.go'"' < out=4.8KB 54 lines "service_adr005_test.g…
+14:51:42 do ok 58 search "\\\"ErrProfilePinConflict|ErrNo..." in '"'!**/*_test… < out=104B 1 line "service_execut…
+14:52:05 do ok 59 inspect lines 1140,1305 in service_routing_test.go < out=5.9KB 166 lines "t.Fatalf(\"ContextWindo…
+14:52:13 do ok 60 search "\\\"PolicyEscalationLadder|policy" in '"'!**/*_test.… < out=766B 8 lines "service_routi…
+14:52:40 do ok 61 inspect lines 180,330 in service_routing_errors_test.go < out=5.1KB 147 lines "}"
+14:52:48 do ok 62 search "no_remote|local" in '"'!**/*_test.go'"' < out=7.1KB 74 lines "internal/routing/sticky_uti…
+14:52:51 do ok 63 inspect lines 620,680 in internal/routing/engine.go < out=1.6KB 61 lines "if len(exhausted) == 0 …
+14:52:53 do ok 64 inspect lines 800,870 in internal/routing/engine.go < out=1.7KB 71 lines "return false"
+14:53:01 do ok 65 search "standard|code-fast|code-econo..." in '"'!**/*_test.g… < out=16.6KB 201 lines "service_p…
+14:53:06 do ok 66 inspect lines 1,120 in internal/modelcatalog/profile_docs_te… < out=1.2KB 49 lines "package mod…
+14:53:06 do ok 67 inspect lines 160,230 in internal/modelcatalog/catalog_test.… < out=2.5KB 71 lines "defaultPoli…
+14:53:06 do ok 68 inspect lines 1,120 in internal/routing/policy_test.go < out=3.3KB 116 lines "package routing"
+14:53:25 do ok 69 inspect lines 720,760 in service_routing_test.go < out=1.1KB 41 lines "func TestResolveRouteNearQ…
+14:53:57 do ok 70 inspect lines 20,40 in service.go < out=1.3KB 21 lines "// FizeauService is the entire publ…
+14:53:57 do ok 71 inspect lines 330,390 in service_providers.go < out=1.8KB 61 lines "wg.Wait()"
+14:53:57 do ok 72 inspect lines 34,90 in service_policies.go < out=1.1KB 43 lines "CatalogVersion: meta.CatalogVers…
+14:53:57 do ok 73 inspect lines 494,526 in service_models.go < out=953B 33 lines "entry, ok := cat.LookupModel(mode…
+14:53:57 do ok 74 inspect lines 405,446 in internal/modelcatalog/catalog.go < out=1.1KB 42 lines "for _, candidate …
+14:53:57 do ok 75 inspect lines 52,86 in internal/lint/targetlint/analyzer.go < out=893B 35 lines "}"
+14:54:18 do ok 76 inspect lines 960,1015 in service_routing_test.go < out=1.5KB 56 lines "}"
+14:54:36 do ok 77 inspect lines 1,120 in internal/modelcatalog/catalog_test.go < out=2.6KB 120 lines "package model…
+14:54:42 do ok 78 search "air-gapped|no_remote|local" in internal/routing/*_te… < out=2.3KB 21 lines "internal/ro…
+14:55:48 do ok 79 search "version:" in service_routing_test.go < out=856B 15 lines "35:\t\tReason: \"profile=ch… 1ms
+14:55:52 do ok 80 inspect lines 1220,1275 in service_routing_test.go < out=1.8KB 56 lines "if err := svc.RecordRout…
+14:56:00 do ok 81 search "Policy:" in service_routing_test.go < out=112B 3 lines "892:\tcase \"standard\", \"code-f…
+14:56:04 do ok 82 search "version:" in service_execute_harness_pin_test.go < out=329B 5 lines "189:version: 4"
+14:56:08 do ok 83 inspect lines 180,220 in service_execute_harness_pin_test.go < out=1.1KB 41 lines "}"
+14:56:14 do ok 84 search "version:" in service_execute_harness_pin_test.go < out=177B 2 lines "271:func TestExecute…
+14:56:17 do ok 85 search "version:" in service_override_internal_test.go
+14:56:20 do ok 86 search "version:" in service_model_resolution_test.go
+14:56:23 do ok 87 search "version:" in service_routing_test.go
+14:56:25 do ok 88 search "Policy:" in service_routing_errors_test.go
+14:56:31 do ok 89 search "target" in '"'!**/*_test.go'"' < out=1.2KB 17 lines "service_test.go:29:\t// Index by na�…
+14:56:36 do ok 90 search "HealthCheck\\\\(ctx" in '"'!**/*_test.go'"' < out=179B 2 lines "service_providers.go:… 2ms
+14:56:48 do ok 92 inspect lines 1,120 in internal/modelcatalog/catalog_test.go < out=2.6KB 120 lines "package model…
+14:56:48 do ok 91 search "version:" in internal/modelcatalog/*_test.go < out=789B 9 lines "service_taillog_test.go:…
+14:56:48 do ok 93 inspect lines 1,80 in internal/lint/targetlint/analyzer_test… < out=3.2KB 121 lines "package ta…
+14:56:53 do ok 94 search "standard|code-fast|code-econo..." in '"'!**/*_test.g… < out=18.9KB 234 lines "service_a…
+14:56:56 do ok 95 inspect lines 628,652 in service_routing.go < out=515B 25 lines "if err != nil || cat == nil {"
+14:56:59 do ok 96 inspect lines 956,980 in service_routing.go < out=702B 25 lines "cost := subscriptionEffectiv… 3ms
+14:57:04 do ok 97 inspect lines 288,306 in service_execute.go < out=393B 18 lines "Requirement: constraint,"
+14:57:10 do ok 98 search "explicitPolicyConstraint\\\\(" in '"'!**/*_test.go'"' < out=319B 4 lines "service_execute…
+14:57:16 do ok 99 inspect lines 260,286 in service_execute.go < out=767B 27 lines "if !reset.After(now) {"
+14:57:22 do ok 100 search "subscriptionFallbackPolicy\\\\(" in '"'!**/*_test.g… < out=389B 4 lines "service_routi…
+14:57:33 do ok 101 search "standard|code-fast|code-econo..." in '"'!**/*_test.… < out=14.7KB 172 lines "service_a…
+14:57:41 do ok 102 inspect lines 340,380 in service_http_provider_test.go < out=1.3KB 40 lines "func TestExecuteEnd…
+14:57:46 do ok 103 search "Policy:\\s+\"(standard|code-fas..." in internal/modelcatalog/*_test…
+14:57:55 do ok 104 search "standard|code-fast|code-econo..." in '"'!**/*_test.… < out=717B 8 lines "service_adr00…
+14:58:02 do ok 105 inspect lines 1,60 in internal/modelcatalog/tiers.go < out=1.8KB 60 lines "package modelcatalog"
+14:58:07 do ok 106 search "standard|code-fast|code-econo..." in '"'!service_ta… < out=717B 8 lines "service_adr00…
+14:58:14 do ok 107 search "standard|code-fast|code-econo..." in '"'!**/*_test.… < out=717B 8 lines "service_adr00…
+14:58:17 do ok 108 search "Policy:\\s+\"(offline|standard|..." in internal/modelcatalog/*_test… 1ms
+14:58:23 do ok 109 inspect lines 195,320 in service_routing_errors_test.go < out=4.5KB 126 lines "t.Fatalf(\"RetryA…
+14:58:27 do ok 110 search "standard|code-fast|code-econo..." in '"'!**/*_test.… < out=717B 8 lines "service_test.…
+14:58:33 do ok 111 search "PricingFor\\\\(" in '"'!**/*_test.go'"' < out=100B 1 line "internal/modelcatalog/catalog…
+14:58:47 do ok 112 'gofmt -w service.go service_providers.go service_policies.go service_model… 1ms
+14:58:54 do ok 115 test ./internal/lint/targetlint -run 'TestFlagsTargetInRout… < out=60B 1 line "ok \tgith… 262ms
+14:58:54 do ok 114 test ./internal/modelcatalog -run 'TestResolveCanonicalPoli… < out=57B 1 line "ok \tgith… 508ms
+14:58:56 do ok 113 test . -run 'TestListPoliciesReturnsCanonicalEntries|TestRe… < out=342B 5 lines "--- FAI… 2.07s
+14:59:07 do ok 116 'gofmt -w service_routing_errors_test.go'
+14:59:11 do ok 117 test . -run 'TestListPoliciesReturnsCanonicalEntries|TestRe… < out=35B 1 line 1.072s
+15:00:54 do ok 118 'go test ./... -count=1' < out=5.1KB 89 lines "ok \tgithub.com/easel/fizeau\t6.652… 1m37.635s
+15:00:58 do ok 119 'lefthook run pre-commit' < out=529B 8 lines "╭───────────�…
+15:00:59 do ok 120 'go vet ./...' 1.114s
+15:00:59 do ok 121 'go build ./...' 1.314s
+15:01:10 do ok 122 search "\\\"Profile\\\\b|ModelRef\\" in '"'!**/*_test.go'"'
+15:01:10 do ok 123 search "\\\"ResolveProfile|ProfileAlias..." in '"'!**/*_test.go'"'
+15:01:10 do ok 124 'go test ./internal/lint/targetlint -run TestRepositoryTarg… < out=60B 1 line "ok \tgithub.com…
+15:01:18 do ok 125 'git status --short' < out=447B 15 lines "M internal/lint/targetlint/analyzer.…
+15:01:24 do ok 126 nl -ba service.go | sed -n '20,35p' < out=1.1KB 16 lines "20\t// FizeauService is the entire …
+15:01:24 do ok 127 nl -ba service_policies.go | sed -n '1,80p' < out=2.0KB 62 lines "1\tpackage fizeau"
+15:01:24 do ok 128 nl -ba service_routing.go | sed -n '636,650p' < out=673B 28 lines "636\t\tswitch name {"
+15:01:24 do ok 129 nl -ba service_models.go | sed -n '492,512p' < out=896B 21 lines "492\t// catalogCostAndPerf ext…
+15:01:24 do ok 130 nl -ba internal/modelcatalog/catalog.go | sed -n '405,430p' < out=922B 26 lines "405\t\t\tfor _,…
+15:01:24 do ok 131 nl -ba internal/lint/targetlint/analyzer.go | sed -n '40,80… < out=1.3KB 41 lines "40\t\t\tfin…
+15:01:32 do ok 132 nl -ba service_execute.go | sed -n '296,306p' < out=330B 11 lines "296\tfunc explicitPolicyConst…
+15:01:32 do ok 133 nl -ba service_routing.go | sed -n '636,646p' < out=493B 20 lines "636\t\tswitch name {"
+15:01:32 do ok 134 nl -ba service_providers.go | sed -n '338,384p' < out=1.7KB 47 lines "338"
+15:01:32 do ok 135 nl -ba service_http_provider_test.go | sed -n '352,372p' < out=779B 21 lines "352\t\tsvc, err :=…
+15:01:32 do ok 136 nl -ba service_routing_errors_test.go | sed -n '199,316p' < out=5.1KB 118 lines "199\tfunc TestR…
+15:01:32 do ok 137 nl -ba service_model_resolution_test.go | sed -n '35,125p' < out=2.9KB 91 lines "35\t\t\t\tmodel…
+15:01:38 do ok 138 'git add internal/lint/targetlint/analyzer.go internal/modelcatalog/catalog…
+15:01:43 do ok 139 'git commit -m "feat: canonicalize service policy surface [… < out=139B 2 lines "[detached HEA…
+15:01:54 do response complete 60606 tok in 13m9.999s, 76.7 tok/s
+✓ fizeau-c6c8bc9e → merged (f4c1ee1b)
+
+▶ fizeau-22a93208: service: translate Policy routing requests and public errors
+11:01:58 readiness check: starting route: harness=codex model=gpt-5.4-mini
+11:04:00 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.4-mini
+11:04:41 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
