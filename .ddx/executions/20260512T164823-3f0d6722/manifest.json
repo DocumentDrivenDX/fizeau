@@ -1,0 +1,57 @@
+{
+  "attempt_id": "20260512T164823-3f0d6722",
+  "bead_id": "fizeau-b69adf48",
+  "base_rev": "b365d00e3d075a42fe0be2c06e61d143c0958c0c",
+  "created_at": "2026-05-12T16:48:25.824997628Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-b69adf48",
+    "title": "probe reasoning CLI: add snapshot and deterministic matrix modes",
+    "description": "Review of fizeau-d72b32a0 found the probe CLI is weaker than the current ADR-010/runbook intent: no introspection snapshot mode, no separate snapshot-only or matrix-only modes, no seed control, and the trivial 2+2 prompt produced misleading OR-Qwen classification evidence.\n\nIn scope:\n- cmd/fizeau-probe-reasoning CLI flags and tests\n- deterministic probe prompt/seed handling where supported\n- saved introspection snapshot output suitable for docs/research artifacts\n\nOut of scope:\n- Fixing OR-Qwen catalog wire form; separate reopened bead.",
+    "acceptance": "1. go test ./cmd/fizeau-probe-reasoning/... -run \"Test.*Snapshot|Test.*Matrix|Test.*Seed|Test.*Deterministic\" -count=1 passes.\n2. cmd/fizeau-probe-reasoning supports snapshot-only and matrix-only modes documented in its help output.\n3. A fixture test proves generated artifacts include an introspection snapshot plus request/response matrix outputs without requiring a live provider.",
+    "parent": "fizeau-92d44ce0",
+    "labels": [
+      "area:tooling",
+      "area:reasoning",
+      "kind:feature"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T16:47:02Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T16:48:23.483819279Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T16:47:02.735946172Z",
+      "spec-id": "ADR-010"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-010",
+      "path": "docs/helix/02-design/adr/ADR-010-reasoning-wire-form-from-catalog.md",
+      "title": "ADR-010: Reasoning Wire Form Belongs in the Model Catalog"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T164823-3f0d6722",
+    "prompt": ".ddx/executions/20260512T164823-3f0d6722/prompt.md",
+    "manifest": ".ddx/executions/20260512T164823-3f0d6722/manifest.json",
+    "result": ".ddx/executions/20260512T164823-3f0d6722/result.json",
+    "checks": ".ddx/executions/20260512T164823-3f0d6722/checks.json",
+    "usage": ".ddx/executions/20260512T164823-3f0d6722/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-b69adf48-20260512T164823-3f0d6722"
+  },
+  "prompt_sha": "d6b094f3427b5662d632eff4c5cfc10fc5e763ebacfc93339238f0421e3585d4"
+}
