@@ -15,6 +15,7 @@ import (
 	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/provider/utilization"
 	"github.com/easel/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/serverinstance"
 )
 
 var loadRoutingCatalog = modelcatalog.Default
@@ -67,7 +68,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			PowerPolicy:     powerPolicy,
 		}, err
 	}
-	in := s.buildRoutingInputsWithCatalog(ctx, cat)
+	in, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat)
 
 	resolvedModel, modelCandidates, modelErr := s.resolveModelConstraint(req.Harness, req.Provider, req.Model, in, cat)
 	if modelErr != nil {
@@ -122,6 +123,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		_, endpoint, _ := splitEndpointProviderRef(result.Provider)
 		result.Endpoint = endpoint
 	}
+	s.annotateRouteDecisionSnapshotEvidence(result, snapshot)
 	s.annotateRouteDecisionEvidence(result)
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
@@ -190,6 +192,140 @@ func routeCandidateFromInternal(candidate routing.Candidate) RouteCandidate {
 			ContextHeadroom:  candidate.ContextHeadroom,
 			StickyAffinity:   candidate.StickyAffinity,
 		},
+	}
+}
+
+type routeSnapshotCandidateKey struct {
+	Provider       string
+	Endpoint       string
+	ServerInstance string
+	Model          string
+}
+
+func routeSnapshotCandidateIndex(snapshot modelsnapshot.ModelSnapshot) map[routeSnapshotCandidateKey]modelsnapshot.KnownModel {
+	if len(snapshot.Models) == 0 {
+		return nil
+	}
+	out := make(map[routeSnapshotCandidateKey]modelsnapshot.KnownModel, len(snapshot.Models))
+	for _, row := range snapshot.Models {
+		key := routeSnapshotCandidateKey{
+			Provider:       strings.TrimSpace(row.Provider),
+			Endpoint:       strings.TrimSpace(row.EndpointName),
+			ServerInstance: strings.TrimSpace(serverinstance.Normalize(row.EndpointBaseURL, row.ServerInstance)),
+			Model:          strings.TrimSpace(row.ID),
+		}
+		if key.Provider == "" || key.Model == "" {
+			continue
+		}
+		if _, exists := out[key]; exists {
+			continue
+		}
+		out[key] = row
+	}
+	return out
+}
+
+func routeSnapshotEvidenceForCandidate(candidate RouteCandidate, snapshot modelsnapshot.ModelSnapshot) (modelsnapshot.KnownModel, bool) {
+	index := routeSnapshotCandidateIndex(snapshot)
+	if len(index) == 0 {
+		return modelsnapshot.KnownModel{}, false
+	}
+	provider := strings.TrimSpace(candidate.Provider)
+	endpoint := strings.TrimSpace(candidate.Endpoint)
+	serverInstance := strings.TrimSpace(candidate.ServerInstance)
+	model := strings.TrimSpace(candidate.Model)
+	if base, ep, ok := splitEndpointProviderRef(provider); ok {
+		provider = base
+		if endpoint == "" {
+			endpoint = ep
+		}
+	}
+	keys := []routeSnapshotCandidateKey{{
+		Provider:       provider,
+		Endpoint:       endpoint,
+		ServerInstance: serverInstance,
+		Model:          model,
+	}}
+	if endpoint == "" {
+		keys = append(keys, routeSnapshotCandidateKey{
+			Provider:       provider,
+			ServerInstance: serverInstance,
+			Model:          model,
+		})
+	}
+	if serverInstance == "" {
+		keys = append(keys, routeSnapshotCandidateKey{
+			Provider: provider,
+			Endpoint: endpoint,
+			Model:    model,
+		})
+		if endpoint == "" {
+			keys = append(keys, routeSnapshotCandidateKey{
+				Provider: provider,
+				Model:    model,
+			})
+		}
+	}
+	for _, key := range keys {
+		if row, ok := index[key]; ok {
+			return row, true
+		}
+	}
+	for _, row := range snapshot.Models {
+		rowProvider := strings.TrimSpace(row.Provider)
+		rowEndpoint := strings.TrimSpace(row.EndpointName)
+		rowServerInstance := strings.TrimSpace(serverinstance.Normalize(row.EndpointBaseURL, row.ServerInstance))
+		if rowProvider != provider || strings.TrimSpace(row.ID) != model {
+			continue
+		}
+		if endpoint != "" && rowEndpoint != endpoint {
+			continue
+		}
+		if serverInstance != "" && rowServerInstance != serverInstance {
+			continue
+		}
+		return row, true
+	}
+	return modelsnapshot.KnownModel{}, false
+}
+
+func applyRouteSnapshotEvidence(candidate *RouteCandidate, row modelsnapshot.KnownModel) {
+	if candidate == nil {
+		return
+	}
+	if candidate.ServerInstance == "" {
+		candidate.ServerInstance = strings.TrimSpace(serverinstance.Normalize(row.EndpointBaseURL, row.ServerInstance))
+	}
+	candidate.SourceStatus = string(row.Status)
+	candidate.AutoRoutable = row.AutoRoutable
+	candidate.ExactPinOnly = row.ExactPinOnly
+	candidate.ExclusionReason = row.ExclusionReason
+}
+
+func applyRouteSnapshotEvidenceToStatus(candidate *RouteCandidateStatus, row modelsnapshot.KnownModel) {
+	if candidate == nil {
+		return
+	}
+	candidate.SourceStatus = string(row.Status)
+	candidate.AutoRoutable = row.AutoRoutable
+	candidate.ExactPinOnly = row.ExactPinOnly
+	candidate.ExclusionReason = row.ExclusionReason
+	candidate.Power = row.Power
+	candidate.ContextLength = row.ContextWindow
+	candidate.CostInputPerMTok = row.CostInputPerM
+	candidate.CostOutputPerMTok = row.CostOutputPerM
+	candidate.RecentLatencyMS = float64(row.RecentP50Latency.Milliseconds())
+	candidate.QuotaRemaining = row.QuotaRemaining
+}
+
+func (s *service) annotateRouteDecisionSnapshotEvidence(decision *RouteDecision, snapshot modelsnapshot.ModelSnapshot) {
+	if s == nil || decision == nil {
+		return
+	}
+	for i := range decision.Candidates {
+		if row, ok := routeSnapshotEvidenceForCandidate(decision.Candidates[i], snapshot); ok {
+			applyRouteSnapshotEvidence(&decision.Candidates[i], row)
+		}
 	}
 }
 
@@ -483,10 +619,11 @@ func (s *service) routeAttemptTTL() time.Duration {
 // and snapshot-derived provider inventory. The public routing engine stays
 // unchanged; only the source of provider/model candidates changes.
 func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
-	return s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog())
+	inputs, _ := s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog())
+	return inputs
 }
 
-func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelcatalog.Catalog) routing.Inputs {
+func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelcatalog.Catalog) (routing.Inputs, modelsnapshot.ModelSnapshot) {
 	statuses := s.registry.Discover()
 	statusByName := make(map[string]harnesses.HarnessStatus, len(statuses))
 	for _, st := range statuses {
@@ -555,7 +692,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ReasoningResolver:            serviceRoutingReasoningResolver(cat),
 		EndpointLoadResolver:         s.routeEndpointLoadsResolver(now),
 		StickyServerInstanceResolver: s.routeStickyServerInstanceResolver(now),
-	}
+	}, snapshot
 }
 
 func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog.Catalog, snapshot modelsnapshot.ModelSnapshot) []routing.ProviderEntry {
@@ -657,6 +794,7 @@ func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog
 		if serverInstance == "" {
 			serverInstance = pcfg.ServerInstance
 		}
+		serverInstance = serverinstance.Normalize(baseURL, serverInstance)
 		entry := routing.ProviderEntry{
 			Name:                      routeName,
 			BaseURL:                   baseURL,

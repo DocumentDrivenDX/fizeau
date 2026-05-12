@@ -2,10 +2,14 @@ package fizeau
 
 import (
 	"context"
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/easel/fizeau/internal/routing"
 )
@@ -249,5 +253,96 @@ func TestRouteRequestMinContextWindowDerivedFromEstimatedTokens(t *testing.T) {
 	}
 	if rReq.MinContextWindow() == 0 {
 		t.Fatal("MinContextWindow must be positive when EstimatedPromptTokens is set")
+	}
+}
+
+// TestRoutingDecisionRejectedCandidatesMatchSnapshotEvidence verifies that
+// rejected routing candidates keep typed filter reasons and enough identity
+// to be matched back to list-models rows by provider/model/endpoint/server.
+func TestRoutingDecisionRejectedCandidatesMatchSnapshotEvidence(t *testing.T) {
+	modelsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{{"id": "qwen3.5-27b"}},
+		})
+	}))
+	t.Cleanup(modelsSrv.Close)
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"bragi": {
+				Type:                "lmstudio",
+				BaseURL:             modelsSrv.URL + "/v1",
+				IncludeByDefault:    false,
+				IncludeByDefaultSet: true,
+				Endpoints: []ServiceProviderEndpoint{
+					{Name: "primary", BaseURL: modelsSrv.URL + "/v1"},
+					{Name: "backup", BaseURL: modelsSrv.URL + "/v1"},
+				},
+				Model: "qwen3.5-27b",
+			},
+		},
+		names:       []string{"bragi"},
+		defaultName: "bragi",
+	}
+	svc := publicRouteTraceService(sc)
+
+	rows, err := svc.ListModels(context.Background(), ModelFilter{})
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("ListModels rows = %d, want 2 (rows=%#v)", len(rows), rows)
+	}
+	want := make(map[string]ModelInfo, len(rows))
+	for _, row := range rows {
+		key := row.Provider + "\x00" + row.ID + "\x00" + row.EndpointName + "\x00" + row.ServerInstance
+		want[key] = row
+	}
+
+	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Provider:  "bragi@primary",
+		Endpoint:  "primary",
+		Model:     "qwen3.5-27b",
+		Status:    "failed",
+		Reason:    "route_attempt_failure",
+		Timestamp: time.Now().Add(-time.Second),
+	}); err != nil {
+		t.Fatalf("RecordRouteAttempt: %v", err)
+	}
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+	if dec == nil {
+		t.Fatalf("ResolveRoute returned nil decision: %v", err)
+	}
+
+	sawRejected := false
+	for _, cand := range dec.Candidates {
+		if cand.Harness != "fiz" || cand.Provider == "" {
+			continue
+		}
+		baseProvider, endpoint, ok := splitEndpointProviderRef(cand.Provider)
+		if !ok {
+			baseProvider = cand.Provider
+		}
+		if cand.Endpoint != "" {
+			endpoint = cand.Endpoint
+		}
+		key := baseProvider + "\x00" + cand.Model + "\x00" + endpoint + "\x00" + cand.ServerInstance
+		if _, ok := want[key]; !ok {
+			t.Fatalf("candidate %q does not match a list-models row; candidates=%#v rows=%#v", key, dec.Candidates, rows)
+		}
+		if !cand.Eligible {
+			sawRejected = true
+			if cand.FilterReason == "" {
+				t.Fatalf("rejected candidate missing typed filter reason: %#v", cand)
+			}
+		}
+	}
+	if !sawRejected {
+		t.Fatalf("expected at least one rejected candidate: %#v", dec.Candidates)
 	}
 }

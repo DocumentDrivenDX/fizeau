@@ -159,6 +159,10 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 			Eligible:           c.Eligible,
 			Reason:             c.Reason,
 			FilterReason:       c.FilterReason,
+			SourceStatus:       c.SourceStatus,
+			AutoRoutable:       c.AutoRoutable,
+			ExactPinOnly:       c.ExactPinOnly,
+			ExclusionReason:    c.ExclusionReason,
 			Components: ServiceRoutingDecisionComponents{
 				Power:            c.Components.Power,
 				Cost:             c.Components.Cost,
@@ -196,6 +200,10 @@ type ServiceRoutingDecisionData struct {
 	Reason           string                         `json:"reason"`
 	Sticky           ServiceRoutingStickyState      `json:"sticky,omitempty"`
 	Utilization      ServiceRoutingUtilizationState `json:"utilization,omitempty"`
+	SourceStatus     string                         `json:"source_status,omitempty"`
+	AutoRoutable     bool                           `json:"auto_routable,omitempty"`
+	ExactPinOnly     bool                           `json:"exact_pin_only,omitempty"`
+	ExclusionReason  string                         `json:"exclusion_reason,omitempty"`
 	RequestedHarness string                         `json:"requested_harness,omitempty"`
 	HarnessSource    string                         `json:"harness_source,omitempty"`
 	FallbackChain    []string                       `json:"fallback_chain,omitempty"`
@@ -222,6 +230,10 @@ type ServiceRoutingDecisionCandidate struct {
 	Eligible           bool                             `json:"eligible"`
 	Reason             string                           `json:"reason,omitempty"`
 	FilterReason       string                           `json:"filter_reason,omitempty"`
+	SourceStatus       string                           `json:"source_status,omitempty"`
+	AutoRoutable       bool                             `json:"auto_routable,omitempty"`
+	ExactPinOnly       bool                             `json:"exact_pin_only,omitempty"`
+	ExclusionReason    string                           `json:"exclusion_reason,omitempty"`
 	Components         ServiceRoutingDecisionComponents `json:"components"`
 	Utilization        ServiceRoutingUtilizationState   `json:"utilization,omitempty"`
 }

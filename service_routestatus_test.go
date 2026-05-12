@@ -2,6 +2,9 @@ package fizeau
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -28,17 +31,63 @@ func TestRouteStatus_emptyConfig(t *testing.T) {
 	}
 }
 
-// TestRouteStatus_modelsPopulatedFromProviders verifies RouteStatus reports
-// live provider/model candidates, not configured route tables.
-func TestRouteStatus_modelsPopulatedFromProviders(t *testing.T) {
+// TestRouteStatusSnapshotRowsMatchMultiEndpointFixture verifies that RouteStatus
+// reflects the same discovered provider/model/endpoint rows used by routing.
+func TestRouteStatusSnapshotRowsMatchMultiEndpointFixture(t *testing.T) {
+	modelsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{{"id": "qwen3.5-27b"}},
+		})
+	})
+	primarySrv := httptest.NewServer(modelsHandler)
+	backupSrv := httptest.NewServer(modelsHandler)
+	t.Cleanup(primarySrv.Close)
+	t.Cleanup(backupSrv.Close)
+
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"bragi":      {Type: "lmstudio", BaseURL: "http://bragi.invalid/v1", Model: "qwen3-27b"},
-			"openrouter": {Type: "openrouter", BaseURL: "https://openrouter.invalid/v1", Model: "qwen3-27b"},
+			"bragi": {
+				Type:    "lmstudio",
+				BaseURL: primarySrv.URL + "/v1",
+				Endpoints: []ServiceProviderEndpoint{
+					{Name: "primary", BaseURL: primarySrv.URL + "/v1"},
+					{Name: "backup", BaseURL: backupSrv.URL + "/v1"},
+				},
+				Model: "qwen3.5-27b",
+			},
 		},
-		names: []string{"bragi", "openrouter"},
+		names:       []string{"bragi"},
+		defaultName: "bragi",
 	}
 	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+
+	models, err := svc.ListModels(context.Background(), ModelFilter{})
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("ListModels rows = %d, want 2 (rows=%#v)", len(models), models)
+	}
+	wantRows := make(map[string]ModelInfo, len(models))
+	for _, model := range models {
+		key := model.Provider + "\x00" + model.ID + "\x00" + model.EndpointName + "\x00" + model.ServerInstance
+		wantRows[key] = model
+	}
+
+	if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Provider:  "bragi@primary",
+		Endpoint:  "primary",
+		Model:     "qwen3.5-27b",
+		Status:    "failed",
+		Reason:    "route_attempt_failure",
+		Timestamp: time.Now().Add(-time.Second),
+	}); err != nil {
+		t.Fatalf("RecordRouteAttempt: %v", err)
+	}
 
 	report, err := svc.RouteStatus(context.Background())
 	if err != nil {
@@ -49,8 +98,8 @@ func TestRouteStatus_modelsPopulatedFromProviders(t *testing.T) {
 	}
 
 	entry := report.Routes[0]
-	if entry.Model != "qwen3-27b" {
-		t.Errorf("Model: got %q, want %q", entry.Model, "qwen3-27b")
+	if entry.Model != "qwen3.5-27b" {
+		t.Errorf("Model: got %q, want %q", entry.Model, "qwen3.5-27b")
 	}
 	if entry.Strategy != "auto" {
 		t.Errorf("Strategy: got %q, want auto", entry.Strategy)
@@ -58,29 +107,44 @@ func TestRouteStatus_modelsPopulatedFromProviders(t *testing.T) {
 	if len(entry.Candidates) != 2 {
 		t.Fatalf("Candidates: got %d, want 2", len(entry.Candidates))
 	}
-	if entry.Candidates[0].Provider != "bragi" {
-		t.Errorf("Candidates[0].Provider: got %q, want %q", entry.Candidates[0].Provider, "bragi")
-	}
-	if entry.Candidates[0].ServerInstance == "" {
-		t.Errorf("Candidates[0].ServerInstance should be populated: %#v", entry.Candidates[0])
-	}
-	if entry.Candidates[1].Provider != "openrouter" {
-		t.Errorf("Candidates[1].Provider: got %q, want %q", entry.Candidates[1].Provider, "openrouter")
-	}
-	// No cooldowns set — both should be healthy.
-	for i, c := range entry.Candidates {
-		if !c.Healthy {
-			t.Errorf("Candidates[%d].Healthy: got false, want true", i)
+
+	byEndpoint := make(map[string]RouteCandidateStatus, len(entry.Candidates))
+	for _, c := range entry.Candidates {
+		byEndpoint[c.Endpoint] = c
+		key := c.Provider + "\x00" + c.Model + "\x00" + c.Endpoint + "\x00" + c.ServerInstance
+		if _, ok := wantRows[key]; !ok {
+			t.Fatalf("RouteStatus candidate %q does not match a list-models row; candidates=%#v rows=%#v", key, entry.Candidates, models)
 		}
-		if c.Cooldown != nil {
-			t.Errorf("Candidates[%d].Cooldown: expected nil", i)
+		if c.Provider != "bragi" {
+			t.Errorf("candidate provider = %q, want bragi", c.Provider)
 		}
+		if c.Model != "qwen3.5-27b" {
+			t.Errorf("candidate model = %q, want qwen3.5-27b", c.Model)
+		}
+		if c.ServerInstance == "" {
+			t.Errorf("candidate server_instance should be populated: %#v", c)
+		}
+	}
+
+	primary := byEndpoint["primary"]
+	if primary.Cooldown == nil {
+		t.Fatalf("primary endpoint should be in cooldown: %#v", primary)
+	}
+	if primary.Healthy {
+		t.Fatalf("primary endpoint should not be healthy while in cooldown: %#v", primary)
+	}
+	backup := byEndpoint["backup"]
+	if backup.Cooldown != nil {
+		t.Fatalf("backup endpoint should not be in cooldown: %#v", backup)
+	}
+	if !backup.Healthy {
+		t.Fatalf("backup endpoint should remain healthy: %#v", backup)
 	}
 }
 
-// TestRouteStatus_lastDecisionCached verifies that calling ResolveRoute and
+// TestRouteStatusLastDecisionCached verifies that calling ResolveRoute and
 // then RouteStatus surfaces the cached LastDecision on the matching entry.
-func TestRouteStatus_lastDecisionCached(t *testing.T) {
+func TestRouteStatusLastDecisionCached(t *testing.T) {
 	// Build a minimal ServiceConfig that satisfies the routing engine.
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -144,9 +208,9 @@ func TestRouteStatus_lastDecisionCached(t *testing.T) {
 	}
 }
 
-// TestRouteStatus_lastDecisionCached_viaResolveRoute verifies the full path:
+// TestRouteStatusLastDecisionCachedViaResolveRoute verifies the full path:
 // ResolveRoute → cache write → RouteStatus reads cache.
-func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
+func TestRouteStatusLastDecisionCachedViaResolveRoute(t *testing.T) {
 	// We need the routing engine to actually resolve. The engine picks
 	// harnesses from the registry. "fiz" is always in the registry.
 	// We give it a provider so the engine can build a candidate.
@@ -203,7 +267,7 @@ func TestRouteStatus_lastDecisionCached_viaResolveRoute(t *testing.T) {
 	}
 }
 
-func TestRouteStatus_attemptCooldownStateSurfaces(t *testing.T) {
+func TestRouteStatusCooldownStateSurfaces(t *testing.T) {
 	sc := &fakeServiceConfig{
 		healthCooldown: 30 * time.Second,
 		providers: map[string]ServiceProviderEntry{

@@ -489,6 +489,17 @@ type RouteCandidate struct {
 	ContextLength int
 	// ContextSource records where ContextLength came from.
 	ContextSource string
+	// SourceStatus records the model snapshot status for this candidate.
+	SourceStatus string
+	// AutoRoutable reports whether the snapshot/catalog marks the candidate as
+	// eligible for automatic routing.
+	AutoRoutable bool
+	// ExactPinOnly reports whether the candidate is only eligible when pinned
+	// explicitly.
+	ExactPinOnly bool
+	// ExclusionReason explains why the snapshot marked the candidate as
+	// excluded from automatic routing.
+	ExclusionReason string
 	// Components carries the per-axis score inputs (power, cost, latency,
 	// success rate, quota, capability) that fed the final Score. Consumers use these to
 	// explain rankings without parsing the free-form Reason.
@@ -636,13 +647,23 @@ type RouteStatusEntry struct {
 // surfaced as separate fields.
 type RouteCandidateStatus struct {
 	Provider                string
+	Endpoint                string
 	Model                   string
 	ServerInstance          string
 	Priority                int
 	Healthy                 bool
 	Cooldown                *CooldownState
+	SourceStatus            string
+	AutoRoutable            bool
+	ExactPinOnly            bool
+	ExclusionReason         string
+	Power                   int
+	ContextLength           int
+	CostInputPerMTok        float64
+	CostOutputPerMTok       float64
 	RecentLatencyMS         float64 // observation-derived; 0 when unavailable
 	ProviderReliabilityRate float64 // 0-1; 0 when unavailable. Legacy success-rate field, relabeled per ADR-006 §5 to disambiguate from routing-quality.
+	QuotaRemaining          *int
 }
 
 // ServiceEvent is a contract-level event (mirrors harnesses.Event).
