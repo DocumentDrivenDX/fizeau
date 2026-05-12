@@ -156,13 +156,14 @@ func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model s
 
 // CheckProviderDefaultEligibility returns a rejection reason when the provider
 // entry has ExcludeFromDefaultRouting=true and the request does not carry an
-// explicit provider or harness pin. Any explicit pin bypasses this gate so the
-// operator can still reach opt-out providers intentionally.
+// explicit provider, harness, or exact model pin. Any explicit hard pin
+// bypasses this gate so the operator can still reach opt-out providers
+// intentionally.
 func CheckProviderDefaultEligibility(providerName string, excluded bool, req Request) (string, FilterReason) {
 	if !excluded {
 		return "", FilterReasonEligible
 	}
-	if req.Provider != "" || req.Harness != "" {
+	if req.Provider != "" || req.Harness != "" || req.Model != "" {
 		return "", FilterReasonEligible
 	}
 	return fmt.Sprintf("provider %s excluded from default routing (include_by_default=false)", providerName), FilterReasonProviderExcludedFromDefault

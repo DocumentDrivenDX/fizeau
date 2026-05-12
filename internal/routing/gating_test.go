@@ -40,6 +40,7 @@ func excludedProviderInputs() Inputs {
 				SupportsTools:       true,
 				QuotaOK:             true,
 				SubscriptionOK:      true,
+				SupportedModels:     []string{"claude-sonnet-4-6"},
 				DefaultModel:        "claude-sonnet-4-6",
 			},
 		},
@@ -89,6 +90,22 @@ func TestIncludeByDefaultFalseBypassedByExplicitProviderPin(t *testing.T) {
 	}
 	if dec.Provider != "payg" {
 		t.Fatalf("Provider=%q, want payg when explicitly pinned", dec.Provider)
+	}
+}
+
+// TestIncludeByDefaultFalseBypassedByExactModelPin verifies that an explicit
+// model pin reaches an ExcludeFromDefaultRouting=true provider.
+func TestIncludeByDefaultFalseBypassedByExactModelPin(t *testing.T) {
+	in := excludedProviderInputs()
+	dec, err := Resolve(Request{Model: "gpt-4o"}, in)
+	if err != nil {
+		t.Fatalf("Resolve with explicit model pin: %v", err)
+	}
+	if dec.Provider != "payg" {
+		t.Fatalf("Provider=%q, want payg when exact model pinned", dec.Provider)
+	}
+	if dec.Model != "gpt-4o" {
+		t.Fatalf("Model=%q, want gpt-4o when exact model pinned", dec.Model)
 	}
 }
 
