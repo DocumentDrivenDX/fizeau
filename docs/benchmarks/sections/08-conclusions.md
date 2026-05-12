@@ -1,5 +1,3 @@
-_Editorial summary. Regenerate against the latest benchmark aggregates and timing data. The numbers here go stale as more cells land — re-run `scripts/benchmark/generate-report.py` and refresh this section._
-
 ### Qwen3.6-27B across providers (the headline question)
 
 OpenRouter Qwen3.6-27B is the throughput reference. The local lanes bottleneck elsewhere:
@@ -9,7 +7,7 @@ OpenRouter Qwen3.6-27B is the throughput reference. The local lanes bottleneck e
 
 ### Model-power signal vs harness loss
 
-The scatter in §6 mostly tracks the expected pattern — frontier-power models (Opus, GPT-5.5) sit at higher pass-rates than Qwen-class — but several Qwen lanes show distance below the trend that maps to harness loss, not model loss. The recently-fixed JSONL-bind-mount bug (commit `18a19a43`) closes one well-understood class of those.
+The scatter in section 6 mostly tracks the expected pattern: frontier-power models (Opus, GPT-5.5) sit at higher pass-rates than Qwen-class models. Several Qwen lanes still sit below the trend, which points to harness/runtime loss in addition to model capability.
 
 ### Cost / reliability frontier
 

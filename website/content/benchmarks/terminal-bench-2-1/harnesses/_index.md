@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-12 13:20:24 UTC · 11 fiz harness lanes shown · external leaderboard for the same models below</div>
+<div class="meta">Snapshot: 2026-05-12 13:50:36 UTC · 11 fiz harness lanes shown · external leaderboard for the same models below</div>
 <div class="narrative">
 <p>Each row holds the model constant (Sonnet 4.6, GPT-5.4-mini, etc.) and varies the agent loop. Native CLI lanes (<code>claude-native-*</code>, <code>codex-native-*</code>) run their own harness directly. <code>fiz-harness-*</code> lanes use fiz as a measurement wrapper around the same CLI. <code>fiz-openrouter-*</code> / <code>fiz-openai-*</code> lanes call the model's API directly through fiz's built-in loop. A delta between these is harness loss, isolated from model loss.</p>
 </div>
@@ -60,7 +60,7 @@ toc: true
 <tr>
 <td>Qwen3.6-27B (frontier reasoning lane)</td>
 <td>All three Qwen provider rows on the providers page</td>
-<td>A <code>fiz-harness-codex-qwen-3-6-27b</code> lane (Codex CLI configured against an OpenAI-compat Qwen endpoint)</td>
+<td>A <code>fiz-harness-codex-qwen-3-6-27b</code> lane (Codex CLI configured against an OpenAI-compatible Qwen provider)</td>
 <td>The only Qwen rows today use fiz's built-in loop. A second harness on the same Qwen weights would let the providers-page numbers be re-read as model-loss vs harness-loss.</td>
 </tr>
 <tr>

@@ -73,6 +73,7 @@ OUT_HTML = OUT_ROOT / "terminal-bench-2.1-report.html"
 # Hugo treats the directory as a single page with co-located assets.
 HUGO_BUNDLE = REPO / "website/content/benchmarks/terminal-bench-2-1"
 HUGO_LANDING = REPO / "website/content/benchmarks/_index.md"
+HUGO_BUNDLE_DATA_ALLOWLIST = frozenset({"snapshot.json"})
 
 # Visual palette keyed on provider/runtime, used by both chart code and the HTML.
 PALETTE = {
@@ -120,6 +121,17 @@ PUBLIC_PROFILE_LABELS = {
 
 def public_profile_label(profile_id: str) -> str:
     return PUBLIC_PROFILE_LABELS.get(profile_id, profile_id)
+
+
+def publish_hugo_bundle_data(hugo_data: Path, data_dir: Path = DATA_DIR) -> None:
+    """Publish only public, allowlisted JSON into the Hugo page bundle."""
+    hugo_data.mkdir(parents=True, exist_ok=True)
+    for js in hugo_data.glob("*.json"):
+        js.unlink()
+    for filename in sorted(HUGO_BUNDLE_DATA_ALLOWLIST):
+        src = data_dir / filename
+        if src.is_file():
+            (hugo_data / filename).write_bytes(src.read_bytes())
 
 def parse_ts(ts: str | None) -> float | None:
     """ISO-8601 with up to nanosecond precision → POSIX seconds."""
@@ -1475,10 +1487,7 @@ def main():
 
     HUGO_BUNDLE.mkdir(parents=True, exist_ok=True)
     hugo_data = HUGO_BUNDLE / "data"
-    hugo_data.mkdir(exist_ok=True)
-    for js in hugo_data.glob("*.json"):
-        js.unlink()
-    (hugo_data / "snapshot.json").write_bytes((DATA_DIR / "snapshot.json").read_bytes())
+    publish_hugo_bundle_data(hugo_data)
 
     if args.emit_data_only:
         print(f"[done, data-only] data/ written. Edit sections/*.md, then re-run without --emit-data-only.", file=sys.stderr)

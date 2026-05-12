@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-12 13:20:24 UTC · 13 model lanes shown</div>
+<div class="meta">Snapshot: 2026-05-12 13:50:36 UTC · 13 model lanes shown</div>
 <div class="narrative">
 <p>Each row is fiz running its own built-in agent loop against a different model. Where possible we report on the <code>openai-cheap</code> subset (35 tasks) so the cost gate doesn't bias the model selection — frontier hosted models are typically too expensive to run with k=5 reps across all 89 TB-2.1 tasks.</p>
 </div>
@@ -68,7 +68,6 @@ toc: true
 <p>To extend everything outside Qwen to a full <code>--reps 5 × 35-task</code> cell on <code>openai-cheap</code>, total spend is <strong>≈ $510</strong> in API costs (Sonnet ≈ $200 across two paths, GPT-5.5 ≈ $295 across two paths, mini ≈ $18 across two paths). The <code>all</code> (89-task) subset for the GPT-5.5 / Sonnet rows would be roughly 2.5× that — <strong>≈ $1.3k</strong> for the frontier hosted models, which is why those rows stay on the cheap subset by default.</p>
 <p>The cheap rows (mini, Qwen via OpenRouter) are not budget-gated; they are blocked on the same <code>invalid_setup</code> issues that produced 108 of 199 attempts in the table above. Fixing that infrastructure issue unlocks coverage, not money.</p></div>
 <h2>Model power vs pass-rate</h2>
-<div class="narrative"><p><em>Regenerate this section against the latest benchmark aggregates and the chart below. Open in a pull request when refreshed.</em></p>
-<p>Each marker is a lane (or external submission) plotted at its model-power score (1 = weak, 10 = frontier per <code>scripts/benchmark/terminalbench_model_power.json</code>) against pass@k on the <code>all</code> subset. Marker size scales with median turns (larger = the agent worked harder before converging or giving up). Distance below the trend line at a given x-value is the <em>harness loss</em> for that lane: how much pass-rate the lane leaves on the floor relative to what the underlying model delivers elsewhere.</p></div>
+<div class="narrative"><p>Each marker is a lane (or external submission) plotted at its model-power score (1 = weak, 10 = frontier per <code>scripts/benchmark/terminalbench_model_power.json</code>) against pass@k on the <code>all</code> subset. Marker size scales with median turns (larger = the agent worked harder before converging or giving up). Distance below the trend line at a given x-value is the <em>harness loss</em> for that lane: how much pass-rate the lane leaves on the floor relative to what the underlying model delivers elsewhere.</p></div>
 <div class="chart"><img src="/benchmarks/terminal-bench-2-1/charts/model-power-scatter.svg" alt="model-power-scatter.svg"></div>
 </div>

@@ -1,63 +1,60 @@
-_Provider details below use public lane labels. Raw hostnames, ports, and
-machine inventory keys stay in the benchmark runner configuration; the website
-only publishes the runtime, model, sampling, limits, and hardware class needed
-to interpret results._
+Provider details below use public lane labels. They publish enough information to interpret the benchmark results: provider surface, runtime family, model or quantization, sampling policy, context limits, and broad hardware class for self-hosted lanes.
 
-### OpenRouter (cloud aggregator)
+### OpenRouter Qwen3.6-27B
 
 - **Lane:** `fiz-openrouter-qwen3-6-27b`
-- **Surface:** OpenAI-compatible chat-completions API, model `qwen/qwen3-6-27b-instruct`.
-- **Engine version:** TODO — OpenRouter does not surface the underlying provider's engine in the `/v1/models` payload, and we do not log the `OpenRouter-Provider` response header that would identify which back-end pool served each request.
-- **Sampling defaults (sent by fiz):** `temperature=0.6`, `top_p=0.95`, `top_k=20`, reasoning `low` (Qwen3 thinking-mode recommended).
-- **KV / prefix cache:** opaque — provider-side. OpenRouter's pricing page lists cached-input as `$0.0` for this model, suggesting either no cache or no rebate. Observed `p50 TTFT ≈ 0.79 s` is consistent with a warm pool.
-- **Quoted limits:** 128k context advertised, 32k max output, no rate limit configured in our profile.
-- **Cost:** observed `≈ $0.12 / run` at the `all` cell median (87k in / 5.2k out tokens × $0.10/Mtok in / $0.30/Mtok out — TODO confirm against the live OpenRouter price page snapshot).
+- **Surface:** managed OpenAI-compatible API through OpenRouter.
+- **Model:** `qwen/qwen3-6-27b-instruct`.
+- **Sampling:** `temperature=0.6`, `top_p=0.95`, `top_k=20`, reasoning `low`.
+- **Limits:** 128k advertised context, 32k max output.
+- **Cost profile:** low cash cost per run; current medians put it near the budget end of the hosted lanes.
+- **Notes:** provider-side routing and caching are opaque, so this lane is best read as the managed throughput reference for Qwen3.6-27B.
 
-### sindri-vllm (vLLM int4, local CUDA)
+### sindri-vllm
 
 - **Lane:** `sindri-vllm`
-- **Engine:** vLLM, model `qwen3.6-27b-autoround` (AutoRound int4 weights). **Engine version: TODO**.
-- **Sampling (sent by fiz):** `temperature=0.6`, `top_p=0.95`, `top_k=20`, reasoning `low`.
-- **KV / prefix cache:** vLLM launches **without** `--enable-prefix-caching` today — observed TTFT scales sharply with input length on the per-context-bucket chart above, the symptom. Turning it on is the single biggest performance lever for this lane (see overview "Open questions").
-- **Hardware class:** local RTX-class CUDA workstation.
-- **Limits:** 180k context advertised in the profile, 32k max output. Real usable context is lower in int4.
-- **Cost:** $0 cash; observed wall-time roughly 2× the OpenRouter lane on the same task set, dominated by prefill.
+- **Surface:** self-hosted vLLM on a local RTX-class CUDA workstation.
+- **Model:** Qwen3.6-27B AutoRound int4.
+- **Sampling:** `temperature=0.6`, `top_p=0.95`, `top_k=20`, reasoning `low`.
+- **Limits:** 180k advertised context, 32k max output; effective usable context depends on runtime memory pressure.
+- **Notes:** decode throughput is strong, but TTFT rises with long context. Prefix caching is the main performance lever for this lane.
 
-### sindri-llamacpp (llama.cpp Q3_K_XL, local CUDA)
+### sindri-llamacpp
 
 - **Lane:** `sindri-llamacpp`
-- **Engine:** llama.cpp, Qwen3.6-27B Q3_K_XL quantization. **Engine version: TODO**.
-- **Sampling (sent by fiz):** `temperature=0.6`, `top_p=0.95`, `top_k=20`; provider-specific reasoning hints are not sent to llama.cpp.
-- **Hardware class:** same local RTX-class CUDA workstation as `sindri-vllm`; the runtime and quantization differ.
-- **Limits:** advertised context and max-output values come from the profile; verify effective usable context after the next full sweep.
+- **Surface:** self-hosted llama.cpp on the same local CUDA hardware class as `sindri-vllm`.
+- **Model:** Qwen3.6-27B Q3_K_XL quantization.
+- **Sampling:** `temperature=0.6`, `top_p=0.95`, `top_k=20`; provider-specific reasoning hints are not sent to llama.cpp.
+- **Notes:** this lane isolates runtime and quantization differences against the same broad hardware class as the vLLM lane.
 
-### local-vllm-rtx3090 (vLLM int4, local CUDA laptop)
+### local-vllm-rtx3090
 
 - **Lane:** `local-vllm-rtx3090`
-- **Engine:** vLLM, same `qwen3.6-27b-autoround` weights as `sindri-vllm`. **Engine version: TODO.** Same prefix-cache caveat — not enabled.
-- **Sampling:** identical to `sindri-vllm`.
-- **Hardware class:** local RTX-class CUDA laptop.
-- **Notes:** Mobile inference host; only 7 of 196 attempts produced real reps in the latest sweep — most are `invalid_setup`. Treat the row as "lane wired up" rather than "lane producing comparable data."
+- **Surface:** self-hosted vLLM on a mobile RTX-class CUDA system.
+- **Model:** Qwen3.6-27B AutoRound int4.
+- **Sampling:** same as `sindri-vllm`.
+- **Notes:** this lane is wired up but not yet producing enough real reps for a comparable benchmark read.
 
-### local-omlx-qwen3-6-27b (oMLX 8-bit, Apple silicon)
+### local-omlx-qwen3-6-27b
 
 - **Lane:** `local-omlx-qwen3-6-27b`
-- **Engine:** oMLX, model `Qwen3.6-27B-MLX-8bit`. **oMLX version: TODO**.
+- **Surface:** self-hosted oMLX on an Apple silicon workstation class.
+- **Model:** Qwen3.6-27B MLX 8-bit.
 - **Sampling:** `temperature=0.6`, `top_p=0.95`, `top_k=20`, reasoning `low`.
-- **KV / prefix cache:** MLX-side cache behaviour is TODO — we have not confirmed whether oMLX replays full conversation context per turn. The high median input-token count on this lane is consistent with replay rather than incremental decode and is one of the open questions on the overview page.
-- **Hardware class:** local Apple Silicon workstation with large unified memory.
-- **Limits:** 128k context advertised, 32k max output.
+- **Limits:** 128k advertised context, 32k max output.
+- **Notes:** current results show slower TTFT and decode than the CUDA lanes at this model size.
 
-### local-rapidmlx-qwen3-6-27b (RapidMLX 8-bit, Apple silicon)
+### local-rapidmlx-qwen3-6-27b
 
 - **Lane:** `local-rapidmlx-qwen3-6-27b`
-- **Engine:** Rapid-MLX, model `mlx-community/Qwen3.6-27B-8bit`. **Engine version: TODO.**
-- **Sampling:** identical to the oMLX lane.
-- **Hardware class:** local Apple Silicon workstation class.
-- **Notes:** 0 real reps of 178 attempts in the latest sweep; treat as not yet producing comparable data.
+- **Surface:** self-hosted Rapid-MLX on an Apple silicon workstation class.
+- **Model:** Qwen3.6-27B MLX 8-bit.
+- **Sampling:** same as the oMLX lane.
+- **Notes:** this lane is not yet producing comparable real reps.
 
-### local-lmstudio-qwen3-6-27b (LM Studio alternate runtime)
+### local-lmstudio-qwen3-6-27b
 
 - **Lane:** `local-lmstudio-qwen3-6-27b`
-- **Engine:** LM Studio. **Version, exact model build, sampling defaults at the server: all TODO.**
-- **Notes:** 0 real reps of 375 attempts in the latest sweep — a placeholder lane. Treat as not producing comparable data until the LM Studio request pipeline is fixed.
+- **Surface:** LM Studio alternate runtime.
+- **Model:** Qwen3.6-27B class local model.
+- **Notes:** this lane is a placeholder until it produces real reps.

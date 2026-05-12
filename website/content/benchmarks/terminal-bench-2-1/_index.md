@@ -5,10 +5,10 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-12 13:20:24 UTC · 2,614 trial reports · 22 active lanes</div>
+<div class="meta">Snapshot: 2026-05-12 13:50:36 UTC · 2,614 trial reports · 22 active lanes</div>
 <h2>How we run it</h2>
-<div class="narrative"><p><a href="https://terminal-bench.dev/">Terminal-Bench</a> 2.1 is a public coding-agent benchmark of 89 long-form tasks. Each task ships a prompt, an isolated Docker container with the test environment, and a deterministic verifier. An agent reads the prompt, runs shell commands and edits files inside the container, then the verifier scores the resulting state. We use the arm64 preflight image of the dataset (commit <code>harbor-registry</code>).</p>
-<p>Each lane runs through <a href="https://github.com/laude-institute/harbor">Harbor</a> 0.3.x's <code>BaseInstalledAgent</code> path. Harbor stages our agent runtime tarball into the task image, runs the agent inside the task's container with bind-mounted log directories, then runs the verifier separately. Our agent adapter (<code>scripts/benchmark/harbor_agent.py</code>) launches <code>fiz</code> with provider/model wired via per-lane env vars (<code>FIZEAU_PROVIDER</code>, <code>FIZEAU_BASE_URL</code>, <code>FIZEAU_MODEL</code>, …). Each task runs with <code>--reps 5</code> per lane; pass@1 (per-rep success rate) and pass@k (any-rep solve rate, for k=5 reps) are reported separately.</p>
+<div class="narrative"><p><a href="https://terminal-bench.dev/">Terminal-Bench</a> 2.1 is a public coding-agent benchmark of 89 long-form tasks. Each task ships a prompt, an isolated Docker environment, and a deterministic verifier. An agent reads the prompt, runs shell commands, edits files inside the container, and is scored against the resulting state.</p>
+<p>Each Fizeau lane runs through <a href="https://github.com/laude-institute/harbor">Harbor</a> 0.3.x's installed-agent path. Harbor installs the agent runtime in the task container, runs the attempt, and then invokes the verifier separately. Lane configuration selects the provider, model, runtime, and harness without publishing private service locations. Each task runs five reps per lane; pass@1 is the per-rep success rate, and pass@k reports whether any of the five reps solved the task.</p>
 <p>We slice the 89-task set into nested benchmarks of decreasing scope. The subset YAMLs are under <code>scripts/benchmark/task-subset-tb21-*.yaml</code>:</p></div>
 <table><thead><tr><th>Subset</th><th>Tasks</th><th>Selection rule</th></tr></thead><tbody><tr><td>canary</td><td>3</td><td>3-5 task canary covering SE, data-processing, and system-administration; one task per category; deterministic sort by difficulty desc then id asc</td></tr><tr><td>openai-cheap</td><td>35</td><td>observed native OpenAI GPT-5.5 average cost &lt;= ~$0.90 per run where available; otherwise OpenRouter Qwen3.6 27B token count projected at GPT-5.5 pricing &lt;= ~$1.00 per run; exclude known multi-dollar cells</td></tr><tr><td>full</td><td>15</td><td>filtered TB-2.1 tasks with fixed category quotas SE=5 security=3 file-ops=2 sysadmin=2 data-processing=2 debugging=1; difficulty-desc then id-asc</td></tr><tr><td>all</td><td>89</td><td>all 89 tasks from the Harbor terminal-bench/terminal-bench-2-1 task catalog</td></tr></tbody></table>
 <h2>Three perspectives on the same data</h2>
@@ -21,15 +21,14 @@ toc: true
 </ul>
 </div>
 <h2>Headline observations</h2>
-<div class="narrative"><p><em>Editorial summary. Regenerate against the latest benchmark aggregates and timing data. The numbers here go stale as more cells land — re-run <code>scripts/benchmark/generate-report.py</code> and refresh this section.</em></p>
-<h3>Qwen3.6-27B across providers (the headline question)</h3>
+<div class="narrative"><h3>Qwen3.6-27B across providers (the headline question)</h3>
 <p>OpenRouter Qwen3.6-27B is the throughput reference. The local lanes bottleneck elsewhere:</p>
 <ul>
 <li><strong>sindri-vllm (vLLM int4 on local CUDA)</strong>: best decode rate, worst prefill. On agent loops with 50–150k context per turn, prefill dominates wall — explaining why the median wall is roughly 2× OpenRouter despite faster decode.</li>
 <li><strong>local-omlx-qwen3-6-27b (oMLX 8-bit on Apple silicon)</strong>: slow on both axes. MLX 8-bit at this model size is the rate limiter; only smaller quantization or a different runtime will move it.</li>
 </ul>
 <h3>Model-power signal vs harness loss</h3>
-<p>The scatter in §6 mostly tracks the expected pattern — frontier-power models (Opus, GPT-5.5) sit at higher pass-rates than Qwen-class — but several Qwen lanes show distance below the trend that maps to harness loss, not model loss. The recently-fixed JSONL-bind-mount bug (commit <code>18a19a43</code>) closes one well-understood class of those.</p>
+<p>The scatter in section 6 mostly tracks the expected pattern: frontier-power models (Opus, GPT-5.5) sit at higher pass-rates than Qwen-class models. Several Qwen lanes still sit below the trend, which points to harness/runtime loss in addition to model capability.</p>
 <h3>Cost / reliability frontier</h3>
 <p>OpenRouter Qwen3.6-27B costs cash per run; local lanes cost $0 in cash but cost in wall-time and reliability. For pure budget, OR Qwen wins; for ceiling-pass tasks where reliability matters, the frontier rows on the leaderboard remain ahead of any Qwen lane regardless of plumbing.</p>
 <h3>Open questions</h3>
@@ -46,16 +45,5 @@ toc: true
 <li>Both timing metrics report as <strong>median-of-per-task-medians</strong> to dampen rep variance and outlier turns. Per-bucket timing requires ≥5 turns in the bucket to plot.</li>
 <li>Provider-side latency (TTFT including queue and prefill) and pure decode stay separate so wall-time can be attributed to prefill vs generation.</li>
 <li>External leaderboard data is the count of <code>reward.txt</code> files per submission per task on <code>harborframework/terminal-bench-2-leaderboard</code> on Hugging Face. We report <code>tasks_passed / tasks_attempted</code> rather than per-rep pass@1 because the leaderboard does not expose per-rep granularity uniformly.</li>
-</ul>
-<h3>Regenerating the report</h3>
-<pre><code class="language-sh"># full rebuild (data + charts + HTML)
-.venv-report/bin/python scripts/benchmark/generate-report.py
-
-# data only — useful before editing the narrative markdown:
-.venv-report/bin/python scripts/benchmark/generate-report.py --emit-data-only
-
-# refresh external leaderboard from Hugging Face:
-.venv-report/bin/python scripts/benchmark/generate-report.py --refresh-leaderboard
-</code></pre>
-<p>The script reads from <code>benchmark-results/fiz-tools-v1/cells/</code> and writes to <code>docs/benchmarks/</code>. Narrative sections (<code>docs/benchmarks/sections/*.md</code>) are read at render time and are the only place to edit prose — do not edit the generated HTML directly.</p></div>
+</ul></div>
 </div>
