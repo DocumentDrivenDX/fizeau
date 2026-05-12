@@ -1228,11 +1228,26 @@ article dd, main dd {
   .bench-comparison__stat { padding: var(--space-2) var(--space-2); }
   .bench-comparison__stat:nth-child(3) { border-left: none; }  /* row break in 2-col */
   .bench-comparison__block { padding: var(--space-4); }
+  .br-body table {
+    -webkit-overflow-scrolling: touch;
+  }
   .bench-comparison__table th,
   .bench-comparison__table td,
   .br-body th,
   .br-body td {
-    padding: 6px var(--space-2);
+    padding: 5px var(--space-1);
+    font-size: var(--text-xs);
+    line-height: 1.35;
+  }
+  .br-body td:first-child,
+  .br-body th:first-child {
+    min-width: 14ch;
+    max-width: 24ch;
+  }
+  .br-body table:has(th:nth-child(3):last-child) td:nth-child(3),
+  .br-body table:has(th:nth-child(4):last-child) td:nth-child(4) {
+    min-width: 24ch;
+    max-width: 40ch;
   }
   .br-body h2 { font-size: var(--text-xl); }
   .br-body h3 { font-size: var(--text-base); }
@@ -1242,7 +1257,8 @@ article dd, main dd {
     margin-bottom: var(--space-4);
   }
   .br-body .chart {
-    padding: var(--space-3);
+    padding: var(--space-2);
+    -webkit-overflow-scrolling: touch;
   }
   .br-body .chart svg,
   .br-body .chart img {
