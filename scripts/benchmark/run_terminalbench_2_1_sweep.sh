@@ -27,6 +27,7 @@ MATRIX_JOBS_MANAGED="${BENCHMARK_MATRIX_JOBS_MANAGED:-auto}"
 PER_RUN_BUDGET_USD=""
 BUDGET_USD=""
 CONFIRM_DELAY="${BENCHMARK_CONFIRM_DELAY:-8}"
+PREFLIGHT_TIMEOUT_SECONDS="${BENCHMARK_PREFLIGHT_TIMEOUT_SECONDS:-30}"
 
 usage() {
   cat <<'EOF'
@@ -596,6 +597,9 @@ prepare_env_keys() {
   export OMLX_API_KEY="${OMLX_API_KEY:-local}"
   export VLLM_API_KEY="${VLLM_API_KEY:-local}"
   export RAPID_MLX_API_KEY="${RAPID_MLX_API_KEY:-local}"
+  if [[ "${DRY_RUN}" = "1" ]]; then
+    return
+  fi
   if [[ -z "${OPENROUTER_API_KEY:-}" ]] && selected_plan_requires_key "OPENROUTER_API_KEY"; then
     echo "OPENROUTER_API_KEY is required for selected OpenRouter lanes" >&2
     exit 1
@@ -641,6 +645,290 @@ for lane in lanes:
         raise SystemExit(0)
 raise SystemExit(1)
 PY
+}
+
+preflight_provider_is_local() {
+  case "$1" in
+    vllm|llama-server|omlx|lmstudio|rapid-mlx|ollama|lucebox) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+preflight_lanes_json() {
+  python3 - "${SWEEP_PLAN}" "${PHASE}" "${LANES}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+import yaml
+
+plan = yaml.safe_load(Path(sys.argv[1]).read_text())
+phase_id = sys.argv[2]
+lane_filter = [item.strip() for item in sys.argv[3].split(",") if item.strip()]
+
+if phase_id == "all":
+    selected_phase_ids = {"canary", "local-qwen", "sonnet-comparison", "gpt-comparison"}
+else:
+    selected_phase_ids = {phase_id}
+
+phases = [p for p in (plan.get("phases") or []) if p.get("id") in selected_phase_ids]
+if not phases:
+    raise SystemExit(f"preflight: phase {phase_id!r} not found in sweep plan")
+
+lane_by_id = {lane.get("id"): lane for lane in (plan.get("lanes") or [])}
+rg_by_id = {rg.get("id"): rg for rg in (plan.get("resource_groups") or [])}
+wanted = set(lane_filter)
+
+seen = set()
+for phase in phases:
+    phase_lanes = phase.get("lanes") or []
+    phase_lane_set = set(phase_lanes)
+    ordered_lanes = [lane_id for lane_id in lane_filter if lane_id in phase_lane_set] if wanted else phase_lanes
+    for lane_id in ordered_lanes:
+        if lane_id in seen:
+            continue
+        seen.add(lane_id)
+        lane = lane_by_id.get(lane_id)
+        if not lane:
+            raise SystemExit(f"preflight: lane {lane_id!r} not found in sweep plan")
+        rg = rg_by_id.get(lane.get("resource_group"))
+        if not rg:
+            raise SystemExit(
+                f"preflight: resource group {lane.get('resource_group')!r} not found for lane {lane_id}"
+            )
+        env = lane.get("fizeau_env") or {}
+        print(json.dumps({
+            "lane_id": lane_id,
+            "provider_type": rg.get("provider_type") or "",
+            "base_url": rg.get("base_url") or env.get("FIZEAU_BASE_URL") or "",
+            "model": env.get("FIZEAU_MODEL") or lane.get("model_id") or "",
+            "api_key_env": env.get("FIZEAU_API_KEY_ENV") or "",
+            "sampling": lane.get("sampling") or {},
+        }, separators=(",", ":")))
+PY
+}
+
+preflight_lane_field() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+value = data.get(sys.argv[2], "")
+if isinstance(value, (dict, list)):
+    print(json.dumps(value, separators=(",", ":")))
+else:
+    print(value)
+PY
+}
+
+preflight_truncated_file() {
+  python3 - "$1" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+if not path.exists():
+    print("")
+    raise SystemExit(0)
+raw = path.read_bytes()[:1024]
+print(raw.decode("utf-8", errors="replace").replace("\n", "\\n"))
+PY
+}
+
+preflight_http_error_summary() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import pathlib
+import sys
+
+body = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+http_code = sys.argv[2]
+try:
+    data = json.loads(body)
+except Exception:
+    print(f"HTTP {http_code}")
+    raise SystemExit(0)
+
+message = None
+if isinstance(data, dict):
+    err = data.get("error")
+    if isinstance(err, dict):
+        message = err.get("message") or err.get("detail") or err.get("error")
+    elif isinstance(err, str):
+        message = err
+    if not message:
+        detail = data.get("detail")
+        if isinstance(detail, str):
+            message = detail
+if message:
+    print(message)
+else:
+    print(f"HTTP {http_code}")
+PY
+}
+
+preflight_validate_response() {
+  python3 - "$1" <<'PY'
+import json
+import pathlib
+import sys
+
+try:
+    data = json.loads(pathlib.Path(sys.argv[1]).read_text())
+except Exception as exc:
+    print(f"malformed JSON: {exc}")
+    raise SystemExit(1)
+
+try:
+    content = data["choices"][0]["message"]["content"]
+except Exception:
+    print("missing choices[0].message.content")
+    raise SystemExit(1)
+
+if not isinstance(content, str):
+    print("missing choices[0].message.content")
+    raise SystemExit(1)
+PY
+}
+
+preflight_write_request_body() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import pathlib
+import sys
+
+lane = json.loads(sys.argv[1])
+sampling = lane.get("sampling") or {}
+body = {
+    "model": lane.get("model") or "",
+    "messages": [{"role": "user", "content": "preflight"}],
+    "max_tokens": 1,
+    "stream": False,
+}
+for key in ("temperature", "top_p", "top_k", "reasoning"):
+    if key in sampling and sampling[key] is not None:
+        body[key] = sampling[key]
+pathlib.Path(sys.argv[2]).write_text(json.dumps(body, separators=(",", ":")) + "\n")
+PY
+}
+
+print_preflight_failure() {
+  local lane_id="$1"
+  local summary="$2"
+  local base_url="$3"
+  local model="$4"
+  local sampling="$5"
+  local body_file="$6"
+  local body_trunc
+  body_trunc="$(preflight_truncated_file "${body_file}")"
+  echo "[preflight] ${lane_id} FAILED: ${summary}" >&2
+  echo "  base_url: ${base_url}" >&2
+  echo "  model: ${model}" >&2
+  echo "  sampling: ${sampling}" >&2
+  echo "  response body (truncated 1KB): ${body_trunc}" >&2
+}
+
+preflight_lane() {
+  local lane_json="$1"
+  local lane_id provider_type base_url model api_key_env sampling endpoint tmpdir request_file body_file curl_err
+  local start_s end_s elapsed_s curl_status http_code api_key validation summary curl_message
+
+  lane_id="$(preflight_lane_field "${lane_json}" lane_id)"
+  provider_type="$(preflight_lane_field "${lane_json}" provider_type)"
+  base_url="$(preflight_lane_field "${lane_json}" base_url)"
+  model="$(preflight_lane_field "${lane_json}" model)"
+  api_key_env="$(preflight_lane_field "${lane_json}" api_key_env)"
+  sampling="$(preflight_lane_field "${lane_json}" sampling)"
+
+  if ! preflight_provider_is_local "${provider_type}"; then
+    case "${provider_type}" in
+      openrouter|openai|anthropic)
+        echo "[preflight] ${lane_id} SKIPPED (managed cloud lane)"
+        ;;
+      *)
+        echo "[preflight] ${lane_id} SKIPPED (provider type ${provider_type} is not preflight-enabled)"
+        ;;
+    esac
+    return 0
+  fi
+
+  need curl
+  endpoint="${base_url%/}/chat/completions"
+  tmpdir="$(mktemp -d)"
+  request_file="${tmpdir}/request.json"
+  body_file="${tmpdir}/response.body"
+  curl_err="${tmpdir}/curl.err"
+  preflight_write_request_body "${lane_json}" "${request_file}"
+
+  start_s="$(date +%s)"
+  curl_status=0
+  api_key=""
+  if [[ -n "${api_key_env}" ]]; then
+    api_key="${!api_key_env:-}"
+  fi
+  if [[ -n "${api_key}" ]]; then
+    http_code="$(curl --silent --show-error --max-time "${PREFLIGHT_TIMEOUT_SECONDS}" \
+      --output "${body_file}" --write-out "%{http_code}" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer ${api_key}" \
+      --data-binary @"${request_file}" \
+      "${endpoint}" 2>"${curl_err}")" || curl_status=$?
+  else
+    http_code="$(curl --silent --show-error --max-time "${PREFLIGHT_TIMEOUT_SECONDS}" \
+      --output "${body_file}" --write-out "%{http_code}" \
+      -H "Content-Type: application/json" \
+      --data-binary @"${request_file}" \
+      "${endpoint}" 2>"${curl_err}")" || curl_status=$?
+  fi
+  end_s="$(date +%s)"
+  elapsed_s=$(( end_s - start_s ))
+
+  if (( curl_status != 0 )); then
+    cat "${curl_err}" >> "${body_file}" 2>/dev/null || true
+    curl_message="$(preflight_truncated_file "${curl_err}")"
+    case "${curl_status}" in
+      7) summary="connection refused (curl error 7)" ;;
+      28) summary="timeout after ${PREFLIGHT_TIMEOUT_SECONDS}s (curl error 28)" ;;
+      *) summary="curl error ${curl_status}: ${curl_message}" ;;
+    esac
+    print_preflight_failure "${lane_id}" "${summary}" "${base_url}" "${model}" "${sampling}" "${body_file}"
+    rm -rf "${tmpdir}"
+    return 1
+  fi
+
+  if [[ ! "${http_code}" =~ ^2 ]]; then
+    summary="$(preflight_http_error_summary "${body_file}" "${http_code}")"
+    print_preflight_failure "${lane_id}" "${summary}" "${base_url}" "${model}" "${sampling}" "${body_file}"
+    rm -rf "${tmpdir}"
+    return 1
+  fi
+
+  if ! validation="$(preflight_validate_response "${body_file}")"; then
+    print_preflight_failure "${lane_id}" "${validation}" "${base_url}" "${model}" "${sampling}" "${body_file}"
+    rm -rf "${tmpdir}"
+    return 1
+  fi
+
+  echo "[preflight] ${lane_id} OK (1 token in ${elapsed_s}s)"
+  rm -rf "${tmpdir}"
+}
+
+run_preflight_lanes() {
+  local lanes_file lane_json
+  lanes_file="$(mktemp)"
+  if ! preflight_lanes_json > "${lanes_file}"; then
+    rm -f "${lanes_file}"
+    return 1
+  fi
+  while IFS= read -r lane_json; do
+    [[ -n "${lane_json}" ]] || continue
+    if ! preflight_lane "${lane_json}"; then
+      rm -f "${lanes_file}"
+      return 1
+    fi
+  done < "${lanes_file}"
+  rm -f "${lanes_file}"
 }
 
 append_optional_sweep_args() {
@@ -765,7 +1053,7 @@ if bad:
 PY
 }
 
-print_summary() {
+print_summary_header() {
   echo
   echo "TerminalBench 2.1 sweep target"
   echo "  phase:              ${PHASE}"
@@ -790,6 +1078,9 @@ print_summary() {
   echo "Resolved tasks:"
   awk '{print "  " $1 ": " $2}' "${TARGET_TASKS_FILE}" | sort -u
   echo
+}
+
+print_dry_run_plan() {
   echo "Dry-run plan:"
   local dry_phase
   while IFS= read -r dry_phase; do
@@ -808,6 +1099,15 @@ print_summary() {
     dry_args+=(--dry-run)
     "${BENCH_BIN}" "${dry_args[@]}"
   done < <(run_plan_phases)
+}
+
+print_summary() {
+  print_summary_header
+  if [[ "${PREPARE_ONLY}" != "1" ]]; then
+    run_preflight_lanes
+    echo
+  fi
+  print_dry_run_plan
 }
 
 need docker
