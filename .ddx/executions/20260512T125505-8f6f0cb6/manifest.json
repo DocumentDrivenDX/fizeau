@@ -1,0 +1,80 @@
+{
+  "attempt_id": "20260512T125505-8f6f0cb6",
+  "bead_id": "fizeau-7c8b1856",
+  "base_rev": "74c5a6d85d7de77ce97f0f046c0ba68845e86355",
+  "created_at": "2026-05-12T12:55:07.58953373Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.5",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-7c8b1856",
+    "title": "Snapshot assembler: enumerate providers + harnesses, discover via cache, enrich from catalog",
+    "description": "Build the in-memory `ModelSnapshot` view by enumerating all configured\nproviders (incl harnesses-as-providers), reading per-source caches\n(via M1), parsing model IDs via the version-aware ranker (bead A), and\njoining with catalog metadata (power, cost, reasoning_levels,\nquota_pool from bead E1).\n\n## Public API sketch\n\n```go\npackage modelregistry\n\ntype Source string\nconst (\n    SourceNativeAPI    Source = \"native_api\"\n    SourceHarnessPTY   Source = \"harness_pty\"\n    SourcePropsAPI     Source = \"props_api\"\n)\n\ntype ModelStatus string\nconst (\n    StatusAvailable     ModelStatus = \"available\"\n    StatusRateLimited   ModelStatus = \"rate_limited\"\n    StatusUnreachable   ModelStatus = \"unreachable\"\n    StatusUnknown       ModelStatus = \"unknown\"\n)\n\ntype KnownModel struct {\n    // Identity (per ADR-012; matches ModelRef)\n    Provider      string\n    ID            string\n\n    // How fizeau learned of it\n    DiscoveredVia Source\n    DiscoveredAt  time.Time\n\n    // Parsed via bead A\n    Family        string\n    Version       []int\n    Tier          modelcatalog.Tier\n    PreRelease    bool\n\n    // From catalog join\n    Power            int\n    CostInputPerM    float64\n    CostOutputPerM   float64\n    ContextWindow    int\n    ReasoningLevels  []string\n    QuotaPool        string  // E1\n\n    // Composed eligibility (consumed by routing)\n    AutoRoutable    bool      // catalog × IncludeByDefault × Status\n    ExclusionReason string\n}\n\ntype ModelSnapshot struct {\n    Models  []KnownModel\n    AsOf    time.Time\n    Sources map[string]SourceMeta\n}\n\ntype SourceMeta struct {\n    LastRefreshedAt time.Time\n    Stale           bool\n    Error           string\n}\n\nfunc Assemble(ctx context.Context, cfg *config.Config, cat *modelcatalog.Catalog, cache *discoverycache.Cache) (ModelSnapshot, error)\n```\n\n## Provider enumeration\n\nIterates `cfg.Providers` (existing user config) plus implicit\nsubscription harnesses (claude-subscription, codex-subscription) when\ntheir CLIs are installed and authenticated.\n\n## Per-source discovery\n\nEach provider type has a discovery adapter:\n- openai-compat (openrouter, openai, vidar-ds4, sindri-llamacpp): GET\n  `/v1/models` via cache\n- ds4: also GET `/props`\n- claude / codex harnesses: PTY-based cassette read via cache (existing\n  model_discovery.go code, now wrapped through M1's cache)\n\nAdapters return `[]string` (model IDs); assembler produces\n`KnownModel` per ID.\n\n## Tier ranker integration\n\nEach model ID parsed via `modelcatalog.tiers.Parse(id)` (bead A). Sets\nFamily/Version/Tier/PreRelease.\n\n## Catalog join\n\nFor each (provider, model) candidate, look up the catalog entry. If\npresent, populate Power/Cost/ContextWindow/ReasoningLevels/QuotaPool.\nIf not, leave zero/empty (snapshot still includes the entry —\nprovider-discovered models without catalog metadata are still\nroutable, just with limited info).\n\n## AutoRoutable composition\n\n`AutoRoutable = catalog.AutoRoutable() AND providerConfig.IncludeByDefault\nAND status != StatusUnreachable AND status != StatusUnknown`. (Per\nbead D's `IncludeByDefault` filter wiring.)\n\n## Catalog-only suppression\n\nPer operator direction: if a catalog model is NOT discovered by any\nconfigured provider, it does NOT appear in the snapshot. The catalog\nis implementation detail.\n\n## In-scope files\n\n- internal/modelregistry/types.go — KnownModel, ModelSnapshot, etc.\n- internal/modelregistry/assemble.go — top-level Assemble function\n- internal/modelregistry/discovery.go — per-provider-type adapters\n  (uses existing code in internal/provider/openai/discovery.go and\n  internal/harnesses/{claude,codex}/model_discovery.go through M1's\n  cache wrapper)\n- internal/modelregistry/enrich.go — catalog join + AutoRoutable\n- internal/modelregistry/assemble_test.go\n- internal/modelregistry/discovery_test.go\n- internal/modelregistry/enrich_test.go\n\n## Depends on\n\n- M0 (ADR-012) accepted\n- M1 (cache + ParseModelRef) implemented\n- Bead A (`fizeau-b2c5c826`, version-aware ranker)\n- Bead E1 (`fizeau-c04be6b0`, quota_pool field)\n\n## Out of scope\n\n- Runtime signal collection (M3 — Status comes from M3's runtime cache).\n- CLI (M4).\n- OR sub-provider expansion (M5).",
+    "acceptance": "1. `go test ./internal/modelregistry/...` passes.\n2. `TestAssembleFixtureIncludesDiscoveredProviderModels` in `internal/modelregistry/assemble_test.go` covers a fixture config with openrouter, sindri-llamacpp, and vidar-ds4 and verifies `Assemble` returns one `KnownModel` per discovered `(provider, model_id)` pair.\n3. `TestEnrichSnapshotPopulatesCatalogMetadataAndLeavesUnknownZero` in `internal/modelregistry/enrich_test.go` verifies catalog-enriched models receive Power/Cost/ContextWindow/ReasoningLevels/QuotaPool and uncataloged discovered models keep zero/empty metadata.\n4. `TestAssembleSuppressesCatalogOnlyModels` verifies catalog-only entries that no configured provider discovers do not appear in the snapshot.\n5. `TestAutoRoutableComposition` verifies AutoRoutable is true only when catalog eligibility, provider IncludeByDefault, and reachable status all allow routing, and records an exclusion reason otherwise.\n6. `go vet ./...` passes.",
+    "labels": [
+      "area:routing",
+      "area:cache",
+      "kind:feature"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T12:52:26Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2476731",
+      "events": [
+        {
+          "actor": "",
+          "body": "[{\"ac\":1,\"text\":\"`go test ./internal/modelregistry/...` passes.\",\"kind\":\"build-gate\",\"verifiable\":true},{\"ac\":2,\"text\":\"Assemble() with a fixture config (3 providers: openrouter + sindri-llamacpp + vidar-ds4) returns a ModelSnapshot containing one KnownModel per (provider, model_id) pair from each provider's discovery.\",\"kind\":\"prose\",\"verifiable\":false},{\"ac\":3,\"text\":\"Enrichment join populates Power/Cost from catalog when available and leaves zeros when not.\",\"kind\":\"prose\",\"verifiable\":false},{\"ac\":4,\"text\":\"Catalog-only entries (no provider serves them) do NOT appear in the snapshot.\",\"kind\":\"negative\",\"verifiable\":true},{\"ac\":5,\"text\":\"AutoRoutable correctly composes catalog × IncludeByDefault × Status.\",\"kind\":\"prose\",\"verifiable\":false},{\"ac\":6,\"text\":\"`go vet ./...` passes.\",\"kind\":\"prose\",\"verifiable\":false}]",
+          "created_at": "2026-05-12T07:37:48.154603332Z",
+          "kind": "ac-quality-low",
+          "source": "preclaim-ac-quality",
+          "summary": "score=0.33 threshold=0.50 verifiable=2/6"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"score 0.33 below threshold 0.50 (2/6 verifiable ACs)\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-12T07:37:48.164027528Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "ACs refined into verifiable named tests; retry execution.",
+          "created_at": "2026-05-12T12:10:13.745437924Z",
+          "kind": "needs_human_resolved",
+          "source": "ddx bead human resolve",
+          "summary": "action=retry"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T12:55:05.795986819Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T12:52:26.756593341Z",
+      "spec-id": "ADR-012"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-012",
+      "path": "docs/helix/02-design/adr/ADR-012-per-source-on-disk-cache.md",
+      "title": "ADR-012: Per-Source On-Disk Cache for Discovery + Runtime Signals"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T125505-8f6f0cb6",
+    "prompt": ".ddx/executions/20260512T125505-8f6f0cb6/prompt.md",
+    "manifest": ".ddx/executions/20260512T125505-8f6f0cb6/manifest.json",
+    "result": ".ddx/executions/20260512T125505-8f6f0cb6/result.json",
+    "checks": ".ddx/executions/20260512T125505-8f6f0cb6/checks.json",
+    "usage": ".ddx/executions/20260512T125505-8f6f0cb6/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-7c8b1856-20260512T125505-8f6f0cb6"
+  },
+  "prompt_sha": "2882abf553ade0a46d31da2641c7e7875e6941a3a41328df256464aa79ad901e"
+}
