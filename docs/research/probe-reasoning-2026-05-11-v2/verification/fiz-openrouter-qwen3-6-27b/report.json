@@ -11,7 +11,9 @@
     "selected_surface": "agent.openai",
     "selected_model": "qwen/qwen3.6-27b",
     "catalog_reasoning_wire": "tokens",
-    "wire_body": "reasoning.max_tokens=2048",
-    "request_artifact": "docs/research/probe-reasoning-2026-05-11-v2/fiz-openrouter-qwen3-6-27b/low-request.json"
+    "wire_body": "expected reasoning.max_tokens=2048",
+    "wire_body_source": "catalog/code verification; no final smoke request body captured",
+    "request_artifact": "",
+    "request_artifact_note": "The probe matrix low-request.json predates the final catalog tokens path and shows reasoning.effort=low; it is not final wire evidence for this smoke report."
   }
 }

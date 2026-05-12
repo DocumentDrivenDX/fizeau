@@ -392,6 +392,31 @@ hint doesn't bind; ds4's low/medium/xhigh all collapse), fizeau:
   produce comparable results. Cross-lane analysis is honest at
   read time, not forced at write time.
 
+#### 10. Verification asserts emitted control, not consumed depth
+
+PortableBudgets entries are request-side control signals. They map a
+portable intent such as `reasoning: low` to the closest representable
+wire budget, for example `reasoning.max_tokens: 2048` on a
+tokens-shaped OpenRouter lane. They are not predictions that the
+upstream will consume exactly that many reasoning tokens.
+
+Therefore final verification must not require observed
+`reasoning_tokens` to equal or approximate the portable budget. A
+model may stop thinking early, sampling may change the amount of
+hidden work, and provider accounting may report only actual consumed
+tokens. The deterministic acceptance target is:
+
+- the selected L1/L2/L3 source produces the expected wire form;
+- the emitted wire is recorded alongside the requested intent;
+- observed `reasoning_tokens` are recorded truthfully;
+- `reasoning_tokens_approx` distinguishes direct usage accounting
+  from fallback estimates.
+
+For example, a smoke cell that emits `reasoning.max_tokens: 2048`
+and records direct OpenRouter usage of `reasoning_tokens: 352` has
+passed the control-plane requirement. The 2048 value is the cap that
+Fizeau sent, while 352 is the actual spend reported by the provider.
+
 ### End goal (canonical statement)
 
 A benchmark caller writes `reasoning: <intent>` once in a profile.
