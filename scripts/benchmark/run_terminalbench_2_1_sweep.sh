@@ -136,7 +136,7 @@ usage() {
 Usage: ./benchmark [flags]
 
 Flags:
-  --phase canary|openai-cheap|preferred|full|qwen36-gpt55-full|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|all
+  --phase canary|openai-cheap|preferred|full|qwen36-gpt55-full|local-qwen|sonnet-comparison|gpt-comparison|medium-model-canary|medium-model|tb21-all|all
   --lanes <id,id,...>
   --out <dir>
   --tasks-dir <dir>
@@ -294,7 +294,7 @@ if [[ -n "${LANES}" ]]; then
 fi
 
 case "${PHASE}" in
-  canary|openai-cheap|local-qwen|sonnet-comparison|gpt-comparison|tb21-all|or-passing|timing-baseline|all) ;;
+  canary|openai-cheap|local-qwen|sonnet-comparison|gpt-comparison|medium-model-canary|medium-model|tb21-all|or-passing|timing-baseline|all) ;;
   *)
     echo "unknown --phase ${PHASE}" >&2
     exit 2 ;;
@@ -522,7 +522,8 @@ subset_for_phase() {
   case "$1" in
     canary) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-canary.yaml" ;;
     openai-cheap) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-openai-cheap.yaml" ;;
-    local-qwen|sonnet-comparison|gpt-comparison) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-full.yaml" ;;
+    local-qwen|sonnet-comparison|gpt-comparison|medium-model) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-full.yaml" ;;
+    medium-model-canary) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-canary.yaml" ;;
     tb21-all) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-all.yaml" ;;
     or-passing) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-or-passing.yaml" ;;
     timing-baseline) echo "${REPO_ROOT}/scripts/benchmark/task-subset-tb21-timing-baseline.yaml" ;;
@@ -533,7 +534,7 @@ subset_for_phase() {
 phases_to_validate() {
   case "${PHASE}" in
     all)
-      printf '%s\n' canary local-qwen sonnet-comparison gpt-comparison ;;
+      printf '%s\n' canary local-qwen sonnet-comparison gpt-comparison medium-model-canary medium-model ;;
     *)
       printf '%s\n' "${PHASE}" ;;
   esac
@@ -769,7 +770,7 @@ phase_id = sys.argv[2]
 lane_filter = [item.strip() for item in sys.argv[3].split(",") if item.strip()]
 
 if phase_id == "all":
-    selected_phase_ids = {"canary", "local-qwen", "sonnet-comparison", "gpt-comparison"}
+    selected_phase_ids = {"canary", "local-qwen", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"}
 else:
     selected_phase_ids = {phase_id}
 
@@ -1066,7 +1067,7 @@ sweep_args_for_phase() {
 
 run_plan_phases() {
   if [[ "${PHASE}" = "all" ]]; then
-    printf '%s\n' canary local-qwen sonnet-comparison gpt-comparison
+    printf '%s\n' canary local-qwen sonnet-comparison gpt-comparison medium-model-canary medium-model
   else
     printf '%s\n' "${PHASE}"
   fi
