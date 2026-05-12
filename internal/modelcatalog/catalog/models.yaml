@@ -331,6 +331,28 @@ models:
     surfaces:
       agent.openai: qwen/qwen3.6-27b
     reasoning_default: 'off'
+  deepseek-v4-flash:
+    family: deepseek
+    display_name: DeepSeek V4 Flash
+    status: active
+    provider_system: openai
+    deployment_class: local_free
+    power: 5
+    power_provenance:
+      method: catalog_bootstrap_local_probe
+      recency: '2026-05-11'
+      deployment_class: local_free
+      override_reason: DeepSeek V4 Flash is routed as a local free ds4 lane; keep it in the same power tier
+        as audited local Qwen until TB-2.1 benchmark results justify a separate score.
+    context_window: 393216
+    reasoning_levels:
+    - high
+    - max
+    reasoning_control: tunable
+    reasoning_wire: effort
+    surfaces:
+      agent.openai: deepseek-v4-flash
+    reasoning_default: high
   qwen3.5-7b:
     family: qwen
     display_name: Qwen3.5 7B
