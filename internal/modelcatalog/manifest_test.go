@@ -127,6 +127,95 @@ models:
 	assert.True(t, roundTrip["route-model"].ExactPinOnly)
 }
 
+func TestManifestPreservesQuotaPoolFields(t *testing.T) {
+	src := `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  codex-spark:
+    family: gpt
+    status: active
+    provider_system: openai
+    power: 8
+    quota_pool: openai-codex-spark
+    surfaces:
+      codex: gpt-5.3-codex-spark
+  defaulted-local:
+    family: qwen
+    status: active
+    provider_system: ds4
+    power: 5
+    surfaces:
+      agent.openai: defaulted-local
+`
+
+	path := writeFixtureManifest(t, src)
+	catalog, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+	require.NoError(t, err)
+
+	models := catalog.AllModels()
+	explicit := models["codex-spark"]
+	assert.Equal(t, "openai-codex-spark", explicit.QuotaPool)
+	assert.Equal(t, "openai-codex-spark", explicit.EffectiveQuotaPool())
+
+	defaulted := models["defaulted-local"]
+	assert.Equal(t, "", defaulted.QuotaPool)
+	assert.Equal(t, "ds4", defaulted.EffectiveQuotaPool())
+
+	out, err := yaml.Marshal(map[string]ModelEntry{
+		"codex-spark":     explicit,
+		"defaulted-local": defaulted,
+	})
+	require.NoError(t, err)
+	assert.Contains(t, string(out), "quota_pool: openai-codex-spark")
+
+	var roundTrip map[string]ModelEntry
+	require.NoError(t, yaml.Unmarshal(out, &roundTrip))
+	assert.Equal(t, "openai-codex-spark", roundTrip["codex-spark"].QuotaPool)
+	assert.Equal(t, "openai-codex-spark", roundTrip["codex-spark"].EffectiveQuotaPool())
+	assert.Equal(t, "ds4", roundTrip["defaulted-local"].EffectiveQuotaPool())
+}
+
+func TestManifestRejectsInvalidQuotaPool(t *testing.T) {
+	tests := []struct {
+		name      string
+		quotaPool string
+	}{
+		{name: "whitespace", quotaPool: "openai codex spark"},
+		{name: "special char", quotaPool: "openai_codex_spark"},
+		{name: "uppercase", quotaPool: "OpenAI-codex-spark"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeFixtureManifest(t, `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+models:
+  bad-pool:
+    family: example
+    status: active
+    provider_system: openai
+    power: 8
+    quota_pool: `+tt.quotaPool+`
+    surfaces:
+      codex: bad-pool
+`)
+			_, err := Load(LoadOptions{ManifestPath: path, RequireExternal: true})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "quota_pool")
+		})
+	}
+}
+
 func TestRejectsLegacySchemaV4(t *testing.T) {
 	path := writeFixtureManifest(t, `
 version: 4

@@ -30,10 +30,14 @@ type LoadOptions struct {
 
 // ModelEntry holds per-model metadata from the v5 manifest.
 type ModelEntry struct {
-	Family             string                      `yaml:"family,omitempty"`
-	DisplayName        string                      `yaml:"display_name,omitempty"`
-	Status             string                      `yaml:"status,omitempty"`
-	ProviderSystem     string                      `yaml:"provider_system,omitempty"`
+	Family         string `yaml:"family,omitempty"`
+	DisplayName    string `yaml:"display_name,omitempty"`
+	Status         string `yaml:"status,omitempty"`
+	ProviderSystem string `yaml:"provider_system,omitempty"`
+	// QuotaPool names the shared quota allocation this model burns. When unset,
+	// the model's provider_system is the effective quota pool; for example,
+	// openai-hosted models default to "openai" and ds4 models default to "ds4".
+	QuotaPool          string                      `yaml:"quota_pool,omitempty"`
 	DeploymentClass    string                      `yaml:"deployment_class,omitempty" json:"deployment_class,omitempty"`
 	PowerProvenance    PowerProvenance             `yaml:"power_provenance,omitempty" json:"power_provenance,omitempty"`
 	CostInputPerM      float64                     `yaml:"cost_input_per_m,omitempty"`
@@ -68,6 +72,16 @@ type ModelEntry struct {
 	//   partial                    — provider honors a subset (reserved; not
 	//                                 enforced in v1).
 	SamplingControl string `yaml:"sampling_control,omitempty"`
+}
+
+// EffectiveQuotaPool returns the quota allocation name used for this model.
+// Explicit quota_pool values take precedence; otherwise provider_system is the
+// default pool.
+func (m ModelEntry) EffectiveQuotaPool() string {
+	if m.QuotaPool != "" {
+		return m.QuotaPool
+	}
+	return m.ProviderSystem
 }
 
 // PowerProvenance records why a model received its catalog power score.
@@ -258,6 +272,9 @@ func validateManifest(m manifest) error {
 		if model.Power > 10 {
 			return fmt.Errorf("model %q power must be <= 10", modelID)
 		}
+		if model.QuotaPool != "" && !validQuotaPoolName(model.QuotaPool) {
+			return fmt.Errorf("model %q has invalid quota_pool %q (must contain only lowercase letters, digits, and dash)", modelID, model.QuotaPool)
+		}
 		if model.ReasoningMaxTokens < 0 {
 			return fmt.Errorf("model %q reasoning_max_tokens must be >= 0", modelID)
 		}
@@ -309,4 +326,20 @@ func normalizedStatus(status string) string {
 		return statusActive
 	}
 	return status
+}
+
+func validQuotaPoolName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
