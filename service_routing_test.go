@@ -128,6 +128,121 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	}
 }
 
+func TestServiceRouteSnapshotCatalogOnlyModelRejected(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  gpt-5.5:
+    family: gpt
+    status: active
+    power: 10
+    surfaces:
+      embedded-openai: gpt-5.5
+  catalog-only-model:
+    family: test
+    status: active
+    power: 5
+    exact_pin_only: true
+    surfaces:
+      embedded-openai: catalog-only-model
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := publicRouteTraceService(&fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"known":        {Type: "test", BaseURL: "http://known.invalid/v1", Model: "gpt-5.5"},
+			"catalog-only": {Type: "test", BaseURL: "http://pin.invalid/v1", Model: "catalog-only-model"},
+		},
+		names:       []string{"known", "catalog-only"},
+		defaultName: "known",
+	})
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	if dec.Model != "gpt-5.5" {
+		t.Fatalf("decision=%#v, want gpt-5.5 winner from snapshot-backed eligibility", dec)
+	}
+	var sawCatalogOnly bool
+	for _, candidate := range dec.Candidates {
+		if candidate.Provider != "catalog-only" {
+			continue
+		}
+		sawCatalogOnly = true
+		if candidate.Eligible {
+			t.Fatalf("catalog-only candidate should be rejected by snapshot-backed eligibility: %#v", candidate)
+		}
+		if candidate.FilterReason != string(routing.FilterReasonExactPinOnly) {
+			t.Fatalf("catalog-only FilterReason=%q, want %q", candidate.FilterReason, routing.FilterReasonExactPinOnly)
+		}
+	}
+	if !sawCatalogOnly {
+		t.Fatalf("missing catalog-only candidate in %#v", dec.Candidates)
+	}
+}
+
+func TestServiceRouteHardPinBypassesSnapshotEligibility(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  gpt-5.5:
+    family: gpt
+    status: active
+    power: 10
+    surfaces:
+      embedded-openai: gpt-5.5
+  catalog-only-model:
+    family: test
+    status: active
+    power: 5
+    exact_pin_only: true
+    surfaces:
+      embedded-openai: catalog-only-model
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := publicRouteTraceService(&fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"known":        {Type: "test", BaseURL: "http://known.invalid/v1", Model: "gpt-5.5"},
+			"catalog-only": {Type: "test", BaseURL: "http://pin.invalid/v1", Model: "catalog-only-model"},
+		},
+		names:       []string{"known", "catalog-only"},
+		defaultName: "known",
+	})
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+		Provider: "catalog-only",
+		Model:    "catalog-only-model",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute hard pin: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("ResolveRoute hard pin returned nil decision")
+	}
+	if dec.Provider != "catalog-only" || dec.Model != "catalog-only-model" {
+		t.Fatalf("decision=%#v, want hard-pinned catalog-only/model", dec)
+	}
+}
+
 func TestServiceTranslatesPolicyAirGappedToRequireNoRemote(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 5

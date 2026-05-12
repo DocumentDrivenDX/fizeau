@@ -190,6 +190,7 @@ models:
     status: active
     provider_system: openai
     power: 5
+    exact_pin_only: true
 `)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)

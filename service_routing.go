@@ -9,6 +9,7 @@ import (
 
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/modeleligibility"
 	"github.com/easel/fizeau/internal/provider/utilization"
 	"github.com/easel/fizeau/internal/routing"
 )
@@ -547,7 +548,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ProviderSuccessRate:          successRate,
 		ObservedLatencyMS:            latencyMS,
 		ProviderQuotaExhaustedUntil:  s.providerQuotaExhaustedUntil(now),
-		ModelEligibility:             serviceRoutingModelEligibility(cat),
+		ModelEligibility:             serviceRoutingModelEligibility(entries, cat),
 		ReasoningResolver:            serviceRoutingReasoningResolver(cat),
 		EndpointLoadResolver:         s.routeEndpointLoadsResolver(now),
 		StickyServerInstanceResolver: s.routeStickyServerInstanceResolver(now),
@@ -705,20 +706,47 @@ func serviceRoutingCatalogCandidatesResolver(cat *modelcatalog.Catalog) func(ref
 	}
 }
 
-func serviceRoutingModelEligibility(cat *modelcatalog.Catalog) func(model string) (routing.ModelEligibility, bool) {
+func serviceRoutingModelEligibility(entries []routing.HarnessEntry, cat *modelcatalog.Catalog) func(model string) (routing.ModelEligibility, bool) {
 	if cat == nil {
 		return nil
 	}
-	return func(model string) (routing.ModelEligibility, bool) {
-		eligibility, ok := cat.ModelEligibility(model)
-		if !ok {
-			return routing.ModelEligibility{}, false
+	eligibility := make(map[string]routing.ModelEligibility)
+	for _, h := range entries {
+		add := func(modelID string) {
+			modelID = strings.TrimSpace(modelID)
+			if modelID == "" {
+				return
+			}
+			status := "available"
+			if !h.Available {
+				status = "unreachable"
+			}
+			view := modeleligibility.Resolve(modelID, true, status, cat)
+			eligibility[modelID] = routing.ModelEligibility{
+				Power:        view.Power,
+				ExactPinOnly: view.ExactPinOnly,
+				AutoRoutable: view.AutoRoutable,
+			}
 		}
-		return routing.ModelEligibility{
-			Power:        eligibility.Power,
-			ExactPinOnly: eligibility.ExactPinOnly,
-			AutoRoutable: eligibility.AutoRoutable,
-		}, true
+		if h.DefaultModel != "" {
+			add(h.DefaultModel)
+		}
+		for _, modelID := range h.SupportedModels {
+			add(modelID)
+		}
+		for _, p := range h.Providers {
+			add(p.DefaultModel)
+			for _, modelID := range p.DiscoveredIDs {
+				add(modelID)
+			}
+		}
+	}
+	if len(eligibility) == 0 {
+		return nil
+	}
+	return func(model string) (routing.ModelEligibility, bool) {
+		known, ok := eligibility[strings.TrimSpace(model)]
+		return known, ok
 	}
 }
 

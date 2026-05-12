@@ -126,6 +126,41 @@ func TestIncludeByDefaultTrueUnchangedBehavior(t *testing.T) {
 	}
 }
 
+func TestCheckPowerEligibilityKnownModelSnapshotCatalogOnly(t *testing.T) {
+	lookup := func(model string) (ModelEligibility, bool) {
+		switch model {
+		case "catalog-only-model":
+			return ModelEligibility{Power: 5, ExactPinOnly: true, AutoRoutable: false}, true
+		case "gpt-5.5":
+			return ModelEligibility{Power: 10, AutoRoutable: true}, true
+		default:
+			return ModelEligibility{}, false
+		}
+	}
+
+	if got, fr := CheckPowerEligibility(lookup, "catalog-only-model", Request{}); got == "" || fr != FilterReasonExactPinOnly {
+		t.Fatalf("CheckPowerEligibility(catalog-only-model) = (%q, %q), want exact-pin-only rejection", got, fr)
+	}
+	if got, fr := CheckPowerEligibility(lookup, "gpt-5.5", Request{}); got != "" || fr != FilterReasonEligible {
+		t.Fatalf("CheckPowerEligibility(gpt-5.5) = (%q, %q), want eligible", got, fr)
+	}
+}
+
+func TestCheckPowerEligibilityKnownModelSnapshotHardPinBypassesCatalogOnlyGate(t *testing.T) {
+	lookup := func(model string) (ModelEligibility, bool) {
+		switch model {
+		case "catalog-only-model":
+			return ModelEligibility{Power: 5, ExactPinOnly: true, AutoRoutable: false}, true
+		default:
+			return ModelEligibility{}, false
+		}
+	}
+
+	if got, fr := CheckPowerEligibility(lookup, "catalog-only-model", Request{Model: "catalog-only-model"}); got != "" || fr != FilterReasonEligible {
+		t.Fatalf("CheckPowerEligibility(hard pin) = (%q, %q), want eligible bypass", got, fr)
+	}
+}
+
 func TestPinPinConflictHarnessIncompatibleWithModel(t *testing.T) {
 	in := Inputs{Harnesses: []HarnessEntry{{
 		Name:                "claude",

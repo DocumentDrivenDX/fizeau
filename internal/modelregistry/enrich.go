@@ -6,6 +6,7 @@ import (
 	"github.com/easel/fizeau/internal/config"
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/modeleligibility"
 	"github.com/easel/fizeau/internal/runtimesignals"
 )
 
@@ -16,42 +17,32 @@ const (
 	exclusionStatusUnavailable  = "status_unavailable"
 )
 
-func enrichModel(model KnownModel, includeByDefault bool, cat *modelcatalog.Catalog) KnownModel {
+func EnrichModel(model KnownModel, includeByDefault bool, cat *modelcatalog.Catalog) KnownModel {
 	parsed := modelcatalog.Parse(model.ID)
 	model.Family = parsed.Family
 	model.Version = append([]int(nil), parsed.Version...)
 	model.Tier = parsed.Tier
 	model.PreRelease = parsed.PreRelease
 
-	var catalogAuto bool
+	view := modeleligibility.Resolve(model.ID, includeByDefault, string(model.Status), cat)
+	model.Power = view.Power
+	model.ExactPinOnly = view.ExactPinOnly
+	model.AutoRoutable = view.AutoRoutable
+	model.ExclusionReason = view.ExclusionReason
 	if cat != nil {
 		if entry, ok := cat.LookupModel(model.ID); ok {
-			model.Power = entry.Power
 			model.CostInputPerM = catalogCostInput(entry)
 			model.CostOutputPerM = catalogCostOutput(entry)
 			model.ContextWindow = entry.ContextWindow
 			model.ReasoningLevels = append([]string(nil), entry.ReasoningLevels...)
 			model.QuotaPool = entry.EffectiveQuotaPool()
 		}
-		if eligibility, ok := cat.ModelEligibility(model.ID); ok {
-			catalogAuto = eligibility.AutoRoutable
-		}
 	}
-	if !catalogAuto {
-		if model.Power == 0 && len(model.ReasoningLevels) == 0 && model.ContextWindow == 0 {
-			model.ExclusionReason = exclusionCatalogUnknown
-		} else {
-			model.ExclusionReason = exclusionCatalogNotRoutable
-		}
-	}
-	if catalogAuto && !includeByDefault {
-		model.ExclusionReason = exclusionProviderExcluded
-	}
-	if catalogAuto && includeByDefault && !statusAllowsRouting(model.Status) {
-		model.ExclusionReason = exclusionStatusUnavailable
-	}
-	model.AutoRoutable = catalogAuto && includeByDefault && statusAllowsRouting(model.Status)
 	return model
+}
+
+func enrichModel(model KnownModel, includeByDefault bool, cat *modelcatalog.Catalog) KnownModel {
+	return EnrichModel(model, includeByDefault, cat)
 }
 
 func attachRuntimeSignals(model KnownModel, cache *discoverycache.Cache) KnownModel {
@@ -65,10 +56,6 @@ func attachRuntimeSignals(model KnownModel, cache *discoverycache.Cache) KnownMo
 	model.QuotaRemaining = sig.QuotaRemaining
 	model.RecentP50Latency = sig.RecentP50Latency
 	return model
-}
-
-func statusAllowsRouting(status ModelStatus) bool {
-	return status != StatusUnreachable && status != StatusUnknown
 }
 
 func effectiveProviderIncludeByDefault(providerName string, pc config.ProviderConfig, cat *modelcatalog.Catalog) bool {

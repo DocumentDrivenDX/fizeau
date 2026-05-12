@@ -7,7 +7,7 @@ import (
 func TestEnrichSnapshotPopulatesCatalogMetadataAndLeavesUnknownZero(t *testing.T) {
 	cat := loadTestCatalog(t)
 
-	enriched := enrichModel(KnownModel{
+	enriched := EnrichModel(KnownModel{
 		Provider: "openrouter",
 		ID:       "gpt-5.5",
 		Status:   StatusAvailable,
@@ -28,7 +28,7 @@ func TestEnrichSnapshotPopulatesCatalogMetadataAndLeavesUnknownZero(t *testing.T
 		t.Fatalf("QuotaPool = %q, want openai-frontier", enriched.QuotaPool)
 	}
 
-	unknown := enrichModel(KnownModel{
+	unknown := EnrichModel(KnownModel{
 		Provider: "openrouter",
 		ID:       "uncataloged-model",
 		Status:   StatusAvailable,
@@ -93,7 +93,7 @@ func TestAutoRoutableComposition(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := enrichModel(KnownModel{
+			got := EnrichModel(KnownModel{
 				Provider: "openrouter",
 				ID:       tt.modelID,
 				Status:   tt.status,
@@ -105,5 +105,21 @@ func TestAutoRoutableComposition(t *testing.T) {
 				t.Fatalf("ExclusionReason = %q, want %q", got.ExclusionReason, tt.wantExclusion)
 			}
 		})
+	}
+}
+
+func TestKnownModelSnapshotMarksExactPinOnlyCatalogModels(t *testing.T) {
+	cat := loadTestCatalog(t)
+
+	known := EnrichModel(KnownModel{
+		Provider: "openrouter",
+		ID:       "catalog-only-model",
+		Status:   StatusAvailable,
+	}, true, cat)
+	if !known.ExactPinOnly {
+		t.Fatalf("ExactPinOnly = false, want true for catalog-only-model: %#v", known)
+	}
+	if known.AutoRoutable {
+		t.Fatalf("AutoRoutable = true, want false for exact-pin-only model: %#v", known)
 	}
 }

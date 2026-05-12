@@ -51,6 +51,7 @@ type KnownModel struct {
 
 	Status          ModelStatus
 	AutoRoutable    bool
+	ExactPinOnly    bool
 	ExclusionReason string
 }
 
