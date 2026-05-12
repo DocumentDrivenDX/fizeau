@@ -28,6 +28,108 @@ PER_RUN_BUDGET_USD=""
 BUDGET_USD=""
 CONFIRM_DELAY="${BENCHMARK_CONFIRM_DELAY:-8}"
 PREFLIGHT_TIMEOUT_SECONDS="${BENCHMARK_PREFLIGHT_TIMEOUT_SECONDS:-30}"
+SWEEP_TERM_GRACE_SECONDS="${BENCHMARK_SWEEP_TERM_GRACE_SECONDS:-70}"
+SWEEP_CHILD_PIDS=()
+SWEEP_SHUTTING_DOWN=0
+TARGET_TASKS_FILE=""
+
+remove_sweep_child_pid() {
+  local remove_pid="$1"
+  local kept=()
+  local pid
+  for pid in "${SWEEP_CHILD_PIDS[@]:-}"; do
+    if [[ "${pid}" != "${remove_pid}" ]]; then
+      kept+=("${pid}")
+    fi
+  done
+  SWEEP_CHILD_PIDS=("${kept[@]}")
+}
+
+sweep_child_alive() {
+  local pid="$1"
+  kill -0 "${pid}" >/dev/null 2>&1
+}
+
+reap_finished_sweep_children() {
+  local kept=()
+  local pid state
+  for pid in "${SWEEP_CHILD_PIDS[@]:-}"; do
+    if ! sweep_child_alive "${pid}"; then
+      wait "${pid}" >/dev/null 2>&1 || true
+      continue
+    fi
+    state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
+    if [[ "${state}" == Z* ]]; then
+      wait "${pid}" >/dev/null 2>&1 || true
+      continue
+    fi
+    kept+=("${pid}")
+  done
+  SWEEP_CHILD_PIDS=("${kept[@]}")
+}
+
+terminate_sweep_children() {
+  local grace_seconds="${1:-${SWEEP_TERM_GRACE_SECONDS}}"
+  local deadline pid alive=0
+  if (( ${#SWEEP_CHILD_PIDS[@]} == 0 )); then
+    return 0
+  fi
+
+  for pid in "${SWEEP_CHILD_PIDS[@]:-}"; do
+    kill -TERM "${pid}" >/dev/null 2>&1 || true
+  done
+
+  deadline=$((SECONDS + grace_seconds))
+  while (( SECONDS < deadline )); do
+    reap_finished_sweep_children
+    alive=0
+    for pid in "${SWEEP_CHILD_PIDS[@]:-}"; do
+      if sweep_child_alive "${pid}"; then
+        alive=1
+        break
+      fi
+    done
+    if (( alive == 0 )); then
+      break
+    fi
+    sleep 1
+  done
+
+  for pid in "${SWEEP_CHILD_PIDS[@]:-}"; do
+    if sweep_child_alive "${pid}"; then
+      kill -KILL "${pid}" >/dev/null 2>&1 || true
+    fi
+  done
+  for pid in "${SWEEP_CHILD_PIDS[@]:-}"; do
+    wait "${pid}" >/dev/null 2>&1 || true
+  done
+  SWEEP_CHILD_PIDS=()
+}
+
+on_sweep_signal() {
+  local sig="$1"
+  trap - SIGINT SIGTERM
+  SWEEP_SHUTTING_DOWN=1
+  terminate_sweep_children "${SWEEP_TERM_GRACE_SECONDS}"
+  case "${sig}" in
+    INT) exit 130 ;;
+    TERM) exit 143 ;;
+    *) exit 1 ;;
+  esac
+}
+
+cleanup() {
+  if [[ "${SWEEP_SHUTTING_DOWN}" != "1" ]]; then
+    terminate_sweep_children 0
+  fi
+  if [[ -n "${TARGET_TASKS_FILE:-}" ]]; then
+    rm -f "${TARGET_TASKS_FILE}"
+  fi
+}
+
+trap 'on_sweep_signal INT' SIGINT
+trap 'on_sweep_signal TERM' SIGTERM
+trap cleanup EXIT
 
 usage() {
   cat <<'EOF'
@@ -972,6 +1074,7 @@ run_plan_phases() {
 
 run_sweep_phase() {
   local phase="$1"
+  local pid code
   local args=(
     sweep
     --work-dir "${REPO_ROOT}"
@@ -981,7 +1084,16 @@ run_sweep_phase() {
     --out "${OUT}"
   )
   append_optional_sweep_args args
-  "${BENCH_BIN}" "${args[@]}"
+  "${BENCH_BIN}" "${args[@]}" &
+  pid=$!
+  SWEEP_CHILD_PIDS+=("${pid}")
+  if wait "${pid}"; then
+    code=0
+  else
+    code=$?
+  fi
+  remove_sweep_child_pid "${pid}"
+  return "${code}"
 }
 
 write_version_marker() {
@@ -1115,7 +1227,6 @@ need python3
 docker info >/dev/null
 
 TARGET_TASKS_FILE="$(mktemp)"
-trap 'rm -f "${TARGET_TASKS_FILE}"' EXIT
 
 build_artifacts
 write_version_marker

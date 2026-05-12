@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -220,6 +222,99 @@ func TestMatrixOverBudgetRunBecomesBudgetHaltedAndContinues(t *testing.T) {
 	}
 }
 
+func TestSweepShutdownTermGraceful(t *testing.T) {
+	tmp := t.TempDir()
+	harborPath := filepath.Join(tmp, "harbor")
+	logPath := filepath.Join(tmp, "harbor.log")
+	script := `#!/usr/bin/env bash
+set -euo pipefail
+log="${HARBOR_SIGNAL_LOG:?}"
+jobs_dir=""
+job_name=""
+while [[ $# -gt 0 ]]; do
+  printf 'arg:%s\n' "$1" >> "${log}"
+  case "$1" in
+    --jobs-dir)
+      jobs_dir="$2"
+      shift 2
+      ;;
+    --job-name)
+      job_name="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+trap 'printf "term\n" >> "${log}"; mkdir -p "${jobs_dir}/${job_name}/trial/verifier"; printf "0\n" > "${jobs_dir}/${job_name}/trial/verifier/reward.txt"; printf "teardown\n" >> "${log}"; exit 143' TERM
+printf "started\n" >> "${log}"
+while true; do
+  sleep 1
+done
+`
+	if err := os.WriteFile(harborPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HARBOR_SIGNAL_LOG", logPath)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultCh := make(chan struct {
+		result harborRunResult
+		err    error
+	}, 1)
+	go func() {
+		result, err := runMatrixHarbor(harborRunOpts{
+			harborBin: harborPath,
+			taskPath:  filepath.Join(tmp, "task"),
+			harness:   "fiz",
+			profile: &profile.Profile{
+				ID: "noop",
+				Provider: profile.Provider{
+					Type:    profile.ProviderOpenAICompat,
+					BaseURL: "http://127.0.0.1:1/v1",
+					Model:   "test-model",
+				},
+			},
+			jobsDir:   filepath.Join(tmp, "jobs"),
+			jobName:   "fiz-task-rep1",
+			repoRoot:  benchRepoRoot(t),
+			parentCtx: ctx,
+		})
+		resultCh <- struct {
+			result harborRunResult
+			err    error
+		}{result: result, err: err}
+	}()
+
+	waitForLogContains(t, logPath, "started", 2*time.Second)
+	cancel()
+
+	select {
+	case got := <-resultCh:
+		if got.err != nil {
+			t.Fatalf("runMatrixHarbor returned error: %v", got.err)
+		}
+		if got.result.exitCode != 143 {
+			t.Fatalf("harbor exit code = %d, want 143", got.result.exitCode)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("runMatrixHarbor did not return after parent context cancellation")
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(raw)
+	for _, want := range []string{"arg:--delete", "term", "teardown"} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("harbor log missing %q:\n%s", want, log)
+		}
+	}
+}
+
 func TestFizeauProviderEnvMapsOpenRouterCompatProfile(t *testing.T) {
 	got := fizeauProviderEnv(&profile.Profile{
 		Provider: profile.Provider{
@@ -284,6 +379,20 @@ func TestHarborAgentArgsIncludesReferenceHarnessAdapters(t *testing.T) {
 			t.Fatalf("harborAgentArgs(%q) = %#v, want import path %q", harness, got, want)
 		}
 	}
+}
+
+func waitForLogContains(t *testing.T, path, needle string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		raw, _ := os.ReadFile(path)
+		if strings.Contains(string(raw), needle) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	raw, _ := os.ReadFile(path)
+	t.Fatalf("timed out waiting for %q in %s:\n%s", needle, path, string(raw))
 }
 
 func benchRepoRoot(t *testing.T) string {

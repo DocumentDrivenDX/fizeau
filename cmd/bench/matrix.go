@@ -174,6 +174,12 @@ func (f *repeatStringFlag) Set(value string) error {
 }
 
 func cmdMatrix(args []string) int {
+	parentCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	return cmdMatrixWithContext(parentCtx, args)
+}
+
+func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 	fs := flagSet("matrix")
 	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")
 	subset := fs.String("subset", "", "TerminalBench subset manifest (default: scripts/beadbench/external/termbench-subset-canary.json)")
@@ -208,15 +214,9 @@ func cmdMatrix(args []string) int {
 		return 2
 	}
 
-	// Parent context tied to interrupt/SIGTERM. When the bench process
-	// itself is signaled (Ctrl-C or `kill <pid>`) the parent ctx fires,
-	// propagating cancellation into every per-tuple Harbor invocation. Each
-	// Harbor child then gets SIGTERM via cmd.Cancel + WaitDelay, has 60s
-	// to tear down its docker compose stack, and exits cleanly. Without
-	// this, killing bench leaves Harbor children running with their task
-	// containers (the leak we saw earlier in the session).
-	parentCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stopSignals()
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
 
 	wd := resolveWorkDir(*workDir)
 	subsetPath := *subset
@@ -695,7 +695,7 @@ func runMatrixHarbor(opts harborRunOpts) (harborRunResult, error) {
 	}
 	apiKeyVal := resolveMatrixAPIKey(opts.repoRoot, opts.profile, apiKeyEnv)
 
-	args := []string{"run", "--yes", "--path", opts.taskPath}
+	args := []string{"run", "--yes", "--delete", "--path", opts.taskPath}
 	args = append(args, harborAgentArgs(opts.harness)...)
 	args = append(args,
 		"--model", opts.profile.Provider.Model,

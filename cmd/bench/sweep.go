@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -151,15 +154,18 @@ const defaultSweepPlanPath = "scripts/benchmark/terminalbench-2-1-sweep.yaml"
 
 // sweepSubsetPaths maps symbolic subset IDs used in the sweep plan to YAML file paths.
 var sweepSubsetPaths = map[string]string{
-	"terminalbench-2-1-canary":       "scripts/benchmark/task-subset-tb21-canary.yaml",
-	"terminalbench-2-1-full":         "scripts/benchmark/task-subset-tb21-full.yaml",
-	"terminalbench-2-1-all":          "scripts/benchmark/task-subset-tb21-all.yaml",
-	"terminalbench-2-1-openai-cheap": "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
-	"terminalbench-2-1-or-passing":   "scripts/benchmark/task-subset-tb21-or-passing.yaml",
-	"terminalbench-2-1-timing-baseline":     "scripts/benchmark/task-subset-tb21-timing-baseline.yaml",
+	"terminalbench-2-1-canary":          "scripts/benchmark/task-subset-tb21-canary.yaml",
+	"terminalbench-2-1-full":            "scripts/benchmark/task-subset-tb21-full.yaml",
+	"terminalbench-2-1-all":             "scripts/benchmark/task-subset-tb21-all.yaml",
+	"terminalbench-2-1-openai-cheap":    "scripts/benchmark/task-subset-tb21-openai-cheap.yaml",
+	"terminalbench-2-1-or-passing":      "scripts/benchmark/task-subset-tb21-or-passing.yaml",
+	"terminalbench-2-1-timing-baseline": "scripts/benchmark/task-subset-tb21-timing-baseline.yaml",
 }
 
 func cmdSweep(args []string) int {
+	parentCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
 	fs := flagSet("sweep")
 	sweepFile := fs.String("sweep-plan", "", "Path to sweep plan YAML (default: scripts/benchmark/terminalbench-2-1-sweep.yaml)")
 	phaseID := fs.String("phase", "all", "Phase to run: canary, openai-cheap, local-qwen, sonnet-comparison, gpt-comparison, tb21-all, or all")
@@ -211,6 +217,7 @@ func cmdSweep(args []string) int {
 	}
 
 	opts := sweepRunOpts{
+		ctx:               parentCtx,
 		plan:              plan,
 		wd:                wd,
 		outDir:            outDir,
@@ -290,6 +297,7 @@ func pruneStaleHarborTaskContainers(minAge time.Duration) int {
 }
 
 type sweepRunOpts struct {
+	ctx               context.Context
 	plan              *sweepPlan
 	wd                string
 	outDir            string
@@ -376,6 +384,10 @@ func printSweepDryRun(opts sweepRunOpts, phase sweepPhase) int {
 }
 
 func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
+	ctx := opts.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	reps := phase.Reps
 	if reps == 0 {
 		reps = opts.plan.Defaults.Reps
@@ -396,6 +408,10 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 	var wg sync.WaitGroup
 
 	for i, laneID := range phase.Lanes {
+		if ctx.Err() != nil {
+			outcomes[i] = sweepLaneOutcome{laneID: laneID, code: 130}
+			continue
+		}
 		lane, ok := opts.laneByID[laneID]
 		if !ok {
 			fmt.Fprintf(os.Stderr, "%s sweep: lane %q not found in plan\n", benchCommandName(), laneID)
@@ -416,7 +432,12 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 		wg.Add(1)
 		go func(i int, lane *sweepLane, rg *sweepResourceGroup, sem chan struct{}) {
 			defer wg.Done()
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				outcomes[i] = sweepLaneOutcome{laneID: lane.ID, code: 130}
+				return
+			}
 			defer func() { <-sem }()
 
 			laneOutDir := filepath.Join(opts.outDir, phase.ID, lane.ID)
@@ -440,7 +461,7 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 
 			fmt.Printf("[sweep] phase=%s lane=%s rg=%s (max_concurrency=%d) starting\n",
 				phase.ID, lane.ID, rg.ID, rg.MaxConcurrency)
-			code := cmdMatrix(matrixArgs)
+			code := cmdMatrixWithContext(ctx, matrixArgs)
 			fmt.Printf("[sweep] phase=%s lane=%s exit=%d\n", phase.ID, lane.ID, code)
 
 			var mout *matrixOutput
