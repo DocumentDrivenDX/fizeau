@@ -2512,3 +2512,70 @@ bead readiness blocked: score 0.25 below threshold 0.50 (1/4 verifiable ACs) (re
 14:19:54 readiness check: starting route: harness=codex model=gpt-5.4-mini
 14:20:35 readiness check unavailable: readiness route unavailable: runner error: agent: provider error: openai: POST "https://openrouter.ai/api/v1/chat/completions": 402 Payment Required {"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402} (continuing) route: harness=codex model=gpt-5.4-mini
 14:21:15 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+18:21:26 do route codex/gpt-5.4-mini reason=explicit
+18:21:26 do fizeau-900d260b route codex/gpt-5.4-mini power=8
+18:21:26 do thinking ...
+18:21:32 do ok 1 'pwd < out=23.7KB 210 lines "/var/tmp/ddx-exec-wt/.execute-bea…
+18:21:32 do ok 2 search "website" in '1,200p' < out=3.2KB 77 lines "website/hugo.yaml"
+18:21:33 do ok 3 'git status --short' 549ms
+18:21:43 do ok 4 /bin/bash -c "rg -n \"func Test|httptest|chrom|playwright|render|hugo\" websi…
+18:21:43 do ok 5 /bin/bash -c "sed -n '1,220p' website/go.mod < out=1012B 56 lines "module github.com/easel/fizeau/…
+18:21:43 do ok 6 /bin/bash -c "sed -n '1,260p' website/assets/css/custom.css" < out=7.1KB 259 lines "/* ===========…
+18:21:48 do ok 7 /bin/bash -c "sed -n '1,220p' website/content/benchmarks/term… < out=43.9KB 287 lines "---" 1ms
+18:21:48 do ok 8 /bin/bash -c "sed -n '680,1160p' website/assets/css/custom.css < out=14.2KB 549 lines "color: var(…
+18:21:54 do ok 9 /bin/bash -c "rg -n \"chromedp|rod|playwright|puppeteer|selen… < out=30.5KB 283 lines "./service…
+18:21:54 do ok 10 /bin/bash -c "find website -maxdepth 2 -type f | sort | sed … < out=210B 9 lines "website/.hugo…
+18:21:54 do ok 11 /bin/bash -c "command -v hugo < out=71B 4 lines "/home/erik/go/bin/hugo"
+18:22:05 do ok 12 /bin/bash -c "command -v go < out=105B 5 lines "/home/linuxbrew/.linuxbrew/bin/go"
+18:22:05 do ok 13 /bin/bash -c "command -v node < out=7B 1 line 131ms
+18:22:16 do ok 15 /bin/bash -c 'cd website < out=2B 1 line 360ms
+18:22:17 do ok 14 /bin/bash -c 'cd website < out=1.5KB 24 lines "Usage: npx playwright [options] [co… 1.557s
+18:22:40 do ok 16 /bin/bash -c 'cd website < out=2.1KB 21 lines "╔══════════�… 758ms
+18:22:48 do ok 17 /bin/bash -c 'tmpdir=$(mktemp -d) < out=155B 5 lines "Navigating to https://example.com" 1.773s
+18:22:57 do ok 18 /bin/bash -c 'tmpdir=$(mktemp -d) < out=4.0KB 39 lines "<!DOCTYPE html>" 324ms
+18:22:57 do ok 19 /bin/bash -c 'tmpdir=$(mktemp -d) < out=3.7KB 17 lines "5: <link rel=\"icon shortcut\" href… 613ms
+18:23:09 do ok 20 /bin/bash -c 'tmpdir=$(mktemp -d) < out=588B 16 lines "[stdin]:33" 749ms
+18:23:15 do ok 21 /bin/bash -c 'tmpdir=$(mktemp -d) < out=999B 24 lines "node:internal/modules/cjs/loader:147… 697ms
+18:23:34 do ok 22 /bin/bash -c "npm exec --yes --package=playwright@1.54.2 -- … < out=980B 24 lines "node:i… 313ms
+18:23:34 do ok 23 /bin/bash -c "npm exec --yes --package=playwright@1.54.2 -- node -e \"consol… 413ms
+18:23:42 do ok 24 /bin/bash -c 'find "$HOME/.cache/ms-playwright" -maxdepth 4 … < out=457B 6 lines "/home/erik/.c…
+18:23:42 do ok 25 /bin/bash -c 'go list -m -json github.com/chromedp/chromedp@… < out=235B 8 lines "{" 328ms
+18:23:58 do ok 26 /bin/bash -c 'tmpdir=$(mktemp -d) cat > "$tmpdir/probe.go" <… < out=148B 2 lines "/tmp/tm… 397ms
+18:24:04 do ok 27 /bin/bash -c 'cd website < out=757B 14 lines "go: downloading github.com/chromedp/… 1.616s
+18:24:26 do ok 28 /bin/bash -c 'tmpdir=$(mktemp -d) cat > "$tmpdir/probe.go" <… < out=1.2KB 4 lines "benc… 12.781s
+18:24:27 do ok 29 /bin/bash -c 'cd website < out=11.8KB 208 lines "package chromedp // import \"gith…
+18:24:27 do ok 30 /bin/bash -c 'cd website < out=643B 13 lines "package chromedp // import \"github.…
+18:24:49 do ok 31 /bin/bash -c 'tmpdir=$(mktemp -d) cat > "$tmpdir/probe.go" <… < out=738B 4 lines "benchm… 6.897s
+18:26:35 do ok 32 /bin/bash -c 'tmpdir=$(mktemp -d) cat > "$tmpdir/probe.go" <… < out=673B 4 lines "benchm… 6.279s
+18:26:39 do ok 33 /bin/bash -c "sed -n '558,620p' website/assets/css/custom.cs… < out=1.5KB 63 lines ".br-body .n…
+18:26:39 do ok 34 /bin/bash -c "rg -n \"\\.br-body \\.narrative|overflow-wrap|… < out=543B 17 lines "325: overflo…
+18:27:14 do ok 35 /bin/bash -c 'tmpdir=$(mktemp -d) cat > "$tmpdir/probe.go" <… < out=673B 4 lines "benchm… 5.713s
+18:27:32 do ok 36 /bin/bash -c 'tmpdir=$(mktemp -d) cat > "$tmpdir/probe.go" <… < out=1.1KB 6 lines "0 map… 2.324s
+18:27:58 do ok 37 /bin/bash -c 'tmpdir=$(mktemp -d) cat > "$tmpdir/probe.go" <… < out=625B 4 lines "benchm… 5.629s
+18:28:19 do ok 38 /bin/bash -c 'tmpdir=$(mktemp -d) cat > "$tmpdir/probe.go" <… < out=625B 4 lines "benchm… 5.566s
+18:28:54 do ok 39 /bin/bash -c "sed -n '1,260p' website/benchmark_responsive_t… < out=5.7KB 220 lines "package we…
+18:28:54 do ok 40 /bin/bash -c 'git status --short' < out=107B 4 lines "M website/assets/css/custom.css"
+18:29:00 do ok 41 /bin/bash -c 'gofmt -w website/benchmark_responsive_test.go'
+18:29:05 do ok 42 /bin/bash -c 'cd website < out=43B 1 line "ok \tgithub.com/easel/fizeau/website\t1… 2.247s
+18:29:13 do ok 43 /bin/bash -c 'cd website < out=43B 1 line "ok \tgithub.com/easel/fizeau/website\t1… 1.796s
+18:29:17 do ok 44 /bin/bash -c 'cd website 289ms
+18:29:21 do ok 45 /bin/bash -c "git diff --stat < out=3.1KB 63 lines "website/assets/css/custom.css | 2 +…
+18:29:21 do ok 46 /bin/bash -c 'git status --short' < out=107B 4 lines "M website/assets/css/custom.css"
+18:29:29 do ok 49 /bin/bash -c 'cd website 359ms
+18:29:31 do ok 47 /bin/bash -c 'cd website < out=43B 1 line "ok \tgithub.com/easel/fizeau/website\t1… 1.989s
+18:29:31 do ok 48 /bin/bash -c 'cd website < out=43B 1 line "ok \tgithub.com/easel/fizeau/website\t2… 2.268s
+18:29:36 do ok 50 /bin/bash -c 'git diff -- website/assets/css/custom.css webs… < out=2.5KB 44 lines "diff --git …
+18:29:36 do ok 51 /bin/bash -c 'git status --short' < out=74B 3 lines "M website/go.mod"
+18:29:55 do ok 52 /bin/bash -c 'gofmt -w website/benchmark_responsive_test.go'
+18:30:00 do ok 55 /bin/bash -c 'cd website 387ms
+18:30:02 do ok 54 /bin/bash -c 'cd website < out=43B 1 line "ok \tgithub.com/easel/fizeau/website\t2… 2.36s
+18:30:02 do ok 53 /bin/bash -c 'cd website < out=43B 1 line "ok \tgithub.com/easel/fizeau/website\t2… 2.627s
+18:30:06 do ok 56 /bin/bash -c 'git add website/benchmark_responsive_test.go w… < out=200B 3 lines "[detached HEA…
+18:30:10 do ok 57 /bin/bash -c 'git status --short'
+18:30:15 do response complete 50750 tok in 8m48.542s, 96.0 tok/s
+✓ fizeau-900d260b → merged (91c6fa2a)
+
+▶ fizeau-a134133a: TerminalBench medium comparison: restore script and all fiz wrapper lanes
+14:30:18 readiness check: starting route: harness=codex model=gpt-5.4-mini
+14:31:00 readiness check unavailable: readiness route unavailable: runner error: agent: provider error: openai: POST "https://openrouter.ai/api/v1/chat/completions": 402 Payment Required {"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402} (continuing) route: harness=codex model=gpt-5.4-mini
+14:31:40 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini

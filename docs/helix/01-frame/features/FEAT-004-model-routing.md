@@ -15,10 +15,10 @@ ddx:
 
 ## Overview
 
-Fizeau builds a live routing inventory from configured harnesses, provider
-sources, endpoints, and discovered model IDs. It joins that inventory with the
-model catalog, then scores candidates according to policy, power, cost, quota,
-health, capability, utilization, sticky affinity, and prompt requirements.
+Fizeau routes requests from one operator-visible model inventory. The inventory
+is the assembled snapshot also exposed by `fiz models`: configured provider
+sources and harnesses, discovered model IDs, catalog metadata, and runtime
+signals joined into one set of provider/model facts.
 
 The public v0.11 routing surface is:
 
@@ -29,6 +29,10 @@ The public v0.11 routing surface is:
 
 Deprecated route tables, model reference aliases, compatibility targets, and
 surface policy projections are not public routing controls.
+
+This feature spec defines the required routing behavior and public contracts.
+`SD-005` owns the implementation sequence, cache mechanics, candidate scoring
+formula, and routing trace construction.
 
 ## Problem Statement
 
@@ -91,55 +95,60 @@ surface policy projections are not public routing controls.
 11. `no_remote` rejects remote or account-billed candidates even when the
     caller pins a provider or harness.
 
-### Candidate Construction
+### Assembled Routing Inventory
 
-12. Routing enumerates configured harnesses, providers, endpoints, and live
-    discovered model IDs.
-13. Live discovery wins over configured model hints. A configured default model
+12. `ResolveRoute`, `RouteStatus`, and `fiz models` use the same assembled
+    snapshot as their routing inventory contract. The router must not maintain a
+    second discovery view that can diverge from operator-visible model facts.
+13. The assembled snapshot contains one identity per discovered
+    `(provider, model_id)` pair, including harness-as-provider identities for
+    subscription harnesses. Catalog-only models do not appear as available
+    models unless a configured source actually serves them.
+14. Live discovery wins over configured model hints. A configured default model
     is a fallback hint when discovery is unavailable, not a closed inventory.
-14. Discovered model IDs may be fuzzy-matched to catalog metadata when the
-    mapping is unambiguous (case, vendor prefix, accelerator, quantization, or
-    packaging differences).
-15. The candidate trace records eligible and rejected candidates with typed
-    rejection reasons. Consumers must use typed fields, not parse human-readable
-    reason strings.
-16. Test-only harnesses never leak into policy-based routing unless explicitly
+15. Discovered model IDs may be matched to catalog metadata when the mapping is
+    unambiguous. Unknown models remain inspectable and exact-pinnable, but are
+    not eligible for unpinned automatic routing.
+16. The route decision trace records selected, eligible, and rejected
+    candidates with typed reasons. Consumers must use typed fields, not parse
+    human-readable reason strings.
+17. Test-only harnesses never leak into policy-based routing unless explicitly
     requested.
 
 ### Eligibility and Pins
 
-17. Hard pins narrow the candidate set before scoring:
+18. Hard pins narrow the candidate set before scoring:
     - `Harness` means only that harness may be used.
     - `Provider` means only that provider source or selected endpoint may be
       used.
     - `Model` means only that exact model identity may be used.
-18. Pins override provider `include_by_default`: a deliberately pinned
+19. Pins override provider `include_by_default`: a deliberately pinned
     default-deny pay-per-token provider can be considered.
-19. Pins do not override policy `require[]`; `air-gapped` plus a remote
+20. Pins do not override policy `require[]`; `air-gapped` plus a remote
     provider pin fails.
-20. Missing-power, inactive, deprecated, and exact-pin-only models are excluded
+21. Missing-power, inactive, deprecated, and exact-pin-only models are excluded
     from unpinned automatic routing. Exact model pins may still use them when
     the selected harness/provider can serve the model.
-21. Capability gates are hard: context fit, tool support, reasoning support,
+22. Capability gates are hard: context fit, tool support, reasoning support,
     permissions, exact-pin support, liveness, quota exhaustion, and provider
     reachability can reject a candidate before scoring.
 
 ### Power Scoring
 
-22. `MinPower` and `MaxPower` are soft scoring hints, not closed candidate
+23. `MinPower` and `MaxPower` are soft scoring hints, not closed candidate
     lists, once a model has passed auto-routable eligibility.
-23. A candidate below `MinPower` receives a stronger penalty than a candidate
+24. A candidate below `MinPower` receives a stronger penalty than a candidate
     above `MaxPower`. This asymmetric scoring reflects failure risk: too weak
     is more likely to fail the task, while too strong is primarily a cost and
     latency concern.
-24. If no power hints are supplied, model power contributes positively to the
+25. If no power hints are supplied, model power contributes positively to the
     score alongside policy cost/placement preferences.
-25. Exact `Model` pins keep exact identity. Policy-derived power bounds are
+26. Exact `Model` pins keep exact identity. Policy-derived power bounds are
     still reported as evidence, but they do not substitute a different model.
 
 ### Ranking
 
-26. Ranking combines:
+27. Ranking considers:
     - policy baseline (`cheap`, `default`, `smart`, `air-gapped`);
     - catalog power;
     - provider billing and effective marginal cost;
@@ -149,25 +158,28 @@ surface policy projections are not public routing controls.
     - observed latency/speed;
     - endpoint utilization and saturation;
     - sticky affinity.
-27. Local/fixed candidates are preferred by `cheap` and `default` when they are
+28. Local/fixed candidates are preferred by `cheap` and `default` when they are
     eligible and capable. This preference never beats hard pins or
     `require[]`.
-28. `smart` prefers higher-capability subscription/cloud routes when healthy
+29. `smart` prefers higher-capability subscription/cloud routes when healthy
     and allowed.
-29. `air-gapped` is local-only through `require=["no_remote"]`.
-30. The router dispatches one selected candidate per request. Semantic retry or
+30. `air-gapped` is local-only through `require=["no_remote"]`.
+31. The router dispatches one selected candidate per request. Semantic retry or
     escalation belongs to the caller.
 
 ### Status and Evidence
 
-31. `ResolveRoute` returns the selected candidate plus the full candidate
+32. `ResolveRoute` returns the selected candidate plus the full candidate
     trace, power policy, sticky evidence, utilization evidence, and the selected
     model's catalog-projected power.
-32. `RouteStatus` reports recent decisions, cooldowns, provider reliability,
+33. `RouteStatus` reports recent decisions, cooldowns, provider reliability,
     sticky assignments, and routing-quality metrics. Routing quality is
     distinct from provider reliability.
-33. Session logs and final events record the actual attempted route and failure
+34. Session logs and final events record the actual attempted route and failure
     class. They use v0.11 `policy` / `power_policy` fields.
+35. When a route succeeds, fails, or rejects candidates, the evidence must be
+    explainable from the same assembled snapshot facts exposed by `fiz models`
+    plus request-local constraints.
 
 ## Acceptance Criteria
 
@@ -179,7 +191,7 @@ surface policy projections are not public routing controls.
 | AC-FEAT-004-04 | Pay-per-token default-deny providers are skipped in unpinned/default routing unless opted in, while explicit pins can select them. | `go test ./... -run IncludeByDefault` |
 | AC-FEAT-004-05 | Pins override default inclusion but not `require[]`; `air-gapped` plus a remote pin returns `ErrPolicyRequirementUnsatisfied`. | `go test ./internal/routing ./... -run Policy` |
 | AC-FEAT-004-06 | Soft power scoring penalizes undershooting `MinPower` more than overshooting `MaxPower` and does not replace an exact model pin. | `go test ./internal/routing ./... -run Power` |
-| AC-FEAT-004-07 | Route decisions expose typed candidate rejection reasons, score components, selected endpoint/server instance, sticky evidence, and utilization evidence. | `go test ./... -run 'ResolveRoute|RouteStatus|routing_decision'` |
+| AC-FEAT-004-07 | Route decisions consume the assembled snapshot, expose typed candidate rejection reasons, score components, selected endpoint/server instance, sticky evidence, and utilization evidence. | `go test ./... -run 'ResolveRoute|RouteStatus|routing_decision|ModelSnapshot'` |
 | AC-FEAT-004-08 | Removed v0.10 names are not advertised by policy listing, CLI help, or public service fields. | `go test ./agentcli ./cmd/fiz ./...` |
 
 ## Constraints and Assumptions
@@ -198,13 +210,7 @@ surface policy projections are not public routing controls.
 - `FEAT-005` for cost/session projections.
 - `FEAT-006` for the CLI surface.
 - `ADR-009` for the v0.11 naming and migration decision.
-
-### ADR-012 Addendum: Assembled Snapshot Consumption
-
-`fiz models` publishes the assembled snapshot that routing reads. `ResolveRoute`
-and `RouteStatus` consume that snapshot, not a separate discovery view, so the
-router sees the same provider, model, endpoint, quota, and runtime evidence
-that `KnownModel` rows carry after enrichment.
+- `ADR-012` for assembled snapshot cache and harness-as-provider identity.
 
 ## Out of Scope
 
