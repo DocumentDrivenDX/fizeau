@@ -1,0 +1,131 @@
+{
+  "attempt_id": "20260512T160227-2c0f04b4",
+  "bead_id": "fizeau-84e237f2",
+  "base_rev": "3775c39bb18ffd518f2bdb7d27bdf0d696af8ccc",
+  "created_at": "2026-05-12T16:02:30.378661307Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-84e237f2",
+    "title": "Cache infrastructure: per-source disk cache + ParseModelRef + 10-test robustness matrix",
+    "description": "Implement the per-source on-disk cache per ADR-012. New package\n`internal/discoverycache/`. Foundation for M2 (snapshot assembler) and\nM3 (runtime signals); no consumers in this bead.\n\nAlso includes the canonical model identity helpers (`ModelRef`,\n`ParseModelRef`) since they're the cache's primary key.\n\n## In-scope files\n\n- internal/discoverycache/cache.go — public API (Get, ForceRefresh,\n  WriteRefresh, Prune)\n- internal/discoverycache/lock.go — mutation lock (extends\n  acquireMatrixLock idiom; PID+atomic-create with crash recovery)\n- internal/discoverycache/marker.go — refresh marker (PID+StartedAt+\n  Deadline; staleness detection)\n- internal/discoverycache/atomic_write.go — tmp+fsync+rename helper\n- internal/discoverycache/singleflight.go — composes\n  golang.org/x/sync/singleflight with file marker for cross-process\n- internal/discoverycache/cache_test.go — basic single-process tests\n- internal/discoverycache/multiprocess_test.go — the 10 mandatory\n  tests using `TestHelperProcess` / child-spawn pattern\n- internal/modelref/ref.go — canonical identity helpers\n  (ModelRef struct, Parse, String, validation rules)\n- internal/modelref/ref_test.go — table tests for parser\n\n## Algorithms to implement (per ADR-012)\n\nAll 6 from ADR-012:\n1. claim_refresh(source) → (ClaimedByMe | AlreadyInFlight(marker))\n2. refresh_and_commit(source, dataBytes) — atomic rename + marker\n   cleanup\n3. wait_for_refresh(source, marker, maxWait) — polling\n4. read(source) → (data, age, fresh_bool)\n5. force_refresh(source, refresher func()) — sync\n6. In-process singleflight composition — use\n   golang.org/x/sync/singleflight, composes with file-marker\n\n## Public API sketch\n\n```go\ntype Cache struct {\n    Root string  // e.g. ~/.cache/fizeau\n}\n\ntype Source struct {\n    Tier            string  // \"discovery\" or \"runtime\"\n    Name            string  // e.g. \"openrouter\", \"claude-subscription\"\n    TTL             time.Duration\n    RefreshDeadline time.Duration\n}\n\ntype ReadResult struct {\n    Data       []byte\n    Age        time.Duration\n    Fresh      bool  // true if Age \u003c TTL\n    Stale      bool  // true if Age \u003e= TTL\n}\n\nfunc (c *Cache) Read(s Source) (ReadResult, error)\n\n// Refresher is the source-fetch function. Cache handles single-flight\n// + atomic write + marker lifecycle.\ntype Refresher func(ctx context.Context) ([]byte, error)\n\nfunc (c *Cache) Refresh(s Source, fn Refresher) error          // sync, force\nfunc (c *Cache) MaybeRefresh(s Source, fn Refresher)           // async, no-op if fresh\nfunc (c *Cache) Prune(activeSources []Source) error             // remove unknown\n```\n\n## Canonical identity (`internal/modelref`)\n\n```go\ntype ModelRef struct {\n    Provider string  // slug: lowercase, alphanumeric, hyphens, dots\n    ID       string  // provider's canonical model ID; case-preserved\n}\n\nfunc Parse(s string) (ModelRef, error)  // split on first /\nfunc (r ModelRef) String() string         // \u003cprovider\u003e/\u003cid\u003e\nfunc (r ModelRef) Validate() error        // empty checks, char rules\n```\n\nEdge cases per ADR / discussion:\n- `openrouter/qwen/qwen3.6-27b` → provider=openrouter, id=qwen/qwen3.6-27b\n- `vidar-ds4/deepseek-v4-flash` → provider=vidar-ds4, id=deepseek-v4-flash\n- Empty either side → error\n- Provider name with slash → error\n- Multiple slashes → split on first only\n- Future M5: `@\u003csub_provider\u003e` suffix is a separate concern, not in this bead\n\n## Mandatory test matrix (per ADR-012)\n\nALL 10 tests in `multiprocess_test.go` MUST pass:\n\n1. concurrent claim → exactly one ClaimedByMe\n2. reader during refresh → atomic rename, no torn read\n3. crash during refresh (kill -9 child) → next process claims via dead-PID\n4. refresh timeout → marker deadline expires, claim\n5. force-refresh waits + returns fresh\n6. concurrent normal+force → singleflight composition\n7. atomic rename: 100 readers + 1 writer × 100 versions, no torn read\n8. cache prune doesn't race active sources\n9. stale-while-revalidate: stale returns immediately + bg refresh fires\n10. PID reuse safety: deadline check is the fallback\n\nUse `TestHelperProcess` pattern (Go stdlib pattern; spawn `os.Args[0]\n-test.run=TestHelperProcess --` with custom args).\n\n## Out of scope\n\n- M2 (snapshot assembler) — uses this cache.\n- M3 (runtime signals) — uses this cache.\n- M4 (CLI) — top-level surface.\n- Any actual provider/harness fetch logic — Refresher is injected.\n\n## Depends on\n\n- ADR-012 (M0) accepted before this bead executes (uses its design\n  contract).",
+    "acceptance": "1. go test ./internal/discoverycache/... ./internal/modelref/... -count=1 passes and includes the 10 multiprocess behaviors named in the bead description.\n2. go test ./internal/modelref/... -run \"Parse|ModelRef\" -count=1 passes with table coverage for split-on-first-slash, empty provider/id, invalid provider chars, case-preserved model IDs, and multi-slash model IDs.\n3. go test ./internal/discoverycache/... -run \"Test.*Contention|Test.*P99|Test.*Concurrent|Test.*Atomic|Test.*Stale\" -count=1 passes, including a contention test that asserts Cache.Read p99 latency stays under 100ms while refresh/write activity is concurrent.\n4. go test ./... -count=1 passes.\n5. go list -deps ./internal/discoverycache/... | rg \"flock|lockfile|gofrs|juju|nightlyone\" returns no matches, proving no external lock-library dependency was introduced.",
+    "parent": "fizeau-e6145528",
+    "labels": [
+      "area:cache",
+      "area:routing",
+      "kind:feature"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T15:59:50Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "closing_commit_sha": "96c73cb2f9c8d402f04dd1061ee32c09dbc3c836",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "0001-01-01T00:00:00Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        },
+        {
+          "actor": "ddx",
+          "body": "{\"resolved_provider\":\"claude\",\"resolved_model\":\"sonnet\",\"fallback_chain\":[],\"requested_harness\":\"claude\",\"requested_model\":\"claude-sonnet-4-6\"}",
+          "created_at": "0001-01-01T00:00:00Z",
+          "kind": "routing",
+          "source": "ddx agent execute-bead",
+          "summary": "provider=claude model=sonnet"
+        },
+        {
+          "actor": "ddx",
+          "body": "{\"attempt_id\":\"20260512T005705-e98a1134\",\"harness\":\"claude\",\"model\":\"sonnet\",\"input_tokens\":36,\"output_tokens\":91722,\"total_tokens\":91758,\"cost_usd\":2.5128672,\"duration_ms\":1284086,\"exit_code\":0}",
+          "created_at": "0001-01-01T00:00:00Z",
+          "kind": "cost",
+          "source": "ddx agent execute-bead",
+          "summary": "tokens=91758 cost_usd=2.5129 model=sonnet"
+        },
+        {
+          "actor": "ddx",
+          "body": "{\"actual_harness\":\"claude\",\"actual_model\":\"sonnet\",\"actual_power\":0,\"actual_provider\":\"\",\"attempt_id\":\"20260512T005705-e98a1134\",\"bead_id\":\"fizeau-84e237f2\",\"rejected_route_pins\":null,\"requested_tier\":\"standard\",\"routing_intent_degraded\":false,\"routing_intent_note\":\"\",\"routing_intent_source\":\"heuristic\",\"smart_justification\":\"\"}",
+          "created_at": "0001-01-01T00:00:00Z",
+          "kind": "execution-routing-intent",
+          "source": "ddx agent execute-loop",
+          "summary": "source=heuristic tier=standard model=sonnet harness=claude"
+        },
+        {
+          "actor": "ddx",
+          "body": "{\"escalation_count\":0,\"fallback_chain\":[],\"final_tier\":\"\",\"requested_profile\":\"\",\"requested_tier\":\"\",\"resolved_model\":\"sonnet\",\"resolved_provider\":\"claude\",\"resolved_tier\":\"\"}",
+          "created_at": "0001-01-01T00:00:00Z",
+          "kind": "routing",
+          "source": "ddx agent execute-loop",
+          "summary": "provider=claude model=sonnet"
+        },
+        {
+          "actor": "erik",
+          "body": "success\nresult_rev=96c73cb2f9c8d402f04dd1061ee32c09dbc3c836\nbase_rev=ca59778e08b133c093e8a22a5c1abef464bdab16",
+          "created_at": "0001-01-01T00:00:00Z",
+          "kind": "execute-bead",
+          "source": "ddx agent execute-loop",
+          "summary": "success"
+        },
+        {
+          "actor": "",
+          "body": "",
+          "created_at": "2026-05-12T14:21:51.602520317Z",
+          "kind": "reopen",
+          "source": "",
+          "summary": "review found unmet AC"
+        },
+        {
+          "actor": "",
+          "body": "[{\"ac\":1,\"text\":\"`go test ./internal/discoverycache/... ./internal/modelref/...` passes including all 10 multiprocess tests.\",\"kind\":\"build-gate\",\"verifiable\":true},{\"ac\":2,\"text\":\"`go vet ./...` passes.\",\"kind\":\"prose\",\"verifiable\":false},{\"ac\":3,\"text\":\"ParseModelRef table tests cover all edge cases listed above.\",\"kind\":\"prose\",\"verifiable\":false},{\"ac\":4,\"text\":\"Cache.Read returns within 100ms p99 under contention (asserted in test).\",\"kind\":\"prose\",\"verifiable\":false},{\"ac\":5,\"text\":\"No external lock library dependency (build on stdlib + existing acquireMatrixLock idiom).\",\"kind\":\"prose\",\"verifiable\":false}]",
+          "created_at": "2026-05-12T15:35:28.843104015Z",
+          "kind": "ac-quality-low",
+          "source": "preclaim-ac-quality",
+          "summary": "score=0.20 threshold=0.50 verifiable=1/5"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"score 0.20 below threshold 0.50 (1/5 verifiable ACs)\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-12T15:35:28.850866296Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T16:02:27.431067489Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T15:59:50.324660718Z",
+      "session_id": "eb-920d5130",
+      "spec-id": "ADR-012"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-012",
+      "path": "docs/helix/02-design/adr/ADR-012-per-source-on-disk-cache.md",
+      "title": "ADR-012: Per-Source On-Disk Cache for Discovery + Runtime Signals"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T160227-2c0f04b4",
+    "prompt": ".ddx/executions/20260512T160227-2c0f04b4/prompt.md",
+    "manifest": ".ddx/executions/20260512T160227-2c0f04b4/manifest.json",
+    "result": ".ddx/executions/20260512T160227-2c0f04b4/result.json",
+    "checks": ".ddx/executions/20260512T160227-2c0f04b4/checks.json",
+    "usage": ".ddx/executions/20260512T160227-2c0f04b4/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-84e237f2-20260512T160227-2c0f04b4"
+  },
+  "prompt_sha": "6f7cb21b94d69958dbf6abbdca5a964e15639cfac0602ceebe4f66dd2ff00fde"
+}
