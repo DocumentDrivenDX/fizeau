@@ -16,6 +16,7 @@ import (
 	agent "github.com/easel/fizeau/internal/core"
 	"github.com/easel/fizeau/internal/provider/quotaheaders"
 	reasoningpolicy "github.com/easel/fizeau/internal/reasoning"
+	"github.com/easel/fizeau/internal/runtimesignals"
 	"github.com/easel/fizeau/internal/sdk/openaicompat"
 	"github.com/openai/openai-go/option"
 )
@@ -107,13 +108,20 @@ func New(cfg Config) *Provider {
 		// supplied. OpenRouter overrides this via Config.QuotaHeaderParser.
 		parser = quotaheaders.ParseOpenAI
 	}
+	runtimeObserver := func(headers http.Header, latency time.Duration, callErr error) {
+		runtimesignals.RecordResponse(providerName, headers, latency, providerSystem)
+		if err := runtimesignals.Observe(context.Background(), providerName, providerSystem, cfg.BaseURL, headers, latency, callErr); err != nil && cfg.Logger != nil {
+			cfg.Logger.Debug("runtime signal observe failed", "provider", providerName, "err", err)
+		}
+	}
 	p := &Provider{
 		client: openaicompat.NewClient(openaicompat.Config{
-			BaseURL:             cfg.BaseURL,
-			APIKey:              cfg.APIKey,
-			Headers:             cfg.Headers,
-			QuotaHeaderParser:   parser,
-			QuotaSignalObserver: cfg.QuotaSignalObserver,
+			BaseURL:               cfg.BaseURL,
+			APIKey:                cfg.APIKey,
+			Headers:               cfg.Headers,
+			QuotaHeaderParser:     parser,
+			QuotaSignalObserver:   cfg.QuotaSignalObserver,
+			RuntimeSignalObserver: runtimeObserver,
 		}),
 		model:              cfg.Model,
 		modelPattern:       cfg.ModelPattern,

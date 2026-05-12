@@ -28,6 +28,7 @@ func runTests(m *testing.M) int {
 
 	os.Setenv("HOME", tmp)
 	os.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
+	os.Setenv("FIZEAU_CACHE_DIR", filepath.Join(tmp, "cache"))
 
 	return m.Run()
 }

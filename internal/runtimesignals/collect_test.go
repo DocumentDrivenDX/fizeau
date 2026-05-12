@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/easel/fizeau/internal/config"
 	"github.com/easel/fizeau/internal/discoverycache"
 	claudecache "github.com/easel/fizeau/internal/harnesses/claude"
 	"github.com/easel/fizeau/internal/runtimesignals"
@@ -30,7 +29,7 @@ func TestCollect_OpenRouter_RateLimitHeaders(t *testing.T) {
 
 	store.RecordResponse("openrouter", h, 100*time.Millisecond, "openrouter")
 
-	sig, err := store.Collect(context.Background(), "openrouter", &config.ProviderConfig{Type: "openrouter"})
+	sig, err := store.Collect(context.Background(), "openrouter", runtimesignals.CollectInput{Type: "openrouter"})
 	require.NoError(t, err)
 	assert.Equal(t, runtimesignals.StatusAvailable, sig.Status)
 	require.NotNil(t, sig.QuotaRemaining, "QuotaRemaining should be set from x-ratelimit-remaining")
@@ -48,7 +47,7 @@ func TestCollect_OpenRouter_Exhausted(t *testing.T) {
 
 	store.RecordResponse("or-exhausted", h, 50*time.Millisecond, "openrouter")
 
-	sig, err := store.Collect(context.Background(), "or-exhausted", &config.ProviderConfig{Type: "openrouter"})
+	sig, err := store.Collect(context.Background(), "or-exhausted", runtimesignals.CollectInput{Type: "openrouter"})
 	require.NoError(t, err)
 	assert.Equal(t, runtimesignals.StatusExhausted, sig.Status)
 	require.NotNil(t, sig.QuotaRemaining)
@@ -73,7 +72,7 @@ func TestCollect_Claude_QuotaCache(t *testing.T) {
 	require.NoError(t, claudecache.WriteClaudeQuota(cachePath, snap))
 
 	store := runtimesignals.NewStore()
-	sig, err := store.Collect(context.Background(), "claude-subscription", &config.ProviderConfig{Type: "claude"})
+	sig, err := store.Collect(context.Background(), "claude-subscription", runtimesignals.CollectInput{Type: "claude"})
 	require.NoError(t, err)
 	assert.Equal(t, runtimesignals.StatusAvailable, sig.Status)
 	require.NotNil(t, sig.QuotaRemaining, "QuotaRemaining should reflect FiveHourRemaining")
@@ -97,7 +96,7 @@ func TestCollect_Claude_Exhausted(t *testing.T) {
 	require.NoError(t, claudecache.WriteClaudeQuota(cachePath, snap))
 
 	store := runtimesignals.NewStore()
-	sig, err := store.Collect(context.Background(), "claude-subscription", &config.ProviderConfig{Type: "claude"})
+	sig, err := store.Collect(context.Background(), "claude-subscription", runtimesignals.CollectInput{Type: "claude"})
 	require.NoError(t, err)
 	assert.Equal(t, runtimesignals.StatusExhausted, sig.Status)
 }
@@ -107,7 +106,7 @@ func TestCollect_Claude_Exhausted(t *testing.T) {
 func TestCollect_NoHeaders_Unknown(t *testing.T) {
 	store := runtimesignals.NewStore()
 
-	sig, err := store.Collect(context.Background(), "unknown-provider", &config.ProviderConfig{Type: "openai"})
+	sig, err := store.Collect(context.Background(), "unknown-provider", runtimesignals.CollectInput{Type: "openai"})
 	require.NoError(t, err)
 	assert.Equal(t, runtimesignals.StatusUnknown, sig.Status)
 }
@@ -121,7 +120,7 @@ func TestCollect_LatencyRecorded(t *testing.T) {
 		store.RecordResponse("latency-test", nil, d*time.Millisecond, "openai")
 	}
 
-	sig, err := store.Collect(context.Background(), "latency-test", &config.ProviderConfig{Type: "openai"})
+	sig, err := store.Collect(context.Background(), "latency-test", runtimesignals.CollectInput{Type: "openai"})
 	require.NoError(t, err)
 	// Three samples: 10ms, 20ms, 30ms. P50 = sorted[3/2] = sorted[1] = 20ms.
 	assert.Equal(t, 20*time.Millisecond, sig.RecentP50Latency)
