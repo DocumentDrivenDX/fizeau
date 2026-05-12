@@ -3806,3 +3806,296 @@ agent: loop detected (command="bash" repeated ≥4 times): cancelling
 ▶ fizeau-8da7ec68: contract: prove auto-routing and fiz models share one enriched snapshot
 17:57:25 readiness check: starting route: harness=codex model=gpt-5.4-mini
 18:00:41 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+22:00:54 do route codex/gpt-5.4-mini reason=explicit
+22:00:54 do fizeau-8da7ec68 route codex/gpt-5.4-mini power=8
+22:00:54 do thinking ...
+22:01:15 do ok 1 pwd < out=3.6KB 105 lines "/var/tmp/ddx-exec-wt/.execute-bead…
+22:01:15 do ok 2 'ddx bead show fizeau-8da7ec68' < out=2.7KB 37 lines "ID: fizeau-8da7ec68"
+22:01:21 do ok 3 inspect lines 1,240 in internal/modelregistry/service_snapsho… < out=10.5KB 359 lines "package m…
+22:01:21 do ok 4 inspect lines 1,260 in agentcli/models_test.go < out=28.2KB 895 lines "package agentcli"
+22:01:21 do ok 5 inspect lines 1,260 in internal/routing/engine_test.go < out=22.1KB 729 lines "package routing"
+22:01:25 do ok 6 inspect lines 1,260 in cmd/fiz/models_test.go < out=19.0KB 670 lines "package main"
+22:01:25 do ok 7 search "TestAutoRouting|TestExecuteRo..." in '*.go' < out=138.7KB 1402 lines "./testseam_types… 1ms
+22:01:25 do ok 8 inspect lines 1,260 in agentcli/models.go < out=20.2KB 657 lines "package agentcli"
+22:01:30 do ok 9 inspect lines 1,260 in service_models_test.go < out=26.8KB 784 lines "package fizeau"
+22:01:30 do ok 10 inspect lines 1,220 in service_execute_test.go < out=13.5KB 534 lines "//go:build testseam"
+22:01:30 do ok 11 inspect lines 1,240 in service.go < out=34.6KB 886 lines "package fizeau" 2ms
+22:01:34 do ok 12 inspect lines 240,520 in service_routing_test.go < out=7.6KB 281 lines "Type: \"openai\","
+22:01:34 do ok 13 inspect lines 1,220 in service_models_test.go < out=14.2KB 423 lines "package fizeau"
+22:01:34 do ok 14 inspect lines 1,260 in agentcli/routing_smart.go < out=15.8KB 523 lines "package agentcli"
+22:01:37 do ok 15 inspect lines 1,260 in internal/discoverycache/cache.go < out=7.3KB 263 lines "// Package discove…
+22:01:37 do ok 16 inspect lines 1,260 in internal/modelregistry/enrich.go < out=15.2KB 471 lines "package modelregi…
+22:01:43 do ok 17 'rg -n "routeCandidateFromInternal|RouteCandidateStatus|util… < out=17.2KB 185 lines "servi… 1ms
+22:01:43 do ok 18 inspect lines 1,240 in service_routing.go < out=24.3KB 747 lines "package fizeau" 2ms
+22:01:43 do ok 19 inspect lines 1,280 in service_models.go < out=9.7KB 280 lines "package fizeau"
+22:01:50 do ok 20 inspect lines 465,860 in agentcli/routing_cli_test.go < out=15.1KB 396 lines "func TestCLI_RouteS…
+22:01:50 do ok 21 inspect lines 1,240 in agentcli/cli_process_test.go < out=10.7KB 363 lines "package agentcli_… 1ms
+22:01:50 do ok 22 inspect lines 1,240 in agentcli/route_status_json_test.go < out=12.5KB 412 lines "package agentcl…
+22:01:56 do ok 23 inspect lines 1,240 in service_events.go < out=19.3KB 423 lines "package fizeau"
+22:01:56 do ok 24 'rg -n "routing_decision|ServiceEventTypeRoutingDecision|Rou… < out=3.3KB 36 lines "service… 2ms
+22:01:56 do ok 25 inspect lines 1,220 in service_route_attempts_test.go < out=15.1KB 422 lines "package fizeau"
+22:02:01 do ok 26 inspect lines 240,360 in service_execute_test.go < out=3.9KB 120 lines "fp := &fizeau.FakeProvide…
+22:02:01 do ok 27 inspect lines 1,220 in service_adr005_test.go < out=7.8KB 220 lines "package fizeau"
+22:02:01 do ok 28 inspect lines 220,520 in service_adr005_test.go < out=7.4KB 206 lines "})"
+22:02:19 do ok 29 'rg -n "func newTestService|type fakeServiceConfig|publicRou… < out=3.7KB 46 lines "service_ove…
+22:02:19 do ok 30 inspect lines 1,220 in testseam_types.go < out=9.8KB 276 lines "//go:build testseam"
+22:02:19 do ok 31 inspect lines 1,220 in service_routing_test.go < out=4.4KB 120 lines "package fizeau"
+22:02:24 do ok 32 'rg -n "buildRoutingInputsWithCatalog|serviceSnapshotCacheRo… < out=3.2KB 26 lines "service_rou…
+22:02:24 do ok 33 inspect lines 1,260 in service_catalog_cache.go < out=8.6KB 263 lines "package fizeau"
+22:02:24 do ok 34 inspect lines 1,220 in internal/modelsnapshot/enrich.go < out=16.0KB 502 lines "package model… 2ms
+22:02:28 do ok 35 inspect lines 1,220 in internal/modelregistry/assemble.go < out=6.5KB 180 lines "package modelreg…
+22:02:28 do ok 36 inspect lines 1,160 in service_snapshot.go < out=7.1KB 218 lines "package fizeau"
+22:02:28 do ok 37 inspect lines 220,420 in internal/modelregistry/discovery.go < out=6.1KB 201 lines "})"
+22:02:39 do ok 38 inspect lines 1,220 in internal/runtimesignals/cache.go < out=75B 1 line "sed: can't read interna…
+22:02:39 do ok 39 inspect lines 1,220 in internal/runtimesignals/cache_test.go < out=80B 1 line "sed: can't read in…
+22:02:39 do ok 40 'rg -n "Write.*Runtime|ReadCached|recent_p50_latency" intern… < out=944B 9 lines "internal/runt…
+22:02:42 do ok 41 inspect lines 1,240 in internal/runtimesignals/collect.go < out=8.6KB 274 lines "package runtimes…
+22:02:42 do ok 42 inspect lines 1,240 in internal/runtimesignals/collect_test.… < out=6.4KB 175 lines "package ru…
+22:02:43 do ok 43 inspect lines 1,220 in internal/modelregistry/time.go < out=96B 7 lines "package modelregistry"
+22:02:46 do ok 44 inspect lines 1080,1145 in service_routing_test.go < out=2.6KB 66 lines "var claudeCandidate, ope…
+22:02:46 do ok 45 inspect lines 1,200 in service_test_helpers_test.go < out=7.2KB 251 lines "package fizeau"
+22:02:55 do ok 46 'rg -n "cooldown|route_attempt|FilterReasonUnhealthy|FilterR… < out=6.7KB 65 lines "internal/ro…
+22:02:55 do ok 47 inspect lines 1,260 in internal/routing/engine.go < out=20.8KB 563 lines "package routing"
+22:02:55 do ok 48 inspect lines 1,220 in internal/routing/filter_reason.go < out=76B 1 line "sed: can't read intern…
+22:02:58 do ok 49 inspect lines 1085,1260 in internal/routing/engine.go < out=5.7KB 176 lines "}"
+22:02:58 do ok 50 inspect lines 860,1085 in internal/routing/engine.go < out=6.8KB 225 lines "func allCandidatesRej…
+22:02:58 do ok 51 inspect lines 1260,1420 in internal/routing/engine.go < out=3.2KB 111 lines "if a.CostClass != \"…
+22:03:04 do ok 52 'rg -n "snapshotProviderEntries|endpointDisplayName|snapshot… < out=547B 7 lines "705:\t\t\tent…
+22:03:04 do ok 53 inspect lines 760,930 in service_routing.go < out=5.1KB 170 lines "}"
+22:03:58 do ok 54 search "func" in service_*.go < out=2.0KB 16 lines "service_models_test.go:341:\tsvc.ro…
+22:03:58 do ok 55 inspect lines 1,120 in service_route_leases_test.go < out=7.2KB 150 lines "package fizeau"
+22:04:25 do ok 56 inspect lines 320,420 in service.go < out=3.1KB 101 lines "type ModelFilter struct {" 1ms
+22:04:25 do ok 57 'rg -n "type ModelInfo struct" service.go service_*.go' < out=38B 1 line
+22:04:27 do ok 58 inspect lines 260,320 in service.go < out=2.1KB 61 lines "}"
+22:04:49 do ok 59 inspect lines 1,220 in internal/modelregistry/discovery_test… < out=9.1KB 280 lines "package mo…
+22:04:49 do ok 60 'rg -n "RefreshBackground|RefreshForce|MaybeRefresh|stale-wh… < out=1.1KB 10 lines "service… 1ms
+22:05:50 do ok 61 inspect lines 1,240 in internal/provider/utilization/types.go < out=81B 1 line "sed: can't read i…
+22:05:50 do ok 62 'rg -n "type Source|SourceVLLMMetrics|SourceLlamaSlots|Fresh… < out=1.2KB 13 lines "internal/pr…
+22:05:53 do ok 64 inspect lines 1,120 in internal/routehealth/utilization_stor… < out=2.2KB 66 lines "package rou…
+22:05:53 do ok 63 inspect lines 1,120 in internal/provider/utilization/utiliza… < out=3.0KB 120 lines "package ut…
+22:06:22 do ok 65 inspect lines 240,420 in internal/discoverycache/cache.go < out=1.1KB 41 lines "time.Sleep(waitPo…
+22:06:22 do ok 66 search "func" in internal/discoverycache/cache.go < out=511B 8 lines "5:// Public surface: Cache.…
+22:06:26 do ok 68 inspect lines 420,560 in internal/discoverycache/cache.go
+22:06:26 do ok 67 'rg -n "MaybeRefresh" internal/discoverycache/*.go' < out=813B 7 lines "internal/discoverycac… 1ms
+22:06:29 do ok 69 inspect lines 1,120 in internal/discoverycache/singleflight.… < out=1.5KB 37 lines "package dis…
+22:06:29 do ok 70 inspect lines 600,700 in internal/discoverycache/multiproces… < out=3.2KB 100 lines "// Read re…
+22:06:59 do ok 71 inspect lines 1,140 in agentcli/routing_provider.go < out=4.4KB 140 lines "package agentcli"
+22:06:59 do ok 72 inspect lines 140,240 in agentcli/routing_provider.go < out=196B 9 lines "return defaultRouteHeal…
+22:07:05 do ok 73 'rg -n "type countedOpenAIServer" agentcli/*.go' < out=65B 1 line "agentcli/routing_cli_test.go:2…
+22:07:05 do ok 74 inspect lines 1,120 in agentcli/cli_process_test.go < out=2.9KB 120 lines "package agentcli_test"
+22:07:07 do ok 75 inspect lines 1,120 in agentcli/routing_cli_test.go < out=3.0KB 120 lines "package agentcli_test"
+22:07:52 do ok 76 search "func" in . < out=44.1KB 425 lines "./website/content/docs/tools/_ind…
+22:07:52 do ok 77 'git status --short' < out=132B 3 lines "M agentcli/routing_cli_test.go" 625ms
+22:07:56 do ok 78 inspect lines 1,260 in service_routing.go < out=9.0KB 260 lines "package fizeau"
+22:07:56 do ok 79 inspect lines 1,260 in service_models.go < out=9.0KB 260 lines "package fizeau"
+22:07:56 do ok 80 inspect lines 1,260 in service_routestatus.go < out=7.2KB 222 lines "package fizeau"
+22:07:58 do ok 81 inspect lines 1,260 in service_execute.go < out=10.5KB 260 lines "package fizeau"
+22:07:58 do ok 82 inspect lines 1,240 in service_types.go < out=59B 1 line "sed: can't read service_types.go: No su…
+22:07:58 do ok 83 inspect lines 1,260 in service_routing_test.go < out=8.6KB 260 lines "package fizeau"
+22:08:01 do ok 84 inspect lines 1,260 in service.go < out=10.6KB 260 lines "package fizeau"
+22:08:01 do ok 85 'rg -n "type ServiceEvent|type RouteDecision|type RouteCandi… < out=373B 8 lines "service.go:29…
+22:08:03 do ok 86 inspect lines 416,700 in service.go < out=11.6KB 285 lines "type RouteDecision struct {"
+22:08:03 do ok 87 'rg -n "type routeRouting|routing_decision|routing_actual|Ev… < out=15.9KB 168 lines "rg: servi…
+22:08:06 do ok 88 inspect lines 442,920 in service_execute.go < out=17.6KB 479 lines "func (s *service) runExecute(…
+22:08:06 do ok 89 inspect lines 1,220 in internal/harnesses/types.go < out=8.5KB 220 lines "package harnesses"
+22:08:10 do ok 90 inspect lines 1,220 in service_snapshot_test.go < out=6.3KB 210 lines "package fizeau"
+22:08:10 do ok 91 'rg -n "type fakeServiceConfig|func .*fakeServiceConfig|writ… < out=15.1KB 156 lines "service_o…
+22:08:13 do ok 92 inspect lines 1,260 in service_routestatus_test.go < out=8.2KB 260 lines "package fizeau"
+22:08:13 do ok 93 inspect lines 1,260 in service_model_resolution_test.go < out=7.0KB 256 lines "package fizeau"
+22:08:16 do ok 94 inspect lines 1,220 in service_execute_event_types.go < out=73B 1 line "sed: can't read service_e…
+22:08:16 do ok 95 'rg -n "type ServiceRoutingDecisionData|type ServiceRoutingS… < out=585B 5 lines "service_execu…
+22:08:18 do ok 97 'rg -n "ServiceRoutingDecisionData|ServiceRoutingStickyState… < out=4.0KB 47 lines "service_adr…
+22:08:18 do ok 96 inspect lines 1,260 in service_events.go < out=12.2KB 260 lines "package fizeau"
+22:08:21 do ok 98 inspect lines 1,220 in internal/modelregistry/discovery_test… < out=974B 38 lines "package mode…
+22:08:21 do ok 99 search "func" in internal/modelregistry < out=1.3KB 9 lines "internal/modelregistry/background_re…
+22:08:24 do ok 100 inspect lines 1,220 in agentcli/models_snapshot_cli_test.go < out=1.8KB 55 lines "package agentc…
+22:08:24 do ok 101 inspect lines 1,260 in internal/modelregistry/background_re… < out=2.5KB 84 lines "package mod…
+22:08:24 do ok 102 inspect lines 1,220 in agentcli/routing_cli_test.go < out=5.6KB 220 lines "package agentcli_test"
+22:08:26 do ok 103 inspect lines 260,420 in service_routing.go < out=5.0KB 161 lines "}"
+22:08:26 do ok 104 inspect lines 420,620 in service_execute.go < out=7.8KB 201 lines "case reasoning.KindNamed:"
+22:08:29 do ok 105 inspect lines 1,220 in service_test_helpers.go < out=66B 1 line "sed: can't read service_test_he…
+22:08:29 do ok 106 search "func" in *.go < out=127B 1 line "service_test_helpers_test.go:11:func n…
+22:08:33 do ok 107 inspect lines 1,260 in service_test_helpers_test.go < out=548B 29 lines "package fizeau"
+22:08:33 do ok 108 'rg -n "type testServiceOption|with.*Service" service_test_… < out=39B 1 line
+22:08:36 do ok 109 inspect lines 1,200 in service_new.go < out=57B 1 line "sed: can't read service_new.go: No such�…
+22:08:36 do ok 110 search "func" in *.go < out=139B 2 lines "service.go:906:func New(opts ServiceO…
+22:08:40 do ok 111 inspect lines 880,980 in service.go < out=3.7KB 101 lines "// lastDecisionEntry caches the mo…
+22:08:40 do ok 112 search "newTestService\\(t," in *.go < out=2.9KB 33 lines "service_status_test.go:300:\tsvc :=…
+22:08:44 do ok 113 inspect lines 1100,1170 in service_routing_test.go < out=2.0KB 70 lines "}"
+22:08:44 do ok 114 search "publicRouteTraceService\\(" in *.go < out=1.2KB 16 lines "service_adr005_test.go:215:\ts…
+22:08:50 do ok 115 search "type" in internal/routehealth < out=1.3KB 12 lines "internal/routehealth/utilization… 1ms
+22:08:50 do ok 116 inspect lines 1,260 in internal/routehealth/utilization.go < out=78B 1 line "sed: can't read int…
+22:08:50 do ok 117 inspect lines 1,260 in internal/routehealth/store.go < out=5.6KB 241 lines "package routehealth"
+22:08:53 do ok 118 inspect lines 1,240 in internal/routehealth/utilization_sto… < out=6.1KB 220 lines "package ro…
+22:08:53 do ok 119 inspect lines 1,220 in internal/routing/resolve.go < out=70B 1 line "sed: can't read internal/ro…
+22:08:55 do ok 120 'rg -n "LatencyMS|QuotaRemaining|FilterReason|EndpointLoads… < out=16.3KB 165 lines "internal/…
+22:08:55 do ok 121 'ls internal/routing' < out=314B 18 lines "engine.go"
+22:08:57 do ok 122 inspect lines 340,460 in internal/routing/engine.go < out=4.8KB 121 lines "}"
+22:08:57 do ok 123 inspect lines 960,1185 in internal/routing/engine.go < out=7.7KB 226 lines "}"
+22:09:02 do ok 124 inspect lines 220,340 in internal/modelregistry/assemble_te… < out=2.2KB 96 lines "t.Fatalf(\"…
+22:09:02 do ok 125 inspect lines 1,220 in internal/modelsnapshot/assemble.go < out=4.1KB 119 lines "package modelsn…
+22:09:05 do ok 126 inspect lines 1,220 in internal/modelsnapshot/runtime_signa… < out=84B 1 line "sed: can't read…
+22:09:05 do ok 127 'rg -n "attachRuntimeSignals|RecentP50Latency|QuotaRemainin… < out=494B 6 lines "internal/mode…
+22:09:07 do ok 128 inspect lines 1,200 in internal/modelsnapshot/enrich.go < out=4.9KB 148 lines "package modelsnap…
+22:09:07 do ok 129 search "package" in '*signal*' < out=185B 3 lines "internal/runtimesignals/signal_test.g…
+22:09:13 do ok 130 inspect lines 1,220 in internal/runtimesignals/signal.go < out=1.3KB 32 lines "// Package runtim…
+22:09:13 do ok 131 inspect lines 1,220 in internal/runtimesignals/signal_test.… < out=2.9KB 122 lines "package ru…
+22:09:16 do ok 132 inspect lines 1,120 in service_providers_test.go < out=3.6KB 120 lines "package fizeau"
+22:09:16 do ok 133 'rg -n "type fakeServiceConfig" service_providers_test.go -… < out=34B 1 line
+22:09:29 do ok 134 'rg -n "func TestCLI|func TestModels|func Test.*ResolveRout… < out=6.9KB 77 lines "agentcli/cl…
+22:09:29 do ok 135 inspect lines 1,240 in agentcli/list_models_cli_test.go < out=8.1KB 240 lines "package agentcli_…
+22:09:34 do ok 136 inspect lines 800,920 in agentcli/routing_smart.go < out=4.8KB 121 lines "Sticky rootfizeau.Rout…
+22:09:34 do ok 137 'rg -n "resolve-route|ResolveRoute|route-status|models --js… < out=3.9KB 37 lines "agentcli/se…
+22:09:58 do ok 138 inspect lines 1,220 in internal/harnesses/registry.go < out=7.3KB 220 lines "package harnesses"
+22:09:58 do ok 139 search "NewRegistry\\(" in internal/harnesses < out=1011B 16 lines "internal/harnesses/runner_in…
+22:10:00 do ok 140 inspect lines 223,320 in internal/harnesses/registry.go < out=2.2KB 90 lines "func NewRegistry()…
+22:10:00 do ok 141 inspect lines 1,120 in internal/provider/utilization/utiliz… < out=3.0KB 120 lines "package ut…
+22:10:05 do ok 143 search "func" in service_route_attempts.go < out=1.0KB 10 lines "service_route_attempts.go:36:fu…
+22:10:05 do ok 142 inspect lines 1,220 in service_route_attempts.go < out=1.6KB 65 lines "package fizeau"
+22:10:08 do ok 144 inspect lines 720,880 in service_routing.go < out=5.6KB 161 lines "}"
+22:10:08 do ok 145 search "func" in service_models.go < out=346B 3 lines "service_routing.go:71:\tin, snapshot … 1ms
+22:10:13 do ok 146 inspect lines 1,220 in internal/serviceimpl/execute.go < out=74B 1 line "sed: can't read interna…
+22:10:13 do ok 147 search "dispatchExecuteRun\\(|switch" in internal/serviceim… < out=1.7KB 11 lines "service_exe…
+22:10:16 do ok 148 inspect lines 1,220 in internal/serviceimpl/execute_dispatc… < out=2.6KB 90 lines "package ser…
+22:10:16 do ok 149 inspect lines 1,220 in internal/serviceimpl/execute_native.… < out=6.6KB 220 lines "package se…
+22:10:19 do ok 150 search "nativeExecutionProvider|resol..." in service_providers.go
+22:10:19 do ok 151 inspect lines 1,220 in service_providers.go < out=5.8KB 220 lines "package fizeau"
+22:10:23 do ok 152 search "func" in internal/serviceimpl < out=725B 5 lines "internal/serviceimpl/execute_native.g�…
+22:10:23 do ok 153 'rg -n "nativeExecutionProvider" -S .' < out=283B 2 lines "./internal/serviceimpl/execute_native…
+22:10:25 do ok 154 inspect lines 360,480 in internal/serviceimpl/execute_nativ… < out=3.8KB 121 lines "cb.Observe…
+22:10:25 do ok 155 inspect lines 480,620 in internal/serviceimpl/execute_nativ… < out=3.8KB 141 lines "func nativ…
+22:10:30 do ok 156 search "s\\.runtime\\b|runtime:" in internal < out=251B 3 lines "service_status_test.go:231:\t\t…
+22:10:30 do ok 157 search "resolveProvider\\(|nativeProvi..." in internal < out=791B 6 lines "internal/serviceimpl/…
+22:10:33 do ok 158 search "func" in service*.go
+22:10:33 do ok 159 inspect lines 1,240 in service_providers.go < out=615B 21 lines "case \"codex\":"
+22:10:36 do ok 160 search "type" in internal < out=3.4KB 24 lines "service_model_resolution.go:22:func…
+22:10:36 do ok 161 'rg -n "resolveProvider" service.go service_providers.go service_execute.go…
+22:10:41 do ok 162 inspect lines 1,260 in service_native_provider.go < out=7.5KB 245 lines "package fizeau"
+22:10:41 do ok 163 inspect lines 1,240 in service_execute_seam_prod.go < out=1.2KB 24 lines "//go:build !testseam"
+22:10:44 do ok 164 inspect lines 1,120 in service_routing_test.go < out=4.4KB 120 lines "package fizeau"
+22:10:44 do ok 165 'rg -n "func replaceRoutingCatalogForTest" -S *.go' < out=116B 1 line "service_routing_test.go:1…
+22:10:47 do ok 166 inspect lines 1191,1235 in service_routing_test.go < out=1.3KB 45 lines "func replaceRoutingCata…
+22:10:47 do ok 167 'rg -n "type routeStatusCandidate|routeStatusOutput" agentc… < out=183B 3 lines "agentcli/rout…
+22:10:49 do ok 168 inspect lines 766,845 in agentcli/routing_smart.go < out=4.5KB 79 lines "type routeStatusCandida…
+22:10:49 do ok 169 inspect lines 1,140 in agentcli/models.go < out=4.1KB 140 lines "package agentcli"
+22:11:02 do ok 170 inspect lines 296,415 in service.go < out=3.5KB 120 lines "type ModelInfo struct {"
+22:11:02 do ok 171 'rg -n "RecentP50Latency|QuotaRemaining|RuntimeSignal" serv… < out=44B 1 line "service.go:676:…
+22:11:24 do ok 172 inspect lines 470,620 in agentcli/routing_cli_test.go < out=6.4KB 151 lines "assert.Equal(t, 0, …
+22:11:24 do ok 173 inspect lines 620,760 in agentcli/routing_cli_test.go < out=5.3KB 141 lines "// At least one can…
+22:11:35 do ok 174 inspect lines 1,180 in service_execute_test.go < out=4.2KB 180 lines "//go:build testseam"
+22:11:35 do ok 175 search "executeAndFinal\\(|collectExec..." in *.go < out=7.5KB 85 lines "service_capabilities.go…
+22:11:39 do ok 176 inspect lines 1,120 in service_execute_test.go < out=2.9KB 120 lines "//go:build testseam"
+22:11:39 do ok 177 'rg -n "func drainEvents|func executeAndFinal|func findFina… < out=367B 3 lines "service_http_…
+22:11:42 do ok 178 'head -n 5 service_http_provider_test.go' < out=52B 5 lines "package fizeau"
+22:11:42 do ok 179 'head -n 5 service_role_correlation_test.go' < out=57B 5 lines "package fizeau_test"
+22:11:47 do ok 180 inspect lines 470,530 in service_http_provider_test.go < out=1011B 47 lines "\"content\": conten…
+22:11:47 do ok 181 'rg -n "func collectEvents|func drain" service_http_provide… < out=152B 1 line "service_role_c…
+22:12:08 do ok 182 inspect lines 520,600 in service_routing.go < out=2.6KB 80 lines "// ErrPolicyRequirementUnsatis…
+22:12:08 do ok 183 search "func" in internal/routing < out=1.7KB 18 lines "service_native_provider.go:93:\tpro…
+22:12:11 do ok 184 inspect lines 1200,1245 in internal/routing/engine.go < out=1.3KB 45 lines "func candidateProvid…
+22:12:11 do ok 185 inspect lines 730,770 in service_routing.go < out=1.2KB 41 lines "StickyServerInstanceResolv… 2ms
+22:12:15 do ok 186 inspect lines 980,1040 in service_execute.go
+22:12:15 do ok 187 inspect lines 920,980 in service_execute.go < out=1.2KB 25 lines "// Stamp catalog power onto th…
+22:12:18 do ok 188 inspect lines 1,220 in service_route_evidence_test.go < out=3.0KB 102 lines "//go:build testseam"
+22:12:18 do ok 189 inspect lines 220,420 in service_route_evidence_test.go
+22:12:32 do ok 190 inspect lines 1,120 in service_snapshot.go < out=2.9KB 95 lines "package fizeau"
+22:12:32 do ok 191 'rg -n "func serviceConfigToModelSnapshotConfig" -S *.go' < out=104B 1 line "service_snapshot.go…
+22:12:44 do ok 192 'rg -n "RecentP50Latency|quota_remaining|runtime_signal|run… < out=522B 6 lines "agentcli/mode…
+22:12:44 do ok 193 'rg -n "type modelSnapshot" -n agentcli/models.go agentcli/*.go -S'
+22:12:49 do ok 195 inspect lines 140,220 in agentcli/models_test.go
+22:12:49 do ok 194 inspect lines 1,140 in agentcli/models_test.go < out=3.3KB 110 lines "package agentcli"
+22:13:52 do ok 196 'head -n 20 service_http_provider_test.go' < out=350B 20 lines "package fizeau"
+22:13:52 do ok 197 'rg -n "func drainServiceEvents|func executeAndFinal|func f… < out=1.3KB 10 lines "service_ove…
+22:13:56 do ok 198 'head -n 5 service_override_test.go' < out=49B 5 lines "package fizeau_test"
+22:13:56 do ok 199 'head -n 5 service_route_evidence_test.go' < out=45B 5 lines "//go:build testseam"
+22:15:56 do ok 200 'gofmt -w service_contract_snapshot_test.go agentcli/resolve_route_snapshot… 2ms
+22:16:02 do ok 201 test . -run 'TestAutoRoutingUsesUnifiedModelSnapshot|TestEx… < out=312B 5 lines "# gith… 2.274s
+22:16:03 do ok 203 'go test ./internal/modelregistry/... ./internal/routing/..… < out=111B 2 lines "ok \tg… 2.929s
+22:16:08 do ok 202 test ./agentcli -run 'TestModels.*Snapshot|TestCLI.*Resolve… < out=607B 8 lines "--- FA… 7.884s
+22:16:11 do ok 204 inspect lines 220,270 in internal/routing/engine.go < out=2.7KB 51 lines "// FilterReasonNo… 46ms
+22:16:11 do ok 205 'rg -n "ProviderExcludedFromDefault|FilterReasonProviderExc… < out=676B 5 lines "internal/rout…
+22:16:18 do ok 206 'rg -n "FilterReasonProviderExcludedFromDefault" service.go… < out=128B 1 line "service_contra…
+22:16:18 do ok 207 'rg -n "ProviderExcludedFromDefaultRouting" service.go *.go… < out=128B 1 line "service_contra…
+22:16:21 do ok 208 inspect lines 470,560 in service.go < out=4.0KB 91 lines "ServerInstance string"
+22:16:21 do ok 209 'rg -n "FilterReasonProviderExcluded" service.go -S'
+22:16:32 do ok 210 'gofmt -w service_contract_snapshot_test.go agentcli/resolve_route_snapshot…
+22:16:36 do ok 211 test . -run 'TestAutoRoutingUsesUnifiedModelSnapshot|TestEx… < out=2.3KB 48 lines "--- … 1.041s
+22:16:39 do ok 213 nl -ba service_contract_snapshot_test.go | sed -n '255,275p' < out=1.2KB 21 lines "255\t\t\tFres…
+22:16:39 do ok 214 inspect lines 1,200 in agentcli/resolve_route_snapshot_cli_… < out=4.4KB 129 lines "package ag…
+22:16:41 do ok 212 test ./agentcli -run 'TestModels.*Snapshot|TestCLI.*Resolve… < out=418B 8 lines "--- FA… 5.389s
+22:16:46 do ok 215 'gofmt -w service_contract_snapshot_test.go agentcli/resolve_route_snapshot…
+22:16:51 do ok 216 test . -run 'TestAutoRoutingUsesUnifiedModelSnapshot|TestEx… < out=1.7KB 27 lines "--- … 1.096s
+22:16:55 do ok 217 test ./agentcli -run 'TestModels.*Snapshot|TestCLI.*Resolve… < out=418B 8 lines "--- FA… 5.144s
+22:16:57 do ok 219 nl -ba agentcli/resolve_route_snapshot_cli_test.go | sed -n… < out=703B 18 lines "108\t\t}"
+22:16:57 do ok 218 nl -ba service_contract_snapshot_test.go | sed -n '262,272p' < out=639B 11 lines "262\t\trequire…
+22:17:05 do ok 220 'rg -n "air-gapped|no_remote|allow_local" docs/helix/02-des… < out=3.6KB 46 lines "service_rou…
+22:17:05 do ok 221 'rg -n "policy: air-gapped|air-gapped" *.go agentcli/*.go -… < out=2.8KB 30 lines "service_exe…
+22:17:44 do ok 222 'gofmt -w service_contract_snapshot_test.go agentcli/resolve_route_snapshot…
+22:17:48 do ok 223 test . -run 'TestAutoRoutingUsesUnifiedModelSnapshot|TestEx… < out=1.7KB 27 lines "--- … 1.086s
+22:17:52 do ok 224 test ./agentcli -run 'TestModels.*Snapshot|TestCLI.*Resolve… < out=494B 8 lines "--- FA… 5.223s
+22:18:18 do ok 225 'gofmt -w service_contract_snapshot_test.go agentcli/resolve_route_snapshot…
+22:18:24 do ok 226 test . -run 'TestAutoRoutingUsesUnifiedModelSnapshot|TestEx… < out=1.2KB 21 lines "--- … 1.138s
+22:18:29 do ok 227 test ./agentcli -run 'TestModels.*Snapshot|TestCLI.*Resolve… < out=494B 8 lines "--- FA… 5.521s
+22:18:44 do ok 228 'gofmt -w service_contract_snapshot_test.go agentcli/resolve_route_snapshot…
+22:18:48 do ok 229 test . -run 'TestAutoRoutingUsesUnifiedModelSnapshot|TestEx… < out=2.7KB 13 lines "--- … 1.076s
+22:18:52 do ok 230 test ./agentcli -run 'TestModels.*Snapshot|TestCLI.*Resolve… < out=494B 8 lines "--- FA… 5.239s
+22:18:53 do ok 231 nl -ba service_contract_snapshot_test.go | sed -n '330,470p' < out=5.8KB 141 lines "330\tfunc de…
+22:18:53 do ok 232 search "Len\\(t," in service_contract_snapshot_test.go < out=461B 8 lines "359:\trequire.Len… 2ms
+22:19:08 do ok 233 'gofmt -w service_contract_snapshot_test.go'
+22:19:12 do ok 234 test . -run 'TestAutoRoutingUsesUnifiedModelSnapshot|TestEx… < out=35B 1 line 1.137s
+22:19:16 do ok 235 test ./agentcli -run 'TestModels.*Snapshot|TestCLI.*Resolve… < out=494B 8 lines "--- FAI… 5.13s
+22:19:24 do ok 236 'gofmt -w agentcli/resolve_route_snapshot_cli_test.go'
+22:19:28 do ok 238 test . -run 'TestAutoRoutingUsesUnifiedModelSnapshot|TestEx… < out=35B 1 line 408ms
+22:19:33 do ok 237 test ./agentcli -run 'TestModels.*Snapshot|TestCLI.*Resolve… < out=44B 1 line "ok \tgit… 5.175s
+22:19:39 do ok 240 'lefthook run pre-commit --all-files' < out=374B 15 lines "┃ fmt ❯" 2.003s
+22:21:12 do ok 239 'go test ./internal/modelregistry/... ./internal/routing/..… < out=193B 4 lines "ok … 1m35.333s
+22:21:22 do ok 241 ddx bead update fizeau-8da7ec68 --notes 'lefthook run pre-commit --all-file…
+22:21:28 do ok 242 'git status --short' < out=216B 5 lines "M agentcli/routing_cli_test.go"
+22:21:28 do ok 243 'git diff --stat' < out=74B 2 lines "agentcli/routing_cli_test.go | 8 +++++…
+22:21:35 do ok 244 'git add agentcli/routing_cli_test.go agentcli/models_snapshot_cli_test.go …
+22:21:35 do ok 245 'git diff --cached --stat'
+22:21:38 do ok 246 inspect diff < out=363B 6 lines "agentcli/models_snapshot_cli_test.go …
+22:21:38 do ok 247 'git status --short' < out=217B 5 lines "A agentcli/models_snapshot_cli_test.g…
+22:21:41 do ok 248 'git commit -m "test: prove unified snapshot across routing… < out=384B 6 lines "[detached HEA…
+22:21:44 do ok 249 'git rev-parse --short HEAD' < out=8B 1 line
+22:21:44 do ok 250 'git status --short'
+22:21:49 do response complete 125754 tok in 20m55.166s, 100.2 tok/s
+✓ fizeau-8da7ec68 → merged (18cf091a)
+18:21:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:22:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:22:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:23:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:23:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:24:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:24:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:25:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:25:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:26:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:26:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:27:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:27:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:28:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:28:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:29:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:29:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:30:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:30:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:31:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:31:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:32:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:32:54 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:33:24 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:33:55 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:34:25 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:34:55 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:35:25 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:35:55 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:36:25 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+18:36:55 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=0 operator-attention=0 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=0 epic-closure-candidates=5
+
+18:37:25 taking next ready bead from queue: fizeau-b76d6a2c — bench: clean shutdown — kill -TERM sweep reaps the whole process tree
+
+▶ fizeau-b76d6a2c: bench: clean shutdown — kill -TERM sweep reaps the whole process tree
+18:37:25 readiness check: starting route: harness=codex model=gpt-5.4-mini
+18:38:53 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.4-mini
+18:39:33 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
