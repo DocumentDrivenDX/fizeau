@@ -75,22 +75,19 @@ func TestOverrideReasonHint_FromMetadata(t *testing.T) {
 func coincidenceFakeService(t *testing.T) *service {
 	t.Helper()
 	catalog := loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-04-30T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   model-a:
     family: test
     status: active
     power: 5
     surfaces: {agent.openai: model-a}
-targets:
-  test-standard:
-    family: test
-    candidates: [model-a]
-profiles:
-  standard:
-    target: test-standard
-    provider_preference: local-first
 `)
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 	sc := &fakeServiceConfig{

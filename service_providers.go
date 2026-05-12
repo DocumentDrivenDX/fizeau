@@ -336,18 +336,18 @@ func (s *service) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
 	return out, nil
 }
 
-// HealthCheck triggers a fresh probe for the named target and updates internal state.
-// target.Type is "harness" or "provider".
-func (s *service) HealthCheck(ctx context.Context, target HealthTarget) error {
-	switch target.Type {
+// HealthCheck triggers a fresh probe for the named health-check subject and updates internal state.
+// health.Type is "harness" or "provider".
+func (s *service) HealthCheck(ctx context.Context, health HealthTarget) error {
+	switch health.Type {
 	case "provider":
 		sc := s.opts.ServiceConfig
 		if sc == nil {
 			return fmt.Errorf("service: no ServiceConfig provided; pass ServiceOptions.ServiceConfig")
 		}
-		entry, ok := sc.Provider(target.Name)
+		entry, ok := sc.Provider(health.Name)
 		if !ok {
-			return fmt.Errorf("service: provider %q not found", target.Name)
+			return fmt.Errorf("service: provider %q not found", health.Name)
 		}
 		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
@@ -359,30 +359,30 @@ func (s *service) HealthCheck(ctx context.Context, target HealthTarget) error {
 		if probe.detail != "" {
 			msg = probe.detail
 		}
-		return fmt.Errorf("service: provider %q: %s", target.Name, msg)
+		return fmt.Errorf("service: provider %q: %s", health.Name, msg)
 
 	case "harness":
 		statuses := s.registry.Discover()
 		for _, st := range statuses {
-			if st.Name != target.Name {
+			if st.Name != health.Name {
 				continue
 			}
 			if !st.Available {
-				return fmt.Errorf("service: harness %q unavailable: %s", target.Name, st.Error)
+				return fmt.Errorf("service: harness %q unavailable: %s", health.Name, st.Error)
 			}
 			// For subscription harnesses, refresh the quota cache when stale.
-			if target.Name == "claude" {
+			if health.Name == "claude" {
 				healthCheckRefreshClaudeQuota(ctx)
 			}
-			if target.Name == "codex" {
+			if health.Name == "codex" {
 				healthCheckRefreshCodexQuota(ctx)
 			}
 			return nil
 		}
-		return fmt.Errorf("service: harness %q not registered", target.Name)
+		return fmt.Errorf("service: harness %q not registered", health.Name)
 
 	default:
-		return fmt.Errorf("service: unknown HealthTarget.Type %q (want \"harness\" or \"provider\")", target.Type)
+		return fmt.Errorf("service: unknown HealthTarget.Type %q (want \"harness\" or \"provider\")", health.Type)
 	}
 }
 

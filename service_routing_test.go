@@ -189,11 +189,20 @@ models:
 	}
 }
 
-func TestResolveRouteProfileReportsEffectivePowerPolicy(t *testing.T) {
+func TestResolveRoutePolicyReportsEffectivePowerPolicy(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-05-06T00:00:00Z
 catalog_version: test
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+    allow_local: true
+  smart:
+    min_power: 9
+    max_power: 10
+    allow_local: false
 models:
   provider-default:
     family: example
@@ -207,18 +216,6 @@ models:
     power: 9
     surfaces:
       agent.openai: catalog-smart
-profiles:
-  standard:
-    min_power: 7
-    max_power: 8
-    compatibility_target: standard
-    provider_preference: local-first
-targets:
-  standard:
-    family: example
-    candidates: [provider-default, catalog-smart]
-    surfaces:
-      agent.openai: provider-default
 `)
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
@@ -232,29 +229,34 @@ targets:
 		},
 	})
 
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "standard"})
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "default"})
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
 	}
 	if dec == nil {
 		t.Fatal("ResolveRoute returned nil decision")
 	}
-	if dec.RequestedPolicy != "standard" {
-		t.Fatalf("RequestedPolicy=%q, want standard", dec.RequestedPolicy)
+	if dec.RequestedPolicy != "default" {
+		t.Fatalf("RequestedPolicy=%q, want default", dec.RequestedPolicy)
 	}
 	if dec.PowerPolicy.PolicyName != "default" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
 		t.Fatalf("PowerPolicy=%#v, want default 7..8", dec.PowerPolicy)
 	}
 	if dec.Model != "provider-default" {
-		t.Fatalf("Model=%q, want provider-default without treating profile as a model ref", dec.Model)
+		t.Fatalf("Model=%q, want provider-default without treating policy as a model ref", dec.Model)
 	}
 }
 
-func TestResolveRouteProfileAppliesEffectivePowerPolicyBeforeFiltering(t *testing.T) {
+func TestResolveRoutePolicyAppliesEffectivePowerPolicyBeforeFiltering(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-05-06T00:00:00Z
 catalog_version: test
+policies:
+  default:
+    min_power: 7
+    max_power: 8
+    allow_local: true
 models:
   power-5:
     family: example
@@ -274,18 +276,6 @@ models:
     power: 9
     surfaces:
       agent.openai: power-9
-profiles:
-  standard:
-    min_power: 7
-    max_power: 8
-    compatibility_target: standard
-    provider_preference: local-first
-targets:
-  standard:
-    family: example
-    candidates: [power-5, power-7, power-9]
-    surfaces:
-      agent.openai: power-5
 `)
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
@@ -302,7 +292,7 @@ targets:
 	})
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Policy: "standard",
+		Policy: "default",
 	})
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
@@ -313,8 +303,8 @@ targets:
 	if dec.Model != "power-7" {
 		t.Fatalf("decision=%#v, want power-7 winner", dec)
 	}
-	if dec.RequestedPolicy != "standard" {
-		t.Fatalf("RequestedPolicy=%q, want standard", dec.RequestedPolicy)
+	if dec.RequestedPolicy != "default" {
+		t.Fatalf("RequestedPolicy=%q, want default", dec.RequestedPolicy)
 	}
 	if dec.PowerPolicy.PolicyName != "default" || dec.PowerPolicy.MinPower != 7 || dec.PowerPolicy.MaxPower != 8 {
 		t.Fatalf("PowerPolicy=%#v, want default 7..8", dec.PowerPolicy)
@@ -333,7 +323,7 @@ targets:
 			sawBelowTarget = true
 		case "power-7":
 			if !candidate.Eligible {
-				t.Fatalf("power-7 candidate should remain eligible under standard: %#v", candidate)
+				t.Fatalf("power-7 candidate should remain eligible under default: %#v", candidate)
 			}
 		case "power-9":
 			if !candidate.Eligible {
@@ -590,8 +580,13 @@ func TestBuildRoutingInputsDisablesFizWhenLiveProviderDiscoveryEmpty(t *testing.
 
 func TestBuildRoutingInputsPopulatesEndpointProviderCostsFromCatalog(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-04-22T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   alpha-provider-model:
     family: same
@@ -611,16 +606,6 @@ models:
     cost_input_per_m: 4
     cost_output_per_m: 8
     surfaces: {agent.openai: gamma-provider-model}
-targets:
-  alpha:
-    family: same
-    candidates: [alpha-provider-model]
-  beta:
-    family: same
-    candidates: [beta-provider-model]
-  gamma:
-    family: same
-    candidates: [gamma-provider-model]
 `)
 	restore := replaceRoutingCatalogForTest(t, catalog)
 	defer restore()
@@ -645,8 +630,13 @@ targets:
 
 func TestSubscriptionEffectiveCostCurveByHarnessAndBand(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-04-22T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   priced-model:
     family: priced
@@ -658,10 +648,6 @@ models:
       codex: priced-model
       claude-code: priced-model
       gemini: priced-model
-targets:
-  priced:
-    family: priced
-    candidates: [priced-model]
 `)
 	svc := &service{}
 	tests := []struct {
@@ -719,8 +705,13 @@ func TestBuildRoutingInputsHonorsLocalCostOption(t *testing.T) {
 
 func TestResolveRouteNearQuotaClaudeDemotesBelowOpenRouter(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-04-22T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   sonnet-4.6:
     family: claude-sonnet
@@ -730,10 +721,6 @@ models:
     surfaces:
       agent.openai: sonnet-4.6
       claude-code: sonnet-4.6
-targets:
-  standard:
-    family: claude-sonnet
-    candidates: [sonnet-4.6]
 `)
 	svc := &service{}
 
@@ -976,8 +963,13 @@ func floatNear(got, want float64) bool {
 // tools), while no-tools-model has a generous context window but is marked
 // no_tools=true so RequiresTools=true requests are rejected against it.
 const gateFixtureCatalogYAML = `
-version: 4
+version: 5
 generated_at: 2026-04-25T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   small-ctx-model:
     family: gate
@@ -990,13 +982,6 @@ models:
     context_window: 200000
     no_tools: true
     surfaces: {agent.openai: no-tools-model}
-targets:
-  small-ctx:
-    family: gate
-    candidates: [small-ctx-model]
-  no-tools:
-    family: gate
-    candidates: [no-tools-model]
 `
 
 func newGateFixtureService(t *testing.T, providerModel string) *service {
@@ -1144,8 +1129,8 @@ func TestBuildRoutingInputsWiresContextWindowsFromCatalog(t *testing.T) {
 	}
 }
 
-// TestResolveRoute_LivenessEscalation exercises the profile→tier ladder
-// (cheap → standard → smart) wired into ResolveRoute. When every candidate
+// TestResolveRoute_LivenessEscalation exercises the policy→tier ladder
+// (cheap → default → smart) wired into ResolveRoute. When every candidate
 // at the requested tier is filtered out (here: per-provider context-window
 // rejection driven by the catalog), ResolveRoute walks the ladder and
 // returns the first higher-tier candidate that still satisfies the request.
@@ -1243,7 +1228,7 @@ models:
 		}
 
 		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-			Policy:                "standard",
+			Policy:                "default",
 			EstimatedPromptTokens: 50_000,
 		})
 		if err != nil {
@@ -1265,7 +1250,7 @@ models:
 		defer cleanup()
 
 		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
-			Policy:                "standard",
+			Policy:                "default",
 			EstimatedPromptTokens: 1_000_000, // exceeds both 4096 and 200000 contexts
 		})
 		if err == nil {
@@ -1281,8 +1266,8 @@ models:
 		if !errors.As(err, &noLive) {
 			t.Fatalf("errors.As ErrNoLiveProvider: %T %v", err, err)
 		}
-		if noLive.StartingPolicy != "standard" {
-			t.Fatalf("StartingPolicy=%q, want standard", noLive.StartingPolicy)
+		if noLive.StartingPolicy != "default" {
+			t.Fatalf("StartingPolicy=%q, want default", noLive.StartingPolicy)
 		}
 		if noLive.PromptTokens != 1_000_000 {
 			t.Fatalf("PromptTokens=%d, want 1000000", noLive.PromptTokens)

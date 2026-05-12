@@ -26,7 +26,7 @@ type FizeauService interface {
 	ListProviders(ctx context.Context) ([]ProviderInfo, error)
 	ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
 	ListPolicies(ctx context.Context) ([]PolicyInfo, error)
-	HealthCheck(ctx context.Context, target HealthTarget) error
+	HealthCheck(ctx context.Context, health HealthTarget) error
 	ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error)
 	RecordRouteAttempt(ctx context.Context, attempt RouteAttempt) error
 	RouteStatus(ctx context.Context) (*RouteStatusReport, error)

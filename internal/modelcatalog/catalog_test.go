@@ -181,19 +181,19 @@ func TestProvidersDeriveBillingModels(t *testing.T) {
 	assert.Equal(t, BillingModelSubscription, byName["codex"].Billing)
 }
 
-func TestResolveCompatibilityPolicyNames(t *testing.T) {
+func TestResolveCanonicalPolicyNames(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 
-	standard, err := catalog.Resolve("standard", ResolveOptions{Surface: SurfaceAgentOpenAI})
+	defaultPolicy, err := catalog.Resolve("default", ResolveOptions{Surface: SurfaceAgentOpenAI})
 	require.NoError(t, err)
-	assert.Equal(t, "standard", standard.Profile)
-	assert.Equal(t, "standard", standard.CanonicalID)
-	assert.Equal(t, "beta-openai-8", standard.ConcreteModel)
+	assert.Equal(t, "default", defaultPolicy.Profile)
+	assert.Equal(t, "default", defaultPolicy.CanonicalID)
+	assert.Equal(t, "beta-openai-8", defaultPolicy.ConcreteModel)
 
-	codeSmart, err := catalog.Resolve("code-smart", ResolveOptions{Surface: SurfaceAgentOpenAI})
+	smart, err := catalog.Resolve("smart", ResolveOptions{Surface: SurfaceAgentOpenAI})
 	require.NoError(t, err)
-	assert.Equal(t, "smart", codeSmart.Profile)
-	assert.Equal(t, "alpha-openai-10", codeSmart.ConcreteModel)
+	assert.Equal(t, "smart", smart.Profile)
+	assert.Equal(t, "alpha-openai-10", smart.ConcreteModel)
 }
 
 func TestResolvePolicyHonorsNoRemoteRequirement(t *testing.T) {

@@ -295,9 +295,9 @@ func validateExplicitHarnessPolicy(name string, cfg harnesses.HarnessConfig, pol
 
 func explicitPolicyConstraint(policy string) (string, bool) {
 	switch policy {
-	case "local", "offline", "air-gapped":
+	case "air-gapped":
 		return routing.ProviderPreferenceLocalOnly, true
-	case "smart", "code-smart", "code-high":
+	case "smart":
 		return routing.ProviderPreferenceSubscriptionOnly, true
 	default:
 		return "", false

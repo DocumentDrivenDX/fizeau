@@ -417,28 +417,11 @@ func (c *Catalog) policyForReference(ref string) (Policy, bool) {
 	if policy, ok := c.Policy(ref); ok {
 		return policy, true
 	}
-	switch strings.TrimSpace(ref) {
-	case "standard", "code-fast", "fast":
-		return c.Policy("default")
-	case "code-smart":
-		return c.Policy("smart")
-	case "code-economy", "local", "offline":
-		return c.Policy("cheap")
-	}
 	return Policy{}, false
 }
 
 func policyDisplayNameForRef(ref, policyName string) string {
-	switch strings.TrimSpace(ref) {
-	case "standard", "code-fast", "fast":
-		return "standard"
-	case "code-smart":
-		return "smart"
-	case "code-economy", "local", "offline":
-		return "code-economy"
-	default:
-		return policyName
-	}
+	return policyName
 }
 
 // SamplingProfile returns the catalog-defined sampling-parameter bundle for

@@ -492,26 +492,16 @@ func providerAPIContextEvidence(ctx context.Context, entry ServiceProviderEntry,
 // catalogCostAndPerf extracts CostInfo and PerfSignal for a model from the catalog.
 func catalogCostAndPerf(cat *modelcatalog.Catalog, modelID string) (CostInfo, PerfSignal) {
 	entry, ok := cat.LookupModel(modelID)
-	if ok {
-		return CostInfo{
-				InputPerMTok:  catalogEntryInputCost(entry),
-				OutputPerMTok: catalogEntryOutputCost(entry),
-			}, PerfSignal{
-				SpeedTokensPerSec: entry.SpeedTokensPerSec,
-				SWEBenchVerified:  entry.SWEBenchVerified,
-			}
+	if !ok {
+		return CostInfo{}, PerfSignal{}
 	}
-
-	// Fallback: try legacy pricing via PricingFor.
-	pricing := cat.PricingFor()
-	if p, ok := pricing[modelID]; ok {
-		return CostInfo{
-			InputPerMTok:  p.InputPerMTok,
-			OutputPerMTok: p.OutputPerMTok,
-		}, PerfSignal{}
-	}
-
-	return CostInfo{}, PerfSignal{}
+	return CostInfo{
+			InputPerMTok:  catalogEntryInputCost(entry),
+			OutputPerMTok: catalogEntryOutputCost(entry),
+		}, PerfSignal{
+			SpeedTokensPerSec: entry.SpeedTokensPerSec,
+			SWEBenchVerified:  entry.SWEBenchVerified,
+		}
 }
 
 func catalogPowerEligibility(cat *modelcatalog.Catalog, modelID string) (int, bool, bool) {

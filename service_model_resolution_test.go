@@ -40,21 +40,17 @@ func TestResolveRouteModelConstraintNormalization(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-05-06T00:00:00Z
 catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   fallback-model:
     status: active
-    surfaces:
-      agent.openai: fallback-model
-profiles:
-  default:
-    target: fallback-target
-targets:
-  fallback-target:
-    family: fallback
-    candidates: [fallback-model]
     surfaces:
       agent.openai: fallback-model
 `))
@@ -106,21 +102,17 @@ targets:
 
 func TestResolveRouteModelConstraintAmbiguousAndNoMatch(t *testing.T) {
 	catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-05-06T00:00:00Z
 catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   fallback-model:
     status: active
-    surfaces:
-      agent.openai: fallback-model
-profiles:
-  default:
-    target: fallback-target
-targets:
-  fallback-target:
-    family: fallback
-    candidates: [fallback-model]
     surfaces:
       agent.openai: fallback-model
 `))
@@ -205,21 +197,17 @@ targets:
 
 func TestExecuteModelConstraintNormalization(t *testing.T) {
 	catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-05-06T00:00:00Z
 catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   fallback-model:
     status: active
-    surfaces:
-      agent.openai: fallback-model
-profiles:
-  default:
-    target: fallback-target
-targets:
-  fallback-target:
-    family: fallback
-    candidates: [fallback-model]
     surfaces:
       agent.openai: fallback-model
 `))

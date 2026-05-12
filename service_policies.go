@@ -45,31 +45,17 @@ func policyForName(cat *modelcatalog.Catalog, name string) (modelcatalog.Policy,
 	if policy, ok := cat.Policy(name); ok {
 		return policy, policy.Name, true
 	}
-	if canonical, ok := policyCompatibilityAliases()[name]; ok {
-		policy, ok := cat.Policy(canonical)
-		return policy, canonical, ok
-	}
 	return modelcatalog.Policy{}, "", false
-}
-
-func policyCompatibilityAliases() map[string]string {
-	return map[string]string{
-		"standard":     "default",
-		"code-fast":    "default",
-		"fast":         "default",
-		"code-smart":   "smart",
-		"code-economy": "cheap",
-		"local":        "cheap",
-		"offline":      "cheap",
-	}
 }
 
 func providerPreferenceForPolicyName(name string) string {
 	switch strings.TrimSpace(name) {
-	case "local", "offline", "air-gapped":
+	case "air-gapped":
 		return routing.ProviderPreferenceLocalOnly
-	case "smart", "code-smart":
+	case "smart":
 		return routing.ProviderPreferenceSubscriptionFirst
+	case "default", "cheap":
+		return routing.ProviderPreferenceLocalFirst
 	default:
 		return routing.ProviderPreferenceLocalFirst
 	}

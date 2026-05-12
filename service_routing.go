@@ -638,12 +638,6 @@ func routingPolicyForName(cat *modelcatalog.Catalog, name string) string {
 		return ""
 	case "cheap", "default", "smart", "air-gapped":
 		return name
-	case "standard", "code-fast", "fast":
-		return "default"
-	case "code-smart":
-		return "smart"
-	case "code-economy", "local", "offline":
-		return "cheap"
 	}
 	if cat == nil {
 		return name
@@ -970,7 +964,7 @@ func providerRoutingCostClass(providerType string) string {
 func subscriptionFallbackPolicy(harnessName string) string {
 	switch harnessName {
 	case "claude", "codex", "gemini":
-		return "standard"
+		return "default"
 	default:
 		return ""
 	}

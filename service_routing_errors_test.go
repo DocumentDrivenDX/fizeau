@@ -200,11 +200,11 @@ func TestResolveRouteExplicitPolicyRequirementUnsatisfied(t *testing.T) {
 	svc := testRoutingErrorService()
 
 	_, err := svc.ResolveRoute(context.Background(), RouteRequest{
-		Policy:  "local",
-		Harness: "claude",
+		Policy:   "air-gapped",
+		Provider: "openrouter",
 	})
 	if err == nil {
-		t.Fatal("expected local policy to conflict with claude harness")
+		t.Fatal("expected air-gapped policy to conflict with remote provider pin")
 	}
 	if !errors.Is(err, ErrPolicyRequirementUnsatisfied{}) {
 		t.Fatalf("errors.Is should match ErrPolicyRequirementUnsatisfied: %T %v", err, err)
@@ -213,8 +213,8 @@ func TestResolveRouteExplicitPolicyRequirementUnsatisfied(t *testing.T) {
 	if !errors.As(err, &typed) {
 		t.Fatalf("errors.As should extract ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	if typed.Policy != "local" || typed.AttemptedPin != "Harness=claude" || typed.Requirement != "local-only" {
-		t.Fatalf("policy requirement=%#v, want local/Harness=claude/local-only", typed)
+	if typed.Policy != "air-gapped" || typed.AttemptedPin != "" || typed.Requirement != "local endpoint" {
+		t.Fatalf("policy requirement=%#v, want air-gapped//local endpoint", typed)
 	}
 
 	_, err = svc.ResolveRoute(context.Background(), RouteRequest{
@@ -293,12 +293,12 @@ func TestResolveRouteLegacyCodePoliciesRejectWithReplacementGuidance(t *testing.
 	}
 }
 
-func TestResolveRouteLocalPolicyNoLocalCandidateIsTyped(t *testing.T) {
+func TestResolveRouteAirGappedNoLocalCandidateIsTyped(t *testing.T) {
 	svc := testRoutingErrorService()
 
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "local"})
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "air-gapped"})
 	if err == nil {
-		t.Fatal("expected local policy without local candidates to fail")
+		t.Fatal("expected air-gapped policy without local candidates to fail")
 	}
 	if !errors.Is(err, ErrPolicyRequirementUnsatisfied{}) {
 		t.Fatalf("errors.Is should match ErrPolicyRequirementUnsatisfied: %T %v", err, err)
@@ -307,8 +307,8 @@ func TestResolveRouteLocalPolicyNoLocalCandidateIsTyped(t *testing.T) {
 	if !errors.As(err, &typed) {
 		t.Fatalf("errors.As should extract ErrPolicyRequirementUnsatisfied: %T %v", err, err)
 	}
-	if typed.Policy != "local" || typed.Requirement != "local endpoint" {
-		t.Fatalf("ErrPolicyRequirementUnsatisfied=%#v, want local/local endpoint", typed)
+	if typed.Policy != "air-gapped" || typed.Requirement != "local endpoint" {
+		t.Fatalf("ErrPolicyRequirementUnsatisfied=%#v, want air-gapped/local endpoint", typed)
 	}
 	if dec == nil || len(dec.Candidates) == 0 {
 		t.Fatalf("expected rejected candidate trace, got decision=%#v", dec)

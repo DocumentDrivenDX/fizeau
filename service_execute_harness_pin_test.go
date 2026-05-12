@@ -186,17 +186,18 @@ func TestExecuteExplicitAgentHarnessNoLongerAliasesNative(t *testing.T) {
 
 func TestExecuteExplicitHarnessPinRejectsUnsupportedCodexCombinationWithoutBroadening(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-05-06T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
 models:
   small-ctx-model:
     family: test
     status: active
     surfaces: {agent.openai: small-ctx-model}
-targets:
-  small-ctx:
-    family: test
-    candidates: [small-ctx-model]
 `)
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
@@ -253,9 +254,9 @@ targets:
 	}
 }
 
-// TestExecute_ExplicitHarnessEmptyModelWithProfile_RoutesWithinHarness asserts
+// TestExecute_ExplicitHarnessEmptyModelWithPolicy_RoutesWithinHarness asserts
 // AC4 from ddx-1e516bc9: when Harness is pinned and Model is empty but a
-// routing Profile is provided, the routing engine runs within the harness's
+// routing policy is provided, the routing engine runs within the harness's
 // eligible models (not the old silent-empty-model path).
 //
 // The core invariant: the old code returned RouteDecision{Model:""} with no
@@ -269,11 +270,20 @@ targets:
 // surface IDs through claudeCLIExecutableModel normalization.
 func TestExecute_ExplicitHarnessEmptyModelWithProfile_RoutesWithinHarness(t *testing.T) {
 	// Fixture catalog: sonnet-4.6 on the claude-code surface (which the claude
-	// harness uses), plus the code-economy compatibility policy so
+	// harness uses), plus the canonical cheap policy so
 	// providerPreferenceForPolicy doesn't fail with ErrUnknownPolicy.
 	catalog := loadRoutingFixtureCatalog(t, `
-version: 4
+version: 5
 generated_at: 2026-05-08T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+  cheap:
+    min_power: 5
+    max_power: 6
+    allow_local: true
 models:
   sonnet-4.6:
     family: claude-sonnet
@@ -281,16 +291,6 @@ models:
     power: 8
     surfaces:
       claude-code: sonnet-4.6
-profiles:
-  code-economy:
-    min_power: 5
-    max_power: 6
-    compatibility_target: code-economy
-    provider_preference: subscription-first
-targets:
-  code-economy:
-    family: claude-sonnet
-    candidates: [sonnet-4.6]
 `)
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
@@ -299,7 +299,7 @@ targets:
 	decision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
 		Prompt:  "hello",
 		Harness: "claude",
-		Policy:  "code-economy",
+		Policy:  "cheap",
 	})
 
 	// Core invariant: the old code returned (decision.Model=="", err==nil).
@@ -324,17 +324,17 @@ targets:
 	}
 }
 
-// TestExecute_ExplicitHarnessEmptyModelNoProfile_FailsClearly asserts AC5 from
+// TestExecute_ExplicitHarnessEmptyModelNoPolicy_FailsClearly asserts AC5 from
 // ddx-1e516bc9: when Harness is pinned and Model is empty with no routing
-// inputs (no Profile, no MinPower), the request must fail with a clear
+// inputs (no Policy, no MinPower), the request must fail with a clear
 // "under-specified routing" error rather than silently returning an empty model.
-func TestExecute_ExplicitHarnessEmptyModelNoProfile_FailsClearly(t *testing.T) {
+func TestExecute_ExplicitHarnessEmptyModelNoPolicy_FailsClearly(t *testing.T) {
 	svc := publicRouteTraceService(nil)
 
 	_, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
 		Prompt:  "hello",
 		Harness: "claude",
-		// Model, Profile, MinPower all empty — under-specified
+		// Model, Policy, MinPower all empty — under-specified
 	})
 	if err == nil {
 		t.Fatal("expected under-specified routing error, got nil")
@@ -347,14 +347,14 @@ func TestExecute_ExplicitHarnessEmptyModelNoProfile_FailsClearly(t *testing.T) {
 // TestExecute_Class2HarnessEmptyModelWithProfile_FailsClearly asserts that for
 // Class 2 harnesses (AutoRoutingEligible=false: gemini, opencode, pi), an
 // explicit "no auto-resolution available" error is returned when Model is empty
-// but Profile/MinPower is set — not silent empty Model.
-func TestExecute_Class2HarnessEmptyModelWithProfile_FailsClearly(t *testing.T) {
+// but Policy/MinPower is set — not silent empty Model.
+func TestExecute_Class2HarnessEmptyModelWithPolicy_FailsClearly(t *testing.T) {
 	svc := publicRouteTraceService(nil)
 
 	_, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
 		Prompt:  "hello",
 		Harness: "gemini",
-		Policy:  "code-economy",
+		Policy:  "cheap",
 	})
 	if err == nil {
 		t.Fatal("expected no-auto-resolution error for Class 2 harness, got nil")

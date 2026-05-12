@@ -131,9 +131,6 @@ func allowedTargetLine(path, line string) bool {
 	if strings.Contains(line, "HealthTarget") {
 		return true
 	}
-	if rel == "service.go" || rel == "service_providers.go" {
-		return true
-	}
 	if strings.HasSuffix(rel, "internal/routing/errors.go") {
 		trimmed := strings.TrimSpace(line)
 		return strings.Contains(trimmed, "Is(target error)") ||

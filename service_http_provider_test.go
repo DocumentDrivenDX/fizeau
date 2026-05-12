@@ -357,7 +357,7 @@ func TestExecuteEndpointFirstRoutingNoLiveModelMatchDiagnostic(t *testing.T) {
 	_, err = svc.Execute(context.Background(), ServiceExecuteRequest{
 		Prompt:  "ping",
 		Model:   "zxqv-no-match-20260506",
-		Policy:  "offline",
+		Policy:  "air-gapped",
 		Timeout: 2 * time.Second,
 	})
 	if err == nil {
