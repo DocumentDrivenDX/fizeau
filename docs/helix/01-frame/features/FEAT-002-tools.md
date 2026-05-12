@@ -122,6 +122,149 @@ capabilities already shipped.
 - **Governing design**: [Provider Identity, Routing Policy, and Bash Output Filtering](./../../02-design/plan-2026-04-19-provider-routing-tool-output.md)
 - **PRD requirements**: P0-2
 
+## Tool Specifications
+
+### `anchor_edit` (anchor mode v1)
+
+A token-efficient edit tool that addresses lines by an opaque anchor word
+emitted alongside each line on the preceding `read`. Replaces the
+file-rewrite cost of conventional `edit` (which echoes `old_string` text)
+with a per-line lookup. **Opt-in only** — registered when the operator
+passes `--anchors` or sets `anchors: true` in config; absent by default so
+existing workflows are unchanged.
+
+**Wire shape**:
+
+```json
+{
+  "path":         "string",
+  "start_anchor": "string",
+  "end_anchor":   "string",
+  "new_text":     "string",
+  "offset_hint":  "integer (optional; required when an anchor is ambiguous)"
+}
+```
+
+Empty `new_text` deletes the range.
+
+**Anchor vocabulary**: A static, build-time-frozen list of ~1024 single-token
+English nouns (capital-first, no apostrophes/digits/non-ASCII, no Go keywords)
+that map to exactly one token in both `cl100k_base` and a Llama BPE tokenizer.
+Lives at `internal/tool/anchorwords/words.go`. Runtime assignment is by line
+index modulo 1024, so files longer than 1024 lines wrap and produce ambiguous
+anchors that `offset_hint` disambiguates.
+
+**Session state (`internal/tool/anchorstore`)**: Per-`Run`, in-memory,
+thread-safe (`sync.RWMutex`). One instance per `Run` call, passed by pointer
+into tool constructors — NOT part of `core.Request`. API:
+
+- `Assign(path string, fileOffset int, lines []string)` — record anchors for
+  a just-read slice. `fileOffset` matches `read`'s offset param so absolute
+  line numbers stay correct under partial reads.
+- `Lookup(path, anchor string) (line int, ambiguous bool)` — returns
+  `(line, false)` on unique match, `(-1, true)` if ambiguous, `(-1, false)`
+  if not found or store invalid for the file.
+- `Invalidate(path string)` — drops the file's anchor map.
+
+**Read-tool integration**: `read` accepts an optional `*AnchorStore`. When
+non-nil, output lines are prefixed `Word: content\n` (no padding — token
+efficiency over alignment) and the anchor words are passed to
+`AnchorStore.Assign`. Truncation marker uses `...` prefix specifically because
+`...` is not a vocabulary word and cannot be used as an edit target. When the
+store is nil (legacy mode), output is byte-identical to today.
+
+**Stale-state guards**: `write`, `edit`, and `patch` remain available in
+anchor mode and do **not** call `Invalidate`. To prevent silent corruption:
+(a) `anchor_edit` MUST verify the file's current line count matches the
+stored anchor count before splicing — mismatch returns `"file changed since
+anchors assigned; re-read"`; (b) the system prompt addendum activated under
+`--anchors` MUST tell the model: *"Do not mix `edit`/`write` with
+`anchor_edit` on the same file. Re-read to get fresh anchors after any
+non-anchor change."*
+
+**Execute order**: resolve path → lookup anchors (error on missing /
+ambiguous-without-hint / invalidated) → validate `startLine ≤ endLine` →
+splice → write → `Invalidate(path)` → return human-readable summary
+referencing the anchor range. `Parallel() bool { return false }`.
+
+**v1 explicitly excludes**:
+- Myers-diff anchor refresh across non-anchor edits (deferred to v2).
+- Automatic invalidation on `write`/`edit`/`patch` calls (manual re-read
+  contract instead).
+- Anchor state persistence across `Run` calls.
+
+**Source provenance**: Anchor tool contract, AnchorStore API, and v1/v2
+scope split extracted from
+`docs/research/hash-anchored-edits-2026-05-01.md` (Scope, Anchor Word
+Generation, Session State Design, AnchorEditTool sections).
+
+### `load_skill` (progressive skill disclosure)
+
+Opt-in tool that exposes a directory of `SKILL.md` files to the agent via
+two-stage disclosure: a compact catalog injected into the system prompt at
+session start, plus a `load_skill` tool that returns the full body of a
+named skill on demand. Activates only when a skills directory exists or is
+explicitly configured.
+
+**SKILL.md frontmatter schema**:
+
+```yaml
+---
+name: fix-tests        # required; slug [a-z0-9-_]+, max 64 chars
+description: |         # required; under 1024 chars; embedded in system prompt
+  Fix failing tests in a Go project. Use when tests are failing after a
+  code change or when asked to make tests pass.
+tags: [testing, go]    # optional
+version: "1.0"         # optional
+---
+# Body in markdown; everything after the closing --- is loaded on demand.
+```
+
+Missing `name` or `description` → the skill is skipped with a warning at
+scan time. Unknown YAML fields are silently ignored (forward-compat).
+
+**Catalog injection (system prompt)**: When the catalog is non-empty,
+`Builder.WithSkillCatalog(*skill.Catalog)` adds a `# Available Skills`
+section to the system prompt. Entries are sorted by name (deterministic
+output) and use the form `- <name>: <description>`. The section closes with
+the activation rule: *"To use a skill, call the `load_skill` tool with the
+skill name. Always load the skill before beginning the task it describes."*
+Nil or empty catalog → section omitted entirely (zero overhead).
+
+**`load_skill` tool wire shape**:
+
+- **Parameters**: `{ "skill_name": string }`
+- **On success**: returns the raw markdown body (everything after the
+  closing `---`).
+- **On unknown name**: returns `load_skill: skill "foo" not found;
+  available: <comma-separated names>` so the model can self-correct without
+  another tool round-trip.
+
+**Configuration**:
+
+```yaml
+skills:
+  dir: ".fizeau/skills"   # default; "-" disables; FIZEAU_SKILLS_DIR overrides
+```
+
+Resolution order: `FIZEAU_SKILLS_DIR` env > `config.yaml` `skills.dir` >
+default `.fizeau/skills` relative to `workDir`. Absent directory → silently
+disabled (no error). Explicit `"-"` → disabled even if the directory exists.
+
+**Package layout note**: `LoadSkillTool` lives under `internal/skill`, not
+`internal/tool`, to avoid an import cycle (`internal/tool` would otherwise
+need to import `internal/skill`, which imports `internal/safefs`). The
+`agentcli` wiring instantiates the tool directly from a `*skill.Catalog`
+and appends it to the tool list, keeping `internal/tool` free of skill
+imports.
+
+**Source provenance**: Frontmatter schema, catalog format, `load_skill`
+wire shape, and config keys extracted from
+`docs/research/skill-progressive-disclosure-2026-05-01.md` (Frontmatter
+Schema, System Prompt Injection Format, `load_skill` Tool, Config Keys
+sections). Substantial enough to warrant a dedicated SD if a skill registry
+ever grows beyond load-on-demand semantics; today it fits as a tool spec.
+
 ## Out of Scope
 
 - File watching or filesystem events

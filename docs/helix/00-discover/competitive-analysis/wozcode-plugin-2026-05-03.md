@@ -210,6 +210,86 @@ tools is more reliable than persuading.
   existing `bash` tool — it's the lowest-risk lesson and validates the
   "where the tokens actually go" thesis without committing to MCP work.
 
+## Layered integration thesis (2026-05-05 follow-up)
+
+A second pass at the WozCode artifacts on 2026-05-05 looked specifically at
+the *layering* — how the product splits responsibility across plugin
+manifest, MCP server, agent profiles, hooks, and skills — rather than the
+individual tool surface. The findings tighten the lessons above and
+reframe the earlier "MCP vs CLI vs AGENTS.md" question as too narrow.
+
+### Architectural layering
+
+WozCode is not "an MCP server" or "a Claude plugin"; it is a stack:
+
+1. **Custom tools** (the `code` MCP server): replaces low-efficiency
+   built-ins.
+2. **Agent profiles**: enforce the tool surface via `disallowedTools`.
+3. **Hooks**: redirect bad behavior, post-tool nudges, and savings
+   accounting — guardrails, not core mechanism.
+4. **Skills / commands**: user-facing operational surface (`/woz-login`,
+   `/woz-savings`).
+5. **Telemetry and benchmarking**: measures the savings the layers create.
+
+The architectural lesson is that the layers reinforce each other —
+removing any one weakens the rest. Hooks alone don't work because the
+model still sees the cheap built-ins; replacement tools alone don't work
+because the model can ignore them; profiles alone don't work because the
+model can still reach for shell exploration.
+
+### Subagent role pattern
+
+`woz:explore` is a read-only subagent on a cheaper model
+(`model: haiku`, `tools: Search, Sql, Bash`) tasked specifically with
+locating starting points before the main agent edits. This is a more
+explicit version of fizeau's benchmark-preset + navigation-tool work — a
+dedicated role with an enforced tool allowlist instead of advisory
+prompting on a single agent.
+
+### Implications for fizeau (layered roadmap)
+
+The 2026-05-05 reading argues for a **portable core plus host-specific
+adapters** rather than a Claude-plugin-first product:
+
+1. **Durable `fiz tool` CLI surface** as the cross-harness base for
+   Codex, Claude, Gemini, pi, and opencode. Today's anchor mode stores
+   anchors in memory for one fizeau run; an external-harness anchor loop
+   needs a session store keyed by file path + content hash.
+2. **Composite search** as the next high-leverage tool — combines
+   globbing, regex, and ranked snippets in one tool call, eliminating the
+   `find → grep → read` round-trip that wozcode's `Search` collapses.
+3. **Batch editing** with a JSON edit plan covering multiple files,
+   applied transactionally where possible, with local syntax validation
+   for common formats.
+4. **Claude plugin adapter** as a *downstream* deliverable, not the
+   primary one — mirrors wozcode's `disallowedTools` mechanism for
+   forcing the host model onto the optimised surface.
+5. **Cross-harness skills + AGENTS.md** for harnesses without Claude's
+   plugin surface (Codex), with concise rules: *prefer `fiz tool search`
+   over `find`/`grep`/`rg`/`cat`/`sed` exploration; prefer anchored or
+   batch edits; re-read after non-anchor edits.*
+
+### Open questions raised by the 2026-05-05 pass
+
+- Can Codex be configured with a per-run tool allowlist or a
+  hook-equivalent comparable to Claude plugin agents?
+- Should fizeau ship a Claude plugin, or generate a minimal
+  project-local Claude config that references installed `fiz` commands?
+- What is the smallest composite-search result format that improves
+  benchmark behaviour without hiding too much file context?
+- Should batch edit be exact-match, fuzzy-match, anchor-based, or a
+  layered strategy?
+- What local benchmark compares vanilla Claude/Codex against
+  fizeau-instructed and fizeau-plugin runs?
+
+### Source provenance
+
+Layered architecture reading, subagent role pattern, and portable-core
+roadmap extracted from
+`docs/research/wozcode-optimized-tools-2026-05-05.md` (Observed Shape,
+Tool Economy Pattern, Hooks Pattern, Implications For Fizeau, Candidate
+Fizeau Slices, Provisional Recommendation sections).
+
 ## Key files referenced
 
 All in `WithWoz/wozcode-plugin@main`:

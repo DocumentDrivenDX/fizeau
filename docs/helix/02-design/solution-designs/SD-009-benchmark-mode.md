@@ -551,6 +551,140 @@ if**:
 
 ---
 
+## 10. Failure Modes (Benchmark Preset)
+
+The `benchmark` preset addresses four recurrent failure classes observed when
+running fiz against terminal-bench-2. Each is named, given a detection
+signal, and paired with the recovery rule the preset bakes in. Single-source
+of truth for which guideline addresses which failure.
+
+### FM-1 — Tool-Call Loop
+
+- **Symptom**: Agent issues the same bash (or other tool) command three times
+  in a row without adapting in response to the result.
+- **Detection**: Existing fingerprint comparator in `internal/core/loop.go`
+  raises `ErrToolCallLoop` at three identical consecutive tool calls (see
+  AC-FEAT-001-09). The pivot-recovery semantics of FEAT-001 may inject a
+  redirect message before the hard abort.
+- **Recovery (preset rule)**: `ERROR RECOVERY` guideline — *if a tool call
+  fails or returns an error, change your approach before retrying; never
+  issue the same failing command twice in a row.*
+
+### FM-2 — Missing Output File
+
+- **Symptom**: Agent reasons through a solution inside `<think>` blocks,
+  declares success, and never invokes `write` to materialize the required
+  output file. The verifier scores `reward=0`.
+- **Detection**: No in-loop signal — only the verifier sees it. The preset
+  pre-empts the failure by enforcing a verification step.
+- **Recovery (preset rule)**: `OUTPUT VERIFICATION` guideline — *before
+  reporting task complete, confirm the required output file exists by
+  reading it or running bash to check; do not declare success until the file
+  is on disk.*
+
+### FM-3 — Reasoning Stall
+
+- **Symptom**: Agent fills context with extended thinking turns and never
+  emits a tool call, exhausting either the iteration budget or the stall
+  guard.
+- **Detection**: `ErrReasoningStall` (AC-FEAT-001-08) and the byte-limit
+  variant `ErrReasoningOverflow` (AC-FEAT-001-07) catch the runaway
+  reasoning case at the streaming layer; the existing tool-call counter is
+  blind to pure-thinking turns.
+- **Recovery (preset rule)**: `ANTI-STALL` and `TOOL FIRST` guidelines —
+  *if you have been thinking for more than one turn without calling a tool,
+  call a tool immediately in your next response*; *think through your plan
+  in at most one reasoning paragraph, then call tools.*
+
+### FM-4 — No Verification
+
+- **Symptom**: Agent writes the file but exits without running the provided
+  test script, missing failures the test would catch.
+- **Detection**: No in-loop signal; verifier-side. Preset bakes in the
+  habit so the test gets run before exit.
+- **Recovery (preset rule)**: `RUN THE TEST` guideline — *if a test script
+  is mentioned or visible (e.g. `test_outputs.py`, `test.sh`), run it with
+  bash as your final verification step before reporting done.*
+
+### Source provenance
+
+Failure-mode taxonomy and recovery guidelines extracted from
+`docs/research/benchmark-preset-enhancement-2026-05-01.md` (Background and
+Diagnosis section + the five preset guideline additions).
+
+---
+
+## 11. Planning Mode
+
+Planning mode is a single pre-execution decomposition pass that runs **before**
+the main tool loop. It is a pure quality knob — opt-in per request, auto-on
+for the `benchmark` preset — and is degradation-safe: failures fall through to
+normal execution.
+
+### Trigger
+
+Planning fires when either condition is true on the inbound `core.Request`:
+
+```
+planning := req.ToolPreset == "benchmark" || req.PlanningMode
+```
+
+The benchmark preset auto-enables planning because terminal-bench-2 tasks
+benefit measurably from the decomposition pass. Ad-hoc callers opt in via the
+`--plan` CLI flag (or `PlanningMode: true` on the service request).
+
+### Behavior
+
+One lightweight LLM call, no tools available, before the main `for iteration`
+loop:
+
+1. The agent issues a single `Provider.Chat` call with `tools = nil` and the
+   task prompt wrapped in the planning template.
+2. The plan response is appended to the conversation history as a
+   `RoleAssistant` message wrapped in `<plan>` tags so subsequent turns and
+   log replay can recognise it.
+3. The standard `EventLLMRequest` / `EventLLMResponse` pair is emitted around
+   the planning call (preserving the AGENTS.md convention that every provider
+   call has a paired request/response event), followed by an
+   `EventPlanningTurn` carrying the plan text, token usage, and resolved
+   model name.
+4. Plan tokens accumulate into `result.Tokens` for full cost accounting.
+5. The main tool loop then runs normally with the plan already in context.
+
+### Failure handling
+
+If the planning call errors, the loop logs at `WARN` level and continues
+without injecting a plan. Planning failures are never fatal — a degraded run
+is preferable to a crashed run when the planning step is the only thing that
+broke.
+
+### Wire constraints
+
+- `tools = nil` is what forces the no-tool decomposition. The provider sees
+  no tool schema and the model has no apparatus to emit tool calls.
+- The planning call MUST receive the same `req.SystemPrompt` so the model
+  reasons inside the same behavioural framing as the main loop.
+- The planning prompt asks for ≤150 words covering: files to read, changes
+  required, failure modes and recovery, verification steps. It explicitly
+  forbids questions and forbids beginning implementation.
+
+### Telemetry
+
+`EventPlanningTurn` (`type: "planning.turn"`) is the planning-specific log
+event. Its `data` payload carries `plan` (string), `usage` (TokenUsage), and
+`model` (string). The preceding `EventLLMRequest` carries `tools: null`,
+which lets log-replay tools distinguish planning from normal turns without
+parsing the prompt.
+
+### Source provenance
+
+Trigger condition, no-tools call shape, `<plan>`-tag injection, and
+`EventPlanningTurn` schema extracted from
+`docs/research/planning-mode-2026-05-01.md` (Recommendation, What Planning
+Mode Does, Exact Code Changes, Session Log Representation).
+
+---
+
 ## Open Questions
 
 - [ ] **Real Terminal-Bench task IDs**: The `task-subset-v1.yaml` uses placeholder IDs.

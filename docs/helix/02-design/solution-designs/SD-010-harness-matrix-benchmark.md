@@ -552,6 +552,115 @@ does not block the initial epic.
 
 ---
 
+## 8.5 In-container install recipes (pi, opencode)
+
+The Step 7 OSS harness install spike confirmed in-container installability,
+non-interactive flags, license, and profile mapping for the initial OSS
+tranche. These recipes are operationally load-bearing for any matrix run
+involving `pi` or `opencode` and are normative for the adapter Dockerfiles
+under `scripts/benchmark/harness_adapters/<harness>/`.
+
+### pi (`@mariozechner/pi-coding-agent`)
+
+| Field | Value |
+|---|---|
+| Pinned version | `0.67.1` |
+| Install command | `npm install -g @mariozechner/pi-coding-agent@0.67.1` |
+| Binary on PATH | `pi` (npm `bin` entry → `dist/cli.js`) |
+| License | MIT — benchmarking permitted; public memos OK with repo + version cite |
+| In-container `--help` exit | 0 in `node:22-slim` (verified 2026-04-29); same flow on `python:3.12-bookworm` |
+
+**Non-interactive invocation**:
+
+```sh
+pi --mode json --print --no-session \
+   --no-extensions --no-skills --no-prompt-templates --no-themes \
+   --provider <provider> --model <model> \
+   [--thinking <off|minimal|low|medium|high|xhigh>] \
+   "<prompt>"   # prompt as last positional arg
+# stdin: /dev/null
+```
+
+`--print` is the explicit non-interactive switch (no `isatty()` gate in
+this mode). `--no-session` prevents writing session files into the task
+workdir, which would otherwise leak across reps and trip TB-2 verifiers
+that snapshot the workdir. The `--no-extensions --no-skills
+--no-prompt-templates --no-themes` quartet keeps reproducibility across
+developer machines and the matrix container.
+
+**Custom base URL** is **not** wired as a CLI flag. The `openai-compat`
+provider accepts `PI_OPENAI_COMPAT_BASE_URL` and `PI_OPENAI_COMPAT_API_KEY`
+env vars; the adapter sets these from the profile's
+`provider.{base_url, api_key_env}`.
+
+**Drop-rule status**: KEPT — proceed to Step 8 adapter (matrix bead NEW15).
+
+**Known limitations**: `sampling.temperature` and `limits.max_output_tokens`
+are not exposed as CLI flags (provider default applies); the default model
+is `google/gemini-2.5-flash` so the adapter MUST set `--provider` +
+`--model` explicitly.
+
+### opencode (`sst/opencode`)
+
+| Field | Value |
+|---|---|
+| Pinned version | `1.3.17` |
+| Install command (spike) | `curl -fsSL https://opencode.ai/install \| VERSION=1.3.17 bash` |
+| Install command (adapter Dockerfile) | `curl -fsSL` the release archive directly from `github.com/sst/opencode/releases/download/v1.3.17/` and verify against the upstream-published `*.sha256` |
+| Binary on PATH | `/root/.opencode/bin/opencode` |
+| License | MIT — benchmarking permitted; public memos OK with repo + version cite |
+| In-container `--help` exit | 0 in `node:22-slim` (verified 2026-04-29) |
+
+**Non-interactive invocation**:
+
+```sh
+opencode run --format json --pure --mdns false \
+   --hostname 127.0.0.1 --port 0 \
+   --dir <task-workdir> \
+   -m <provider>/<model> \
+   [--variant <reasoning>] \
+   --   "<prompt>"
+# stdin: /dev/null
+# env: OPENCODE_DISABLE_AUTOUPDATE=1, OPENCODE_DATA_DIR=<cell-tmp>, OPENCODE_CONFIG_DIR=<cell-tmp>
+```
+
+`run --format json` disables the spinner / TUI rendering paths; `run`
+auto-approves all tool permissions so no extra permission flags are
+needed. `--pure` bypasses external plugin discovery. `--mdns false` and
+explicit hostname/port avoid surprising network exposure inside Harbor.
+`OPENCODE_DISABLE_AUTOUPDATE=1` blocks the launch-time HTTPS update check.
+`OPENCODE_DATA_DIR=<cell-tmp>` ensures rep-2 does not start with rep-1's
+session cache (otherwise the matrix is contaminated).
+
+**Custom base URL** is configured via `$OPENCODE_CONFIG_DIR/opencode.json`
+(no CLI flag). The adapter `apply_profile()` writes a minimal config per
+run; for OpenRouter the entry is the `@openrouter/ai-sdk-provider` plugin
+with `apiKey: "{env:OPENROUTER_API_KEY}"`. Sampling temperature and
+`max_output_tokens` are also config-only (no CLI), via
+`provider.<id>.options.{temperature, maxTokens}`.
+
+**Drop-rule status**: KEPT — proceed to Step 8 adapter (matrix bead NEW16).
+
+### Drop rule (D1 restated)
+
+Per §2 D1 ("In-container only"), harnesses that cannot be installed
+in-container under Harbor are dropped from the matrix and documented —
+not run host-side. Both `pi` and `opencode` clear this gate. `forge`,
+`codex`, and `claude-code` are out of scope for the initial tranche per
+the plan v7 codex-v6 cut and live in the follow-up epic; the same
+in-container `--help` gate is re-applied to each before adapter beads in
+that epic are claimed.
+
+### Source provenance
+
+In-container install commands, non-interactive flags, profile mapping,
+custom-base-url plumbing, license terms, and known limitations extracted
+from `docs/research/oss-harness-install-2026-04-29.md` (sections "pi",
+"opencode", "Dropped harnesses", and "Acceptance evidence", 2026-04-29).
+Folded into SD-010 because the install recipes are operationally
+load-bearing for the matrix runner and belong with the adapter contract
+(§4); a sibling note would split the operational story across two files.
+
 ## 9. Open Questions
 
 ### 9.1 Anchor model selection (deferred to NEW6 census)
@@ -581,6 +690,41 @@ verification**):
 - Gemini 3 Flash (axis-diverse Phase A.2 second-model candidate)
 - Refreshed Haiku (Phase A.2 candidate if a 2026 refresh exists in bracket)
 - Qwen 3.6-plus / DeepSeek V3.2+ — reserved for Phase B (lesser-model pass)
+
+#### Census exclusion rationale (lifted from `docs/research/model-census-2026-04-29.md` §3)
+
+The hierarchy is applied in order **tool-use → bracket → recency**; the
+first failing rule short-circuits the row. Failures cascade in order, so a
+row that fails tool-use is reported as `tool-use: fail` and remaining gates
+are not evaluated. The per-row outcomes from the 2026-04-29 census:
+
+| Model | Tool-use viable | In bracket (≤ $3/Mtok output) | Recency (≥ 2025-11-01) | Outcome |
+|---|---|---|---|---|
+| GPT-5.3-mini | pass (strong) | pass (~$2.00) | pass (2026-Q1) | **KEEP** — eligible for Phase A |
+| Gemini 3 Flash | pass (strong; verify parallel-call quality on OpenAI-compat path) | pass (~$0.50) | pass (2026-Q1) | **KEEP** — eligible for Phase A |
+| Haiku 4.5 (refreshed 2026 snapshot) | pass | pass (pending verify; expected ≤ $3) | conditional — pass *iff* a 2026-Q1 refresh exists; fails recency if only 2025-10 snapshot exists | **KEEP-conditional** — Phase A only if NEW18 confirms the refresh snapshot |
+| Qwen 3.6-plus (OpenRouter) | pass (acceptable; weaker than GPT-5.3-mini) | pass (~$0.50–1.00) | pass (2026-Q1) | **KEEP for Phase B** — reserved for the lesser-model pass; not a Phase A candidate |
+| DeepSeek V3.2+ (OpenRouter) | pass (acceptable) | pass (~$0.30–1.00) | conditional (verify V3.2+ refresh date ≥ 2025-11-01) | **KEEP for Phase B** — alternate / reserve to Qwen |
+| Sonnet 4.6 | pass | **fail** (~$15.00 ≫ $3) | pass | **EXCLUDE** — out of bracket; no signed-off exception requested |
+| Opus 4.5 / 4.6 / 4.7 | pass | **fail** (≥ $15.00) | pass | **EXCLUDE** — out of bracket |
+| GPT-5 (full) | pass | **fail** (> $5.00) | pass | **EXCLUDE** — out of bracket |
+| GPT-4o | pass | fail (~$10.00) [short-circuited at bracket; recency would also fail] | n/e | **EXCLUDE** — out of bracket; also out by recency |
+| GPT-4.1-mini | pass | pass (~$1.60) | **fail** (2025-04) | **EXCLUDE** — out by recency |
+| Sonnet 4.5 (original) | pass | pass (~$3.00 boundary) | **fail** (2025-09) | **EXCLUDE** — out by recency |
+| Haiku 4.5 (original 2025-10) | pass | pass (verify) | **fail** (2025-10 predates 2025-11-01) | **EXCLUDE** — out by recency unless a 2026 refresh is confirmed |
+| Gemini 2.5 Flash | pass | pass | **fail** (2025-Q1) | **EXCLUDE** — out by recency |
+| Qwen 3.5 / earlier | conditional pass (weaker tool-use) | pass | **fail** (2025-Q3 and earlier) | **EXCLUDE** — out by recency |
+
+**Audit summary**: no row failed gate (1) tool-use outright. Exclusions are
+entirely driven by gates (2) bracket and (3) recency. The recommended pair
+from §5 of the census is `(GPT-5.3-mini, Gemini 3 Flash)` for vendor-axis
+diversity; the alternate Phase A.2 is the refreshed-Haiku snapshot if the
+NEW18 profile commit confirms the 2026-Q1 refresh, otherwise the Anthropic
+axis is dropped from Phase A entirely (no substitution).
+
+**Source provenance**: row-by-row exclusion rationale extracted from
+`docs/research/model-census-2026-04-29.md` (§3 hierarchy outcomes + §4
+audit trail + §5 recommended pair, 2026-04-29).
 
 The smoke model (used to keep the rig green during Steps 1–8) is **exempt
 from the recency rule**: its job is to make the path runnable, not to publish

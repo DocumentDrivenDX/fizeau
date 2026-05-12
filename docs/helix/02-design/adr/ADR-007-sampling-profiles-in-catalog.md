@@ -106,6 +106,77 @@ Embedded manifest edits never silently override an installed external manifest. 
 - The implementation bead carries a table-driven test of the per-field merge and a reasoning-active wire test pinning Qwen3 thinking-mode composition behavior before any catalog values ship.
 - `sampling_control` defaults to `client_settable`; the `harness_pinned` short-circuit is exercised in the resolver tests so the wrapped-harness contract is enforceable, not aspirational.
 
+## Reference: per-server defaults and the T=0 footgun
+
+The decision above ("sampling is catalog policy") is grounded in a survey of
+what each server applies when the client OMITS sampler fields on a
+`/v1/chat/completions` call. The empirical surprise is that defaults differ
+sharply across servers — and that several local servers default to `T=0`
+(greedy / argmax), which interacts badly with reasoning-mode Qwen3.x.
+
+### Server defaults (field-omitted behavior)
+
+| Server | Default temperature | Default top_p | Default top_k | Top-level non-OpenAI fields accepted |
+|---|---|---|---|---|
+| oMLX (jundot/omlx, mlx-lm) | **0.0 (greedy)** | 1.0 | 0 (off) | `top_k`, `min_p`, `repetition_penalty` YES |
+| LM Studio | 1.0 | 1.0 | preset-driven (silently ignored on API path) | `top_k`, `min_p`, `repeat_penalty` YES |
+| vLLM | 1.0 | 1.0 | -1 (off) | `top_k`, `min_p`, `repetition_penalty` YES |
+| llama.cpp / llama-server | 0.80 | 0.95 | 40 | `top_k`, `min_p`, `repeat_penalty` YES |
+| Ollama (OpenAI-compat endpoint) | 0.8 (Modelfile may override) | 0.9 | 40 (native API only) | `top_k`, `min_p`, `repetition_penalty` **NO** — must be set in Modelfile or sent via native `/api/chat` `options` |
+| Lucebox (jondot/lucebox) | follows underlying mlx-lm; same **T=0 footgun** as oMLX | 1.0 | 0 (off) | (verify per release) |
+
+oMLX and Lucebox **do not** auto-apply HuggingFace `generation_config.json`
+from the model. vLLM does not unless launched with `--generation-config
+auto`. llama.cpp does not (GGUF metadata only). Ollama applies Modelfile
+`PARAMETER` lines.
+
+### Recommended sampling for reasoning-mode model families (selected)
+
+| Family | Temp | top_p | top_k | rep_pen | Source / notes |
+|---|---|---|---|---|---|
+| Qwen3 thinking | 0.6 | 0.95 | 20 | 1.0 | Qwen3 model card best practices. **DO NOT use greedy.** |
+| Qwen3.5 thinking, code | 0.6 | 0.95 | 20 | 1.0 | Qwen3.5 card; `presence_penalty=1.5` for non-tool general work |
+| Qwen3.6 thinking, code | 0.6 | 0.95 | 20 | 1.0 | Qwen3.6 card; same recipe |
+| Qwen3-Coder (3.x variants) | 0.7 | 0.8 | 20 | 1.05 | Coder card; agentic mode is primary |
+| MiniMax M2 / M2.x | 1.0 | 0.95 | 40 | unknown | MiniMax cards; lower T causes loops on long agent traces |
+| GPT-OSS 20B / 120B | 1.0 | 1.0 | unknown | unknown | openai/gpt-oss; explicit T=1.0/top_p=1.0 |
+| Llama 3.1 / 3.3 instruct | 0.6 | 0.9 | unknown | unknown | meta-llama generation.py; same recipe for tool use |
+| DeepSeek-R1 | 0.6 | 0.95 | unknown | unknown | DeepSeek-R1 card — must stay 0.5–0.7; greedy explicitly forbidden |
+| DeepSeek-V3 | 0.3 | unknown | unknown | unknown | DeepSeek API param guide (general preset) |
+| Gemma 3 / 4 | 1.0 | 0.95 | 64 | unknown | Gemma model cards |
+
+### Cross-cutting findings
+
+1. **oMLX (and underlying mlx-lm) defaults to T=0.0 (greedy) when the
+   client omits temperature.** This is the single biggest harness footgun
+   and is the empirical origin of the deterministic tool-call loops on
+   Qwen3 reasoning-mode models that motivated this ADR. Every other server
+   defaults to T ≥ 0.7.
+2. **Ollama's OpenAI endpoint silently drops `top_k`, `min_p`, and
+   `repetition_penalty`.** Setting Qwen3-recommended `top_k=20` on the
+   wire has no effect; Modelfile is the only path. The catalog resolver
+   must know this when targeting Ollama.
+3. **vLLM does not apply HF `generation_config.json` by default.** Without
+   `--generation-config auto`, the model runs at T=1.0/top_p=1.0
+   regardless of what the model card says.
+4. **llama-server's defaults already include sane min_p=0.05, top_k=40,
+   T=0.8** — omitting fields is much safer there than on
+   oMLX/vLLM/LM Studio. Different servers fail differently.
+5. **GPT-OSS recommends T=1.0/top_p=1.0** (no nucleus filtering at all),
+   which is the opposite of the Qwen3 thinking recipe (T=0.6/top_p=0.95/
+   top_k=20). A single one-size-fits-all harness preset will mis-serve at
+   least one of these families. This is why §1 of the decision keys
+   sampling to the model catalog rather than a global default.
+
+### Source provenance
+
+Per-server defaults table, per-family recommended sampling, the T=0
+footgun finding, and the cross-cutting failure modes extracted from
+`docs/research/sampling-defaults-survey-2026-04-27.md` (Sections 1, 2,
+and the "5-line summary of surprising defaults"). Folded here in ADR-007
+because this ADR is the policy origin for sampling-as-catalog; SD-005
+covers provider config plumbing but not the per-family recommendations.
+
 ## Out of scope
 
 - CLI flags for sampler fields (`--temperature`, etc.).
