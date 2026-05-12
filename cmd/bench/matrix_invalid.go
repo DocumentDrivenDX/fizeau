@@ -6,10 +6,11 @@ import (
 )
 
 const (
-	matrixInvalidQuota    = "invalid_quota"
-	matrixInvalidAuth     = "invalid_auth"
-	matrixInvalidSetup    = "invalid_setup"
-	matrixInvalidProvider = "invalid_provider"
+	matrixInvalidQuota     = "invalid_quota"
+	matrixInvalidAuth      = "invalid_auth"
+	matrixInvalidSetup     = "invalid_setup"
+	matrixInvalidProvider  = "invalid_provider"
+	matrixInvalidLaneAbort = "lane_aborted"
 )
 
 var (
@@ -166,7 +167,7 @@ func classifyMatrixInvalidText(blob string) string {
 
 func isMatrixKnownInvalidClass(status string) bool {
 	switch status {
-	case matrixInvalidQuota, matrixInvalidAuth, matrixInvalidSetup, matrixInvalidProvider:
+	case matrixInvalidQuota, matrixInvalidAuth, matrixInvalidSetup, matrixInvalidProvider, matrixInvalidLaneAbort:
 		return true
 	default:
 		return false

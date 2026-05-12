@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -381,6 +382,161 @@ func TestHarborAgentArgsIncludesReferenceHarnessAdapters(t *testing.T) {
 	}
 }
 
+func TestConsecutiveFailureHaltTracker(t *testing.T) {
+	t.Run("graded fail provider errors halt", func(t *testing.T) {
+		tracker := newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
+		var aborted bool
+		var details matrixFailureFingerprint
+		for i := 1; i <= matrixConsecutiveFailureLimit; i++ {
+			aborted, details = tracker.Observe(matrixRunReport{
+				TaskID:      fmt.Sprintf("task-%d", i),
+				FinalStatus: "graded_fail",
+				Error:       "agent: provider error: connection refused",
+			})
+		}
+		if !aborted {
+			t.Fatal("tracker did not abort after 5 identical graded_fail reports")
+		}
+		if details.hash == "" || len(details.taskIDs) != matrixConsecutiveFailureLimit {
+			t.Fatalf("abort details incomplete: %+v", details)
+		}
+	})
+
+	t.Run("harness crash context canceled halts", func(t *testing.T) {
+		tracker := newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
+		aborted := false
+		for i := 1; i <= matrixConsecutiveFailureLimit; i++ {
+			aborted, _ = tracker.Observe(matrixRunReport{
+				TaskID:      fmt.Sprintf("task-%d", i),
+				FinalStatus: "harness_crash",
+				Error:       "harness_crash: context canceled",
+			})
+		}
+		if !aborted {
+			t.Fatal("tracker did not abort after 5 identical harness_crash reports")
+		}
+	})
+
+	t.Run("graded pass resets", func(t *testing.T) {
+		tracker := newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
+		for i := 1; i <= matrixConsecutiveFailureLimit-1; i++ {
+			if aborted, _ := tracker.Observe(matrixRunReport{
+				TaskID:      fmt.Sprintf("fail-%d", i),
+				FinalStatus: "graded_fail",
+				Error:       "agent: provider error: stable",
+			}); aborted {
+				t.Fatalf("unexpected abort before reset at failure %d", i)
+			}
+		}
+		if aborted, _ := tracker.Observe(matrixRunReport{TaskID: "pass", FinalStatus: "graded_pass"}); aborted {
+			t.Fatal("graded_pass should not abort")
+		}
+		for i := 1; i <= matrixConsecutiveFailureLimit-1; i++ {
+			if aborted, _ := tracker.Observe(matrixRunReport{
+				TaskID:      fmt.Sprintf("after-reset-%d", i),
+				FinalStatus: "graded_fail",
+				Error:       "agent: provider error: stable",
+			}); aborted {
+				t.Fatalf("counter was not reset; aborted after %d post-pass failures", i)
+			}
+		}
+	})
+
+	t.Run("one byte different does not halt", func(t *testing.T) {
+		tracker := newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
+		for i := 1; i <= matrixConsecutiveFailureLimit-1; i++ {
+			if aborted, _ := tracker.Observe(matrixRunReport{
+				TaskID:      fmt.Sprintf("task-%d", i),
+				FinalStatus: "graded_fail",
+				Error:       "agent: provider error: stable",
+			}); aborted {
+				t.Fatalf("unexpected abort at failure %d", i)
+			}
+		}
+		if aborted, _ := tracker.Observe(matrixRunReport{
+			TaskID:      "task-5",
+			FinalStatus: "graded_fail",
+			Error:       "agent: provider error: stablE",
+		}); aborted {
+			t.Fatal("tracker aborted despite a one-byte error difference")
+		}
+	})
+}
+
+func TestConsecutiveFailureHaltMatrixAbort(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+	subsetPath := writeSingleTaskSubset(t, outDir)
+
+	code := cmdMatrix([]string{
+		"--work-dir", repoRoot,
+		"--subset", subsetPath,
+		"--harnesses", "missing_adapter",
+		"--profiles", "noop",
+		"--reps", "10",
+		"--out", outDir,
+	})
+	if code != matrixLaneAbortCode {
+		t.Fatalf("cmdMatrix exit = %d, want %d", code, matrixLaneAbortCode)
+	}
+	if got := countReportFiles(t, filepath.Join(outDir, "cells")); got != matrixConsecutiveFailureLimit {
+		t.Fatalf("cell report count = %d, want %d", got, matrixConsecutiveFailureLimit)
+	}
+	for rep := matrixConsecutiveFailureLimit + 1; rep <= 10; rep++ {
+		reportPath := filepath.Join(outDir, "cells", "missing_adapter", "noop", fmt.Sprintf("rep-%03d", rep), "fix-git", matrixReportName)
+		if _, err := os.Stat(reportPath); !os.IsNotExist(err) {
+			t.Fatalf("rep %d report should not exist after lane abort, stat err=%v", rep, err)
+		}
+	}
+
+	abortPath := filepath.Join(outDir, ".lane_aborted", "missing_adapter__noop", "aborted.json")
+	abortReport := readMatrixRunReport(t, abortPath)
+	if abortReport.FinalStatus != matrixInvalidLaneAbort {
+		t.Fatalf("abort final_status = %q, want %q", abortReport.FinalStatus, matrixInvalidLaneAbort)
+	}
+	if abortReport.FailureFingerprint == "" || len(abortReport.FailureTaskIDs) != matrixConsecutiveFailureLimit {
+		t.Fatalf("abort report missing fingerprint details: %+v", abortReport)
+	}
+	matrix := readMatrixOutput(t, filepath.Join(outDir, "matrix.json"))
+	if got := matrix.InvalidByClass[matrixInvalidLaneAbort]; got != 1 {
+		t.Fatalf("invalid_by_class[%s] = %d, want 1", matrixInvalidLaneAbort, got)
+	}
+}
+
+func TestConsecutiveFailureHaltDisabled(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+	subsetPath := writeSingleTaskSubset(t, outDir)
+
+	code := cmdMatrix([]string{
+		"--work-dir", repoRoot,
+		"--subset", subsetPath,
+		"--harnesses", "missing_adapter",
+		"--profiles", "noop",
+		"--reps", "10",
+		"--out", outDir,
+		"--no-consecutive-failure-halt",
+	})
+	if code != 0 {
+		t.Fatalf("cmdMatrix exit = %d, want 0", code)
+	}
+	if got := countReportFiles(t, filepath.Join(outDir, "cells")); got != 10 {
+		t.Fatalf("cell report count = %d, want 10", got)
+	}
+	if _, err := os.Stat(filepath.Join(outDir, ".lane_aborted")); !os.IsNotExist(err) {
+		t.Fatalf("lane abort dir should not exist, stat err=%v", err)
+	}
+	matrix := readMatrixOutput(t, filepath.Join(outDir, "matrix.json"))
+	if got := len(matrix.Runs); got != 10 {
+		t.Fatalf("matrix runs = %d, want 10", got)
+	}
+	for _, run := range matrix.Runs {
+		if run.FinalStatus != "harness_crash" {
+			t.Fatalf("run final_status = %q, want harness_crash", run.FinalStatus)
+		}
+	}
+}
+
 func waitForLogContains(t *testing.T, path, needle string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -415,4 +571,51 @@ func readMatrixOutput(t *testing.T, path string) matrixOutput {
 		t.Fatalf("parse matrix output: %v", err)
 	}
 	return out
+}
+
+func readMatrixRunReport(t *testing.T, path string) matrixRunReport {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read matrix run report: %v", err)
+	}
+	var report matrixRunReport
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatalf("parse matrix run report: %v", err)
+	}
+	return report
+}
+
+func writeSingleTaskSubset(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "single-task-subset.json")
+	raw := []byte(`{
+  "version": "test",
+  "dataset": "terminal-bench@test",
+  "tasks": [
+    {"id": "fix-git", "category": "software-engineering", "difficulty": "easy"}
+  ]
+}`)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatalf("write subset fixture: %v", err)
+	}
+	return path
+}
+
+func countReportFiles(t *testing.T, root string) int {
+	t.Helper()
+	count := 0
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && d.Name() == matrixReportName {
+			count++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("count report files: %v", err)
+	}
+	return count
 }

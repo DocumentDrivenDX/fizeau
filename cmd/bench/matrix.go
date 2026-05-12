@@ -29,9 +29,11 @@ import (
 )
 
 const (
-	defaultMatrixSubset = "scripts/beadbench/external/termbench-subset-canary.json"
-	matrixLockName      = "report.lock"
-	matrixReportName    = "report.json"
+	defaultMatrixSubset           = "scripts/beadbench/external/termbench-subset-canary.json"
+	matrixLockName                = "report.lock"
+	matrixReportName              = "report.json"
+	matrixLaneAbortCode           = 75
+	matrixConsecutiveFailureLimit = 5
 )
 
 type matrixRunReport struct {
@@ -92,6 +94,8 @@ type matrixRunReport struct {
 	Command                 []string                 `json:"command,omitempty"`
 	ExitCode                int                      `json:"exit_code"`
 	Error                   string                   `json:"error,omitempty"`
+	FailureFingerprint      string                   `json:"failure_fingerprint,omitempty"`
+	FailureTaskIDs          []string                 `json:"failure_task_ids,omitempty"`
 	SamplingUsed            map[string]any           `json:"sampling_used,omitempty"`
 	ModelServerInfo         *profile.ModelServerInfo `json:"model_server_info,omitempty"`
 	StartedAt               time.Time                `json:"started_at"`
@@ -196,6 +200,7 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 	perRunBudgetUSD := fs.Float64("per-run-budget-usd", 0, "Per-run budget cap in USD (0 = no per-run cap)")
 	tasksDir := fs.String("tasks-dir", "", "Path to TB-2 tasks directory; when set, harbor run is used for grading")
 	jobs := fs.Int("jobs", 1, "Number of tuple runs to execute concurrently (default: 1)")
+	noConsecutiveFailureHalt := fs.Bool("no-consecutive-failure-halt", false, "Disable lane abort after 5 consecutive identical graded_fail/harness_crash reports")
 	var extraEnv repeatStringFlag
 	fs.Var(&extraEnv, "env", "Extra KEY=VALUE environment pair to pass to Harbor/Fizeau; may be repeated")
 	if err := fs.Parse(args); err != nil {
@@ -306,6 +311,7 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 	if concurrency < 1 {
 		concurrency = 1
 	}
+	consecutiveFailureHalt := !*noConsecutiveFailureHalt
 
 	type tupleResult struct {
 		report  matrixRunReport
@@ -313,60 +319,99 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 		err     error
 	}
 
-	results := make([]tupleResult, len(tuples))
-	sem := make(chan struct{}, concurrency)
-
 	var (
 		mu              sync.Mutex
 		accumulatedCost float64
 		firstErr        error
+		laneAborted     bool
 	)
 
-	var wg sync.WaitGroup
-	for i, spec := range tuples {
-		wg.Add(1)
-		go func(i int, spec tupleSpec) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+	runTuple := func(spec tupleSpec) tupleResult {
+		mu.Lock()
+		cost := accumulatedCost
+		mu.Unlock()
 
-			mu.Lock()
-			cost := accumulatedCost
-			mu.Unlock()
+		report, skipped, err := runMatrixTuple(matrixTupleOptions{
+			workDir:           wd,
+			outDir:            outDir,
+			cellsRoot:         cellRootDir,
+			harness:           spec.harness,
+			profile:           spec.prof,
+			rep:               spec.rep,
+			task:              spec.task,
+			budgetUSD:         *budgetUSD,
+			perRunBudgetUSD:   *perRunBudgetUSD,
+			accumulatedCost:   cost,
+			resume:            *resume,
+			forceRerun:        *forceRerun,
+			retryBudgetHalted: *retryBudgetHalted,
+			retryInvalid:      *retryInvalid,
+			parentCtx:         parentCtx,
+			tasksDir:          resolvedTasksDir,
+			harborBin:         harborBin,
+			extraEnv:          extraEnvMap(extraEnv),
+		})
 
-			report, skipped, err := runMatrixTuple(matrixTupleOptions{
-				workDir:           wd,
-				outDir:            outDir,
-				cellsRoot:         cellRootDir,
-				harness:           spec.harness,
-				profile:           spec.prof,
-				rep:               spec.rep,
-				task:              spec.task,
-				budgetUSD:         *budgetUSD,
-				perRunBudgetUSD:   *perRunBudgetUSD,
-				accumulatedCost:   cost,
-				resume:            *resume,
-				forceRerun:        *forceRerun,
-				retryBudgetHalted: *retryBudgetHalted,
-				retryInvalid:      *retryInvalid,
-				parentCtx:         parentCtx,
-				tasksDir:          resolvedTasksDir,
-				harborBin:         harborBin,
-				extraEnv:          extraEnvMap(extraEnv),
-			})
-
-			mu.Lock()
-			results[i] = tupleResult{report, skipped, err}
-			if err != nil && firstErr == nil {
-				firstErr = err
-			}
-			if err == nil && !skipped {
-				accumulatedCost += report.CostUSD
-			}
-			mu.Unlock()
-		}(i, spec)
+		mu.Lock()
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+		if err == nil && !skipped {
+			accumulatedCost += report.CostUSD
+		}
+		mu.Unlock()
+		return tupleResult{report: report, skipped: skipped, err: err}
 	}
-	wg.Wait()
+
+	var results []tupleResult
+	if consecutiveFailureHalt {
+		if concurrency > 1 {
+			concurrency = 1
+		}
+		trackers := map[string]*matrixConsecutiveFailureTracker{}
+		for _, spec := range tuples {
+			result := runTuple(spec)
+			results = append(results, result)
+			if result.err != nil {
+				break
+			}
+			if result.skipped {
+				continue
+			}
+			laneID := matrixLaneID(spec.harness, spec.prof.ID)
+			tracker := trackers[laneID]
+			if tracker == nil {
+				tracker = newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
+				trackers[laneID] = tracker
+			}
+			if abort, details := tracker.Observe(result.report); abort {
+				abortReport, err := writeMatrixLaneAbortReport(outDir, cellRootDir, laneID, result.report, details)
+				if err != nil {
+					firstErr = err
+					break
+				}
+				fmt.Fprintf(os.Stderr, "[matrix] lane=%s ABORTED after %d consecutive identical failures (last task: %s): %s\n",
+					laneID, matrixConsecutiveFailureLimit, result.report.TaskID, matrixErrorPreview(result.report.Error))
+				results = append(results, tupleResult{report: abortReport})
+				laneAborted = true
+				break
+			}
+		}
+	} else {
+		results = make([]tupleResult, len(tuples))
+		sem := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
+		for i, spec := range tuples {
+			wg.Add(1)
+			go func(i int, spec tupleSpec) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				results[i] = runTuple(spec)
+			}(i, spec)
+		}
+		wg.Wait()
+	}
 
 	if firstErr != nil {
 		fmt.Fprintf(os.Stderr, "%s matrix: %v\n", benchCommandName(), firstErr)
@@ -375,6 +420,9 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 
 	var runs []matrixRunReport
 	for _, r := range results {
+		if r.err != nil {
+			continue
+		}
 		runs = append(runs, r.report)
 	}
 
@@ -389,6 +437,8 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 		Reps:            *reps,
 		BudgetUSD:       *budgetUSD,
 		PerRunBudgetUSD: *perRunBudgetUSD,
+		InvalidRuns:     countMatrixInvalids(runs),
+		InvalidByClass:  summarizeMatrixInvalids(runs),
 		Runs:            runs,
 		Cells:           summarizeMatrixCells(runs),
 		Notes: []string{
@@ -402,6 +452,9 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 		return 1
 	}
 	fmt.Printf("matrix results: %s\n", matrixPath)
+	if laneAborted {
+		return matrixLaneAbortCode
+	}
 	return 0
 }
 
@@ -424,6 +477,148 @@ type matrixTupleOptions struct {
 	tasksDir          string          // when set, use harbor run for grading
 	harborBin         string          // path to harbor binary
 	extraEnv          map[string]string
+}
+
+type matrixFailureFingerprint struct {
+	hash         string
+	errorPreview string
+	taskIDs      []string
+}
+
+type matrixFailureFingerprintEntry struct {
+	hash         string
+	taskID       string
+	errorPreview string
+}
+
+type matrixConsecutiveFailureTracker struct {
+	limit   int
+	last    string
+	entries []matrixFailureFingerprintEntry
+}
+
+func newMatrixConsecutiveFailureTracker(limit int) *matrixConsecutiveFailureTracker {
+	return &matrixConsecutiveFailureTracker{limit: limit}
+}
+
+func (t *matrixConsecutiveFailureTracker) Observe(report matrixRunReport) (bool, matrixFailureFingerprint) {
+	if t == nil || t.limit <= 0 || !matrixReportCountsForFailureHalt(report) {
+		if t != nil {
+			t.reset()
+		}
+		return false, matrixFailureFingerprint{}
+	}
+	hash := matrixFailureHash(report)
+	entry := matrixFailureFingerprintEntry{
+		hash:         hash,
+		taskID:       report.TaskID,
+		errorPreview: matrixErrorPreview(report.Error),
+	}
+	if hash != t.last {
+		t.last = hash
+		t.entries = []matrixFailureFingerprintEntry{entry}
+		return false, matrixFailureFingerprint{}
+	}
+	t.entries = append(t.entries, entry)
+	if len(t.entries) > t.limit {
+		t.entries = t.entries[len(t.entries)-t.limit:]
+	}
+	if len(t.entries) < t.limit {
+		return false, matrixFailureFingerprint{}
+	}
+	taskIDs := make([]string, 0, len(t.entries))
+	for _, e := range t.entries {
+		taskIDs = append(taskIDs, e.taskID)
+	}
+	return true, matrixFailureFingerprint{
+		hash:         hash,
+		errorPreview: entry.errorPreview,
+		taskIDs:      taskIDs,
+	}
+}
+
+func (t *matrixConsecutiveFailureTracker) reset() {
+	t.last = ""
+	t.entries = nil
+}
+
+func matrixReportCountsForFailureHalt(report matrixRunReport) bool {
+	if strings.TrimSpace(report.Error) == "" {
+		return false
+	}
+	return report.FinalStatus == "graded_fail" || report.FinalStatus == "harness_crash"
+}
+
+func matrixFailureHash(report matrixRunReport) string {
+	errorBytes := []byte(report.Error)
+	if len(errorBytes) > 256 {
+		errorBytes = errorBytes[:256]
+	}
+	h := sha256.New()
+	_, _ = h.Write(errorBytes)
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(report.FinalStatus))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func matrixErrorPreview(s string) string {
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	if len(s) <= 160 {
+		return s
+	}
+	return s[:160]
+}
+
+func matrixLaneID(harness, profileID string) string {
+	return harness + "/" + profileID
+}
+
+func matrixLaneAbortDir(outDir, cellsRoot, laneID string) string {
+	root := cellsRoot
+	if root == "" {
+		root = outDir
+	}
+	return filepath.Join(root, ".lane_aborted", safeMatrixSegment(strings.ReplaceAll(laneID, "/", "__")))
+}
+
+func writeMatrixLaneAbortReport(outDir, cellsRoot, laneID string, last matrixRunReport, details matrixFailureFingerprint) (matrixRunReport, error) {
+	now := time.Now().UTC()
+	abortDir := matrixLaneAbortDir(outDir, cellsRoot, laneID)
+	hashPreview := details.hash
+	if len(hashPreview) > 16 {
+		hashPreview = hashPreview[:16]
+	}
+	report := matrixRunReport{
+		Harness:            last.Harness,
+		ProfileID:          last.ProfileID,
+		ProfilePath:        last.ProfilePath,
+		ProfileSnapshot:    last.ProfileSnapshot,
+		FizToolsVersion:    fiztools.Version,
+		AdapterModule:      last.AdapterModule,
+		HarborAgent:        last.HarborAgent,
+		Rep:                last.Rep,
+		TaskID:             last.TaskID,
+		OutputDir:          abortDir,
+		ProcessOutcome:     matrixInvalidLaneAbort,
+		GradingOutcome:     "ungraded",
+		FinalStatus:        matrixInvalidLaneAbort,
+		InvalidClass:       matrixInvalidLaneAbort,
+		Error:              fmt.Sprintf("halted after %d consecutive identical failures: %s", matrixConsecutiveFailureLimit, hashPreview),
+		FailureFingerprint: details.hash,
+		FailureTaskIDs:     details.taskIDs,
+		PricingSource:      last.PricingSource,
+		SamplingUsed:       last.SamplingUsed,
+		ModelServerInfo:    last.ModelServerInfo,
+		StartedAt:          now,
+		FinishedAt:         now,
+	}
+	if details.errorPreview != "" {
+		report.Error += " (" + details.errorPreview + ")"
+	}
+	if err := writeJSONAtomic(filepath.Join(abortDir, "aborted.json"), report); err != nil {
+		return matrixRunReport{}, fmt.Errorf("write lane abort report: %w", err)
+	}
+	return report, nil
 }
 
 func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
