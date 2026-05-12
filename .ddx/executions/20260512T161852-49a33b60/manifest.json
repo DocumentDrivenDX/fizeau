@@ -1,0 +1,57 @@
+{
+  "attempt_id": "20260512T161852-49a33b60",
+  "bead_id": "fizeau-b3e7bf04",
+  "base_rev": "eb339199aa639bc3d5a22e1303c0f427992f6b29",
+  "created_at": "2026-05-12T16:18:55.156276886Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-b3e7bf04",
+    "title": "fiz models: add concurrent refresh and real-install verification",
+    "description": "Review of fizeau-491dd1e3/fizeau-e6145528 found no two-process duplicate-refresh test and no recorded real-install verification, both named in the epic acceptance. Add repeatable verification for concurrent fiz models invocations sharing the discovery cache.\n\nIn scope:\n- cmd/fiz or agentcli tests/fixtures for concurrent fiz models refresh behavior\n- a deterministic fake discovery source that counts refresh IO across two invocations\n- documentation or test evidence for real-install-style multi-provider output\n\nOut of scope:\n- Runtime signal fields and routing consumption; separate beads.",
+    "acceptance": "1. go test ./cmd/fiz -run TestModelsConcurrentRefreshSingleFlight -count=1 passes and proves two concurrent fiz models refresh-style invocations do not duplicate discovery IO.\n2. go test ./cmd/fiz -run \"TestModelsListDefaultColumns|TestModelsDetailCanonicalRef\" -count=1 passes against a fixture with multiple providers.\n3. go test ./cmd/fiz/... -count=1 passes.",
+    "parent": "fizeau-e6145528",
+    "labels": [
+      "area:cli",
+      "area:cache",
+      "kind:test"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T16:16:15Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T16:18:52.277507329Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T16:16:15.049573782Z",
+      "spec-id": "ADR-012"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-012",
+      "path": "docs/helix/02-design/adr/ADR-012-per-source-on-disk-cache.md",
+      "title": "ADR-012: Per-Source On-Disk Cache for Discovery + Runtime Signals"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T161852-49a33b60",
+    "prompt": ".ddx/executions/20260512T161852-49a33b60/prompt.md",
+    "manifest": ".ddx/executions/20260512T161852-49a33b60/manifest.json",
+    "result": ".ddx/executions/20260512T161852-49a33b60/result.json",
+    "checks": ".ddx/executions/20260512T161852-49a33b60/checks.json",
+    "usage": ".ddx/executions/20260512T161852-49a33b60/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-b3e7bf04-20260512T161852-49a33b60"
+  },
+  "prompt_sha": "d058628348335a5f9292e58a5edf9a0db455a613c4664cf52bcc51cf827e15f6"
+}
