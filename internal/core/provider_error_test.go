@@ -51,6 +51,8 @@ func TestIsTransientError(t *testing.T) {
 
 		// Non-transient, non-fatal errors
 		{"400 Bad Request", errors.New("400 Bad Request"), false},
+		{"400 Bad Request with 503 in URL port", errors.New(`openai: POST "http://127.0.0.1:34503/v1/chat/completions": 400 Bad Request "boom"`), false},
+		{"400 Bad Request with 429 in URL port", errors.New(`openai: POST "http://127.0.0.1:33429/v1/chat/completions": 400 Bad Request "boom"`), false},
 		{"404 Not Found", errors.New("404 Not Found"), false},
 		{"invalid model", errors.New("invalid model specified"), false},
 		{"context length", errors.New("context length exceeded"), false},
