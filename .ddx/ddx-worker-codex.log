@@ -1,0 +1,13 @@
+
+▶ fizeau-586e476a: bench: preflight smoke test for each lane in run_terminalbench_2_1_sweep.sh
+01:38:19 readiness check: starting route: harness=codex model=gpt-5.5
+bead readiness blocked: score 0.40 below threshold 0.50 (2/5 verifiable ACs) (releasing fizeau-586e476a)
+
+▶ fizeau-b76d6a2c: bench: clean shutdown — kill -TERM sweep reaps the whole process tree
+01:38:20 readiness check: starting route: harness=codex model=gpt-5.5
+bead readiness blocked: score 0.00 below threshold 0.50 (0/4 verifiable ACs) (releasing fizeau-b76d6a2c)
+
+▶ fizeau-7c4b7647: Verify wire fixes live + create ds4 catalog entry + re-probe all four lanes
+01:38:20 readiness check: starting route: harness=codex model=gpt-5.5
+01:40:02 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.5
+01:40:42 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
