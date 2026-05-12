@@ -1,0 +1,69 @@
+{
+  "attempt_id": "20260512T150441-9fe5cf1c",
+  "bead_id": "fizeau-22a93208",
+  "base_rev": "be029b72a7b6fbbf5fa02bb52dbfaf1e9515b13d",
+  "created_at": "2026-05-12T15:04:44.002645308Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-22a93208",
+    "title": "service: translate Policy routing requests and public errors",
+    "description": "PROBLEM\nThe public routing surface still uses Profile fields and profile-named errors. Phase 4 needs the public service request/decision vocabulary aligned with the internal v0.11 policy model.\n\nSCOPE\nIn scope: service.go RouteRequest, RouteDecision, RoutePowerPolicy policy field names; service_routing.go request translation; routing_errors.go public policy error types; service routing tests.\nOut of scope: removing ModelRef fields, session-log model-ref projection, CLI route-status flags, provider/model billing metadata.\n\nIMPLEMENTATION NOTES\nRename RouteRequest.Profile to Policy and add AllowLocal/Require fields if they are not already present. Rename RouteDecision.RequestedProfile to RequestedPolicy. Rename RoutePowerPolicy.Profile to PolicyName. Replace ErrProfilePinConflict/ErrNoProfileCandidate/ErrUnknownProfile with ErrPolicyRequirementUnsatisfied, ErrUnknownPolicy, and ErrUnsatisfiablePin shapes mirroring internal routing errors. Translate req.Policy=\"air-gapped\" into routing require=[\"no_remote\"].",
+    "acceptance": "1. `go test . -run TestServiceTranslatesPolicyAirGappedToRequireNoRemote -count=1` passes.\n2. `go test . -run TestErrPolicyRequirementUnsatisfiedShape -count=1` passes.\n3. `grep -rn \"RequestedProfile\\|RoutePowerPolicy.*Profile\\|ErrProfilePinConflict\\|ErrNoProfileCandidate\\|ErrUnknownProfile\" service.go service_*.go routing_errors.go --include=\"*.go\"` returns zero matches in production files.\n4. `go test ./... -count=1` passes.",
+    "parent": "fizeau-c6c8bc9e",
+    "labels": [
+      "area:service",
+      "area:routing",
+      "kind:rename",
+      "phase:4",
+      "breaking",
+      "spec-id:ADR-009"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T15:01:58Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "closing_commit_sha": "f0a6fe7ea44dc0d324a8cd66303a16ad528b7b12",
+      "events": [
+        {
+          "actor": "",
+          "body": "",
+          "created_at": "2026-05-12T14:21:51.700637688Z",
+          "kind": "reopen",
+          "source": "",
+          "summary": "review found legacy policy aliases"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T15:04:41.29168342Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T15:01:58.548061573Z",
+      "spec-id": "ADR-009"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-009",
+      "path": "docs/helix/02-design/adr/ADR-009-routing-surface-redesign.md",
+      "title": "ADR-009: Routing Surface Redesign"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T150441-9fe5cf1c",
+    "prompt": ".ddx/executions/20260512T150441-9fe5cf1c/prompt.md",
+    "manifest": ".ddx/executions/20260512T150441-9fe5cf1c/manifest.json",
+    "result": ".ddx/executions/20260512T150441-9fe5cf1c/result.json",
+    "checks": ".ddx/executions/20260512T150441-9fe5cf1c/checks.json",
+    "usage": ".ddx/executions/20260512T150441-9fe5cf1c/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-22a93208-20260512T150441-9fe5cf1c"
+  },
+  "prompt_sha": "f810b5458be0818070e2fc70a89f648171bbd7b852783ce5c9e782a06a89c9e0"
+}
