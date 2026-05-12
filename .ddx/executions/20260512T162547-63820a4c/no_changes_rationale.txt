@@ -1,0 +1,2 @@
+status: blocked
+reason: `lefthook run pre-commit --all-files` fails in the fmt-check step because `cmd/bench/sweep_test.go` is not formatted. That file is outside the bead scope, so I did not modify it.
