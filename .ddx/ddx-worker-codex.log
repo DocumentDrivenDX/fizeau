@@ -2756,3 +2756,24 @@ bead readiness blocked: score 0.25 below threshold 0.50 (1/4 verifiable ACs) (re
 14:53:09 readiness check: starting route: harness=codex model=gpt-5.4-mini
 14:53:49 readiness check unavailable: readiness route unavailable: runner error: agent: provider error: openai: POST "https://openrouter.ai/api/v1/chat/completions": 402 Payment Required {"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402} (continuing) route: harness=codex model=gpt-5.4-mini
 14:54:30 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+18:54:43 do route codex/gpt-5.4-mini reason=explicit
+18:54:43 do fizeau-386874b0 route codex/gpt-5.4-mini power=8
+18:54:43 do thinking ...
+18:54:51 do ok 1 ddx bead show fizeau-5931f1f8 --json < out=1024.0KB 9348 lines "[" 167ms
+18:54:55 do ok 2 printf 'PARENT LINE\n' < out=6.6KB 25 lines "PARENT LINE"
+18:54:57 do ok 3 'ddx bead list --json --where parent=fizeau-5931f1f8' < out=24.9KB 411 lines "["
+18:55:12 do ok 4 test ./internal/routing/... ./agentcli/... -run 'Policy|Inclu… < out=97B 2 lines "ok \tgi… 8.992s
+18:55:16 do ok 5 'ddx bead update --help' < out=1.1KB 25 lines "Update a bead"
+18:55:20 do ok 6 'rg -n "Policy|hard pin|server-instance|correlation|utilizati… < out=2.8KB 15 lines "docs/helix/…
+18:55:28 do ok 7 ddx bead update fizeau-5931f1f8 --notes "2026-05-12 triage: this epic is inte… 3ms
+18:55:33 do ok 8 printf 'UPDATED PARENT\n' < out=1.3KB 7 lines "UPDATED PARENT"
+18:55:36 do ok 9 'git status --short' 565ms
+18:55:44 do ok 10 'ddx bead close fizeau-386874b0'
+18:55:54 do ok 11 'git commit --allow-empty -m "chore: update routing evidence… < out=80B 1 line "[detached HEAD …
+18:56:00 do response complete 6859 tok in 1m16.614s, 89.5 tok/s
+✓ fizeau-386874b0 → merged (a862e2e3)
+
+▶ fizeau-a0c58cbf: benchmark page: improve table, chart, and responsive layout
+14:56:04 readiness check: starting route: harness=codex model=gpt-5.4-mini
+14:56:45 readiness check unavailable: readiness route unavailable: runner error: agent: provider error: openai: POST "https://openrouter.ai/api/v1/chat/completions": 402 Payment Required {"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402} (continuing) route: harness=codex model=gpt-5.4-mini
+14:57:25 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
