@@ -2943,3 +2943,50 @@ bead readiness blocked: score 0.25 below threshold 0.50 (1/4 verifiable ACs) (re
 15:54:47 readiness check: starting route: harness=codex model=gpt-5.4-mini
 15:57:08 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.4-mini
 15:57:48 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+19:58:02 do route codex/gpt-5.4-mini reason=explicit
+19:58:02 do fizeau-ab20bdb8 route codex/gpt-5.4-mini power=8
+19:58:02 do thinking ...
+19:58:08 do ok 1 pwd < out=97.7KB 948 lines "/var/tmp/ddx-exec-wt/.execute-bea… 1ms
+19:58:17 do ok 2 inspect lines 1,240 in internal/modelregistry/assemble.go < out=8.3KB 261 lines "package modelregi…
+19:58:17 do ok 3 inspect lines 1,220 in internal/config/serviceconfig.go < out=11.9KB 337 lines "package config"
+19:58:17 do ok 4 inspect lines 1,260 in internal/modelregistry/assemble_test.go < out=10.0KB 319 lines "package… 6ms
+19:58:21 do ok 5 inspect lines 1,260 in service_models.go < out=20.1KB 633 lines "package fizeau"
+19:58:21 do ok 6 inspect lines 1,220 in internal/config/config.go < out=9.0KB 223 lines "// Package config provides…
+19:58:21 do ok 7 search "func" in internal/modelregistry < out=1.4KB 12 lines "internal/modelregistry/enrich.go:44�…
+19:58:27 do ok 8 'rg -n "Snapshot|snapshot" service_*_test.go service.go servi… < out=7.0KB 70 lines "internal/mo…
+19:58:27 do ok 9 inspect lines 1,240 in internal/modelregistry/discovery.go < out=18.6KB 614 lines "package mod… 1ms
+19:58:27 do ok 10 inspect lines 240,520 in internal/modelregistry/assemble_tes… < out=1.7KB 76 lines "if err := c…
+19:58:30 do ok 11 'rg -n "internal/modelregistry" *.go service_*.go'
+19:58:30 do ok 12 search "\\\"loadRoutingCatalog|serviceR..." in '"'!**/vendor… < out=1.6KB 18 lines "service_rou…
+19:58:32 do ok 13 inspect lines 479,620 in service_routing.go < out=5.4KB 142 lines "// buildRoutingInputs assemble…
+19:58:44 do ok 14 inspect lines 1,220 in cmd/bench/runner.go < out=14.3KB 462 lines "package main"
+19:58:44 do ok 15 inspect lines 1,220 in internal/discoverycache/cache.go < out=9.2KB 253 lines "// Package discove…
+19:58:44 do ok 16 search "AssembleWithOptions\\(|Assemble\\(" in . < out=2.5KB 20 lines "./internal/modelregistry/a…
+19:58:48 do ok 17 inspect lines 1,220 in service_new_test.go < out=15.0KB 482 lines "package fizeau_test"
+19:58:48 do ok 18 'rg -n "type fakeServiceConfig|stubServiceConfig|ServiceConf… < out=15.3KB 194 lines "service_o…
+19:58:53 do ok 19 search "\\\"FIZEAU_CACHE_DIR|modelCache..." in '"'!**/vendor… < out=2.3KB 22 lines "service_tes…
+19:58:56 do ok 20 inspect lines 1,220 in service_testmain_test.go < out=3.0KB 121 lines "package fizeau_test"
+19:58:56 do ok 21 inspect lines 1,220 in internal/modelregistry/enrich.go < out=5.0KB 151 lines "package modelregis…
+19:59:07 do ok 22 search "type" in internal/config/config.go < out=5.2KB 202 lines "249:type Config struct {"
+19:59:07 do ok 23 inspect lines 1,220 in internal/config/serviceconfig_test.go < out=1.4KB 59 lines "package config"
+19:59:09 do ok 24 inspect lines 249,340 in internal/config/config.go < out=3.5KB 92 lines "type Config struct {"
+19:59:17 do ok 25 search "func" in internal/config/config.go < out=1013B 11 lines "550:\tif detail := c.ProviderErr…
+19:59:17 do ok 26 search "claude-subscription|codex-sub..." in '*.go' < out=1.8KB 19 lines "internal/config/service…
+19:59:25 do ok 27 inspect lines 1320,1415 in internal/config/config.go < out=2.6KB 80 lines "return vllm.ProtocolCa…
+19:59:51 do ok 28 inspect lines 228,248 in docs/helix/02-design/plan-2026-05-1… < out=1.7KB 39 lines "Acceptance:"
+20:01:24 do ok 29 inspect lines 220,320 in internal/discoverycache/cache.go < out=3.2KB 100 lines "c.releaseMarker(…
+20:06:17 do ok 30 gofmt -w internal/modelsnapshot/types.go internal/modelsnaps… < out=557B 8 lines "# gith… 1.222s
+20:06:23 do ok 31 gofmt -w internal/modelsnapshot/discovery.go < out=590B 7 lines "? \tgithub.com/easel/fizea… 529ms
+20:06:34 do ok 32 gofmt -w internal/modelregistry/service_snapshot_test.go ser… < out=58B 1 line "ok \tgith… 506ms
+20:06:37 do ok 33 'rg -n "agentcli" internal/modelregistry service_*.go'
+20:06:38 do ok 34 test . -run 'Test.*Snapshot.*ServiceConfig|Test.*ServiceConf… < out=35B 1 line 1.113s
+20:08:22 do ok 35 'go test ./...' < out=5.2KB 91 lines "ok \tgithub.com/easel/fizeau\t6.813… 1m38.204s
+20:08:26 do ok 36 'git status --short' < out=128B 4 lines "?? internal/modelregistry/service_sna…
+20:08:32 do ok 37 'git add internal/modelregistry/service_snapshot_test.go int… < out=488B 9 lines "[detached HEA…
+20:08:39 do response complete 62971 tok in 10m36.911s, 98.9 tok/s
+✓ fizeau-ab20bdb8 → merged (7cdf0089)
+
+▶ fizeau-65233669: service: back ListModels with the unified model snapshot
+16:08:45 readiness check: starting route: harness=codex model=gpt-5.4-mini
+16:11:07 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.4-mini
+16:11:49 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
