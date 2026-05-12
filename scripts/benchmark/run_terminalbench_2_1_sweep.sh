@@ -122,10 +122,14 @@ resolve_matrix_jobs_managed() {
   case "${MATRIX_JOBS_MANAGED}" in
     auto|"")
       case "${PHASE}" in
-        tb21-all|openai-cheap)
+        tb21-all|openai-cheap|timing-baseline|or-passing|local-qwen)
           # Request enough parallelism for managed cloud lanes. The Go sweep
-          # runner clamps each lane to its resource-group cap, so local lanes
-          # still run one cell at a time.
+          # runner clamps each lane to its resource-group cap (max_concurrency
+          # in the YAML), so local lanes still run one cell at a time. Cloud
+          # lanes (e.g. OR rg max_concurrency=10) get to actually use it.
+          # Added timing-baseline/or-passing/local-qwen 2026-05-11 — without
+          # this, OR was bottlenecked at 1 concurrent cell, causing the
+          # cloud-fast lane to keep pace with the slowest local serializer.
           MATRIX_JOBS_MANAGED=16
           ;;
         sonnet-comparison|gpt-comparison|all)
