@@ -1113,3 +1113,10 @@ Follow-up needed:
 09:22:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=2 needs-human/investigation=1 cooldown/deferred=0 execution-ineligible=0 superseded=0 epics=1 epic-closure-candidates=1; 1 beads blocked behind 1 needs-human blockers
 09:22:59 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=1 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=1 superseded=0 epics=1 epic-closure-candidates=1
 09:23:29 idle: no execution-ready beads; sleeping 30s; queue: execution-ready=0 blocked=1 operator-attention=1 needs-human/investigation=0 cooldown/deferred=0 execution-ineligible=1 superseded=0 epics=1 epic-closure-candidates=1
+
+09:23:59 taking next ready bead from queue: fizeau-491dd1e3 — fiz models top-level CLI subcommand with shortform fuzzy resolution
+
+▶ fizeau-491dd1e3: fiz models top-level CLI subcommand with shortform fuzzy resolution
+09:23:59 readiness check: starting route: harness=codex model=gpt-5.5
+09:26:08 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.5
+09:26:49 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
