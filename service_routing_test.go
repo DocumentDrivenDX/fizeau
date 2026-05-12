@@ -808,51 +808,6 @@ func findRoutingHarnessEntry(entries []routing.HarnessEntry, name string) (routi
 	return routing.HarnessEntry{}, false
 }
 
-func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {
-	t.Setenv("PATH", "")
-	cacheDir := t.TempDir()
-	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
-	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 5, 0, 0, time.UTC), []string{"unused"})
-
-	var hits atomic.Int32
-	original := probeOpenAIModelsForDiscovery
-	defer func() { probeOpenAIModelsForDiscovery = original }()
-	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-		hits.Add(1)
-		<-ctx.Done()
-		return nil, ctx.Err()
-	}
-	sc := &fakeServiceConfig{
-		providers: map[string]ServiceProviderEntry{
-			"live": {Type: "openai", BaseURL: "http://probe.invalid/v1", Model: "unused"},
-		},
-		names:       []string{"live"},
-		defaultName: "live",
-	}
-	svc, err := New(ServiceOptions{
-		ServiceConfig:        sc,
-		CatalogProbeTimeout:  40 * time.Millisecond,
-		CatalogReloadTimeout: 80 * time.Millisecond,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	dec, routeErr := svc.ResolveRoute(context.Background(), RouteRequest{
-		Harness: "fiz",
-	})
-	if routeErr != nil {
-		t.Fatalf("ResolveRoute returned error: %v", routeErr)
-	}
-	if dec == nil || dec.Model != "unused" {
-		t.Fatalf("ResolveRoute returned %#v, want snapshot-backed unused decision", dec)
-	}
-	if got := hits.Load(); got != 0 {
-		t.Fatalf("probe hits = %d, want 0 when snapshot cache is fresh", got)
-	}
-}
-
 func TestResolveRouteSnapshotFreshCacheSkipsDiscoveryProbe(t *testing.T) {
 	t.Setenv("PATH", "")
 	cacheDir := t.TempDir()

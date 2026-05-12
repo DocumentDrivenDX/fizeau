@@ -12,9 +12,16 @@ import (
 	"github.com/easel/fizeau/internal/routing"
 )
 
+func isolateRouteStatusTestEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("FIZEAU_CACHE_DIR", t.TempDir())
+	t.Setenv("PATH", "")
+}
+
 // TestRouteStatus_emptyConfig verifies that RouteStatus returns an empty report
 // when no ServiceConfig is provided.
 func TestRouteStatus_emptyConfig(t *testing.T) {
+	isolateRouteStatusTestEnv(t)
 	svc := newTestService(t, ServiceOptions{})
 	report, err := svc.RouteStatus(context.Background())
 	if err != nil {
@@ -34,6 +41,7 @@ func TestRouteStatus_emptyConfig(t *testing.T) {
 // TestRouteStatusSnapshotRowsMatchMultiEndpointFixture verifies that RouteStatus
 // reflects the same discovered provider/model/endpoint rows used by routing.
 func TestRouteStatusSnapshotRowsMatchMultiEndpointFixture(t *testing.T) {
+	isolateRouteStatusTestEnv(t)
 	modelsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
 			http.NotFound(w, r)
@@ -145,6 +153,7 @@ func TestRouteStatusSnapshotRowsMatchMultiEndpointFixture(t *testing.T) {
 // TestRouteStatusLastDecisionCached verifies that calling ResolveRoute and
 // then RouteStatus surfaces the cached LastDecision on the matching entry.
 func TestRouteStatusLastDecisionCached(t *testing.T) {
+	isolateRouteStatusTestEnv(t)
 	// Build a minimal ServiceConfig that satisfies the routing engine.
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -211,6 +220,7 @@ func TestRouteStatusLastDecisionCached(t *testing.T) {
 // TestRouteStatusLastDecisionCachedViaResolveRoute verifies the full path:
 // ResolveRoute → cache write → RouteStatus reads cache.
 func TestRouteStatusLastDecisionCachedViaResolveRoute(t *testing.T) {
+	isolateRouteStatusTestEnv(t)
 	// We need the routing engine to actually resolve. The engine picks
 	// harnesses from the registry. "fiz" is always in the registry.
 	// We give it a provider so the engine can build a candidate.
@@ -268,6 +278,7 @@ func TestRouteStatusLastDecisionCachedViaResolveRoute(t *testing.T) {
 }
 
 func TestRouteStatusCooldownStateSurfaces(t *testing.T) {
+	isolateRouteStatusTestEnv(t)
 	sc := &fakeServiceConfig{
 		healthCooldown: 30 * time.Second,
 		providers: map[string]ServiceProviderEntry{

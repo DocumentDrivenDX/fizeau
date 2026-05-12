@@ -1244,63 +1244,6 @@ func serviceRoutingCatalogSurface(surface string) (modelcatalog.Surface, bool) {
 	}
 }
 
-func (s *service) liveProviderEntries(ctx context.Context, providerName string, pcfg ServiceProviderEntry, cat *modelcatalog.Catalog) []routing.ProviderEntry {
-	if pcfg.ConfigError != "" {
-		return nil
-	}
-	if providerUsesLiveDiscovery(pcfg.Type) && s.catalog != nil {
-		endpoints := modelDiscoveryEndpoints(pcfg)
-		out := make([]routing.ProviderEntry, 0, len(endpoints))
-		for _, endpoint := range endpoints {
-			ids, ok := s.probeEndpointDiscoveredIDs(ctx, pcfg, endpoint.BaseURL)
-			if !ok || len(ids) == 0 {
-				continue
-			}
-			routeName := providerName
-			if len(endpoints) > 1 {
-				routeName = endpointProviderRef(providerName, endpoint.Name)
-			}
-			ctxWindows, ctxSources := buildProviderContextWindows(ctx, pcfg, cat, ids)
-			entry := routing.ProviderEntry{
-				Name:                      routeName,
-				BaseURL:                   endpoint.BaseURL,
-				ServerInstance:            endpoint.ServerInstance,
-				EndpointName:              endpoint.Name,
-				EndpointBaseURL:           endpoint.BaseURL,
-				DefaultModel:              pcfg.Model,
-				CostClass:                 providerRoutingCostClass(pcfg.Type),
-				DiscoveredIDs:             ids,
-				DiscoveryAttempted:        true,
-				ContextWindows:            ctxWindows,
-				ContextWindowSources:      ctxSources,
-				ContextWindow:             pcfg.ContextWindow,
-				ContextWindowSource:       contextWindowSourceForProviderConfig(pcfg),
-				SupportsTools:             providerSupportsTools(cat, pcfg.Model, ids),
-				ExcludeFromDefaultRouting: pcfg.IncludeByDefaultSet && !pcfg.IncludeByDefault,
-			}
-			s.applyEndpointRoutingCost(&entry, pcfg, cat)
-			out = append(out, entry)
-		}
-		return out
-	}
-	entry := routing.ProviderEntry{
-		Name:                      providerName,
-		BaseURL:                   pcfg.BaseURL,
-		ServerInstance:            pcfg.ServerInstance,
-		DefaultModel:              pcfg.Model,
-		CostClass:                 providerRoutingCostClass(pcfg.Type),
-		ExcludeFromDefaultRouting: pcfg.IncludeByDefaultSet && !pcfg.IncludeByDefault,
-	}
-	ctxWindows, ctxSources := buildProviderContextWindows(ctx, pcfg, cat, nil)
-	entry.ContextWindows = ctxWindows
-	entry.ContextWindowSources = ctxSources
-	entry.ContextWindow = pcfg.ContextWindow
-	entry.ContextWindowSource = contextWindowSourceForProviderConfig(pcfg)
-	entry.SupportsTools = providerSupportsTools(cat, pcfg.Model, nil)
-	s.applyEndpointRoutingCost(&entry, pcfg, cat)
-	return []routing.ProviderEntry{entry}
-}
-
 // buildProviderContextWindows assembles the ContextWindows map for a
 // ProviderEntry from the model catalog. Entries are added for the provider's
 // configured DefaultModel and every DiscoveredID that has a non-zero
@@ -1548,24 +1491,6 @@ func subscriptionEffectiveCostUSDPer1kTokens(baseCost float64, quotaPercentUsed 
 	default:
 		return baseCost * curve.HighMultiplier
 	}
-}
-
-var probeOpenAIModelsForDiscovery = probeOpenAIModels
-
-// probeEndpointDiscoveredIDs returns the foreground /v1/models catalog for one
-// endpoint. Dispatch routing must not use stale cache hits: a recently dead
-// endpoint has to be skipped before any chat request is attempted.
-func (s *service) probeEndpointDiscoveredIDs(ctx context.Context, pcfg ServiceProviderEntry, baseURL string) ([]string, bool) {
-	if baseURL == "" {
-		return nil, false
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, s.opts.catalogProbeTimeout())
-	defer cancel()
-	ids, err := probeOpenAIModelsForDiscovery(probeCtx, baseURL, pcfg.APIKey)
-	if err != nil || len(ids) == 0 {
-		return nil, false
-	}
-	return ids, true
 }
 
 // resolveExecuteRouteWithEngine is the post-engine variant of resolveExecuteRoute.

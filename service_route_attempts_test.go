@@ -418,8 +418,10 @@ func TestResolveRoute_GeminiCatalogModelsResolveByConcreteModel(t *testing.T) {
 	}
 }
 
-func routeAttemptTestService(t testing.TB, cooldown time.Duration) *service {
+func routeAttemptTestService(t *testing.T, cooldown time.Duration) *service {
 	t.Helper()
+	t.Setenv("FIZEAU_CACHE_DIR", t.TempDir())
+	t.Setenv("PATH", "")
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"bragi":      {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "qwen"},

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/easel/fizeau/internal/modelregistry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,6 +17,7 @@ type listModelsJSONRow struct {
 	Provider          string  `json:"provider"`
 	ProviderType      string  `json:"provider_type"`
 	EndpointName      string  `json:"endpoint_name"`
+	EndpointBaseURL   string  `json:"endpoint_base_url"`
 	Endpoint          string  `json:"endpoint"`
 	ServerInstance    string  `json:"server_instance"`
 	Power             int     `json:"power"`
@@ -130,6 +132,46 @@ default: studio
 	assert.Equal(t, "vidar", unknown.EndpointName)
 }
 
+func TestCLI_ListModels_JSONMatchesModelsJSONFacts(t *testing.T) {
+	exe := buildAgentCLI(t)
+	workDir := t.TempDir()
+	home := t.TempDir()
+	cacheDir := t.TempDir()
+	local := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
+	local.setModels("qwen3.5-27b")
+
+	writeTempConfig(t, workDir, `
+providers:
+  studio:
+    type: lmstudio
+    endpoints:
+      - name: vidar
+        base_url: `+local.baseURL()+`
+default: studio
+`)
+
+	env := testEnvWithHome(home, map[string]string{
+		"PATH":             "",
+		"FIZEAU_CACHE_DIR": cacheDir,
+	})
+
+	legacy := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "--json", "--list-models", "--provider", "studio")
+	require.Equal(t, 0, legacy.exitCode, "stderr=%s stdout=%s", legacy.stderr, legacy.stdout)
+
+	modern := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "models", "--json", "--provider", "studio")
+	require.Equal(t, 0, modern.exitCode, "stderr=%s stdout=%s", modern.stderr, modern.stdout)
+
+	var legacyRows []listModelsJSONRow
+	require.NoError(t, json.Unmarshal([]byte(legacy.stdout), &legacyRows), "stdout=%s", legacy.stdout)
+
+	var snapshot modelregistry.ModelSnapshot
+	require.NoError(t, json.Unmarshal([]byte(modern.stdout), &snapshot), "stdout=%s", modern.stdout)
+
+	legacyFacts := canonicalListModelFacts(legacyRows)
+	snapshotFacts := canonicalSnapshotModelFacts(snapshot.Models)
+	require.Equal(t, snapshotFacts, legacyFacts)
+}
+
 func findListModelsRow(rows []listModelsJSONRow, model string) *listModelsJSONRow {
 	for i := range rows {
 		if rows[i].Model == model {
@@ -152,4 +194,72 @@ func findListModelsGenericRow(t *testing.T, rows []map[string]json.RawMessage, m
 	}
 	t.Fatalf("generic row for %q not found: %s", model, stdout)
 	return nil
+}
+
+type listModelFacts struct {
+	Model             string
+	Harness           string
+	Provider          string
+	ProviderType      string
+	EndpointName      string
+	EndpointBaseURL   string
+	ServerInstance    string
+	Power             int
+	AutoRoutable      bool
+	ExactPinOnly      bool
+	CostInputPerMTok  float64
+	CostOutputPerMTok float64
+	ContextLength     int
+}
+
+func canonicalListModelFacts(rows []listModelsJSONRow) map[string]listModelFacts {
+	out := make(map[string]listModelFacts, len(rows))
+	for _, row := range rows {
+		out[listModelFactsKey(row.Provider, row.Model, row.EndpointName, row.EndpointBaseURL, row.ServerInstance)] = listModelFacts{
+			Model:             row.Model,
+			Harness:           row.Harness,
+			Provider:          row.Provider,
+			ProviderType:      row.ProviderType,
+			EndpointName:      row.EndpointName,
+			EndpointBaseURL:   row.EndpointBaseURL,
+			ServerInstance:    row.ServerInstance,
+			Power:             row.Power,
+			AutoRoutable:      row.AutoRoutable,
+			ExactPinOnly:      row.ExactPinOnly,
+			CostInputPerMTok:  row.CostInputPerMTok,
+			CostOutputPerMTok: row.CostOutputPerMTok,
+			ContextLength:     row.ContextLength,
+		}
+	}
+	return out
+}
+
+func canonicalSnapshotModelFacts(rows []modelregistry.KnownModel) map[string]listModelFacts {
+	out := make(map[string]listModelFacts, len(rows))
+	for _, row := range rows {
+		harness := strings.TrimSpace(row.Harness)
+		if harness == "" {
+			harness = "fiz"
+		}
+		out[listModelFactsKey(row.Provider, row.ID, row.EndpointName, row.EndpointBaseURL, row.ServerInstance)] = listModelFacts{
+			Model:             row.ID,
+			Harness:           harness,
+			Provider:          row.Provider,
+			ProviderType:      row.ProviderType,
+			EndpointName:      row.EndpointName,
+			EndpointBaseURL:   row.EndpointBaseURL,
+			ServerInstance:    row.ServerInstance,
+			Power:             row.Power,
+			AutoRoutable:      row.AutoRoutable,
+			ExactPinOnly:      row.ExactPinOnly,
+			CostInputPerMTok:  row.CostInputPerM,
+			CostOutputPerMTok: row.CostOutputPerM,
+			ContextLength:     row.ContextWindow,
+		}
+	}
+	return out
+}
+
+func listModelFactsKey(provider, model, endpointName, endpointBaseURL, serverInstance string) string {
+	return strings.Join([]string{provider, model, endpointName, endpointBaseURL, serverInstance}, "\x00")
 }
