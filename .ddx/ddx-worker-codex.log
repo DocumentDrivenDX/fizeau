@@ -1508,3 +1508,78 @@ Follow-up needed:
 11:24:09 readiness check: starting route: harness=codex model=gpt-5.4-mini
 11:28:50 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.4-mini
 11:29:30 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+15:29:43 do route codex/gpt-5.4-mini reason=explicit
+15:29:43 do fizeau-b83502c0 route codex/gpt-5.4-mini power=8
+15:29:43 do thinking ...
+15:29:53 do ok 1 'pwd < out=659.1KB 365 lines "/var/tmp/ddx-exec-wt/.execute-be… 10ms
+15:29:58 do ok 2 inspect lines 120,170 in docs/helix/02-design/adr/ADR-010-rea… < out=2.9KB 74 lines "structured-…
+15:29:58 do ok 3 inspect lines 900,980 in internal/config/config.go < out=7.2KB 250 lines "}"
+15:29:58 do ok 4 'git status --short 299ms
+15:30:01 do ok 5 inspect lines 1,260 in internal/modelcatalog/catalog/models.y… < out=6.6KB 260 lines "version: 5"
+15:30:01 do ok 6 search "ModelReasoningWire|modelReaso..." in internal < out=10.8KB 100 lines "internal/modelcatalo…
+15:30:01 do ok 7 inspect lines 1,120 in scripts/benchmark/profiles/fiz-openrou… < out=2.6KB 63 lines "# fiz provi…
+15:30:04 do ok 8 'ls scripts/benchmark/profiles | sort' < out=518B 21 lines "bragi-club-3090.yaml"
+15:30:04 do ok 9 inspect lines 500,580 in internal/provider/openai/openai.go < out=7.8KB 203 lines "return nil, fmt…
+15:30:04 do ok 10 inspect lines 1,220 in docs/helix/02-design/adr/ADR-010-reas… < out=9.4KB 220 lines "---"
+15:30:09 do ok 11 inspect lines 860,915 in internal/config/config.go < out=2.0KB 56 lines "return nil, ProviderConf…
+15:30:09 do ok 12 inspect lines 360,470 in internal/provider/openai/openai.go < out=4.0KB 111 lines "// (Qwen3, Dee…
+15:30:09 do ok 13 inspect lines 1,140 in internal/provider/registry/registry.go < out=5.2KB 140 lines "// Package r…
+15:30:11 do ok 14 inspect lines 1,220 in internal/config/config_test.go < out=6.3KB 219 lines "package config"
+15:30:11 do ok 15 'rg -n "modelReasoningWireMap|ReasoningWire|surface ID|openr… < out=7.2KB 63 lines "internal/co…
+15:30:15 do ok 16 'rg -n "qwen3.6-27b|deepseek-v4-flash|deepseek-v4" internal/… < out=126B 4 lines "301: qwen3.6-…
+15:30:15 do ok 17 inspect lines 1180,1435 in internal/provider/openai/openai_t… < out=10.0KB 256 lines "assert.Eq…
+15:30:15 do ok 18 inspect lines 1435,1565 in internal/provider/openai/openai_t… < out=5.2KB 116 lines "\"model\":…
+15:30:19 do ok 19 inspect lines 292,365 in internal/modelcatalog/catalog/model… < out=2.0KB 74 lines "medium: 819…
+15:30:19 do ok 20 inspect lines 1,120 in scripts/benchmark/profiles/sindri-lla… < out=11.8KB 278 lines "# Qwen3.6…
+15:30:19 do ok 21 inspect lines 1,220 in internal/modelcatalog/manifest.go < out=8.9KB 220 lines "package modelcata…
+15:30:24 do ok 22 'find docs/research -maxdepth 3 -type d | sort | rg "probe-r… < out=1.2KB 18 lines "3:docs/rese…
+15:30:24 do ok 23 'find docs/research -maxdepth 4 -type f | sort | rg "probe-r… < out=10.1KB 125 lines "7:docs/re…
+15:30:24 do ok 24 'git log --oneline --decorate -n 20 -- docs/research interna… < out=1.6KB 20 lines "701e5d94 fe…
+15:30:28 do ok 25 'git show --stat --summary 6e0f3c8f --' < out=30B 1 line
+15:30:28 do ok 26 git show < out=83B 4 lines "fatal: invalid object name '6e0f3c8f'."
+15:30:28 do ok 27 git show < out=38B 1 line
+15:30:33 do ok 28 git rev-list
+15:30:33 do ok 29 inspect git log < out=120B 1 line "121:6e0f3c8c feat(catalog+config): pro…
+15:30:36 do ok 30 'git show --stat --summary 6e0f3c8c --' < out=7.5KB 109 lines "commit 6e0f3c8cc9471d9cbbf25926663…
+15:30:36 do ok 31 'git show 6e0f3c8c:internal/config/config_test.go | rg -n "r… < out=1.5KB 26 lines "129: defaul…
+15:30:36 do ok 32 git show < out=8.9KB 264 lines "return cat.AllConcreteModels(model…
+15:30:40 do ok 33 git show < out=1.7KB 45 lines "cfg, err := Load(dir)"
+15:30:40 do ok 34 git show < out=1.6KB 61 lines "qwen3.6-27b:"
+15:30:40 do ok 35 git show < out=11.7KB 279 lines "# fiz provider lane through OpenR…
+15:31:06 do ok 36 git show < out=1.1KB 31 lines "ProviderName: pc.Type,"
+15:31:06 do ok 37 'git diff 6e0f3c8c -- internal/config/config.go internal/con… < out=11.9KB 279 lines "diff --gi…
+15:31:06 do ok 38 git show < out=1.3KB 51 lines "require.NoError(t, os.MkdirAll(file…
+15:31:16 do ok 39 'git diff --name-status 6e0f3c8c -- scripts/benchmark/profil… < out=110B 1 line "R074\tscripts/…
+15:31:16 do ok 40 inspect git status < out=108B 4 lines "----"
+15:31:35 do ok 41 inspect lines 1,120 in scripts/benchmark/profiles/sindri-lla… < out=2.7KB 61 lines "# Qwen3.6-2…
+15:31:35 do ok 42 'ls -l scripts/benchmark/profiles/sindri-club-3090-llamacpp.… < out=193B 2 lines "ls: cannot ac…
+15:31:48 do ok 43 inspect lines 60,90 in internal/provider/openai/openai.go < out=1.8KB 31 lines "// nil disables c…
+15:31:49 do ok 44 inspect lines 52,78 in internal/provider/registry/registry.go < out=1.1KB 27 lines "// during mod…
+15:32:18 do ok 45 inspect lines 220,360 in internal/config/config_test.go < out=3.5KB 140 lines "func TestLoad_EnvE…
+15:32:18 do ok 46 inspect lines 1460,1515 in internal/config/config_test.go < out=1022B 39 lines "cfg, err := Load(…
+15:32:25 do ok 47 inspect lines 1400,1488 in internal/config/config_test.go < out=2.2KB 89 lines "tools:"
+15:32:25 do ok 48 'rg -n "func Test.*Vidar|func Test.*Omlx|func TestLoad_.*Vid… < out=66B 1 line "1477:func TestL…
+15:32:48 do ok 49 inspect lines 890,950 in internal/config/config.go < out=3.6KB 105 lines "ProviderName: pc.Type,"
+15:32:48 do ok 50 'rg -n "→|—" internal/config/config.go internal/config/c… < out=2.6KB 22 lines "scripts… 1ms
+15:32:48 do ok 51 'git diff --stat -- internal/config/config.go internal/confi… < out=539B 8 lines "internal/conf…
+15:32:53 do ok 52 'git status --short' < out=317B 7 lines "M internal/config/config.go"
+15:32:53 do ok 53 inspect diff < out=9.3KB 206 lines "diff --git a/internal/config/confi…
+15:33:00 do ok 55 'go test ./internal/modelcatalog/...' < out=57B 1 line "ok \tgithub.com/easel/fizeau/intern… 584ms
+15:33:01 do ok 54 'go test ./internal/config/...' < out=51B 1 line "ok \tgithub.com/easel/fizeau/internal/c�… 2.014s
+15:33:09 do ok 56 'go test ./internal/provider/openai/...' < out=60B 1 line "ok \tgithub.com/easel/fizeau/i… 10.352s
+15:34:49 do ok 57 'go test ./...' < out=5.1KB 89 lines "ok \tgithub.com/easel/fizeau\t6.359… 1m37.035s
+15:34:55 do ok 58 'ls -1' < out=2.8KB 129 lines "-"
+15:34:55 do ok 59 search "\\\"golangci-lint|go" in '"'!**/vendor/**'"' < out=4.3KB 32 lines "Makefile:66:\tgo insta…
+15:35:04 do ok 60 'make lint' < out=9B 1 line 5.533s
+15:35:15 do ok 61 'git add internal/config/config.go internal/config/config_te… < out=174B 2 lines "[detached HEA…
+15:35:23 do response complete 25648 tok in 5m40.534s, 75.3 tok/s
+✓ fizeau-b83502c0 → merged (412ac646)
+
+▶ fizeau-84e237f2: Cache infrastructure: per-source disk cache + ParseModelRef + 10-test robustness matrix
+11:35:28 readiness check: starting route: harness=codex model=gpt-5.4-mini
+bead readiness blocked: score 0.20 below threshold 0.50 (1/5 verifiable ACs) (releasing fizeau-84e237f2)
+
+▶ fizeau-007ccb3c: runtime signals: record provider responses into ADR-012 cache
+11:35:29 readiness check: starting route: harness=codex model=gpt-5.4-mini
+11:37:17 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.4-mini
+11:37:58 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
