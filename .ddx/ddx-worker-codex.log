@@ -1787,3 +1787,43 @@ bead readiness blocked: score 0.20 below threshold 0.50 (1/5 verifiable ACs) (re
 12:16:15 readiness check: starting route: harness=codex model=gpt-5.4-mini
 12:18:12 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.4-mini
 12:18:52 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+16:19:05 do route codex/gpt-5.4-mini reason=explicit
+16:19:05 do fizeau-b3e7bf04 route codex/gpt-5.4-mini power=8
+16:19:05 do thinking ...
+16:19:12 do ok 1 search "cmd/fiz" in '1,200p' < out=10.0KB 200 lines "cmd/fiz/models_test.go"
+16:19:12 do ok 2 pwd < out=234.5KB 594 lines "agentcli/smart_routing_test.go:3… 198ms
+16:19:17 do ok 3 inspect lines 1,260 in cmd/fiz/models_test.go < out=6.6KB 260 lines "package main"
+16:19:17 do ok 4 inspect lines 260,560 in cmd/fiz/models_test.go < out=7.9KB 259 lines "if snapshot.Sources[\"alpha…
+16:19:17 do ok 5 inspect lines 560,860 in cmd/fiz/models_test.go
+16:19:22 do ok 6 inspect lines 1,260 in internal/sdk/openaicompat/discovery.go < out=2.7KB 112 lines "package opena…
+16:19:22 do ok 7 search "\\\"discovery" in '"'!**/vendor/**'"' < out=36.2KB 351 lines "cmd/fiz/models_test.go:88:\t…
+16:19:28 do ok 8 inspect lines 1,260 in agentcli/models.go < out=15.8KB 563 lines "package agentcli"
+16:19:28 do ok 9 inspect lines 1,260 in internal/discoverycache/multiprocess_t… < out=20.5KB 712 lines "package d…
+16:19:28 do ok 10 inspect lines 1,220 in internal/modelregistry/discovery.go < out=11.1KB 361 lines "package modelr…
+16:19:34 do ok 11 inspect lines 1,220 in cmd/fiz/main_test.go < out=5.7KB 168 lines "package main"
+16:19:34 do ok 12 search "\\\"TestHelperProcess|spawnHelp..." in '"'!**/vendor… < out=207.4KB 250 lines "agen… 1ms
+16:19:50 do ok 13 inspect lines 1,240 in agentcli/cli_process_test.go < out=13.7KB 461 lines "package agentcli_test"
+16:19:50 do ok 14 search "\\\"DefaultClient|http\\\\.Transp..." in '"'!**/vend… < out=8.9KB 111 lines "cmd/fizeau…
+16:19:53 do ok 15 inspect lines 1,220 in internal/discoverycache/singleflight.… < out=7.5KB 259 lines "packag… 3ms
+16:19:54 do ok 16 inspect lines 220,360 in internal/discoverycache/cache.go < out=1.7KB 61 lines "c.releaseMarker(s…
+16:21:42 do ok 17 inspect lines 1,240 in cmd/fiz/models_concurrent_test.go < out=3.9KB 148 lines "package main"
+16:21:54 do ok 18 inspect lines 1,240 in cmd/fiz/models_concurrent_test.go < out=3.8KB 147 lines "package main"
+16:22:08 do ok 19 inspect lines 1,240 in cmd/fiz/models_concurrent_test.go < out=3.8KB 146 lines "package main"
+16:22:12 do ok 20 'gofmt -w cmd/fiz/models_concurrent_test.go'
+16:22:12 do ok 21 'git diff -- cmd/fiz/models_concurrent_test.go' 1ms
+16:22:19 do ok 22 'go test ./cmd/fiz -run TestModelsConcurrentRefreshSingleFli… < out=233B 4 lines "# gith… 2.361s
+16:22:19 do ok 23 test ./cmd/fiz -run 'TestModelsListDefaultColumns|TestModels… < out=233B 4 lines "# gith… 2.365s
+16:22:27 do ok 24 'gofmt -w cmd/fiz/models_concurrent_test.go'
+16:22:29 do ok 26 test ./cmd/fiz -run 'TestModelsListDefaultColumns|TestModels… < out=43B 1 line "ok \tgith… 1.03s
+16:22:29 do ok 25 'go test ./cmd/fiz -run TestModelsConcurrentRefreshSingleFli… < out=43B 1 line "ok \tgit… 1.545s
+16:22:45 do ok 27 'go test ./cmd/fiz/... -count=1' < out=44B 1 line "ok \tgithub.com/easel/fizeau/cmd/fiz\t… 11.812s
+16:22:56 do ok 28 nl -ba cmd/fiz/models_concurrent_test.go | sed -n '1,220p' < out=4.8KB 146 lines "1\tpackage main"
+16:22:56 do ok 29 'git status --short' < out=36B 1 line
+16:23:02 do ok 30 'git add cmd/fiz/models_concurrent_test.go < out=176B 3 lines "[detached HEAD 03e33231] test: add…
+16:23:14 do response complete 23108 tok in 4m9.497s, 92.6 tok/s
+✓ fizeau-b3e7bf04 → merged (91c265ca)
+
+▶ fizeau-422cae08: docs: add ADR-012 routing snapshot addenda
+12:23:18 readiness check: starting route: harness=codex model=gpt-5.4-mini
+12:25:07 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.4-mini
+12:25:47 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
