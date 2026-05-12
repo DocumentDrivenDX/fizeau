@@ -136,6 +136,12 @@ type ProviderEntry struct {
 
 	// InCooldown reflects whether this provider is in a failure-cooldown window.
 	InCooldown bool
+
+	// ExcludeFromDefaultRouting, when true, prevents this provider from being
+	// selected during unpinned automatic routing. An explicit provider, harness,
+	// or model pin bypasses this gate so the operator can still reach the
+	// provider intentionally. Corresponds to IncludeByDefault=false in config.
+	ExcludeFromDefaultRouting bool
 }
 
 const (
@@ -249,6 +255,9 @@ const (
 	// FilterReasonPolicyFiltered: candidate was rejected by a hard policy
 	// requirement such as allow_local=false or require=[no_remote].
 	FilterReasonPolicyFiltered FilterReason = "policy_filtered"
+	// FilterReasonProviderExcludedFromDefault: provider has IncludeByDefault=false
+	// in operator config and the request did not explicitly pin a provider or harness.
+	FilterReasonProviderExcludedFromDefault FilterReason = "provider_excluded_from_default_routing"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -1056,6 +1065,14 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 					reason = "preference is subscription-only"
 					filterReason = FilterReasonUnhealthy
 				}
+			}
+		}
+
+		if eligible {
+			if g, fr := CheckProviderDefaultEligibility(candidateProviderIdentity(h, p), p.ExcludeFromDefaultRouting, req); g != "" {
+				eligible = false
+				reason = g
+				filterReason = fr
 			}
 		}
 

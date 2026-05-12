@@ -793,20 +793,21 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 			}
 			ctxWindows, ctxSources := buildProviderContextWindows(ctx, pcfg, cat, ids)
 			entry := routing.ProviderEntry{
-				Name:                 routeName,
-				BaseURL:              endpoint.BaseURL,
-				ServerInstance:       endpoint.ServerInstance,
-				EndpointName:         endpoint.Name,
-				EndpointBaseURL:      endpoint.BaseURL,
-				DefaultModel:         pcfg.Model,
-				CostClass:            providerRoutingCostClass(pcfg.Type),
-				DiscoveredIDs:        ids,
-				DiscoveryAttempted:   true,
-				ContextWindows:       ctxWindows,
-				ContextWindowSources: ctxSources,
-				ContextWindow:        pcfg.ContextWindow,
-				ContextWindowSource:  contextWindowSourceForProviderConfig(pcfg),
-				SupportsTools:        providerSupportsTools(cat, pcfg.Model, ids),
+				Name:                      routeName,
+				BaseURL:                   endpoint.BaseURL,
+				ServerInstance:            endpoint.ServerInstance,
+				EndpointName:              endpoint.Name,
+				EndpointBaseURL:           endpoint.BaseURL,
+				DefaultModel:              pcfg.Model,
+				CostClass:                 providerRoutingCostClass(pcfg.Type),
+				DiscoveredIDs:             ids,
+				DiscoveryAttempted:        true,
+				ContextWindows:            ctxWindows,
+				ContextWindowSources:      ctxSources,
+				ContextWindow:             pcfg.ContextWindow,
+				ContextWindowSource:       contextWindowSourceForProviderConfig(pcfg),
+				SupportsTools:             providerSupportsTools(cat, pcfg.Model, ids),
+				ExcludeFromDefaultRouting: pcfg.IncludeByDefaultSet && !pcfg.IncludeByDefault,
 			}
 			s.applyEndpointRoutingCost(&entry, pcfg, cat)
 			out = append(out, entry)
@@ -814,11 +815,12 @@ func (s *service) liveProviderEntries(ctx context.Context, providerName string, 
 		return out
 	}
 	entry := routing.ProviderEntry{
-		Name:           providerName,
-		BaseURL:        pcfg.BaseURL,
-		ServerInstance: pcfg.ServerInstance,
-		DefaultModel:   pcfg.Model,
-		CostClass:      providerRoutingCostClass(pcfg.Type),
+		Name:                      providerName,
+		BaseURL:                   pcfg.BaseURL,
+		ServerInstance:            pcfg.ServerInstance,
+		DefaultModel:              pcfg.Model,
+		CostClass:                 providerRoutingCostClass(pcfg.Type),
+		ExcludeFromDefaultRouting: pcfg.IncludeByDefaultSet && !pcfg.IncludeByDefault,
 	}
 	ctxWindows, ctxSources := buildProviderContextWindows(ctx, pcfg, cat, nil)
 	entry.ContextWindows = ctxWindows

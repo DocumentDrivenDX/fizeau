@@ -154,6 +154,20 @@ func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model s
 	return "", FilterReasonEligible
 }
 
+// CheckProviderDefaultEligibility returns a rejection reason when the provider
+// entry has ExcludeFromDefaultRouting=true and the request does not carry an
+// explicit provider or harness pin. Any explicit pin bypasses this gate so the
+// operator can still reach opt-out providers intentionally.
+func CheckProviderDefaultEligibility(providerName string, excluded bool, req Request) (string, FilterReason) {
+	if !excluded {
+		return "", FilterReasonEligible
+	}
+	if req.Provider != "" || req.Harness != "" {
+		return "", FilterReasonEligible
+	}
+	return fmt.Sprintf("provider %s excluded from default routing (include_by_default=false)", providerName), FilterReasonProviderExcludedFromDefault
+}
+
 // resolveRequestReasoning returns a copy of req with Reasoning resolved to the
 // catalog's reasoning default for the request's policy/surface
 // when the request asks for Reasoning=auto. This must run before CheckGating
