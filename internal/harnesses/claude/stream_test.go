@@ -496,7 +496,7 @@ func TestRunnerBuildArgs_AppliesRequestControls(t *testing.T) {
 	}, args)
 
 	args = r.buildArgs([]string{"--print"}, harnesses.ExecuteRequest{Permissions: "supervised"})
-	assert.Equal(t, []string{"--print", "--permission-mode", "default"}, args)
+	assert.Equal(t, []string{"--print", "--permission-mode", "default", "--model", "opus-4.7"}, args)
 }
 
 func TestRunnerExecute_AppliesRequestControlsAndWorkdir(t *testing.T) {
@@ -560,6 +560,68 @@ EOF
 	} {
 		require.Contains(t, got, want)
 	}
+}
+
+func TestRunnerExecute_UsesDiscoveryDefaultWhenModelUnpinned(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake claude binary relies on POSIX shell")
+	}
+	tmp := t.TempDir()
+	capture := filepath.Join(tmp, "capture.txt")
+	binPath := filepath.Join(tmp, "fake-claude")
+	script := fmt.Sprintf(`#!/bin/sh
+{
+  i=0
+  for arg in "$@"; do
+    printf 'ARG[%%s]=%%s\n' "$i" "$arg"
+    i=$((i + 1))
+  done
+} > %q
+cat <<'EOF'
+{"type":"system","subtype":"init","session_id":"sess","model":"opus-4.7"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":3,"output_tokens":2}}}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1,"result":"ok","usage":{"input_tokens":3,"output_tokens":2},"session_id":"sess"}
+EOF
+`, capture)
+	require.NoError(t, os.WriteFile(binPath, []byte(script), 0o755))
+
+	r := &Runner{Binary: binPath}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := r.Execute(ctx, harnesses.ExecuteRequest{Prompt: "hello prompt"})
+	require.NoError(t, err)
+	events := drainEvents(t, ctx, out)
+	require.NotEmpty(t, events)
+
+	raw, err := os.ReadFile(capture)
+	require.NoError(t, err)
+	got := string(raw)
+	for _, want := range []string{
+		"ARG[0]=--print",
+		"ARG[1]=-p",
+		"ARG[2]=--verbose",
+		"ARG[3]=--output-format",
+		"ARG[4]=stream-json",
+		"ARG[5]=--model",
+		"ARG[6]=opus-4.7",
+		"ARG[7]=hello prompt",
+	} {
+		require.Contains(t, got, want)
+	}
+
+	var resolution *harnesses.RunnerModelResolution
+	for _, ev := range events {
+		if ev.Type != harnesses.EventTypeRoutingDecision {
+			continue
+		}
+		var data harnesses.RunnerModelResolution
+		require.NoError(t, json.Unmarshal(ev.Data, &data))
+		resolution = &data
+	}
+	require.NotNil(t, resolution, "expected runner default-resolution signal")
+	assert.Equal(t, "opus-4.7", resolution.ResolvedModel)
+	assert.Equal(t, "claude-sonnet-4-6", resolution.PriorDefaultModel)
+	assert.Equal(t, "claude-code", resolution.Surface)
 }
 
 // writeSlowFakeClaudeBinary emits an init event then sleeps so the test can

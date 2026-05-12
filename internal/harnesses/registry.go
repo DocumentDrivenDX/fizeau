@@ -17,7 +17,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 			"unrestricted": {"--dangerously-bypass-approvals-and-sandbox"},
 		},
 		PromptMode:          "arg",
-		DefaultModel:        "gpt-5.4",
+		DefaultModel:        "gpt-5.5",
 		Models:              []string{"gpt", "gpt-5", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"}, // refreshed by Codex PTY model-discovery cassettes
 		ReasoningLevels:     []string{"low", "medium", "high", "xhigh", "max"},
 		ModelFlag:           "-m",
@@ -48,7 +48,7 @@ var builtinHarnesses = map[string]HarnessConfig{
 			"unrestricted": {"--permission-mode", "bypassPermissions", "--dangerously-skip-permissions"},
 		},
 		PromptMode:          "arg",
-		DefaultModel:        "claude-sonnet-4-6",
+		DefaultModel:        "opus-4.7",
 		Models:              []string{"sonnet", "sonnet-4.6", "opus", "opus-4.7", "claude-sonnet-4-6"}, // from claude --help plus PTY /model discovery
 		ReasoningLevels:     []string{"low", "medium", "high", "xhigh", "max"},
 		ModelFlag:           "--model",

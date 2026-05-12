@@ -13,9 +13,13 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/modelcatalog"
 )
 
 const defaultEventBuffer = 64
+
+// Fallback only: unpinned runs resolve through model discovery first.
+const fallbackDefaultModel = "gpt-5.4"
 
 // Runner is the subprocess-backed codex harness. It launches codex in
 // exec --json mode, parses each JSONL line into harness Events, and emits
@@ -47,7 +51,7 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		IsSubscription:       true,
 		AutoRoutingEligible:  true,
 		ExactPinSupport:      true,
-		DefaultModel:         "gpt-5.4",
+		DefaultModel:         harnesses.ResolveRunnerModel("codex", modelcatalog.SurfaceCodex, "", fallbackDefaultModel).ResolvedModel,
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},
 		SupportedReasoning:   []string{"low", "medium", "high", "xhigh", "max"},
 		CostClass:            "medium",
@@ -185,6 +189,7 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 		base = []string{"exec", "--json"}
 	}
 	args := append([]string{}, base...)
+	modelResolution := harnesses.ResolveRunnerModel("codex", modelcatalog.SurfaceCodex, req.Model, fallbackDefaultModel)
 
 	// Permission args: unrestricted adds --dangerously-bypass-approvals-and-sandbox
 	if req.Permissions == "unrestricted" {
@@ -197,8 +202,8 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	}
 
 	// Model flag: -m <model>
-	if req.Model != "" {
-		args = append(args, "-m", req.Model)
+	if modelResolution.ResolvedModel != "" {
+		args = append(args, "-m", modelResolution.ResolvedModel)
 	}
 
 	// Reasoning flag: -c reasoning.effort=<reasoning>
@@ -242,6 +247,15 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	progressLog, _ := harnesses.OpenProgressLog(req.SessionLogDir, req.SessionID, "codex")
 	if progressLog != nil {
 		defer progressLog.Close()
+	}
+	if harnesses.ShouldEmitRunnerDefaultResolution(modelResolution) {
+		ev := harnesses.RunnerDefaultResolutionEvent(modelResolution, req.Metadata, seq)
+		harnesses.WriteProgressEvent(progressLog, ev)
+		select {
+		case out <- ev:
+		case <-ctx.Done():
+			return nil, -1, "", ctx.Err(), "cancelled"
+		}
 	}
 
 	parserReader, parserWriter := io.Pipe()

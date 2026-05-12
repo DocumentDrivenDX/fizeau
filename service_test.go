@@ -68,8 +68,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.Type != "subprocess" {
 			t.Errorf("codex Type: want subprocess, got %q", h.Type)
 		}
-		if h.DefaultModel != "gpt-5.4" {
-			t.Errorf("codex DefaultModel: want gpt-5.4, got %q", h.DefaultModel)
+		if h.DefaultModel != "gpt-5.5" {
+			t.Errorf("codex DefaultModel: want gpt-5.5, got %q", h.DefaultModel)
 		}
 	})
 
@@ -93,8 +93,8 @@ func TestListHarnesses_shape(t *testing.T) {
 		if h.Type != "subprocess" {
 			t.Errorf("claude Type: want subprocess, got %q", h.Type)
 		}
-		if h.DefaultModel != "claude-sonnet-4-6" {
-			t.Errorf("claude DefaultModel: want claude-sonnet-4-6, got %q", h.DefaultModel)
+		if h.DefaultModel != "opus-4.7" {
+			t.Errorf("claude DefaultModel: want opus-4.7, got %q", h.DefaultModel)
 		}
 		// Quota may be nil (no cache on CI); just check it doesn't panic.
 		_ = h.Quota

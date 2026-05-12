@@ -13,7 +13,11 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/modelcatalog"
 )
+
+// Fallback only: unpinned runs resolve through model discovery first.
+const fallbackDefaultModel = "claude-sonnet-4-6"
 
 // Default size for the per-Execute event channel buffer. Large enough that
 // fast tool-call bursts (claude can emit dozens of blocks per turn) do not
@@ -64,7 +68,7 @@ func (r *Runner) Info() harnesses.HarnessInfo {
 		IsSubscription:       true,
 		AutoRoutingEligible:  true,
 		ExactPinSupport:      true,
-		DefaultModel:         "claude-sonnet-4-6",
+		DefaultModel:         harnesses.ResolveRunnerModel("claude", modelcatalog.SurfaceClaudeCode, "", fallbackDefaultModel).ResolvedModel,
 		SupportedPermissions: []string{"safe", "supervised", "unrestricted"},
 		SupportedReasoning:   []string{"low", "medium", "high", "xhigh", "max"},
 		CostClass:            "medium",
@@ -277,6 +281,16 @@ func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.
 	if progressLog != nil {
 		defer progressLog.Close()
 	}
+	modelResolution := harnesses.ResolveRunnerModel("claude", modelcatalog.SurfaceClaudeCode, req.Model, fallbackDefaultModel)
+	if harnesses.ShouldEmitRunnerDefaultResolution(modelResolution) {
+		ev := harnesses.RunnerDefaultResolutionEvent(modelResolution, req.Metadata, seq)
+		harnesses.WriteProgressEvent(progressLog, ev)
+		select {
+		case out <- ev:
+		case <-ctx.Done():
+			return nil, -1, "", ctx.Err(), "cancelled"
+		}
+	}
 
 	// Tee stdout into the parser and (optionally) into the progress log.
 	parserReader, parserWriter := io.Pipe()
@@ -437,14 +451,15 @@ func (r *Runner) runLegacy(ctx context.Context, binary string, req harnesses.Exe
 
 func (r *Runner) buildArgs(base []string, req harnesses.ExecuteRequest) []string {
 	args := append([]string{}, base...)
+	modelResolution := harnesses.ResolveRunnerModel("claude", modelcatalog.SurfaceClaudeCode, req.Model, fallbackDefaultModel)
 	switch req.Permissions {
 	case "supervised":
 		args = append(args, "--permission-mode", "default")
 	case "unrestricted":
 		args = append(args, "--permission-mode", "bypassPermissions", "--dangerously-skip-permissions")
 	}
-	if req.Model != "" {
-		args = append(args, "--model", req.Model)
+	if modelResolution.ResolvedModel != "" {
+		args = append(args, "--model", modelResolution.ResolvedModel)
 	}
 	if value := harnesses.AdapterReasoningValue(req); value != "" {
 		args = append(args, "--effort", value)
