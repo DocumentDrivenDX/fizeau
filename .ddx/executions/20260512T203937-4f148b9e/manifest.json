@@ -1,0 +1,58 @@
+{
+  "attempt_id": "20260512T203937-4f148b9e",
+  "bead_id": "fizeau-dc79af6b",
+  "base_rev": "dec85e24dc8092840268945ac124551030304b08",
+  "created_at": "2026-05-12T20:39:40.209673056Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-dc79af6b",
+    "title": "routing: feed ResolveRoute from snapshot-derived candidates",
+    "description": "CONTEXT\n`ResolveRoute` currently calls `buildRoutingInputsWithCatalog`, which enumerates harnesses/providers and probes provider models through service-specific helpers such as `liveProviderEntries`. SD-005 requires auto-routing to consume the same enriched available-model snapshot exposed by `fiz models`, then expand snapshot rows into dispatch candidates. The routing engine itself should be preserved; the input source should change.\n\nCHANGE\nAdd a snapshot-to-`routing.Inputs` adapter and wire `ResolveRoute` to use it. The adapter must preserve hard pins (`Harness`, `Provider`, exact `Model`), IncludeByDefault/default-deny behavior, auto-routability/exact-pin-only behavior, context/tool/reasoning gates, quota/cooldown signals, endpoint utilization, and sticky server-instance affinity. Unknown snapshot models must remain exact-pinnable but excluded from unpinned automatic routing.\n\nIN-SCOPE FILES\n- service_routing.go\n- internal/routing input tests if adapter logic belongs there\n- service_routing_test.go / service_model_resolution_test.go\n\nOUT-OF-SCOPE\n- Changing score component names.\n- RouteStatus rendering.\n- Root ListModels migration, which should already be complete before this bead starts.",
+    "acceptance": "1. `go test . -run \"TestResolveRoute.*Snapshot|TestResolveRoute.*ModelConstraint|TestResolveRoute.*Provider|TestResolveRoute.*Power|TestResolveRoute.*Correlation\" -count=1` passes with new coverage proving ResolveRoute consumes snapshot rows and preserves hard pins.\n2. `go test ./internal/routing/... -run \"Power|Gating|Sticky|FilterReason\" -count=1` passes.\n3. `rg -n \"liveProviderEntries|probeEndpointDiscoveredIDs|buildRoutingInputsWithCatalog\" service_routing.go` returns no legacy live-discovery routing path, or any remaining match is isolated behind a snapshot assembly helper and not called by ResolveRoute default routing.\n4. A fixture test proves fresh cache data avoids direct provider model discovery during default ResolveRoute.",
+    "parent": "fizeau-e6145528",
+    "labels": [
+      "area:routing",
+      "area:service",
+      "kind:feature",
+      "plan-2026-05-12-sd005"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T20:34:38Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T20:39:37.001858192Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T20:34:38.991045562Z",
+      "spec-id": "SD-005"
+    }
+  },
+  "governing": [
+    {
+      "id": "SD-005",
+      "path": "docs/helix/02-design/solution-designs/SD-005-provider-config.md",
+      "title": "Solution Design: SD-005 — Provider Sources, Model Catalog, and Power Routing"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T203937-4f148b9e",
+    "prompt": ".ddx/executions/20260512T203937-4f148b9e/prompt.md",
+    "manifest": ".ddx/executions/20260512T203937-4f148b9e/manifest.json",
+    "result": ".ddx/executions/20260512T203937-4f148b9e/result.json",
+    "checks": ".ddx/executions/20260512T203937-4f148b9e/checks.json",
+    "usage": ".ddx/executions/20260512T203937-4f148b9e/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-dc79af6b-20260512T203937-4f148b9e"
+  },
+  "prompt_sha": "c02e7830a2d0d0291838eb35f5ca50bdd00776820bcd4742fa2a0d06a0073216"
+}
