@@ -1,6 +1,8 @@
 package modelcatalog
 
 import (
+	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -105,4 +107,80 @@ func TestEmbeddedManifestDeploymentClassCapsLocalPowerBelowFrontier(t *testing.T
 	assert.Greater(t, opus.Power, lucebox.Power)
 	assert.LessOrEqual(t, qwen.Power, 6)
 	assert.LessOrEqual(t, lucebox.Power, 6)
+}
+
+// TestCatalogPowerMonotonicity asserts two structural invariants on the
+// embedded catalog for models with known tier and non-zero power:
+//
+//  1. Within a (family, tier) cohort, power is non-decreasing as version
+//     increases (newer models must be at least as capable).
+//  2. Within a (family, version) cohort, power is non-increasing as tier
+//     degrades (Smart ≥ Standard ≥ Cheap).
+func TestCatalogPowerMonotonicity(t *testing.T) {
+	catalog, err := Default()
+	require.NoError(t, err)
+
+	type record struct {
+		id      string
+		version []int
+		tier    Tier
+		power   int
+	}
+	type ftKey struct {
+		family string
+		tier   Tier
+	}
+	type fvKey struct {
+		family  string
+		version string
+	}
+
+	ftGroups := make(map[ftKey][]record)
+	fvGroups := make(map[fvKey][]record)
+
+	for id, entry := range catalog.AllModels() {
+		if entry.Power == 0 {
+			continue // skip unrated / exact-pin-only models
+		}
+		p := Parse(id)
+		if p.Tier == TierUnknown {
+			continue // skip models the parser cannot classify
+		}
+		r := record{id: id, version: p.Version, tier: p.Tier, power: entry.Power}
+		ftGroups[ftKey{p.Family, p.Tier}] = append(ftGroups[ftKey{p.Family, p.Tier}], r)
+		vk := fvKey{p.Family, fmt.Sprintf("%v", p.Version)}
+		fvGroups[vk] = append(fvGroups[vk], r)
+	}
+
+	t.Run("nondecreasing_power_by_version", func(t *testing.T) {
+		for key, recs := range ftGroups {
+			if len(recs) < 2 {
+				continue
+			}
+			sort.Slice(recs, func(i, j int) bool {
+				return compareVersionSlices(recs[i].version, recs[j].version) < 0
+			})
+			for i := 1; i < len(recs); i++ {
+				assert.GreaterOrEqual(t, recs[i].power, recs[i-1].power,
+					"family=%s tier=%d: power must be non-decreasing as version increases (%s p=%d → %s p=%d)",
+					key.family, key.tier, recs[i-1].id, recs[i-1].power, recs[i].id, recs[i].power)
+			}
+		}
+	})
+
+	t.Run("nonincreasing_power_by_tier", func(t *testing.T) {
+		for key, recs := range fvGroups {
+			if len(recs) < 2 {
+				continue
+			}
+			sort.Slice(recs, func(i, j int) bool {
+				return recs[i].tier < recs[j].tier
+			})
+			for i := 1; i < len(recs); i++ {
+				assert.LessOrEqual(t, recs[i].power, recs[i-1].power,
+					"family=%s version=%s: power must be non-increasing as tier degrades (%s p=%d → %s p=%d)",
+					key.family, key.version, recs[i-1].id, recs[i-1].power, recs[i].id, recs[i].power)
+			}
+		}
+	})
 }
