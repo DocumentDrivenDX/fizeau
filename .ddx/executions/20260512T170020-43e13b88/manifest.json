@@ -1,0 +1,58 @@
+{
+  "attempt_id": "20260512T170020-43e13b88",
+  "bead_id": "fizeau-453c147a",
+  "base_rev": "d509e91173d71704b9ee4e67b80c94494878bc05",
+  "created_at": "2026-05-12T17:00:22.772909196Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-453c147a",
+    "title": "reasoning introspection: expose alias maps and emitted intent telemetry",
+    "description": "Review of fizeau-e80c156e and fizeau-144bd2f9 found that ds4/llama props adapters parse rich L1 data, but runtime only merges ThinkingFormat. Alias maps, effective levels, supported params, and server-side reasoning_format are not exposed in ProtocolCapabilities or consumed by the translator. ADR-010 also requires honest telemetry for reasoning intent versus emitted wire form.\n\nIn scope:\n- ProtocolCapabilities or equivalent carrier for reasoning aliases/effective levels/supported params/server-side format\n- translator use of ds4 alias map so low/medium collapse is recorded honestly\n- report/session telemetry fields for reasoning_intent and reasoning_emitted or equivalent\n- tests for ds4 alias canonicalization and telemetry\n\nOut of scope:\n- OR-Qwen catalog wire form regression; separate reopened bead.",
+    "acceptance": "1. go test ./internal/provider/ds4/... ./internal/provider/llamaserver/... ./internal/provider/registry/... -run \"Alias|Effective|Supported|Reasoning\" -count=1 passes.\n2. go test ./internal/provider/openai/... ./internal/reasoning/... -run \"Intent|Emitted|Alias|Effort\" -count=1 passes and proves ds4 reasoning low is emitted or recorded as high according to the alias map.\n3. rg -n \"reasoning_intent|reasoning_emitted\" --glob \"*.go\" shows production telemetry/report/session fields, and tests assert they are populated.\n4. go test ./... -count=1 passes.",
+    "parent": "fizeau-92d44ce0",
+    "labels": [
+      "area:provider",
+      "area:reasoning",
+      "area:telemetry",
+      "kind:feature"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T16:58:59Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T17:00:20.012091589Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T16:58:59.353320526Z",
+      "spec-id": "ADR-010"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-010",
+      "path": "docs/helix/02-design/adr/ADR-010-reasoning-wire-form-from-catalog.md",
+      "title": "ADR-010: Reasoning Wire Form Belongs in the Model Catalog"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T170020-43e13b88",
+    "prompt": ".ddx/executions/20260512T170020-43e13b88/prompt.md",
+    "manifest": ".ddx/executions/20260512T170020-43e13b88/manifest.json",
+    "result": ".ddx/executions/20260512T170020-43e13b88/result.json",
+    "checks": ".ddx/executions/20260512T170020-43e13b88/checks.json",
+    "usage": ".ddx/executions/20260512T170020-43e13b88/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-453c147a-20260512T170020-43e13b88"
+  },
+  "prompt_sha": "6ec113750749b44de78cf3c7aac17ff5abc52569a6a654e4866882a5c3a0972d"
+}
