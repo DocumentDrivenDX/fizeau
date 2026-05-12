@@ -3214,3 +3214,228 @@ agent: loop detected (command="bash" repeated ≥4 times): cancelling
 16:34:39 readiness check: starting route: harness=codex model=gpt-5.4-mini
 16:38:56 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.4-mini
 16:39:37 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+20:39:50 do route codex/gpt-5.4-mini reason=explicit
+20:39:50 do fizeau-dc79af6b route codex/gpt-5.4-mini power=8
+20:39:50 do thinking ...
+20:39:55 do ok 1 pwd < out=78B 1 line "/var/tmp/ddx-exec-wt/.execute-bead-wt-f…
+20:39:58 do ok 2 search "|" in '"'^(service_routing'"\\.go|service_routing_tes… < out=82B 4 lines "service_routin…
+20:39:58 do ok 3 inspect lines 1,240 in docs/helix/02-design/solution-designs/… < out=9.1KB 240 lines "---"
+20:40:01 do ok 4 inspect lines 1,260 in service_routing.go < out=8.7KB 260 lines "package fizeau"
+20:40:01 do ok 5 inspect lines 1,260 in service_routing_test.go < out=8.1KB 260 lines "package fizeau"
+20:40:01 do ok 6 inspect lines 1,260 in service_model_resolution_test.go < out=6.8KB 259 lines "package fizeau"
+20:40:03 do ok 7 search "buildRoutingInputsWithCatalog..." in internal < out=73.7KB 704 lines "service_routing.… 1ms
+20:40:04 do ok 8 inspect lines 260,620 in service_routing.go < out=11.8KB 361 lines "}"
+20:40:06 do ok 9 inspect lines 780,940 in service_routing.go < out=5.3KB 161 lines "}"
+20:40:06 do ok 10 inspect lines 1080,1160 in service_routing.go < out=2.7KB 81 lines "}"
+20:40:09 do ok 11 inspect lines 1,320 in internal/modelregistry/types.go < out=1.8KB 79 lines "package modelregistr…
+20:40:09 do ok 12 inspect lines 1,260 in internal/modelregistry/assemble.go < out=6.5KB 180 lines "package modelreg…
+20:40:09 do ok 13 inspect lines 1,340 in internal/routing/types.go < out=68B 1 line "sed: can't read internal/routi…
+20:40:12 do ok 14 'rg -n --files internal/routing | sort' < out=620B 18 lines "internal/routing/engine.go"
+20:40:12 do ok 15 search "type" in internal/routing < out=19.7KB 197 lines "internal/routing/sticky_utilizati…
+20:40:15 do ok 16 inspect lines 70,430 in internal/routing/engine.go < out=14.2KB 361 lines "type HarnessEntry stru…
+20:40:18 do ok 17 search "IncludeByDefault|AutoRoutable..." in internal/modelr… < out=8.0KB 88 lines "internal/mo…
+20:40:18 do ok 18 search "type" in .*ModelSnapshot|modelregistry|catalogCache|… < out=12.2KB 126 lines "service.g…
+20:40:20 do ok 19 inspect lines 1,260 in service_models.go < out=9.0KB 260 lines "package fizeau"
+20:40:20 do ok 20 inspect lines 1,240 in service_snapshot.go < out=2.9KB 95 lines "package fizeau" 1ms
+20:40:23 do ok 21 inspect lines 1,260 in internal/modelsnapshot/types.go < out=3.1KB 130 lines "package modelsnapsh…
+20:40:23 do ok 22 inspect lines 1,260 in internal/modelsnapshot/enrich.go < out=4.9KB 148 lines "package modelsnaps…
+20:40:23 do ok 23 inspect lines 1,240 in internal/modelsnapshot/discovery.go < out=8.5KB 240 lines "package modelsn…
+20:40:26 do ok 24 inspect lines 786,940 in service.go < out=5.4KB 155 lines "type service struct {"
+20:40:26 do ok 25 inspect lines 1,260 in service_catalog_cache.go < out=8.5KB 260 lines "package fizeau"
+20:40:29 do ok 26 inspect lines 1,260 in internal/modeleligibility/eligibility… < out=1.8KB 66 lines "package mod…
+20:40:29 do ok 27 search "ModelSnapshot|assembleModelSn..." < out=6.2KB 50 lines "service_snapshot_test.go:44:\tgot…
+20:40:32 do ok 28 inspect lines 1,220 in service_config.go < out=60B 1 line "sed: can't read service_config.go: No …
+20:40:32 do ok 29 search "type" in ServiceProviderEntry|IncludeByDefaultSet|Se… < out=51.6KB 592 lines "service.g…
+20:40:34 do ok 30 inspect lines 1,180 in service.go < out=7.9KB 180 lines "package fizeau"
+20:40:36 do ok 31 inspect lines 1275,1390 in service_routing_test.go < out=4.3KB 116 lines "// Block claude/codex/g…
+20:40:38 do ok 32 inspect lines 1190,1265 in service_routing_test.go < out=2.8KB 76 lines "if err != nil {"
+20:40:44 do ok 33 inspect lines 1,260 in service_snapshot_test.go < out=6.3KB 210 lines "package fizeau"
+20:40:44 do ok 34 inspect lines 1,260 in internal/modelregistry/service_snapsh… < out=5.9KB 192 lines "package mo…
+20:40:44 do ok 35 inspect lines 1,260 in internal/modelregistry/enrich_test.go < out=3.6KB 125 lines "package m… 1ms
+20:40:48 do ok 36 'rg -n "type fakeServiceConfig|newTestService|publicRouteTra… < out=2.2KB 38 lines "85:\tsvc :=…
+20:40:48 do ok 37 inspect lines 620,760 in service_routing_test.go < out=4.3KB 141 lines "_, routeErr = svc.Resolve…
+20:40:52 do ok 38 inspect lines 930,1065 in service_routing_test.go < out=3.7KB 136 lines "}"
+20:41:03 do ok 39 'rg -n "snapshot|routing|fiz models|ResolveRoute|available-m… < out=3.3KB 45 lines "23:3. **Aut…
+20:41:05 do ok 40 inspect lines 255,340 in docs/helix/02-design/solution-desig… < out=4.7KB 86 lines "FEAT-004 ow…
+20:41:09 do ok 41 inspect lines 120,170 in internal/routing/gating.go < out=2.1KB 51 lines "if req.Model != \"\" &&…
+20:41:15 do ok 42 inspect lines 980,1105 in internal/routing/engine.go < out=4.1KB 126 lines "providerSuccessRate :…
+20:41:23 do ok 43 search "routingHarnessEntryFromMetada..." in service_models.… < out=439B 4 lines "service_routi…
+20:41:27 do ok 44 inspect lines 620,760 in service_routing.go < out=3.5KB 141 lines "func (s *service) ProviderQuot…
+20:41:30 do ok 45 inspect lines 760,1025 in service_routing.go < out=8.0KB 266 lines "return func(policy, surface s…
+20:41:44 do ok 46 search "func" in endpointProviderRef|endpointProviderRef\(" < out=419B 4 lines "service_nativ… 3ms
+20:41:47 do ok 47 inspect lines 100,130 in service_native_provider.go < out=925B 31 lines "}" 2ms
+20:41:52 do ok 48 search "DiscoveryAttempted" in internal/routing < out=1.9KB 20 lines "internal/routing/policy_inv…
+20:41:54 do ok 49 inspect lines 780,825 in internal/routing/engine.go < out=1.1KB 46 lines "return false"
+20:41:57 do ok 50 inspect lines 320,390 in internal/modelsnapshot/discovery.go < out=2.1KB 71 lines "return uniqueS…
+20:42:18 do ok 51 inspect lines 1210,1255 in internal/routing/engine.go < out=1.2KB 45 lines "}"
+20:42:20 do ok 52 inspect lines 1255,1325 in internal/routing/engine.go < out=2.1KB 70 lines "func sameLocalEndpoin…
+20:42:28 do ok 53 'rg -n "func resolveContextEvidence" -n service_models.go se… < out=157B 1 line "service_models…
+20:42:32 do ok 54 inspect lines 288,320 in service_models.go < out=1.0KB 33 lines "u, err := url.Parse(baseURL)"
+20:42:49 do ok 55 search "type" in internal/discoverycache < out=1.8KB 19 lines "internal/discoverycache/multiproce…
+20:42:54 do ok 56 inspect lines 1,120 in internal/discoverycache/cache.go < out=3.7KB 120 lines "// Package discove…
+20:43:15 do ok 57 'rg -n "func routingHarnessEntryFromMetadata" -n service_*.go'
+20:43:17 do ok 58 search "routingHarnessEntryFromMetadata" < out=233B 2 lines "service_routing.go:507:\t\tentry := …
+20:43:19 do ok 59 inspect lines 1,140 in metadata_billing.go < out=2.7KB 85 lines "package fizeau"
+20:44:00 do ok 60 'rg -n "func TestResolveRoute.*(Snapshot|ModelConstraint|Pro… < out=423B 4 lines "service_model…
+20:44:05 do ok 61 search "TestResolveRoute.*(Provider|P..." < out=519B 5 lines "service_power_bounds_test.go:73:fun…
+20:44:15 do ok 62 search "func" in TestResolveRoute.*Correlation" < out=519B 5 lines "service_routing_test.go:307:f…
+20:44:36 do ok 63 'rg -n "func endpointSourceName" internal/modelsnapshot/disc… < out=96B 1 line "469:func endpoi…
+20:44:39 do ok 64 inspect lines 460,490 in internal/modelsnapshot/discovery.go < out=1.1KB 31 lines "name = endpoin…
+20:44:47 do ok 65 inspect lines 490,525 in internal/modelsnapshot/discovery.go < out=663B 36 lines "return trimmed"
+20:45:38 do ok 66 inspect lines 1025,1085 in service_routing.go < out=1.6KB 61 lines "case input > 0 && output > 0:"
+20:46:49 do ok 67 inspect lines 860,980 in internal/routing/engine.go < out=3.4KB 120 lines "func allCandidatesReje…
+20:49:04 do ok 68 search "catalog:\\s*newCatalogCache|s\\..." in service_*_tes… < out=1.1KB 13 lines "service_rou…
+20:49:07 do ok 69 inspect lines 520,700 in service_routing_test.go < out=5.8KB 181 lines "if dec.Candidates[0].Reas…
+20:49:07 do ok 70 inspect lines 700,760 in service_routing_test.go < out=1.8KB 61 lines "policies:"
+20:49:10 do ok 71 inspect lines 1,40 in service_routing.go < out=1.2KB 40 lines "package fizeau"
+20:49:51 do ok 72 inspect lines 480,575 in service_routing.go < out=3.8KB 96 lines "}"
+20:50:20 do ok 73 inspect lines 700,770 in service_routing.go < out=1.9KB 71 lines "if s == nil || s.providerQuota …
+20:50:23 do ok 74 inspect lines 780,840 in service_routing.go < out=1.6KB 61 lines "case \"cheap\":"
+20:50:27 do ok 75 inspect lines 840,910 in service_routing.go < out=1.8KB 71 lines "add := func(modelID string) {"
+20:51:05 do ok 76 search "snapshotProviderEntries|build..." in service_routing… < out=7.4KB 206 lines "70:\ti… 1ms
+20:51:29 do ok 77 inspect lines 1,40 in service_routing_test.go < out=1.0KB 40 lines "package fizeau"
+20:52:04 do ok 78 'rg -n "type fakeServiceConfig" service_routing_test.go serv… < out=60B 1 line "service_provide…
+20:52:08 do ok 79 inspect lines 1,120 in service_providers_test.go < out=3.6KB 120 lines "package fizeau"
+20:52:13 do ok 80 search "func" in newTestService" < out=127B 1 line "service_test_helpers_test.go:11:func n…
+20:52:16 do ok 81 inspect lines 1,120 in service_test_helpers_test.go < out=548B 29 lines "package fizeau"
+20:52:21 do ok 82 inspect lines 1,180 in service_route_leases.go < out=3.9KB 132 lines "package fizeau"
+20:52:31 do ok 83 search "exact_pin_only" < out=775B 10 lines "service_routing_test.go:152: exact_p…
+20:52:51 do ok 84 inspect lines 120,210 in service_routing_test.go < out=2.7KB 91 lines "if candidate.ServerInstanc…
+20:53:35 do ok 85 inspect lines 480,710 in service_routing.go < out=7.7KB 231 lines "}"
+20:53:35 do ok 86 inspect lines 820,900 in service_routing.go < out=1.9KB 81 lines "probe := probeProviderStatus(pr…
+20:53:35 do ok 87 inspect lines 1,80 in service_routing_test.go < out=2.8KB 80 lines "package fizeau"
+20:54:01 do ok 88 'gofmt -w service_routing.go service_routing_test.go'
+20:54:05 do ok 89 inspect lines 1,40 in service_routing.go < out=9.0KB 273 lines "package fizeau" 2ms
+20:54:05 do ok 90 inspect lines 1,40 in service_routing_test.go < out=11.9KB 426 lines "package fizeau"
+20:54:19 do ok 91 inspect lines 420,445 in internal/modelsnapshot/discovery.go < out=796B 26 lines "func firstServe…
+20:54:42 do ok 92 test . -run 'TestResolveRoute.*Snapshot|TestResolveRoute.*Mo… < out=1.4KB 13 lines "--- … 4.405s
+20:55:10 do ok 94 search "Type:" in service_models_test.go < out=3.4KB 38 lines "service_route_leases_test.go:31:\t…
+20:55:10 do ok 93 search "FIZEAU_CACHE_DIR" in service_models_test.go < out=374B 5 lines "service_routing_test.go:1…
+20:55:23 do ok 95 test . -run 'TestResolveRoute.*Snapshot|TestResolveRoute.*Mo… < out=1.4KB 13 lines "--- … 3.062s
+20:55:43 do ok 96 search "DiscoverModels\\(|/models" in internal/provider/open… < out=3.7KB 33 lines "internal/pr…
+20:55:59 do ok 97 'rg -n "func openAIModelChatServer" -n service_model_resolut… < out=137B 1 line "service_http_p…
+20:56:09 do ok 98 inspect lines 410,470 in service_http_provider_test.go < out=1.7KB 61 lines "func openAIModelChat…
+20:56:58 do ok 99 inspect lines 1,40 in service_model_resolution_test.go < out=807B 39 lines "package fizeau"
+20:56:58 do ok 100 inspect lines 1,220 in service_model_resolution_test.go < out=5.6KB 220 lines "package fizeau"
+20:56:58 do ok 101 inspect lines 220,340 in service_model_resolution_test.go < out=1.3KB 43 lines "name string"
+20:57:28 do ok 102 inspect lines 1,260 in service_model_resolution_test.go < out=6.9KB 260 lines "package fizeau"
+20:57:28 do ok 103 'rg -n "TestResolveRouteModelConstraintNormalization|TestRe… < out=1.7KB 17 lines "service_mod…
+20:57:31 do ok 104 inspect lines 260,380 in service_model_resolution_test.go < out=7B 3 lines
+20:57:31 do ok 105 inspect lines 1,260 in service_routing_test.go < out=8.1KB 260 lines "package fizeau"
+20:57:34 do ok 106 inspect lines 820,920 in service_routing_test.go < out=2.7KB 101 lines "if routeErr != nil {"
+20:57:34 do ok 107 'rg -n "func writeSnapshotDiscoveryFixture|func loadRouting… < out=231B 2 lines "service_routi…
+20:57:39 do ok 108 inspect lines 1140,1275 in service_routing_test.go < out=3.6KB 136 lines "}"
+20:57:39 do ok 109 inspect lines 1275,1375 in service_routing_test.go < out=3.4KB 101 lines "max_power: 10"
+20:57:42 do ok 110 inspect lines 1375,1488 in service_routing_test.go < out=4.0KB 114 lines "Harness: \"fiz\","
+20:57:42 do ok 111 'rg -n "writeSnapshotDiscoveryFixture" service_routing_test… < out=432B 4 lines "141:\twriteSn…
+20:57:45 do ok 112 'rg -n "DiscoveryFixture" -S .' < out=2.2KB 16 lines "./service_snapshot_test.go:21:\twri…
+20:57:45 do ok 113 'rg -n "func writeSnapshotDiscoveryFixture" -S .' < out=164B 1 line "./service_snapshot_test.go:…
+20:57:48 do ok 114 inspect lines 180,280 in internal/modelregistry/assemble_te… < out=2.9KB 101 lines "t.Fatalf(\…
+20:57:48 do ok 115 inspect lines 1,180 in service_snapshot_test.go < out=5.3KB 180 lines "package fizeau"
+20:57:52 do ok 117 'rg -n "snapshotProviderEntries|assembleModelSnapshotFromSe… < out=617B 7 lines "499:\t\t\tsna…
+20:57:52 do ok 116 inspect lines 280,520 in service_routing.go < out=7.2KB 239 lines "// capabilityScoreForCostClas…
+20:57:54 do ok 118 inspect lines 520,760 in service_routing.go < out=7.6KB 240 lines "if qs, ok := subscriptionQuot…
+20:57:54 do ok 119 inspect lines 760,980 in service_routing.go < out=6.3KB 221 lines "}"
+20:57:58 do ok 120 'rg -n "type KnownModel|EndpointName|ServerInstance|Harness… < out=6.0KB 69 lines "internal/mo…
+20:57:58 do ok 121 inspect lines 1,220 in internal/modelsnapshot/*.go < out=7.3KB 220 lines "package modelsnapshot"
+20:58:01 do ok 122 inspect lines 320,380 in internal/modelsnapshot/discovery.go < out=1.9KB 61 lines "return unique…
+20:58:01 do ok 123 inspect lines 520,575 in internal/modelsnapshot/discovery.go < out=1.2KB 55 lines "if !lastDash …
+20:58:03 do ok 124 inspect lines 90,180 in internal/modelsnapshot/discovery.go < out=3.9KB 91 lines "func discoverO…
+20:58:03 do ok 125 inspect lines 180,270 in internal/modelsnapshot/discovery.go < out=3.0KB 91 lines "src := discov…
+20:58:09 do ok 126 inspect lines 380,470 in internal/modelsnapshot/discovery.go < out=2.6KB 91 lines "seenFull[mode…
+20:58:09 do ok 127 'rg -n "func endpointSourceName|func discoveryEndpoints|end… < out=693B 8 lines "77:\t\t\t\tEn…
+20:58:12 do ok 129 inspect lines 469,525 in internal/modelsnapshot/discovery.go < out=1.5KB 57 lines "func endpoint…
+20:58:12 do ok 128 inspect lines 525,565 in internal/modelsnapshot/discovery.go < out=962B 41 lines "}"
+20:58:17 do ok 130 'rg -n "family: qwen|provider_system: openai|exact_pin_only… < out=2.5KB 36 lines "service… 1ms
+20:58:17 do ok 131 search "qwen3\\.6|Qwen-3\\.6|qwen36|Qwe..." in . < out=1024.0KB 2183 lines "./website/stati… 27ms
+20:58:23 do ok 132 inspect lines 330,380 in internal/modelcatalog/catalog/mode… < out=1.4KB 51 lines "reasoning_c…
+20:58:23 do ok 133 inspect lines 240,330 in internal/modelcatalog/catalog/mode… < out=2.5KB 91 lines "openrouter_…
+20:58:31 do ok 134 search "Ambiguous|NoMatch|Resolve\\(" in internal/modelcata… < out=1.3KB 11 lines "internal/mo…
+20:58:31 do ok 135 inspect lines 1,220 in internal/modelcatalog/catalog_test.go < out=5.8KB 220 lines "package … 3ms
+20:58:42 do ok 136 search "Qwen3\\.6-35B-A3B-4bit|Qwen3\\...." in internal/mod… < out=232B 2 lines "internal/mode…
+20:58:42 do ok 137 search "Qwen3\\.6-35B-A3B-4bit|Qwen3\\...." in service_* < out=8.8KB 80 lines "service_providers…
+20:58:45 do ok 138 inspect lines 590,720 in internal/routing/engine_test.go < out=4.3KB 131 lines "for _, c := rang…
+20:58:45 do ok 139 inspect lines 720,840 in internal/routing/engine_test.go < out=4.5KB 121 lines "in.Harnesses[i].…
+20:59:12 do ok 140 'gofmt -w service_model_resolution_test.go' 101ms
+20:59:12 do ok 141 'git diff -- service_model_resolution_test.go' < out=4.7KB 135 lines "diff --git a/service… 113ms
+20:59:17 do ok 142 test . -run 'TestResolveRoute.*Snapshot|TestResolveRoute.*M… < out=35B 1 line 2.151s
+20:59:19 do ok 143 test ./internal/routing/... -run 'Power|Gating|Sticky|Filte… < out=52B 1 line "ok \tgith… 298ms
+20:59:23 do ok 144 'rg -n "liveProviderEntries|probeEndpointDiscoveredIDs|buil… < out=702B 7 lines "70:\tin := s.…
+20:59:23 do ok 145 test . -run 'TestResolveRouteSnapshotFreshCacheSkipsDiscove… < out=35B 1 line 403ms
+20:59:52 do ok 147 inspect lines 180,360 in service_http_provider_test.go < out=5.7KB 181 lines "dead := httptest.N…
+20:59:52 do ok 148 'rg -n "no provider configured for|@live|provider configure… < out=343B 3 lines "./internal/se…
+20:59:59 do ok 149 search "func" in internal < out=1.0KB 11 lines "service_routing.go:650:\t\t\t\trout…
+20:59:59 do ok 150 inspect lines 980,1065 in service_routing.go < out=2.8KB 86 lines "// to resolve Reasoning=auto …
+21:00:02 do ok 152 inspect lines 640,690 in internal/serviceimpl/execute_nativ… < out=1.2KB 51 lines "}"
+21:00:02 do ok 151 inspect lines 380,430 in internal/serviceimpl/execute_nativ… < out=1.8KB 51 lines "baseRequest…
+21:00:07 do ok 153 search "type" in *.go < out=170B 2 lines "service_providers_test.go:23:type fak…
+21:00:07 do ok 154 inspect lines 1,220 in service_test.go < out=7.8KB 220 lines "package fizeau_test"
+21:00:11 do ok 155 inspect lines 1,80 in service_providers_test.go < out=2.2KB 80 lines "package fizeau"
+21:00:11 do ok 156 inspect lines 80,150 in service_providers_test.go < out=2.3KB 71 lines "if err != nil {"
+21:00:22 do ok 157 inspect lines 1,120 in internal/serviceimpl/execute_native.… < out=3.7KB 120 lines "package se…
+21:00:22 do ok 158 search "func" in service_*.go < out=550B 4 lines "internal/serviceimpl/execute_native.g…
+21:00:25 do ok 159 inspect lines 463,520 in internal/serviceimpl/execute_nativ… < out=1.6KB 57 lines "func resolv…
+21:00:25 do ok 160 inspect lines 520,575 in internal/serviceimpl/execute_nativ… < out=1.6KB 55 lines "type native…
+21:00:31 do ok 161 inspect lines 1,120 in service_native_provider.go < out=3.8KB 120 lines "package fizeau"
+21:00:31 do ok 162 search "endpointProviderRef|Provider\\..." in internal/serv… < out=1.9KB 18 lines "service_exe…
+21:00:37 do ok 163 inspect lines 120,210 in service_native_provider.go < out=2.9KB 91 lines "func splitEndpointProv…
+21:00:37 do ok 164 'rg -n "func modelDiscoveryEndpoints" -n service_native_pro… < out=105B 1 line "service_models…
+21:00:41 do ok 165 inspect lines 240,320 in service_models.go < out=2.4KB 81 lines "RankPosition: rankPosition,"
+21:00:41 do ok 166 inspect lines 320,380 in service_models.go < out=2.0KB 61 lines "return 0, \"\""
+21:01:00 do ok 167 inspect lines 1,260 in service_route_leases_test.go < out=8.3KB 260 lines "package fizeau"
+21:01:00 do ok 168 inspect lines 260,560 in service_route_leases_test.go < out=8.7KB 241 lines "Status: \"failed\","
+21:01:07 do ok 146 'go test ./...' < out=20.6KB 303 lines "--- FAIL: TestExecuteEndpointFirs… 1m39.831s
+21:01:46 do ok 169 inspect lines 620,700 in service_routing.go < out=2.7KB 81 lines "})"
+21:01:46 do ok 170 inspect lines 700,760 in service_routing.go < out=1.5KB 61 lines "continue"
+21:02:00 do ok 171 inspect lines 160,360 in service_http_provider_test.go < out=6.2KB 201 lines "Prompt: \"ping\","
+21:02:00 do ok 172 inspect lines 1,120 in service_http_provider_test.go < out=3.9KB 120 lines "package fizeau"
+21:02:05 do ok 173 inspect lines 360,430 in service_http_provider_test.go < out=2.1KB 71 lines "Policy: \"air-gappe…
+21:02:05 do ok 174 inspect lines 430,500 in service_http_provider_test.go < out=1.4KB 61 lines "http.Error(w, \"une…
+21:03:02 do ok 175 inspect lines 1,120 in service_route_leases_test.go < out=3.5KB 120 lines "package fizeau"
+21:03:02 do ok 176 search "strings\\.Contains|strings\\.|c..." in service_rout… < out=1.4KB 18 lines "59:\trequir…
+21:03:15 do ok 177 'gofmt -w service_routing.go service_model_resolution_test.go service_http_…
+21:03:15 do ok 178 'git diff -- service_routing.go service_model_resolution_te… < out=25.5KB 745 lines "diff --gi…
+21:03:25 do ok 179 inspect lines 560,690 in service_routing.go < out=4.3KB 130 lines "func (s *service) snapshotPro…
+21:03:25 do ok 180 search "type" in service_routing.go < out=390B 5 lines "532:\t\t\tentry.Providers = s.snapsho…
+21:03:37 do ok 181 inspect lines 558,720 in service_routing.go < out=5.3KB 163 lines "}"
+21:03:37 do ok 182 inspect lines 720,760 in service_routing.go < out=947B 41 lines "}"
+21:03:43 do ok 183 'gofmt -w service_routing.go service_model_resolution_test.go service_http_…
+21:03:45 do ok 184 test . -run 'TestResolveRoute.*Snapshot|TestResolveRoute.*M… < out=35B 1 line 1.608s
+21:04:07 do ok 186 inspect lines 780,860 in service_routing_test.go < out=2.2KB 81 lines "},"
+21:04:07 do ok 187 inspect lines 210,270 in service_model_resolution_test.go < out=1.4KB 44 lines "cases := []struc…
+21:04:45 do ok 188 inspect lines 760,840 in service_routing_test.go < out=2.2KB 81 lines "}"
+21:04:45 do ok 189 'rg -n "TestProbeEndpointDiscoveredIDsUsesBoundedContext" -… < out=73B 1 line "775:func TestPr…
+21:05:11 do ok 190 'gofmt -w service_routing_test.go service_model_resolution_test.go'
+21:05:12 do ok 191 test . -run 'TestExecuteModelConstraintNormalization|TestPr… < out=35B 1 line 1.178s
+21:05:28 do ok 185 'go test ./...' < out=16.1KB 316 lines "--- FAIL: TestExecuteModelConstra… 1m37.18s
+21:06:55 do ok 192 'go test ./...' < out=15.0KB 306 lines "ok \tgithub.com/easel/fizeau\t6.1… 1m35.663s
+21:06:59 do ok 193 inspect lines 420,500 in agentcli/routing_cli_test.go < out=3.2KB 81 lines "SelectedProvider str…
+21:06:59 do ok 194 'rg -n "TestCLI_RouteStatusShowsHealthAndScoringForModelInt… < out=3.4KB 53 lines "204:\tbragi…
+21:07:10 do ok 195 inspect lines 1,120 in agentcli/routing_cli_test.go < out=3.0KB 120 lines "package agentcli_test"
+21:07:10 do ok 196 'rg -n "discoverycache|writeSnapshotDiscoveryFixture|FIZEAU… < out=135B 2 lines "565:\t\t// fa…
+21:07:22 do ok 197 inspect lines 500,560 in agentcli/routing_cli_test.go < out=3.0KB 61 lines "ServerInstance strin…
+21:07:22 do ok 198 inspect lines 560,620 in agentcli/routing_cli_test.go < out=2.5KB 61 lines "// carry a Provider.…
+21:07:30 do ok 199 'rg -n "func testEnvWithHome" -n agentcli/routing_cli_test.go'
+21:07:30 do ok 200 inspect lines 620,760 in agentcli/routing_cli_test.go < out=5.0KB 141 lines "// score components…
+21:07:33 do ok 201 inspect lines 760,860 in agentcli/routing_cli_test.go < out=4.1KB 101 lines "FilterReason string…
+21:07:33 do ok 202 'rg -n "testEnvWithHome" agentcli -S' < out=4.3KB 31 lines "agentcli/routing_cli_test.go:227:\t�…
+21:07:50 do ok 203 inspect lines 1,30 in agentcli/routing_cli_test.go < out=542B 30 lines "package agentcli_test"
+21:07:50 do ok 205 inspect lines 100,170 in agentcli/routing_cli_test.go < out=1.7KB 71 lines "\"created\":17125344…
+21:07:50 do ok 204 inspect lines 440,490 in agentcli/routing_cli_test.go < out=1.6KB 51 lines "}"
+21:08:03 do ok 206 'gofmt -w agentcli/routing_cli_test.go'
+21:08:04 do ok 207 test ./agentcli -run 'TestCLI_RouteStatusShowsHealthAndScor… < out=687B 11 lines "--- F… 1.242s
+21:08:12 do ok 208 inspect lines 490,520 in agentcli/routing_cli_test.go < out=1.0KB 31 lines "base_url: `+healthy.…
+21:08:12 do ok 209 inspect lines 460,490 in agentcli/routing_cli_test.go < out=1.3KB 31 lines "assert.Equal(t, 0, b…
+21:08:19 do ok 210 'gofmt -w agentcli/routing_cli_test.go'
+21:08:20 do ok 211 test ./agentcli -run 'TestCLI_RouteStatusShowsHealthAndScor… < out=44B 1 line "ok \tgith… 1.02s
+21:09:56 do ok 212 'go test ./...' < out=5.4KB 91 lines "ok \tgithub.com/easel/fizeau\t(cach… 1m33.506s
+21:10:00 do ok 213 'rg -n "liveProviderEntries|probeEndpointDiscoveredIDs|buil… < out=702B 7 lines "70:\tin := s.…
+21:10:03 do ok 214 'git diff --stat' < out=398B 7 lines "agentcli/routing_cli_test.go | 32 +++…
+21:10:03 do ok 215 'git status --short' < out=180B 6 lines "M agentcli/routing_cli_test.go"
+21:10:10 do ok 216 'git add service_routing.go service_routing_test.go service… < out=140B 2 lines "[detached HEA…
+21:10:23 do response complete 147788 tok in 30m33.496s, 80.6 tok/s
+✓ fizeau-dc79af6b → merged (a77cf3e4)
+
+▶ fizeau-107ee6b2: routing: rebuild RouteStatus and decision evidence from the snapshot
+17:10:29 readiness check: starting route: harness=codex model=gpt-5.4-mini
+17:13:56 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
