@@ -59,6 +59,8 @@ const (
 	KeyTimingGenerationMS    = "ddx.timing.generation_ms"
 	KeyTimingCacheReadMS     = "ddx.timing.cache_read_ms"
 	KeyTimingCacheWriteMS    = "ddx.timing.cache_write_ms"
+	KeyReasoningIntent       = "reasoning_intent"
+	KeyReasoningEmitted      = "reasoning_emitted"
 
 	// Standard OTel GenAI keys.
 	KeyConversationID  = "gen_ai.conversation.id"
@@ -169,22 +171,24 @@ type InvokeAgentSpan struct {
 
 // ChatSpan carries the attributes for a provider attempt span.
 type ChatSpan struct {
-	HarnessName     string
-	HarnessVersion  string
-	SessionID       string
-	ConversationID  string
-	ParentSessionID string
-	TurnIndex       int
-	AttemptIndex    int
-	StartTime       time.Time
-	ProviderName    string
-	ProviderSystem  string
-	ProviderRoute   string
-	RequestedModel  string
-	ResponseModel   string
-	ResolvedModel   string
-	ServerAddress   string
-	ServerPort      int
+	HarnessName      string
+	HarnessVersion   string
+	SessionID        string
+	ConversationID   string
+	ParentSessionID  string
+	TurnIndex        int
+	AttemptIndex     int
+	StartTime        time.Time
+	ProviderName     string
+	ProviderSystem   string
+	ProviderRoute    string
+	RequestedModel   string
+	ResponseModel    string
+	ResolvedModel    string
+	ReasoningIntent  string
+	ReasoningEmitted string
+	ServerAddress    string
+	ServerPort       int
 }
 
 // ExecuteToolSpan carries the attributes for a tool execution span.
@@ -440,6 +444,8 @@ func chatAttributes(attrs ChatSpan) []attribute.KeyValue {
 	out = appendString(out, KeyRequestModel, attrs.RequestedModel)
 	out = appendString(out, KeyResponseModel, attrs.ResponseModel)
 	out = appendString(out, KeyProviderModelResolved, attrs.ResolvedModel)
+	out = appendString(out, KeyReasoningIntent, attrs.ReasoningIntent)
+	out = appendString(out, KeyReasoningEmitted, attrs.ReasoningEmitted)
 	out = appendString(out, KeyServerAddress, attrs.ServerAddress)
 	out = appendInt(out, KeyServerPort, attrs.ServerPort)
 	return out
@@ -456,6 +462,8 @@ func chatMetricAttributes(attrs ChatSpan, metrics ChatMetrics) []attribute.KeyVa
 	out = appendString(out, KeyRequestModel, attrs.RequestedModel)
 	out = appendString(out, KeyResponseModel, firstNonEmpty(metrics.ResponseModel, attrs.ResponseModel))
 	out = appendString(out, KeyProviderModelResolved, firstNonEmpty(metrics.ResolvedModel, attrs.ResolvedModel))
+	out = appendString(out, KeyReasoningIntent, attrs.ReasoningIntent)
+	out = appendString(out, KeyReasoningEmitted, attrs.ReasoningEmitted)
 	out = appendString(out, KeyServerAddress, attrs.ServerAddress)
 	out = appendInt(out, KeyServerPort, attrs.ServerPort)
 	if metrics.Err != nil {

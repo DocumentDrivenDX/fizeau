@@ -23,6 +23,8 @@ type SessionStartData struct {
 	RequestedModel         string                  `json:"requested_model,omitempty"`
 	ResolvedModel          string                  `json:"resolved_model,omitempty"`
 	Reasoning              agent.Reasoning         `json:"reasoning,omitempty"`
+	ReasoningIntent        agent.Reasoning         `json:"reasoning_intent,omitempty"`
+	ReasoningEmitted       agent.Reasoning         `json:"reasoning_emitted,omitempty"`
 	ResolvedReasoning      agent.Reasoning         `json:"resolved_reasoning,omitempty"`
 	ReasoningSource        string                  `json:"reasoning_source,omitempty"`
 	AttemptedProviders     []string                `json:"attempted_providers,omitempty"`
@@ -48,6 +50,7 @@ type LLMRequestData struct {
 	Seed              int64           `json:"seed,omitempty"`
 	Stop              []string        `json:"stop,omitempty"`
 	Reasoning         agent.Reasoning `json:"reasoning,omitempty"`
+	ReasoningIntent   agent.Reasoning `json:"reasoning_intent,omitempty"`
 	CachePolicy       string          `json:"cache_policy,omitempty"`
 	// SamplingSource is the comma-separated list of resolution layers that
 	// supplied non-nil sampler fields, in chain order. Values:
@@ -59,13 +62,14 @@ type LLMRequestData struct {
 
 // LLMResponseData is the data payload for an llm.response event.
 type LLMResponseData struct {
-	Content      string           `json:"content,omitempty"`
-	ToolCalls    []agent.ToolCall `json:"tool_calls,omitempty"`
-	Usage        agent.TokenUsage `json:"usage"`
-	CostUSD      float64          `json:"cost_usd"`
-	LatencyMs    int64            `json:"latency_ms"`
-	Model        string           `json:"model"`
-	FinishReason string           `json:"finish_reason"`
+	Content          string           `json:"content,omitempty"`
+	ToolCalls        []agent.ToolCall `json:"tool_calls,omitempty"`
+	Usage            agent.TokenUsage `json:"usage"`
+	CostUSD          float64          `json:"cost_usd"`
+	LatencyMs        int64            `json:"latency_ms"`
+	Model            string           `json:"model"`
+	FinishReason     string           `json:"finish_reason"`
+	ReasoningEmitted agent.Reasoning  `json:"reasoning_emitted,omitempty"`
 }
 
 // ToolCallData is the data payload for a tool.call event.
@@ -97,6 +101,8 @@ type SessionEndData struct {
 	RequestedModel         string                  `json:"requested_model,omitempty"`
 	ResolvedModel          string                  `json:"resolved_model,omitempty"`
 	Reasoning              agent.Reasoning         `json:"reasoning,omitempty"`
+	ReasoningIntent        agent.Reasoning         `json:"reasoning_intent,omitempty"`
+	ReasoningEmitted       agent.Reasoning         `json:"reasoning_emitted,omitempty"`
 	ResolvedReasoning      agent.Reasoning         `json:"resolved_reasoning,omitempty"`
 	ReasoningSource        string                  `json:"reasoning_source,omitempty"`
 	AttemptedProviders     []string                `json:"attempted_providers,omitempty"`

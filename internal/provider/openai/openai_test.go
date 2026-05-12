@@ -1529,6 +1529,52 @@ func TestOpenAIEffortReasoningWireAliasMapWarning(t *testing.T) {
 	assert.True(t, logHandler.HasAttr("reasoning_emitted", "high"))
 }
 
+func TestOpenAIEffortReasoningWireEmittedTelemetry(t *testing.T) {
+	const model = "deepseek-v4-flash"
+	var bodyMu sync.Mutex
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodyMu.Lock()
+		capturedBody = append([]byte(nil), body...)
+		bodyMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-1",
+			"model":"` + model + `",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"done"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}
+		}`))
+	}))
+	defer srv.Close()
+
+	caps := openai.OpenAIProtocolCapabilities
+	caps.Thinking = true
+	caps.ThinkingFormat = openai.ThinkingWireFormatOpenAIEffort
+	caps.ReasoningAliasMap = map[string]string{
+		"low":    "high",
+		"medium": "high",
+		"xhigh":  "high",
+	}
+	caps.SupportedRequestParams = []string{"reasoning_effort", "think"}
+
+	p := openai.New(openai.Config{
+		BaseURL:        srv.URL + "/v1",
+		APIKey:         "test",
+		Model:          model,
+		ProviderSystem: "ds4",
+		Capabilities:   &caps,
+	})
+
+	resp, err := p.Chat(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "hello"}}, nil, agent.Options{Reasoning: agent.ReasoningLow})
+	require.NoError(t, err)
+	bodyMu.Lock()
+	defer bodyMu.Unlock()
+	assert.Contains(t, string(capturedBody), `"reasoning_effort":"high"`)
+	require.NotNil(t, resp.Attempt)
+	assert.Equal(t, string(agent.ReasoningHigh), resp.Attempt.ReasoningEmitted)
+}
+
 func TestReasoningWireBackwardsCompatSnapshots(t *testing.T) {
 	t.Run("openrouter/provider wire stays byte-identical", func(t *testing.T) {
 		body, err := captureOpenAIChatBodyWithReasoningWire(t, "anthropic/claude-sonnet-4.6", map[string]string{}, agent.Options{Reasoning: agent.ReasoningHigh})

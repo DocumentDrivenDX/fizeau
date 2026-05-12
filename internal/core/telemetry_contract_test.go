@@ -215,6 +215,73 @@ func TestTelemetryNoModelRefAttrs(t *testing.T) {
 	}
 }
 
+func TestRun_ReasoningTelemetryFields(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tel := telemetry.New(telemetry.Config{TracerProvider: tp})
+
+	provider := &conformanceProvider{
+		provider:      "ds4",
+		system:        "ds4",
+		model:         "deepseek-v4-flash",
+		serverAddress: "localhost",
+		serverPort:    8000,
+		responses: []Response{
+			{
+				Content: "done",
+				Usage:   TokenUsage{Input: 10, Output: 5, Total: 15},
+				Model:   "deepseek-v4-flash",
+				Attempt: &AttemptMetadata{
+					ProviderName:     "ds4",
+					ProviderSystem:   "ds4",
+					RequestedModel:   "deepseek-v4-flash",
+					ResponseModel:    "deepseek-v4-flash",
+					ResolvedModel:    "deepseek-v4-flash",
+					ReasoningEmitted: string(ReasoningHigh),
+					Cost: &CostAttribution{
+						Source: CostSourceUnknown,
+					},
+				},
+			},
+		},
+	}
+
+	var events []Event
+	_, err := Run(context.Background(), Request{
+		Prompt:    "say hi",
+		Provider:  provider,
+		Reasoning: ReasoningLow,
+		Telemetry: tel,
+		Callback: func(e Event) {
+			events = append(events, e)
+		},
+	})
+	require.NoError(t, err)
+
+	startEvent := eventByType(t, events, EventSessionStart)
+	endEvent := eventByType(t, events, EventSessionEnd)
+	responseEvent := eventByType(t, events, EventLLMResponse)
+
+	var startData map[string]any
+	require.NoError(t, json.Unmarshal(startEvent.Data, &startData))
+	assert.Equal(t, "low", startData["reasoning_intent"])
+
+	var endData map[string]any
+	require.NoError(t, json.Unmarshal(endEvent.Data, &endData))
+	assert.Equal(t, "low", endData["reasoning_intent"])
+	assert.Equal(t, "high", endData["reasoning_emitted"])
+	assert.Equal(t, "high", endData["resolved_reasoning"])
+
+	var responseData map[string]any
+	require.NoError(t, json.Unmarshal(responseEvent.Data, &responseData))
+	assert.Equal(t, "low", responseData["reasoning_intent"])
+	assert.Equal(t, "high", responseData["reasoning_emitted"])
+
+	chatSpan := spanByAttrString(t, recorder.Ended(), telemetry.KeyReasoningIntent, "low", telemetry.KeyReasoningEmitted, "high")
+	assert.Equal(t, "low", attrString(t, chatSpan.Attributes(), telemetry.KeyReasoningIntent))
+	assert.Equal(t, "high", attrString(t, chatSpan.Attributes(), telemetry.KeyReasoningEmitted))
+}
+
 func TestRun_CONTRACT001CostPrecedence(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
@@ -636,4 +703,36 @@ func attrFloatOk(attrs []attribute.KeyValue, key string) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+func eventByType(t *testing.T, events []Event, eventType EventType) Event {
+	t.Helper()
+	for _, e := range events {
+		if e.Type == eventType {
+			return e
+		}
+	}
+	require.Failf(t, "event not found", "missing event type %q", eventType)
+	return Event{}
+}
+
+func spanByAttrString(t *testing.T, spans []sdktrace.ReadOnlySpan, key, value, key2, value2 string) sdktrace.ReadOnlySpan {
+	t.Helper()
+	for _, span := range spans {
+		if spanAttrStringValue(span.Attributes(), key) == value && spanAttrStringValue(span.Attributes(), key2) == value2 {
+			return span
+		}
+	}
+	require.Failf(t, "span not found", "missing span with %s=%s and %s=%s", key, value, key2, value2)
+	var zero sdktrace.ReadOnlySpan
+	return zero
+}
+
+func spanAttrStringValue(attrs []attribute.KeyValue, key string) string {
+	for _, attr := range attrs {
+		if string(attr.Key) == key {
+			return attr.Value.AsString()
+		}
+	}
+	return ""
 }

@@ -77,16 +77,18 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	})
 
 	chatCtx, chatSpan := tel.StartChat(rootCtx, ChatSpan{
-		TurnIndex:      1,
-		AttemptIndex:   2,
-		ProviderName:   "openai",
-		ProviderSystem: "openai",
-		ProviderRoute:  "default",
-		RequestedModel: "gpt-4.1",
-		ResponseModel:  "gpt-4.1",
-		ResolvedModel:  "gpt-4.1",
-		ServerAddress:  "api.openai.com",
-		ServerPort:     443,
+		TurnIndex:        1,
+		AttemptIndex:     2,
+		ProviderName:     "openai",
+		ProviderSystem:   "openai",
+		ProviderRoute:    "default",
+		RequestedModel:   "gpt-4.1",
+		ResponseModel:    "gpt-4.1",
+		ResolvedModel:    "gpt-4.1",
+		ReasoningIntent:  "low",
+		ReasoningEmitted: "high",
+		ServerAddress:    "api.openai.com",
+		ServerPort:       443,
 	})
 
 	toolCtx, toolSpan := tel.StartExecuteTool(chatCtx, ExecuteToolSpan{
@@ -134,6 +136,8 @@ func TestNewStartsRootChatAndToolSpans(t *testing.T) {
 	require.Equal(t, "gpt-4.1", attrString(t, chat.Attributes(), KeyRequestModel))
 	require.Equal(t, "gpt-4.1", attrString(t, chat.Attributes(), KeyResponseModel))
 	require.Equal(t, "gpt-4.1", attrString(t, chat.Attributes(), KeyProviderModelResolved))
+	require.Equal(t, "low", attrString(t, chat.Attributes(), KeyReasoningIntent))
+	require.Equal(t, "high", attrString(t, chat.Attributes(), KeyReasoningEmitted))
 	require.Equal(t, "api.openai.com", attrString(t, chat.Attributes(), KeyServerAddress))
 	require.Equal(t, int64(443), attrInt(t, chat.Attributes(), KeyServerPort))
 

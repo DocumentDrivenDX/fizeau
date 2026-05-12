@@ -276,17 +276,19 @@ type TimingBreakdown struct {
 //
 // identity is reported through routing_decision and final ServiceEvent data.
 type AttemptMetadata struct {
-	AttemptIndex   int              `json:"attempt_index,omitempty"`
-	ProviderName   string           `json:"provider_name,omitempty"`
-	ProviderSystem string           `json:"provider_system,omitempty"`
-	Route          string           `json:"route,omitempty"`
-	ServerAddress  string           `json:"server_address,omitempty"`
-	ServerPort     int              `json:"server_port,omitempty"`
-	RequestedModel string           `json:"requested_model,omitempty"`
-	ResponseModel  string           `json:"response_model,omitempty"`
-	ResolvedModel  string           `json:"resolved_model,omitempty"`
-	Cost           *CostAttribution `json:"cost,omitempty"`
-	Timing         *TimingBreakdown `json:"timing,omitempty"`
+	AttemptIndex     int              `json:"attempt_index,omitempty"`
+	ProviderName     string           `json:"provider_name,omitempty"`
+	ProviderSystem   string           `json:"provider_system,omitempty"`
+	Route            string           `json:"route,omitempty"`
+	ServerAddress    string           `json:"server_address,omitempty"`
+	ServerPort       int              `json:"server_port,omitempty"`
+	RequestedModel   string           `json:"requested_model,omitempty"`
+	ResponseModel    string           `json:"response_model,omitempty"`
+	ResolvedModel    string           `json:"resolved_model,omitempty"`
+	ReasoningIntent  string           `json:"reasoning_intent,omitempty"`
+	ReasoningEmitted string           `json:"reasoning_emitted,omitempty"`
+	Cost             *CostAttribution `json:"cost,omitempty"`
+	Timing           *TimingBreakdown `json:"timing,omitempty"`
 }
 
 // RoutingReport summarizes dynamic routing behavior from internal wrapper
@@ -464,6 +466,10 @@ type Result struct {
 
 	// Reasoning is the resolved model-side reasoning control for this run.
 	Reasoning Reasoning `json:"reasoning,omitempty"`
+	// ReasoningIntent is the caller-requested reasoning control.
+	ReasoningIntent Reasoning `json:"reasoning_intent,omitempty"`
+	// ReasoningEmitted is the actual reasoning scalar sent on the provider wire.
+	ReasoningEmitted Reasoning `json:"reasoning_emitted,omitempty"`
 
 	// AttemptedProviders records providers tried in order by any routing wrapper.
 	AttemptedProviders []string `json:"attempted_providers,omitempty"`

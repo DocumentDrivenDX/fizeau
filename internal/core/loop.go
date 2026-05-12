@@ -33,6 +33,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		RequestedModel:   req.RequestedModel,
 		ResolvedModel:    req.ResolvedModel,
 		Reasoning:        req.Reasoning,
+		ReasoningIntent:  req.Reasoning,
 		CostCapUSD:       req.CostCapUSD,
 	}
 
@@ -103,6 +104,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 			"requested_model":   req.RequestedModel,
 			"resolved_model":    req.ResolvedModel,
 			"reasoning":         req.Reasoning,
+			"reasoning_intent":  req.Reasoning,
 			"work_dir":          req.WorkDir,
 			"prompt":            req.Prompt,
 			"system_prompt":     req.SystemPrompt,
@@ -189,6 +191,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				"sampling_source":    opts.SamplingSource,
 				"stop":               opts.Stop,
 				"reasoning":          opts.Reasoning,
+				"reasoning_intent":   opts.Reasoning,
 				"cache_policy":       opts.CachePolicy,
 			}),
 		})
@@ -382,17 +385,18 @@ func Run(ctx context.Context, req Request) (Result, error) {
 		for attempt := 1; attempt <= maxProviderAttempts; attempt++ {
 			chatStart := time.Now()
 			chatAttrs := telemetry.ChatSpan{
-				HarnessName:    telemetry.ServiceName,
-				SessionID:      sessionID,
-				ConversationID: sessionID,
-				TurnIndex:      iteration + 1,
-				AttemptIndex:   attempt,
-				StartTime:      chatStart,
-				ProviderName:   sessionProvider,
-				ProviderSystem: chatProviderSystem,
-				RequestedModel: sessionModel,
-				ServerAddress:  chatServerAddress,
-				ServerPort:     chatServerPort,
+				HarnessName:     telemetry.ServiceName,
+				SessionID:       sessionID,
+				ConversationID:  sessionID,
+				TurnIndex:       iteration + 1,
+				AttemptIndex:    attempt,
+				StartTime:       chatStart,
+				ProviderName:    sessionProvider,
+				ProviderSystem:  chatProviderSystem,
+				RequestedModel:  sessionModel,
+				ReasoningIntent: string(opts.Reasoning),
+				ServerAddress:   chatServerAddress,
+				ServerPort:      chatServerPort,
 			}
 			chatCtx, chatSpan := runtimeTelemetry.StartChat(ctx, chatAttrs)
 			// Emit LLM request event with full message bodies and tool definitions.
@@ -416,6 +420,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 					"sampling_source":    opts.SamplingSource,
 					"stop":               opts.Stop,
 					"reasoning":          opts.Reasoning,
+					"reasoning_intent":   opts.Reasoning,
 					"cache_policy":       opts.CachePolicy,
 				}),
 			})
@@ -449,6 +454,7 @@ func Run(ctx context.Context, req Request) (Result, error) {
 				resp.Attempt = &AttemptMetadata{}
 			}
 			resp.Attempt.AttemptIndex = attempt
+			resp.Attempt.ReasoningIntent = string(req.Reasoning)
 			if resp.Attempt.ProviderName == "" {
 				resp.Attempt.ProviderName = req.SelectedProvider
 			}
@@ -498,6 +504,8 @@ func Run(ctx context.Context, req Request) (Result, error) {
 					}
 				}
 			}
+			result.ReasoningEmitted = Reasoning(resp.Attempt.ReasoningEmitted)
+			chatAttrs.ReasoningEmitted = string(result.ReasoningEmitted)
 
 			// Preserve usage and cost for both successful and failed attempts.
 			result.Tokens.Add(resp.Usage)
@@ -663,14 +671,16 @@ func Run(ctx context.Context, req Request) (Result, error) {
 
 			// Emit LLM response event with full tool call bodies.
 			responseData := map[string]any{
-				"attempt_index": attempt,
-				"content":       resp.Content,
-				"tool_calls":    resp.ToolCalls,
-				"usage":         resp.Usage,
-				"latency_ms":    llmDuration.Milliseconds(),
-				"model":         resp.Model,
-				"finish_reason": resp.FinishReason,
-				"attempt":       resp.Attempt,
+				"attempt_index":     attempt,
+				"content":           resp.Content,
+				"tool_calls":        resp.ToolCalls,
+				"usage":             resp.Usage,
+				"latency_ms":        llmDuration.Milliseconds(),
+				"model":             resp.Model,
+				"finish_reason":     resp.FinishReason,
+				"attempt":           resp.Attempt,
+				"reasoning_intent":  req.Reasoning,
+				"reasoning_emitted": result.ReasoningEmitted,
 			}
 			if costKnown {
 				responseData["cost_usd"] = iterCost
@@ -942,6 +952,9 @@ func emitSessionEnd(cb EventCallback, sessionID string, seq *int, result Result,
 		"requested_model":     result.RequestedModel,
 		"resolved_model":      result.ResolvedModel,
 		"reasoning":           result.Reasoning,
+		"reasoning_intent":    result.ReasoningIntent,
+		"reasoning_emitted":   result.ReasoningEmitted,
+		"resolved_reasoning":  result.ReasoningEmitted,
 		"attempted_providers": result.AttemptedProviders,
 		"failover_count":      result.FailoverCount,
 		"metadata":            metadata,
@@ -1088,6 +1101,8 @@ func annotateChatSpan(span trace.Span, resp Response) {
 		attrs = appendStringAttr(attrs, telemetry.KeyRequestModel, resp.Attempt.RequestedModel)
 		attrs = appendStringAttr(attrs, telemetry.KeyResponseModel, resp.Attempt.ResponseModel)
 		attrs = appendStringAttr(attrs, telemetry.KeyProviderModelResolved, resp.Attempt.ResolvedModel)
+		attrs = appendStringAttr(attrs, telemetry.KeyReasoningIntent, string(resp.Attempt.ReasoningIntent))
+		attrs = appendStringAttr(attrs, telemetry.KeyReasoningEmitted, string(resp.Attempt.ReasoningEmitted))
 		attrs = appendStringAttr(attrs, telemetry.KeyServerAddress, resp.Attempt.ServerAddress)
 		attrs = appendIntAttr(attrs, telemetry.KeyServerPort, resp.Attempt.ServerPort)
 		if resp.Attempt.Timing != nil {

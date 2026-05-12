@@ -92,8 +92,10 @@ func New(cfg Config) *openai.Provider {
 		if intro.EffectiveThinkingFormat != "" {
 			caps.ThinkingFormat = openai.ThinkingWireFormat(intro.EffectiveThinkingFormat)
 		}
+		caps.EffectiveReasoningLevels = intro.EffectiveReasoningLevels
 		caps.ReasoningAliasMap = intro.AliasMap
 		caps.SupportedRequestParams = intro.SupportedRequestParams
+		caps.ServerSideReasoningFormat = intro.ServerSideReasoningFormat
 	}
 
 	return openai.New(openai.Config{

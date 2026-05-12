@@ -37,10 +37,16 @@ type ProtocolCapabilities struct {
 	// ReasoningAliasMap carries the L1 alias map from live introspection.
 	// Keys are caller-visible tiers and values are canonical tiers.
 	ReasoningAliasMap map[string]string
+	// EffectiveReasoningLevels carries the L1 canonical reasoning tiers after
+	// alias de-duplication.
+	EffectiveReasoningLevels []string
 	// SupportedRequestParams carries the L1 supported-request-parameter list
 	// from live introspection. The translator uses it as an additional hint
 	// when the explicit ThinkingFormat is absent.
 	SupportedRequestParams []string
+	// ServerSideReasoningFormat carries the server's default reasoning_format
+	// value when the provider reports one through live introspection.
+	ServerSideReasoningFormat string
 }
 
 type ThinkingWireFormat string

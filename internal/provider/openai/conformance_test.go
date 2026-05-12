@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	agent "github.com/easel/fizeau/internal/core"
 	"github.com/easel/fizeau/internal/provider/conformance"
 )
 
@@ -172,6 +173,15 @@ func TestConformance_OpenAICompatLive(t *testing.T) {
 			if desc.providerType == "omlx" && p.SupportsThinking() {
 				t.Fatal("omlx live capability contract requires SupportsThinking()==false")
 			}
+			if desc.providerType == "openrouter" {
+				_, err := p.Chat(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "live conformance preflight"}}, nil, agent.Options{MaxTokens: 1})
+				if shouldSkipOpenRouterCredits(err) {
+					t.Skip(err.Error())
+				}
+				if err != nil {
+					t.Fatalf("openrouter live preflight failed: %v", err)
+				}
+			}
 
 			conformance.Run(t, func(t *testing.T) conformance.Subject {
 				t.Helper()
@@ -196,6 +206,39 @@ func TestConformance_OpenAICompatLive(t *testing.T) {
 			})
 		})
 	}
+}
+
+type skipOnPaymentRequiredProvider struct {
+	t *testing.T
+	agent.Provider
+}
+
+func (p skipOnPaymentRequiredProvider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {
+	resp, err := p.Provider.Chat(ctx, messages, tools, opts)
+	if shouldSkipOpenRouterCredits(err) {
+		p.t.Skip(err.Error())
+	}
+	return resp, err
+}
+
+func (p skipOnPaymentRequiredProvider) ChatStream(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (<-chan agent.StreamDelta, error) {
+	streamer, ok := p.Provider.(agent.StreamingProvider)
+	if !ok {
+		return nil, fmt.Errorf("wrapped provider does not support streaming")
+	}
+	ch, err := streamer.ChatStream(ctx, messages, tools, opts)
+	if shouldSkipOpenRouterCredits(err) {
+		p.t.Skip(err.Error())
+	}
+	return ch, err
+}
+
+func shouldSkipOpenRouterCredits(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "402 Payment Required") || strings.Contains(msg, "Insufficient credits")
 }
 
 func protocolCapabilitiesForDescriptor(desc openAICompatDescriptor) *ProtocolCapabilities {
