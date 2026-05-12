@@ -1,0 +1,57 @@
+{
+  "attempt_id": "20260512T160921-cdbaf77d",
+  "bead_id": "fizeau-a43f8f65",
+  "base_rev": "9545ebc37414b225a55a889bdd97fd6e1744f4c4",
+  "created_at": "2026-05-12T16:09:24.162010746Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-a43f8f65",
+    "title": "model snapshot: expose runtime quota and latency fields",
+    "description": "Review of fizeau-7c8b1856/fizeau-491dd1e3 found that KnownModel carries Status only; it lacks quota_remaining and recent p50 latency despite ADR-012 and the epic intent. The fiz models QUOTA column currently prints catalog quota_pool, not runtime quota remaining.\n\nIn scope:\n- internal/modelregistry KnownModel snapshot fields for runtime quota and recent latency\n- assembler join from runtimesignals cache into those fields\n- CLI list/detail rendering that distinguishes quota pool from runtime quota remaining\n- tests for snapshot and CLI output\n\nOut of scope:\n- Routing consumption of snapshot; separate bead.",
+    "acceptance": "1. go test ./internal/modelregistry/... -run \"Runtime|Quota|Latency|Snapshot\" -count=1 passes and asserts runtime quota/latency are present in assembled KnownModel rows.\n2. go test ./cmd/fiz -run \"TestModelsList.*Quota|TestModelsDetail.*Runtime|TestModelsListDefaultColumns\" -count=1 passes and proves fiz models no longer labels quota_pool as runtime quota remaining.\n3. go test ./cmd/fiz/... ./internal/modelregistry/... -count=1 passes.",
+    "parent": "fizeau-e6145528",
+    "labels": [
+      "area:routing",
+      "area:cache",
+      "kind:feature"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T16:06:13Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T16:09:21.455522279Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T16:06:13.800542909Z",
+      "spec-id": "ADR-012"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-012",
+      "path": "docs/helix/02-design/adr/ADR-012-per-source-on-disk-cache.md",
+      "title": "ADR-012: Per-Source On-Disk Cache for Discovery + Runtime Signals"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260512T160921-cdbaf77d",
+    "prompt": ".ddx/executions/20260512T160921-cdbaf77d/prompt.md",
+    "manifest": ".ddx/executions/20260512T160921-cdbaf77d/manifest.json",
+    "result": ".ddx/executions/20260512T160921-cdbaf77d/result.json",
+    "checks": ".ddx/executions/20260512T160921-cdbaf77d/checks.json",
+    "usage": ".ddx/executions/20260512T160921-cdbaf77d/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-a43f8f65-20260512T160921-cdbaf77d"
+  },
+  "prompt_sha": "f623ec71b76719a06b9349f1820fe524d0e4b5465fa57811ab28c1c9ac499a71"
+}
