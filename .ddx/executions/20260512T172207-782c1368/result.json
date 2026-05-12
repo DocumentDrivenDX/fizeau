@@ -1,0 +1,23 @@
+{
+  "bead_id": "fizeau-08856539",
+  "attempt_id": "20260512T172207-782c1368",
+  "base_rev": "23bd481be50a0f40dda3b569902cc126be029f7d",
+  "result_rev": "e2fc0aa5ea39af8d681b2d1f4334d4c977b604a1",
+  "outcome": "task_succeeded",
+  "status": "success",
+  "detail": "success",
+  "harness": "codex",
+  "model": "gpt-5.4-mini",
+  "session_id": "eb-f0109506",
+  "duration_ms": 354425,
+  "tokens": 3085034,
+  "exit_code": 0,
+  "execution_dir": ".ddx/executions/20260512T172207-782c1368",
+  "prompt_file": ".ddx/executions/20260512T172207-782c1368/prompt.md",
+  "manifest_file": ".ddx/executions/20260512T172207-782c1368/manifest.json",
+  "result_file": ".ddx/executions/20260512T172207-782c1368/result.json",
+  "usage_file": ".ddx/executions/20260512T172207-782c1368/usage.json",
+  "rate_limit_budget": 300000000000,
+  "started_at": "2026-05-12T17:22:09.944238883Z",
+  "finished_at": "2026-05-12T17:28:04.369302535Z"
+}
