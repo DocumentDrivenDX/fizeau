@@ -34,6 +34,13 @@ type ProtocolCapabilities struct {
 	// nudge use this flag to distinguish "server has a sane default" from
 	// "server will decode greedy" when no catalog profile is supplied.
 	ImplicitGenerationConfig bool
+	// ReasoningAliasMap carries the L1 alias map from live introspection.
+	// Keys are caller-visible tiers and values are canonical tiers.
+	ReasoningAliasMap map[string]string
+	// SupportedRequestParams carries the L1 supported-request-parameter list
+	// from live introspection. The translator uses it as an additional hint
+	// when the explicit ThinkingFormat is absent.
+	SupportedRequestParams []string
 }
 
 type ThinkingWireFormat string
@@ -100,7 +107,28 @@ func (p *Provider) thinkingWireFormat() ThinkingWireFormat {
 	if caps.ThinkingFormat != "" {
 		return caps.ThinkingFormat
 	}
+	if hasSupportedRequestParam(caps.SupportedRequestParams, "reasoning_effort") ||
+		hasSupportedRequestParam(caps.SupportedRequestParams, "think") {
+		return ThinkingWireFormatOpenAIEffort
+	}
+	if hasSupportedRequestParam(caps.SupportedRequestParams, "enable_thinking") ||
+		hasSupportedRequestParam(caps.SupportedRequestParams, "thinking_budget") {
+		return ThinkingWireFormatQwen
+	}
+	if hasSupportedRequestParam(caps.SupportedRequestParams, "budget_tokens") ||
+		hasSupportedRequestParam(caps.SupportedRequestParams, "thinking") {
+		return ThinkingWireFormatThinkingMap
+	}
 	return ThinkingWireFormatThinkingMap
+}
+
+func hasSupportedRequestParam(params []string, target string) bool {
+	for _, param := range params {
+		if param == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Provider) strictThinkingModelMatch() bool {

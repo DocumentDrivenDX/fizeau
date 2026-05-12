@@ -45,6 +45,25 @@ func (h *testLogHandler) Messages() []string {
 	return msgs
 }
 
+func (h *testLogHandler) HasAttr(key string, want any) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.records {
+		found := false
+		r.Attrs(func(attr slog.Attr) bool {
+			if attr.Key == key && fmt.Sprint(attr.Value.Any()) == fmt.Sprint(want) {
+				found = true
+				return false
+			}
+			return true
+		})
+		if found {
+			return true
+		}
+	}
+	return false
+}
+
 // streamSSE writes a sequence of SSE data lines followed by a final [DONE] event.
 func streamSSE(w http.ResponseWriter, events []string) {
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -1013,6 +1032,15 @@ func capabilitiesForTestProvider(providerType string) *openai.ProtocolCapabiliti
 	case "openrouter":
 		caps.Thinking = true
 		caps.ThinkingFormat = openai.ThinkingWireFormatOpenRouter
+	case "ds4":
+		caps.Thinking = true
+		caps.ThinkingFormat = openai.ThinkingWireFormatOpenAIEffort
+		caps.ReasoningAliasMap = map[string]string{
+			"low":    "high",
+			"medium": "high",
+			"xhigh":  "high",
+		}
+		caps.SupportedRequestParams = []string{"reasoning_effort", "think"}
 	case "ollama":
 		caps.StructuredOutput = false
 	case "thinking-map":
@@ -1395,7 +1423,7 @@ func TestQwenReasoningWireCatalogTokensPassthrough(t *testing.T) {
 
 // captureOpenAIChatBodyWithOpenAIEffort constructs an OpenAIEffort-format provider
 // (ThinkingWireFormatOpenAIEffort) and returns the captured request body.
-func captureOpenAIChatBodyWithOpenAIEffort(t *testing.T, model string, opts agent.Options) ([]byte, error) {
+func captureOpenAIChatBodyWithOpenAIEffort(t *testing.T, model string, logger *slog.Logger, opts agent.Options) ([]byte, error) {
 	t.Helper()
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1414,6 +1442,12 @@ func captureOpenAIChatBodyWithOpenAIEffort(t *testing.T, model string, opts agen
 	caps := openai.OpenAIProtocolCapabilities
 	caps.Thinking = true
 	caps.ThinkingFormat = openai.ThinkingWireFormatOpenAIEffort
+	caps.ReasoningAliasMap = map[string]string{
+		"low":    "high",
+		"medium": "high",
+		"xhigh":  "high",
+	}
+	caps.SupportedRequestParams = []string{"reasoning_effort", "think"}
 
 	p := openai.New(openai.Config{
 		BaseURL:        srv.URL + "/v1",
@@ -1421,6 +1455,7 @@ func captureOpenAIChatBodyWithOpenAIEffort(t *testing.T, model string, opts agen
 		Model:          model,
 		ProviderSystem: "ds4",
 		Capabilities:   &caps,
+		Logger:         logger,
 	})
 	_, err := p.Chat(context.Background(), []agent.Message{{Role: agent.RoleUser, Content: "hello"}}, nil, opts)
 	return capturedBody, err
@@ -1454,20 +1489,62 @@ func TestOpenAIEffortReasoningWire(t *testing.T) {
 	const model = "deepseek-v4-flash"
 
 	t.Run("high/emits reasoning_effort:high", func(t *testing.T) {
-		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, agent.Options{Reasoning: agent.ReasoningHigh})
+		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, nil, agent.Options{Reasoning: agent.ReasoningHigh})
+		require.NoError(t, err)
+		assertOpenAIEffortReasoningWire(t, body, "high")
+	})
+
+	t.Run("low/emits reasoning_effort:high via alias map", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, nil, agent.Options{Reasoning: agent.ReasoningLow})
 		require.NoError(t, err)
 		assertOpenAIEffortReasoningWire(t, body, "high")
 	})
 
 	t.Run("off/emits think:false", func(t *testing.T) {
-		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, agent.Options{Reasoning: agent.ReasoningOff})
+		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, nil, agent.Options{Reasoning: agent.ReasoningOff})
 		require.NoError(t, err)
 		assertOpenAIEffortOffWire(t, body)
 	})
 
-	t.Run("tokens=4096/snaps to medium via NearestTierForTokens", func(t *testing.T) {
-		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, agent.Options{Reasoning: agent.ReasoningTokens(4096)})
+	t.Run("tokens=4096/snaps to high via alias map", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, nil, agent.Options{Reasoning: agent.ReasoningTokens(4096)})
 		require.NoError(t, err)
-		assertOpenAIEffortReasoningWire(t, body, "medium")
+		assertOpenAIEffortReasoningWire(t, body, "high")
+	})
+}
+
+func TestOpenAIEffortReasoningWireAliasMapWarning(t *testing.T) {
+	const model = "deepseek-v4-flash"
+	logHandler := &testLogHandler{}
+	logger := slog.New(logHandler)
+
+	body, err := captureOpenAIChatBodyWithOpenAIEffort(t, model, logger, agent.Options{Reasoning: agent.ReasoningLow})
+	require.NoError(t, err)
+	assertOpenAIEffortReasoningWire(t, body, "high")
+
+	msgs := logHandler.Messages()
+	require.NotEmpty(t, msgs, "expected a structured warning log for ds4 alias map")
+	assert.Contains(t, msgs[0], "reasoning alias map overrode requested tier")
+	assert.True(t, logHandler.HasAttr("reasoning_emitted_reason", "ds4 alias map"))
+	assert.True(t, logHandler.HasAttr("reasoning_emitted", "high"))
+}
+
+func TestReasoningWireBackwardsCompatSnapshots(t *testing.T) {
+	t.Run("openrouter/provider wire stays byte-identical", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithReasoningWire(t, "anthropic/claude-sonnet-4.6", map[string]string{}, agent.Options{Reasoning: agent.ReasoningHigh})
+		require.NoError(t, err)
+		assert.Equal(t, `{"messages":[{"content":"hello","role":"user"}],"model":"anthropic/claude-sonnet-4.6","reasoning":{"effort":"high"}}`, string(body))
+	})
+
+	t.Run("qwen/provider wire stays byte-identical", func(t *testing.T) {
+		body, err := captureOpenAIChatBodyWithReasoningWireQwen(t, "Qwen3.6-27B-UD-Q3_K_XL.gguf", nil, nil, agent.Options{Reasoning: agent.ReasoningHigh})
+		require.NoError(t, err)
+		assert.Equal(t, `{"messages":[{"content":"hello","role":"user"}],"model":"Qwen3.6-27B-UD-Q3_K_XL.gguf","chat_template_kwargs":{"enable_thinking":true,"thinking_budget":32768}}`, string(body))
+	})
+
+	t.Run("thinking-map/provider wire stays byte-identical", func(t *testing.T) {
+		body, err := captureOpenAIChatBody(t, "thinking-map", "", agent.Options{Reasoning: agent.ReasoningHigh})
+		require.NoError(t, err)
+		assert.Equal(t, `{"messages":[{"content":"hello","role":"user"}],"model":"anthropic-compat-claude","thinking":{"budget_tokens":32768,"type":"enabled"}}`, string(body))
 	})
 }

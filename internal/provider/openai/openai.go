@@ -342,6 +342,20 @@ func (p *Provider) costAttribution(rawUsage string) *agent.CostAttribution {
 	return cost
 }
 
+func applyReasoningAliasMap(policy reasoningpolicy.Policy, aliasMap map[string]string) (reasoningpolicy.Policy, bool) {
+	if policy.Kind != reasoningpolicy.KindNamed || len(aliasMap) == 0 {
+		return policy, false
+	}
+	mapped, ok := aliasMap[string(policy.Value)]
+	if !ok || mapped == "" || mapped == string(policy.Value) {
+		return policy, false
+	}
+	return reasoningpolicy.Policy{
+		Kind:  reasoningpolicy.KindNamed,
+		Value: reasoningpolicy.Reasoning(mapped),
+	}, true
+}
+
 // reasoningRequestOptions builds per-request options. For thinking models
 // (Qwen3, DeepSeek-R1 etc.) apply provider-specific non-standard body fields
 // only when the concrete provider declares the matching wire support.
@@ -416,10 +430,10 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 	}
 
 	if p.thinkingWireFormat() == ThinkingWireFormatOpenRouter {
-		return openRouterReasoningOptions(policy, catalogWire)
+		return openRouterReasoningOptions(policy, model, catalogWire)
 	}
 	if p.thinkingWireFormat() == ThinkingWireFormatOpenAIEffort {
-		return openAIEffortReasoningOptions(policy)
+		return openAIEffortReasoningOptions(policy, p.protocolCapabilities().ReasoningAliasMap, p.logger, model, p.providerSystem)
 	}
 	if p.thinkingWireFormat() == ThinkingWireFormatQwen && !isQwenModel(model) {
 		if explicitRequest && p.strictThinkingModelMatch() {
@@ -473,7 +487,9 @@ func (p *Provider) reasoningRequestOptions(model string, opts agent.Options) ([]
 // openAIEffortReasoningOptions builds the flat top-level reasoning_effort wire
 // used by ds4 / deepseek-v4-flash. Named tiers are emitted as-is; token
 // budgets are snapped to the nearest PortableBudgets tier via NearestTierForTokens.
-func openAIEffortReasoningOptions(policy reasoningpolicy.Policy) ([]option.RequestOption, error) {
+// Alias maps from live introspection are applied after snapping so ds4's
+// low/medium/xhigh→high aliasing is reflected on the wire.
+func openAIEffortReasoningOptions(policy reasoningpolicy.Policy, aliasMap map[string]string, logger *slog.Logger, model, providerSystem string) ([]option.RequestOption, error) {
 	var tier reasoningpolicy.Reasoning
 	switch policy.Kind {
 	case reasoningpolicy.KindTokens:
@@ -482,6 +498,17 @@ func openAIEffortReasoningOptions(policy reasoningpolicy.Policy) ([]option.Reque
 		tier = policy.Value
 	default:
 		return nil, fmt.Errorf("openai: unsupported OpenAI effort reasoning policy kind %q", policy.Kind)
+	}
+	normalized, changed := applyReasoningAliasMap(reasoningpolicy.Policy{Kind: reasoningpolicy.KindNamed, Value: tier}, aliasMap)
+	if changed && logger != nil {
+		logger.Warn("reasoning alias map overrode requested tier",
+			"model", model,
+			"provider", providerSystem,
+			"reasoning_intent", string(tier),
+			"reasoning_emitted", string(normalized.Value),
+			"reasoning_emitted_reason", providerSystem+" alias map",
+		)
+		tier = normalized.Value
 	}
 	return []option.RequestOption{option.WithJSONSet("reasoning_effort", string(tier))}, nil
 }
@@ -503,11 +530,12 @@ func isQwenModel(model string) bool {
 }
 
 // openRouterReasoningOptions builds the OpenRouter nested reasoning object.
+// model is included for structured-warning logs.
 // wire is the catalog reasoning_wire value for the model:
 //   - "" or "provider": pick wire shape from policy.Kind (backwards-compat)
 //   - "effort": always emit reasoning.effort string; snap KindTokens to nearest tier
 //   - "tokens": always emit reasoning.max_tokens int; expand KindNamed via PortableBudgets
-func openRouterReasoningOptions(policy reasoningpolicy.Policy, wire string) ([]option.RequestOption, error) {
+func openRouterReasoningOptions(policy reasoningpolicy.Policy, model, wire string) ([]option.RequestOption, error) {
 	reasoning := map[string]interface{}{}
 	switch wire {
 	case "effort":
