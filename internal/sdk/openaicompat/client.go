@@ -33,6 +33,9 @@ type Config struct {
 	// the parsed signal on every response. The service layer wires this to
 	// the provider quota state machine.
 	QuotaSignalObserver func(quotaheaders.Signal)
+	// RuntimeSignalObserver, when set, receives the raw response headers,
+	// request latency, and any terminal error for every provider response.
+	RuntimeSignalObserver func(http.Header, time.Duration, error)
 }
 
 // Client wraps openai-go with agent-native request and response conversion.
@@ -64,6 +67,9 @@ func NewClient(cfg Config) *Client {
 	if cfg.QuotaHeaderParser != nil && cfg.QuotaSignalObserver != nil {
 		opts = append(opts, option.WithMiddleware(quotaHeaderMiddleware(cfg.QuotaHeaderParser, cfg.QuotaSignalObserver)))
 	}
+	if cfg.RuntimeSignalObserver != nil {
+		opts = append(opts, option.WithMiddleware(runtimeSignalMiddleware(cfg.RuntimeSignalObserver)))
+	}
 
 	client := oai.NewClient(opts...)
 	return &Client{client: &client}
@@ -83,6 +89,21 @@ func quotaHeaderMiddleware(parser func(http.Header, time.Time) quotaheaders.Sign
 			if signal.Present {
 				observer(signal)
 			}
+		}
+		return resp, err
+	}
+}
+
+func runtimeSignalMiddleware(observer func(http.Header, time.Duration, error)) option.Middleware {
+	return func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		start := time.Now()
+		resp, err := next(req)
+		if observer != nil {
+			var headers http.Header
+			if resp != nil {
+				headers = resp.Header
+			}
+			observer(headers, time.Since(start), err)
 		}
 		return resp, err
 	}

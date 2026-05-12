@@ -16,6 +16,7 @@ import (
 	agent "github.com/easel/fizeau/internal/core"
 	"github.com/easel/fizeau/internal/provider/quotaheaders"
 	"github.com/easel/fizeau/internal/provider/registry"
+	"github.com/easel/fizeau/internal/runtimesignals"
 )
 
 func init() {
@@ -78,6 +79,18 @@ func New(cfg Config) *Provider {
 			return resp, err
 		}))
 	}
+	opts = append(opts, option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		start := time.Now()
+		resp, err := next(req)
+		headers := headerFromResponse(resp)
+		latency := time.Since(start)
+		runtimesignals.RecordResponse("anthropic", headers, latency, "anthropic")
+		if err := runtimesignals.Observe(context.Background(), "anthropic", "anthropic", cfg.BaseURL, headers, latency, err); err != nil {
+			// Runtime signal persistence is best-effort; never fail a chat
+			// call because the cache write could not be completed.
+		}
+		return resp, err
+	}))
 	client := ant.NewClient(opts...)
 	serverAddress, serverPort := anthropicIdentity(cfg.BaseURL)
 	return &Provider{
@@ -88,6 +101,13 @@ func New(cfg Config) *Provider {
 		serverAddress:  serverAddress,
 		serverPort:     serverPort,
 	}
+}
+
+func headerFromResponse(resp *http.Response) http.Header {
+	if resp == nil {
+		return nil
+	}
+	return resp.Header
 }
 
 func (p *Provider) Chat(ctx context.Context, messages []agent.Message, tools []agent.ToolDef, opts agent.Options) (agent.Response, error) {

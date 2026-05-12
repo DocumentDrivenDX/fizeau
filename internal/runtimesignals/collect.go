@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/easel/fizeau/internal/config"
 	"github.com/easel/fizeau/internal/discoverycache"
 	claudecache "github.com/easel/fizeau/internal/harnesses/claude"
 	codexcache "github.com/easel/fizeau/internal/harnesses/codex"
@@ -32,6 +31,14 @@ type Store struct {
 	mu        sync.RWMutex
 	latencies map[string]*LatencyWindow
 	headers   *headerStore
+}
+
+// CollectInput describes the provider identity needed to assemble a runtime
+// signal. Type controls the collection path; BaseURL is used by local
+// providers for the live /v1/models check.
+type CollectInput struct {
+	Type    string
+	BaseURL string
 }
 
 // NewStore creates an empty Store ready for use.
@@ -76,7 +83,7 @@ func (s *Store) RecordResponse(provider string, h http.Header, latency time.Dura
 
 // Collect assembles a runtime Signal for the named provider using
 // DefaultStore.
-func Collect(ctx context.Context, providerName string, cfg *config.ProviderConfig) (Signal, error) {
+func Collect(ctx context.Context, providerName string, cfg CollectInput) (Signal, error) {
 	return DefaultStore.Collect(ctx, providerName, cfg)
 }
 
@@ -89,7 +96,7 @@ func Collect(ctx context.Context, providerName string, cfg *config.ProviderConfi
 //   - "openrouter"   → most recently recorded rate-limit headers (OpenRouter parser)
 //   - "openai", "anthropic", and unknown HTTP types → rate-limit headers
 //   - local types    → HTTP GET /v1/models alive check (no quota concept)
-func (s *Store) Collect(ctx context.Context, providerName string, cfg *config.ProviderConfig) (Signal, error) {
+func (s *Store) Collect(ctx context.Context, providerName string, cfg CollectInput) (Signal, error) {
 	sig := Signal{
 		Provider:   providerName,
 		Status:     StatusUnknown,
@@ -103,10 +110,7 @@ func (s *Store) Collect(ctx context.Context, providerName string, cfg *config.Pr
 		sig.RecentP50Latency = win.P50()
 	}
 
-	providerType := ""
-	if cfg != nil {
-		providerType = cfg.Type
-	}
+	providerType := cfg.Type
 
 	switch providerType {
 	case "claude":
@@ -116,7 +120,7 @@ func (s *Store) Collect(ctx context.Context, providerName string, cfg *config.Pr
 	case "gemini":
 		collectGeminiSignal(&sig)
 	case "ds4", "llama-server", "omlx", "lmstudio", "lucebox", "vllm", "rapid-mlx", "ollama":
-		collectLocalSignal(ctx, cfg, &sig)
+		collectLocalSignal(ctx, cfg.BaseURL, &sig)
 	default:
 		s.collectHeaderSignal(providerName, &sig)
 	}
@@ -257,14 +261,14 @@ func (s *Store) collectHeaderSignal(providerName string, sig *Signal) {
 // collectLocalSignal performs an HTTP GET /v1/models alive check for local
 // providers. Local providers have no quota concept; only StatusAvailable vs
 // StatusDegraded is determined.
-func collectLocalSignal(ctx context.Context, cfg *config.ProviderConfig, sig *Signal) {
-	if cfg == nil || cfg.BaseURL == "" {
+func collectLocalSignal(ctx context.Context, baseURL string, sig *Signal) {
+	if baseURL == "" {
 		return // StatusUnknown
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, aliveCheckTimeout)
 	defer cancel()
 
-	checkURL := cfg.BaseURL + "/v1/models"
+	checkURL := baseURL + "/v1/models"
 	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, checkURL, nil) // #nosec G107
 	if err != nil {
 		return // StatusUnknown; bad URL
