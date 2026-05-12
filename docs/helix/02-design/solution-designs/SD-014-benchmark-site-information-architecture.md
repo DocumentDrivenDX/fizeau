@@ -8,25 +8,54 @@ ddx:
     - SD-010     # harness matrix benchmark (data shape this site consumes)
     - SD-012     # benchmark evidence ledger (validity story)
     - ADR-010    # reasoning wire form (drives provenance pillar)
+    - website/DESIGN.md   # visual design system this spec consumes
 ---
 
 # Solution Design: SD-014 — Benchmark Site Information Architecture
 
 **Status:** Accepted
 **Owner:** Fizeau Team
-**Supersedes:** the planning record at
-`docs/website/benchmark-redesign-plan-2026-05-12.md` (kept as the design
-exploration; SD-014 is the resolved spec implementations cite).
 
 ## Summary
 
 This spec defines the information architecture, data layer, and validity
-rules for the `/benchmarks/` section of the Fizeau microsite. It is the
-governing artifact for implementation beads under the `W-EPIC` thread.
+rules for the `/benchmarks/` section of the Fizeau microsite (Hugo +
+Hextra at `website/`). It is the governing artifact for implementation
+beads under the `W-EPIC` thread.
 
 The site serves two distinct stories with different audiences plus an
 operator-facing data explorer and a provenance pillar that documents
 "what it took to get here."
+
+## 0. Visual contract (binding)
+
+All pages and components introduced under this spec MUST adhere to
+`website/DESIGN.md` ("Fizeau — Design System"). DESIGN.md is the
+authority on:
+
+- **Color palette** — light + dark are both first-class. Use the
+  documented CSS custom properties (`--surface-page`, `--ink-primary`,
+  `--accent-cyan`, `--accent-amber`, etc.). No new accent colors;
+  no arbitrary hex codes in new templates or stylesheets.
+- **Semantic chart palette** — assign colors by ROLE, not aesthetics
+  (primary measurement = cyan; pass/positive = green; fail/negative =
+  red; secondary = amber; external/comparator = violet; baseline =
+  ink-tertiary). Documented in DESIGN.md "Semantic chart palette"
+  table. SVG charts produced by the aggregator must consume these
+  tokens.
+- **Typography** — JetBrains Mono Variable for numerals, code,
+  captions, eyebrow labels, hero headlines, brand mark; Inter
+  Variable for prose/nav/body. No third family.
+- **Brand grounding** — scientific instrument, not developer-tool
+  landing page. The data is the headline; the medium matters
+  (provenance always shown); differences over absolutes (deltas,
+  ratios, bucketed comparisons preferred over lone numbers).
+
+This spec consumes DESIGN.md; it does not modify it. Any visual
+addition (new component class, new chart type) requires DESIGN.md
+to grow first, then the consumer follows.
+
+The visual conformance audit is bead **W0** (§10).
 
 ## 1. The two stories (top-level pillars)
 
@@ -85,6 +114,31 @@ must have left-hand navigation populated by their child pages.
 
 Hugo+Hextra renders left-hand nav per section automatically. Pillar
 pages that route to children must populate nav from those children.
+
+### 2.1 Existing structure to audit and migrate
+
+The site already has content under
+`website/content/benchmarks/terminal-bench-2-1/` with subdirs
+`providers/`, `harnesses/`, `models/`, `charts/`, and `data/`. Several
+of these overlap with the new pillars:
+
+- `harnesses/*` — likely provides Story 1 raw material; audit and
+  decide: extract per-pair pages (vs-claude-code, vs-codex, etc.) or
+  reuse as detail-of-the-TB-2.1-report under `/reports/`
+- `models/*` — likely provides Story 2 raw material; same call
+- `providers/*` — provider-centric existing cuts; audit how they
+  relate to the descriptor-first principle in §3
+- `charts/*` — existing SVGs; check token compliance per §0; reuse
+  if compliant, regenerate if not
+- `data/*` — pipeline already exists (e.g. `data/machines.json`);
+  reconcile with the new aggregator in §5 (the new aggregator
+  REPLACES this pipeline; existing data files removed)
+
+W3 (Story 1) and W4 (Story 2) beads MUST audit the existing subdirs
+before writing new pages. If existing content is reusable + token-
+compliant, lift-and-link rather than rewrite. Per-suite reports stay
+at `/reports/terminal-bench-2-1/` with a 301 redirect from the
+current URL preserved (W8 handles redirect mapping).
 
 **Methodology vs Provenance split:**
 - **Methodology** = HOW we measure. Invariant. Reproducibility
@@ -152,6 +206,12 @@ explorer view when ALL of:
 5. **Required metadata complete:** profile YAML declares every
    characteristic dimension in §3. Profiles missing any required
    field are excluded with a structured "metadata incomplete" reason.
+6. **Profile exists:** every cell record must reference a profile YAML
+   that exists at aggregator-run time. Cells with no matching profile
+   (e.g., the historical `vidar-qwen3-6-27b-openai-compat` lane —
+   276 cells, profile YAML deleted operator-side 2026-05-12) are
+   dropped and counted under `aggregates-rejected.json` with reason
+   `profile_missing`.
 
 Lanes that fail any criterion appear in `aggregates-rejected.json`
 with the reason; the reliability page surfaces the rejected list with
@@ -165,12 +225,19 @@ explanations so the absence is honest, not hidden.
 `benchmark-results/fiz-tools-v1/cells/<suite>/<task>/<lane>/rep-N/report.json`
 and produces:
 
-- `microsite/static/data/cells.json` — every cell, normalized schema
-- `microsite/static/data/cells-valid.json` — same, validity-filtered
-- `microsite/static/data/aggregates.json` — pre-computed per-(engine,
+- `website/static/data/cells.json` — every cell, normalized schema
+- `website/static/data/cells-valid.json` — same, validity-filtered
+- `website/static/data/aggregates.json` — pre-computed per-(engine,
   model, hardware) summaries for story-page tables/charts
-- `microsite/static/data/aggregates-rejected.json` — lanes excluded
+- `website/static/data/aggregates-rejected.json` — lanes excluded
   with reasons
+- `website/static/data/machines.json` — derived from
+  `scripts/benchmark/machines.yaml` (consumed by hardware story page
+  for the chip cards). REPLACES the existing
+  `website/content/benchmarks/terminal-bench-2-1/data/machines.json`
+  pipeline; that file and any other content-tree JSON pipeline outputs
+  are removed by this aggregator's bead (W1) so there's a single
+  source of truth.
 
 ### Cell record schema
 
@@ -294,6 +361,37 @@ the war-stories and operator gotchas.
   (NOT per physical machine). Each entry documents wire quirks, known
   limitations, operator setup checklist, current status.
 
+## 8.5 Visual components and Hugo shortcodes
+
+The site already has a shortcode catalog under
+`website/layouts/_shortcodes/` and a custom stylesheet at
+`website/assets/css/custom.css`. New pages MUST extend these rather
+than introduce parallel infrastructure:
+
+- **Reuse first.** Every story page should be expressible via existing
+  shortcodes. If a page would require a new visual element, propose
+  it as a new shortcode under `_shortcodes/` and a CSS rule in
+  `custom.css` that consumes DESIGN.md tokens.
+- **Required new shortcodes** (file under W3/W4 or a shared
+  components bead):
+  - `descriptor-pill` — renders a lane characteristic descriptor
+    (e.g. "Qwen3.6 27B · Q3_K_XL · llama.cpp · RTX 3090 Ti · 225 W")
+    with semantic role coloring.
+  - `pass-rate-bar` — horizontal segmented bar (pass / fail / invalid)
+    using DESIGN.md role colors.
+  - `paired-comparison-row` — Story 1 table row showing two lanes
+    side-by-side with a delta.
+  - `headline-table` — Story 2 sortable table; consumes
+    `aggregates.json`.
+  - `validity-badge` — chip indicating a lane's validity status with
+    tooltip showing reasons (consumes `aggregates-rejected.json`).
+  - `provenance-callout` — used by methodology + provenance pages to
+    cite ADRs/commits inline.
+
+- **No new accent colors, no inline `style="..."` with hex codes** in
+  new templates or shortcodes. Everything goes through DESIGN.md
+  tokens defined in `website/assets/css/custom.css` (or its successor).
+
 ## 9. Per-page data flow
 
 | Page | Consumes | Build-time |
@@ -311,16 +409,20 @@ the war-stories and operator gotchas.
 | # | Title | Scope |
 |---|---|---|
 | **W-EPIC** | Benchmark site redesign — two stories + provenance + dynamic explorer | parent |
-| **W1** | Build-time aggregator + validity rules + cell schema | foundation; produces cells.json + aggregates.json |
+| **W0** | Visual conformance audit + DESIGN.md token coverage in `custom.css` | verifies §0 contract; baseline before content beads land |
+| **W1** | Build-time aggregator + validity rules + cell schema | foundation; produces `website/static/data/{cells,cells-valid,aggregates,aggregates-rejected,machines}.json` and removes the deprecated content-tree JSON pipelines |
 | **W2** | Methodology page | documents §4 validity, §5 schemas, reproducibility |
-| **W3** | Story 1 pages — harness comparison pillar + sub-pages | depends on W1 |
-| **W4** | Story 2 pages — model landscape pillar + sub-pages | depends on W1 |
-| **W5** | Explorer with DataTables.js | depends on W1 |
+| **W3** | Story 1 pages — harness comparison pillar + sub-pages | depends on W1; audits existing `website/content/benchmarks/terminal-bench-2-1/harnesses/*` (per §2.1) — reuse where token-compliant, rewrite otherwise |
+| **W4** | Story 2 pages — model landscape pillar + sub-pages | depends on W1; same audit treatment for `models/*` and `providers/*` |
+| **W5** | Explorer with DataTables.js | depends on W1; new shortcodes per §8.5 |
 | **W6** | Provenance pillar + stack-notes | self-contained docs; can land first |
 | **W7** | Profile YAML metadata backfill (per §3 required dimensions) | prerequisite to W1's aggregator passing the validity gate for all worth-including lanes |
+| **W8** | URL migration + 301 redirects from current per-(provider/harness/model) lane-name URLs | preserves bookmark/SEO continuity when descriptor-first replaces the old structure; runs after W3+W4 land |
 
-Dependency: W7 → W1 → (W2, W3, W4, W5). W6 is documentation-heavy
-and depends on none of the others.
+Dependency graph:
+- W0 standalone (visual baseline)
+- W7 → W1 → (W2, W3, W4, W5) → W8
+- W6 standalone (documentation-heavy)
 
 ## 11. Decisions captured (operator review 2026-05-12)
 
@@ -344,6 +446,10 @@ and depends on none of the others.
 
 ## 12. Out of scope
 
+- **Modifying DESIGN.md.** This spec consumes the design system; it
+  does not change it. Any visual addition (new component, new chart
+  type) requires DESIGN.md to grow first, then SD-014's consumers
+  follow.
 - Real-time updates (operator triggers `make site`).
 - Multi-machine cache sharing for the data layer (per-host build).
 - OR sub-provider (`@<sub_provider>`) expansion in lane identity —
