@@ -1,0 +1,180 @@
+{
+  "attempt_id": "20260512T061705-c80e05e0",
+  "bead_id": "fizeau-586e476a",
+  "base_rev": "12f582c24ce8e1d9681c78447138e3b12cf8ae07",
+  "created_at": "2026-05-12T06:17:07.811329636Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.5",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-586e476a",
+    "title": "bench: preflight smoke test for each lane in run_terminalbench_2_1_sweep.sh",
+    "description": "Add a per-lane preflight check to scripts/benchmark/run_terminalbench_2_1_sweep.sh that fires a single 1-token chat completion against each requested lane's endpoint before any matrix runner spawns. If the endpoint cannot produce a token within 30s using the lane's actual sampling params, fail the sweep with a non-zero exit and a clear message naming the lane, the endpoint, the model id, and the underlying error.\n\nWhy this matters: see parent epic. The 2026-05-10 sindri-llamacpp incident wasted 119 cells (~93 min) on a `reasoning: low` parameter the llama-server provider rejects. The same hour, sindri-vllm wasted multiple cells on a hung model engine where /v1/models responded but /v1/chat/completions never streamed tokens. A single curl-to-completion check per lane catches all these classes (plus auth failures, missing-model 404s, connection-refused, wrong content-type) at sweep startup, before any matrix runner spawns.\n\nBehavior:\n\n- Fire after `Resolved tasks:` is printed, before the per-lane \"starting\" markers.\n- For each lane in the resolved plan: build a JSON body using the lane's `fizeau_env.FIZEAU_MODEL` and the lane's sampling block (temperature, top_p, top_k, reasoning when present). POST to `\u003cbase_url\u003e/chat/completions` with `max_tokens: 1` and a 30s timeout.\n- Pass condition: the response is JSON-parseable and `.choices[0].message.content` is a non-null string (even an empty string is OK — the model started decoding).\n- Fail condition: any non-2xx, timeout, malformed JSON, or missing message content. Print the lane id, base_url, model id, sampling params attempted, and the response body (truncated to 1KB).\n- Skip preflight for managed-cloud lanes that have always-on SLAs (openrouter, openai, anthropic) — these are well-known and a preflight just burns quota. Identify by checking the resource group's `provider_type` against an allow-list (vllm, llama-server, omlx, lmstudio, rapid-mlx, ollama, lucebox).\n\nIn-scope files:\n- scripts/benchmark/run_terminalbench_2_1_sweep.sh — add preflight_lane() function + per-lane invocation loop right before the existing per-lane plan output.\n- scripts/benchmark/terminalbench-2-1-sweep.yaml — no schema change needed; the existing `fizeau_env` and `sampling` blocks are sufficient.\n\nOut-of-scope (file separate beads):\n- Pre-resume validation that the model server is the same version as last time (different problem; would need version stamps on cells).\n- Per-cell health probe during the sweep (defense-in-depth piece is fizeau-XXXX, the consecutive-failure halt bead).\n- Adding the smoke check to non-TerminalBench benchmark scripts.\n\nAcceptance is a command:\n\n1. With sindri-llamacpp configured to use `reasoning: low` (the broken state we just fixed), `scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes sindri-llamacpp,vidar --dry-run` exits non-zero with `[preflight] sindri-llamacpp FAILED: reasoning=\"low\" is not supported by provider type \"llama-server\"` (or equivalent error text) and does not print any per-lane \"starting\" marker.\n2. With sindri-llamacpp correctly configured (no `reasoning` param), the same command prints `[preflight] sindri-llamacpp OK (1 token in \u003cwall\u003es)` and continues to the lane plan output normally.\n3. Test by killing the llama-server process: `scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes sindri-llamacpp` exits non-zero with `[preflight] sindri-llamacpp FAILED: connection refused` (or curl error 7) and no matrix runner is spawned.\n4. The cloud lane skip works: `scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes openrouter-qwen36 --dry-run` does not call openrouter and prints `[preflight] openrouter-qwen36 SKIPPED (managed cloud lane)`.\n\nCost budget: at most ~30s × N_lanes added to sweep startup wall time. For an 11-lane full sweep that's ~5 min, much cheaper than waiting for the first cell of each broken lane to fail.",
+    "acceptance": "1. `TestPreflightLaneMisconfiguredReasoning` covers sindri-llamacpp configured with `reasoning: low`: `scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes sindri-llamacpp,vidar --dry-run` exits non-zero in under 60s with a `[preflight] sindri-llamacpp FAILED` message naming the unsupported reasoning parameter and does not print any per-lane \"starting\" marker.\n2. `TestPreflightLaneOK` covers correctly configured sindri-llamacpp: the same command prints `[preflight] sindri-llamacpp OK (1 token in \u003cwall\u003es)` and continues to the lane plan output normally.\n3. `TestPreflightLaneConnectionRefused` covers stopped llama-server: `scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes sindri-llamacpp` exits non-zero with `[preflight] sindri-llamacpp FAILED: connection refused` or curl error 7, and no matrix runner is spawned.\n4. `TestPreflightManagedCloudSkipped` covers cloud lanes: `scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes openrouter-qwen36 --dry-run` does not call OpenRouter and prints `[preflight] openrouter-qwen36 SKIPPED (managed cloud lane)`.\n5. `scripts/benchmark/test_preflight_lane.bash` or an equivalent shellspec file defines the four test cases above against a mock HTTP server.",
+    "parent": "fizeau-1a5353cd",
+    "labels": [
+      "area:benchmark",
+      "kind:reliability",
+      "kind:tooling"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T06:14:09Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "1864078",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"acceptance criteria dropped or altered\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-11T03:53:19.359343977Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "Bead reasoning was sound — the worker's intake just flagged acceptance criteria changes during pre-claim due to a noisy worktree (stale .ddx/executions files). That root cause is now resolved (the cleanup committed as 9d77b81a). Bead description and acceptance criteria are still valid; retry the implementation. Recent live incident on 2026-05-11 confirmed the value: vidar oMLX endpoint went down and 70 cells silently failed before detection — exactly what this preflight check would have caught in \u003c30s.",
+          "created_at": "2026-05-11T16:53:46.099301371Z",
+          "kind": "needs_human_resolved",
+          "source": "ddx bead human resolve",
+          "summary": "action=retry"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"acceptance criteria dropped or altered\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-11T16:57:16.328278532Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"acceptance supplied without changed_fields\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-12T01:20:39.635795913Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "Operator reviewed intake block; retry unchanged to keep worker queue moving.",
+          "created_at": "2026-05-12T04:53:43.073208211Z",
+          "kind": "needs_human_resolved",
+          "source": "ddx bead human resolve",
+          "summary": "action=retry"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"acceptance criteria dropped or altered\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-12T04:59:41.453107981Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "Operator normalized acceptance into explicit numbered criteria from the existing description; retry with corrected acceptance.",
+          "created_at": "2026-05-12T05:01:18.392437101Z",
+          "kind": "needs_human_resolved",
+          "source": "ddx bead human resolve",
+          "summary": "action=retry"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"acceptance supplied without changed_fields\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-12T05:04:17.708161086Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "Operator corrected acceptance and restarted worker with stronger pre-claim model after repeated gpt-5.4-mini schema failures; retry.",
+          "created_at": "2026-05-12T05:05:21.758450477Z",
+          "kind": "needs_human_resolved",
+          "source": "ddx bead human resolve",
+          "summary": "action=retry"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"acceptance supplied without changed_fields\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-12T05:24:44.701068561Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "Operator disabled intake rewrites in bead-lifecycle skill and acceptance is already explicit; retry.",
+          "created_at": "2026-05-12T05:28:39.427210931Z",
+          "kind": "needs_human_resolved",
+          "source": "ddx bead human resolve",
+          "summary": "action=retry"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"acceptance supplied without changed_fields\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-12T05:33:02.684031198Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "Operator patched local DDx pre-claim intake to stop requesting rewrites; retry.",
+          "created_at": "2026-05-12T05:37:40.165915296Z",
+          "kind": "needs_human_resolved",
+          "source": "ddx bead human resolve",
+          "summary": "action=retry"
+        },
+        {
+          "actor": "",
+          "body": "[{\"ac\":1,\"text\":\"With sindri-llamacpp configured to use `reasoning: low`, `scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes sindri-llamacpp,vidar --dry-run` exits non-zero in under 60s with a `[preflight] sindri-llamacpp FAILED` message naming the unsupported reasoning parameter and does not print any per-lane \\\"starting\\\" marker.\",\"kind\":\"negative\",\"verifiable\":true},{\"ac\":2,\"text\":\"With sindri-llamacpp correctly configured, the same command prints `[preflight] sindri-llamacpp OK (1 token in \\u003cwall\\u003es)` and continues to the lane plan output normally.\",\"kind\":\"prose\",\"verifiable\":false},{\"ac\":3,\"text\":\"With the llama-server process stopped, `scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes sindri-llamacpp` exits non-zero with `[preflight] sindri-llamacpp FAILED: connection refused` or curl error 7, and no matrix runner is spawned.\",\"kind\":\"prose\",\"verifiable\":false},{\"ac\":4,\"text\":\"`scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase full --lanes openrouter-qwen36 --dry-run` does not call OpenRouter and prints `[preflight] openrouter-qwen36 SKIPPED (managed cloud lane)`.\",\"kind\":\"negative\",\"verifiable\":true},{\"ac\":5,\"text\":\"`scripts/benchmark/test_preflight_lane.bash` or an equivalent shellspec test covers the misconfigured local lane, correctly configured local lane, endpoint-down local lane, and managed-cloud skip cases against a mock HTTP server.\",\"kind\":\"prose\",\"verifiable\":false}]",
+          "created_at": "2026-05-12T05:38:19.930981613Z",
+          "kind": "ac-quality-low",
+          "source": "preclaim-ac-quality",
+          "summary": "score=0.40 threshold=0.50 verifiable=2/5"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"detail\":\"score 0.40 below threshold 0.50 (2/5 verifiable ACs)\",\"intake_outcome\":\"operator_required\"}",
+          "created_at": "2026-05-12T05:38:19.939985462Z",
+          "kind": "intake.blocked",
+          "source": "ddx agent execute-loop",
+          "summary": "operator_required"
+        },
+        {
+          "actor": "erik",
+          "body": "Operator made ACs mechanically verifiable and cleared stale AC-quality gate metadata; retry.",
+          "created_at": "2026-05-12T05:39:48.107968817Z",
+          "kind": "needs_human_resolved",
+          "source": "ddx bead human resolve",
+          "summary": "action=retry"
+        },
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T06:17:05.312409255Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T06:14:09.133790752Z",
+      "execute-loop-last-detail": "landing worktree has staged changes after waiting 2s:\nD\t.ddx/executions/20260502T204945-7eb888c0/no_changes_rationale.txt\nD\t.ddx/executions/20260502T231952-3d7f445d/findings.md\nD\t.ddx/executions/20260502T231952-3d7f445d/no_changes_rationale.txt\nD\t.ddx/executions/20260502T235712-91e27c92/findings.md\nD\t.ddx/executions/20260502T235712-91e27c92/no_changes_rationale.txt\nD\t.ddx/executions/20260503T000302-a453886f/findings.md\nD\t.ddx/executions/20260503T001340-2daf470c/findings.md\nD\t.ddx/executions/20260503T002325-c7a9fe81/findings.md\nD\t.ddx/executions/20260503T002945-dfec88f5/findings.md\nD\t.ddx/executions/20260503T003000-01c62925/findings.md\nD\t.ddx/executions/20260503T014110-b5dfbab6/findings.md\nD\t.ddx/executions/20260503T014408-54566b0e/findings.md\nD\t.ddx/executions/20260504T030755-a9464ce3/qwen-tool-loop-investigation.md",
+      "execute-loop-last-status": "preclaim-hook-failed",
+      "execute-loop-retry-after": "2026-05-11T03:50:29Z"
+    }
+  },
+  "paths": {
+    "dir": ".ddx/executions/20260512T061705-c80e05e0",
+    "prompt": ".ddx/executions/20260512T061705-c80e05e0/prompt.md",
+    "manifest": ".ddx/executions/20260512T061705-c80e05e0/manifest.json",
+    "result": ".ddx/executions/20260512T061705-c80e05e0/result.json",
+    "checks": ".ddx/executions/20260512T061705-c80e05e0/checks.json",
+    "usage": ".ddx/executions/20260512T061705-c80e05e0/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-586e476a-20260512T061705-c80e05e0"
+  },
+  "prompt_sha": "67909b1a6da6e3043767f787ba019ae489d0419f7ae68c97a0ffa26a8bd28f29"
+}
