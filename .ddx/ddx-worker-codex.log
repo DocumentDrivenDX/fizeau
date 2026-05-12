@@ -1435,3 +1435,76 @@ Follow-up needed:
 11:08:48 readiness check: starting route: harness=codex model=gpt-5.4-mini
 11:10:32 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.4-mini
 11:11:12 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
+15:11:25 do route codex/gpt-5.4-mini reason=explicit
+15:11:25 do fizeau-144bd2f9 route codex/gpt-5.4-mini power=8
+15:11:25 do thinking ...
+15:11:36 do ok 1 'pwd < out=97.0KB 732 lines "/var/tmp/ddx-exec-wt/.execute-bea… 1ms
+15:11:42 do ok 2 inspect lines 1,560 in internal/provider/openai/openai.go < out=20.6KB 560 lines "// Package opena…
+15:11:42 do ok 3 inspect lines 1,260 in internal/provider/openai/protocol_supp… < out=4.8KB 116 lines "package op…
+15:11:42 do ok 4 inspect lines 1,260 in internal/reasoning/reasoning.go < out=12.4KB 453 lines "package reasoning"
+15:11:42 do ok 5 inspect lines 1,220 in internal/provider/ds4/ds4.go < out=6.9KB 210 lines "// Package ds4 wrap… 1ms
+15:11:42 do ok 6 inspect lines 1,260 in internal/provider/openai/openai_test.go < out=9.2KB 260 lines "package … 1ms
+15:11:45 do ok 7 'rg -n "reasoning|ThinkingWireFormat|reasoning_effort|chat_te… < out=5.0KB 71 lines "71:// reaso…
+15:11:45 do ok 8 inspect lines 260,760 in internal/provider/openai/openai_test… < out=15.6KB 500 lines "Model: \"…
+15:11:47 do ok 9 inspect lines 760,1560 in internal/provider/openai/openai_tes… < out=26.2KB 713 lines "t.Run(\"s…
+15:11:47 do ok 10 inspect lines 1560,1920 in internal/provider/openai/openai_test.go
+15:11:51 do ok 11 inspect lines 280,430 in docs/helix/02-design/adr/ADR-010-re… < out=6.5KB 151 lines "routing, w…
+15:11:51 do ok 12 'rg -n "SupportedRequestParams|AliasMap|EffectiveThinkingFor… < out=5.5KB 41 lines "interna… 2ms
+15:11:55 do ok 13 inspect lines 1,220 in internal/provider/registry/introspect… < out=9.6KB 270 lines "package re…
+15:11:55 do ok 14 inspect lines 1,140 in internal/provider/ds4/introspection_t… < out=5.1KB 140 lines "package ds…
+15:11:58 do ok 15 inspect lines 560,760 in internal/provider/openai/openai.go < out=1.1KB 48 lines "default:"
+15:12:03 do ok 16 inspect lines 1,220 in internal/provider/registry/registry.go < out=5.5KB 155 lines "// Package r…
+15:12:03 do ok 17 search "ModelReasoningWire|reasoningD..." in internal/provid… < out=2.9KB 31 lines "internal/pr…
+15:12:07 do ok 19 'rg -n "ProviderIntrospection|IntrospectProvider|EffectiveRe… < out=7.5KB 61 lines "internal/pr…
+15:12:07 do ok 18 inspect lines 1,160 in internal/provider/openrouter/openrout… < out=6.0KB 207 lines "package op…
+15:12:12 do ok 21 inspect lines 100,170 in docs/helix/02-design/adr/ADR-010-re… < out=3.1KB 71 lines "PortableBud…
+15:12:12 do ok 20 inspect lines 170,230 in docs/helix/02-design/adr/ADR-010-re… < out=2.7KB 61 lines "**Negative:…
+15:12:21 do ok 22 inspect .chat_template' < out=890B 2 lines "\"deepseek\""
+15:12:21 do ok 23 inspect .reasoning.supported_efforts' < out=204B 20 lines "["
+15:12:36 do ok 24 inspect lines 1,140 in internal/provider/openai/protocol_sup… < out=4.8KB 116 lines "package op…
+15:12:36 do ok 25 'rg -n "introspection|alias map|SupportedRequestParams|Serve… < out=342B 4 lines "1360:// wire …
+15:13:02 do ok 26 'go test ./internal/provider/openai/... ./internal/reasoning… < out=240B 4 lines "ok \t… 21.838s
+15:13:18 do ok 27 'rg -n "override|structured warning|failure-signal|L2 overri… < out=198B 1 line "rg: docs/helix…
+15:13:18 do ok 28 inspect lines 230,280 in docs/helix/02-design/adr/ADR-010-re… < out=106B 1 line "sed: can't rea…
+15:13:38 do ok 29 'find internal/provider/openai -maxdepth 2 -type f | sort' < out=526B 12 lines "internal/provider…
+15:13:38 do ok 30 'rg -n "fixture|request.json|response.json|wire body|byte-id… < out=515B 4 lines "internal/prov…
+15:14:08 do ok 31 search "slog.Warn\\(|\\.Warn\\(" in 40 < out=240B 2 lines "internal/provider/registry/introspect�…
+15:14:08 do ok 32 'rg -n "reasoning_intent|reasoning_emitted|reasoning_emitted… < out=267B 2 lines "./docs/helix/…
+15:14:11 do ok 33 'rg -n "openai.ProtocolCapabilities" internal/provider -S' < out=891B 9 lines "internal/provider/…
+15:14:11 do ok 34 search "ProtocolCapabilities\\{" in internal/provider < out=1.1KB 11 lines "internal/provider/vll…
+15:15:00 do ok 35 inspect lines 1,220 in internal/provider/openai/protocol_sup… < out=805B 34 lines "package open…
+15:16:45 do ok 36 inspect lines 1,120 in internal/provider/openai/protocol_sup… < out=4.8KB 116 lines "package op…
+15:17:08 do ok 37 inspect lines 330,590 in internal/provider/openai/openai.go < out=9.0KB 260 lines "RequestedModel…
+15:18:06 do ok 38 search "openRouterReasoningOptions\\(" in internal/provider/… < out=258B 2 lines "internal/prov…
+15:18:31 do ok 39 inspect lines 1388,1495 in internal/provider/openai/openai_t… < out=3.6KB 86 lines "model: \"to…
+15:18:31 do ok 40 inspect lines 1000,1035 in internal/provider/openai/openai_t… < out=1.1KB 36 lines "case \"… 3ms
+15:18:31 do ok 41 inspect lines 1450,1545 in internal/provider/openai/openai_t… < out=1013B 23 lines "// TestOpen…
+15:18:59 do ok 42 search "captureOpenAIChatBodyWithOpen..." in internal/provid… < out=741B 6 lines "1407:func cap…
+15:19:14 do ok 43 'go test ./internal/provider/openai/... ./internal/reasoning… < out=3.1KB 57 lines "--- … 9.108s
+15:19:30 do ok 44 inspect lines 430,560 in internal/provider/openai/openai.go < out=5.3KB 131 lines "option.WithJSO…
+15:19:30 do ok 45 inspect lines 1000,1120 in internal/provider/openai/openai_t… < out=4.4KB 121 lines "case \"thi…
+15:19:35 do ok 46 inspect lines 1407,1445 in internal/provider/openai/openai_t… < out=1.6KB 39 lines "func captur…
+15:19:53 do ok 47 'go test ./internal/provider/openai/... ./internal/reasoning… < out=1.0KB 13 lines "2026… 8.251s
+15:20:02 do ok 48 inspect lines 1,60 in internal/provider/openai/openai_test.go < out=1.5KB 60 lines "package opena…
+15:20:20 do ok 49 'go test ./internal/provider/openai/... ./internal/reasoning… < out=245B 4 lines "ok \tg… 8.436s
+15:20:32 do ok 50 inspect lines 1,220 in internal/provider/openai/conformance_… < out=7.3KB 220 lines "package op…
+15:20:32 do ok 51 search "captureOpenAIChatBody|body" in internal/provider/ope… < out=5.4KB 38 lines "internal/pr…
+15:20:53 do ok 52 'go test ./internal/provider/openai -run TestReasoningWireSn… < out=554B 7 lines "=== RUN… 453ms
+15:21:03 do ok 53 'go test ./internal/provider/openai -run TestReasoningWireSn… < out=595B 7 lines "=== RUN… 500ms
+15:21:25 do ok 54 'go test ./internal/provider/openai/... ./internal/reasoning… < out=245B 4 lines "ok \tg… 8.256s
+15:23:10 do ok 55 'go test ./...' < out=5.1KB 89 lines "ok \tgithub.com/easel/fizeau\t6.369… 1m39.407s
+15:23:13 do ok 56 'go vet ./...' 789ms
+15:23:18 do ok 57 'git diff -- internal/provider/openai/openai.go internal/pro… < out=13.3KB 299 lines "diff --gi…
+15:23:18 do ok 58 'git status --short' < out=159B 4 lines "M internal/provider/ds4/ds4.go"
+15:23:21 do ok 59 'rg -n "logReasoningAliasOverride" internal/provider/openai/… < out=110B 1 line "359:func (p *P…
+15:23:42 do ok 60 'go test ./internal/provider/openai/... ./internal/reasoning… < out=241B 4 lines "ok \t… 11.218s
+15:23:44 do ok 61 'git status --short' < out=159B 4 lines "M internal/provider/ds4/ds4.go"
+15:23:53 do ok 62 'git add internal/provider/ds4/ds4.go internal/provider/open… < out=146B 2 lines "[detached HEA…
+15:23:57 do ok 63 'git status --short'
+15:24:04 do response complete 56680 tok in 12m39.388s, 74.6 tok/s
+✓ fizeau-144bd2f9 → merged (7c4a73be)
+
+▶ fizeau-b83502c0: Probe Qwen3.6-27B + populate catalog + fix surface-id lookup + revert benchmark profiles
+11:24:09 readiness check: starting route: harness=codex model=gpt-5.4-mini
+11:28:50 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.4-mini
+11:29:30 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.4-mini
