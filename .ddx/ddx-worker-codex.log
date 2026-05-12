@@ -11,3 +11,120 @@ bead readiness blocked: score 0.00 below threshold 0.50 (0/4 verifiable ACs) (re
 01:38:20 readiness check: starting route: harness=codex model=gpt-5.5
 01:40:02 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.5
 01:40:42 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
+05:40:54 do route codex/gpt-5.5 reason=explicit
+05:40:54 do fizeau-7c4b7647 route codex/gpt-5.5 power=10
+05:40:54 do thinking ...
+05:41:08 do ok 1 inspect lines 1,220 in /var/tmp/ddx-exec-wt/.execute-bead-wt-… < out=8.5KB 152 lines "---" 1ms
+05:41:11 do ok 2 inspect lines 1,260 in .agents/skills/ddx/reference/work.md < out=6.6KB 155 lines "# Work — Drai…
+05:41:24 do ok 3 inspect lines 1,260 in docs/helix/02-design/adr/ADR-010-reaso… < out=11.2KB 260 lines "---"
+05:41:24 do ok 4 search "qwen3\\.6-27b|deepseek|deepsee..." in internal/modelc… < out=1.1KB 35 lines "12: display…
+05:41:24 do ok 5 search "docs/research" in 'probe-reasoning|reasoning-wire|202… < out=5.3KB 71 lines "docs/resear…
+05:41:24 do ok 6 search "|" in 'fizeau-probe-reasoning|probe-reasoning' < out=5.4KB 73 lines "cmd/fizeau-probe-reas…
+05:41:25 do ok 7 'git status --short' 544ms
+05:41:37 do ok 8 inspect lines 1,260 in cmd/fizeau-probe-reasoning/main.go < out=8.1KB 260 lines "// Command fizeau…
+05:41:37 do ok 9 inspect lines 240,350 in internal/modelcatalog/catalog/models… < out=3.0KB 111 lines "reasoning_…
+05:41:37 do ok 10 'find docs/research/probe-reasoning-2026-05-11-v2 -maxdepth … < out=2.6KB 40 lines "docs/resear…
+05:41:37 do ok 11 inspect lines 1,220 in docs/research/probe-reasoning-2026-05… < out=2.7KB 46 lines "# Probe Rea…
+05:41:37 do ok 12 for f in docs/research/probe-reasoning-2026-05-11-v2/{or,sin… < out=29.5KB 663 lines "docs/… 4ms
+05:41:54 do ok 13 inspect lines 260,620 in cmd/fizeau-probe-reasoning/main.go < out=11.4KB 361 lines "req.Header.Se…
+05:41:54 do ok 14 git ls-files < out=2.6KB 40 lines "docs/research/probe-reasoning-2026-…
+05:41:54 do ok 15 search "\\\"vidar-ds4|sindri-club-3090|..." in '"'!docs/rese… < out=542.4KB 1475 lines "./w… 9ms
+05:41:54 do ok 16 find . -maxdepth 3 -type f \( -name '*profile*.yaml' -o -nam… < out=742B 18 lines "./.ddx/beads…
+05:42:07 do ok 17 inspect lines 1,140 in scripts/benchmark/profiles/vidar-ds4.… < out=4.5KB 98 lines "# DeepSeek …
+05:42:07 do ok 18 inspect lines 1,120 in scripts/benchmark/profiles/fiz-openro… < out=2.5KB 60 lines "# fiz provi…
+05:42:07 do ok 19 inspect lines 1,140 in scripts/benchmark/profiles/sindri-lla… < out=102B 1 line "sed: can't rea…
+05:42:07 do ok 20 inspect lines 1,140 in scripts/benchmark/profiles/vidar-qwen… < out=2.1KB 53 lines "# Qwen3.6-2…
+05:42:07 do ok 21 env | rg 'OPENROUTER|FIZEAU|API_KEY|OPENAI' < out=92B 1 line "OPENROUTER_API_KEY=[redacted]"
+05:42:10 do ok 22 'rg --files scripts/benchmark/profiles | sort' < out=1.1KB 21 lines "scripts/benchmark/profiles/b…
+05:42:13 do ok 23 inspect lines 1,140 in scripts/benchmark/profiles/sindri-lla… < out=2.7KB 61 lines "# Qwen3.6-2…
+05:42:30 do ok 24 curl -fsS --max-time 8 http://vidar:1236/v1/models >/dev/null < out=19B 1 line
+05:42:30 do ok 25 curl -fsS --max-time 8 http://sindri:8020/v1/models >/dev/nu… < out=16B 1 line
+05:42:30 do ok 26 curl -fsS --max-time 8 http://vidar:1235/v1/models >/dev/null < out=112B 2 lines "curl: (7) Faile…
+05:42:30 do ok 27 curl -fsS --max-time 8 http://vidar:1236/props >/dev/null < out=18B 1 line
+05:42:30 do ok 29 curl -fsS --max-time 8 http://sindri:8020/props >/dev/null < out=15B 1 line
+05:42:30 do ok 28 curl -fsS --max-time 8 https://openrouter.ai/api/v1/models >… < out=13B 1 line 329ms
+05:42:46 do ok 30 'go run ./cmd/fizeau-probe-reasoning --profile scripts/bench… < out=114B 1 line "zsh:1: no such…
+05:42:54 do ok 31 'mkdir -p docs/research/probe-reasoning-2026-05-11-v2/fiz-openrouter-qwen3-6…
+05:43:22 do ok 35 'curl -fsS --max-time 8 http://vidar:1235/v1/models > docs/r… < out=87B 1 line "curl: (7) Faile…
+05:43:22 do ok 36 'curl -fsS --max-time 20 http://sindri:8020/props | jq . > docs/research/pro…
+05:43:22 do ok 37 'curl -fsS --max-time 20 http://vidar:1236/props | jq . > docs/research/prob…
+05:43:23 do ok 38 curl -fsS --max-time 20 https://openrouter.ai/api/v1/models | jq '.data[] | … 300ms
+05:43:47 do ok 32 'go run ./cmd/fizeau-probe-reasoning --profile scripts/bench… < out=380B 8 lines "probe… 39.335s
+05:47:05 do ok 39 inspect lines 440,620 in scripts/benchmark/run_terminalbench… < out=5.8KB 181 lines "awk '/^[[:…
+05:47:05 do ok 40 find . -path '*report.json' | sed -n '1,160p' < out=273B 5 lines "./cmd/bench/testdata/beadbench-…
+05:47:07 do ok 41 'go run ./cmd/bench --help' < out=851B 17 lines "Usage: fiz-bench <command> [flags]" 1.902s
+05:47:12 do ok 42 'go run ./cmd/bench sweep -h' < out=1.0KB 26 lines "Usage of sweep:"
+05:47:17 do ok 43 'rg -n "timing|report.json|reasoning_tokens|sweep|tasks-dir|… < out=37.2KB 422 lines "scrip… 4ms
+05:47:21 do ok 44 'go run ./cmd/bench matrix -h' < out=1.4KB 34 lines "Usage of matrix:" 3ms
+05:47:30 do ok 45 'find /var/tmp /tmp "$HOME" -maxdepth 5 -type d '"\\( -name … < out=105B 2 lines "/tmp/h… 3.644s
+05:47:37 do ok 46 inspect lines 1,120 in scripts/benchmark/task-subset-tb21-ti… < out=1.3KB 27 lines "# TerminalB…
+05:47:37 do ok 47 find /tmp/hugo-fizeau-build/benchmarks/terminal-bench-2-1 -maxdepth 3 -name …
+05:47:37 do ok 48 find /tmp/fizeau-site-check/benchmarks/terminal-bench-2-1 -maxdepth 3 -name …
+05:47:42 do ok 49 find /tmp/hugo-fizeau-build/benchmarks/terminal-bench-2-1 -m… < out=356B 6 lines "/tmp/hugo-fiz…
+05:49:12 do ok 33 'LLAMACPP_API_KEY=dummy go run ./cmd/fizeau-probe-reasoning … < out=377B 8 lines "prob… 6m3.839s
+05:52:10 do ok 50 find / -path '*/fix-git/task.toml' -o -path '*/openssl-selfsigned-cert/task.… 4m21.192s
+05:53:38 do ok 51 inspect lines 160,360 in cmd/bench/matrix.go < out=7.2KB 201 lines "}" 7ms
+05:53:42 do ok 52 inspect lines 520,920 in cmd/bench/matrix.go < out=13.4KB 401 lines "seconds := harborResult.… 6ms
+05:53:48 do ok 53 'rg -n "type termbenchSubsetEntry|func loadTermbenchSubset|f… < out=329B 4 lines "cmd/bench/mat…
+05:53:55 do ok 54 inspect lines 1,70 in cmd/bench/external_termbench.go < out=2.9KB 70 lines "package main"
+05:53:55 do ok 55 inspect lines 280,340 in cmd/bench/external_termbench.go < out=774B 30 lines "subsetPath string"
+05:53:55 do ok 56 inspect lines 1160,1215 in cmd/bench/matrix.go < out=1.5KB 56 lines "safeMatrixSegment(p.ID),"
+05:58:15 do ok 34 'DS4_API_KEY=dummy go run ./cmd/fizeau-probe-reasoning --pro… < out=290B 6 lines "pro… 15m6.827s
+05:58:21 do ok 57 inspect lines 1,180 in internal/modelcatalog/manifest.go < out=7.5KB 180 lines "package model… 2ms
+05:58:21 do ok 58 inspect lines 1,220 in internal/modelcatalog/catalog_test.go < out=5.8KB 220 lines "package model…
+05:58:21 do ok 59 'rg -n "power_provenance|reasoning_wire|ReasoningWire|deepse… < out=4.8KB 57 lines "internal/mo…
+05:58:27 do ok 60 inspect lines 180,320 in internal/modelcatalog/manifest.go < out=4.7KB 133 lines "policyNames := …
+05:58:51 do ok 61 jq '{profile_id, model, timestamp, wire_format, results: [.r… < out=1020B 51 lines "{"
+05:58:51 do ok 62 jq '{profile_id, model, timestamp, wire_format, results: [.r… < out=1.0KB 51 lines "{" 3ms
+05:58:51 do ok 63 test -f docs/research/probe-reasoning-2026-05-11-v2/vidar-ds4/summary.json
+05:58:51 do ok 64 'tail -n 20 docs/research/probe-reasoning-2026-05-11-v2/fiz-… < out=1.8KB 40 lines "# fizeau-pr…
+05:59:10 do ok 65 find docs/research/probe-reasoning-2026-05-11-v2/vidar-ds4 -… < out=139B 8 lines "introspection…
+05:59:10 do ok 66 for f in docs/research/probe-reasoning-2026-05-11-v2/vidar-d… < out=215B 3 lines "docs/research…
+05:59:10 do ok 67 'tail -n 40 docs/research/probe-reasoning-2026-05-11-v2/vidar-ds4/matrix.md …
+05:59:10 do ok 68 ps -ef | rg 'fizeau-probe-reasoning|cmd/fizeau-probe-reasoning' | rg -v rg
+06:02:50 do ok 70 find docs/research/probe-reasoning-2026-05-11-v2/verificatio… < out=136B 1 line "docs/research/…
+06:05:26 do ok 69 'go run ./cmd/bench matrix --harnesses fiz --profiles fiz-op… < out=190B 1 line "matri… 5m48.69s
+06:05:31 do ok 71 jq '{profile_id, task_id, process_outcome, final_status, rea… < out=238B 10 lines "{" 1ms
+06:05:41 do ok 72 find docs/research/probe-reasoning-2026-05-11-v2/verificatio… < out=409B 3 lines "docs/research…
+06:05:48 do ok 73 'tail -n 20 docs/research/probe-reasoning-2026-05-11-v2/veri… < out=6.6KB 20 lines "{\"sess… 7ms
+06:06:18 do ok 74 for f in docs/research/probe-reasoning-2026-05-11-v2/vidar-d… < out=511B 22 lines "docs/researc…
+06:06:18 do ok 75 jq '{profile_id, model, timestamp, wire_format, results: [.r… < out=1008B 51 lines "{"
+06:06:24 do ok 76 inspect lines 1,120 in docs/research/probe-reasoning-2026-05… < out=9B 2 lines
+06:06:34 do ok 77 'cp docs/research/probe-reasoning-2026-05-11-v2/ds4/*-request.json docs/rese… 3ms
+06:06:50 do ok 78 'rm -f docs/research/probe-reasoning-2026-05-11-v2/vidar-qwen3-6-27b/introsp… 3ms
+06:07:10 do ok 79 search "llm.request|reasoning|max_tok..." in '1,80p' < out=479.8KB 73 lines "1:{\"session_id\… 9ms
+06:07:19 do ok 80 jq -r 'select(.type=="llm.request") | .data | {max_tokens, r… < out=1.6KB 80 lines "{"
+06:07:32 do ok 81 'rg -n "ReasoningWireModelID|reasoning_wire|model_id|tokens|… < out=12.9KB 123 lines "internal/…
+06:08:13 do ok 82 'tmp=$(mktemp); jq '"'.reasoning_tokens = 352 | .reasoning_tokens_approx = f…
+06:09:14 do ok 83 'wc -c docs/research/probe-reasoning-2026-05-11-v2/fiz-openr… < out=280B 4 lines "1635 docs/res…
+06:09:14 do ok 84 find docs/research/probe-reasoning-2026-05-11-v2/fiz-openrou… < out=3.7KB 46 lines "docs/resear…
+06:09:14 do ok 85 jq '."deepseek-v4-flash" // empty' <(yq -o=json '.models' in… < out=735B 25 lines "{"
+06:09:25 do ok 86 jq -e '.reasoning_tokens > 0 and (.reasoning_tokens_approx|type == "boolean"…
+06:09:26 do ok 87 jq -e '.reasoning_tokens > 0 and (.reasoning_tokens_approx|type == "boolean"…
+06:09:27 do ok 88 'go test ./internal/modelcatalog/...' < out=57B 1 line "ok \tgithub.com/easel/fizeau/inter… 1.109s
+06:11:27 do ok 89 'go test ./...' < out=6.0KB 110 lines "ok \tgithub.com/easel/fizeau\t6.49… 1m44.667s
+06:11:32 do ok 90 inspect lines 360,450 in agentcli/catalog_cli_test.go < out=4.1KB 127 lines "out, err := run(… 6ms
+06:11:44 do ok 91 'go test ./agentcli -run TestCLI_ReasoningCatalogMaxOverride… < out=813B 17 lines "=== R… 5.014s
+06:11:52 do ok 92 'git status --short' < out=566B 9 lines "M docs/research/probe-reasoning-2026-… 3ms
+06:12:11 do ok 93 inspect diff < out=1.3KB 36 lines ".../probe-reasoning-2026-05-11-v2/V… 3ms
+06:12:22 do ok 94 'du -sh docs/research/probe-reasoning-2026-05-11-v2/verifica… < out=268B 4 lines "736K\tdocs/re…
+06:12:31 do ok 95 find docs/research/probe-reasoning-2026-05-11-v2/verificatio… < out=708B 6 lines "docs/rese… 2ms
+06:12:48 do ok 96 'rm -rf docs/research/probe-reasoning-2026-05-11-v2/verification/cells/termi…
+06:12:53 do ok 97 find docs/research/probe-reasoning-2026-05-11-v2/verificatio… < out=524B 5 lines "docs/rese… 3ms
+06:13:21 do ok 98 jq -e '.reasoning_tokens > 0 and (.reasoning_tokens_approx|type == "boolean"…
+06:13:21 do ok 99 'test -s docs/research/reasoning-wire-form-runbook-2026-05-11.md
+06:13:21 do ok 100 'for d in fiz-openrouter-qwen3-6-27b sindri-club-3090-llamacpp vidar-ds4 vi…
+06:13:21 do ok 101 'go test ./internal/modelcatalog/...' < out=59B 1 line "ok \tgithub.com/easel/fizeau/internal/m�…
+06:13:27 do ok 102 'git status --short' < out=566B 9 lines "M docs/research/probe-reasoning-2026-…
+06:13:40 do ok 103 'git add internal/modelcatalog/catalog/models.yaml docs/research/probe-reas…
+06:13:44 do ok 104 'git diff --cached --stat' < out=3.5KB 58 lines ".../probe-reasoning-2026-05-11-v2/V…
+06:13:49 do ok 105 'git status --short' < out=4.7KB 57 lines "M docs/research/probe-reasoning-202…
+06:13:53 do ok 106 'git commit -m "docs: verify reasoning wire lanes [fizeau-7… < out=5.7KB 57 lines "[detached H…
+06:13:58 do ok 107 'git status --short'
+06:14:05 do response complete 27280 tok in 33m10.828s, 13.7 tok/s
+✓ fizeau-7c4b7647 → merged (c34f6330)
+
+▶ fizeau-586e476a: bench: preflight smoke test for each lane in run_terminalbench_2_1_sweep.sh
+02:14:09 readiness check: starting route: harness=codex model=gpt-5.5
+02:16:23 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.5
+02:17:05 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
