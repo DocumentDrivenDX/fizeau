@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
 	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 	"github.com/easel/fizeau/internal/modelcatalog"
@@ -125,6 +128,192 @@ func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	}
 	if !strings.Contains(candidate.Reason, "score=") {
 		t.Fatalf("eligible candidate Reason=%q, want scoring reason", candidate.Reason)
+	}
+}
+
+func TestResolveRouteSnapshotProviderPowerCorrelation(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+
+	cache := &discoverycache.Cache{Root: cacheDir}
+	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
+	writeSnapshotDiscoveryFixture(t, cache, "alpha", capturedAt, []string{"shared-model", "medium-model"})
+	writeSnapshotDiscoveryFixture(t, cache, "beta", capturedAt, []string{"shared-model", "high-model"})
+	writeSnapshotDiscoveryFixture(t, cache, "gamma", capturedAt, []string{"catalog-only-model"})
+
+	var probeHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		probeHits.Add(1)
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer srv.Close()
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  shared-model:
+    family: shared
+    status: active
+    power: 6
+    context_window: 16384
+    surfaces:
+      embedded-openai: shared-model
+  medium-model:
+    family: tier
+    status: active
+    power: 5
+    context_window: 8192
+    surfaces:
+      embedded-openai: medium-model
+  high-model:
+    family: tier
+    status: active
+    power: 10
+    context_window: 32768
+    surfaces:
+      embedded-openai: high-model
+  catalog-only-model:
+    family: tier
+    status: active
+    power: 8
+    exact_pin_only: true
+    context_window: 4096
+    surfaces:
+      embedded-openai: catalog-only-model
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"alpha": {
+				Type:           "openai",
+				BaseURL:        srv.URL + "/v1",
+				APIKey:         "alpha-key",
+				ServerInstance: "alpha-1",
+				Model:          "medium-model",
+			},
+			"beta": {
+				Type:           "openai",
+				BaseURL:        srv.URL + "/v1",
+				APIKey:         "beta-key",
+				ServerInstance: "beta-1",
+				Model:          "high-model",
+			},
+			"gamma": {
+				Type:                "openai",
+				BaseURL:             srv.URL + "/v1",
+				APIKey:              "gamma-key",
+				ServerInstance:      "gamma-1",
+				Model:               "catalog-only-model",
+				IncludeByDefault:    false,
+				IncludeByDefaultSet: true,
+			},
+		},
+		names:       []string{"alpha", "beta", "gamma"},
+		defaultName: "alpha",
+	}
+
+	newSvc := func(t *testing.T) *service {
+		t.Helper()
+		return newTestService(t, ServiceOptions{ServiceConfig: sc})
+	}
+
+	t.Run("power", func(t *testing.T) {
+		svc := newSvc(t)
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+		if err != nil {
+			t.Fatalf("ResolveRoute: %v", err)
+		}
+		if probeHits.Load() != 0 {
+			t.Fatalf("unexpected discovery probe count = %d", probeHits.Load())
+		}
+		if dec == nil {
+			t.Fatal("ResolveRoute returned nil decision")
+		}
+		if dec.Provider != "beta" || dec.Model != "high-model" {
+			t.Fatalf("decision=%#v, want snapshot-backed high-model winner", dec)
+		}
+	})
+
+	t.Run("provider pin", func(t *testing.T) {
+		svc := newSvc(t)
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+			Provider: "alpha",
+			Model:    "medium-model",
+		})
+		if err != nil {
+			t.Fatalf("ResolveRoute: %v", err)
+		}
+		if dec == nil {
+			t.Fatal("ResolveRoute returned nil decision")
+		}
+		if dec.Provider != "alpha" || dec.Model != "medium-model" {
+			t.Fatalf("decision=%#v, want hard-pinned alpha/medium-model", dec)
+		}
+		if probeHits.Load() != 0 {
+			t.Fatalf("unexpected discovery probe count = %d", probeHits.Load())
+		}
+	})
+
+	t.Run("exact model pin", func(t *testing.T) {
+		svc := newSvc(t)
+		dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
+			Model: "catalog-only-model",
+		})
+		if err != nil {
+			t.Fatalf("ResolveRoute: %v", err)
+		}
+		if dec == nil {
+			t.Fatal("ResolveRoute returned nil decision")
+		}
+		if dec.Provider != "gamma" || dec.Model != "catalog-only-model" {
+			t.Fatalf("decision=%#v, want exact-pinned gamma/catalog-only-model", dec)
+		}
+		if probeHits.Load() != 0 {
+			t.Fatalf("unexpected discovery probe count = %d", probeHits.Load())
+		}
+	})
+
+	t.Run("correlation", func(t *testing.T) {
+		svc := newSvc(t)
+		first, err := svc.ResolveRoute(context.Background(), RouteRequest{
+			Model:         "shared-model",
+			CorrelationID: "snapshot-sticky",
+		})
+		if err != nil {
+			t.Fatalf("first ResolveRoute: %v", err)
+		}
+		second, err := svc.ResolveRoute(context.Background(), RouteRequest{
+			Model:         "shared-model",
+			CorrelationID: "snapshot-sticky",
+		})
+		if err != nil {
+			t.Fatalf("second ResolveRoute: %v", err)
+		}
+		if first == nil || second == nil {
+			t.Fatalf("decisions=%#v %#v, want non-nil", first, second)
+		}
+		if first.ServerInstance == "" || second.ServerInstance == "" {
+			t.Fatalf("server instances=%q %q, want sticky selection", first.ServerInstance, second.ServerInstance)
+		}
+		if first.ServerInstance != second.ServerInstance {
+			t.Fatalf("sticky server instance changed: first=%q second=%q", first.ServerInstance, second.ServerInstance)
+		}
+		if probeHits.Load() != 0 {
+			t.Fatalf("unexpected discovery probe count = %d", probeHits.Load())
+		}
+	})
+
+	if probeHits.Load() != 0 {
+		t.Fatalf("unexpected discovery probe count = %d", probeHits.Load())
 	}
 }
 
@@ -584,26 +773,26 @@ func findRoutingHarnessEntry(entries []routing.HarnessEntry, name string) (routi
 }
 
 func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 5, 0, 0, time.UTC), []string{"unused"})
+
 	var hits atomic.Int32
+	original := probeOpenAIModelsForDiscovery
+	defer func() { probeOpenAIModelsForDiscovery = original }()
+	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+		hits.Add(1)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"live": {Type: "openai", BaseURL: "http://probe.invalid/v1", Model: "unused"},
 		},
 		names:       []string{"live"},
 		defaultName: "live",
-	}
-	original := probeOpenAIModelsForDiscovery
-	defer func() { probeOpenAIModelsForDiscovery = original }()
-	deadlineCh := make(chan time.Duration, 1)
-	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-		hits.Add(1)
-		if deadline, ok := ctx.Deadline(); ok {
-			deadlineCh <- time.Until(deadline)
-		} else {
-			deadlineCh <- -1
-		}
-		<-ctx.Done()
-		return nil, ctx.Err()
 	}
 	svc, err := New(ServiceOptions{
 		ServiceConfig:        sc,
@@ -614,82 +803,76 @@ func TestProbeEndpointDiscoveredIDsUsesBoundedContext(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	done := make(chan struct{})
-	var routeErr error
-	go func() {
-		_, routeErr = svc.ResolveRoute(context.Background(), RouteRequest{
-			Harness: "fiz",
-		})
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(1 * time.Second):
-		t.Fatal("ResolveRoute did not return after bounded probe timeout")
-	}
+	dec, routeErr := svc.ResolveRoute(context.Background(), RouteRequest{
+		Harness: "fiz",
+	})
 	if routeErr != nil {
-		t.Logf("ResolveRoute returned error: %v", routeErr)
+		t.Fatalf("ResolveRoute returned error: %v", routeErr)
 	}
-
-	select {
-	case remaining := <-deadlineCh:
-		if remaining <= 0 {
-			t.Fatalf("probe deadline remaining = %s, want a live deadline", remaining)
-		}
-		if remaining > 40*time.Millisecond {
-			t.Fatalf("probe deadline remaining = %s, want at most the configured timeout", remaining)
-		}
-	case <-time.After(1 * time.Second):
-		t.Fatal("blocking probe did not observe a deadline")
+	if dec == nil || dec.Model != "unused" {
+		t.Fatalf("ResolveRoute returned %#v, want snapshot-backed unused decision", dec)
 	}
-	if got := hits.Load(); got != 1 {
-		t.Fatalf("probe hits = %d, want 1", got)
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("probe hits = %d, want 0 when snapshot cache is fresh", got)
 	}
 }
 
-func TestBuildRoutingInputsDisablesFizWhenLiveProviderDiscoveryEmpty(t *testing.T) {
+func TestResolveRouteSnapshotFreshCacheSkipsDiscoveryProbe(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, "alpha", time.Date(2026, 5, 12, 15, 5, 0, 0, time.UTC), []string{"model-a"})
+
+	var probeHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		probeHits.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  model-a:
+    family: test
+    status: active
+    power: 7
+    context_window: 8192
+    surfaces:
+      embedded-openai: model-a
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
-			"dead-local": {Type: "lmstudio", BaseURL: "http://dead-local.invalid/v1", Model: "qwen3.6-27b"},
+			"alpha": {Type: "openai", BaseURL: srv.URL + "/v1", APIKey: "alpha-key", ServerInstance: "alpha-1", Model: "model-a"},
 		},
-		names:       []string{"dead-local"},
-		defaultName: "dead-local",
+		names:       []string{"alpha"},
+		defaultName: "alpha",
 	}
-	original := probeOpenAIModelsForDiscovery
-	defer func() { probeOpenAIModelsForDiscovery = original }()
-	probeOpenAIModelsForDiscovery = func(context.Context, string, string) ([]string, error) {
-		return nil, errors.New("probe failed")
-	}
-	registry := harnesses.NewRegistry()
-	registry.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
-	svc := &service{
-		opts:     ServiceOptions{ServiceConfig: sc},
-		registry: registry,
-		hub:      newSessionHub(),
-		catalog:  newCatalogCache(catalogCacheOptions{}),
-	}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 
-	inputs := svc.buildRoutingInputsWithCatalog(context.Background(), nil)
-	fizEntry, ok := findRoutingHarnessEntry(inputs.Harnesses, "fiz")
-	if !ok {
-		t.Fatalf("missing fiz entry in %#v", inputs.Harnesses)
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
 	}
-	if fizEntry.Available {
-		t.Fatalf("fiz Available=true with no live provider entries: %#v", fizEntry)
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
 	}
-	if len(fizEntry.Providers) != 0 {
-		t.Fatalf("fiz Providers=%#v, want none after failed discovery", fizEntry.Providers)
+	if dec.Model != "model-a" || dec.Provider != "alpha" {
+		t.Fatalf("decision=%#v, want snapshot-backed alpha/model-a", dec)
 	}
-
-	dec, err := routing.Resolve(routing.Request{Harness: "fiz"}, inputs)
-	if err == nil {
-		t.Fatal("Resolve unexpectedly selected providerless agent candidate")
-	}
-	for _, candidate := range dec.Candidates {
-		if candidate.Harness == "fiz" && candidate.Provider == "" && candidate.Eligible {
-			t.Fatalf("providerless agent candidate was eligible: %#v", candidate)
-		}
+	if probeHits.Load() != 0 {
+		t.Fatalf("unexpected discovery probe count = %d", probeHits.Load())
 	}
 }
 

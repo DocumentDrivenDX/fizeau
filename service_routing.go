@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/easel/fizeau/internal/compaction"
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/modelcatalog"
 	"github.com/easel/fizeau/internal/modeleligibility"
+	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/provider/utilization"
 	"github.com/easel/fizeau/internal/routing"
 )
@@ -477,14 +480,8 @@ func (s *service) routeAttemptTTL() time.Duration {
 }
 
 // buildRoutingInputs assembles routing.Inputs from the service's registry
-// and ServiceConfig. When the service has a catalog cache attached (v0.9.2+),
-// each configured provider's ProviderEntry is populated with DiscoveredIDs
-// from the cache's live /v1/models probe, so routing.FuzzyMatch matches the
-// request against IDs the server actually serves rather than the configured
-// default-model string.
-//
-// ctx is used for cache probes with a short deadline; the cache's
-// stale-while-revalidate flow makes most calls non-blocking.
+// and snapshot-derived provider inventory. The public routing engine stays
+// unchanged; only the source of provider/model candidates changes.
 func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
 	return s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog())
 }
@@ -496,6 +493,18 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		statusByName[st.Name] = st
 	}
 	now := time.Now().UTC()
+	var snapshot modelsnapshot.ModelSnapshot
+	if s.opts.ServiceConfig != nil {
+		if cacheRoot, err := serviceSnapshotCacheRoot(); err == nil {
+			snapshot, _ = assembleModelSnapshotFromServiceConfigWithOptions(
+				ctx,
+				s.opts.ServiceConfig,
+				cat,
+				cacheRoot,
+				modelsnapshot.AssembleOptions{Refresh: modelsnapshot.RefreshBackground},
+			)
+		}
+	}
 
 	var entries []routing.HarnessEntry
 	for _, name := range s.registry.Names() {
@@ -518,15 +527,9 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 			entry.QuotaReason = qs.Reason
 		}
 
-		// Native "fiz" harness: enumerate live configured provider endpoints.
+		// Native "fiz" harness: enumerate snapshot-derived provider rows.
 		if name == "fiz" && s.opts.ServiceConfig != nil {
-			for _, pname := range s.opts.ServiceConfig.ProviderNames() {
-				pcfg, ok := s.opts.ServiceConfig.Provider(pname)
-				if !ok {
-					continue
-				}
-				entry.Providers = append(entry.Providers, s.liveProviderEntries(ctx, pname, pcfg, cat)...)
-			}
+			entry.Providers = s.snapshotProviderEntries(ctx, cat, snapshot)
 			// Tool support for the agent harness is per-(provider, model);
 			// the harness-level baseline is whether ANY provider supports
 			// tools. Engine OR-combines harness and provider SupportsTools
@@ -553,6 +556,265 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		EndpointLoadResolver:         s.routeEndpointLoadsResolver(now),
 		StickyServerInstanceResolver: s.routeStickyServerInstanceResolver(now),
 	}
+}
+
+func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog.Catalog, snapshot modelsnapshot.ModelSnapshot) []routing.ProviderEntry {
+	if s == nil || s.opts.ServiceConfig == nil {
+		return nil
+	}
+	providerNames := s.opts.ServiceConfig.ProviderNames()
+	if len(providerNames) == 0 || len(snapshot.Models) == 0 {
+		return nil
+	}
+	grouped := make(map[snapshotProviderGroupKey][]modelsnapshot.KnownModel)
+	for _, row := range snapshot.Models {
+		harness := strings.TrimSpace(row.Harness)
+		if harness != "" && harness != "fiz" {
+			continue
+		}
+		providerName := strings.TrimSpace(row.Provider)
+		if providerName == "" {
+			continue
+		}
+		if _, ok := s.opts.ServiceConfig.Provider(providerName); !ok {
+			continue
+		}
+		key := snapshotProviderGroupKey{
+			Provider:        providerName,
+			EndpointName:    strings.TrimSpace(row.EndpointName),
+			EndpointBaseURL: strings.TrimSpace(row.EndpointBaseURL),
+			ServerInstance:  strings.TrimSpace(row.ServerInstance),
+		}
+		grouped[key] = append(grouped[key], row)
+	}
+	if len(grouped) == 0 {
+		return nil
+	}
+
+	groupCountByProvider := make(map[string]int)
+	for key := range grouped {
+		groupCountByProvider[key.Provider]++
+	}
+
+	keys := make([]snapshotProviderGroupKey, 0, len(grouped))
+	for key := range grouped {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].Provider != keys[j].Provider {
+			return keys[i].Provider < keys[j].Provider
+		}
+		if keys[i].EndpointName != keys[j].EndpointName {
+			return keys[i].EndpointName < keys[j].EndpointName
+		}
+		if keys[i].EndpointBaseURL != keys[j].EndpointBaseURL {
+			return keys[i].EndpointBaseURL < keys[j].EndpointBaseURL
+		}
+		return keys[i].ServerInstance < keys[j].ServerInstance
+	})
+
+	var entries []routing.ProviderEntry
+	for _, key := range keys {
+		pcfg, ok := s.opts.ServiceConfig.Provider(key.Provider)
+		if !ok || pcfg.ConfigError != "" {
+			continue
+		}
+		rows := append([]modelsnapshot.KnownModel(nil), grouped[key]...)
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].EndpointName != rows[j].EndpointName {
+				return rows[i].EndpointName < rows[j].EndpointName
+			}
+			if rows[i].EndpointBaseURL != rows[j].EndpointBaseURL {
+				return rows[i].EndpointBaseURL < rows[j].EndpointBaseURL
+			}
+			if rows[i].ServerInstance != rows[j].ServerInstance {
+				return rows[i].ServerInstance < rows[j].ServerInstance
+			}
+			return rows[i].ID < rows[j].ID
+		})
+		discoveredIDs := snapshotModelIDs(rows)
+		if defaultModel := strings.TrimSpace(pcfg.Model); defaultModel != "" {
+			discoveredIDs = appendUniqueModelIDs(discoveredIDs, defaultModel)
+		}
+		ctxWindows, ctxSources := snapshotProviderContextWindows(ctx, pcfg, cat, rows, discoveredIDs)
+		endpointName := snapshotEndpointName(pcfg, key)
+		routeName := key.Provider
+		if groupCountByProvider[key.Provider] > 1 {
+			switch {
+			case endpointName != "":
+				routeName = endpointProviderRef(key.Provider, endpointName)
+			case key.ServerInstance != "":
+				routeName = endpointProviderRef(key.Provider, key.ServerInstance)
+			case key.EndpointBaseURL != "":
+				routeName = endpointProviderRef(key.Provider, key.EndpointBaseURL)
+			}
+		}
+		baseURL := key.EndpointBaseURL
+		if baseURL == "" {
+			baseURL = pcfg.BaseURL
+		}
+		serverInstance := key.ServerInstance
+		if serverInstance == "" {
+			serverInstance = pcfg.ServerInstance
+		}
+		entry := routing.ProviderEntry{
+			Name:                      routeName,
+			BaseURL:                   baseURL,
+			ServerInstance:            serverInstance,
+			EndpointName:              endpointName,
+			EndpointBaseURL:           baseURL,
+			DefaultModel:              pcfg.Model,
+			CostClass:                 providerRoutingCostClass(pcfg.Type),
+			DiscoveredIDs:             discoveredIDs,
+			DiscoveryAttempted:        true,
+			ContextWindows:            ctxWindows,
+			ContextWindowSources:      ctxSources,
+			ContextWindow:             pcfg.ContextWindow,
+			ContextWindowSource:       contextWindowSourceForProviderConfig(pcfg),
+			SupportsTools:             providerSupportsTools(cat, pcfg.Model, discoveredIDs),
+			ExcludeFromDefaultRouting: pcfg.IncludeByDefaultSet && !pcfg.IncludeByDefault,
+		}
+		s.applyEndpointRoutingCost(&entry, pcfg, cat)
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+type snapshotProviderGroupKey struct {
+	Provider        string
+	EndpointName    string
+	EndpointBaseURL string
+	ServerInstance  string
+}
+
+func snapshotEndpointName(pcfg ServiceProviderEntry, key snapshotProviderGroupKey) string {
+	endpoints := modelDiscoveryEndpoints(pcfg)
+	trimmedEndpointName := strings.TrimSpace(key.EndpointName)
+	trimmedBaseURL := strings.TrimSpace(key.EndpointBaseURL)
+	trimmedServerInstance := strings.TrimSpace(key.ServerInstance)
+	if len(endpoints) == 0 {
+		if trimmedEndpointName != "" {
+			if strings.EqualFold(trimmedEndpointName, strings.TrimSpace(key.Provider)) {
+				return "default"
+			}
+			return trimmedEndpointName
+		}
+		if trimmedServerInstance != "" {
+			return trimmedServerInstance
+		}
+		if trimmedBaseURL != "" {
+			return trimmedBaseURL
+		}
+		return ""
+	}
+	for _, endpoint := range endpoints {
+		if trimmedEndpointName != "" && strings.EqualFold(endpoint.Name, trimmedEndpointName) {
+			return endpoint.Name
+		}
+		if trimmedBaseURL != "" && strings.TrimSpace(endpoint.BaseURL) == trimmedBaseURL {
+			return endpoint.Name
+		}
+		if trimmedServerInstance != "" && strings.TrimSpace(endpoint.ServerInstance) == trimmedServerInstance {
+			return endpoint.Name
+		}
+	}
+	if len(endpoints) == 1 {
+		return endpoints[0].Name
+	}
+	if trimmedEndpointName != "" {
+		return trimmedEndpointName
+	}
+	if trimmedServerInstance != "" {
+		return trimmedServerInstance
+	}
+	if trimmedBaseURL != "" {
+		return trimmedBaseURL
+	}
+	return ""
+}
+
+func snapshotModelIDs(rows []modelsnapshot.KnownModel) []string {
+	if len(rows) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(rows))
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		id := strings.TrimSpace(row.ID)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func snapshotProviderContextWindows(ctx context.Context, pcfg ServiceProviderEntry, cat *modelcatalog.Catalog, rows []modelsnapshot.KnownModel, discoveredIDs []string) (map[string]int, map[string]string) {
+	_ = ctx
+	out := make(map[string]int)
+	sources := make(map[string]string)
+	rowByID := make(map[string]modelsnapshot.KnownModel, len(rows))
+	for _, row := range rows {
+		id := strings.TrimSpace(row.ID)
+		if id == "" {
+			continue
+		}
+		if _, exists := rowByID[id]; !exists {
+			rowByID[id] = row
+		}
+	}
+	add := func(modelID string, snapshotWindow int) {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			return
+		}
+		window, source := snapshotContextWindow(pcfg, cat, modelID, snapshotWindow)
+		if window <= 0 {
+			return
+		}
+		out[modelID] = window
+		sources[modelID] = source
+	}
+	if defaultModel := strings.TrimSpace(pcfg.Model); defaultModel != "" {
+		row, ok := rowByID[defaultModel]
+		if ok {
+			add(defaultModel, row.ContextWindow)
+		} else {
+			add(defaultModel, 0)
+		}
+	}
+	for _, id := range discoveredIDs {
+		row, ok := rowByID[id]
+		if ok {
+			add(id, row.ContextWindow)
+			continue
+		}
+		add(id, 0)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, sources
+}
+
+func snapshotContextWindow(pcfg ServiceProviderEntry, cat *modelcatalog.Catalog, modelID string, snapshotWindow int) (int, string) {
+	if pcfg.ContextWindow > 0 {
+		return pcfg.ContextWindow, ContextSourceProviderConfig
+	}
+	if snapshotWindow > 0 {
+		return snapshotWindow, ContextSourceCatalog
+	}
+	if cat != nil {
+		if n := cat.ContextWindowForModel(modelID); n > 0 {
+			return n, ContextSourceCatalog
+		}
+	}
+	return compaction.DefaultContextWindow, ContextSourceDefault
 }
 
 // providerQuotaExhaustedUntil snapshots the per-provider quota state machine
@@ -711,33 +973,44 @@ func serviceRoutingModelEligibility(entries []routing.HarnessEntry, cat *modelca
 		return nil
 	}
 	eligibility := make(map[string]routing.ModelEligibility)
+	add := func(modelID string, includeByDefault bool, status string) {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			return
+		}
+		view := modeleligibility.Resolve(modelID, includeByDefault, status, cat)
+		known := routing.ModelEligibility{
+			Power:        view.Power,
+			ExactPinOnly: view.ExactPinOnly,
+			AutoRoutable: view.AutoRoutable,
+		}
+		if existing, ok := eligibility[modelID]; ok {
+			if known.Power > existing.Power {
+				existing.Power = known.Power
+			}
+			existing.ExactPinOnly = existing.ExactPinOnly || known.ExactPinOnly
+			existing.AutoRoutable = existing.AutoRoutable || known.AutoRoutable
+			eligibility[modelID] = existing
+			return
+		}
+		eligibility[modelID] = known
+	}
 	for _, h := range entries {
-		add := func(modelID string) {
-			modelID = strings.TrimSpace(modelID)
-			if modelID == "" {
-				return
-			}
-			status := "available"
-			if !h.Available {
-				status = "unreachable"
-			}
-			view := modeleligibility.Resolve(modelID, true, status, cat)
-			eligibility[modelID] = routing.ModelEligibility{
-				Power:        view.Power,
-				ExactPinOnly: view.ExactPinOnly,
-				AutoRoutable: view.AutoRoutable,
-			}
+		status := "available"
+		if !h.Available {
+			status = "unreachable"
 		}
 		if h.DefaultModel != "" {
-			add(h.DefaultModel)
+			add(h.DefaultModel, true, status)
 		}
 		for _, modelID := range h.SupportedModels {
-			add(modelID)
+			add(modelID, true, status)
 		}
 		for _, p := range h.Providers {
-			add(p.DefaultModel)
+			includeByDefault := !p.ExcludeFromDefaultRouting
+			add(p.DefaultModel, includeByDefault, status)
 			for _, modelID := range p.DiscoveredIDs {
-				add(modelID)
+				add(modelID, includeByDefault, status)
 			}
 		}
 	}

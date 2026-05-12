@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
 )
 
@@ -176,6 +177,12 @@ func TestExecuteHTTPProviderHarnessNoMatchDiagnostic(t *testing.T) {
 }
 
 func TestExecuteEndpointFirstRoutingSkipsDeadAndNormalizesModel(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
+
 	var deadChatCalls atomic.Int64
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
@@ -229,6 +236,12 @@ func TestExecuteEndpointFirstRoutingSkipsDeadAndNormalizesModel(t *testing.T) {
 }
 
 func TestExecuteEndpointFirstRoutingIgnoresStaleCacheForDeadEndpoint(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
+
 	var deadChatCalls atomic.Int64
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
@@ -285,6 +298,13 @@ func TestExecuteEndpointFirstRoutingIgnoresStaleCacheForDeadEndpoint(t *testing.
 }
 
 func TestExecuteEndpointFirstRoutingUsesMetricsBeforeConfigOrder(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, "slow", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
+	writeSnapshotDiscoveryFixture(t, cache, "fast", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
+
 	slow := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "slow")
 	defer slow.Close()
 	fast := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "fast")
@@ -339,6 +359,12 @@ func TestExecuteEndpointFirstRoutingUsesMetricsBeforeConfigOrder(t *testing.T) {
 }
 
 func TestExecuteEndpointFirstRoutingNoLiveModelMatchDiagnostic(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"other-model"})
+
 	live := openAIModelChatServer(t, []string{"other-model"}, "other-model", "pong")
 	defer live.Close()
 

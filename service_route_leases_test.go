@@ -2,28 +2,32 @@ package fizeau
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/provider/utilization"
 	"github.com/easel/fizeau/internal/routehealth"
 )
 
-func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
-	originalProbe := probeOpenAIModelsForDiscovery
-	defer func() { probeOpenAIModelsForDiscovery = originalProbe }()
-	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-		switch {
-		case strings.Contains(baseURL, "desk-a"):
-			return []string{"qwen/qwen3.6"}, nil
-		case strings.Contains(baseURL, "desk-b"):
-			return []string{"qwen/qwen3.6"}, nil
-		default:
-			return nil, nil
-		}
+func seedSnapshotDiscoveryFixtures(t *testing.T, fixtures map[string][]string) {
+	t.Helper()
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+	cache := &discoverycache.Cache{Root: cacheDir}
+	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
+	for source, models := range fixtures {
+		writeSnapshotDiscoveryFixture(t, cache, source, capturedAt, models)
 	}
+}
+
+func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
+	seedSnapshotDiscoveryFixtures(t, map[string][]string{
+		"local-desk-a": []string{"qwen/qwen3.6"},
+		"local-desk-b": []string{"qwen/qwen3.6"},
+	})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -124,18 +128,10 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 }
 
 func TestResolveRouteStickyLeasePrefersSameServerAcrossModels(t *testing.T) {
-	originalProbe := probeOpenAIModelsForDiscovery
-	defer func() { probeOpenAIModelsForDiscovery = originalProbe }()
-	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-		switch {
-		case strings.Contains(baseURL, "desk-a"):
-			return []string{"model-a", "model-b"}, nil
-		case strings.Contains(baseURL, "desk-b"):
-			return []string{"model-a", "model-b"}, nil
-		default:
-			return nil, nil
-		}
-	}
+	seedSnapshotDiscoveryFixtures(t, map[string][]string{
+		"local-desk-a": []string{"model-a", "model-b"},
+		"local-desk-b": []string{"model-a", "model-b"},
+	})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -295,18 +291,10 @@ func TestResolveRouteStickyLeasePrefersSameServerAcrossModels(t *testing.T) {
 }
 
 func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
-	originalProbe := probeOpenAIModelsForDiscovery
-	defer func() { probeOpenAIModelsForDiscovery = originalProbe }()
-	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-		switch {
-		case strings.Contains(baseURL, "desk-a"):
-			return []string{"qwen/qwen3.6"}, nil
-		case strings.Contains(baseURL, "desk-b"):
-			return []string{"qwen/qwen3.6"}, nil
-		default:
-			return nil, nil
-		}
-	}
+	seedSnapshotDiscoveryFixtures(t, map[string][]string{
+		"local-desk-a": []string{"qwen/qwen3.6"},
+		"local-desk-b": []string{"qwen/qwen3.6"},
+	})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -379,18 +367,10 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 }
 
 func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
-	originalProbe := probeOpenAIModelsForDiscovery
-	defer func() { probeOpenAIModelsForDiscovery = originalProbe }()
-	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-		switch {
-		case strings.Contains(baseURL, "desk-a"):
-			return []string{"qwen/qwen3.6"}, nil
-		case strings.Contains(baseURL, "desk-b"):
-			return []string{"qwen/qwen3.6"}, nil
-		default:
-			return nil, nil
-		}
-	}
+	seedSnapshotDiscoveryFixtures(t, map[string][]string{
+		"local-desk-a": []string{"qwen/qwen3.6"},
+		"local-desk-b": []string{"qwen/qwen3.6"},
+	})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -437,18 +417,10 @@ func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
 }
 
 func TestResolveRouteStickyLeaseIgnoresStaleUtilizationFallback(t *testing.T) {
-	originalProbe := probeOpenAIModelsForDiscovery
-	defer func() { probeOpenAIModelsForDiscovery = originalProbe }()
-	probeOpenAIModelsForDiscovery = func(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-		switch {
-		case strings.Contains(baseURL, "desk-a"):
-			return []string{"qwen/qwen3.6"}, nil
-		case strings.Contains(baseURL, "desk-b"):
-			return []string{"qwen/qwen3.6"}, nil
-		default:
-			return nil, nil
-		}
-	}
+	seedSnapshotDiscoveryFixtures(t, map[string][]string{
+		"local-desk-a": []string{"qwen/qwen3.6"},
+		"local-desk-b": []string{"qwen/qwen3.6"},
+	})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{

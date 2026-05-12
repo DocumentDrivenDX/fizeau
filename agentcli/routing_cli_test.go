@@ -1,6 +1,7 @@
 package agentcli_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	fizeau "github.com/easel/fizeau"
+	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -124,6 +126,27 @@ func (s *countedOpenAIServer) requestedModel() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lastModel
+}
+
+func writeSnapshotDiscoveryFixture(t *testing.T, cache *discoverycache.Cache, source string, capturedAt time.Time, models []string) {
+	t.Helper()
+	payload, err := json.Marshal(struct {
+		CapturedAt time.Time `json:"captured_at"`
+		Models     []string  `json:"models,omitempty"`
+		Source     string    `json:"source,omitempty"`
+	}{
+		CapturedAt: capturedAt,
+		Models:     models,
+		Source:     "test-fixture",
+	})
+	require.NoError(t, err)
+	src := discoverycache.Source{
+		Tier:            "discovery",
+		Name:            source,
+		TTL:             time.Hour,
+		RefreshDeadline: time.Second,
+	}
+	require.NoError(t, cache.Refresh(src, func(context.Context) ([]byte, error) { return payload, nil }))
 }
 
 func (s *countedOpenAIServer) setModels(models ...string) {
@@ -443,6 +466,10 @@ func TestCLI_RouteStatusShowsHealthAndScoringForModelIntent(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
 	home := t.TempDir()
+	cacheDir := t.TempDir()
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, "vidar", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
+	writeSnapshotDiscoveryFixture(t, cache, "freyja", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
 
 	dead := newCountedOpenAIServer(t, http.StatusServiceUnavailable, "", "")
 	healthy := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
@@ -468,7 +495,10 @@ providers:
     api_key: test
 `)
 
-	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "route-status", "--model", "qwen3.5-27b", "--json")
+	out := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, map[string]string{
+		"PATH":             "",
+		"FIZEAU_CACHE_DIR": cacheDir,
+	}), "--work-dir", workDir, "route-status", "--model", "qwen3.5-27b", "--json")
 	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
 	type component struct {

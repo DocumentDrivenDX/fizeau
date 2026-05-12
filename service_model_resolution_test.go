@@ -3,14 +3,17 @@ package fizeau
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/easel/fizeau/internal/discoverycache"
 )
 
 func TestResolveRouteModelConstraintNormalization(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 	cases := []struct {
 		name      string
 		request   string
@@ -39,6 +42,9 @@ func TestResolveRouteModelConstraintNormalization(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			cache := &discoverycache.Cache{Root: cacheDir}
+			writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), tc.models)
+
 			catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
 version: 5
 generated_at: 2026-05-06T00:00:00Z
@@ -56,27 +62,9 @@ models:
 `))
 			defer catalogCleanup()
 
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch r.URL.Path {
-				case "/v1/models":
-					w.Header().Set("Content-Type", "application/json")
-					_, _ = w.Write([]byte(`{"data":[`))
-					for i, model := range tc.models {
-						if i > 0 {
-							_, _ = w.Write([]byte(","))
-						}
-						_, _ = w.Write([]byte(`{"id":"` + model + `"}`))
-					}
-					_, _ = w.Write([]byte(`]}`))
-				default:
-					http.NotFound(w, r)
-				}
-			}))
-			defer srv.Close()
-
 			sc := &fakeServiceConfig{
 				providers: map[string]ServiceProviderEntry{
-					"live": {Type: "openai", BaseURL: srv.URL + "/v1", Model: "fallback-model"},
+					"live": {Type: "openai", BaseURL: "http://example.invalid/v1", Model: "fallback-model"},
 				},
 				names:       []string{"live"},
 				defaultName: "live",
@@ -101,6 +89,9 @@ models:
 }
 
 func TestResolveRouteModelConstraintAmbiguousAndNoMatch(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 	catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
 version: 5
 generated_at: 2026-05-06T00:00:00Z
@@ -119,15 +110,15 @@ models:
 	defer catalogCleanup()
 
 	t.Run("ambiguous", func(t *testing.T) {
-		srv := openAIModelChatServer(t, []string{
+		cache := &discoverycache.Cache{Root: cacheDir}
+		writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{
 			"Qwen3.6-35B-A3B-4bit",
 			"Qwen3.6-35B-A3B-nvfp4",
-		}, "Qwen3.6-35B-A3B-4bit", "pong")
-		defer srv.Close()
+		})
 
 		sc := &fakeServiceConfig{
 			providers: map[string]ServiceProviderEntry{
-				"live": {Type: "openai", BaseURL: srv.URL + "/v1", Model: "fallback-model"},
+				"live": {Type: "openai", BaseURL: "http://example.invalid/v1", Model: "fallback-model"},
 			},
 			names:       []string{"live"},
 			defaultName: "live",
@@ -157,12 +148,12 @@ models:
 	})
 
 	t.Run("no match", func(t *testing.T) {
-		srv := openAIModelChatServer(t, []string{"OtherModel"}, "OtherModel", "pong")
-		defer srv.Close()
+		cache := &discoverycache.Cache{Root: cacheDir}
+		writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"OtherModel"})
 
 		sc := &fakeServiceConfig{
 			providers: map[string]ServiceProviderEntry{
-				"live": {Type: "openai", BaseURL: srv.URL + "/v1", Model: "fallback-model"},
+				"live": {Type: "openai", BaseURL: "http://example.invalid/v1", Model: "fallback-model"},
 			},
 			names:       []string{"live"},
 			defaultName: "live",
@@ -196,6 +187,9 @@ models:
 }
 
 func TestExecuteModelConstraintNormalization(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 	catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
 version: 5
 generated_at: 2026-05-06T00:00:00Z
@@ -224,6 +218,9 @@ models:
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			cache := &discoverycache.Cache{Root: cacheDir}
+			writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen-3.6-27b-MLX-8bit"})
+
 			srv := openAIModelChatServer(t, []string{"Qwen-3.6-27b-MLX-8bit"}, "Qwen-3.6-27b-MLX-8bit", "pong")
 			defer srv.Close()
 
