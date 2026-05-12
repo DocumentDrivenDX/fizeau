@@ -1,0 +1,50 @@
+{
+  "attempt_id": "20260512T004730-dbd51cc4",
+  "bead_id": "fizeau-67f2d585",
+  "base_rev": "fdd8a6070b15ba0090d95d1705a525069fb63ac5",
+  "created_at": "2026-05-12T00:47:31.820577569Z",
+  "requested": {
+    "harness": "claude",
+    "model": "claude-sonnet-4-6",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-67f2d585",
+    "title": "ADR-012: Per-source on-disk cache for discovery + runtime signals",
+    "description": "Design ADR for the per-source on-disk cache that backs the available-\nmodels snapshot. Defines file layout, locking semantics, single-flight\nrefresh algorithm, atomic-write contract, force-refresh behavior, TTLs,\ncrash recovery, and the mandatory test matrix for the implementation.\n\nThis is design-only. Implementation is bead M1.\n\n## ADR scope (sections to write)\n\n### Context\n- The `fiz models` snapshot needs live data from multiple sources\n  (provider /v1/models, harness PTY, /props introspection, /usage\n  endpoints, rate-limit response headers).\n- Discovery sources are slow (PTY ~30s, OR /api/v1/models ~316ms).\n- Runtime signals (quota, status, latency) change frequently.\n- UI must never hang (100ms budget).\n- Multi-process: `ddx work`, `ddx try`, `fiz models`, routing all run\n  concurrently and must share cache state.\n- fizeau already has a battle-tested file-locking idiom in\n  `cmd/bench/matrix.go:acquireMatrixLock` (PID + atomic-create-or-fail\n  with crash recovery via PID-alive check). Build on it.\n\n### Decision\n\n#### File layout\n```\n~/.cache/fizeau/   (os.UserCacheDir())\n├── discovery/                          # slow, stable\n│   ├── openrouter.json                 # 24h TTL\n│   ├── claude-subscription.json        # 24h TTL\n│   ├── codex-subscription.json         # 24h TTL\n│   ├── vidar-ds4.json                  # 1h TTL (local)\n│   └── sindri-club-3090-llamacpp.json  # 1h TTL (local)\n└── runtime/                            # hot, volatile\n    ├── openrouter.json                 # 5min TTL\n    ├── claude-subscription.json        # 5min TTL\n    └── ...\n```\nEach data file is JSON. Keys map to fizeau's canonical model identity:\n`\u003cprovider\u003e/\u003cmodel_id\u003e`.\n\n#### Lock + marker pattern (two-tier)\n- `\u003csource\u003e.lock`: brief mutation lock. Same idiom as\n  `acquireMatrixLock` — `O_CREATE|O_EXCL`, JSON `{PID, StartedAt}`,\n  crash recovery via `processAlive(PID)`. Held during state\n  transitions only (claim refresh, finish refresh).\n- `\u003csource\u003e.refreshing`: long-lived refresh marker. JSON\n  `{PID, StartedAt, Deadline}`. Held during refresh IO. Other\n  processes see this and wait OR return stale.\n\n#### Algorithms (full pseudocode in ADR)\n1. `claim_refresh(source) -\u003e ClaimedByMe | AlreadyInFlight(marker)`\n2. `refresh_and_commit(source)` — IO, atomic-rename, marker cleanup\n3. `wait_for_refresh(source, marker, max_wait)` — poll marker\n4. `read(source) -\u003e (data, fresh_bool)` — UI never blocks\n5. `force_refresh(source)` — sync; wait or claim\n6. In-process single-flight via `golang.org/x/sync/singleflight`\n   (composes with file-based marker for cross-process)\n\n#### TTL defaults (operator-configurable via env or config)\n- Discovery PTY: 24h (PTY is slow; refresh rare)\n- Discovery HTTP /v1/models: 24h\n- Discovery HTTP /v1/models (local): 1h\n- Runtime signals: 5 min\n- Lock acquisition timeout: 100ms\n- Refresh deadline: 60s for PTY, 10s for HTTP discovery, 5s for runtime\n- Marker staleness threshold: 2× refresh deadline\n\n#### Crash recovery\n- Stale `.refreshing` markers (past deadline OR dead PID) are\n  presumed orphan; next caller overrides. No manual cleanup needed.\n- Stale `.lock` files (dead PID) are removed on next attempt\n  (existing `acquireMatrixLock` semantics).\n\n#### Force-refresh semantics\n- Synchronous. Waits for in-flight refresh to complete (up to\n  refresh deadline). Then reads fresh data.\n- Bypasses TTL check.\n\n#### Cache prune\n- `fiz cache prune` removes data files for sources not in current\n  config. Called explicitly OR auto-pruned at startup (operator\n  decision; ADR proposes manual to avoid surprises).\n\n### Mandatory test matrix (10 tests)\n\nThe implementation bead (M1) MUST ship all 10 tests passing. Skipping\nany = the cache is dangerous. Spawn child Go processes for multi-\nprocess scenarios (standard `TestMain` + `os.Args[0]` -test.run\nhelper-process pattern).\n\n1. **Concurrent claim from 2 procs**: exactly one ClaimedByMe.\n2. **Reader during refresh**: atomic rename → no torn read; reader\n   sees old until rename, new after.\n3. **Crash during refresh** (kill -9): next process detects dead PID\n   in marker, claims.\n4. **Refresh timeout**: marker deadline expires, next process\n   claims; orig process's late commit rejected (lock check).\n5. **Force-refresh waits + reads fresh**.\n6. **Concurrent normal+force**: normal returns stale immediately,\n   background refresh single-flighted with force.\n7. **Atomic rename verified**: 100 concurrent readers + 1 writer\n   producing 100 versions; every read is a complete consistent\n   version (checksum).\n8. **`fiz cache prune` doesn't race active sources**.\n9. **Stale-while-revalidate**: stale read returns immediately,\n   background refresh fires.\n10. **PID reuse safety**: marker PID gets reused by unrelated\n    process; deadline check is the safety net.\n\n### Consequences\n\n**Positive:**\n- UI never hangs (read path is always cache-bounded \u003c 100ms).\n- Multi-process safe across `ddx work` and `fiz` invocations.\n- Crash-safe via PID-alive + deadline checks.\n- Reuses fizeau's proven `acquireMatrixLock` idiom; no new\n  cross-platform lock library required.\n- Each source has independent lifecycle; OR re-discovery doesn't\n  block PTY discovery.\n\n**Negative:**\n- Two file roles per source (lock + marker) is more complexity\n  than a single mutex.\n- File-based coordination has inherent edge cases (PID reuse,\n  filesystem semantics differences); test matrix is non-trivial.\n- Stale data may be served briefly during refresh (acceptable\n  trade for non-blocking UI).\n\n### Out of scope\n- Persistent storage of historical signals (cache is per-source,\n  current-state only).\n- Multi-machine cache sharing (per-host only).\n- Compression (JSON, plain).\n- Encryption at rest.\n- OR sub-provider cache (deferred M5).\n\n### References\n- Bead A (`fizeau-b2c5c826`) — version-aware ranker, parses model IDs\n- Bead D (`fizeau-d18e11f5`) — IncludeByDefault filter (composes with\n  AutoRoutable in snapshot)\n- Bead E1 (`fizeau-c04be6b0`) — quota_pool catalog field (consumed in\n  M2 enrichment)\n- Bead E2 (`fizeau-5b6512ef`) — ADR-011 cost-based routing (downstream\n  consumer of snapshot)\n- `cmd/bench/matrix.go:acquireMatrixLock` — prior-art lock idiom\n- `internal/harnesses/{claude,codex}/quota_cache.go` — atomic-rename\n  prior art\n\n## In-scope files\n- docs/helix/02-design/adr/ADR-012-per-source-on-disk-cache.md (new)\n\n## Out of scope\n- Implementation (bead M1).",
+    "acceptance": "1. `docs/helix/02-design/adr/ADR-012-per-source-on-disk-cache.md`\n   exists with the standard ADR structure (Context, Decision,\n   Consequences, Out of scope, References).\n2. ADR includes pseudocode for all 6 algorithms (claim_refresh,\n   refresh_and_commit, wait_for_refresh, read, force_refresh, in-\n   process single-flight composition).\n3. ADR enumerates the 10 test cases as ACCEPTANCE-required (not\n   optional) for M1.\n4. ADR specifies TTL defaults with rationale and notes operator-\n   configurable knobs.\n5. ADR cites `acquireMatrixLock` as prior art and explains the\n   extension (separate refresh marker for long IO).\n6. Committed to master.",
+    "labels": [
+      "area:cache",
+      "area:adr",
+      "area:routing",
+      "kind:design"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-12T00:44:59Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "525134",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-12T00:47:30.051582114Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-12T00:44:59.835522495Z",
+      "spec-id": "ADR-012"
+    }
+  },
+  "paths": {
+    "dir": ".ddx/executions/20260512T004730-dbd51cc4",
+    "prompt": ".ddx/executions/20260512T004730-dbd51cc4/prompt.md",
+    "manifest": ".ddx/executions/20260512T004730-dbd51cc4/manifest.json",
+    "result": ".ddx/executions/20260512T004730-dbd51cc4/result.json",
+    "checks": ".ddx/executions/20260512T004730-dbd51cc4/checks.json",
+    "usage": ".ddx/executions/20260512T004730-dbd51cc4/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-67f2d585-20260512T004730-dbd51cc4"
+  },
+  "prompt_sha": "9a55ff9ca897c4c9706629bb691061e0cabe056321c1742339eec89c3b21c05b"
+}
