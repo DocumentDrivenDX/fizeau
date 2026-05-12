@@ -101,8 +101,25 @@ CONTEXT_BUCKETS: list[tuple[int, int, str, int]] = [
 # Lanes excluded from "active" headlines (kept in raw data).
 EXCLUDED_PROFILES = {"noop", "smoke"}
 
+# Public benchmark labels. Raw profile IDs are storage keys and sometimes
+# include hostnames, ports, or retired aliases; website pages should render the
+# stable lane name instead.
+PUBLIC_PROFILE_LABELS = {
+    "sindri-club-3090": "sindri-vllm",
+    "sindri-club-3090-llamacpp": "sindri-llamacpp",
+    "bragi-club-3090": "local-vllm-rtx3090",
+    "bragi-qwen3-6-27b": "local-lmstudio-qwen3-6-27b",
+    "grendel-rapid-mlx": "local-rapidmlx-qwen3-6-27b",
+    "vidar-ds4": "local-ds4-deepseek-v4-flash",
+    "vidar-qwen3-6-27b": "local-omlx-qwen3-6-27b",
+    "vidar-qwen3-6-27b-openai-compat": "local-omlx-qwen3-6-27b-openai-compat",
+}
+
 
 # ---------- low-level helpers ----------
+
+def public_profile_label(profile_id: str) -> str:
+    return PUBLIC_PROFILE_LABELS.get(profile_id, profile_id)
 
 def parse_ts(ts: str | None) -> float | None:
     """ISO-8601 with up to nanosecond precision → POSIX seconds."""
@@ -563,7 +580,7 @@ def chart_pass_rate_by_subset(per_subset: dict[str, dict[str, dict[str, Any]]],
         d = per_subset[pid].get("all", {})
         if not d.get("tasks_attempted"): continue
         rows.append({
-            "label": pid,
+            "label": public_profile_label(pid),
             "rate": d["tasks_passed"] / d["tasks_attempted"],
             "color": color_for_profile(pid, profiles.get(pid)),
             "kind": "internal",
@@ -638,7 +655,7 @@ def chart_model_power_scatter(per_profile: dict[str, dict[str, Any]],
         pts.append({
             "x": pwr + 0.05 * ((hash(pid) % 11) - 5),
             "y": passed / attempted,
-            "label": pid.replace("fiz-", "").replace("-qwen3-6-27b", "/Q27b").replace("-claude-sonnet-4-6", "/Sonnet"),
+            "label": public_profile_label(pid).replace("fiz-", "").replace("-qwen3-6-27b", "/Q27b").replace("-claude-sonnet-4-6", "/Sonnet"),
             "color": color_for_profile(pid, meta),
             "size": 30 + (a["median_turns"] or 0) * 4,
             "kind": "internal",
@@ -692,7 +709,7 @@ def chart_lines_over_context(timing: dict[str, dict[str, Any]],
         ys = [b[metric] for b in buckets if b[metric] is not None]
         if len(xs) < 2: continue
         color = color_for_profile(pid, profiles.get(pid))
-        ax.plot(xs, ys, marker="o", color=color, label=pid, linewidth=1.6)
+        ax.plot(xs, ys, marker="o", color=color, label=public_profile_label(pid), linewidth=1.6)
         plotted = True
     if not plotted: return
     bucket_labels = [b[2] for b in CONTEXT_BUCKETS]
@@ -925,12 +942,11 @@ def render_body(*,
         color = color_for_profile(pid, prof)
         harness = harness_label(pid, prof)
         parts.append(f'<div class="profile-card" style="border-left: 4px solid {color}">')
-        parts.append(f'<h4>{html.escape(pid)}</h4>')
+        parts.append(f'<h4>{html.escape(public_profile_label(pid))}</h4>')
         parts.append(f'<div style="font-size:12px;margin:2px 0 6px 0;"><b>harness:</b> {html.escape(harness)}</div>')
         bits = []
         if meta.get("model_id"): bits.append(f'model <code>{html.escape(str(meta["model_id"]))}</code>')
         if meta.get("quant_label"): bits.append(f'<span class="pill">{html.escape(str(meta["quant_label"]))}</span>')
-        if meta.get("server"): bits.append(f'host <code>{html.escape(str(meta["server"]))}</code>')
         if provider.get("type"): bits.append(f'provider <code>{html.escape(provider["type"])}</code>')
         parts.append('<div>' + ' · '.join(bits) + '</div>')
         if sampling:
@@ -973,7 +989,7 @@ def render_body(*,
         prof = profiles.get(pid) or {}
         provider_type = (prof.get("provider") or {}).get("type") or ""
         ags = per_subset.get(pid, {})
-        cells = [f'<td>{html.escape(pid)}</td>']
+        cells = [f'<td>{html.escape(public_profile_label(pid))}</td>']
         for s in SUBSET_ORDER:
             d = ags.get(s)
             if not d or d["tasks_attempted"] == 0:
@@ -1013,7 +1029,7 @@ def render_body(*,
         td = timing.get(pid, {})
         passed, attempted = subset_pass_counts(per_subset, pid, "all")
         parts.append('<tr>')
-        parts.append(f'<td>{html.escape(pid)}</td>')
+        parts.append(f'<td>{html.escape(public_profile_label(pid))}</td>')
         parts.append(f'<td><span class="meta">{html.escape(harness_label(pid, profiles.get(pid)))}</span></td>')
         parts.append(f'<td>{a["n_attempts"]}</td><td>{a["n_real"]}</td>')
         parts.append(f'<td>{_fmt_pct(a["n_pass"], a["n_graded"])}</td>')
@@ -1081,7 +1097,7 @@ def _render_pass_table(pids: list[str], subsets, per_subset, profiles,
         prof = profiles.get(pid) or {}
         provider_type = (prof.get("provider") or {}).get("type") or ""
         ags = per_subset.get(pid, {})
-        cells = [f'<td>{html.escape(pid)}</td>']
+        cells = [f'<td>{html.escape(public_profile_label(pid))}</td>']
         for sub in SUBSET_ORDER:
             d = ags.get(sub)
             if not d or d["tasks_attempted"] == 0:
@@ -1125,7 +1141,7 @@ def _render_detailed_table(pids: list[str], per_profile, per_subset, profiles, t
         a = per_profile[pid]
         td = timing.get(pid, {})
         prof = profiles.get(pid)
-        label = label_for(pid, prof) if label_for else pid
+        label = label_for(pid, prof) if label_for else public_profile_label(pid)
         passed, attempted = subset_pass_counts(per_subset, pid, "all")
         s.append('<tr>')
         s.append(f'<td>{html.escape(label)}</td>')
@@ -1388,9 +1404,9 @@ def main():
     # task set).
     QWEN_LANES = [
         ("fiz-openrouter-qwen3-6-27b", ["fiz-openrouter-qwen3-6-27b"], "OpenRouter (cloud)"),
-        ("sindri-vllm",                ["sindri-vllm", "sindri-club-3090"], "vLLM int4 (sindri / RTX 5090)"),
-        ("sindri-llamacpp",            ["sindri-llamacpp", "sindri-club-3090-llamacpp"], "llama.cpp Q3_K_XL (sindri / RTX 3090)"),
-        ("vidar-qwen3-6-27b",          ["vidar-qwen3-6-27b"], "oMLX 8-bit (vidar / Mac Studio)"),
+        ("sindri-vllm",                ["sindri-vllm", "sindri-club-3090"], "vLLM int4 local CUDA"),
+        ("sindri-llamacpp",            ["sindri-llamacpp", "sindri-club-3090-llamacpp"], "llama.cpp Q3_K_XL local CUDA"),
+        ("local-omlx-qwen3-6-27b",     ["vidar-qwen3-6-27b"], "oMLX 8-bit local Apple Silicon"),
     ]
     qwen_rows = []
     for public_pid, data_pids, label in QWEN_LANES:

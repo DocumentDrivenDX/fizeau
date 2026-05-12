@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-12 13:07:47 UTC · 2,614 trial reports · 22 active lanes</div>
+<div class="meta">Snapshot: 2026-05-12 13:16:06 UTC · 2,614 trial reports · 22 active lanes</div>
 <h2>How we run it</h2>
 <div class="narrative"><p><a href="https://terminal-bench.dev/">Terminal-Bench</a> 2.1 is a public coding-agent benchmark of 89 long-form tasks. Each task ships a prompt, an isolated Docker container with the test environment, and a deterministic verifier. An agent reads the prompt, runs shell commands and edits files inside the container, then the verifier scores the resulting state. We use the arm64 preflight image of the dataset (commit <code>harbor-registry</code>).</p>
 <p>Each lane runs through <a href="https://github.com/laude-institute/harbor">Harbor</a> 0.3.x's <code>BaseInstalledAgent</code> path. Harbor stages our agent runtime tarball into the task image, runs the agent inside the task's container with bind-mounted log directories, then runs the verifier separately. Our agent adapter (<code>scripts/benchmark/harbor_agent.py</code>) launches <code>fiz</code> with provider/model wired via per-lane env vars (<code>FIZEAU_PROVIDER</code>, <code>FIZEAU_BASE_URL</code>, <code>FIZEAU_MODEL</code>, …). Each task runs with <code>--reps 5</code> per lane; pass@1 (per-rep success rate) and pass@k (any-rep solve rate, for k=5 reps) are reported separately.</p>
@@ -25,17 +25,17 @@ toc: true
 <h3>Qwen3.6-27B across providers (the headline question)</h3>
 <p>OpenRouter Qwen3.6-27B is the throughput reference. The local lanes bottleneck elsewhere:</p>
 <ul>
-<li><strong>sindri (vLLM int4 on a 3090)</strong>: best decode rate, worst prefill. On agent loops with 50–150k context per turn, prefill dominates wall — explaining why the median wall is roughly 2× OpenRouter despite faster decode.</li>
-<li><strong>vidar (oMLX 8-bit on Apple silicon)</strong>: slow on both axes. MLX 8-bit at this model size is the rate limiter; only smaller quantization or a different runtime will move it.</li>
+<li><strong>sindri-vllm (vLLM int4 on local CUDA)</strong>: best decode rate, worst prefill. On agent loops with 50–150k context per turn, prefill dominates wall — explaining why the median wall is roughly 2× OpenRouter despite faster decode.</li>
+<li><strong>local-omlx-qwen3-6-27b (oMLX 8-bit on Apple silicon)</strong>: slow on both axes. MLX 8-bit at this model size is the rate limiter; only smaller quantization or a different runtime will move it.</li>
 </ul>
 <h3>Model-power signal vs harness loss</h3>
 <p>The scatter in §6 mostly tracks the expected pattern — frontier-power models (Opus, GPT-5.5) sit at higher pass-rates than Qwen-class — but several Qwen lanes show distance below the trend that maps to harness loss, not model loss. The recently-fixed JSONL-bind-mount bug (commit <code>18a19a43</code>) closes one well-understood class of those.</p>
 <h3>Cost / reliability frontier</h3>
-<p>OpenRouter Qwen3.6-27B costs cash per run; sindri and vidar cost $0 in cash but cost in wall-time and reliability. For pure budget, OR Qwen wins; for ceiling-pass tasks where reliability matters, the frontier rows on the leaderboard remain ahead of any Qwen lane regardless of plumbing.</p>
+<p>OpenRouter Qwen3.6-27B costs cash per run; local lanes cost $0 in cash but cost in wall-time and reliability. For pure budget, OR Qwen wins; for ceiling-pass tasks where reliability matters, the frontier rows on the leaderboard remain ahead of any Qwen lane regardless of plumbing.</p>
 <h3>Open questions</h3>
 <ul>
-<li>Vidar's input-token median runs higher than sindri on the same task set. Either the MLX server replays full conversation context where vLLM compacts, or the agent loop runs more turns on vidar before the model converges. Worth a focused trace.</li>
-<li>Sindri's prefill latency is the single biggest performance lever: enabling vLLM <code>--enable-prefix-caching</code> (or boosting cache hit rate) should drop TTFT 5–10× and close most of the wall-time gap.</li>
+<li>The oMLX lane's input-token median runs higher than the vLLM lane on the same task set. Either the MLX server replays full conversation context where vLLM compacts, or the agent loop runs more turns before the model converges. Worth a focused trace.</li>
+<li><code>sindri-vllm</code> prefill latency is the single biggest performance lever: enabling vLLM <code>--enable-prefix-caching</code> (or boosting cache hit rate) should drop TTFT 5–10× and close most of the wall-time gap.</li>
 </ul></div>
 <h2>Method notes</h2>
 <div class="narrative"><ul>

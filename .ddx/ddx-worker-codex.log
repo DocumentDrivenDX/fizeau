@@ -1008,3 +1008,72 @@ bead readiness blocked: score 0.33 below threshold 0.50 (2/6 verifiable ACs) (re
 08:52:26 readiness check: starting route: harness=codex model=gpt-5.5
 08:54:25 readiness check unavailable: readiness route unavailable: runner error: no_progress_tools_exceeded (continuing) route: harness=codex model=gpt-5.5
 08:55:05 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5
+12:55:17 do route codex/gpt-5.5 reason=explicit
+12:55:17 do fizeau-7c8b1856 route codex/gpt-5.5 power=10
+12:55:17 do thinking ...
+12:55:28 do ok 1 inspect lines 1,220 in /var/tmp/ddx-exec-wt/.execute-bead-wt-… < out=8.5KB 152 lines "---"
+12:55:34 do ok 2 inspect lines 1,260 in .agents/skills/ddx/reference/work.md < out=6.6KB 155 lines "# Work — … 1ms
+12:55:51 do ok 3 'rg --files internal/modelregistry internal/modelcatalog inte… < out=3.5KB 79 lines "rg: interna…
+12:55:51 do ok 4 'ddx bead show fizeau-7c8b1856' < out=7.3KB 158 lines "ID: fizeau-7c8b1856"
+12:55:51 do ok 5 'git status --short' 466ms
+12:56:07 do ok 6 inspect lines 1,260 in internal/config/config.go < out=10.2KB 260 lines "// Package config provide…
+12:56:07 do ok 7 inspect lines 1,260 in internal/modelcatalog/catalog.go < out=7.6KB 260 lines "package modelcatalo…
+12:56:07 do ok 8 inspect lines 1,260 in internal/modelcatalog/tiers.go < out=6.9KB 260 lines "package modelcatalog"
+12:56:07 do ok 9 inspect lines 1,260 in docs/helix/02-design/adr/ADR-012-per-s… < out=9.5KB 259 lines "---"
+12:56:23 do ok 10 inspect lines 260,620 in internal/modelcatalog/catalog.go < out=10.3KB 361 lines "entry := c.mani…
+12:56:23 do ok 11 search "package" in . < out=75.0KB 692 lines "internal/tool/anchorwords/words.g… 1ms
+12:56:23 do ok 12 inspect lines 1,260 in internal/modelcatalog/manifest.go < out=10.3KB 260 lines "package modelcat…
+12:56:23 do ok 13 inspect lines 1,260 in internal/provider/openai/discovery.go < out=5.6KB 162 lines "package opena…
+12:56:38 do ok 14 inspect lines 1,280 in internal/discoverycache/cache.go < out=7.7KB 280 lines "// Package discove…
+12:56:38 do ok 15 inspect lines 1,260 in internal/discoverycache/cache_test.go < out=4.3KB 181 lines "package disco…
+12:56:38 do ok 16 inspect lines 1,320 in internal/harnesses/types.go < out=11.7KB 300 lines "package harnesses"
+12:56:38 do ok 17 inspect lines 1,260 in internal/modelref/ref.go < out=1.7KB 61 lines "package modelref"
+12:56:53 do ok 18 inspect lines 1,220 in internal/discoverycache/singleflight.… < out=1.5KB 37 lines "package dis…
+12:56:54 do ok 19 inspect lines 1,240 in internal/harnesses/discovery_cache.go < out=7.7KB 240 lines "package harne…
+12:56:54 do ok 20 inspect lines 1,340 in internal/harnesses/claude/model_disco… < out=8.5KB 293 lines "package cl…
+12:56:54 do ok 21 inspect lines 1,300 in internal/harnesses/codex/model_discov… < out=7.0KB 246 lines "package co…
+12:57:10 do ok 22 inspect lines 740,840 in service_routing.go < out=3.8KB 101 lines "return \"\", false"
+12:57:10 do ok 23 inspect lines 1060,1125 in service_routing.go < out=2.3KB 66 lines "func defaultSubscriptionCostC…
+12:57:10 do ok 24 inspect lines 300,390 in service_models.go < out=2.8KB 90 lines "func discoverAndRankModels(ctx c…
+12:57:10 do ok 25 search "IncludeByDefault|include_by_d..." in internal < out=23.9KB 262 lines "service_models_… 3ms
+12:57:16 do ok 26 inspect lines 700,760 in internal/config/config.go < out=4.7KB 175 lines "return pc, nil, nil"
+12:57:23 do ok 27 inspect lines 795,820 in internal/modelcatalog/manifest.go < out=780B 31 lines "return modelcatal…
+12:57:29 do ok 28 search "func" in internal/modelcatalog < out=1.3KB 15 lines "internal/modelcatalog/power.go:80:\�…
+12:57:34 do ok 29 inspect lines 755,815 in internal/modelcatalog/catalog.go < out=1.4KB 53 lines "}"
+12:57:45 do ok 30 search "discoverycache" in '*.go' < out=1.5KB 18 lines "internal/runtimesignals/collect_tes…
+12:57:50 do ok 31 inspect lines 1,240 in internal/runtimesignals/collect.go < out=13.6KB 416 lines "package runtime…
+12:58:01 do ok 32 inspect lines 1,120 in internal/runtimesignals/types.go < out=2.6KB 32 lines "internal/runtimesig…
+12:58:06 do ok 33 inspect lines 1,80 in internal/runtimesignals/signal.go < out=1.3KB 32 lines "// Package runtimes…
+12:59:08 do ok 34 inspect lines 200,320 in internal/modelcatalog/manifest.go < out=4.6KB 121 lines "entry := m.… 1ms
+12:59:19 do ok 35 search "func" in head < out=2.9KB 72 lines "116:// ModelCatalogConfig configure…
+12:59:24 do ok 36 inspect lines 1263,1305 in internal/config/config.go < out=1.7KB 43 lines "func (c *Config) catal…
+cleanup: periodic 0 temp dir(s), 0 worktree(s), 0 run-state file(s), 0 scratch dir(s), 12 evidence dir(s), 0 byte(s), 0 inode(s)
+13:09:11 do ok 37 'gofmt -w internal/modelregistry'
+13:09:21 do ok 38 'go test ./internal/modelregistry/...' < out=58B 1 line "ok \tgithub.com/easel/fizeau/inte… 1.742s
+13:11:15 do ok 39 'go test ./...' < out=5.1KB 89 lines "ok \tgithub.com/easel/fizeau\t6.403… 1m44.6s
+13:11:26 do ok 40 'go vet ./...' 797ms
+13:11:39 do ok 41 'git status --short' < out=26B 1 line
+13:11:39 do ok 42 'git diff --stat'
+13:11:39 do ok 43 'git diff -- internal/modelregistry'
+13:11:53 do ok 44 inspect lines 1,240 in internal/modelregistry/assemble.go < out=2.5KB 83 lines "package modelregi…
+13:11:53 do ok 45 inspect lines 1,320 in internal/modelregistry/discovery.go < out=9.8KB 318 lines "package modelre…
+13:11:53 do ok 46 inspect lines 1,240 in internal/modelregistry/enrich.go < out=4.0KB 125 lines "package modelregis…
+13:12:45 do ok 47 inspect lines 1,24 in internal/modelregistry/enrich_test.go < out=452B 6 lines "# github.co… 116ms
+13:13:00 do ok 48 'gofmt -w internal/modelregistry < out=58B 1 line "ok \tgithub.com/easel/fizeau/internal/m�… 517ms
+13:13:09 do ok 49 'go test ./...' < out=5.2KB 89 lines "ok \tgithub.com/easel/fizeau\t(cach… 363ms
+13:13:14 do ok 50 'go vet ./...' 228ms
+13:13:20 do ok 51 'git status --short' < out=26B 1 line
+13:13:26 do ok 52 'git add internal/modelregistry/types.go internal/modelregis… < out=515B 9 lines "internal/mode…
+13:13:45 do ok 53 'git commit -m "feat: assemble model registry snapshot [fize… < out=563B 10 lines "[detached HE…
+13:13:51 do ok 54 'git status --short < out=8B 1 line
+13:13:59 do response complete 18753 tok in 18m41.871s, 16.7 tok/s
+✓ fizeau-7c8b1856 → merged (02896fb5)
+
+▶ fizeau-491dd1e3: fiz models top-level CLI subcommand with shortform fuzzy resolution
+09:14:04 readiness check: starting route: harness=codex model=gpt-5.5
+bead readiness blocked: score 0.10 below threshold 0.50 (1/10 verifiable ACs) (releasing fizeau-491dd1e3)
+
+▶ fizeau-c2a23daa: OR sub-provider expansion: openrouter/<model>@<sub_provider> in snapshot
+09:14:04 readiness check: starting route: harness=codex model=gpt-5.5
+09:16:07 readiness check unavailable: decode result: json: cannot unmarshal object into Go struct field .readiness_checks of type []struct { Reason string "json:\"reason,omitempty\"" } (continuing) route: harness=codex model=gpt-5.5
+09:16:47 readiness check unavailable: lint hook: dispatch-failure: ResolveRoute: policy "air-gapped" has no candidate satisfying local endpoint: 5 candidates rejected (continuing) route: harness=codex model=gpt-5.5

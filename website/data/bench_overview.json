@@ -1,5 +1,5 @@
 {
-  "snapshot_ts": "2026-05-12 13:07:47 UTC",
+  "snapshot_ts": "2026-05-12 13:16:06 UTC",
   "n_reports_total": 2614,
   "n_profiles_active": 22,
   "n_external_comparators": 45,
@@ -22,7 +22,7 @@
     {
       "profile_id": "sindri-vllm",
       "source_profile_id": "sindri-club-3090",
-      "label": "vLLM int4 (sindri / RTX 5090)",
+      "label": "vLLM int4 local CUDA",
       "pass_at_k_pct": 34.146341463414636,
       "pass_at_k_num": 28,
       "pass_at_k_den": 82,
@@ -35,7 +35,7 @@
     {
       "profile_id": "sindri-llamacpp",
       "source_profile_id": "sindri-club-3090-llamacpp",
-      "label": "llama.cpp Q3_K_XL (sindri / RTX 3090)",
+      "label": "llama.cpp Q3_K_XL local CUDA",
       "pass_at_k_pct": 70.96774193548387,
       "pass_at_k_num": 22,
       "pass_at_k_den": 31,
@@ -46,9 +46,9 @@
       "n_attempts": 53
     },
     {
-      "profile_id": "vidar-qwen3-6-27b",
+      "profile_id": "local-omlx-qwen3-6-27b",
       "source_profile_id": "vidar-qwen3-6-27b",
-      "label": "oMLX 8-bit (vidar / Mac Studio)",
+      "label": "oMLX 8-bit local Apple Silicon",
       "pass_at_k_pct": 38.2716049382716,
       "pass_at_k_num": 31,
       "pass_at_k_den": 81,

@@ -3,10 +3,10 @@ Each card below is one (provider, model, harness) tuple. Cards are colored by pr
 The catalog spans four kinds of provider surface:
 
 - **OpenRouter / OpenAI / Anthropic** — managed API providers used as throughput and reliability references.
-- **vLLM** (sindri-club-3090, bragi-club-3090) — self-hosted on a 3090 with int4 AutoRound quantization.
-- **oMLX** (vidar) — Apple-silicon MLX runtime at 8-bit quantization.
-- **RapidMLX** (grendel-rapid-mlx) — second MLX backend.
+- **vLLM** (`sindri-vllm`, local RTX-class CUDA) — self-hosted with int4 AutoRound quantization.
+- **llama.cpp** (`sindri-llamacpp`, same local CUDA host class) — self-hosted Q3_K_XL runtime.
+- **oMLX / RapidMLX** — Apple-silicon MLX runtimes at 8-bit quantization.
 
 Lanes whose `id` starts with `fiz-harness-` route through fiz-as-a-harness wrapping a different agent CLI (e.g. claude or codex) to isolate "is the agent loop hurting?" from "is the model hurting?".
 
-Self-hosted lanes (vLLM, oMLX, RapidMLX) reference a machine in `scripts/benchmark/machines.yaml` via the profile's `metadata.server`. The hardware block on each card renders from that single source of truth — update the YAML to add a machine or correct hardware specs, then re-run `generate-report.py`.
+Self-hosted lanes (vLLM, llama.cpp, oMLX, RapidMLX) reference machine inventory internally, but the public report renders stable lane labels and hardware classes rather than raw hostnames or endpoints.
