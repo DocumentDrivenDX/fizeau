@@ -26,6 +26,7 @@ const (
 
 type discoveredModel struct {
 	ID           string
+	Configured   bool
 	Via          Source
 	DiscoveredAt time.Time
 }
@@ -42,13 +43,13 @@ type discoveryPayload struct {
 	Source          string    `json:"source,omitempty"`
 }
 
-func discoverProvider(ctx context.Context, providerName string, pc config.ProviderConfig, cache *discoverycache.Cache) providerDiscoveryResult {
+func discoverProvider(ctx context.Context, providerName string, pc config.ProviderConfig, cache *discoverycache.Cache, opts AssembleOptions) providerDiscoveryResult {
 	providerType := normalizeProviderType(pc.Type)
 	switch providerType {
 	case "claude", "codex":
-		return discoverHarnessProvider(providerName, providerType, cache)
+		return discoverHarnessProvider(providerName, providerType, cache, opts)
 	case "openai", "openrouter", "vidar-ds4", "sindri-llamacpp", "ds4", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai":
-		result := discoverOpenAICompatibleProvider(ctx, providerName, pc, cache)
+		result := discoverOpenAICompatibleProvider(ctx, providerName, pc, cache, opts)
 		if providerType == "ds4" || providerType == "vidar-ds4" {
 			result.merge(discoverPropsProvider(providerName, cache))
 		}
@@ -70,19 +71,15 @@ func discoverProvider(ctx context.Context, providerName string, pc config.Provid
 	}
 }
 
-func discoverOpenAICompatibleProvider(ctx context.Context, providerName string, pc config.ProviderConfig, cache *discoverycache.Cache) providerDiscoveryResult {
+func discoverOpenAICompatibleProvider(ctx context.Context, providerName string, pc config.ProviderConfig, cache *discoverycache.Cache, opts AssembleOptions) providerDiscoveryResult {
 	src := discoverySource(providerName, discoveryTTLForProvider(pc), discoveryRefreshDeadlineHTTP)
 	if cache == nil {
 		return providerDiscoveryResult{Sources: map[string]SourceMeta{providerName: {Stale: true, Error: "discovery cache is nil"}}}
 	}
-	result := readDiscoveryCache(cache, src, providerName, SourceNativeAPI)
-	if result.Sources == nil {
-		result.Sources = map[string]SourceMeta{}
-	}
 	if hasDiscoveryEndpoint(pc) {
 		baseURL := strings.TrimRight(firstBaseURL(pc), "/")
 		apiKey := pc.APIKey
-		cache.MaybeRefresh(src, func(refreshCtx context.Context) ([]byte, error) {
+		refresher := func(refreshCtx context.Context) ([]byte, error) {
 			requestCtx := ctx
 			if requestCtx == nil {
 				requestCtx = refreshCtx
@@ -96,8 +93,28 @@ func discoverOpenAICompatibleProvider(ctx context.Context, providerName string, 
 				Models:     ids,
 				Source:     "openai-compatible:/v1/models",
 			})
-		})
-		_ = ctx
+		}
+		if opts.Refresh == RefreshForce {
+			_ = cache.Refresh(src, refresher)
+		} else if opts.Refresh != RefreshNone {
+			cache.MaybeRefresh(src, refresher)
+		}
+	}
+	result := readDiscoveryCache(cache, src, providerName, SourceNativeAPI)
+	if result.Sources == nil {
+		result.Sources = map[string]SourceMeta{}
+	}
+	if len(result.Models) == 0 && strings.TrimSpace(pc.Model) != "" {
+		fallback := modelsFromIDs([]string{pc.Model}, SourceNativeAPI, time.Now().UTC(), providerName)
+		for i := range fallback.Models {
+			fallback.Models[i].Configured = true
+		}
+		result.Models = fallback.Models
+		meta := result.Sources[providerName]
+		if meta.LastRefreshedAt.IsZero() {
+			meta.LastRefreshedAt = time.Now().UTC()
+		}
+		result.Sources[providerName] = meta
 	}
 	return result
 }
@@ -116,7 +133,7 @@ func discoverPropsProvider(providerName string, cache *discoverycache.Cache) pro
 	return result
 }
 
-func discoverHarnessProvider(providerName, providerType string, cache *discoverycache.Cache) providerDiscoveryResult {
+func discoverHarnessProvider(providerName, providerType string, cache *discoverycache.Cache, opts AssembleOptions) providerDiscoveryResult {
 	src := discoverycache.Source{
 		Tier:            "discovery",
 		Name:            providerName,
@@ -129,6 +146,20 @@ func discoverHarnessProvider(providerName, providerType string, cache *discovery
 			return providerDiscoveryResult{Sources: map[string]SourceMeta{providerName: {Stale: true, Error: err.Error()}}}
 		}
 		return modelsFromIDs(snapshot.Models, SourceHarnessPTY, snapshot.CapturedAt, providerName)
+	}
+	if opts.Refresh == RefreshForce {
+		_ = cache.Refresh(src, func(context.Context) ([]byte, error) {
+			snapshot, err := harnesses.CachedModelDiscoverySnapshot(providerType, harnesses.EmbeddedDiscoverySource)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(discoveryPayload{
+				CapturedAt:      snapshot.CapturedAt,
+				Models:          snapshot.Models,
+				ReasoningLevels: snapshot.ReasoningLevels,
+				Source:          snapshot.Source,
+			})
+		})
 	}
 	result := readDiscoveryCache(cache, src, providerName, SourceHarnessPTY)
 	if len(result.Models) > 0 {

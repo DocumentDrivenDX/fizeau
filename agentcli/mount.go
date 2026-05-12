@@ -154,6 +154,7 @@ func addMountedSubcommands(root *cobra.Command, cfg mountConfig) {
 	root.AddCommand(nativeCorpusCommand())
 	root.AddCommand(nativeImportCommand())
 	root.AddCommand(nativeUpdateCommand())
+	root.AddCommand(nativeCacheCommand())
 	for _, name := range []string{"version", "run"} {
 		subcommandName := name
 		subcmd := &cobra.Command{
@@ -222,6 +223,7 @@ func mountedSubcommands() []string {
 		"policies",
 		"harnesses",
 		"catalog",
+		"cache",
 		"corpus",
 		"route-status",
 		"import",
@@ -286,15 +288,39 @@ func nativeHarnessesCommand() *cobra.Command {
 }
 
 func nativeModelsCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:           "models",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Args:          cobra.ArbitraryArgs,
+		Args:          cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return exitError(cmdModels(rootWorkDir(cmd), rootBool(cmd, "json"), rootString(cmd, "provider"), args))
+			return exitError(cmdModels(rootWorkDir(cmd), modelsArgs(cmd, args)))
 		},
 	}
+	cmd.Flags().Bool("refresh", false, "Force-refresh all model sources before showing")
+	cmd.Flags().Bool("no-refresh", false, "Do not trigger background refresh for stale model sources")
+	cmd.Flags().Int("power-min", 0, "Filter to models with Power >= n")
+	cmd.Flags().Int("power-max", 0, "Filter to models with Power <= n")
+	cmd.Flags().Bool("include-noise", false, "Show low-power, unranked, and deprecated model entries")
+	return cmd
+}
+
+func nativeCacheCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "cache",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:           "prune",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return exitError(cmdCachePrune(rootWorkDir(cmd)))
+		},
+	})
+	return cmd
 }
 
 func nativeCheckCommand() *cobra.Command {
@@ -565,6 +591,14 @@ func routeStatusArgs(cmd *cobra.Command, args []string) []string {
 	return append(out, args...)
 }
 
+func modelsArgs(cmd *cobra.Command, args []string) []string {
+	out := changedRootBoolFlagArgs(cmd, "json")
+	out = append(out, changedRootFlagArgs(cmd, "provider")...)
+	out = append(out, changedBoolFlagArgs(cmd, "refresh", "no-refresh", "include-noise")...)
+	out = append(out, changedFlagArgs(cmd, "power-min", "power-max")...)
+	return append(out, args...)
+}
+
 func corpusListArgs(cmd *cobra.Command, args []string) []string {
 	out := changedRootBoolFlagArgs(cmd, "json")
 	return append(out, args...)
@@ -647,6 +681,11 @@ func NeedsLegacyPassthrough(args []string) bool {
 		switch arg {
 		case "log", "replay", "usage", "providers", "policies", "harnesses", "models", "check", "route-status", "corpus", "import", "update":
 			return false
+		case "cache":
+			if i+1 < len(args) && args[i+1] == "prune" {
+				return false
+			}
+			return true
 		case "catalog":
 			if i+1 < len(args) {
 				switch args[i+1] {

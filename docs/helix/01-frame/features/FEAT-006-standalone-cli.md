@@ -85,21 +85,33 @@ The CLI mirrors the v0.11 service contract. Routing intent is expressed with
 17. `fiz harnesses` lists native/subprocess harnesses, billing, availability,
     account/quota status, reasoning/permission support, and capability matrix
     data. `--json` emits stable keys.
-18. `fiz models` / model-listing surfaces expose joined model inventory:
-    harness, provider, endpoint, model, power, billing, cost, context,
-    capabilities, availability, auto-routable, and exact-pin-only state.
-19. `fiz route-status` reports `policy` and `power_policy` keys, not removed
+18. `fiz models` is the top-level model registry inspection command:
+    - `fiz models [flags]` lists the assembled per-source cache snapshot with
+      columns `PROVIDER MODEL FAMILY VERSION TIER POWER COST/M STATUS QUOTA AUTO`;
+    - `fiz models <ref> [flags]` shows detail for a canonical
+      `<provider>/<id>` ref or a shortform fuzzy ref, reporting ambiguous
+      candidates with full canonical IDs;
+    - `fiz models --json` emits the assembled snapshot as JSON;
+    - list flags are `--refresh`, `--no-refresh`, `--provider`,
+      `--power-min`, `--power-max`, and `--include-noise`;
+    - default list output suppresses low-power/unranked long-tail entries while
+      `--include-noise` shows the complete snapshot for debugging.
+19. `fiz cache prune` removes stale discovery/runtime cache files for sources
+    not present in the current config while preserving active sources.
+20. Legacy `--list-models` remains a compatibility model-listing surface over
+    the service facade for harness/provider inventory.
+21. `fiz route-status` reports `policy` and `power_policy` keys, not removed
     routing names.
-20. `fiz usage`, `fiz log`, and `fiz replay` consume public service
+22. `fiz usage`, `fiz log`, and `fiz replay` consume public service
     projections instead of parsing internal session-log structs.
 
 ### DDx Harness Integration
 
-21. When invoked by DDx, `fiz` accepts prompt envelopes through stdin or final
+23. When invoked by DDx, `fiz` accepts prompt envelopes through stdin or final
     argument and returns structured JSON suitable for DDx parsing.
-22. DDx may pass policy, power bounds, or exact hard pins through the CLI.
+24. DDx may pass policy, power bounds, or exact hard pins through the CLI.
     DDx does not name inner provider routes as routing policy.
-23. Output preserves token usage, known-vs-unknown cost semantics, session ID,
+25. Output preserves token usage, known-vs-unknown cost semantics, session ID,
     routing actual, and continuity-ready metadata.
 
 ## Acceptance Criteria

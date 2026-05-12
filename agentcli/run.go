@@ -179,7 +179,14 @@ func runWithOptions(opts Options) int {
 		case "usage":
 			return cmdUsage(wd, args[1:])
 		case "models":
-			return cmdModels(wd, *jsonOutput, *providerFlag, args[1:])
+			modelArgs := append([]string{}, args[1:]...)
+			if *jsonOutput {
+				modelArgs = append([]string{"--json"}, modelArgs...)
+			}
+			if *providerFlag != "" {
+				modelArgs = append([]string{"--provider", *providerFlag}, modelArgs...)
+			}
+			return cmdModels(wd, modelArgs)
 		case "check":
 			return cmdCheck(wd, *providerFlag, args[1:])
 		case "providers":
@@ -1282,19 +1289,6 @@ func redactedProviders(providers map[string]agentConfig.ProviderConfig) map[stri
 		redacted[name] = entry
 	}
 	return redacted
-}
-
-func cmdModels(workDir string, jsonOutput bool, providerName string, args []string) int {
-	filter := fizeau.ModelFilter{Provider: providerName}
-	for _, arg := range args {
-		switch arg {
-		case "--json":
-			jsonOutput = true
-		case "--all":
-			filter.Provider = ""
-		}
-	}
-	return cmdListModels(workDir, jsonOutput, filter)
 }
 
 type cliModelInventoryRow struct {
