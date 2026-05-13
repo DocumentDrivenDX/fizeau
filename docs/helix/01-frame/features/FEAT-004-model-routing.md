@@ -15,10 +15,19 @@ ddx:
 
 ## Overview
 
-Fizeau routes requests from one operator-visible model inventory. The inventory
-is the assembled snapshot also exposed by `fiz models`: configured provider
-sources and harnesses, discovered model IDs, catalog metadata, and runtime
-signals joined into one set of provider/model facts.
+Fizeau routes requests by evaluating `route(client_inputs, fiz_models_snapshot)`.
+Client inputs include policy/profile, pins, `no_remote`, metered opt-in, tools,
+context, reasoning needs, and other explicit constraints. The `fiz models`
+snapshot is the only source of routing facts: health, quota, model
+availability, effective cost, `actual_cash_spend`, billing kind, context/tools/
+reasoning support, locality, reliability, latency, utilization, and per-field
+freshness.
+
+The snapshot is assembled from configured provider sources and harnesses,
+discovered model IDs, catalog metadata, and runtime signals joined into one set
+of provider/model facts. The server/refresh coordinator owns background
+freshness and refresh coalescing; model discovery and snapshot refresh must not
+spawn independent probe storms.
 
 The public v0.11 routing surface is:
 
@@ -106,6 +115,8 @@ formula, and routing trace construction.
 12. `ResolveRoute`, `RouteStatus`, and `fiz models` use the same assembled
     snapshot as their routing inventory contract. The router must not maintain a
     second discovery view that can diverge from operator-visible model facts.
+    `ResolveRoute` is the public `route(client_inputs, fiz_models_snapshot)`
+    contract.
 13. The assembled snapshot contains one identity per discovered
     `(provider, model_id)` pair, including harness-as-provider identities for
     subscription harnesses. Catalog-only models do not appear as available
@@ -138,9 +149,11 @@ formula, and routing trace construction.
 22. Missing-power, inactive, deprecated, and exact-pin-only models are excluded
     from unpinned automatic routing. Exact model pins may still use them when
     the selected harness/provider can serve the model.
-23. Capability gates are hard: context fit, tool support, reasoning support,
-    permissions, exact-pin support, liveness, quota exhaustion, and provider
-    reachability can reject a candidate before scoring.
+23. Hard gates are limited to explicit user constraints and dispatchability:
+    pins, `require[]`, `no_remote`, metered opt-in, exact-pin support, and
+    whether the candidate can actually be dispatched. Cost, quality, health
+    risk, latency, utilization, and power fit are scoring inputs, not broad
+    vetoes.
 
 ### Power Scoring
 
@@ -161,6 +174,8 @@ formula, and routing trace construction.
     - policy baseline (`cheap`, `default`, `smart`, `air-gapped`);
     - catalog power;
     - provider billing and effective marginal cost;
+    - subscription shadow cost using PAYG-equivalent effective cost while
+      retaining `actual_cash_spend=false`;
     - subscription quota health and burn-rate prediction;
     - route-health cooldown and observed reliability;
     - context headroom and required capabilities;
@@ -169,12 +184,14 @@ formula, and routing trace construction.
     - sticky affinity.
 29. A qualified candidate is one that passes hard constraints, policy
     requirements, default-inclusion and metered opt-in gates, auto-routability,
-    liveness, quota, and capability gates. Power hints shape ranking inside
-    that qualified set rather than replacing exact pins.
+    liveness, quota, and dispatchability. Power hints shape ranking inside that
+    qualified set rather than replacing exact pins.
 30. For a given policy and qualified set, Fizeau prefers the lowest effective
     marginal cost candidate whose power fit is sufficient for the policy intent.
     A zero-cost but substantially underpowered candidate should not beat an
-    in-band candidate for routine `default` work solely because it is free.
+    in-band candidate for routine `default` work solely because it is free. A
+    subscription model may have `actual_cash_spend=false` and still carry a
+    PAYG-equivalent effective cost for scoring.
 31. Local/fixed candidates are preferred by `cheap` and `default` when they are
     eligible and capable. This preference never beats hard pins or
     `require[]`.

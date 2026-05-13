@@ -234,7 +234,7 @@ func (s *service) modelInfoFromSnapshotModel(ctx context.Context, providerName s
 		},
 		Power:        model.Power,
 		AutoRoutable: model.AutoRoutable,
-		ExactPinOnly:  model.ExactPinOnly,
+		ExactPinOnly: model.ExactPinOnly,
 		Billing:      model.Billing,
 		Available:    true,
 		RankPosition: rankPosition,

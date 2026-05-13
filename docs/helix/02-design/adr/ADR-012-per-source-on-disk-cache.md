@@ -13,8 +13,9 @@ ddx:
 
 ## Context
 
-The `fiz models` command (bead EPIC) must produce an available-models
-snapshot that combines two tiers of information:
+The `fiz models` command (bead EPIC) must produce an available-models snapshot
+that combines two tiers of information and feeds `route(client_inputs,
+fiz_models_snapshot)`:
 
 - **Discovery signals** — whether a source exposes a model at all
   (provider `/v1/models` endpoint, harness PTY enumeration,
@@ -27,13 +28,21 @@ snapshot that combines two tiers of information:
 
 Three requirements conflict without a cache:
 
-1. **UI latency ≤ 100 ms.** `fiz models` must return stale data
-   immediately rather than block on discovery IO.
+1. **UI latency ≤ 100 ms.** `fiz models` must return stale data immediately
+   rather than block on discovery IO.
 2. **Multi-process safety.** `ddx work`, `ddx try`, `fiz models`,
    and the routing layer all run concurrently and must share cache
    state without corruption or thundering-herd re-discovery.
-3. **Crash safety.** A killed refresh process must not leave the
-   cache in a corrupt or permanently-locked state.
+3. **Crash safety.** A killed refresh process must not leave the cache in a
+   corrupt or permanently-locked state.
+
+The server/refresh coordinator owns background freshness and refresh
+coalescing. `fiz models` is quick by default: stale snapshot data is returned
+immediately when freshness is pending. `fiz models --refresh` blocks on
+routing-relevant stale fields, and `fiz models --refresh-all` blocks on every
+refreshable field. Without a running server, stale output should tell the
+operator to start the server or request a refresh rather than implying the
+snapshot is unavailable.
 
 Fizeau already has a battle-tested file-locking idiom in
 `cmd/bench/matrix.go:acquireMatrixLock` (lines 1222–1259): atomic
@@ -318,6 +327,11 @@ call to `claim_refresh`:
 
 Used by `fiz models --refresh` and by the `fiz cache refresh
 <source>` subcommand.
+
+`--refresh-all` is the strict variant that blocks until all refreshable fields
+are fresh enough for display, not just the routing-relevant subset. It uses the
+same refresh coordinator and marker discipline; it just widens the blocking
+surface before returning snapshot data.
 
 ### 7. Cache prune
 

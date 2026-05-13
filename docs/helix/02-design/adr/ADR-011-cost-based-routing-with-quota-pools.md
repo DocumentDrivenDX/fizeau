@@ -46,39 +46,39 @@ explicit pins.
 
 Operator direction on 2026-05-11 was: for a given model power, choose
 intelligently based on cost, and let remaining usage quota influence that cost.
-This ADR defines that policy. Implementation follows in a separate epic after
-the ADR is accepted.
+This ADR defines that policy. The router evaluates
+`route(client_inputs, fiz_models_snapshot)` and treats the snapshot as the only
+source of routing facts. Implementation follows in a separate epic after the
+ADR is accepted.
 
 ## Decision
 
 ### Candidate Eligibility Comes Before Cost
 
 The router first builds the joined inventory described by ADR-005 and filters it
-before any cost ranking:
+before any cost ranking. Hard gates are limited to explicit user constraints and
+dispatchability:
 
 1. Apply hard pins for harness, provider, and exact model identity.
-2. Drop candidates that fail policy requirements, capability requirements,
-   health, context, tool, reasoning, or catalog auto-routing gates.
-3. Apply `IncludeByDefault`: a provider or catalog entry with
-   `IncludeByDefault: false` is absent from the unpinned automatic candidate
-   set. This is a hard filter, not a cost penalty.
-4. Apply metered opt-in: a pay-per-token provider is absent from the unpinned
-   automatic candidate set unless provider default inclusion and explicit
-   metered-spend opt-in both allow it.
-5. Apply quota-pool exhaustion: when a quota pool is known exhausted, drop every
+2. Drop candidates that fail policy requirements, including `no_remote`,
+   metered-spend opt-in, `IncludeByDefault` for unpinned automatic routing, or
+   exact-pin support when the request is not dispatchable to the pinned target.
+3. Drop candidates that are not actually dispatchable because the selected
+   source, endpoint, or harness cannot serve the requested model.
+4. Apply quota-pool exhaustion: when a quota pool is known exhausted, drop every
    candidate in that pool.
 
 Only surviving candidates receive cost scores. This preserves the ADR-006
 principle that manual pins are override signals and prevents price scoring from
 accidentally making an excluded provider "almost eligible."
 
-Power bounds are deliberately not a hard eligibility filter in this ADR. FEAT-004
+Power bounds are deliberately not hard eligibility filters in this ADR. FEAT-004
 and ADR-009 define `MinPower` and `MaxPower` as soft scoring inputs after
-auto-routability gates: undershooting the requested floor is penalized more
-heavily than overshooting the requested ceiling, but an otherwise eligible model
-outside the band may still be ranked when its cost, health, and capability trade
-off is better than the alternatives. Exact model pins keep exact identity and do
-not substitute another model to satisfy power hints.
+dispatchability checks: undershooting the requested floor is penalized more
+heavily than overshooting the requested ceiling, but an otherwise eligible
+model outside the band may still be ranked when its cost, health, and
+capability trade-off is better than the alternatives. Exact model pins keep
+exact identity and do not substitute another model to satisfy power hints.
 
 ### Effective Cost Formula
 
@@ -99,9 +99,10 @@ the local candidate is materially underpowered for the requested policy, and
 they still carry latency, reliability, and health signals outside this ADR's
 cost term.
 
-For subscription candidates, the router computes the same nominal per-request
-metered cost when catalog price data exists, then discounts it by quota
-fraction:
+For subscription candidates, `actual_cash_spend=false` remains true because the
+operator is not incurring per-request billing. The router computes a
+PAYG-equivalent effective cost from the comparable metered price when catalog
+price data exists, then discounts that shadow cost by quota fraction:
 
 ```text
 quota_fraction = remaining_quota / quota_limit
@@ -111,7 +112,7 @@ if quota_fraction <= 0:
 if quota_fraction >= 0.20:
   effective_cost = 0
 else:
-  effective_cost = nominal_metered_cost * (1 - quota_fraction / 0.20)
+  effective_cost = payg_equivalent_cost * (1 - quota_fraction / 0.20)
 ```
 
 This quota fraction mapping is deliberately simple. Healthy prepaid quota is
@@ -121,8 +122,10 @@ candidate, or a cheap metered API that is explicitly opted into automatic
 routing can win before the pool reaches zero. When the catalog lacks a
 comparable per-token price for a subscription model, the router uses the
 cheapest known per-token model in the same provider family and power band as the
-nominal cost proxy; if no proxy exists, the scarcity cost is `0` until the pool
-is exhausted.
+PAYG-equivalent proxy; if no proxy exists, the scarcity cost is `0` until the
+pool is exhausted. Pay-per-token providers remain gated by explicit opt-in at
+dispatch time so automatic routing never creates actual metered spend without
+user consent.
 
 ### Quota Pool Semantics
 
@@ -188,17 +191,17 @@ provider responses for reporting and future tuning.
 Among eligible candidates, choose the lowest effective cost candidate whose
 policy power fit is sufficient for the caller's intent. This ADR makes
 "cheapest qualified candidate" the primary rule, not "most powerful available
-candidate." "Qualified" means the candidate passed hard constraints, policy
-requirements, default-inclusion and metered opt-in gates, auto-routability,
-liveness, quota, and capability gates, then remains competitive after the
-FEAT-004 soft power-fit score is applied. A free but substantially underpowered
-candidate should not beat an in-band routine implementation candidate solely
-because it is free.
+candidate." "Qualified" means the candidate passed explicit user constraints,
+dispatchability, default-inclusion and metered opt-in gates, and quota
+exhaustion checks, then remains competitive after the FEAT-004 soft power-fit
+score is applied. A free but substantially underpowered candidate should not
+beat an in-band routine implementation candidate solely because it is free.
 
 Tie-breaking is deterministic:
 
 1. prefer subscription candidates over pay-as-you-go candidates when effective
-   cost is equal;
+   cost is equal and actual_cash_spend is still false for the subscription
+   candidate;
 2. prefer local or fixed-cost candidates over pay-as-you-go candidates when
    effective cost is equal and capability requirements are still satisfied;
 3. prefer the lower-power candidate when both have acceptable power fit;

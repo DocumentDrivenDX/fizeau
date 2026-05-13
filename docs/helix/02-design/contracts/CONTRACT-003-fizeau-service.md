@@ -27,6 +27,13 @@ ADR-009 owns the v0.11 routing vocabulary: callers express routing intent with
 `Policy`, `MinPower`, and `MaxPower`; they express hard overrides with
 `Harness`, `Provider`, and `Model`.
 
+The routing entrypoint is conceptually `route(client_inputs, fiz_models_snapshot)`.
+Client inputs include policy/profile, pins, `no_remote`, metered opt-in, tools,
+context, reasoning needs, and other explicit constraints. The `fiz models`
+snapshot is the only source of routing facts; background freshness and refresh
+coalescing are owned by the server/refresh coordinator rather than by the
+calling client.
+
 ## Interface
 
 ```go
@@ -274,6 +281,15 @@ weaker model is more likely to fail the task while using a stronger model is
 primarily a cost/latency tradeoff. Missing-power and exact-pin-only models are
 excluded from unpinned automatic routing but remain visible in inventory and
 usable through exact pins when the selected harness/provider can serve them.
+Cost, quality, health risk, latency, utilization, and power fit are scoring
+inputs. They do not become hard gates unless they make dispatch impossible.
+
+`fiz models` is the snapshot-first inspection path. It is expected to be quick,
+return stale output by default when freshness is pending, and use `--refresh`
+for routing-relevant stale fields or `--refresh-all` for every refreshable
+field. When the service is not running, stale output should tell the operator to
+start the server or request a refresh rather than implying that routing facts
+are unavailable.
 
 ## Inventory Types
 

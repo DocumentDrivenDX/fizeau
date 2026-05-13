@@ -1,7 +1,7 @@
 # Hard Pins
 
-Pins narrow the candidate set before scoring. They are hard constraints, not
-preferences.
+Pins narrow the candidate set before scoring. They are explicit user
+constraints, not preferences.
 
 Precedence:
 
@@ -17,8 +17,13 @@ pins. They only shape automatic routing and scoring.
 Pins override provider `include_by_default` and metered opt-in, so a
 deliberately pinned pay-per-token provider can be considered even when it is
 excluded from unpinned automatic routing. Pins do not override policy
-requirements: `--policy air-gapped --provider openrouter` fails because
-`air-gapped` requires `no_remote`.
+requirements or dispatchability: `--policy air-gapped --provider openrouter`
+fails because `air-gapped` requires `no_remote`, and a pin still fails if the
+chosen source cannot actually serve the requested model.
+
+Hard gates are limited to explicit user constraints and dispatchability. Cost,
+quality, health risk, latency, utilization, and power fit are scoring inputs
+after the snapshot is assembled.
 
 Examples:
 
@@ -74,4 +79,6 @@ models are more likely to fail the task.
 If constraints cannot be met, the command fails before broadening the request.
 Use `fiz --list-models --json` to inspect available models, power, cost,
 speed, availability, endpoint/host identity, catalog reference,
-auto-routable state, and exact-pin-only state.
+auto-routable state, exact-pin-only state, and the snapshot freshness needed to
+decide whether `fiz models --refresh` or `fiz models --refresh-all` is more
+appropriate.
