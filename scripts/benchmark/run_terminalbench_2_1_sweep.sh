@@ -326,8 +326,10 @@ else
   OUT="$(abs_path "${OUT}")"
 fi
 
-ARTIFACT_DIR="${BENCHMARK_ARTIFACT_DIR:-${REPO_ROOT}/benchmark-results/bin}"
-ARTIFACT_DIR="$(abs_path "${ARTIFACT_DIR}")"
+BENCHMARK_BIN_DIR="${BENCHMARK_BIN_DIR:-${REPO_ROOT}/.local/bin}"
+BENCHMARK_BIN_DIR="$(abs_path "${BENCHMARK_BIN_DIR}")"
+BENCHMARK_RUNTIME_DIR="${BENCHMARK_RUNTIME_DIR:-${REPO_ROOT}/.local/share/fizeau/benchmark-runtime}"
+BENCHMARK_RUNTIME_DIR="$(abs_path "${BENCHMARK_RUNTIME_DIR}")"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -378,11 +380,11 @@ container_goarch() {
 
 build_artifacts() {
   need go
-  mkdir -p "${ARTIFACT_DIR}"
+  mkdir -p "${BENCHMARK_BIN_DIR}" "${BENCHMARK_RUNTIME_DIR}"
 
   CONTAINER_GOARCH="$(container_goarch)"
-  BENCH_BIN="${ARTIFACT_DIR}/fiz-bench"
-  FIZ_ARTIFACT="${ARTIFACT_DIR}/fiz-linux-${CONTAINER_GOARCH}"
+  BENCH_BIN="${BENCHMARK_BIN_DIR}/fiz-bench"
+  FIZ_ARTIFACT="${BENCHMARK_RUNTIME_DIR}/fiz-linux-${CONTAINER_GOARCH}"
 
   echo "Building benchmark runner: ${BENCH_BIN}"
   rm -f "${BENCH_BIN}"
@@ -431,7 +433,7 @@ prepare_home_tarball() {
   fi
 
   local out_dir out_path tmp
-  out_dir="${ARTIFACT_DIR}/native-homes"
+  out_dir="${BENCHMARK_RUNTIME_DIR}/native-homes"
   out_path="${out_dir}/${out_name}"
   mkdir -p "${out_dir}"
   tmp="$(mktemp -d)"
@@ -459,8 +461,8 @@ prepare_home_tarball() {
 
 prepare_agent_runtime_bundle() {
   local context_dir image tag container_id tmp_bundle_dir node_version claude_version codex_version pi_version opencode_version
-  context_dir="${ARTIFACT_DIR}/agent-runtime-context-${CONTAINER_GOARCH}"
-  HARBOR_AGENT_RUNTIME_BUNDLE="${ARTIFACT_DIR}/agent-runtime-linux-${CONTAINER_GOARCH}.tgz"
+  context_dir="${BENCHMARK_RUNTIME_DIR}/agent-runtime-context-${CONTAINER_GOARCH}"
+  HARBOR_AGENT_RUNTIME_BUNDLE="${BENCHMARK_RUNTIME_DIR}/agent-runtime-linux-${CONTAINER_GOARCH}.tgz"
 
   # Operator escape hatch: skip docker rebuild and reuse the existing bundle.
   # Useful when the upstream agent image fails to build (e.g., transitive npm
@@ -1181,6 +1183,7 @@ print_summary_header() {
   echo "  tasks runtime:      ${TASKS_DIR}"
   echo "  sweep plan:         ${SWEEP_PLAN}"
   echo "  bench runner:       ${BENCH_BIN}"
+  echo "  runtime artifacts:  ${BENCHMARK_RUNTIME_DIR}"
   echo "  Harbor artifact:    ${HARBOR_AGENT_ARTIFACT}"
   echo "  runtime bundle:     ${HARBOR_AGENT_RUNTIME_BUNDLE}"
   echo "  Docker arch:        ${CONTAINER_GOARCH}"

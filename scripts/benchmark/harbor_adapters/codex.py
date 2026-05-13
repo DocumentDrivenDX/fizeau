@@ -24,6 +24,11 @@ def _bench_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+def _runtime_path(*parts: str) -> str:
+    root = _bench_env("BENCHMARK_RUNTIME_DIR", ".local/share/fizeau/benchmark-runtime")
+    return str(Path(root, *parts))
+
+
 class CodexAgent(BaseInstalledAgent):
     SUPPORTS_ATIF: bool = False
 
@@ -36,7 +41,7 @@ class CodexAgent(BaseInstalledAgent):
         return "codex"
 
     async def install(self, environment: BaseEnvironment) -> None:
-        binary_src = Path(_bench_env("HARBOR_CODEX_ARTIFACT", "benchmark-results/bin/codex-linux-amd64/codex"))
+        binary_src = Path(_bench_env("HARBOR_CODEX_ARTIFACT", _runtime_path("codex-linux-amd64", "codex")))
         package_tgz = _bench_env("HARBOR_CODEX_PACKAGE_TARBALL", "")
         node_tgz = _bench_env("HARBOR_NODE_TARBALL", "")
         if not binary_src.is_file() and not (package_tgz and node_tgz):

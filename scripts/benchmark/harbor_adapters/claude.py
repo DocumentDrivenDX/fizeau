@@ -23,6 +23,11 @@ def _bench_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+def _runtime_path(*parts: str) -> str:
+    root = _bench_env("BENCHMARK_RUNTIME_DIR", ".local/share/fizeau/benchmark-runtime")
+    return str(Path(root, *parts))
+
+
 class ClaudeAgent(BaseInstalledAgent):
     SUPPORTS_ATIF: bool = False
 
@@ -35,7 +40,7 @@ class ClaudeAgent(BaseInstalledAgent):
         return "claude"
 
     async def install(self, environment: BaseEnvironment) -> None:
-        binary_src = Path(_bench_env("HARBOR_CLAUDE_ARTIFACT", "benchmark-results/bin/claude-linux-amd64/claude"))
+        binary_src = Path(_bench_env("HARBOR_CLAUDE_ARTIFACT", _runtime_path("claude-linux-amd64", "claude")))
         package_tgz = _bench_env("HARBOR_CLAUDE_PACKAGE_TARBALL", "")
         node_tgz = _bench_env("HARBOR_NODE_TARBALL", "")
         if not binary_src.is_file() and not (package_tgz and node_tgz):

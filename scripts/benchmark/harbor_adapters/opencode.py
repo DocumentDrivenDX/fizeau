@@ -25,6 +25,11 @@ def _bench_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+def _runtime_path(*parts: str) -> str:
+    root = _bench_env("BENCHMARK_RUNTIME_DIR", ".local/share/fizeau/benchmark-runtime")
+    return str(Path(root, *parts))
+
+
 def _resolve_hosts_for_url(base_url: str) -> dict[str, str]:
     if not base_url:
         return {}
@@ -70,7 +75,7 @@ class OpencodeAgent(BaseInstalledAgent):
     async def install(self, environment: BaseEnvironment) -> None:
         binary_artifact = os.environ.get("HARBOR_OPENCODE_ARTIFACT", "")
         binary_src = Path(binary_artifact) if binary_artifact else Path(
-            "benchmark-results/bin/opencode-1.3.17-linux-x64/opencode"
+            _runtime_path("opencode-1.3.17-linux-x64", "opencode")
         )
         if not binary_src.is_file():
             fallback = Path(shutil.which("opencode") or "")

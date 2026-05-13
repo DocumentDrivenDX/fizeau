@@ -298,7 +298,8 @@ run_sweep_script() {
     PATH="${TMP_ROOT}/bin:${PATH}" \
       REAL_CURL="${REAL_CURL}" \
       PREFLIGHT_TEST_CURL_LOG="${TMP_ROOT}/curl.log" \
-      BENCHMARK_ARTIFACT_DIR="${TMP_ROOT}/artifacts" \
+      BENCHMARK_BIN_DIR="${TMP_ROOT}/.local/bin" \
+      BENCHMARK_RUNTIME_DIR="${TMP_ROOT}/.local/share/fizeau/benchmark-runtime" \
       BENCHMARK_CONFIRM_DELAY=0 \
       OMLX_API_KEY=local \
       VLLM_API_KEY=local \
@@ -339,8 +340,12 @@ TestPreflightLaneOK() {
   local output
   output="$(run_sweep_script "${plan}" "${TMP_ROOT}/tasks" --phase full --lanes sindri-llamacpp,vidar --dry-run 2>&1)"
   assert_contains "${output}" "[preflight] fiz-sindri-llamacpp-qwen3-6-27b OK (1 token in "
+  assert_contains "${output}" "bench runner:       ${TMP_ROOT}/.local/bin/fiz-bench"
+  assert_contains "${output}" "runtime artifacts:  ${TMP_ROOT}/.local/share/fizeau/benchmark-runtime"
   assert_contains "${output}" "Dry-run plan:"
   assert_contains "${output}" "Lane: fiz-sindri-llamacpp-qwen3-6-27b"
+  [[ -x "${TMP_ROOT}/.local/bin/fiz-bench" ]] || fail "missing temp fiz-bench"
+  [[ -x "${TMP_ROOT}/.local/share/fizeau/benchmark-runtime/fiz-linux-amd64" ]] || fail "missing temp Harbor fiz artifact"
 }
 
 TestPreflightLaneConnectionRefused() {

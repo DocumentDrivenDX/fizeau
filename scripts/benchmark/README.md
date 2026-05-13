@@ -37,6 +37,12 @@ The runner installs Harbor with `uv tool install harbor` when Harbor is not
 already available. The selected TerminalBench 2.1 tasks are downloaded under
 `benchmark-results/external/terminal-bench-2-1` by default.
 
+Benchmark helper binaries and runtime payloads are not benchmark results. By
+default the wrapper writes the host `fiz-bench` helper to `.local/bin/` and
+container/runtime payloads to `.local/share/fizeau/benchmark-runtime/`. Override
+those locations with `BENCHMARK_BIN_DIR` and `BENCHMARK_RUNTIME_DIR` when tests
+or one-off runs need isolated scratch space.
+
 Provider keys are required only for selected lanes:
 
 - `OPENAI_API_KEY` for `openai-gpt55`

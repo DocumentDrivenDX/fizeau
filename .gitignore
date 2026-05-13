@@ -8,6 +8,7 @@
 /.cache/
 /.gocache/
 /.tmp/
+/.local/
 
 # Session logs
 .agent/sessions/

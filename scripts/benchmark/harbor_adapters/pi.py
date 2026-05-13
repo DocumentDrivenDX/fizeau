@@ -25,6 +25,11 @@ def _bench_env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+def _runtime_path(*parts: str) -> str:
+    root = _bench_env("BENCHMARK_RUNTIME_DIR", ".local/share/fizeau/benchmark-runtime")
+    return str(Path(root, *parts))
+
+
 def _resolve_hosts_for_url(base_url: str) -> dict[str, str]:
     if not base_url:
         return {}
@@ -72,8 +77,8 @@ class PiAgent(BaseInstalledAgent):
         return "pi"
 
     async def install(self, environment: BaseEnvironment) -> None:
-        node_src = Path(os.environ.get("HARBOR_NODE_TARBALL", "benchmark-results/bin/node-v20.19.2-linux-x64.tar.gz"))
-        pi_src = Path(os.environ.get("HARBOR_PI_PACKAGE_TARBALL", "benchmark-results/bin/pi-coding-agent-0.67.1/package.tgz"))
+        node_src = Path(_bench_env("HARBOR_NODE_TARBALL", _runtime_path("node-v20.19.2-linux-x64.tar.gz")))
+        pi_src = Path(_bench_env("HARBOR_PI_PACKAGE_TARBALL", _runtime_path("pi-coding-agent-0.67.1", "package.tgz")))
         if not node_src.is_file():
             raise FileNotFoundError(f"Node runtime tarball not found: {node_src}")
         if not pi_src.is_file():

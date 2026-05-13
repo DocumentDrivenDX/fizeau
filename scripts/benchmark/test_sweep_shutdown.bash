@@ -236,6 +236,11 @@ wait_for_log() {
   fail "timed out waiting for log ${needle}"
 }
 
+assert_temp_artifacts() {
+  [[ -x "${TMP_ROOT}/.local/bin/fiz-bench" ]] || fail "missing temp fiz-bench"
+  [[ -x "${TMP_ROOT}/.local/share/fizeau/benchmark-runtime/fiz-linux-amd64" ]] || fail "missing temp Harbor fiz artifact"
+}
+
 wait_for_no_sweep_processes() {
   local timeout="$1"
   local deadline=$((SECONDS + timeout))
@@ -253,7 +258,8 @@ wait_for_no_sweep_processes() {
 start_sweep() {
   PATH="${TMP_ROOT}/bin:${PATH}" \
   SWEEP_SHUTDOWN_LOG="${TMP_ROOT}/sweep.log" \
-  BENCHMARK_ARTIFACT_DIR="${TMP_ROOT}/artifacts" \
+  BENCHMARK_BIN_DIR="${TMP_ROOT}/.local/bin" \
+  BENCHMARK_RUNTIME_DIR="${TMP_ROOT}/.local/share/fizeau/benchmark-runtime" \
   BENCHMARK_CONFIRM_DELAY=0 \
   BENCHMARK_SWEEP_TERM_GRACE_SECONDS=5 \
   HARBOR_SKIP_NATIVE_HOME=1 \
@@ -271,6 +277,7 @@ TestSweepShutdownKillReapsProcessTree() {
   local sweep_pid
   sweep_pid="$(start_sweep)"
   wait_for_log "fake-harbor started"
+  assert_temp_artifacts
   kill "${sweep_pid}"
   wait "${sweep_pid}" >/dev/null 2>&1 || true
   wait_for_no_sweep_processes 30
