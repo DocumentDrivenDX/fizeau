@@ -748,37 +748,61 @@ func abs(v float64) float64 {
 // route-status JSON envelope. Operators read these to answer "why did the
 // router pick X?" without parsing the free-form Reason string.
 type routeStatusComponents struct {
-	Power            int     `json:"power"`
-	Cost             float64 `json:"cost"`
-	CostClass        string  `json:"cost_class,omitempty"`
-	LatencyMS        float64 `json:"latency_ms"`
-	SpeedTPS         float64 `json:"speed_tps"`
-	Utilization      float64 `json:"utilization"`
-	SuccessRate      float64 `json:"success_rate"`
-	QuotaOK          bool    `json:"quota_ok"`
-	QuotaPercentUsed int     `json:"quota_percent_used"`
-	QuotaTrend       string  `json:"quota_trend,omitempty"`
-	Capability       float64 `json:"capability"`
-	ContextHeadroom  int     `json:"context_headroom"`
-	StickyAffinity   float64 `json:"sticky_affinity"`
+	Power                   int     `json:"power"`
+	Cost                    float64 `json:"cost"`
+	CostClass               string  `json:"cost_class,omitempty"`
+	LatencyMS               float64 `json:"latency_ms"`
+	SpeedTPS                float64 `json:"speed_tps"`
+	Utilization             float64 `json:"utilization"`
+	SuccessRate             float64 `json:"success_rate"`
+	QuotaOK                 bool    `json:"quota_ok"`
+	QuotaPercentUsed        int     `json:"quota_percent_used"`
+	QuotaTrend              string  `json:"quota_trend,omitempty"`
+	Capability              float64 `json:"capability"`
+	ContextHeadroom         int     `json:"context_headroom"`
+	StickyAffinity          float64 `json:"sticky_affinity"`
+	PowerWeightedCapability float64 `json:"power_weighted_capability"`
+	PowerHintFit            float64 `json:"power_hint_fit"`
+	LatencyWeight           float64 `json:"latency_weight"`
+	PlacementBonus          float64 `json:"placement_bonus"`
+	QuotaBonus              float64 `json:"quota_bonus"`
+	MarginalCostPenalty     float64 `json:"marginal_cost_penalty"`
+	AvailabilityPenalty     float64 `json:"availability_penalty"`
+	StaleSignalPenalty      float64 `json:"stale_signal_penalty"`
 }
 
 type routeStatusCandidate struct {
-	Harness        string                           `json:"harness,omitempty"`
-	Provider       string                           `json:"provider"`
-	Endpoint       string                           `json:"endpoint,omitempty"`
-	ServerInstance string                           `json:"server_instance,omitempty"`
-	Model          string                           `json:"model"`
-	Score          float64                          `json:"score"`
-	ContextLength  int                              `json:"context_length"`
-	ContextSource  string                           `json:"context_source"`
-	Components     routeStatusComponents            `json:"components"`
-	Utilization    rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
-	Eligible       bool                             `json:"eligible"`
-	FilterReason   string                           `json:"filter_reason"`
-	Reason         string                           `json:"reason,omitempty"`
-	CostSource     string                           `json:"cost_source,omitempty"`
-	Winner         bool                             `json:"winner"`
+	Harness                       string                           `json:"harness,omitempty"`
+	Provider                      string                           `json:"provider"`
+	Billing                       rootfizeau.BillingModel          `json:"billing,omitempty"`
+	ActualCashSpend               bool                             `json:"actual_cash_spend"`
+	Endpoint                      string                           `json:"endpoint,omitempty"`
+	ServerInstance                string                           `json:"server_instance,omitempty"`
+	Model                         string                           `json:"model"`
+	Score                         float64                          `json:"score"`
+	CostUSDPer1kTokens            float64                          `json:"cost_usd_per_1k_tokens,omitempty"`
+	ContextLength                 int                              `json:"context_length"`
+	ContextSource                 string                           `json:"context_source"`
+	Components                    routeStatusComponents            `json:"components"`
+	Utilization                   rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
+	Eligible                      bool                             `json:"eligible"`
+	FilterReason                  string                           `json:"filter_reason"`
+	Reason                        string                           `json:"reason,omitempty"`
+	CostSource                    string                           `json:"cost_source,omitempty"`
+	EffectiveCost                 float64                          `json:"effective_cost"`
+	EffectiveCostSource           string                           `json:"effective_cost_source,omitempty"`
+	SourceStatus                  string                           `json:"source_status,omitempty"`
+	AutoRoutable                  bool                             `json:"auto_routable,omitempty"`
+	ExactPinOnly                  bool                             `json:"exact_pin_only,omitempty"`
+	ExclusionReason               string                           `json:"exclusion_reason,omitempty"`
+	SnapshotCapturedAt            time.Time                        `json:"snapshot_captured_at,omitempty"`
+	HealthFreshnessAt             time.Time                        `json:"health_freshness_at,omitempty"`
+	HealthFreshnessSource         string                           `json:"health_freshness_source,omitempty"`
+	QuotaFreshnessAt              time.Time                        `json:"quota_freshness_at,omitempty"`
+	QuotaFreshnessSource          string                           `json:"quota_freshness_source,omitempty"`
+	ModelDiscoveryFreshnessAt     time.Time                        `json:"model_discovery_freshness_at,omitempty"`
+	ModelDiscoveryFreshnessSource string                           `json:"model_discovery_freshness_source,omitempty"`
+	Winner                        bool                             `json:"winner"`
 }
 
 type routeStatusPowerPolicy struct {
@@ -795,6 +819,7 @@ type routeStatusOutput struct {
 	MinPower               int                              `json:"min_power,omitempty"`
 	MaxPower               int                              `json:"max_power,omitempty"`
 	PowerPolicy            routeStatusPowerPolicy           `json:"power_policy,omitempty"`
+	SnapshotCapturedAt     time.Time                        `json:"snapshot_captured_at,omitempty"`
 	SelectedEndpoint       string                           `json:"selected_endpoint,omitempty"`
 	SelectedServerInstance string                           `json:"selected_server_instance,omitempty"`
 	Sticky                 rootfizeau.RouteStickyState      `json:"sticky,omitempty"`
@@ -881,6 +906,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 		out.Error = resolveErr.Error()
 	}
 	if decision != nil {
+		out.SnapshotCapturedAt = decision.SnapshotCapturedAt
 		out.SelectedEndpoint = decision.Endpoint
 		out.SelectedServerInstance = decision.ServerInstance
 		out.Sticky = decision.Sticky
@@ -893,33 +919,57 @@ func cmdRouteStatus(workDir string, args []string) int {
 		winnerSet := decision.Harness != "" || decision.Provider != "" || decision.Model != ""
 		for _, c := range decision.Candidates {
 			entry := routeStatusCandidate{
-				Harness:        c.Harness,
-				Provider:       c.Provider,
-				Endpoint:       c.Endpoint,
-				ServerInstance: c.ServerInstance,
-				Model:          c.Model,
-				Score:          c.Score,
-				ContextLength:  c.ContextLength,
-				ContextSource:  c.ContextSource,
-				Eligible:       c.Eligible,
-				FilterReason:   c.FilterReason,
-				Reason:         c.Reason,
-				CostSource:     c.CostSource,
-				Utilization:    c.Utilization,
+				Harness:                       c.Harness,
+				Provider:                      c.Provider,
+				Billing:                       c.Billing,
+				ActualCashSpend:               c.ActualCashSpend,
+				Endpoint:                      c.Endpoint,
+				ServerInstance:                c.ServerInstance,
+				Model:                         c.Model,
+				Score:                         c.Score,
+				CostUSDPer1kTokens:            c.CostUSDPer1kTokens,
+				ContextLength:                 c.ContextLength,
+				ContextSource:                 c.ContextSource,
+				Eligible:                      c.Eligible,
+				FilterReason:                  c.FilterReason,
+				Reason:                        c.Reason,
+				CostSource:                    c.CostSource,
+				EffectiveCost:                 c.EffectiveCost,
+				EffectiveCostSource:           c.EffectiveCostSource,
+				SourceStatus:                  c.SourceStatus,
+				AutoRoutable:                  c.AutoRoutable,
+				ExactPinOnly:                  c.ExactPinOnly,
+				ExclusionReason:               c.ExclusionReason,
+				SnapshotCapturedAt:            c.SnapshotCapturedAt,
+				HealthFreshnessAt:             c.HealthFreshnessAt,
+				HealthFreshnessSource:         c.HealthFreshnessSource,
+				QuotaFreshnessAt:              c.QuotaFreshnessAt,
+				QuotaFreshnessSource:          c.QuotaFreshnessSource,
+				ModelDiscoveryFreshnessAt:     c.ModelDiscoveryFreshnessAt,
+				ModelDiscoveryFreshnessSource: c.ModelDiscoveryFreshnessSource,
+				Utilization:                   c.Utilization,
 				Components: routeStatusComponents{
-					Power:            c.Components.Power,
-					Cost:             c.Components.Cost,
-					CostClass:        c.Components.CostClass,
-					LatencyMS:        c.Components.LatencyMS,
-					SpeedTPS:         c.Components.SpeedTPS,
-					Utilization:      c.Components.Utilization,
-					SuccessRate:      c.Components.SuccessRate,
-					QuotaOK:          c.Components.QuotaOK,
-					QuotaPercentUsed: c.Components.QuotaPercentUsed,
-					QuotaTrend:       c.Components.QuotaTrend,
-					Capability:       c.Components.Capability,
-					ContextHeadroom:  c.Components.ContextHeadroom,
-					StickyAffinity:   c.Components.StickyAffinity,
+					Power:                   c.Components.Power,
+					Cost:                    c.Components.Cost,
+					CostClass:               c.Components.CostClass,
+					LatencyMS:               c.Components.LatencyMS,
+					SpeedTPS:                c.Components.SpeedTPS,
+					Utilization:             c.Components.Utilization,
+					SuccessRate:             c.Components.SuccessRate,
+					QuotaOK:                 c.Components.QuotaOK,
+					QuotaPercentUsed:        c.Components.QuotaPercentUsed,
+					QuotaTrend:              c.Components.QuotaTrend,
+					Capability:              c.Components.Capability,
+					ContextHeadroom:         c.Components.ContextHeadroom,
+					StickyAffinity:          c.Components.StickyAffinity,
+					PowerWeightedCapability: c.Components.PowerWeightedCapability,
+					PowerHintFit:            c.Components.PowerHintFit,
+					LatencyWeight:           c.Components.LatencyWeight,
+					PlacementBonus:          c.Components.PlacementBonus,
+					QuotaBonus:              c.Components.QuotaBonus,
+					MarginalCostPenalty:     c.Components.MarginalCostPenalty,
+					AvailabilityPenalty:     c.Components.AvailabilityPenalty,
+					StaleSignalPenalty:      c.Components.StaleSignalPenalty,
 				},
 			}
 			if winnerSet && out.Winner == nil &&
@@ -959,6 +1009,9 @@ func cmdRouteStatus(workDir string, args []string) int {
 	if out.Model != "" {
 		fmt.Printf("Model: %s\n", out.Model)
 	}
+	if !out.SnapshotCapturedAt.IsZero() {
+		fmt.Printf("Snapshot captured at: %s\n", out.SnapshotCapturedAt.Format(time.RFC3339))
+	}
 	if out.MinPower > 0 {
 		fmt.Printf("Min Power: %d\n", out.MinPower)
 	}
@@ -966,7 +1019,9 @@ func cmdRouteStatus(workDir string, args []string) int {
 		fmt.Printf("Max Power: %d\n", out.MaxPower)
 	}
 	if out.Winner != nil {
-		fmt.Printf("Winner: %s/%s/%s endpoint=%s score=%.2f\n", out.Winner.Harness, out.Winner.Provider, out.Winner.Model, out.Winner.Endpoint, out.Winner.Score)
+		fmt.Printf("Winner: %s/%s/%s endpoint=%s score=%.2f actual_cash_spend=%t effective_cost=%.4f effective_cost_source=%s\n",
+			out.Winner.Harness, out.Winner.Provider, out.Winner.Model, out.Winner.Endpoint, out.Winner.Score,
+			out.Winner.ActualCashSpend, out.Winner.EffectiveCost, labelOrUnknown(out.Winner.EffectiveCostSource))
 	}
 	if out.SelectedEndpoint != "" {
 		fmt.Printf("Selected endpoint: %s\n", out.SelectedEndpoint)
@@ -1003,8 +1058,8 @@ func cmdRouteStatus(workDir string, args []string) int {
 	if resolveErr != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", resolveErr)
 	}
-	fmt.Printf("%-10s %-12s %-14s %-32s %-5s %-5s %-9s %-10s %-10s %-9s %-10s %s\n",
-		"HARNESS", "PROVIDER", "ENDPOINT", "MODEL", "ELIG", "POWER", "SCORE", "COST", "LATENCY", "SUCCESS", "SELECTED", "FILTER_REASON")
+	fmt.Printf("%-10s %-12s %-14s %-10s %-12s %-14s %-16s %-32s %-5s %-5s %-9s %-10s %-10s %-12s %-20s %-10s %s\n",
+		"HARNESS", "PROVIDER", "ENDPOINT", "BILLING", "ACTUAL_SPEND", "EFFECTIVE_COST", "EFFECTIVE_SRC", "MODEL", "ELIG", "POWER", "SCORE", "LATENCY", "SUCCESS", "source_status", "FRESHNESS", "SELECTED", "FILTER_REASON")
 	for _, c := range out.Candidates {
 		elig := "no"
 		if c.Eligible {
@@ -1014,17 +1069,22 @@ func cmdRouteStatus(workDir string, args []string) int {
 		if c.Winner {
 			selected = "yes"
 		}
-		fmt.Printf("%-10s %-12s %-14s %-32s %-5s %-5d %-9.2f %-10.4f %-10.0f %-9.2f %-10s %s\n",
+		fmt.Printf("%-10s %-12s %-14s %-10s %-12t %-14.4f %-16s %-32s %-5s %-5d %-9.2f %-10.0f %-10.2f %-10s %-20s %-10s %s\n",
 			c.Harness,
 			c.Provider,
 			truncate(c.Endpoint, 14),
+			c.Billing,
+			c.ActualCashSpend,
+			c.EffectiveCost,
+			labelOrUnknown(c.EffectiveCostSource),
 			truncate(c.Model, 32),
 			elig,
 			c.Components.Power,
 			c.Score,
-			c.Components.Cost,
 			c.Components.LatencyMS,
 			c.Components.SuccessRate,
+			labelOrUnknown(c.SourceStatus),
+			freshnessSummary(c),
 			selected,
 			c.FilterReason,
 		)
@@ -1079,4 +1139,34 @@ func labelOrUnknown(v string) string {
 		return "unknown"
 	}
 	return v
+}
+
+func freshnessSummary(c routeStatusCandidate) string {
+	parts := make([]string, 0, 4)
+	if !c.SnapshotCapturedAt.IsZero() {
+		parts = append(parts, "snapshot_captured_at="+c.SnapshotCapturedAt.Format(time.RFC3339))
+	}
+	if !c.HealthFreshnessAt.IsZero() || c.HealthFreshnessSource != "" {
+		parts = append(parts, "health_freshness_at="+formatTimeOrUnknown(c.HealthFreshnessAt))
+		parts = append(parts, "health_freshness_source="+labelOrUnknown(c.HealthFreshnessSource))
+	}
+	if !c.QuotaFreshnessAt.IsZero() || c.QuotaFreshnessSource != "" {
+		parts = append(parts, "quota_freshness_at="+formatTimeOrUnknown(c.QuotaFreshnessAt))
+		parts = append(parts, "quota_freshness_source="+labelOrUnknown(c.QuotaFreshnessSource))
+	}
+	if !c.ModelDiscoveryFreshnessAt.IsZero() || c.ModelDiscoveryFreshnessSource != "" {
+		parts = append(parts, "model_discovery_freshness_at="+formatTimeOrUnknown(c.ModelDiscoveryFreshnessAt))
+		parts = append(parts, "model_discovery_freshness_source="+labelOrUnknown(c.ModelDiscoveryFreshnessSource))
+	}
+	if len(parts) == 0 {
+		return "unknown"
+	}
+	return strings.Join(parts, " ")
+}
+
+func formatTimeOrUnknown(v time.Time) string {
+	if v.IsZero() {
+		return "unknown"
+	}
+	return v.UTC().Format(time.RFC3339)
 }

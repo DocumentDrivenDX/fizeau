@@ -422,6 +422,7 @@ func TestExecuteRouteEvidenceMatchesModelsSnapshot(t *testing.T) {
 	}
 	require.NotNil(t, routingDecision, "expected routing_decision event")
 	require.NotNil(t, final, "expected final event")
+	require.False(t, routingDecision.SnapshotCapturedAt.IsZero(), "routing_decision must carry snapshot_captured_at")
 	require.Equal(t, "success", final.Status)
 	require.NotNil(t, final.RoutingActual)
 	require.Equal(t, "alpha", final.RoutingActual.Provider)
@@ -450,6 +451,7 @@ func TestExecuteRouteEvidenceMatchesModelsSnapshot(t *testing.T) {
 		}
 	}
 	require.NotNil(t, selectedCandidate, "expected selected candidate in routing_decision")
+	require.False(t, selectedCandidate.SnapshotCapturedAt.IsZero(), "selected candidate must carry snapshot_captured_at")
 	decisionCandidate := RouteCandidate{
 		Provider:       selectedCandidate.Provider,
 		Endpoint:       selectedCandidate.Endpoint,
@@ -468,6 +470,13 @@ func TestExecuteRouteEvidenceMatchesModelsSnapshot(t *testing.T) {
 		}, fixture.snapshot)
 		require.True(t, ok, "candidate should match snapshot row: %#v", candidate)
 		require.Equal(t, row.ID, candidate.Model)
+		require.False(t, candidate.SnapshotCapturedAt.IsZero(), "candidate must carry snapshot_captured_at")
+		require.Equal(t, row.ActualCashSpend, candidate.ActualCashSpend)
+		require.Equal(t, row.EffectiveCost, candidate.EffectiveCost)
+		require.Equal(t, row.EffectiveCostSource, candidate.EffectiveCostSource)
+		require.Equal(t, row.HealthFreshnessSource, candidate.HealthFreshnessSource)
+		require.Equal(t, row.QuotaFreshnessSource, candidate.QuotaFreshnessSource)
+		require.Equal(t, string(row.DiscoveredVia), candidate.ModelDiscoveryFreshnessSource)
 	}
 }
 
@@ -483,6 +492,7 @@ func TestRouteStatusMatchesModelsSnapshot(t *testing.T) {
 	report, err := fixture.svc.RouteStatus(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, report)
+	require.False(t, report.SnapshotCapturedAt.IsZero(), "RouteStatus report should carry snapshot_captured_at")
 	require.Len(t, report.Routes, 1)
 
 	rowsByKey := make(map[string]modelsnapshot.KnownModel, len(fixture.snapshot.Models))
@@ -508,5 +518,11 @@ func TestRouteStatusMatchesModelsSnapshot(t *testing.T) {
 		require.NotNil(t, candidate.QuotaRemaining)
 		require.Equal(t, *row.QuotaRemaining, *candidate.QuotaRemaining)
 		require.Equal(t, row.RecentP50Latency.Milliseconds(), int64(candidate.RecentLatencyMS))
+		require.Equal(t, row.ActualCashSpend, candidate.ActualCashSpend)
+		require.Equal(t, row.EffectiveCost, candidate.EffectiveCost)
+		require.Equal(t, row.EffectiveCostSource, candidate.EffectiveCostSource)
+		require.Equal(t, row.HealthFreshnessSource, candidate.HealthFreshnessSource)
+		require.Equal(t, row.QuotaFreshnessSource, candidate.QuotaFreshnessSource)
+		require.Equal(t, string(row.DiscoveredVia), candidate.ModelDiscoveryFreshnessSource)
 	}
 }

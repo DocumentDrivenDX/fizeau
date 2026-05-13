@@ -484,34 +484,7 @@ func (s *service) runExecute(ctx context.Context, req ServiceExecuteRequest, dec
 	// event Metadata (top-level wins over caller Metadata for these
 	// reserved keys).
 	routingMeta := metaWithRoleAndCorrelation(meta, req.Role, req.CorrelationID)
-	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, routingMeta, ServiceRoutingDecisionData{
-		Harness:        decision.Harness,
-		Provider:       decision.Provider,
-		Endpoint:       decision.Endpoint,
-		ServerInstance: decision.ServerInstance,
-		Model:          decision.Model,
-		Reason:         decision.Reason,
-		Sticky: ServiceRoutingStickyState{
-			KeyPresent:     decision.Sticky.KeyPresent,
-			Assignment:     decision.Sticky.Assignment,
-			ServerInstance: decision.Sticky.ServerInstance,
-			Reason:         decision.Sticky.Reason,
-			Bonus:          decision.Sticky.Bonus,
-		},
-		Utilization: ServiceRoutingUtilizationState{
-			Source:         decision.Utilization.Source,
-			Freshness:      decision.Utilization.Freshness,
-			ActiveRequests: decision.Utilization.ActiveRequests,
-			QueuedRequests: decision.Utilization.QueuedRequests,
-			MaxConcurrency: decision.Utilization.MaxConcurrency,
-			CachePressure:  decision.Utilization.CachePressure,
-			ObservedAt:     decision.Utilization.ObservedAt,
-		},
-		RequestedHarness: req.Harness,
-		HarnessSource:    harnessSource(req),
-		SessionID:        sessionID,
-		Candidates:       routingDecisionEventCandidates(decision.Candidates),
-	})
+	emitJSON(out, &seq, harnesses.EventTypeRoutingDecision, routingMeta, serviceRoutingDecisionDataFromDecision(req, decision, sessionID))
 	emitProgress(out, &seq, sl, sessionID, meta, routeProgressData(decision))
 
 	s.executeRunnerInvoker().dispatchExecuteRun(runCtx, executeRunContext{

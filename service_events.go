@@ -156,22 +156,32 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 	out := make([]ServiceRoutingDecisionCandidate, len(in))
 	for i, c := range in {
 		out[i] = ServiceRoutingDecisionCandidate{
-			Harness:            c.Harness,
-			Provider:           c.Provider,
-			Billing:            c.Billing,
-			Endpoint:           c.Endpoint,
-			ServerInstance:     c.ServerInstance,
-			Model:              c.Model,
-			Score:              c.Score,
-			CostUSDPer1kTokens: c.CostUSDPer1kTokens,
-			CostSource:         c.CostSource,
-			Eligible:           c.Eligible,
-			Reason:             c.Reason,
-			FilterReason:       c.FilterReason,
-			SourceStatus:       c.SourceStatus,
-			AutoRoutable:       c.AutoRoutable,
-			ExactPinOnly:       c.ExactPinOnly,
-			ExclusionReason:    c.ExclusionReason,
+			Harness:                       c.Harness,
+			Provider:                      c.Provider,
+			Billing:                       c.Billing,
+			ActualCashSpend:               c.ActualCashSpend,
+			Endpoint:                      c.Endpoint,
+			ServerInstance:                c.ServerInstance,
+			Model:                         c.Model,
+			Score:                         c.Score,
+			CostUSDPer1kTokens:            c.CostUSDPer1kTokens,
+			CostSource:                    c.CostSource,
+			EffectiveCost:                 c.EffectiveCost,
+			EffectiveCostSource:           c.EffectiveCostSource,
+			Eligible:                      c.Eligible,
+			Reason:                        c.Reason,
+			FilterReason:                  c.FilterReason,
+			SourceStatus:                  c.SourceStatus,
+			AutoRoutable:                  c.AutoRoutable,
+			ExactPinOnly:                  c.ExactPinOnly,
+			ExclusionReason:               c.ExclusionReason,
+			SnapshotCapturedAt:            c.SnapshotCapturedAt,
+			HealthFreshnessAt:             c.HealthFreshnessAt,
+			HealthFreshnessSource:         c.HealthFreshnessSource,
+			QuotaFreshnessAt:              c.QuotaFreshnessAt,
+			QuotaFreshnessSource:          c.QuotaFreshnessSource,
+			ModelDiscoveryFreshnessAt:     c.ModelDiscoveryFreshnessAt,
+			ModelDiscoveryFreshnessSource: c.ModelDiscoveryFreshnessSource,
 			Components: ServiceRoutingDecisionComponents{
 				Power:                   c.Components.Power,
 				Cost:                    c.Components.Cost,
@@ -208,23 +218,79 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 	return out
 }
 
+func serviceRoutingDecisionDataFromDecision(req ServiceExecuteRequest, decision RouteDecision, sessionID string) ServiceRoutingDecisionData {
+	data := ServiceRoutingDecisionData{
+		Harness:               decision.Harness,
+		Provider:              decision.Provider,
+		Endpoint:              decision.Endpoint,
+		ServerInstance:        decision.ServerInstance,
+		Model:                 decision.Model,
+		Reason:                decision.Reason,
+		Sticky:                ServiceRoutingStickyState{},
+		Utilization:           ServiceRoutingUtilizationState{},
+		RequestedPolicy:       req.Policy,
+		RequestedModel:        req.Model,
+		RequestedProvider:     req.Provider,
+		RequestedHarness:      req.Harness,
+		MinPower:              req.MinPower,
+		MaxPower:              req.MaxPower,
+		RequiresTools:         req.RequiresTools,
+		EstimatedPromptTokens: req.EstimatedPromptTokens,
+		Permissions:           req.Permissions,
+		Role:                  req.Role,
+		CorrelationID:         req.CorrelationID,
+		HarnessSource:         harnessSource(req),
+		SessionID:             sessionID,
+		SnapshotCapturedAt:    decision.SnapshotCapturedAt,
+		Candidates:            routingDecisionEventCandidates(decision.Candidates),
+	}
+	data.Sticky = ServiceRoutingStickyState{
+		KeyPresent:     decision.Sticky.KeyPresent,
+		Assignment:     decision.Sticky.Assignment,
+		ServerInstance: decision.Sticky.ServerInstance,
+		Reason:         decision.Sticky.Reason,
+		Bonus:          decision.Sticky.Bonus,
+	}
+	data.Utilization = ServiceRoutingUtilizationState{
+		Source:         decision.Utilization.Source,
+		Freshness:      decision.Utilization.Freshness,
+		ActiveRequests: decision.Utilization.ActiveRequests,
+		QueuedRequests: decision.Utilization.QueuedRequests,
+		MaxConcurrency: decision.Utilization.MaxConcurrency,
+		CachePressure:  decision.Utilization.CachePressure,
+		ObservedAt:     decision.Utilization.ObservedAt,
+	}
+	return data
+}
+
 type ServiceRoutingDecisionData struct {
-	Harness          string                         `json:"harness"`
-	Provider         string                         `json:"provider,omitempty"`
-	Endpoint         string                         `json:"endpoint,omitempty"`
-	ServerInstance   string                         `json:"server_instance,omitempty"`
-	Model            string                         `json:"model"`
-	Reason           string                         `json:"reason"`
-	Sticky           ServiceRoutingStickyState      `json:"sticky,omitempty"`
-	Utilization      ServiceRoutingUtilizationState `json:"utilization,omitempty"`
-	SourceStatus     string                         `json:"source_status,omitempty"`
-	AutoRoutable     bool                           `json:"auto_routable,omitempty"`
-	ExactPinOnly     bool                           `json:"exact_pin_only,omitempty"`
-	ExclusionReason  string                         `json:"exclusion_reason,omitempty"`
-	RequestedHarness string                         `json:"requested_harness,omitempty"`
-	HarnessSource    string                         `json:"harness_source,omitempty"`
-	FallbackChain    []string                       `json:"fallback_chain,omitempty"`
-	SessionID        string                         `json:"session_id,omitempty"`
+	Harness               string                         `json:"harness"`
+	Provider              string                         `json:"provider,omitempty"`
+	Endpoint              string                         `json:"endpoint,omitempty"`
+	ServerInstance        string                         `json:"server_instance,omitempty"`
+	Model                 string                         `json:"model"`
+	Reason                string                         `json:"reason"`
+	Sticky                ServiceRoutingStickyState      `json:"sticky,omitempty"`
+	Utilization           ServiceRoutingUtilizationState `json:"utilization,omitempty"`
+	SourceStatus          string                         `json:"source_status,omitempty"`
+	AutoRoutable          bool                           `json:"auto_routable,omitempty"`
+	ExactPinOnly          bool                           `json:"exact_pin_only,omitempty"`
+	ExclusionReason       string                         `json:"exclusion_reason,omitempty"`
+	RequestedPolicy       string                         `json:"requested_policy,omitempty"`
+	RequestedModel        string                         `json:"requested_model,omitempty"`
+	RequestedProvider     string                         `json:"requested_provider,omitempty"`
+	RequestedHarness      string                         `json:"requested_harness,omitempty"`
+	MinPower              int                            `json:"min_power,omitempty"`
+	MaxPower              int                            `json:"max_power,omitempty"`
+	RequiresTools         bool                           `json:"requires_tools,omitempty"`
+	EstimatedPromptTokens int                            `json:"estimated_prompt_tokens,omitempty"`
+	Permissions           string                         `json:"permissions,omitempty"`
+	Role                  string                         `json:"role,omitempty"`
+	CorrelationID         string                         `json:"correlation_id,omitempty"`
+	HarnessSource         string                         `json:"harness_source,omitempty"`
+	FallbackChain         []string                       `json:"fallback_chain,omitempty"`
+	SessionID             string                         `json:"session_id,omitempty"`
+	SnapshotCapturedAt    time.Time                      `json:"snapshot_captured_at,omitempty"`
 
 	// Candidates exposes the full ranked decision trace. Each candidate
 	// carries per-axis component scores (cost / latency / success rate /
@@ -236,24 +302,34 @@ type ServiceRoutingDecisionData struct {
 // event's candidates list. Mirrors RouteCandidate but with JSON tags
 // suited for event consumers.
 type ServiceRoutingDecisionCandidate struct {
-	Harness            string                           `json:"harness"`
-	Provider           string                           `json:"provider,omitempty"`
-	Billing            BillingModel                     `json:"billing,omitempty"`
-	Endpoint           string                           `json:"endpoint,omitempty"`
-	ServerInstance     string                           `json:"server_instance,omitempty"`
-	Model              string                           `json:"model,omitempty"`
-	Score              float64                          `json:"score"`
-	CostUSDPer1kTokens float64                          `json:"cost_usd_per_1k_tokens,omitempty"`
-	CostSource         string                           `json:"cost_source,omitempty"`
-	Eligible           bool                             `json:"eligible"`
-	Reason             string                           `json:"reason,omitempty"`
-	FilterReason       string                           `json:"filter_reason,omitempty"`
-	SourceStatus       string                           `json:"source_status,omitempty"`
-	AutoRoutable       bool                             `json:"auto_routable,omitempty"`
-	ExactPinOnly       bool                             `json:"exact_pin_only,omitempty"`
-	ExclusionReason    string                           `json:"exclusion_reason,omitempty"`
-	Components         ServiceRoutingDecisionComponents `json:"components"`
-	Utilization        ServiceRoutingUtilizationState   `json:"utilization,omitempty"`
+	Harness                       string                           `json:"harness"`
+	Provider                      string                           `json:"provider,omitempty"`
+	Billing                       BillingModel                     `json:"billing,omitempty"`
+	ActualCashSpend               bool                             `json:"actual_cash_spend"`
+	Endpoint                      string                           `json:"endpoint,omitempty"`
+	ServerInstance                string                           `json:"server_instance,omitempty"`
+	Model                         string                           `json:"model,omitempty"`
+	Score                         float64                          `json:"score"`
+	CostUSDPer1kTokens            float64                          `json:"cost_usd_per_1k_tokens,omitempty"`
+	CostSource                    string                           `json:"cost_source,omitempty"`
+	EffectiveCost                 float64                          `json:"effective_cost"`
+	EffectiveCostSource           string                           `json:"effective_cost_source,omitempty"`
+	Eligible                      bool                             `json:"eligible"`
+	Reason                        string                           `json:"reason,omitempty"`
+	FilterReason                  string                           `json:"filter_reason,omitempty"`
+	SourceStatus                  string                           `json:"source_status,omitempty"`
+	AutoRoutable                  bool                             `json:"auto_routable,omitempty"`
+	ExactPinOnly                  bool                             `json:"exact_pin_only,omitempty"`
+	ExclusionReason               string                           `json:"exclusion_reason,omitempty"`
+	SnapshotCapturedAt            time.Time                        `json:"snapshot_captured_at,omitempty"`
+	HealthFreshnessAt             time.Time                        `json:"health_freshness_at,omitempty"`
+	HealthFreshnessSource         string                           `json:"health_freshness_source,omitempty"`
+	QuotaFreshnessAt              time.Time                        `json:"quota_freshness_at,omitempty"`
+	QuotaFreshnessSource          string                           `json:"quota_freshness_source,omitempty"`
+	ModelDiscoveryFreshnessAt     time.Time                        `json:"model_discovery_freshness_at,omitempty"`
+	ModelDiscoveryFreshnessSource string                           `json:"model_discovery_freshness_source,omitempty"`
+	Components                    ServiceRoutingDecisionComponents `json:"components"`
+	Utilization                   ServiceRoutingUtilizationState   `json:"utilization,omitempty"`
 }
 
 // ServiceRoutingDecisionComponents exposes the per-axis score inputs.

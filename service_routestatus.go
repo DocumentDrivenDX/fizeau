@@ -36,6 +36,7 @@ func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
 	cooldown := s.routeAttemptTTL()
 	activeAttempts := s.activeRouteAttempts(report.GeneratedAt, cooldown)
 	successRate, latencyMS := s.routeMetricSignals(report.GeneratedAt, cooldown)
+	report.SnapshotCapturedAt = snapshot.AsOf
 	report.Routes = s.routeStatusEntriesFromSnapshot(snapshot, activeAttempts, successRate, latencyMS, cooldown)
 	return report, nil
 }
@@ -101,24 +102,34 @@ func (s *service) routeStatusEntriesFromSnapshot(snapshot modelsnapshot.ModelSna
 			endpoint := strings.TrimSpace(row.EndpointName)
 			serverID := serverinstance.Normalize(row.EndpointBaseURL, row.ServerInstance)
 			candidate := RouteCandidateStatus{
-				Provider:                provider,
-				Endpoint:                endpoint,
-				Model:                   model,
-				ServerInstance:          serverID,
-				Billing:                 row.Billing,
-				Priority:                len(rows) - i,
-				Healthy:                 true,
-				SourceStatus:            string(row.Status),
-				AutoRoutable:            row.AutoRoutable,
-				ExactPinOnly:            row.ExactPinOnly,
-				ExclusionReason:         row.ExclusionReason,
-				Power:                   row.Power,
-				ContextLength:           row.ContextWindow,
-				CostInputPerMTok:        row.CostInputPerM,
-				CostOutputPerMTok:       row.CostOutputPerM,
-				RecentLatencyMS:         float64(row.RecentP50Latency.Milliseconds()),
-				ProviderReliabilityRate: routeStatusMetricValue(successRate, provider, endpoint, model),
-				QuotaRemaining:          row.QuotaRemaining,
+				Provider:                      provider,
+				Endpoint:                      endpoint,
+				Model:                         model,
+				ServerInstance:                serverID,
+				Billing:                       row.Billing,
+				ActualCashSpend:               row.ActualCashSpend,
+				EffectiveCost:                 row.EffectiveCost,
+				EffectiveCostSource:           row.EffectiveCostSource,
+				Priority:                      len(rows) - i,
+				Healthy:                       true,
+				SourceStatus:                  string(row.Status),
+				AutoRoutable:                  row.AutoRoutable,
+				ExactPinOnly:                  row.ExactPinOnly,
+				ExclusionReason:               row.ExclusionReason,
+				Power:                         row.Power,
+				ContextLength:                 row.ContextWindow,
+				CostInputPerMTok:              row.CostInputPerM,
+				CostOutputPerMTok:             row.CostOutputPerM,
+				RecentLatencyMS:               float64(row.RecentP50Latency.Milliseconds()),
+				ProviderReliabilityRate:       routeStatusMetricValue(successRate, provider, endpoint, model),
+				QuotaRemaining:                row.QuotaRemaining,
+				SnapshotCapturedAt:            snapshot.AsOf,
+				HealthFreshnessAt:             row.HealthFreshnessAt.UTC(),
+				HealthFreshnessSource:         row.HealthFreshnessSource,
+				QuotaFreshnessAt:              row.QuotaFreshnessAt.UTC(),
+				QuotaFreshnessSource:          row.QuotaFreshnessSource,
+				ModelDiscoveryFreshnessAt:     row.DiscoveredAt.UTC(),
+				ModelDiscoveryFreshnessSource: string(row.DiscoveredVia),
 			}
 			if attemptCooldown := routeAttemptCandidateCooldown(activeAttempts, provider, endpoint, model, cooldown); attemptCooldown != nil {
 				candidate.Cooldown = attemptCooldown

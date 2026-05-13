@@ -87,10 +87,12 @@ func TestServiceSessionLogPersistsHarnessProvenance(t *testing.T) {
 	text := string(body)
 	for _, want := range []string{
 		`"type":"session.start"`,
+		`"type":"routing_decision"`,
 		`"type":"session.end"`,
 		`"resolved_harness":"claude"`,
 		`"harness_source":"auto_route"`,
 		`"selected_server_instance":"claude-sonnet-1"`,
+		`"snapshot_captured_at"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("session log missing %s:\n%s", want, text)

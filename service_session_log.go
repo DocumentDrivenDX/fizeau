@@ -85,6 +85,9 @@ func (s *service) openSessionLog(req ServiceExecuteRequest, decision RouteDecisi
 		Metadata:         headerMeta,
 	}
 	logger.Emit(agentcore.EventSessionStart, start)
+	if decision.Harness != "" || decision.Provider != "" || decision.Model != "" || len(decision.Candidates) > 0 || !decision.SnapshotCapturedAt.IsZero() {
+		logger.Emit(agentcore.EventType(ServiceEventTypeRoutingDecision), serviceRoutingDecisionDataFromDecision(req, decision, sessionID))
+	}
 	return sl
 }
 

@@ -511,13 +511,21 @@ providers:
 	require.Equal(t, 0, out.exitCode, "stdout=%s stderr=%s", out.stdout, out.stderr)
 
 	type component struct {
-		Cost            float64 `json:"cost"`
-		LatencyMS       float64 `json:"latency_ms"`
-		Utilization     float64 `json:"utilization"`
-		SuccessRate     float64 `json:"success_rate"`
-		Capability      float64 `json:"capability"`
-		ContextHeadroom int     `json:"context_headroom"`
-		StickyAffinity  float64 `json:"sticky_affinity"`
+		Cost                    float64 `json:"cost"`
+		LatencyMS               float64 `json:"latency_ms"`
+		Utilization             float64 `json:"utilization"`
+		SuccessRate             float64 `json:"success_rate"`
+		Capability              float64 `json:"capability"`
+		ContextHeadroom         int     `json:"context_headroom"`
+		StickyAffinity          float64 `json:"sticky_affinity"`
+		PowerWeightedCapability float64 `json:"power_weighted_capability"`
+		PowerHintFit            float64 `json:"power_hint_fit"`
+		LatencyWeight           float64 `json:"latency_weight"`
+		PlacementBonus          float64 `json:"placement_bonus"`
+		QuotaBonus              float64 `json:"quota_bonus"`
+		MarginalCostPenalty     float64 `json:"marginal_cost_penalty"`
+		AvailabilityPenalty     float64 `json:"availability_penalty"`
+		StaleSignalPenalty      float64 `json:"stale_signal_penalty"`
 	}
 	type sticky struct {
 		KeyPresent bool   `json:"key_present"`
@@ -533,22 +541,38 @@ providers:
 		CachePressure  *float64 `json:"cache_pressure"`
 	}
 	type candidate struct {
-		Harness        string      `json:"harness"`
-		Provider       string      `json:"provider"`
-		Endpoint       string      `json:"endpoint"`
-		ServerInstance string      `json:"server_instance"`
-		Model          string      `json:"model"`
-		Score          float64     `json:"score"`
-		ContextLength  int         `json:"context_length"`
-		ContextSource  string      `json:"context_source"`
-		Components     component   `json:"components"`
-		Utilization    utilization `json:"utilization"`
-		Eligible       bool        `json:"eligible"`
-		FilterReason   string      `json:"filter_reason"`
-		Winner         bool        `json:"winner"`
+		Harness                       string      `json:"harness"`
+		Provider                      string      `json:"provider"`
+		Billing                       string      `json:"billing"`
+		ActualCashSpend               bool        `json:"actual_cash_spend"`
+		Endpoint                      string      `json:"endpoint"`
+		ServerInstance                string      `json:"server_instance"`
+		Model                         string      `json:"model"`
+		Score                         float64     `json:"score"`
+		ContextLength                 int         `json:"context_length"`
+		ContextSource                 string      `json:"context_source"`
+		EffectiveCost                 float64     `json:"effective_cost"`
+		EffectiveCostSource           string      `json:"effective_cost_source"`
+		SnapshotCapturedAt            time.Time   `json:"snapshot_captured_at"`
+		HealthFreshnessAt             time.Time   `json:"health_freshness_at"`
+		HealthFreshnessSource         string      `json:"health_freshness_source"`
+		QuotaFreshnessAt              time.Time   `json:"quota_freshness_at"`
+		QuotaFreshnessSource          string      `json:"quota_freshness_source"`
+		ModelDiscoveryFreshnessAt     time.Time   `json:"model_discovery_freshness_at"`
+		ModelDiscoveryFreshnessSource string      `json:"model_discovery_freshness_source"`
+		Components                    component   `json:"components"`
+		Utilization                   utilization `json:"utilization"`
+		Eligible                      bool        `json:"eligible"`
+		FilterReason                  string      `json:"filter_reason"`
+		SourceStatus                  string      `json:"source_status"`
+		AutoRoutable                  bool        `json:"auto_routable"`
+		ExactPinOnly                  bool        `json:"exact_pin_only"`
+		ExclusionReason               string      `json:"exclusion_reason"`
+		Winner                        bool        `json:"winner"`
 	}
 	var parsed struct {
 		Model                  string      `json:"model"`
+		SnapshotCapturedAt     time.Time   `json:"snapshot_captured_at"`
 		SelectedEndpoint       string      `json:"selected_endpoint"`
 		SelectedServerInstance string      `json:"selected_server_instance"`
 		Sticky                 sticky      `json:"sticky"`
@@ -558,9 +582,10 @@ providers:
 	}
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
 	assert.Equal(t, "qwen3.5-27b", parsed.Model)
+	require.False(t, parsed.SnapshotCapturedAt.IsZero(), "route-status should expose snapshot_captured_at")
 	var generic map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &generic), "stdout=%s", out.stdout)
-	for _, key := range []string{"selected_endpoint", "selected_server_instance", "sticky", "utilization"} {
+	for _, key := range []string{"selected_endpoint", "selected_server_instance", "sticky", "utilization", "snapshot_captured_at"} {
 		if _, ok := generic[key]; !ok {
 			t.Fatalf("missing %q in route-status JSON: %s", key, out.stdout)
 		}
@@ -588,6 +613,11 @@ providers:
 			t.Fatalf("missing candidate component %q in route-status JSON: %s", key, out.stdout)
 		}
 	}
+	for _, key := range []string{"power_weighted_capability", "power_hint_fit", "latency_weight", "placement_bonus", "quota_bonus", "marginal_cost_penalty", "availability_penalty", "stale_signal_penalty"} {
+		if _, ok := componentGeneric[key]; !ok {
+			t.Fatalf("missing candidate component %q in route-status JSON: %s", key, out.stdout)
+		}
+	}
 
 	// Each candidate carries the new structured shape from
 	// service.ResolveRoute: provider, model, score, components, eligible bool,
@@ -611,8 +641,26 @@ providers:
 		_ = c.Components
 		_ = c.Components.Utilization
 		_ = c.Components.StickyAffinity
+		_ = c.Components.PowerWeightedCapability
+		_ = c.Components.PowerHintFit
+		_ = c.Components.LatencyWeight
+		_ = c.Components.PlacementBonus
+		_ = c.Components.QuotaBonus
+		_ = c.Components.MarginalCostPenalty
+		_ = c.Components.AvailabilityPenalty
+		_ = c.Components.StaleSignalPenalty
 		_ = c.ContextLength
 		_ = c.ContextSource
+		_ = c.ActualCashSpend
+		_ = c.EffectiveCost
+		_ = c.EffectiveCostSource
+		_ = c.SnapshotCapturedAt
+		_ = c.HealthFreshnessAt
+		_ = c.HealthFreshnessSource
+		_ = c.QuotaFreshnessAt
+		_ = c.QuotaFreshnessSource
+		_ = c.ModelDiscoveryFreshnessAt
+		_ = c.ModelDiscoveryFreshnessSource
 		if !c.Eligible {
 			assert.NotEmpty(t, c.FilterReason, "ineligible candidate must carry a filter_reason: %+v", c)
 		}
@@ -649,6 +697,21 @@ providers:
 	for _, c := range parsed.Candidates {
 		_ = c.Utilization.Source
 		_ = c.Utilization.Freshness
+	}
+	textOut := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, map[string]string{
+		"PATH":             "",
+		"FIZEAU_CACHE_DIR": cacheDir,
+	}), "--work-dir", workDir, "route-status", "--policy", "cheap", "--model", "qwen3.5-27b")
+	require.Equal(t, 0, textOut.exitCode, "stdout=%s stderr=%s", textOut.stdout, textOut.stderr)
+	for _, want := range []string{
+		"snapshot_captured_at",
+		"actual_cash_spend",
+		"effective_cost",
+		"effective_cost_source",
+		"model_discovery_freshness_at",
+		"source_status",
+	} {
+		require.Contains(t, textOut.stdout, want, "route-status text output missing %q: %s", want, textOut.stdout)
 	}
 }
 

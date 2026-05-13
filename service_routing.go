@@ -193,21 +193,24 @@ func routeCandidateFromInternal(candidate routing.Candidate, powerPolicy RoutePo
 	components.MarginalCostPenalty = positiveScorePart(-scoreCost)
 	components.AvailabilityPenalty = positiveScorePart(-scoreQuota) + positiveScorePart(-scoreUtilization)
 	return RouteCandidate{
-		Harness:            candidate.Harness,
-		Provider:           candidate.Provider,
-		Billing:            candidate.Billing,
-		Endpoint:           candidate.Endpoint,
-		ServerInstance:     candidate.ServerInstance,
-		Model:              candidate.Model,
-		Score:              candidate.Score,
-		CostUSDPer1kTokens: candidate.CostUSDPer1kTokens,
-		CostSource:         candidate.CostSource,
-		Eligible:           candidate.Eligible,
-		Reason:             candidate.Reason,
-		FilterReason:       publicFilterReason(candidate),
-		ContextLength:      candidate.ContextLength,
-		ContextSource:      candidate.ContextSource,
-		Components:         components,
+		Harness:             candidate.Harness,
+		Provider:            candidate.Provider,
+		Billing:             candidate.Billing,
+		ActualCashSpend:     candidate.ActualCashSpend,
+		Endpoint:            candidate.Endpoint,
+		ServerInstance:      candidate.ServerInstance,
+		Model:               candidate.Model,
+		Score:               candidate.Score,
+		CostUSDPer1kTokens:  candidate.CostUSDPer1kTokens,
+		CostSource:          candidate.CostSource,
+		EffectiveCost:       candidate.CostUSDPer1kTokens,
+		EffectiveCostSource: candidate.CostSource,
+		Eligible:            candidate.Eligible,
+		Reason:              candidate.Reason,
+		FilterReason:        publicFilterReason(candidate),
+		ContextLength:       candidate.ContextLength,
+		ContextSource:       candidate.ContextSource,
+		Components:          components,
 	}
 }
 
@@ -338,6 +341,15 @@ func applyRouteSnapshotEvidence(candidate *RouteCandidate, row modelsnapshot.Kno
 	candidate.AutoRoutable = row.AutoRoutable
 	candidate.ExactPinOnly = row.ExactPinOnly
 	candidate.ExclusionReason = row.ExclusionReason
+	candidate.ActualCashSpend = row.ActualCashSpend
+	candidate.EffectiveCost = row.EffectiveCost
+	candidate.EffectiveCostSource = row.EffectiveCostSource
+	candidate.ModelDiscoveryFreshnessAt = row.DiscoveredAt.UTC()
+	candidate.ModelDiscoveryFreshnessSource = string(row.DiscoveredVia)
+	candidate.HealthFreshnessAt = row.HealthFreshnessAt.UTC()
+	candidate.HealthFreshnessSource = row.HealthFreshnessSource
+	candidate.QuotaFreshnessAt = row.QuotaFreshnessAt.UTC()
+	candidate.QuotaFreshnessSource = row.QuotaFreshnessSource
 }
 
 func applyRouteSnapshotEvidenceToStatus(candidate *RouteCandidateStatus, row modelsnapshot.KnownModel) {
@@ -354,16 +366,27 @@ func applyRouteSnapshotEvidenceToStatus(candidate *RouteCandidateStatus, row mod
 	candidate.CostOutputPerMTok = row.CostOutputPerM
 	candidate.RecentLatencyMS = float64(row.RecentP50Latency.Milliseconds())
 	candidate.QuotaRemaining = row.QuotaRemaining
+	candidate.ActualCashSpend = row.ActualCashSpend
+	candidate.EffectiveCost = row.EffectiveCost
+	candidate.EffectiveCostSource = row.EffectiveCostSource
+	candidate.HealthFreshnessAt = row.HealthFreshnessAt.UTC()
+	candidate.HealthFreshnessSource = row.HealthFreshnessSource
+	candidate.QuotaFreshnessAt = row.QuotaFreshnessAt.UTC()
+	candidate.QuotaFreshnessSource = row.QuotaFreshnessSource
+	candidate.ModelDiscoveryFreshnessAt = row.DiscoveredAt.UTC()
+	candidate.ModelDiscoveryFreshnessSource = string(row.DiscoveredVia)
 }
 
 func (s *service) annotateRouteDecisionSnapshotEvidence(decision *RouteDecision, snapshot modelsnapshot.ModelSnapshot) {
 	if s == nil || decision == nil {
 		return
 	}
+	decision.SnapshotCapturedAt = snapshot.AsOf
 	for i := range decision.Candidates {
 		if row, ok := routeSnapshotEvidenceForCandidate(decision.Candidates[i], snapshot); ok {
 			applyRouteSnapshotEvidence(&decision.Candidates[i], row)
 		}
+		decision.Candidates[i].SnapshotCapturedAt = snapshot.AsOf
 	}
 }
 

@@ -427,6 +427,9 @@ func ValidatePowerBounds(minPower, maxPower int) error {
 type RouteDecision struct {
 	// RequestedPolicy is the caller-supplied policy, when any.
 	RequestedPolicy string
+	// SnapshotCapturedAt records when the model snapshot used for scoring
+	// was assembled.
+	SnapshotCapturedAt time.Time
 	// PowerPolicy records the effective policy inputs used for this
 	// resolution. It stays separate from the chosen model so operator
 	// surfaces can explain policy without re-deriving it.
@@ -477,6 +480,9 @@ type RouteCandidate struct {
 	Provider string
 	// Billing is the candidate payment model.
 	Billing BillingModel
+	// ActualCashSpend reports whether selecting the candidate would create
+	// metered cash spend.
+	ActualCashSpend bool
 	// Endpoint is the provider endpoint name when applicable.
 	Endpoint string
 	// ServerInstance is the normalized server identity for the candidate.
@@ -490,6 +496,11 @@ type RouteCandidate struct {
 	// CostSource indicates whether cost came from catalog, subscription,
 	// user-config, or is unknown.
 	CostSource string
+	// EffectiveCost is the score-time cost estimate surfaced explicitly for
+	// operator traces and session logs.
+	EffectiveCost float64
+	// EffectiveCostSource records where EffectiveCost came from.
+	EffectiveCostSource string
 	// Eligible reports whether the candidate passed all routing gates.
 	Eligible bool
 	// Reason is the scoring reason for eligible candidates or the rejection
@@ -513,6 +524,18 @@ type RouteCandidate struct {
 	// ExclusionReason explains why the snapshot marked the candidate as
 	// excluded from automatic routing.
 	ExclusionReason string
+	// SnapshotCapturedAt records when the model snapshot used for scoring
+	// was assembled.
+	SnapshotCapturedAt time.Time
+	// HealthFreshnessAt/Source, QuotaFreshnessAt/Source, and
+	// ModelDiscoveryFreshnessAt/Source expose the freshness state that fed the
+	// candidate's routing evidence.
+	HealthFreshnessAt             time.Time
+	HealthFreshnessSource         string
+	QuotaFreshnessAt              time.Time
+	QuotaFreshnessSource          string
+	ModelDiscoveryFreshnessAt     time.Time
+	ModelDiscoveryFreshnessSource string
 	// Components carries the raw score inputs plus the SD-005 score-evidence
 	// breakdown used to explain the final Score without parsing Reason.
 	Components RouteCandidateComponents
@@ -637,9 +660,10 @@ type RouteAttempt struct {
 // each RouteCandidateStatus: the two compose, and conflating them is the
 // UI bug ADR-006 fixes.
 type RouteStatusReport struct {
-	Routes          []RouteStatusEntry
-	GeneratedAt     time.Time
-	GlobalCooldowns []CooldownState
+	Routes             []RouteStatusEntry
+	GeneratedAt        time.Time
+	SnapshotCapturedAt time.Time
+	GlobalCooldowns    []CooldownState
 	// RoutingQuality holds the three first-class routing-quality metrics
 	// over a recent window (last RouteStatusRoutingQualityWindow requests).
 	RoutingQuality RoutingQualityMetrics
@@ -671,25 +695,35 @@ type RouteStatusEntry struct {
 // the parent report — the two metrics measure different things and are
 // surfaced as separate fields.
 type RouteCandidateStatus struct {
-	Provider                string
-	Endpoint                string
-	Model                   string
-	ServerInstance          string
-	Billing                 BillingModel
-	Priority                int
-	Healthy                 bool
-	Cooldown                *CooldownState
-	SourceStatus            string
-	AutoRoutable            bool
-	ExactPinOnly            bool
-	ExclusionReason         string
-	Power                   int
-	ContextLength           int
-	CostInputPerMTok        float64
-	CostOutputPerMTok       float64
-	RecentLatencyMS         float64 // observation-derived; 0 when unavailable
-	ProviderReliabilityRate float64 // 0-1; 0 when unavailable. Legacy success-rate field, relabeled per ADR-006 §5 to disambiguate from routing-quality.
-	QuotaRemaining          *int
+	Provider                      string
+	Endpoint                      string
+	Model                         string
+	ServerInstance                string
+	Billing                       BillingModel
+	ActualCashSpend               bool
+	EffectiveCost                 float64
+	EffectiveCostSource           string
+	Priority                      int
+	Healthy                       bool
+	Cooldown                      *CooldownState
+	SourceStatus                  string
+	AutoRoutable                  bool
+	ExactPinOnly                  bool
+	ExclusionReason               string
+	Power                         int
+	ContextLength                 int
+	CostInputPerMTok              float64
+	CostOutputPerMTok             float64
+	RecentLatencyMS               float64 // observation-derived; 0 when unavailable
+	ProviderReliabilityRate       float64 // 0-1; 0 when unavailable. Legacy success-rate field, relabeled per ADR-006 §5 to disambiguate from routing-quality.
+	QuotaRemaining                *int
+	SnapshotCapturedAt            time.Time
+	HealthFreshnessAt             time.Time
+	HealthFreshnessSource         string
+	QuotaFreshnessAt              time.Time
+	QuotaFreshnessSource          string
+	ModelDiscoveryFreshnessAt     time.Time
+	ModelDiscoveryFreshnessSource string
 }
 
 // ServiceEvent is a contract-level event (mirrors harnesses.Event).
