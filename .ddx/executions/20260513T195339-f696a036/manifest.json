@@ -1,0 +1,58 @@
+{
+  "attempt_id": "20260513T195339-f696a036",
+  "bead_id": "fizeau-88f19eae",
+  "base_rev": "1d85a9a975a9a2576e009fc0cd92aab4691469c1",
+  "created_at": "2026-05-13T19:53:42.538583838Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-88f19eae",
+    "title": "Score cheapest sufficient routes using effective cost",
+    "description": "Update routing score semantics so policy decisions use comparable effective cost instead of treating subscription-backed models as equally included.\\n\\nDesired scoring behavior:\\n- cheap selects the lowest effective-cost model with enough expected capability for the request. It should choose nano/mini/local over GPT-5.5 when they are sufficient and dispatchable.\\n- default selects the best routine tradeoff and should avoid maximum-quality frontier subscription unless lower-cost routine candidates are not sufficient or are materially worse after reliability/health/context scoring.\\n- smart can let quality/reliability dominate cost.\\n- Pay-per-token providers are hard-gated only when actual_cash_spend=true and metered opt-in is false.\\n- Subscription candidates use PAYG-equivalent effective cost for scoring while actual_cash_spend=false.\\n- Avoid frontier-specific if/else exclusion gates; the outcome should fall out of effective cost, power/task fit, reliability, latency, utilization, and risk scoring.\\n\\nIn scope: internal/routing scorer, service projection of snapshot effective_cost into routing candidates, focused score tests.\\n\\nOut of scope: snapshot schema fields if prior bead has not landed; CLI display.",
+    "acceptance": "1. go test ./internal/routing/... . -run 'Test.*Cheap|Test.*Default|Test.*Smart|Test.*EffectiveCost|Test.*Metered' -count=1 passes.\\n2. A cheap-policy test with available gpt-5.5, gpt-5.4-mini/nano, and a local/fixed candidate selects the lowest effective-cost sufficient candidate and not gpt-5.5.\\n3. A default-policy test selects a lower effective-cost routine candidate over gpt-5.5 when both satisfy the task.\\n4. A smart-policy test can select gpt-5.5 when quality/reliability score justifies it.\\n5. A metered test proves actual_cash_spend=true candidates are rejected without opt-in and can win with opt-in.\\n6. rg -n 'frontier_excluded_by_cheap|if .*gpt-5.5|if .*frontier' internal/routing service_routing.go returns no new policy-specific exclusion gate.",
+    "parent": "fizeau-4847c99e",
+    "labels": [
+      "area:routing",
+      "kind:feature",
+      "plan-2026-05-13-snapshot-routing"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-13T19:50:04Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-13T19:53:39.215517692Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-13T19:50:04.674281487Z",
+      "schema_version": 1,
+      "spec-id": "FEAT-004"
+    }
+  },
+  "governing": [
+    {
+      "id": "FEAT-004",
+      "path": "docs/helix/01-frame/features/FEAT-004-model-routing.md",
+      "title": "Feature Specification: FEAT-004 — Shared Model Catalog and Policy Routing"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260513T195339-f696a036",
+    "prompt": ".ddx/executions/20260513T195339-f696a036/prompt.md",
+    "manifest": ".ddx/executions/20260513T195339-f696a036/manifest.json",
+    "result": ".ddx/executions/20260513T195339-f696a036/result.json",
+    "checks": ".ddx/executions/20260513T195339-f696a036/checks.json",
+    "usage": ".ddx/executions/20260513T195339-f696a036/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-88f19eae-20260513T195339-f696a036"
+  },
+  "prompt_sha": "43dac33ead6dd69d94c4bb6f6b89e64b2441c495a3c1bf7b64c5281c04cc1fc1"
+}
