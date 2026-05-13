@@ -61,6 +61,7 @@ phases:
       - fiz-openrouter-gpt-5-4-mini
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
+      - fiz-sindri-lucebox-qwen3-6-27b
       - fiz-sindri-vllm-qwen3-6-27b
       - fiz-sindri-llamacpp-qwen3-6-27b
     preflight:
@@ -86,6 +87,7 @@ phases:
       - fiz-harness-pi-vidar-qwen3-6-27b
       - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
+      - fiz-sindri-lucebox-qwen3-6-27b
       - fiz-sindri-vllm-qwen3-6-27b
       - fiz-sindri-llamacpp-qwen3-6-27b
     parallel_policy: >-
@@ -127,6 +129,7 @@ phases:
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-vidar-ds4
       - fiz-bragi-club-3090-qwen3-6-27b
+      - fiz-sindri-lucebox-qwen3-6-27b
       - fiz-sindri-vllm-qwen3-6-27b
       - fiz-sindri-llamacpp-qwen3-6-27b
     parallel_policy: >-
@@ -150,6 +153,7 @@ phases:
       - fiz-harness-pi-vidar-qwen3-6-27b
       - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
+      - fiz-sindri-lucebox-qwen3-6-27b
       - fiz-sindri-vllm-qwen3-6-27b
       - fiz-sindri-llamacpp-qwen3-6-27b
       - fiz-openrouter-claude-sonnet-4-6
@@ -258,6 +262,7 @@ comparison_groups:
     lanes:
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
+      - fiz-sindri-lucebox-qwen3-6-27b
       - fiz-sindri-vllm-qwen3-6-27b
     equivalence: approximate_same_family
     equivalence_note: >-
@@ -375,6 +380,19 @@ resource_groups:
     notes: >-
       vLLM with autoround quantization. Verified 2026-05-07: /v1/models
       lists qwen3.6-27b-autoround at http://bragi:8020/v1.
+
+  - id: rg-sindri-lucebox-dflash
+    server: sindri
+    base_url: "http://sindri:1236/v1"
+    provider_type: lucebox
+    hardware: "RTX 3090 Ti (sindri, port 1236)"
+    max_concurrency: 1
+    notes: >-
+      lucebox-hub DFlash speculative decoder serving alias luce-dflash. Target
+      weights: unsloth/Qwen3.6-27B-GGUF Qwen3.6-27B-Q4_K_M.gguf. Draft
+      weights: z-lab/Qwen3.6-27B-DFlash model.safetensors. This is distinct
+      from sindri's llama-server lane on :8020; verify liveness before
+      launching long sweeps.
 
   - id: rg-grendel-rapid-mlx
     server: grendel
@@ -794,6 +812,35 @@ lanes:
       Same weights lineage as vidar-omlx, grendel-rapid-mlx, and sindri-club-3090;
       different quant and runtime — approximate_same_family only.
 
+  - id: fiz-sindri-lucebox-qwen3-6-27b
+    profile_id: sindri-lucebox
+    lane_type: fiz_provider_native
+    phases: [canary, local-qwen, or-passing, tb21-all]
+    comparison_groups: [cg-local-qwen-provider-quant]
+    resource_group: rg-sindri-lucebox-dflash
+    fizeau_env:
+      FIZEAU_PROVIDER: lucebox
+      FIZEAU_MODEL: "luce-dflash"
+      FIZEAU_BASE_URL: "http://sindri:1236/v1"
+      FIZEAU_API_KEY_ENV: LUCEBOX_API_KEY
+    model_family: qwen3-6-27b
+    model_id: "luce-dflash"
+    quant_label: gguf-q4-k-m
+    provider_surface: sindri-lucebox
+    runtime: lucebox-dflash
+    hardware_label: sindri-3090-ti
+    endpoint: "http://sindri:1236/v1"
+    sampling:
+      temperature: 0.6
+      top_p: 0.95
+      top_k: 20
+    equivalence_note: >-
+      RTX 3090 Ti, lucebox-hub DFlash speculative decoder serving alias
+      luce-dflash with Unsloth Qwen3.6-27B Q4_K_M target weights and the z-lab
+      Qwen3.6-27B-DFlash draft model. Same broad Qwen family as the other local
+      lanes, but different runtime, quantization, and speculative-decoding
+      stack — approximate_same_family only.
+
   - id: fiz-grendel-rapid-mlx-qwen3-6-27b
     profile_id: grendel-rapid-mlx
     lane_type: fiz_provider_native
@@ -1029,6 +1076,13 @@ profile_inventory:
       notes: >-
         Verified 2026-05-12: /v1/models lists Qwen3.6-27B-UD-Q3_K_XL.gguf at
         http://sindri:8020/v1. This is the current sindri runtime.
+    - id: sindri-lucebox
+      path: scripts/benchmark/profiles/sindri-lucebox.yaml
+      status: needs-liveness-check
+      used_in_phases: [canary, local-qwen, or-passing, tb21-all]
+      notes: >-
+        lucebox-hub DFlash speculative decoder profile for Qwen3.6-27B-Q4_K_M
+        at http://sindri:1236/v1.
     - id: terminalbench-2-1-canary
       path: scripts/benchmark/task-subset-tb21-canary.yaml
       status: active

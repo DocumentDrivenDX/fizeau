@@ -156,7 +156,7 @@ prints the exact target plan, waits briefly for Ctrl-C, then runs the sweep.
 catalog.
 
 Short lane aliases:
-  openai-gpt55, openrouter-qwen36, sindri-llamacpp, sindri-vllm, vidar
+  openai-gpt55, openrouter-qwen36, sindri-llamacpp, sindri-vllm, sindri-lucebox, vidar
 EOF
 }
 
@@ -269,6 +269,7 @@ expand_lane_alias() {
     sindri-vllm) echo "fiz-sindri-vllm-qwen3-6-27b" ;;
     vidar|vidar-omlx) echo "fiz-vidar-omlx-qwen3-6-27b" ;;
     vidar-ds4|ds4) echo "fiz-vidar-ds4" ;;
+    sindri-lucebox|luce-dflash|lucebox-dflash|dflash) echo "fiz-sindri-lucebox-qwen3-6-27b" ;;
     *) echo "$1" ;;
   esac
 }
@@ -709,6 +710,7 @@ prepare_env_keys() {
   export OMLX_API_KEY="${OMLX_API_KEY:-local}"
   export VLLM_API_KEY="${VLLM_API_KEY:-local}"
   export RAPID_MLX_API_KEY="${RAPID_MLX_API_KEY:-local}"
+  export LUCEBOX_API_KEY="${LUCEBOX_API_KEY:-local}"
   if [[ "${DRY_RUN}" = "1" ]]; then
     return
   fi
