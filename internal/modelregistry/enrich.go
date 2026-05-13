@@ -36,6 +36,10 @@ func EnrichModel(model KnownModel, includeByDefault bool, cat *modelcatalog.Cata
 			model.ContextWindow = entry.ContextWindow
 			model.ReasoningLevels = append([]string(nil), entry.ReasoningLevels...)
 			model.QuotaPool = entry.EffectiveQuotaPool()
+			model.SupportsTools = !entry.NoTools
+			model.DeploymentClass = entry.DeploymentClass
+			model.ActualCashSpend = billingCreatesCashSpend(model.Billing)
+			model.EffectiveCost, model.EffectiveCostSource = effectiveModelCost(entry, model.Billing)
 		}
 	}
 	return model
@@ -55,6 +59,12 @@ func attachRuntimeSignals(model KnownModel, cache *discoverycache.Cache) KnownMo
 	}
 	model.QuotaRemaining = sig.QuotaRemaining
 	model.RecentP50Latency = sig.RecentP50Latency
+	if !sig.RecordedAt.IsZero() {
+		model.HealthFreshnessAt = sig.RecordedAt.UTC()
+		model.HealthFreshnessSource = "runtime"
+		model.QuotaFreshnessAt = sig.RecordedAt.UTC()
+		model.QuotaFreshnessSource = "runtime"
+	}
 	return model
 }
 
@@ -145,4 +155,40 @@ func catalogCostOutput(entry modelcatalog.ModelEntry) float64 {
 		return entry.CostOutputPerM
 	}
 	return entry.CostOutputPerMTok
+}
+
+func effectiveModelCost(entry modelcatalog.ModelEntry, billing modelcatalog.BillingModel) (float64, string) {
+	cost := catalogCostUSDPer1kTokens(entry)
+	if cost == 0 {
+		return 0, "unknown"
+	}
+	if billing == modelcatalog.BillingModelSubscription {
+		return cost, "subscription_shadow"
+	}
+	return cost, "catalog"
+}
+
+func billingCreatesCashSpend(billing modelcatalog.BillingModel) bool {
+	return billing == modelcatalog.BillingModelPerToken
+}
+
+func catalogCostUSDPer1kTokens(entry modelcatalog.ModelEntry) float64 {
+	input := entry.CostInputPerM
+	if input == 0 {
+		input = entry.CostInputPerMTok
+	}
+	output := entry.CostOutputPerM
+	if output == 0 {
+		output = entry.CostOutputPerMTok
+	}
+	switch {
+	case input > 0 && output > 0:
+		return ((input + output) / 2) / 1000
+	case input > 0:
+		return input / 1000
+	case output > 0:
+		return output / 1000
+	default:
+		return 0
+	}
 }

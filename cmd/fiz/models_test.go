@@ -244,7 +244,7 @@ func TestModelsListJSONEmitsSnapshot(t *testing.T) {
 	var snapshot struct {
 		Models []struct {
 			Provider string
-			ID       string
+			Model    string `json:"model"`
 		}
 		Sources map[string]any
 	}
@@ -264,10 +264,10 @@ func TestModelsListJSONEmitsSnapshot(t *testing.T) {
 
 func snapshotContains(models []struct {
 	Provider string
-	ID       string
+	Model    string `json:"model"`
 }, provider, id string) bool {
 	for _, model := range models {
-		if model.Provider == provider && model.ID == id {
+		if model.Provider == provider && model.Model == id {
 			return true
 		}
 	}

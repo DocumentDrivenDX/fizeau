@@ -294,26 +294,37 @@ type PerfSignal struct {
 
 // ModelInfo describes a model with full metadata per CONTRACT-003.
 type ModelInfo struct {
-	ID              string
-	Provider        string
-	ProviderType    string
-	Harness         string
-	EndpointName    string
-	EndpointBaseURL string
-	ServerInstance  string
-	ContextLength   int
-	ContextSource   string
-	Utilization     RouteUtilizationState
-	Capabilities    []string
-	Cost            CostInfo
-	PerfSignal      PerfSignal
-	Power           int
-	AutoRoutable    bool
-	ExactPinOnly    bool
-	Billing         BillingModel
-	Available       bool
-	IsDefault       bool // matches the configured default model
-	RankPosition    int  // ordinal in latest discovery rank; -1 if unranked
+	ID                            string
+	Provider                      string
+	ProviderType                  string
+	Harness                       string
+	EndpointName                  string
+	EndpointBaseURL               string
+	ServerInstance                string
+	ContextLength                 int
+	ContextSource                 string
+	Utilization                   RouteUtilizationState
+	Capabilities                  []string
+	Cost                          CostInfo
+	PerfSignal                    PerfSignal
+	Power                         int
+	AutoRoutable                  bool
+	ExactPinOnly                  bool
+	Billing                       BillingModel
+	ActualCashSpend               bool
+	EffectiveCost                 float64
+	EffectiveCostSource           string
+	SupportsTools                 bool
+	DeploymentClass               string
+	HealthFreshnessAt             time.Time
+	HealthFreshnessSource         string
+	QuotaFreshnessAt              time.Time
+	QuotaFreshnessSource          string
+	ModelDiscoveryFreshnessAt     time.Time
+	ModelDiscoveryFreshnessSource string
+	Available                     bool
+	IsDefault                     bool // matches the configured default model
+	RankPosition                  int  // ordinal in latest discovery rank; -1 if unranked
 }
 
 // ModelFilter filters ListModels results.

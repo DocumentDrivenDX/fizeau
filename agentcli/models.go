@@ -319,6 +319,11 @@ func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Conf
 	fmt.Printf("Canonical: %s\n", detail.CanonicalID)
 	fmt.Printf("Identity: %s\n", modelIdentitySummary(detail.KnownModel))
 	fmt.Printf("KnownModel: %+v\n", detail.KnownModel)
+	fmt.Printf("ActualCashSpend: %t\n", detail.KnownModel.ActualCashSpend)
+	fmt.Printf("EffectiveCost: %.4f source=%s\n", detail.KnownModel.EffectiveCost, labelOrUnknown(detail.KnownModel.EffectiveCostSource))
+	fmt.Printf("HealthFreshness: at=%s source=%s\n", formatFreshness(detail.KnownModel.HealthFreshnessAt), labelOrUnknown(detail.KnownModel.HealthFreshnessSource))
+	fmt.Printf("QuotaFreshness: at=%s source=%s\n", formatFreshness(detail.KnownModel.QuotaFreshnessAt), labelOrUnknown(detail.KnownModel.QuotaFreshnessSource))
+	fmt.Printf("ModelDiscoveryFreshness: at=%s source=%s\n", formatFreshness(detail.KnownModel.DiscoveredAt), labelOrUnknown(string(detail.KnownModel.DiscoveredVia)))
 	fmt.Printf("RuntimeQuotaRemaining: %s\n", formatRuntimeQuota(detail.KnownModel.QuotaRemaining))
 	fmt.Printf("RecentP50Latency: %s\n", formatLatency(detail.KnownModel.RecentP50Latency))
 	if detail.CatalogEntry != nil {
@@ -559,6 +564,13 @@ func formatLatency(latency time.Duration) string {
 		return "-"
 	}
 	return latency.String()
+}
+
+func formatFreshness(at time.Time) string {
+	if at.IsZero() {
+		return "-"
+	}
+	return at.UTC().Format(time.RFC3339)
 }
 
 func formatModelCost(input, output float64) string {

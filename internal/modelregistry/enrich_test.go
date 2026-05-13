@@ -2,6 +2,8 @@ package modelregistry
 
 import (
 	"testing"
+
+	"github.com/easel/fizeau/internal/modelcatalog"
 )
 
 func TestEnrichSnapshotPopulatesCatalogMetadataAndLeavesUnknownZero(t *testing.T) {
@@ -27,6 +29,15 @@ func TestEnrichSnapshotPopulatesCatalogMetadataAndLeavesUnknownZero(t *testing.T
 	if enriched.QuotaPool != "openai-frontier" {
 		t.Fatalf("QuotaPool = %q, want openai-frontier", enriched.QuotaPool)
 	}
+	if !enriched.SupportsTools {
+		t.Fatalf("SupportsTools = false, want true")
+	}
+	if enriched.EffectiveCost <= 0 {
+		t.Fatalf("EffectiveCost = %v, want positive", enriched.EffectiveCost)
+	}
+	if enriched.EffectiveCostSource != "catalog" && enriched.EffectiveCostSource != "subscription_shadow" {
+		t.Fatalf("EffectiveCostSource = %q, want catalog or subscription_shadow", enriched.EffectiveCostSource)
+	}
 
 	unknown := EnrichModel(KnownModel{
 		Provider: "openrouter",
@@ -35,6 +46,54 @@ func TestEnrichSnapshotPopulatesCatalogMetadataAndLeavesUnknownZero(t *testing.T
 	}, true, cat)
 	if unknown.Power != 0 || unknown.CostInputPerM != 0 || unknown.CostOutputPerM != 0 || unknown.ContextWindow != 0 || len(unknown.ReasoningLevels) != 0 || unknown.QuotaPool != "" {
 		t.Fatalf("uncataloged metadata = %#v, want zero/empty", unknown)
+	}
+	if unknown.SupportsTools || unknown.EffectiveCost != 0 || unknown.EffectiveCostSource != "" || unknown.ActualCashSpend {
+		t.Fatalf("uncataloged routing facts = %#v, want zero/false/empty", unknown)
+	}
+}
+
+func TestEnrichSnapshotEffectiveCostAndCashSpend(t *testing.T) {
+	cat := loadTestCatalog(t)
+
+	subscription := EnrichModel(KnownModel{
+		Provider: "codex-subscription",
+		ID:       "gpt-5.5",
+		Billing:  modelcatalog.BillingModelSubscription,
+		Status:   StatusAvailable,
+	}, true, cat)
+	lowerTier := EnrichModel(KnownModel{
+		Provider: "codex-subscription",
+		ID:       "gpt-5.4-mini",
+		Billing:  modelcatalog.BillingModelSubscription,
+		Status:   StatusAvailable,
+	}, true, cat)
+	metered := EnrichModel(KnownModel{
+		Provider: "openrouter",
+		ID:       "gpt-5.5",
+		Billing:  modelcatalog.BillingModelPerToken,
+		Status:   StatusAvailable,
+	}, true, cat)
+
+	if subscription.ActualCashSpend {
+		t.Fatalf("subscription.ActualCashSpend = true, want false")
+	}
+	if subscription.EffectiveCostSource != "subscription_shadow" {
+		t.Fatalf("subscription.EffectiveCostSource = %q, want subscription_shadow", subscription.EffectiveCostSource)
+	}
+	if subscription.EffectiveCost <= lowerTier.EffectiveCost {
+		t.Fatalf("subscription.EffectiveCost = %v, want greater than lower-tier %v", subscription.EffectiveCost, lowerTier.EffectiveCost)
+	}
+	if lowerTier.ActualCashSpend {
+		t.Fatalf("lowerTier.ActualCashSpend = true, want false")
+	}
+	if metered.Billing != modelcatalog.BillingModelPerToken {
+		t.Fatalf("metered.Billing = %q, want per_token", metered.Billing)
+	}
+	if !metered.ActualCashSpend {
+		t.Fatalf("metered.ActualCashSpend = false, want true")
+	}
+	if metered.EffectiveCostSource != "catalog" {
+		t.Fatalf("metered.EffectiveCostSource = %q, want catalog", metered.EffectiveCostSource)
 	}
 }
 
