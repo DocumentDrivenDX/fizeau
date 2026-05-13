@@ -1,8 +1,8 @@
 | Dataset | Version | Provider | Model | Harness | Profile | Reports | Pass | Fail | Invalid | Crash | Cost ($) |
 |---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|
 | terminal-bench-2-1 | 2.1 | anthropic | sonnet-4.6 | claude | claude-native-sonnet-4-6 | 15 | 0 | 6 | 0 | 0 | 0.0000 |
-| terminal-bench-2-1 | 2.1 | ds4 | deepseek-v4-flash | fiz | vidar-ds4 | 30 | 11 | 13 | 0 | 3 | 0.0000 |
-| terminal-bench-2-1 | 2.1 | llama-server | Qwen3.6-27B-UD-Q3_K_XL.gguf | fiz | sindri-llamacpp | 30 | 8 | 21 | 0 | 0 | 0.0000 |
+| terminal-bench-2-1 | 2.1 | ds4 | deepseek-v4-flash | fiz | vidar-ds4 | 56 | 22 | 27 | 0 | 3 | 0.0000 |
+| terminal-bench-2-1 | 2.1 | llama-server | Qwen3.6-27B-UD-Q3_K_XL.gguf | fiz | sindri-llamacpp | 75 | 24 | 50 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | 2.1 | lmstudio | qwen/qwen3.6-27b | ddx-agent | bragi-qwen3-6-27b | 258 | 0 | 257 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | 2.1 | lmstudio | qwen/qwen3.6-27b | fiz | bragi-qwen3-6-27b | 117 | 0 | 0 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | 2.1 | omlx | Qwen3.6-27B-MLX-8bit | fiz | vidar-qwen3-6-27b | 287 | 69 | 109 | 0 | 1 | 0.0000 |
@@ -26,7 +26,7 @@
 | terminal-bench-2-1 | 2.1 | openrouter | openai/gpt-5.4-mini | fiz | gpt-5-4-mini-openrouter | 15 | 7 | 8 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | 2.1 | openrouter | openai/gpt-5.4-mini | opencode | fiz-harness-opencode-gpt-5-4-mini | 41 | 0 | 9 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | 2.1 | openrouter | openai/gpt-5.4-mini | pi | fiz-harness-pi-gpt-5-4-mini | 40 | 0 | 9 | 0 | 0 | 0.0000 |
-| terminal-bench-2-1 | 2.1 | openrouter | qwen/qwen3.6-27b | fiz | fiz-openrouter-qwen3-6-27b | 334 | 210 | 86 | 0 | 0 | 38.1016 |
+| terminal-bench-2-1 | 2.1 | openrouter | qwen/qwen3.6-27b | fiz | fiz-openrouter-qwen3-6-27b | 334 | 212 | 122 | 0 | 0 | 46.1681 |
 | terminal-bench-2-1 | 2.1 | rapid-mlx | mlx-community/Qwen3.6-27B-8bit | fiz | grendel-rapid-mlx | 178 | 2 | 54 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | 2.1 | unknown | gpt-5-3-mini | ddx-agent | gpt-5-3-mini | 4 | 0 | 0 | 0 | 0 | 0.0000 |
 | terminal-bench-2-1 | 2.1 | unknown | gpt-5-3-mini | pi | gpt-5-3-mini | 18 | 0 | 0 | 0 | 0 | 0.0000 |
