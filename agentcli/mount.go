@@ -297,7 +297,8 @@ func nativeModelsCommand() *cobra.Command {
 			return exitError(cmdModels(rootWorkDir(cmd), modelsArgs(cmd, args)))
 		},
 	}
-	cmd.Flags().Bool("refresh", false, "Force-refresh all model sources before showing")
+	cmd.Flags().Bool("refresh", false, "Force-refresh routing-relevant model sources before showing")
+	cmd.Flags().Bool("refresh-all", false, "Force-refresh all refreshable model sources before showing")
 	cmd.Flags().Bool("no-refresh", false, "Do not trigger background refresh for stale model sources")
 	cmd.Flags().Int("power-min", 0, "Filter to models with Power >= n")
 	cmd.Flags().Int("power-max", 0, "Filter to models with Power <= n")
@@ -594,7 +595,7 @@ func routeStatusArgs(cmd *cobra.Command, args []string) []string {
 func modelsArgs(cmd *cobra.Command, args []string) []string {
 	out := changedRootBoolFlagArgs(cmd, "json")
 	out = append(out, changedRootFlagArgs(cmd, "provider")...)
-	out = append(out, changedBoolFlagArgs(cmd, "refresh", "no-refresh", "include-noise")...)
+	out = append(out, changedBoolFlagArgs(cmd, "refresh", "refresh-all", "no-refresh", "include-noise")...)
 	out = append(out, changedFlagArgs(cmd, "power-min", "power-max")...)
 	return append(out, args...)
 }

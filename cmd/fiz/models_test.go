@@ -14,7 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/easel/fizeau/internal/discoverycache"
+	"github.com/easel/fizeau/internal/runtimesignals"
 	"github.com/easel/fizeau/internal/serverinstance"
+	"github.com/stretchr/testify/require"
 )
 
 type fizRunResult struct {
@@ -324,6 +327,23 @@ func snapshotContains(models []struct {
 	return false
 }
 
+func TestModelsRefreshHelpDocumentsFlags(t *testing.T) {
+	fixture := fizFixture{
+		workDir: t.TempDir(),
+		homeDir: t.TempDir(),
+		env:     testEnv(t.TempDir(), t.TempDir()),
+	}
+	res := runFiz(t, fixture, "models", "--help")
+	if res.exitCode != 0 {
+		t.Fatalf("help exit=%d stderr=%s stdout=%s", res.exitCode, res.stderr, res.stdout)
+	}
+	for _, want := range []string{"--refresh", "--refresh-all"} {
+		if !strings.Contains(res.stdout, want) && !strings.Contains(res.stderr, want) {
+			t.Fatalf("models help missing %q:\nstdout=%s\nstderr=%s", want, res.stdout, res.stderr)
+		}
+	}
+}
+
 func TestModelsDetailCanonicalRef(t *testing.T) {
 	fixture := newFizFixture(t)
 	res := runFiz(t, fixture, "models", "alpha/gpt-5.5")
@@ -456,7 +476,9 @@ func TestModelsRefreshFlags(t *testing.T) {
 	var requests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
-		if r.URL.Path != "/v1/models" {
+		switch r.URL.Path {
+		case "/v1/models", "/v1/v1/models":
+		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
 		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5.5"}]}`))
@@ -467,7 +489,7 @@ model_catalog:
   manifest: ` + catalogPath + `
 providers:
   alpha:
-    type: openai
+    type: lmstudio
     base_url: ` + server.URL + `/v1
     billing: fixed
     include_by_default: true
@@ -498,6 +520,37 @@ providers:
 	}
 	if !strings.Contains(refresh.stdout, "gpt-5.5") {
 		t.Fatalf("--refresh did not render refreshed model:\n%s", refresh.stdout)
+	}
+
+	runtimeCache := &discoverycache.Cache{Root: cacheRoot}
+	staleRemaining := 13
+	require.NoError(t, runtimesignals.Write(runtimeCache, runtimesignals.Signal{
+		Provider:         "alpha",
+		Status:           runtimesignals.StatusDegraded,
+		QuotaRemaining:   &staleRemaining,
+		LastErrorMsg:     "stale runtime",
+		RecordedAt:       time.Date(2026, 5, 12, 10, 1, 0, 0, time.UTC),
+		RecentP50Latency: 135 * time.Millisecond,
+	}))
+	runtimePath := filepath.Join(cacheRoot, "runtime", "alpha.json")
+	staleTime := time.Date(2026, 5, 12, 10, 1, 0, 0, time.UTC)
+	require.NoError(t, os.Chtimes(runtimePath, staleTime, staleTime))
+
+	refreshAll := runFiz(t, fixture, "models", "--refresh-all", "alpha/gpt-5.5")
+	if refreshAll.exitCode != 0 {
+		t.Fatalf("--refresh-all exit=%d stderr=%s stdout=%s", refreshAll.exitCode, refreshAll.stderr, refreshAll.stdout)
+	}
+	if requests != 3 {
+		t.Fatalf("--refresh-all should trigger discovery and runtime refreshes, got %d requests", requests)
+	}
+	if !strings.Contains(refreshAll.stdout, "Freshness: fresh") {
+		t.Fatalf("--refresh-all did not report fresh snapshot:\n%s", refreshAll.stdout)
+	}
+	if !strings.Contains(refreshAll.stdout, "RuntimeSignal: {Provider:alpha Status:available") {
+		t.Fatalf("--refresh-all did not refresh runtime signal:\n%s", refreshAll.stdout)
+	}
+	if strings.Contains(refreshAll.stdout, "LastErrorMsg: stale runtime") {
+		t.Fatalf("--refresh-all left stale runtime signal in output:\n%s", refreshAll.stdout)
 	}
 }
 

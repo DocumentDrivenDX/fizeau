@@ -25,8 +25,24 @@ type modelsCommandOptions struct {
 	PowerMin     int
 	PowerMax     int
 	IncludeNoise bool
-	Refresh      modelregistry.RefreshMode
+	Refresh      modelsRefreshMode
 	Ref          string
+}
+
+type modelsRefreshMode int
+
+const (
+	modelsRefreshNone modelsRefreshMode = iota
+	modelsRefreshRouting
+	modelsRefreshAll
+)
+
+type modelsSnapshotFreshness struct {
+	State         string
+	Hint          string
+	RoutingStale  bool
+	AnyStale      bool
+	RefreshFailed bool
 }
 
 type modelDetail struct {
@@ -38,6 +54,8 @@ type modelDetail struct {
 	AutoRoutable      autoRoutableComposition  `json:"auto_routable"`
 	SourceMeta        modelregistry.SourceMeta `json:"source_meta"`
 	SnapshotGenerated time.Time                `json:"snapshot_generated_at"`
+	FreshnessState    string                   `json:"freshness_state,omitempty"`
+	FreshnessHint     string                   `json:"freshness_hint,omitempty"`
 }
 
 type autoRoutableComposition struct {
@@ -55,32 +73,57 @@ func cmdModels(workDir string, args []string) int {
 		return 1
 	}
 
-	snapshot, cfg, cat, cache, err := loadModelSnapshot(workDir, opts.Refresh)
+	var (
+		snapshot modelregistry.ModelSnapshot
+		cfg      *agentConfig.Config
+		cat      *modelcatalog.Catalog
+		cache    *discoverycache.Cache
+	)
+	switch opts.Refresh {
+	case modelsRefreshRouting:
+		snapshot, cfg, cat, cache, err = modelsRefreshExecutor(context.Background(), workDir, modelregistry.RefreshRouting)
+	case modelsRefreshAll:
+		snapshot, cfg, cat, cache, err = modelsRefreshExecutor(context.Background(), workDir, modelregistry.RefreshAll)
+	default:
+		snapshot, cfg, cat, cache, err = loadModelSnapshot(workDir, modelregistry.RefreshNone)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 1
 	}
 
-	if opts.Ref != "" {
-		return cmdModelsDetail(snapshot, cfg, cat, cache, opts)
+	freshness := summarizeModelsFreshness(snapshot)
+	if opts.Refresh == modelsRefreshNone && freshness.RoutingStale && modelsBestEffortRefreshRequester != nil {
+		modelsBestEffortRefreshRequester(context.Background(), modelregistry.RefreshRouting)
 	}
-	return cmdModelsList(snapshot, opts)
+
+	if opts.Ref != "" {
+		return cmdModelsDetail(snapshot, cfg, cat, cache, opts, freshness)
+	}
+	return cmdModelsList(snapshot, opts, freshness)
 }
 
 func parseModelsArgs(args []string) (modelsCommandOptions, error) {
-	opts := modelsCommandOptions{Refresh: modelregistry.RefreshBackground}
+	opts := modelsCommandOptions{Refresh: modelsRefreshNone}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
 		case arg == "--json":
 			opts.JSON = true
 		case arg == "--refresh":
-			opts.Refresh = modelregistry.RefreshForce
+			if opts.Refresh == modelsRefreshAll {
+				return opts, fmt.Errorf("--refresh and --refresh-all cannot be combined")
+			}
+			opts.Refresh = modelsRefreshRouting
+		case arg == "--refresh-all":
+			if opts.Refresh == modelsRefreshRouting {
+				return opts, fmt.Errorf("--refresh and --refresh-all cannot be combined")
+			}
+			opts.Refresh = modelsRefreshAll
 		case arg == "--no-refresh":
-			if opts.Refresh == modelregistry.RefreshForce {
+			if opts.Refresh != modelsRefreshNone {
 				return opts, fmt.Errorf("--refresh and --no-refresh cannot be combined")
 			}
-			opts.Refresh = modelregistry.RefreshNone
 		case arg == "--include-noise":
 			opts.IncludeNoise = true
 		case arg == "--provider":
@@ -156,6 +199,29 @@ func loadModelSnapshot(workDir string, refresh modelregistry.RefreshMode) (model
 	return snapshot, cfg, cat, cache, nil
 }
 
+var modelsRefreshExecutor = func(ctx context.Context, workDir string, scope modelregistry.RefreshScope) (modelregistry.ModelSnapshot, *agentConfig.Config, *modelcatalog.Catalog, *discoverycache.Cache, error) {
+	cfg, err := agentConfig.Load(workDir)
+	if err != nil {
+		return modelregistry.ModelSnapshot{}, nil, nil, nil, err
+	}
+	cat, err := cfg.LoadModelCatalog()
+	if err != nil {
+		return modelregistry.ModelSnapshot{}, nil, nil, nil, err
+	}
+	root, err := modelCacheRoot()
+	if err != nil {
+		return modelregistry.ModelSnapshot{}, nil, nil, nil, err
+	}
+	cache := &discoverycache.Cache{Root: root}
+	snapshot, err := modelregistry.RefreshModels(ctx, cfg, cat, cache, scope)
+	if err != nil {
+		return modelregistry.ModelSnapshot{}, cfg, cat, cache, err
+	}
+	return snapshot, cfg, cat, cache, nil
+}
+
+var modelsBestEffortRefreshRequester func(context.Context, modelregistry.RefreshScope)
+
 func modelCacheRoot() (string, error) {
 	if override := strings.TrimSpace(os.Getenv("FIZEAU_CACHE_DIR")); override != "" {
 		return override, nil
@@ -167,10 +233,18 @@ func modelCacheRoot() (string, error) {
 	return filepath.Join(cacheDir, "fizeau"), nil
 }
 
-func cmdModelsList(snapshot modelregistry.ModelSnapshot, opts modelsCommandOptions) int {
+func cmdModelsList(snapshot modelregistry.ModelSnapshot, opts modelsCommandOptions, freshness modelsSnapshotFreshness) int {
 	models := filterModelRows(snapshot.Models, opts)
 	if opts.JSON {
-		out := snapshot
+		out := struct {
+			modelregistry.ModelSnapshot
+			FreshnessState string `json:"freshness_state,omitempty"`
+			FreshnessHint  string `json:"freshness_hint,omitempty"`
+		}{
+			ModelSnapshot:  snapshot,
+			FreshnessState: freshness.State,
+			FreshnessHint:  freshness.Hint,
+		}
 		out.Models = models
 		data, err := json.MarshalIndent(out, "", "  ")
 		if err != nil {
@@ -181,6 +255,7 @@ func cmdModelsList(snapshot modelregistry.ModelSnapshot, opts modelsCommandOptio
 		return 0
 	}
 
+	printModelsFreshness(freshness)
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "PROVIDER\tMODEL\tFAMILY\tVERSION\tTIER\tPOWER\tCOST/M\tSTATUS\tCATALOG QUOTA\tRUNTIME QUOTA\tAUTO")
 	for _, model := range models {
@@ -298,7 +373,7 @@ func suppressModelNoise(models []modelregistry.KnownModel) []modelregistry.Known
 	return out
 }
 
-func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Config, cat *modelcatalog.Catalog, cache *discoverycache.Cache, opts modelsCommandOptions) int {
+func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Config, cat *modelcatalog.Catalog, cache *discoverycache.Cache, opts modelsCommandOptions, freshness modelsSnapshotFreshness) int {
 	model, err := resolveModel(snapshot.Models, opts.Ref)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -306,6 +381,8 @@ func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Conf
 	}
 
 	detail := buildModelDetail(snapshot, cfg, cat, cache, model)
+	detail.FreshnessState = freshness.State
+	detail.FreshnessHint = freshness.Hint
 	if opts.JSON {
 		data, err := json.MarshalIndent(detail, "", "  ")
 		if err != nil {
@@ -316,6 +393,7 @@ func cmdModelsDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Conf
 		return 0
 	}
 
+	printModelsFreshness(freshness)
 	fmt.Printf("Canonical: %s\n", detail.CanonicalID)
 	fmt.Printf("Identity: %s\n", modelIdentitySummary(detail.KnownModel))
 	fmt.Printf("KnownModel: %+v\n", detail.KnownModel)
@@ -403,6 +481,40 @@ func buildModelDetail(snapshot modelregistry.ModelSnapshot, cfg *agentConfig.Con
 		}
 	}
 	return detail
+}
+
+func summarizeModelsFreshness(snapshot modelregistry.ModelSnapshot) modelsSnapshotFreshness {
+	summary := modelsSnapshotFreshness{State: "fresh"}
+	for name, meta := range snapshot.Sources {
+		stale := meta.Stale || strings.TrimSpace(meta.Error) != ""
+		if !stale {
+			continue
+		}
+		summary.AnyStale = true
+		if strings.HasSuffix(name, ":props") {
+			continue
+		}
+		summary.RoutingStale = true
+		if strings.Contains(strings.ToLower(meta.Error), "refresh_failed") {
+			summary.RefreshFailed = true
+		}
+	}
+	if summary.RefreshFailed {
+		summary.State = "refresh_failed"
+	} else if summary.AnyStale {
+		summary.State = "stale"
+	}
+	if summary.RoutingStale {
+		summary.Hint = "run fiz models --refresh or start/configure a DDx server freshness heartbeat"
+	}
+	return summary
+}
+
+func printModelsFreshness(summary modelsSnapshotFreshness) {
+	fmt.Fprintf(os.Stdout, "Freshness: %s\n", summary.State)
+	if summary.Hint != "" {
+		fmt.Fprintf(os.Stdout, "Hint: %s\n", summary.Hint)
+	}
 }
 
 func rawDiscoveryData(cache *discoverycache.Cache, provider string) json.RawMessage {
