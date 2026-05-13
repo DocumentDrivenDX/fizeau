@@ -475,9 +475,6 @@ func TestCLI_RouteStatusShowsHealthAndScoringForModelIntent(t *testing.T) {
 	workDir := t.TempDir()
 	home := t.TempDir()
 	cacheDir := t.TempDir()
-	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "vidar", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
-	writeSnapshotDiscoveryFixture(t, cache, "freyja", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
 
 	dead := newCountedOpenAIServer(t, http.StatusServiceUnavailable, "", "")
 	healthy := newCountedOpenAIServer(t, http.StatusOK, "qwen3.5-27b", "ok")
@@ -486,6 +483,10 @@ func TestCLI_RouteStatusShowsHealthAndScoringForModelIntent(t *testing.T) {
 	dead.setModels("qwen3.5-27b")
 	healthy.setModels("qwen3.5-27b")
 	expensive.setModels("qwen3.5-27b")
+
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("vidar", "vidar", healthy.baseURL(), ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("freyja", "freyja", expensive.baseURL(), ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
 
 	writeTempConfig(t, workDir, `
 providers:

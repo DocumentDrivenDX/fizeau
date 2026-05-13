@@ -181,7 +181,6 @@ func TestExecuteEndpointFirstRoutingSkipsDeadAndNormalizesModel(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
 
 	var deadChatCalls atomic.Int64
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +197,7 @@ func TestExecuteEndpointFirstRoutingSkipsDeadAndNormalizesModel(t *testing.T) {
 
 	live := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "pong")
 	defer live.Close()
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("live", "live", live.URL+"/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -240,7 +240,6 @@ func TestExecuteEndpointFirstRoutingIgnoresStaleCacheForDeadEndpoint(t *testing.
 	cacheDir := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
 
 	var deadChatCalls atomic.Int64
 	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +256,7 @@ func TestExecuteEndpointFirstRoutingIgnoresStaleCacheForDeadEndpoint(t *testing.
 
 	live := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "pong")
 	defer live.Close()
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("live", "live", live.URL+"/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -302,13 +302,13 @@ func TestExecuteEndpointFirstRoutingUsesMetricsBeforeConfigOrder(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "slow", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
-	writeSnapshotDiscoveryFixture(t, cache, "fast", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
 
 	slow := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "slow")
 	defer slow.Close()
 	fast := openAIModelChatServer(t, []string{"Qwen3.6-35B-A3B-4bit"}, "Qwen3.6-35B-A3B-4bit", "fast")
 	defer fast.Close()
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("slow", "slow", slow.URL+"/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("fast", "fast", fast.URL+"/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen3.6-35B-A3B-4bit"})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -363,10 +363,10 @@ func TestExecuteEndpointFirstRoutingNoLiveModelMatchDiagnostic(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"other-model"})
 
 	live := openAIModelChatServer(t, []string{"other-model"}, "other-model", "pong")
 	defer live.Close()
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("live", "live", live.URL+"/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"other-model"})
 
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{

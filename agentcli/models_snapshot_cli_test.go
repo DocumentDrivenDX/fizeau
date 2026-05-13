@@ -32,7 +32,7 @@ default: studio
 `)
 
 	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "studio-alpha", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"stale-model"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("studio", "alpha", server.baseURL(), ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"stale-model"})
 
 	env := testEnvWithHome(home, map[string]string{
 		"PATH":             "",

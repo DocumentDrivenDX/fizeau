@@ -2,6 +2,8 @@ package fizeau
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -18,9 +20,9 @@ func TestServiceConfigSnapshotParity(t *testing.T) {
 	t.Setenv("PATH", "")
 	cache := &discoverycache.Cache{Root: t.TempDir()}
 	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
-	writeSnapshotDiscoveryFixture(t, cache, "studio-alpha", capturedAt, []string{"qwen3.5-27b"})
-	writeSnapshotDiscoveryFixture(t, cache, "studio-beta", capturedAt, []string{"qwen3.5-27b"})
-	writeSnapshotDiscoveryFixture(t, cache, "claude-subscription", capturedAt, []string{"claude-sonnet-4-20250514"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("studio", "alpha", "http://alpha.example/v1", "alpha"), capturedAt, []string{"qwen3.5-27b"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("studio", "beta", "http://beta.example/v1", "beta"), capturedAt, []string{"qwen3.5-27b"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("claude-subscription", "claude-subscription", "", ""), capturedAt, []string{"claude-sonnet-4-20250514"})
 
 	sc := &snapshotServiceConfig{
 		defaultName: "studio",
@@ -136,6 +138,52 @@ func writeSnapshotDiscoveryFixture(t *testing.T, cache *discoverycache.Cache, so
 	if err := cache.Refresh(src, func(context.Context) ([]byte, error) { return payload, nil }); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func testDiscoverySourceName(providerName, endpointName, baseURL, serverInstance string) string {
+	name := strings.TrimSpace(providerName)
+	trimmedEndpoint := strings.TrimSpace(endpointName)
+	if trimmedEndpoint == "" || trimmedEndpoint == "default" || trimmedEndpoint == name {
+		name = sanitizeDiscoveryName(name)
+	} else {
+		name = sanitizeDiscoveryName(name + "-" + trimmedEndpoint)
+	}
+	identity := strings.TrimSpace(baseURL) + "|" + strings.TrimSpace(serverInstance)
+	if strings.TrimSpace(identity) != "|" {
+		sum := sha256.Sum256([]byte(identity))
+		name = sanitizeDiscoveryName(name + "-" + hex.EncodeToString(sum[:4]))
+	}
+	return name
+}
+
+func sanitizeDiscoveryName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return "discovery"
+	}
+	var b strings.Builder
+	b.Grow(len(name))
+	lastDash := false
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+			lastDash = false
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "discovery"
+	}
+	return out
 }
 
 func loadSnapshotTestCatalog(t *testing.T) *modelcatalog.Catalog {

@@ -25,8 +25,8 @@ func seedSnapshotDiscoveryFixtures(t *testing.T, fixtures map[string][]string) {
 
 func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 	seedSnapshotDiscoveryFixtures(t, map[string][]string{
-		"local-desk-a": []string{"qwen/qwen3.6"},
-		"local-desk-b": []string{"qwen/qwen3.6"},
+		testDiscoverySourceName("local", "desk-a", "http://desk-a.invalid/v1", "desk-a"): []string{"qwen/qwen3.6"},
+		testDiscoverySourceName("local", "desk-b", "http://desk-b.invalid/v1", "desk-b"): []string{"qwen/qwen3.6"},
 	})
 
 	sc := &fakeServiceConfig{
@@ -129,8 +129,8 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 
 func TestResolveRouteStickyLeasePrefersSameServerAcrossModels(t *testing.T) {
 	seedSnapshotDiscoveryFixtures(t, map[string][]string{
-		"local-desk-a": []string{"model-a", "model-b"},
-		"local-desk-b": []string{"model-a", "model-b"},
+		testDiscoverySourceName("local", "desk-a", "http://desk-a.invalid/v1", "desk-a"): []string{"model-a", "model-b"},
+		testDiscoverySourceName("local", "desk-b", "http://desk-b.invalid/v1", "desk-b"): []string{"model-a", "model-b"},
 	})
 
 	sc := &fakeServiceConfig{
@@ -292,8 +292,8 @@ func TestResolveRouteStickyLeasePrefersSameServerAcrossModels(t *testing.T) {
 
 func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 	seedSnapshotDiscoveryFixtures(t, map[string][]string{
-		"local-desk-a": []string{"qwen/qwen3.6"},
-		"local-desk-b": []string{"qwen/qwen3.6"},
+		testDiscoverySourceName("local", "desk-a", "http://desk-a.invalid/v1", "desk-a"): []string{"qwen/qwen3.6"},
+		testDiscoverySourceName("local", "desk-b", "http://desk-b.invalid/v1", "desk-b"): []string{"qwen/qwen3.6"},
 	})
 
 	sc := &fakeServiceConfig{
@@ -368,8 +368,8 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 
 func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
 	seedSnapshotDiscoveryFixtures(t, map[string][]string{
-		"local-desk-a": []string{"qwen/qwen3.6"},
-		"local-desk-b": []string{"qwen/qwen3.6"},
+		testDiscoverySourceName("local", "desk-a", "http://desk-a.invalid/v1", "desk-a"): []string{"qwen/qwen3.6"},
+		testDiscoverySourceName("local", "desk-b", "http://desk-b.invalid/v1", "desk-b"): []string{"qwen/qwen3.6"},
 	})
 
 	sc := &fakeServiceConfig{
@@ -418,8 +418,8 @@ func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
 
 func TestResolveRouteStickyLeaseIgnoresStaleUtilizationFallback(t *testing.T) {
 	seedSnapshotDiscoveryFixtures(t, map[string][]string{
-		"local-desk-a": []string{"qwen/qwen3.6"},
-		"local-desk-b": []string{"qwen/qwen3.6"},
+		testDiscoverySourceName("local", "desk-a", "http://desk-a.invalid/v1", "desk-a"): []string{"qwen/qwen3.6"},
+		testDiscoverySourceName("local", "desk-b", "http://desk-b.invalid/v1", "desk-b"): []string{"qwen/qwen3.6"},
 	})
 
 	sc := &fakeServiceConfig{

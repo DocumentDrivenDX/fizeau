@@ -3,6 +3,8 @@ package modelregistry
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -254,6 +256,13 @@ func readDiscoveryCache(cache *discoverycache.Cache, src discoverycache.Source, 
 		return result
 	}
 	result.Sources[src.Name] = meta
+	if state, stateErr := cache.RefreshState(src); stateErr == nil && state.Failed {
+		if meta.Error == "" {
+			meta.Error = "refresh_failed: " + state.LastError
+		}
+		meta.Stale = true
+		result.Sources[src.Name] = meta
+	}
 	if read.Data == nil {
 		return result
 	}
@@ -475,17 +484,23 @@ func endpointSourceName(providerName, endpointName, baseURL, serverInstance stri
 	name := strings.TrimSpace(providerName)
 	trimmedEndpoint := strings.TrimSpace(endpointName)
 	if trimmedEndpoint == "" || trimmedEndpoint == "default" || trimmedEndpoint == name {
-		return sanitizeDiscoveryName(name)
+		name = sanitizeDiscoveryName(name)
+	} else {
+		name = sanitizeDiscoveryName(name + "-" + trimmedEndpoint)
 	}
-	switch {
-	case trimmedEndpoint != "":
-		name = name + "-" + trimmedEndpoint
-	case strings.TrimSpace(serverInstance) != "":
-		name = name + "-" + strings.TrimSpace(serverInstance)
-	case strings.TrimSpace(baseURL) != "":
-		name = name + "-" + strings.TrimSpace(baseURL)
+	if suffix := discoveryEndpointSuffix(baseURL, serverInstance); suffix != "" {
+		name = sanitizeDiscoveryName(name + "-" + suffix)
 	}
-	return sanitizeDiscoveryName(name)
+	return name
+}
+
+func discoveryEndpointSuffix(baseURL, serverInstance string) string {
+	identity := strings.TrimSpace(baseURL) + "|" + strings.TrimSpace(serverInstance)
+	if strings.TrimSpace(identity) == "|" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(identity))
+	return hex.EncodeToString(sum[:4])
 }
 
 func endpointNameForConfig(providerName, baseURL string, endpoints []config.ProviderEndpoint) string {

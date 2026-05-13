@@ -14,6 +14,7 @@ type refreshMarker struct {
 	PID       int       `json:"pid"`
 	StartedAt time.Time `json:"started_at"`
 	Deadline  time.Time `json:"deadline"`
+	LastError string    `json:"last_error,omitempty"`
 }
 
 // readMarker reads the .refreshing file for s. Returns (nil, nil) if absent.

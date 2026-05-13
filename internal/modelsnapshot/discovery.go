@@ -3,6 +3,8 @@ package modelsnapshot
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -470,17 +472,16 @@ func endpointSourceName(providerName, endpointName, baseURL, serverInstance stri
 	name := strings.TrimSpace(providerName)
 	trimmedEndpoint := strings.TrimSpace(endpointName)
 	if trimmedEndpoint == "" || trimmedEndpoint == "default" || trimmedEndpoint == name {
-		return sanitizeDiscoveryName(name)
+		name = sanitizeDiscoveryName(name)
+	} else {
+		name = sanitizeDiscoveryName(name + "-" + trimmedEndpoint)
 	}
-	switch {
-	case trimmedEndpoint != "":
-		name = name + "-" + trimmedEndpoint
-	case strings.TrimSpace(serverInstance) != "":
-		name = name + "-" + strings.TrimSpace(serverInstance)
-	case strings.TrimSpace(baseURL) != "":
-		name = name + "-" + strings.TrimSpace(baseURL)
+	identity := strings.TrimSpace(baseURL) + "|" + strings.TrimSpace(serverInstance)
+	if strings.TrimSpace(identity) != "|" {
+		sum := sha256.Sum256([]byte(identity))
+		name = sanitizeDiscoveryName(name + "-" + hex.EncodeToString(sum[:4]))
 	}
-	return sanitizeDiscoveryName(name)
+	return name
 }
 
 func endpointNameForConfig(providerName, baseURL string, endpoints []ProviderEndpoint) string {

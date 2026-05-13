@@ -43,7 +43,7 @@ func TestResolveRouteModelConstraintNormalization(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cache := &discoverycache.Cache{Root: cacheDir}
-			writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), tc.models)
+			writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("live", "live", "http://example.invalid/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), tc.models)
 
 			catalogCleanup := replaceRoutingCatalogForTest(t, loadRoutingFixtureCatalog(t, `
 version: 5
@@ -111,7 +111,7 @@ models:
 
 	t.Run("ambiguous", func(t *testing.T) {
 		cache := &discoverycache.Cache{Root: cacheDir}
-		writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{
+		writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("live", "live", "http://example.invalid/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{
 			"Qwen3.6-35B-A3B-4bit",
 			"Qwen3.6-35B-A3B-nvfp4",
 		})
@@ -149,7 +149,7 @@ models:
 
 	t.Run("no match", func(t *testing.T) {
 		cache := &discoverycache.Cache{Root: cacheDir}
-		writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"OtherModel"})
+		writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("live", "live", "http://example.invalid/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"OtherModel"})
 
 		sc := &fakeServiceConfig{
 			providers: map[string]ServiceProviderEntry{
@@ -219,10 +219,9 @@ models:
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cache := &discoverycache.Cache{Root: cacheDir}
-			writeSnapshotDiscoveryFixture(t, cache, "live", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen-3.6-27b-MLX-8bit"})
-
 			srv := openAIModelChatServer(t, []string{"Qwen-3.6-27b-MLX-8bit"}, "Qwen-3.6-27b-MLX-8bit", "pong")
 			defer srv.Close()
+			writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("live", "live", srv.URL+"/v1", ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"Qwen-3.6-27b-MLX-8bit"})
 
 			sc := &fakeServiceConfig{
 				providers: map[string]ServiceProviderEntry{

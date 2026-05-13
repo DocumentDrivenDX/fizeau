@@ -41,8 +41,8 @@ default: alpha
 `)
 
 	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "alpha-primary", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
-	writeSnapshotDiscoveryFixture(t, cache, "beta-secondary", time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("alpha", "primary", alpha.baseURL(), ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("beta", "secondary", beta.baseURL(), ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
 
 	quotaAlpha := 17
 	quotaBeta := 3

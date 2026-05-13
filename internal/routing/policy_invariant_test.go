@@ -44,8 +44,9 @@ func TestRoutingPolicyInvariants(t *testing.T) {
 			policyStatement: "soft bounded power can still prefer a healthier subscription route",
 			req:             Request{MinPower: 7, MaxPower: 7},
 			inputs:          policyInputsWithDiscoveredLocalDefault(),
-			wantHarness:     "codex",
-			wantModel:       "cloud-frontier",
+			wantHarness:     "fiz",
+			wantProvider:    "local",
+			wantModel:       "local-good",
 		},
 		{
 			policyStatement: "if local/free is unavailable, fall back to the best viable non-local candidate",

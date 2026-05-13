@@ -24,6 +24,7 @@ const (
 	lockPollInterval       = 5 * time.Millisecond
 	waitPollInterval       = 250 * time.Millisecond
 	stalenessMultiplier    = time.Duration(2)
+	refreshFailureCooldown = 250 * time.Millisecond
 )
 
 // Cache is the root handle. Root is the base directory (e.g. ~/.cache/fizeau).
@@ -59,6 +60,17 @@ type ReadResult struct {
 	Fresh bool
 	// Stale is true when Data is nil or Age >= TTL.
 	Stale bool
+}
+
+// RefreshState reports the current marker state for a source. It is used by
+// higher layers to surface refresh_failed / in-flight diagnostics without
+// re-reading raw marker files.
+type RefreshState struct {
+	InFlight  bool
+	Failed    bool
+	LastError string
+	StartedAt time.Time
+	Deadline  time.Time
 }
 
 // Refresher is the source-fetch function injected by the caller. The cache
@@ -158,6 +170,21 @@ func (c *Cache) Prune(activeSources []Source) error {
 	})
 }
 
+// RefreshState reports the current refresh marker status for s.
+func (c *Cache) RefreshState(s Source) (RefreshState, error) {
+	m, err := readMarker(c.markerPath(s))
+	if err != nil || m == nil {
+		return RefreshState{}, err
+	}
+	return RefreshState{
+		InFlight:  !isStale(s, m),
+		Failed:    strings.TrimSpace(m.LastError) != "",
+		LastError: strings.TrimSpace(m.LastError),
+		StartedAt: m.StartedAt,
+		Deadline:  m.Deadline,
+	}, nil
+}
+
 // ---- internal ---------------------------------------------------------------
 
 type claimResult struct {
@@ -209,20 +236,46 @@ func (c *Cache) refreshAndCommit(s Source, fn Refresher) error {
 		return c.waitForRefresh(s, claim.marker)
 	}
 
-	// We hold the claim. Run slow IO outside any lock.
+	return c.refreshWithClaim(s, fn)
+}
+
+// refreshWithClaim assumes the current process already owns the refresh
+// marker.
+func (c *Cache) refreshWithClaim(s Source, fn Refresher) error {
+	// Run slow IO outside any lock.
 	data, fetchErr := fn(context.Background())
 	if fetchErr != nil {
-		c.releaseMarker(s)
+		c.recordRefreshFailure(s, fetchErr)
 		return fetchErr
 	}
 
 	if werr := atomicWrite(c.dataPath(s), data); werr != nil {
-		c.releaseMarker(s)
+		c.recordRefreshFailure(s, werr)
 		return werr
 	}
 
 	c.releaseMarker(s)
 	return nil
+}
+
+// recordRefreshFailure keeps the marker in place with the failure details so
+// callers observe refresh_failed state and do not immediately re-probe.
+func (c *Cache) recordRefreshFailure(s Source, refreshErr error) {
+	release, err := c.acquireLock(s)
+	if err != nil {
+		return
+	}
+	defer release()
+
+	m, _ := readMarker(c.markerPath(s))
+	if m == nil || m.PID != os.Getpid() {
+		return
+	}
+	now := time.Now().UTC()
+	m.StartedAt = now
+	m.Deadline = now.Add(refreshFailureCooldown)
+	m.LastError = refreshErr.Error()
+	_ = writeMarker(c.markerPath(s), m)
 }
 
 // waitForRefresh implements Algorithm 3 from ADR-012. Polls until the marker

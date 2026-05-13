@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/easel/fizeau/internal/serverinstance"
 )
 
 type fizRunResult struct {
@@ -123,7 +127,7 @@ providers:
 	if err := os.WriteFile(filepath.Join(fixture.workDir, ".fizeau", "config.yaml"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeDiscoveryCache(t, fixture.cacheRoot, "alpha", []string{
+	writeDiscoveryCache(t, fixture.cacheRoot, testDiscoverySourceName("alpha", "alpha", "https://api.openai.com/v1", serverinstance.FromBaseURL("https://api.openai.com/v1")), []string{
 		"gpt-5.5",
 		"gpt-5.4",
 		"gpt-5.3",
@@ -131,7 +135,7 @@ providers:
 		"tiny-noise",
 		"unknown-zero",
 	})
-	writeDiscoveryCache(t, fixture.cacheRoot, "beta", []string{
+	writeDiscoveryCache(t, fixture.cacheRoot, testDiscoverySourceName("beta", "beta", "https://openrouter.ai/api/v1", serverinstance.FromBaseURL("https://openrouter.ai/api/v1")), []string{
 		"claude-opus-4.5",
 		"gpt-5.5",
 	})
@@ -191,6 +195,52 @@ func writeRuntimeCache(t *testing.T, cacheRoot, provider, status string, quotaRe
 	if err := os.WriteFile(filepath.Join(dir, provider+".json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func testDiscoverySourceName(providerName, endpointName, baseURL, serverInstance string) string {
+	name := strings.TrimSpace(providerName)
+	trimmedEndpoint := strings.TrimSpace(endpointName)
+	if trimmedEndpoint == "" || trimmedEndpoint == "default" || trimmedEndpoint == name {
+		name = sanitizeDiscoveryName(name)
+	} else {
+		name = sanitizeDiscoveryName(name + "-" + trimmedEndpoint)
+	}
+	identity := strings.TrimSpace(baseURL) + "|" + strings.TrimSpace(serverInstance)
+	if strings.TrimSpace(identity) != "|" {
+		sum := sha256.Sum256([]byte(identity))
+		name = sanitizeDiscoveryName(name + "-" + hex.EncodeToString(sum[:4]))
+	}
+	return name
+}
+
+func sanitizeDiscoveryName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return "discovery"
+	}
+	var b strings.Builder
+	b.Grow(len(name))
+	lastDash := false
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+			lastDash = false
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "discovery"
+	}
+	return out
 }
 
 func TestModelsListDefaultColumns(t *testing.T) {
@@ -257,7 +307,7 @@ func TestModelsListJSONEmitsSnapshot(t *testing.T) {
 	if !snapshotContains(snapshot.Models, "alpha", "gpt-5.5") {
 		t.Fatalf("snapshot missing alpha/gpt-5.5: %s", res.stdout)
 	}
-	if snapshot.Sources["alpha"] == nil || snapshot.Sources["beta"] == nil {
+	if snapshot.Sources[testDiscoverySourceName("alpha", "alpha", "https://api.openai.com/v1", serverinstance.FromBaseURL("https://api.openai.com/v1"))] == nil || snapshot.Sources[testDiscoverySourceName("beta", "beta", "https://openrouter.ai/api/v1", serverinstance.FromBaseURL("https://openrouter.ai/api/v1"))] == nil {
 		t.Fatalf("snapshot missing source metadata: %s", res.stdout)
 	}
 }
@@ -375,7 +425,7 @@ func TestCachePruneRemovesUnknownSources(t *testing.T) {
 		t.Fatalf("exit=%d stderr=%s stdout=%s", res.exitCode, res.stderr, res.stdout)
 	}
 	for _, path := range []string{
-		filepath.Join(fixture.cacheRoot, "discovery", "alpha.json"),
+		filepath.Join(fixture.cacheRoot, "discovery", testDiscoverySourceName("alpha", "alpha", "https://api.openai.com/v1", serverinstance.FromBaseURL("https://api.openai.com/v1"))+".json"),
 		filepath.Join(fixture.cacheRoot, "runtime", "beta.json"),
 	} {
 		if _, err := os.Stat(path); err != nil {

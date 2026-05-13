@@ -22,16 +22,18 @@ func (c *Cache) Refresh(s Source, fn Refresher) error {
 
 // MaybeRefresh triggers a background refresh when the data is stale or absent,
 // then returns immediately. The caller always gets data from Read; MaybeRefresh
-// only schedules the replenishment. Multiple concurrent callers for the same
-// source share one background goroutine via singleflight.
+// only schedules the replenishment. Claiming happens synchronously so repeated
+// stale reads do not fan out duplicate background goroutines.
 func (c *Cache) MaybeRefresh(s Source, fn Refresher) {
 	res, err := c.Read(s)
 	if err != nil || res.Fresh {
 		return
 	}
+	claim, err := c.claimRefresh(s)
+	if err != nil || !claim.claimed {
+		return
+	}
 	go func() {
-		_, _, _ = c.sf.Do(s.key(), func() (interface{}, error) {
-			return nil, c.refreshAndCommit(s, fn)
-		})
+		_ = c.refreshWithClaim(s, fn)
 	}()
 }

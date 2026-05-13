@@ -146,8 +146,8 @@ func newUnifiedSnapshotFixture(t *testing.T) *unifiedSnapshotFixture {
 	beta.setModels("qwen3.5-27b")
 
 	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
-	writeSnapshotDiscoveryFixture(t, cache, "alpha-primary", capturedAt, []string{"qwen3.5-27b"})
-	writeSnapshotDiscoveryFixture(t, cache, "beta-secondary", capturedAt, []string{"qwen3.5-27b"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("alpha", "primary", alpha.baseURL(), "alpha-instance"), capturedAt, []string{"qwen3.5-27b"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("beta", "secondary", beta.baseURL(), "beta-instance"), capturedAt, []string{"qwen3.5-27b"})
 
 	quotaAlpha := 17
 	quotaBeta := 3

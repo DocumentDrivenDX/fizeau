@@ -19,11 +19,6 @@ func TestAssembleRefreshBackgroundReturnsStaleRowsBeforeRevalidate(t *testing.T)
 	t.Setenv("PATH", "")
 	cache := &discoverycache.Cache{Root: t.TempDir()}
 	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
-	source := endpointSourceName("studio", "alpha", "http://alpha.invalid/v1", "studio-alpha")
-	writeDiscoveryFixture(t, cache, source, capturedAt, []string{"stale-model"})
-	stalePath := filepath.Join(cache.Root, "discovery", source+".json")
-	past := time.Now().Add(-2 * time.Hour)
-	require.NoError(t, os.Chtimes(stalePath, past, past))
 
 	refreshStarted := make(chan struct{})
 	releaseRefresh := make(chan struct{})
@@ -42,6 +37,11 @@ func TestAssembleRefreshBackgroundReturnsStaleRowsBeforeRevalidate(t *testing.T)
 		_, _ = w.Write([]byte(`{"data":[{"id":"fresh-model"}]}`))
 	}))
 	t.Cleanup(server.Close)
+	source := endpointSourceName("studio", "alpha", server.URL+"/v1", "")
+	writeDiscoveryFixture(t, cache, source, capturedAt, []string{"stale-model"})
+	stalePath := filepath.Join(cache.Root, "discovery", source+".json")
+	past := time.Now().Add(-2 * time.Hour)
+	require.NoError(t, os.Chtimes(stalePath, past, past))
 
 	cfg := &config.Config{Providers: map[string]config.ProviderConfig{
 		"studio": {

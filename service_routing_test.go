@@ -172,18 +172,18 @@ func TestResolveRouteSnapshotProviderPowerCorrelation(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 
-	cache := &discoverycache.Cache{Root: cacheDir}
-	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
-	writeSnapshotDiscoveryFixture(t, cache, "alpha", capturedAt, []string{"shared-model", "medium-model"})
-	writeSnapshotDiscoveryFixture(t, cache, "beta", capturedAt, []string{"shared-model", "high-model"})
-	writeSnapshotDiscoveryFixture(t, cache, "gamma", capturedAt, []string{"catalog-only-model"})
-
 	var probeHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		probeHits.Add(1)
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	defer srv.Close()
+
+	cache := &discoverycache.Cache{Root: cacheDir}
+	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("alpha", "alpha", srv.URL+"/v1", "alpha-1"), capturedAt, []string{"shared-model", "medium-model"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("beta", "beta", srv.URL+"/v1", "beta-1"), capturedAt, []string{"shared-model", "high-model"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("gamma", "gamma", srv.URL+"/v1", "gamma-1"), capturedAt, []string{"catalog-only-model"})
 
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 5
@@ -813,15 +813,15 @@ func TestResolveRouteSnapshotFreshCacheSkipsDiscoveryProbe(t *testing.T) {
 	cacheDir := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 
-	cache := &discoverycache.Cache{Root: cacheDir}
-	writeSnapshotDiscoveryFixture(t, cache, "alpha", time.Date(2026, 5, 12, 15, 5, 0, 0, time.UTC), []string{"model-a"})
-
 	var probeHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		probeHits.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
+
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("alpha", "alpha", srv.URL+"/v1", "alpha-1"), time.Date(2026, 5, 12, 15, 5, 0, 0, time.UTC), []string{"model-a"})
 
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 5
