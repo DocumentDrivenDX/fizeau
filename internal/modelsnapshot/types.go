@@ -79,52 +79,62 @@ const (
 // KnownModel is one discovered provider/model identity enriched with catalog
 // metadata when the catalog knows the model.
 type KnownModel struct {
-	Provider     string
-	ProviderType string
-	Harness      string
-	ID           string
-	Configured   bool
+	Provider     string `json:"provider,omitempty"`
+	ProviderType string `json:"provider_type,omitempty"`
+	Harness      string `json:"harness,omitempty"`
+	ID           string `json:"model,omitempty"`
+	Configured   bool   `json:"configured,omitempty"`
 
-	EndpointName     string
-	EndpointBaseURL  string
-	ServerInstance   string
-	Billing          modelcatalog.BillingModel
-	IncludeByDefault bool
+	EndpointName     string                    `json:"endpoint_name,omitempty"`
+	EndpointBaseURL  string                    `json:"endpoint_base_url,omitempty"`
+	ServerInstance   string                    `json:"server_instance,omitempty"`
+	Billing          modelcatalog.BillingModel `json:"billing,omitempty"`
+	IncludeByDefault bool                      `json:"include_by_default,omitempty"`
 
-	DiscoveredVia Source
-	DiscoveredAt  time.Time
+	DiscoveredVia Source    `json:"model_discovery_freshness_source,omitempty"`
+	DiscoveredAt  time.Time `json:"model_discovery_freshness_at,omitempty"`
 
-	Family     string
-	Version    []int
-	Tier       modelcatalog.Tier
-	PreRelease bool
+	Family     string            `json:"family,omitempty"`
+	Version    []int             `json:"version,omitempty"`
+	Tier       modelcatalog.Tier `json:"tier,omitempty"`
+	PreRelease bool              `json:"pre_release,omitempty"`
 
-	Power            int
-	CostInputPerM    float64
-	CostOutputPerM   float64
-	ContextWindow    int
-	ReasoningLevels  []string
-	QuotaPool        string
-	QuotaRemaining   *int
-	RecentP50Latency time.Duration
+	Power            int           `json:"power,omitempty"`
+	CostInputPerM    float64       `json:"cost_input_per_m,omitempty"`
+	CostOutputPerM   float64       `json:"cost_output_per_m,omitempty"`
+	ContextWindow    int           `json:"context_window,omitempty"`
+	ReasoningLevels  []string      `json:"reasoning_levels,omitempty"`
+	QuotaPool        string        `json:"quota_pool,omitempty"`
+	QuotaRemaining   *int          `json:"quota_remaining,omitempty"`
+	RecentP50Latency time.Duration `json:"recent_p50_latency_ns,omitempty"`
 
-	Status          ModelStatus
-	AutoRoutable    bool
-	ExactPinOnly    bool
-	ExclusionReason string
+	Status                ModelStatus `json:"status,omitempty"`
+	HealthFreshnessAt     time.Time   `json:"health_freshness_at,omitempty"`
+	HealthFreshnessSource string      `json:"health_freshness_source,omitempty"`
+	QuotaFreshnessAt      time.Time   `json:"quota_freshness_at,omitempty"`
+	QuotaFreshnessSource  string      `json:"quota_freshness_source,omitempty"`
+	ActualCashSpend       bool        `json:"actual_cash_spend"`
+	EffectiveCost         float64     `json:"effective_cost"`
+	EffectiveCostSource   string      `json:"effective_cost_source,omitempty"`
+	SupportsTools         bool        `json:"supports_tools,omitempty"`
+	DeploymentClass       string      `json:"deployment_class,omitempty"`
+
+	AutoRoutable    bool   `json:"auto_routable,omitempty"`
+	ExactPinOnly    bool   `json:"exact_pin_only,omitempty"`
+	ExclusionReason string `json:"exclusion_reason,omitempty"`
 }
 
 // ModelSnapshot is the in-memory model registry view assembled from discovery
 // cache entries and catalog metadata.
 type ModelSnapshot struct {
-	Models  []KnownModel
-	AsOf    time.Time
-	Sources map[string]SourceMeta
+	Models  []KnownModel          `json:"models,omitempty"`
+	AsOf    time.Time             `json:"as_of,omitempty"`
+	Sources map[string]SourceMeta `json:"sources,omitempty"`
 }
 
 // SourceMeta summarizes cache state for a discovery source.
 type SourceMeta struct {
-	LastRefreshedAt time.Time
-	Stale           bool
-	Error           string
+	LastRefreshedAt time.Time `json:"last_refreshed_at,omitempty"`
+	Stale           bool      `json:"stale,omitempty"`
+	Error           string    `json:"error,omitempty"`
 }

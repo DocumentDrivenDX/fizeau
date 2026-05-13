@@ -116,6 +116,113 @@ func TestAssembleSnapshotIncludesRuntimeQuotaAndLatency(t *testing.T) {
 	}
 }
 
+func TestAssembleSnapshotFreshnessFields(t *testing.T) {
+	t.Setenv("PATH", "")
+	cache := &discoverycache.Cache{Root: t.TempDir()}
+	capturedAt := time.Date(2026, 5, 12, 10, 30, 0, 0, time.UTC)
+	writeDiscoveryFixture(t, cache, "codex-subscription", capturedAt, []string{"gpt-5.5", "gpt-5.4-mini"})
+
+	healthRecorded := capturedAt.Add(12 * time.Minute)
+	remaining := 11
+	requireRuntimeSignal(t, cache, runtimesignals.Signal{
+		Provider:         "codex-subscription",
+		Status:           runtimesignals.StatusDegraded,
+		QuotaRemaining:   &remaining,
+		RecentP50Latency: 120 * time.Millisecond,
+		RecordedAt:       healthRecorded,
+	})
+
+	cfg := &config.Config{Providers: map[string]config.ProviderConfig{
+		"codex-subscription": {Type: "codex", Billing: string(modelcatalog.BillingModelSubscription)},
+	}}
+	cat := loadTestCatalog(t)
+
+	snapshot, err := Assemble(context.Background(), cfg, cat, cache)
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	if len(snapshot.Models) != 2 {
+		t.Fatalf("Assemble() returned %d models, want 2", len(snapshot.Models))
+	}
+	byID := map[string]KnownModel{}
+	for _, model := range snapshot.Models {
+		byID[model.ID] = model
+	}
+	row := byID["gpt-5.5"]
+	if row.DiscoveredVia != SourceHarnessPTY {
+		t.Fatalf("DiscoveredVia = %q, want harness_pty", row.DiscoveredVia)
+	}
+	if !row.DiscoveredAt.Equal(capturedAt) {
+		t.Fatalf("DiscoveredAt = %v, want %v", row.DiscoveredAt, capturedAt)
+	}
+	if !row.HealthFreshnessAt.Equal(healthRecorded) {
+		t.Fatalf("HealthFreshnessAt = %v, want %v", row.HealthFreshnessAt, healthRecorded)
+	}
+	if row.HealthFreshnessSource != "runtime" {
+		t.Fatalf("HealthFreshnessSource = %q, want runtime", row.HealthFreshnessSource)
+	}
+	if !row.QuotaFreshnessAt.Equal(healthRecorded) {
+		t.Fatalf("QuotaFreshnessAt = %v, want %v", row.QuotaFreshnessAt, healthRecorded)
+	}
+	if row.QuotaFreshnessSource != "runtime" {
+		t.Fatalf("QuotaFreshnessSource = %q, want runtime", row.QuotaFreshnessSource)
+	}
+}
+
+func TestAssembleSnapshotEffectiveCostAndActualCashSpend(t *testing.T) {
+	t.Setenv("PATH", "")
+	cache := &discoverycache.Cache{Root: t.TempDir()}
+	capturedAt := time.Date(2026, 5, 12, 11, 30, 0, 0, time.UTC)
+	writeDiscoveryFixture(t, cache, "codex-subscription", capturedAt, []string{"gpt-5.5", "gpt-5.4-mini"})
+	writeDiscoveryFixture(t, cache, "openrouter", capturedAt, []string{"gpt-5.5"})
+
+	cfg := &config.Config{Providers: map[string]config.ProviderConfig{
+		"codex-subscription": {Type: "codex", Billing: string(modelcatalog.BillingModelSubscription)},
+		"openrouter":         {Type: "openrouter", Billing: string(modelcatalog.BillingModelPerToken)},
+	}}
+	cat := loadTestCatalog(t)
+
+	snapshot, err := Assemble(context.Background(), cfg, cat, cache)
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	var subscription, lowerTier, metered *KnownModel
+	for i := range snapshot.Models {
+		switch {
+		case snapshot.Models[i].Provider == "codex-subscription" && snapshot.Models[i].ID == "gpt-5.5":
+			subscription = &snapshot.Models[i]
+		case snapshot.Models[i].Provider == "codex-subscription" && snapshot.Models[i].ID == "gpt-5.4-mini":
+			lowerTier = &snapshot.Models[i]
+		case snapshot.Models[i].Provider == "openrouter" && snapshot.Models[i].ID == "gpt-5.5":
+			metered = &snapshot.Models[i]
+		}
+	}
+	if subscription == nil || lowerTier == nil || metered == nil {
+		t.Fatalf("missing expected rows: subscription=%#v lowerTier=%#v metered=%#v", subscription, lowerTier, metered)
+	}
+	if subscription.ActualCashSpend {
+		t.Fatalf("subscription.ActualCashSpend = true, want false")
+	}
+	if subscription.EffectiveCostSource != "subscription_shadow" {
+		t.Fatalf("subscription.EffectiveCostSource = %q, want subscription_shadow", subscription.EffectiveCostSource)
+	}
+	if subscription.EffectiveCost <= lowerTier.EffectiveCost {
+		t.Fatalf("subscription.EffectiveCost = %v, want > lower-tier %v", subscription.EffectiveCost, lowerTier.EffectiveCost)
+	}
+	if lowerTier.ActualCashSpend {
+		t.Fatalf("lowerTier.ActualCashSpend = true, want false")
+	}
+	if metered.Billing != modelcatalog.BillingModelPerToken {
+		t.Fatalf("metered.Billing = %q, want per_token", metered.Billing)
+	}
+	if !metered.ActualCashSpend {
+		t.Fatalf("metered.ActualCashSpend = false, want true")
+	}
+	if metered.EffectiveCostSource != "catalog" {
+		t.Fatalf("metered.EffectiveCostSource = %q, want catalog", metered.EffectiveCostSource)
+	}
+}
+
 func TestAssemblePreservesDistinctEndpointRowsForSameModel(t *testing.T) {
 	t.Setenv("PATH", "")
 	cache := &discoverycache.Cache{Root: t.TempDir()}

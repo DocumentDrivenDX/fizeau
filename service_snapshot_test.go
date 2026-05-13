@@ -206,5 +206,20 @@ func assertSnapshotRowsEqual(t *testing.T, got, want []modelsnapshot.KnownModel)
 		if gotRow.ProviderType != wantRow.ProviderType || gotRow.Harness != wantRow.Harness || gotRow.Billing != wantRow.Billing {
 			t.Fatalf("row %s mismatch:\n got %#v\nwant %#v", key, gotRow, wantRow)
 		}
+		if gotRow.ActualCashSpend != wantRow.ActualCashSpend || gotRow.EffectiveCost != wantRow.EffectiveCost || gotRow.EffectiveCostSource != wantRow.EffectiveCostSource {
+			t.Fatalf("row %s cost mismatch:\n got %#v\nwant %#v", key, gotRow, wantRow)
+		}
+		if gotRow.SupportsTools != wantRow.SupportsTools || gotRow.DeploymentClass != wantRow.DeploymentClass {
+			t.Fatalf("row %s support mismatch:\n got %#v\nwant %#v", key, gotRow, wantRow)
+		}
+		if gotRow.DiscoveredVia != wantRow.DiscoveredVia || !gotRow.DiscoveredAt.Equal(wantRow.DiscoveredAt) {
+			t.Fatalf("row %s discovery freshness mismatch:\n got %#v\nwant %#v", key, gotRow, wantRow)
+		}
+		if gotRow.HealthFreshnessSource != wantRow.HealthFreshnessSource || !gotRow.HealthFreshnessAt.Equal(wantRow.HealthFreshnessAt) {
+			t.Fatalf("row %s health freshness mismatch:\n got %#v\nwant %#v", key, gotRow, wantRow)
+		}
+		if gotRow.QuotaFreshnessSource != wantRow.QuotaFreshnessSource || !gotRow.QuotaFreshnessAt.Equal(wantRow.QuotaFreshnessAt) {
+			t.Fatalf("row %s quota freshness mismatch:\n got %#v\nwant %#v", key, gotRow, wantRow)
+		}
 	}
 }
