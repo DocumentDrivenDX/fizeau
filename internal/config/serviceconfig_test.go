@@ -55,3 +55,55 @@ func TestServiceConfigSessionLogDir(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceConfigProviderProjectHonorsMeteredOptIn(t *testing.T) {
+	include := true
+	tests := []struct {
+		name         string
+		allowMetered bool
+		want         bool
+	}{
+		{
+			name:         "default off keeps pay-per-token providers excluded",
+			allowMetered: false,
+			want:         false,
+		},
+		{
+			name:         "opt-in allows default inclusion when provider includes by default",
+			allowMetered: true,
+			want:         true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &configServiceConfig{
+				cfg: &Config{
+					Routing: RoutingConfig{AllowMetered: tc.allowMetered},
+					Providers: map[string]ProviderConfig{
+						"cloud": {
+							Type:             "custom-cloud",
+							Billing:          "per_token",
+							IncludeByDefault: &include,
+						},
+					},
+				},
+				baseDir: "/work",
+			}
+
+			entry, ok := c.Provider("cloud")
+			if !ok {
+				t.Fatal("Provider returned false")
+			}
+			if entry.Billing != "per_token" {
+				t.Fatalf("Billing=%q, want per_token", entry.Billing)
+			}
+			if entry.IncludeByDefault != tc.want {
+				t.Fatalf("IncludeByDefault=%v, want %v", entry.IncludeByDefault, tc.want)
+			}
+			if !entry.IncludeByDefaultSet {
+				t.Fatal("IncludeByDefaultSet=false, want true")
+			}
+		})
+	}
+}

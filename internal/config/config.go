@@ -153,6 +153,11 @@ type RoutingConfig struct {
 	// before it is retried.
 	HealthCooldown string `yaml:"health_cooldown,omitempty"`
 
+	// AllowMetered permits pay-per-token providers to participate in unpinned
+	// automatic routing when their include_by_default setting also allows it.
+	// The zero value is false.
+	AllowMetered bool `yaml:"allow_metered,omitempty"`
+
 	// HistoryWindow controls how far back observed routing history is sampled
 	// when scoring healthy candidates.
 	HistoryWindow string `yaml:"history_window,omitempty"`
@@ -729,7 +734,9 @@ func (c *Config) GetProvider(name string) (ProviderConfig, bool) {
 
 // ProviderIncludeByDefault returns the effective default-routing inclusion
 // setting for a configured provider. A user-configured pointer wins; otherwise
-// the catalog provider default is used when available.
+// the catalog provider default is used when available. Pay-per-token providers
+// also require routing.allow_metered to be true before they can participate in
+// unpinned automatic routing.
 func (c *Config) ProviderIncludeByDefault(name string) bool {
 	if c == nil {
 		return false
@@ -738,18 +745,25 @@ func (c *Config) ProviderIncludeByDefault(name string) bool {
 	if !ok {
 		return false
 	}
+	includeByDefault := false
 	if pc.IncludeByDefault != nil {
-		return *pc.IncludeByDefault
+		includeByDefault = *pc.IncludeByDefault
+	} else if provider, ok := c.catalogProviderForConfig(name, pc); ok {
+		includeByDefault = provider.IncludeByDefault
+	} else {
+		switch c.providerBilling(pc) {
+		case modelcatalog.BillingModelFixed, modelcatalog.BillingModelSubscription:
+			includeByDefault = true
+		case modelcatalog.BillingModelPerToken:
+			includeByDefault = false
+		default:
+			includeByDefault = false
+		}
 	}
-	if provider, ok := c.catalogProviderForConfig(name, pc); ok {
-		return provider.IncludeByDefault
+	if c.providerBilling(pc) == modelcatalog.BillingModelPerToken {
+		return includeByDefault && c.Routing.AllowMetered
 	}
-	switch c.providerBilling(pc) {
-	case modelcatalog.BillingModelFixed, modelcatalog.BillingModelSubscription:
-		return true
-	default:
-		return false
-	}
+	return includeByDefault
 }
 
 // ProviderBilling returns the effective billing model for a configured

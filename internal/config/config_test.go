@@ -72,6 +72,7 @@ anchors: true
 	assert.True(t, cfg.Anchors)
 	assert.Equal(t, "/tmp/models.yaml", cfg.ModelCatalog.Manifest)
 	assert.True(t, cfg.Telemetry.Enabled)
+	assert.False(t, cfg.Routing.AllowMetered)
 
 	cost, ok := cfg.BuildTelemetry().ResolveCost("openai", "gpt-4o")
 	require.True(t, ok)
@@ -127,6 +128,7 @@ func TestLoad_EndpointIdentityDerivation(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(`
 routing:
   default_model: qwen3.6
+  allow_metered: true
 endpoints:
   - type: lmstudio
     host: vidar
@@ -155,6 +157,7 @@ endpoints:
 	assert.Contains(t, names, "vllm-sindri-8000")
 	assert.Contains(t, names, "openrouter-openrouter.ai-api")
 	assert.Equal(t, "qwen3.6", cfg.Routing.DefaultModel)
+	assert.True(t, cfg.Routing.AllowMetered)
 
 	lm, ok := cfg.GetProvider("lmstudio-vidar-1234")
 	require.True(t, ok)
@@ -536,6 +539,39 @@ func TestUserProviderIncludeByDefaultOverridesCatalog(t *testing.T) {
 
 	require.NoError(t, cfg.finalize())
 	assert.False(t, cfg.ProviderIncludeByDefault("local"))
+}
+
+func TestUserPerTokenProviderIncludeByDefaultRequiresMeteredOptIn(t *testing.T) {
+	include := true
+	cfg := Config{
+		Providers: map[string]ProviderConfig{
+			"cloud": {
+				Type:             "custom-cloud",
+				Billing:          "per_token",
+				IncludeByDefault: &include,
+			},
+		},
+	}
+
+	require.NoError(t, cfg.finalize())
+	assert.False(t, cfg.ProviderIncludeByDefault("cloud"))
+}
+
+func TestUserPerTokenProviderIncludeByDefaultAllowedWithMeteredOptIn(t *testing.T) {
+	include := true
+	cfg := Config{
+		Routing: RoutingConfig{AllowMetered: true},
+		Providers: map[string]ProviderConfig{
+			"cloud": {
+				Type:             "custom-cloud",
+				Billing:          "per_token",
+				IncludeByDefault: &include,
+			},
+		},
+	}
+
+	require.NoError(t, cfg.finalize())
+	assert.True(t, cfg.ProviderIncludeByDefault("cloud"))
 }
 
 func TestUserProviderUnsetIncludeByDefaultUsesCatalogDefault(t *testing.T) {
