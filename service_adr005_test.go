@@ -85,6 +85,7 @@ func TestRouteCandidateExposesComponentScores(t *testing.T) {
 	cand := routing.Candidate{
 		Harness:            "fiz",
 		Provider:           "local",
+		Billing:            BillingModelFixed,
 		Model:              "model-a",
 		Score:              42,
 		CostUSDPer1kTokens: 0.012,
@@ -110,6 +111,9 @@ func TestRouteCandidateExposesComponentScores(t *testing.T) {
 	got := routeCandidateFromInternal(cand, RoutePowerPolicy{MinPower: 6, MaxPower: 8})
 	if got.Components.Cost != 0.012 {
 		t.Errorf("Components.Cost=%v, want 0.012", got.Components.Cost)
+	}
+	if got.Billing != BillingModelFixed {
+		t.Errorf("Billing=%q, want %q", got.Billing, BillingModelFixed)
 	}
 	if got.Components.Utilization != 0 {
 		t.Errorf("Components.Utilization=%v, want 0 for unknown", got.Components.Utilization)
@@ -234,6 +238,7 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 		{
 			Harness:            "fiz",
 			Provider:           "alpha",
+			Billing:            BillingModelFixed,
 			Model:              "alpha-1",
 			Score:              80,
 			CostUSDPer1kTokens: 0.002,
@@ -275,6 +280,9 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 	out := routingDecisionEventCandidates(candidates)
 	if len(out) != 2 {
 		t.Fatalf("len(out)=%d, want 2", len(out))
+	}
+	if out[0].Billing != BillingModelFixed {
+		t.Errorf("first candidate Billing=%q, want %q", out[0].Billing, BillingModelFixed)
 	}
 	if out[0].Components.LatencyMS != 120 {
 		t.Errorf("first candidate LatencyMS=%v, want 120", out[0].Components.LatencyMS)

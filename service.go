@@ -464,6 +464,8 @@ type RouteCandidate struct {
 	Harness string
 	// Provider is the candidate provider name for native agent routes.
 	Provider string
+	// Billing is the candidate payment model.
+	Billing BillingModel
 	// Endpoint is the provider endpoint name when applicable.
 	Endpoint string
 	// ServerInstance is the normalized server identity for the candidate.
@@ -510,11 +512,13 @@ type RouteCandidate struct {
 // FilterReason* enumerate the canonical disqualification reasons surfaced
 // in RouteCandidate.FilterReason and the routing-decision event.
 const (
-	FilterReasonUnhealthy            = "unhealthy"
-	FilterReasonContextTooSmall      = "context_too_small"
-	FilterReasonNoToolSupport        = "no_tool_support"
-	FilterReasonReasoningUnsupported = "reasoning_unsupported"
-	FilterReasonScoredBelowTop       = "scored_below_top"
+	FilterReasonUnhealthy                   = "unhealthy"
+	FilterReasonContextTooSmall             = "context_too_small"
+	FilterReasonNoToolSupport               = "no_tool_support"
+	FilterReasonReasoningUnsupported        = "reasoning_unsupported"
+	FilterReasonScoredBelowTop              = "scored_below_top"
+	FilterReasonProviderExcludedFromDefault = "provider_excluded_from_default_routing"
+	FilterReasonMeteredOptInRequired        = "metered_opt_in_required"
 )
 
 // RouteCandidateComponents breaks down the inputs that fed a candidate's
@@ -660,6 +664,7 @@ type RouteCandidateStatus struct {
 	Endpoint                string
 	Model                   string
 	ServerInstance          string
+	Billing                 BillingModel
 	Priority                int
 	Healthy                 bool
 	Cooldown                *CooldownState

@@ -158,6 +158,7 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 		out[i] = ServiceRoutingDecisionCandidate{
 			Harness:            c.Harness,
 			Provider:           c.Provider,
+			Billing:            c.Billing,
 			Endpoint:           c.Endpoint,
 			ServerInstance:     c.ServerInstance,
 			Model:              c.Model,
@@ -237,6 +238,7 @@ type ServiceRoutingDecisionData struct {
 type ServiceRoutingDecisionCandidate struct {
 	Harness            string                           `json:"harness"`
 	Provider           string                           `json:"provider,omitempty"`
+	Billing            BillingModel                     `json:"billing,omitempty"`
 	Endpoint           string                           `json:"endpoint,omitempty"`
 	ServerInstance     string                           `json:"server_instance,omitempty"`
 	Model              string                           `json:"model,omitempty"`
