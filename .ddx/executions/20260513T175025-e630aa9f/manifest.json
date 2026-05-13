@@ -1,0 +1,60 @@
+{
+  "attempt_id": "20260513T175025-e630aa9f",
+  "bead_id": "fizeau-64a85a3d",
+  "base_rev": "521a0c50e6065cd9d1df11f6ec67cdcd69a52546",
+  "created_at": "2026-05-13T17:50:27.997693954Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-64a85a3d",
+    "title": "Specify snapshot-first autorouting and freshness ownership",
+    "description": "Amend the routing and snapshot governing docs so implementation is not relying on chat context.\\n\\nRequired design contract:\\n- Autorouting decision = route(client_inputs, fiz_models_snapshot).\\n- Client inputs include policy/profile, pins, no_remote, metered opt-in, tools/context/reasoning needs, and other explicit constraints.\\n- The fiz models snapshot is the only source of routing facts: health, quota, model availability, effective cost, actual_cash_spend, billing kind, context/tools/reasoning support, locality, reliability, latency, utilization, and per-field freshness.\\n- Server/refresh coordinator owns background freshness and refresh coalescing. fiz models must not spawn independent probe storms.\\n- fiz models is quick; fiz models --refresh blocks on routing-relevant stale fields; fiz models --refresh-all blocks on all refreshable fields. Without a running server, stale output suggests starting the server or using --refresh.\\n- Hard gates are limited to explicit user constraints and dispatchability. Cost, quality, health risk, latency, utilization, and power fit are scoring inputs.\\n- Subscription models use PAYG-equivalent effective/shadow cost for scoring while retaining actual_cash_spend=false. Pay-per-token providers are gated only when dispatch creates actual metered spend and the user has not opted in.\\n\\nIn scope: docs/helix/01-frame/features/FEAT-004-model-routing.md, docs/helix/02-design/adr/ADR-011-cost-based-routing-with-quota-pools.md, docs/helix/02-design/contracts/CONTRACT-003-fizeau-service.md, docs/routing/*.md, ADR-012 snapshot/cache docs if present.\\n\\nOut of scope: implementation code; create follow-up beads instead of partially implementing.",
+    "acceptance": "1. rg -n 'route\\(client_inputs, fiz_models_snapshot\\)|actual_cash_spend|effective_cost|PAYG-equivalent|refresh-all|server.*fresh|hard gates' docs/helix docs/routing returns matches in the amended routing/snapshot docs.\\n2. rg -n 'subscription.*free|zero-cost subscription|frontier_excluded_by_cheap_policy' docs/helix docs/routing returns no matches.\\n3. ddx doc stale exits 0 or reports only pre-existing unrelated stale documents.\\n4. lefthook run pre-commit --all-files passes.",
+    "parent": "fizeau-4847c99e",
+    "labels": [
+      "area:docs",
+      "area:routing",
+      "area:cache",
+      "kind:spec",
+      "plan-2026-05-13-snapshot-routing"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-13T17:47:46Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-13T17:50:25.658835144Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-13T17:47:46.037562847Z",
+      "schema_version": 1,
+      "spec-id": "FEAT-004"
+    }
+  },
+  "governing": [
+    {
+      "id": "FEAT-004",
+      "path": "docs/helix/01-frame/features/FEAT-004-model-routing.md",
+      "title": "Feature Specification: FEAT-004 — Shared Model Catalog and Policy Routing"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260513T175025-e630aa9f",
+    "prompt": ".ddx/executions/20260513T175025-e630aa9f/prompt.md",
+    "manifest": ".ddx/executions/20260513T175025-e630aa9f/manifest.json",
+    "result": ".ddx/executions/20260513T175025-e630aa9f/result.json",
+    "checks": ".ddx/executions/20260513T175025-e630aa9f/checks.json",
+    "usage": ".ddx/executions/20260513T175025-e630aa9f/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-64a85a3d-20260513T175025-e630aa9f"
+  },
+  "prompt_sha": "288b990eca5dcfa8a0af727d9ffda517bdcb37562f9f959fd0e3c9de5e2ad8cf"
+}
