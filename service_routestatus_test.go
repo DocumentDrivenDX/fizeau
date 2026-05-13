@@ -126,6 +126,9 @@ func TestRouteStatusSnapshotRowsMatchMultiEndpointFixture(t *testing.T) {
 		if c.Provider != "bragi" {
 			t.Errorf("candidate provider = %q, want bragi", c.Provider)
 		}
+		if c.Billing != BillingModelFixed {
+			t.Errorf("candidate billing = %q, want fixed", c.Billing)
+		}
 		if c.Model != "qwen3.5-27b" {
 			t.Errorf("candidate model = %q, want qwen3.5-27b", c.Model)
 		}

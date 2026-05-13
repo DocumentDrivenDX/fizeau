@@ -105,6 +105,7 @@ func (s *service) routeStatusEntriesFromSnapshot(snapshot modelsnapshot.ModelSna
 				Endpoint:                endpoint,
 				Model:                   model,
 				ServerInstance:          serverID,
+				Billing:                 row.Billing,
 				Priority:                len(rows) - i,
 				Healthy:                 true,
 				SourceStatus:            string(row.Status),

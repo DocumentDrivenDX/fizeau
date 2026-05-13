@@ -196,6 +196,7 @@ func routeCandidateFromInternal(candidate routing.Candidate, powerPolicy RoutePo
 	return RouteCandidate{
 		Harness:            candidate.Harness,
 		Provider:           candidate.Provider,
+		Billing:            candidate.Billing,
 		Endpoint:           candidate.Endpoint,
 		ServerInstance:     candidate.ServerInstance,
 		Model:              candidate.Model,
@@ -838,6 +839,7 @@ func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog
 			EndpointName:              endpointName,
 			EndpointBaseURL:           baseURL,
 			DefaultModel:              pcfg.Model,
+			Billing:                   pcfg.Billing,
 			CostClass:                 providerRoutingCostClass(pcfg.Type),
 			DiscoveredIDs:             discoveredIDs,
 			DiscoveryAttempted:        true,
@@ -1367,6 +1369,7 @@ func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat 
 	}
 	cost := subscriptionEffectiveCostUSDPer1kTokens(baseCost, entry.QuotaPercentUsed, s.subscriptionCostCurve())
 	entry.Providers = []routing.ProviderEntry{{
+		Billing:            modelcatalog.BillingModelSubscription,
 		CostUSDPer1kTokens: cost,
 		CostSource:         routing.CostSourceSubscription,
 	}}

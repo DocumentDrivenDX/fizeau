@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/easel/fizeau/internal/modelcatalog"
 	"github.com/easel/fizeau/internal/reasoning"
 )
 
@@ -159,12 +160,15 @@ func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model s
 // explicit provider, harness, or exact model pin. Any explicit hard pin
 // bypasses this gate so the operator can still reach opt-out providers
 // intentionally.
-func CheckProviderDefaultEligibility(providerName string, excluded bool, req Request) (string, FilterReason) {
+func CheckProviderDefaultEligibility(providerName string, billing modelcatalog.BillingModel, excluded bool, req Request) (string, FilterReason) {
 	if !excluded {
 		return "", FilterReasonEligible
 	}
 	if req.Provider != "" || req.Harness != "" || req.Model != "" {
 		return "", FilterReasonEligible
+	}
+	if billing == modelcatalog.BillingModelPerToken {
+		return fmt.Sprintf("pay-per-token provider %s requires metered opt-in for unpinned automatic routing", providerName), FilterReasonMeteredOptInRequired
 	}
 	return fmt.Sprintf("provider %s excluded from default routing (include_by_default=false)", providerName), FilterReasonProviderExcludedFromDefault
 }

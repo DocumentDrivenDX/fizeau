@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/easel/fizeau/internal/modelcatalog"
 )
 
 // Request is the routing input. All fields are optional except at least
@@ -118,6 +120,7 @@ type ProviderEntry struct {
 	EndpointName         string
 	EndpointBaseURL      string
 	DefaultModel         string
+	Billing              modelcatalog.BillingModel
 	CostClass            string
 	DiscoveredIDs        []string // models discovered via /v1/models or equivalent
 	DiscoveryAttempted   bool
@@ -171,6 +174,7 @@ type Decision struct {
 type Candidate struct {
 	Harness            string
 	Provider           string
+	Billing            modelcatalog.BillingModel
 	Endpoint           string
 	ServerInstance     string
 	Model              string
@@ -258,6 +262,9 @@ const (
 	// FilterReasonProviderExcludedFromDefault: provider has IncludeByDefault=false
 	// in operator config and the request did not explicitly pin a provider or harness.
 	FilterReasonProviderExcludedFromDefault FilterReason = "provider_excluded_from_default_routing"
+	// FilterReasonMeteredOptInRequired: pay-per-token candidate was removed
+	// from unpinned automatic routing because metered spend was not enabled.
+	FilterReasonMeteredOptInRequired FilterReason = "metered_opt_in_required"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -410,6 +417,7 @@ type ModelEligibility struct {
 type candidateInternal struct {
 	Harness               string
 	Provider              string
+	Billing               modelcatalog.BillingModel
 	EndpointName          string
 	ServerInstance        string
 	Model                 string
@@ -1001,6 +1009,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		}
 
 		gateReq := resolveRequestReasoning(req, h.Surface, in.ReasoningResolver)
+		billingKind := candidateBillingKind(h, p)
 
 		eligible := true
 		var filterReason FilterReason
@@ -1069,7 +1078,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		}
 
 		if eligible {
-			if g, fr := CheckProviderDefaultEligibility(candidateProviderIdentity(h, p), p.ExcludeFromDefaultRouting, req); g != "" {
+			if g, fr := CheckProviderDefaultEligibility(candidateProviderIdentity(h, p), billingKind, p.ExcludeFromDefaultRouting, req); g != "" {
 				eligible = false
 				reason = g
 				filterReason = fr
@@ -1117,6 +1126,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		ci := candidateInternal{
 			Harness:               h.Name,
 			Provider:              p.Name,
+			Billing:               billingKind,
 			EndpointName:          p.EndpointName,
 			ServerInstance:        p.ServerInstance,
 			Model:                 model,
@@ -1153,6 +1163,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			out: Candidate{
 				Harness:            h.Name,
 				Provider:           p.Name,
+				Billing:            billingKind,
 				Endpoint:           p.EndpointName,
 				ServerInstance:     p.ServerInstance,
 				Model:              model,
@@ -1203,6 +1214,25 @@ func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
 		return p.Name
 	}
 	return h.Name
+}
+
+func candidateBillingKind(h HarnessEntry, p ProviderEntry) modelcatalog.BillingModel {
+	if p.Billing != modelcatalog.BillingModelUnknown {
+		return p.Billing
+	}
+	if h.IsSubscription {
+		return modelcatalog.BillingModelSubscription
+	}
+	if candidateIsLocal(h, p) {
+		return modelcatalog.BillingModelFixed
+	}
+	if billing := modelcatalog.BillingForProviderSystem(candidateProviderIdentity(h, p)); billing != modelcatalog.BillingModelUnknown {
+		return billing
+	}
+	if billing := modelcatalog.BillingForHarness(h.Name); billing != modelcatalog.BillingModelUnknown {
+		return billing
+	}
+	return modelcatalog.BillingModelUnknown
 }
 
 func candidateIsLocal(h HarnessEntry, p ProviderEntry) bool {

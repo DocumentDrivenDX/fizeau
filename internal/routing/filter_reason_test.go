@@ -2,6 +2,8 @@ package routing
 
 import (
 	"testing"
+
+	"github.com/easel/fizeau/internal/modelcatalog"
 )
 
 // TestCandidateFilterReasonAtRejectionSite verifies that each rejection
@@ -257,6 +259,36 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 		if c.FilterReason != FilterReasonEligible {
 			t.Errorf("eligible candidate FilterReason=%q, want empty", c.FilterReason)
 		}
+	})
+
+	t.Run("metered opt-in required", func(t *testing.T) {
+		in := Inputs{
+			Harnesses: []HarnessEntry{
+				{
+					Name:                "fiz",
+					Surface:             "embedded-openai",
+					CostClass:           "medium",
+					IsLocal:             true,
+					AutoRoutingEligible: true,
+					ExactPinSupport:     true,
+					Available:           true,
+					QuotaOK:             true,
+					SubscriptionOK:      true,
+					SupportsTools:       true,
+					Providers: []ProviderEntry{
+						{
+							Name:                      "payg",
+							DefaultModel:              "model",
+							Billing:                   modelcatalog.BillingModelPerToken,
+							ExcludeFromDefaultRouting: true,
+							SupportsTools:             true,
+						},
+					},
+				},
+			},
+		}
+		dec, _ := Resolve(Request{Policy: "default"}, in)
+		assertRejection(t, dec, FilterReasonMeteredOptInRequired)
 	})
 }
 

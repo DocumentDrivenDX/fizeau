@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/easel/fizeau/internal/modelcatalog"
 )
 
 // excludedProviderInputs returns a minimal Inputs with two harnesses: "fiz"
@@ -25,6 +27,7 @@ func excludedProviderInputs() Inputs {
 					{
 						Name:                      "payg",
 						DefaultModel:              "gpt-4o",
+						Billing:                   modelcatalog.BillingModelPerToken,
 						ExcludeFromDefaultRouting: true,
 					},
 				},
@@ -48,8 +51,8 @@ func excludedProviderInputs() Inputs {
 }
 
 // TestIncludeByDefaultFalseExcludesProviderFromUnpinnedRouting verifies that a
-// provider with ExcludeFromDefaultRouting=true is absent from default routing
-// candidates when the request does not pin a provider.
+// pay-per-token provider with ExcludeFromDefaultRouting=true is absent from
+// default routing candidates when the request does not pin a provider.
 func TestIncludeByDefaultFalseExcludesProviderFromUnpinnedRouting(t *testing.T) {
 	in := excludedProviderInputs()
 	dec, err := Resolve(Request{Policy: "default"}, in)
@@ -72,11 +75,60 @@ func TestIncludeByDefaultFalseExcludesProviderFromUnpinnedRouting(t *testing.T) 
 	if paygCandidate.Eligible {
 		t.Fatalf("payg candidate.Eligible=true, want false for excluded-from-default provider")
 	}
-	if paygCandidate.FilterReason != FilterReasonProviderExcludedFromDefault {
-		t.Fatalf("payg FilterReason=%q, want %q", paygCandidate.FilterReason, FilterReasonProviderExcludedFromDefault)
+	if paygCandidate.FilterReason != FilterReasonMeteredOptInRequired {
+		t.Fatalf("payg FilterReason=%q, want %q", paygCandidate.FilterReason, FilterReasonMeteredOptInRequired)
 	}
-	if !strings.Contains(paygCandidate.Reason, "include_by_default=false") {
-		t.Fatalf("payg Reason=%q, want it to mention include_by_default=false", paygCandidate.Reason)
+	if !strings.Contains(paygCandidate.Reason, "metered opt-in") {
+		t.Fatalf("payg Reason=%q, want it to mention metered opt-in", paygCandidate.Reason)
+	}
+}
+
+// TestIncludeByDefaultFalseForFixedProviderUsesDefaultExclusionReason verifies
+// that non-metered providers still surface the default-routing exclusion gate.
+func TestIncludeByDefaultFalseForFixedProviderUsesDefaultExclusionReason(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "fiz",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{
+						Name:                      "local-optout",
+						DefaultModel:              "local-good",
+						Billing:                   modelcatalog.BillingModelFixed,
+						ExcludeFromDefaultRouting: true,
+						SupportsTools:             true,
+					},
+					{
+						Name:          "local",
+						DefaultModel:  "local-good",
+						Billing:       modelcatalog.BillingModelFixed,
+						SupportsTools: true,
+					},
+				},
+			},
+		},
+	}
+
+	dec, err := Resolve(Request{Policy: "default"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	candidate, ok := candidateByProvider(dec.Candidates, "local-optout")
+	if !ok {
+		t.Fatal("local-optout candidate not found")
+	}
+	if candidate.Eligible {
+		t.Fatalf("local-optout candidate should be rejected: %#v", candidate)
+	}
+	if candidate.FilterReason != FilterReasonProviderExcludedFromDefault {
+		t.Fatalf("local-optout FilterReason=%q, want %q", candidate.FilterReason, FilterReasonProviderExcludedFromDefault)
 	}
 }
 
