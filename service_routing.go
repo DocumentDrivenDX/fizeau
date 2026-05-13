@@ -1339,6 +1339,7 @@ func (s *service) applyEndpointRoutingCost(entry *routing.ProviderEntry, pcfg Se
 		return
 	}
 	if providerTypeUsesFixedBilling(pcfg.Type) {
+		entry.ActualCashSpend = false
 		if s.opts.LocalCostUSDPer1kTokens > 0 {
 			entry.CostUSDPer1kTokens = s.opts.LocalCostUSDPer1kTokens
 			entry.CostSource = routing.CostSourceUserConfig
@@ -1349,10 +1350,12 @@ func (s *service) applyEndpointRoutingCost(entry *routing.ProviderEntry, pcfg Se
 		return
 	}
 	if cost, ok := catalogCostUSDPer1kTokens(cat, entry.DefaultModel); ok {
+		entry.ActualCashSpend = true
 		entry.CostUSDPer1kTokens = cost
 		entry.CostSource = routing.CostSourceCatalog
 		return
 	}
+	entry.ActualCashSpend = true
 	entry.CostUSDPer1kTokens = 0
 	entry.CostSource = routing.CostSourceUnknown
 }
@@ -1368,11 +1371,12 @@ func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat 
 			baseCost = 0
 		}
 	}
-	cost := subscriptionEffectiveCostUSDPer1kTokens(baseCost, entry.QuotaPercentUsed, s.subscriptionCostCurve())
+	cost := baseCost
 	entry.Providers = []routing.ProviderEntry{{
 		Billing:            modelcatalog.BillingModelSubscription,
 		CostUSDPer1kTokens: cost,
 		CostSource:         routing.CostSourceSubscription,
+		ActualCashSpend:    false,
 	}}
 }
 

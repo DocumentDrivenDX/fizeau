@@ -280,6 +280,7 @@ func TestCandidateFilterReasonAtRejectionSite(t *testing.T) {
 							Name:                      "payg",
 							DefaultModel:              "model",
 							Billing:                   modelcatalog.BillingModelPerToken,
+							ActualCashSpend:           true,
 							ExcludeFromDefaultRouting: true,
 							SupportsTools:             true,
 						},

@@ -136,6 +136,9 @@ type ProviderEntry struct {
 	// CostSource describes where CostUSDPer1kTokens came from: catalog,
 	// subscription, user-config, or unknown.
 	CostSource string
+	// ActualCashSpend marks providers that would consume metered spend when
+	// selected.
+	ActualCashSpend bool
 
 	// InCooldown reflects whether this provider is in a failure-cooldown window.
 	InCooldown bool
@@ -181,6 +184,7 @@ type Candidate struct {
 	Score              float64
 	CostUSDPer1kTokens float64
 	CostSource         string
+	ActualCashSpend    bool
 	Power              int
 	ContextLength      int
 	ContextSource      string
@@ -424,6 +428,7 @@ type candidateInternal struct {
 	CostClass             string
 	CostUSDPer1kTokens    float64
 	CostSource            string
+	ActualCashSpend       bool
 	Power                 int
 	ContextLength         int
 	ContextSource         string
@@ -1110,7 +1115,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		}
 
 		if eligible {
-			if g, fr := CheckProviderDefaultEligibility(candidateProviderIdentity(h, p), billingKind, p.ExcludeFromDefaultRouting, req); g != "" {
+			if g, fr := CheckProviderDefaultEligibility(candidateProviderIdentity(h, p), p.ActualCashSpend, billingKind, p.ExcludeFromDefaultRouting, req); g != "" {
 				eligible = false
 				reason = g
 				filterReason = fr
@@ -1165,6 +1170,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			CostClass:             candidateCostClass(h, p),
 			CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
 			CostSource:            normalizeCostSource(p.CostSource),
+			ActualCashSpend:       p.ActualCashSpend,
 			Power:                 power,
 			ContextLength:         ctxWin,
 			ContextSource:         ctxSrc,
@@ -1201,6 +1207,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				Model:              model,
 				CostUSDPer1kTokens: p.CostUSDPer1kTokens,
 				CostSource:         normalizeCostSource(p.CostSource),
+				ActualCashSpend:    p.ActualCashSpend,
 				Power:              power,
 				ContextLength:      ctxWin,
 				ContextSource:      ctxSrc,

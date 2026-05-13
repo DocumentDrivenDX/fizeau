@@ -28,6 +28,7 @@ func excludedProviderInputs() Inputs {
 						Name:                      "payg",
 						DefaultModel:              "gpt-4o",
 						Billing:                   modelcatalog.BillingModelPerToken,
+						ActualCashSpend:           true,
 						ExcludeFromDefaultRouting: true,
 					},
 				},

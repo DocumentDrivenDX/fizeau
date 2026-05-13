@@ -918,7 +918,7 @@ models:
 	assertProviderCost(t, got, "gamma", 0.006, routing.CostSourceCatalog)
 }
 
-func TestSubscriptionEffectiveCostCurveByHarnessAndBand(t *testing.T) {
+func TestSubscriptionEffectiveCostUsesCatalogShadowCost(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 5
 generated_at: 2026-04-22T00:00:00Z
@@ -941,14 +941,13 @@ models:
 `)
 	svc := &service{}
 	tests := []struct {
-		name        string
-		usedPercent int
-		want        float64
+		name string
+		want float64
 	}{
-		{name: "free", usedPercent: 70, want: 0},
-		{name: "low", usedPercent: 75, want: 0.001},
-		{name: "medium", usedPercent: 85, want: 0.003},
-		{name: "high", usedPercent: 92, want: 0.012},
+		{name: "free", want: 0.01},
+		{name: "low", want: 0.01},
+		{name: "medium", want: 0.01},
+		{name: "high", want: 0.01},
 	}
 	for _, harness := range []string{"claude", "codex", "gemini"} {
 		for _, tt := range tests {
@@ -957,14 +956,14 @@ models:
 					Name:             harness,
 					IsSubscription:   true,
 					DefaultModel:     "priced-model",
-					QuotaPercentUsed: tt.usedPercent,
+					QuotaPercentUsed: 92,
 				}
 				svc.applySubscriptionRoutingCost(&entry, catalog)
 				if len(entry.Providers) != 1 {
 					t.Fatalf("providers=%#v, want one subscription provider", entry.Providers)
 				}
 				got := entry.Providers[0]
-				if got.CostUSDPer1kTokens != tt.want || got.CostSource != routing.CostSourceSubscription {
+				if got.CostUSDPer1kTokens != tt.want || got.CostSource != routing.CostSourceSubscription || got.ActualCashSpend {
 					t.Fatalf("effective cost=(%v,%q), want (%v,%q)", got.CostUSDPer1kTokens, got.CostSource, tt.want, routing.CostSourceSubscription)
 				}
 			})
@@ -1093,14 +1092,14 @@ models:
 	if claudeCandidate.Score >= openrouterCandidate.Score {
 		t.Fatalf("openrouter should outrank near-quota Claude before any cost tiebreak: claude=%.1f openrouter=%.1f", claudeCandidate.Score, openrouterCandidate.Score)
 	}
-	if claudeCandidate.CostSource != routing.CostSourceSubscription || !floatNear(claudeCandidate.CostUSDPer1kTokens, 0.0108) {
-		t.Fatalf("claude cost metadata=%#v, want 92%% subscription cost 0.0108", claudeCandidate)
+	if claudeCandidate.CostSource != routing.CostSourceSubscription || !floatNear(claudeCandidate.CostUSDPer1kTokens, 0.009) {
+		t.Fatalf("claude cost metadata=%#v, want catalog shadow cost 0.009", claudeCandidate)
 	}
 	if openrouterCandidate.CostSource != routing.CostSourceCatalog || !floatNear(openrouterCandidate.CostUSDPer1kTokens, 0.009) {
 		t.Fatalf("openrouter cost metadata=%#v, want catalog cost 0.009", openrouterCandidate)
 	}
-	if !(openrouterCandidate.CostUSDPer1kTokens < claudeCandidate.CostUSDPer1kTokens) {
-		t.Fatalf("openrouter cost %.4f should be below claude %.4f", openrouterCandidate.CostUSDPer1kTokens, claudeCandidate.CostUSDPer1kTokens)
+	if openrouterCandidate.CostUSDPer1kTokens > claudeCandidate.CostUSDPer1kTokens {
+		t.Fatalf("openrouter cost %.4f should not exceed claude %.4f", openrouterCandidate.CostUSDPer1kTokens, claudeCandidate.CostUSDPer1kTokens)
 	}
 }
 

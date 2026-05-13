@@ -152,6 +152,7 @@ func TestMeteredOptInRequirementSurfacesWhenOnlyOptOutCandidatesRemain(t *testin
 			Providers: []ProviderEntry{{
 				Name:                      "payg",
 				Billing:                   modelcatalog.BillingModelPerToken,
+				ActualCashSpend:           true,
 				DefaultModel:              "remote-good",
 				ExcludeFromDefaultRouting: true,
 				SupportsTools:             true,
