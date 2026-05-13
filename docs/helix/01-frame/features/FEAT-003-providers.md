@@ -33,7 +33,8 @@ Provider data feeds the routing engine in three ways:
 
 ADR-009 makes provider billing and default inclusion part of the v0.11 routing
 contract. Pay-per-token providers are default-deny for automatic routing unless
-the catalog or user config opts them in.
+the provider is included by default and explicit metered-spend opt-in allows
+them.
 
 ## Problem Statement
 
@@ -117,16 +118,22 @@ providers:
 14. Fixed/local providers and subscription/account harnesses may be included by
     default when the catalog or effective user config says so.
 15. User config may override the catalog default for a provider.
-16. Explicit pins (`Provider`, `Harness`, or exact `Model`) override
+16. Pay-per-token providers additionally require explicit metered-spend opt-in
+    before they can participate in unpinned automatic routing. Provider default
+    inclusion is necessary but not sufficient.
+17. Explicit pins (`Provider`, `Harness`, or exact `Model`) override
     `include_by_default`, so an operator can deliberately use a provider that
     is excluded from default automatic routing.
-17. Pins do not override policy `Require` constraints. For example,
+18. Explicit pins also override metered opt-in, so a deliberately pinned
+    pay-per-token provider or exact model can be considered without enabling
+    pay-per-token providers for automatic routing.
+19. Pins do not override policy `Require` constraints. For example,
     `Policy=air-gapped` requires `no_remote`; pinning `openrouter` under that
     policy fails with a policy requirement error.
 
 ### Runtime Identity
 
-18. Attempt metadata and public inventory distinguish:
+20. Attempt metadata and public inventory distinguish:
 
 ```go
 type AttemptMetadata struct {
@@ -138,44 +145,44 @@ type AttemptMetadata struct {
 }
 ```
 
-19. `Provider` is the configured provider name. `ProviderType` is the provider
+21. `Provider` is the configured provider name. `ProviderType` is the provider
     system. `ProviderEndpoint` is the endpoint name or normalized host identity
     when applicable.
-20. No code emits the shared protocol name as a provider identity.
+22. No code emits the shared protocol name as a provider identity.
 
 ### Limits and Discovery
 
-21. `LookupModelLimits` resolves context window and output-token limits by:
+23. `LookupModelLimits` resolves context window and output-token limits by:
     explicit config, then provider-specific live probe, then zero/unknown.
-22. Provider-specific probes include:
+24. Provider-specific probes include:
     - `lmstudio`: native model metadata for loaded context length;
     - `omlx`: `/v1/models/status`;
     - `openrouter`: OpenRouter model metadata;
     - other providers: zero/unknown unless they expose a verified limit API.
-23. Live model discovery wins over configured model hints. Configured default
+25. Live model discovery wins over configured model hints. Configured default
     models are fallback hints, not the whole inventory.
 
 ### Utilization and Health
 
-24. Local OpenAI-compatible providers may expose endpoint utilization. The
+26. Local OpenAI-compatible providers may expose endpoint utilization. The
     configured `base_url` remains the API base; probes derive the server root
     when needed.
-25. `vllm`, `rapid-mlx`, `llama-server`, and `omlx` normalize active/queued
+27. `vllm`, `rapid-mlx`, `llama-server`, and `omlx` normalize active/queued
     work, cache pressure where available, and freshness into provider-neutral
     utilization signals.
-26. Utilization probe failure does not make an endpoint unavailable by itself.
+28. Utilization probe failure does not make an endpoint unavailable by itself.
     It produces stale/unknown utilization and routing falls back to service-owned
     in-flight lease counts plus normal health state.
-27. LM Studio's chat stats may provide performance counters, but cache pressure
+29. LM Studio's chat stats may provide performance counters, but cache pressure
     remains unknown unless a verified native counter is available.
 
 ### Reasoning and Sampling
 
-28. `reasoning` is the only public model-reasoning control in provider config,
+30. `reasoning` is the only public model-reasoning control in provider config,
     CLI execution, service requests, and embedding callers.
-29. Provider-specific terminology such as thinking, effort, variant, and token
+31. Provider-specific terminology such as thinking, effort, variant, and token
     budgets remains adapter terminology.
-30. Sampling defaults remain catalog policy per ADR-007. Routing policies do
+32. Sampling defaults remain catalog policy per ADR-007. Routing policies do
     not replace sampling profiles; the two surfaces are independent.
 
 ## Acceptance Criteria
@@ -185,7 +192,7 @@ type AttemptMetadata struct {
 | AC-FEAT-003-01 | Provider configs accept concrete provider systems and reject `openai-compat` as a provider identity. | `go test ./internal/config ./...` |
 | AC-FEAT-003-02 | Provider inventory and attempt metadata report configured provider name, provider system, endpoint identity, model, billing, and default-inclusion state. | `go test ./... -run 'ListProviders|AttemptMetadata|ProviderInfo'` |
 | AC-FEAT-003-03 | `BillingForProviderSystem` classifies fixed, per-token, and unknown provider systems according to the table above; built-in account harnesses classify as subscription. | `go test ./internal/modelcatalog ./... -run Billing` |
-| AC-FEAT-003-04 | Pay-per-token providers are excluded from unpinned/default routing unless `include_by_default` is true, while explicit pins can still select them. | `go test ./internal/routing ./... -run 'Policy|IncludeByDefault|Pin'` |
+| AC-FEAT-003-04 | Pay-per-token providers are excluded from unpinned automatic routing unless provider default inclusion and metered opt-in both allow them, while explicit pins can still select them. | `go test ./internal/routing ./... -run 'Policy|IncludeByDefault|Metered|Pin'` |
 | AC-FEAT-003-05 | Policy requirements still beat pins: a remote provider pinned under `air-gapped` / `no_remote` fails with `ErrPolicyRequirementUnsatisfied`. | `go test ./internal/routing ./... -run Policy` |
 | AC-FEAT-003-06 | Provider limit and utilization probes preserve unknown/stale states instead of guessing or marking endpoints unavailable solely because utilization failed. | `go test ./internal/provider ./...` |
 

@@ -1,7 +1,7 @@
 {
-  "snapshot_ts": "2026-05-12 13:50:36 UTC",
-  "n_reports_total": 2614,
-  "n_profiles_active": 22,
+  "snapshot_ts": "2026-05-13 15:38:48 UTC",
+  "n_reports_total": 2717,
+  "n_profiles_active": 23,
   "n_external_comparators": 45,
   "n_external_trials": 18484,
   "subset_size_all": 89,
@@ -12,10 +12,10 @@
       "pass_at_k_pct": 61.79775280898876,
       "pass_at_k_num": 55,
       "pass_at_k_den": 89,
-      "median_wall_s": 540.944919253,
-      "decode_tps_p50": 46.57256452100161,
-      "ttft_p50_s": 0.9076559543609619,
-      "avg_cost_usd": 0.14674651959044369,
+      "median_wall_s": 568.834790466,
+      "decode_tps_p50": 46.75354562317503,
+      "ttft_p50_s": 0.8891209959983826,
+      "avg_cost_usd": 0.14294178336507937,
       "n_attempts": 334
     },
     {
@@ -33,14 +33,14 @@
     {
       "profile_id": "sindri-llamacpp",
       "label": "llama.cpp Q3_K_XL local CUDA",
-      "pass_at_k_pct": 70.96774193548387,
-      "pass_at_k_num": 22,
-      "pass_at_k_den": 31,
-      "median_wall_s": 443.980837015,
-      "decode_tps_p50": 20.263227629338566,
-      "ttft_p50_s": 2.402945876121521,
+      "pass_at_k_pct": 32.0,
+      "pass_at_k_num": 24,
+      "pass_at_k_den": 75,
+      "median_wall_s": 486.901228719,
+      "decode_tps_p50": 18.185439997391132,
+      "ttft_p50_s": 1.9641154408454895,
       "avg_cost_usd": 0.0,
-      "n_attempts": 53
+      "n_attempts": 75
     },
     {
       "profile_id": "local-omlx-qwen3-6-27b",

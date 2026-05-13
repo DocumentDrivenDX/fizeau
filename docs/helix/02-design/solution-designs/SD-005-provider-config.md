@@ -125,6 +125,7 @@ provider_sources:
 
 routing:
   health_cooldown: 30s
+  allow_metered: false
 
 preset: default
 max_iterations: 20
@@ -290,6 +291,9 @@ Per request, the service:
      the request surface. `Provider=lmstudio` means only the LM Studio source is
      considered; an endpoint selector means only that endpoint is considered.
    - `Harness` is a hard harness constraint.
+   - A request is unpinned when `Harness`, `Provider`, and exact `Model` are all
+     empty. Policy, power, reasoning, capability, and token-estimate fields are
+     routing intent, not pins.
    - Fully pinned requests still run validation gates. They bypass comparative
      scoring only when a single candidate remains; multiple endpoints under the
      same constrained source are still ranked.
@@ -303,13 +307,18 @@ Per request, the service:
    3. Default inclusion removes default-deny providers from unpinned automatic
       routing, but explicit `Harness`, `Provider`, or exact `Model` pins can
       consider them.
-   4. Auto-routability removes missing-power, inactive, deprecated,
+   4. Metered opt-in removes pay-per-token providers from unpinned automatic
+      routing unless provider default inclusion and explicit spend permission
+      both allow them. In config form, `routing.allow_metered: true` is the
+      operator-level spend permission. Pins can still consider metered providers,
+      but policy requirements such as `no_remote` continue to apply.
+   5. Auto-routability removes missing-power, inactive, deprecated,
       exact-pin-only, and catalog-unknown models from unpinned automatic routing.
       Exact model pins may still use them when the selected source can serve the
       model.
-   5. Liveness/model-discovery removes endpoints that are down or do not serve
+   6. Liveness/model-discovery removes endpoints that are down or do not serve
       the candidate model.
-   6. Capability removes candidates with too-small context windows, missing
+   7. Capability removes candidates with too-small context windows, missing
       tool support for `RequiresTools`, unsupported explicit reasoning, or
       stale/deprecated catalog status when not explicitly allowed.
 6. Applies sticky endpoint assignment for equivalent local/free endpoints:
@@ -335,6 +344,10 @@ Per request, the service:
 
    `power_hint_fit` applies the FEAT-004 asymmetric rule: candidates below
    `MinPower` receive a stronger penalty than candidates above `MaxPower`.
+   The scorer prefers the lowest effective marginal cost candidate whose power
+   fit is sufficient for the selected policy, so a free but materially
+   underpowered local route does not beat an in-band `default` candidate solely
+   because it is free.
 8. Dispatches the top candidate exactly once. On provider/harness failure, the
    service records the attempted route outcome and returns the full ranked
    trace. It does not try the next eligible candidate and it does not widen

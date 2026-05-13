@@ -20,6 +20,25 @@
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
+    "sindri-llamacpp": {
+      "n_attempts": 75,
+      "n_graded": 74,
+      "n_pass": 24,
+      "tasks_touched": 75,
+      "tasks_passed_any": 24,
+      "n_real": 67,
+      "n_truncated": 28,
+      "n_finished_clean": 39,
+      "invalids": {
+        "invalid_provider": 8
+      },
+      "median_turns": 13,
+      "median_in_tok": 85260,
+      "median_out_tok": 3361,
+      "median_wall": 486.901228719,
+      "avg_cost": 0.0,
+      "harness": "fiz (built-in agent loop)"
+    },
     "sindri-club-3090": {
       "n_attempts": 197,
       "n_graded": 195,
@@ -41,23 +60,23 @@
     },
     "fiz-openrouter-qwen3-6-27b": {
       "n_attempts": 334,
-      "n_graded": 326,
-      "n_pass": 210,
+      "n_graded": 327,
+      "n_pass": 211,
       "tasks_touched": 89,
       "tasks_passed_any": 55,
-      "n_real": 293,
-      "n_truncated": 63,
-      "n_finished_clean": 227,
+      "n_real": 315,
+      "n_truncated": 78,
+      "n_finished_clean": 236,
       "invalids": {
-        "invalid_setup": 27,
-        "invalid_quota": 3,
-        "invalid_provider": 5
+        "invalid_quota": 2,
+        "invalid_setup": 7,
+        "invalid_provider": 2
       },
       "median_turns": 15,
       "median_in_tok": 98989,
-      "median_out_tok": 5697,
-      "median_wall": 540.944919253,
-      "avg_cost": 0.14674651959044369,
+      "median_out_tok": 5948,
+      "median_wall": 568.834790466,
+      "avg_cost": 0.14294178336507937,
       "harness": "fiz (built-in agent loop)"
     },
     "claude-sonnet-4-6": {
@@ -134,6 +153,26 @@
       "median_in_tok": 95916,
       "median_out_tok": 5175,
       "median_wall": 929.900420096,
+      "avg_cost": 0.0,
+      "harness": "fiz (built-in agent loop)"
+    },
+    "vidar-ds4": {
+      "n_attempts": 52,
+      "n_graded": 46,
+      "n_pass": 20,
+      "tasks_touched": 36,
+      "tasks_passed_any": 16,
+      "n_real": 41,
+      "n_truncated": 17,
+      "n_finished_clean": 23,
+      "invalids": {
+        "invalid_provider": 4,
+        "invalid_setup": 8
+      },
+      "median_turns": 31,
+      "median_in_tok": 537487,
+      "median_out_tok": 10530,
+      "median_wall": 2488.675783674,
       "avg_cost": 0.0,
       "harness": "fiz (built-in agent loop)"
     },
@@ -271,26 +310,6 @@
       "median_wall": null,
       "avg_cost": 0.0,
       "harness": "Claude Code (wrapped by fiz)"
-    },
-    "vidar-ds4": {
-      "n_attempts": 24,
-      "n_graded": 19,
-      "n_pass": 9,
-      "tasks_touched": 8,
-      "tasks_passed_any": 5,
-      "n_real": 13,
-      "n_truncated": 3,
-      "n_finished_clean": 10,
-      "invalids": {
-        "invalid_provider": 4,
-        "invalid_setup": 7
-      },
-      "median_turns": 30,
-      "median_in_tok": 681461,
-      "median_out_tok": 19117,
-      "median_wall": 2595.463450946,
-      "avg_cost": 0.0,
-      "harness": "fiz (built-in agent loop)"
     },
     "claude-native-sonnet-4-6": {
       "n_attempts": 15,
@@ -499,6 +518,44 @@
         "tasks_attempted": 8,
         "tasks_in_subset": 8,
         "tasks_passed": 1
+      }
+    },
+    "sindri-llamacpp": {
+      "all": {
+        "n_attempts": 75,
+        "tasks_attempted": 75,
+        "tasks_in_subset": 89,
+        "tasks_passed": 24
+      },
+      "canary": {
+        "n_attempts": 3,
+        "tasks_attempted": 3,
+        "tasks_in_subset": 3,
+        "tasks_passed": 2
+      },
+      "full": {
+        "n_attempts": 15,
+        "tasks_attempted": 15,
+        "tasks_in_subset": 15,
+        "tasks_passed": 6
+      },
+      "openai-cheap": {
+        "n_attempts": 31,
+        "tasks_attempted": 31,
+        "tasks_in_subset": 35,
+        "tasks_passed": 16
+      },
+      "or-passing": {
+        "n_attempts": 46,
+        "tasks_attempted": 46,
+        "tasks_in_subset": 52,
+        "tasks_passed": 24
+      },
+      "timing-baseline": {
+        "n_attempts": 8,
+        "tasks_attempted": 8,
+        "tasks_in_subset": 8,
+        "tasks_passed": 3
       }
     },
     "sindri-club-3090": {
@@ -725,6 +782,44 @@
       "timing-baseline": {
         "n_attempts": 13,
         "tasks_attempted": 7,
+        "tasks_in_subset": 8,
+        "tasks_passed": 5
+      }
+    },
+    "vidar-ds4": {
+      "all": {
+        "n_attempts": 52,
+        "tasks_attempted": 36,
+        "tasks_in_subset": 89,
+        "tasks_passed": 16
+      },
+      "canary": {
+        "n_attempts": 2,
+        "tasks_attempted": 2,
+        "tasks_in_subset": 3,
+        "tasks_passed": 1
+      },
+      "full": {
+        "n_attempts": 10,
+        "tasks_attempted": 8,
+        "tasks_in_subset": 15,
+        "tasks_passed": 5
+      },
+      "openai-cheap": {
+        "n_attempts": 25,
+        "tasks_attempted": 15,
+        "tasks_in_subset": 35,
+        "tasks_passed": 10
+      },
+      "or-passing": {
+        "n_attempts": 41,
+        "tasks_attempted": 25,
+        "tasks_in_subset": 52,
+        "tasks_passed": 16
+      },
+      "timing-baseline": {
+        "n_attempts": 24,
+        "tasks_attempted": 8,
         "tasks_in_subset": 8,
         "tasks_passed": 5
       }
@@ -993,44 +1088,6 @@
         "tasks_attempted": 1,
         "tasks_in_subset": 8,
         "tasks_passed": 0
-      }
-    },
-    "vidar-ds4": {
-      "all": {
-        "n_attempts": 24,
-        "tasks_attempted": 8,
-        "tasks_in_subset": 89,
-        "tasks_passed": 5
-      },
-      "canary": {
-        "n_attempts": 0,
-        "tasks_attempted": 0,
-        "tasks_in_subset": 3,
-        "tasks_passed": 0
-      },
-      "full": {
-        "n_attempts": 3,
-        "tasks_attempted": 1,
-        "tasks_in_subset": 15,
-        "tasks_passed": 1
-      },
-      "openai-cheap": {
-        "n_attempts": 15,
-        "tasks_attempted": 5,
-        "tasks_in_subset": 35,
-        "tasks_passed": 4
-      },
-      "or-passing": {
-        "n_attempts": 24,
-        "tasks_attempted": 8,
-        "tasks_in_subset": 52,
-        "tasks_passed": 5
-      },
-      "timing-baseline": {
-        "n_attempts": 24,
-        "tasks_attempted": 8,
-        "tasks_in_subset": 8,
-        "tasks_passed": 5
       }
     },
     "claude-native-sonnet-4-6": {

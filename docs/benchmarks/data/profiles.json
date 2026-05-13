@@ -267,6 +267,66 @@
     "_header_comment": "fiz wrapper lane for Codex subscription GPT 5.4 mini. The runner keeps the",
     "_path": "scripts/benchmark/profiles/fiz-harness-codex-gpt-5-4-mini.yaml"
   },
+  "fiz-harness-opencode-gpt-5-4-mini": {
+    "id": "fiz-harness-opencode-gpt-5-4-mini",
+    "provider": {
+      "type": "openrouter",
+      "model": "openai/gpt-5.4-mini",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY"
+    },
+    "pricing": {
+      "input_usd_per_mtok": 0.75,
+      "output_usd_per_mtok": 4.5,
+      "cached_input_usd_per_mtok": 0.075
+    },
+    "limits": {
+      "max_output_tokens": 128000,
+      "context_tokens": 400000,
+      "rate_limit_rpm": 500,
+      "rate_limit_tpm": 200000
+    },
+    "sampling": {
+      "temperature": 0.0,
+      "reasoning": "medium"
+    },
+    "versioning": {
+      "resolved_at": "2026-05-06",
+      "snapshot": "openai/gpt-5.4-mini via OpenRouter /api/v1/models"
+    },
+    "_header_comment": "fiz wrapper lane for opencode GPT 5.4 mini. The runner keeps the Harbor",
+    "_path": "scripts/benchmark/profiles/fiz-harness-opencode-gpt-5-4-mini.yaml"
+  },
+  "fiz-harness-pi-gpt-5-4-mini": {
+    "id": "fiz-harness-pi-gpt-5-4-mini",
+    "provider": {
+      "type": "openrouter",
+      "model": "openai/gpt-5.4-mini",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY"
+    },
+    "pricing": {
+      "input_usd_per_mtok": 0.75,
+      "output_usd_per_mtok": 4.5,
+      "cached_input_usd_per_mtok": 0.075
+    },
+    "limits": {
+      "max_output_tokens": 128000,
+      "context_tokens": 400000,
+      "rate_limit_rpm": 500,
+      "rate_limit_tpm": 200000
+    },
+    "sampling": {
+      "temperature": 0.0,
+      "reasoning": "medium"
+    },
+    "versioning": {
+      "resolved_at": "2026-05-06",
+      "snapshot": "openai/gpt-5.4-mini via OpenRouter /api/v1/models"
+    },
+    "_header_comment": "fiz wrapper lane for pi GPT 5.4 mini. The runner keeps the Harbor agent",
+    "_path": "scripts/benchmark/profiles/fiz-harness-pi-gpt-5-4-mini.yaml"
+  },
   "fiz-openai-gpt-5-5": {
     "id": "fiz-openai-gpt-5-5",
     "metadata": {
@@ -443,7 +503,7 @@
     },
     "sampling": {
       "temperature": 0.6,
-      "reasoning": 4096,
+      "reasoning": "low",
       "top_p": 0.95,
       "top_k": 20
     },
@@ -634,7 +694,7 @@
     },
     "sampling": {
       "temperature": 0.6,
-      "reasoning": 4096,
+      "reasoning": "low",
       "top_p": 0.95,
       "top_k": 20
     },
@@ -754,7 +814,7 @@
     },
     "sampling": {
       "temperature": 0.6,
-      "reasoning": 4096,
+      "reasoning": "low",
       "top_p": 0.95,
       "top_k": 20
     },
@@ -798,7 +858,7 @@
     "agent_timeout_multiplier": 8.0,
     "sampling": {
       "temperature": 0.6,
-      "reasoning": 4096,
+      "reasoning": "low",
       "top_p": 0.95,
       "top_k": 20
     },

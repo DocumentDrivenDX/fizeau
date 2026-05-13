@@ -14,11 +14,11 @@ Precedence:
 `--policy`, `--min-power`, and `--max-power` never widen or override exact
 pins. They only shape automatic routing and scoring.
 
-Pins override provider `include_by_default`, so a deliberately pinned
-pay-per-token provider can be considered even when it is excluded from default
-automatic routing. Pins do not override policy requirements: `--policy
-air-gapped --provider openrouter` fails because `air-gapped` requires
-`no_remote`.
+Pins override provider `include_by_default` and metered opt-in, so a
+deliberately pinned pay-per-token provider can be considered even when it is
+excluded from unpinned automatic routing. Pins do not override policy
+requirements: `--policy air-gapped --provider openrouter` fails because
+`air-gapped` requires `no_remote`.
 
 Examples:
 

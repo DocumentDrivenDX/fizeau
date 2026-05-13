@@ -12,7 +12,9 @@ The primary strength control is numeric power:
 - `--min-power` and `--max-power` apply only to unpinned automatic routing.
 
 If no power bound or hard pin is supplied, the agent selects the best
-lowest-cost viable auto-routable model from discovered inventory.
+lowest-cost viable auto-routable model from discovered inventory. Pay-per-token
+providers are excluded from unpinned automatic routing unless provider default
+inclusion and explicit metered-spend opt-in both allow them.
 
 Hard pins are exclusive:
 

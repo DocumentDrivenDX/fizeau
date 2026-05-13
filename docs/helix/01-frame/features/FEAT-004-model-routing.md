@@ -52,7 +52,13 @@ formula, and routing trace construction.
 - **Route candidate**: one `(harness, provider, endpoint, model)` option after
   live discovery and catalog join.
 - **Default inclusion**: provider-level `include_by_default`, used only for
-  unpinned/default routing.
+  unpinned automatic routing.
+- **Metered opt-in**: operator permission for pay-per-token candidates to
+  participate in unpinned automatic routing. Provider default inclusion is still
+  required.
+- **Unpinned request**: a request with no `Harness`, no `Provider`, and no exact
+  `Model`. `Policy`, `MinPower`, `MaxPower`, `Reasoning`, capability flags, and
+  token estimates do not make a request pinned.
 - **Sticky affinity**: a score bonus for reusing a server instance for related
   requests when the candidate is still eligible.
 
@@ -122,33 +128,36 @@ formula, and routing trace construction.
     - `Provider` means only that provider source or selected endpoint may be
       used.
     - `Model` means only that exact model identity may be used.
-19. Pins override provider `include_by_default`: a deliberately pinned
-    default-deny pay-per-token provider can be considered.
-20. Pins do not override policy `require[]`; `air-gapped` plus a remote
+19. Unpinned automatic routing excludes pay-per-token candidates unless the
+    provider is included by default and metered routing is explicitly opted in
+    by user config or catalog policy.
+20. Pins override provider `include_by_default` and metered opt-in: a
+    deliberately pinned default-deny pay-per-token provider can be considered.
+21. Pins do not override policy `require[]`; `air-gapped` plus a remote
     provider pin fails.
-21. Missing-power, inactive, deprecated, and exact-pin-only models are excluded
+22. Missing-power, inactive, deprecated, and exact-pin-only models are excluded
     from unpinned automatic routing. Exact model pins may still use them when
     the selected harness/provider can serve the model.
-22. Capability gates are hard: context fit, tool support, reasoning support,
+23. Capability gates are hard: context fit, tool support, reasoning support,
     permissions, exact-pin support, liveness, quota exhaustion, and provider
     reachability can reject a candidate before scoring.
 
 ### Power Scoring
 
-23. `MinPower` and `MaxPower` are soft scoring hints, not closed candidate
+24. `MinPower` and `MaxPower` are soft scoring hints, not closed candidate
     lists, once a model has passed auto-routable eligibility.
-24. A candidate below `MinPower` receives a stronger penalty than a candidate
+25. A candidate below `MinPower` receives a stronger penalty than a candidate
     above `MaxPower`. This asymmetric scoring reflects failure risk: too weak
     is more likely to fail the task, while too strong is primarily a cost and
     latency concern.
-25. If no power hints are supplied, model power contributes positively to the
+26. If no power hints are supplied, model power contributes positively to the
     score alongside policy cost/placement preferences.
-26. Exact `Model` pins keep exact identity. Policy-derived power bounds are
+27. Exact `Model` pins keep exact identity. Policy-derived power bounds are
     still reported as evidence, but they do not substitute a different model.
 
 ### Ranking
 
-27. Ranking considers:
+28. Ranking considers:
     - policy baseline (`cheap`, `default`, `smart`, `air-gapped`);
     - catalog power;
     - provider billing and effective marginal cost;
@@ -158,26 +167,34 @@ formula, and routing trace construction.
     - observed latency/speed;
     - endpoint utilization and saturation;
     - sticky affinity.
-28. Local/fixed candidates are preferred by `cheap` and `default` when they are
+29. A qualified candidate is one that passes hard constraints, policy
+    requirements, default-inclusion and metered opt-in gates, auto-routability,
+    liveness, quota, and capability gates. Power hints shape ranking inside
+    that qualified set rather than replacing exact pins.
+30. For a given policy and qualified set, Fizeau prefers the lowest effective
+    marginal cost candidate whose power fit is sufficient for the policy intent.
+    A zero-cost but substantially underpowered candidate should not beat an
+    in-band candidate for routine `default` work solely because it is free.
+31. Local/fixed candidates are preferred by `cheap` and `default` when they are
     eligible and capable. This preference never beats hard pins or
     `require[]`.
-29. `smart` prefers higher-capability subscription/cloud routes when healthy
+32. `smart` prefers higher-capability subscription/cloud routes when healthy
     and allowed.
-30. `air-gapped` is local-only through `require=["no_remote"]`.
-31. The router dispatches one selected candidate per request. Semantic retry or
+33. `air-gapped` is local-only through `require=["no_remote"]`.
+34. The router dispatches one selected candidate per request. Semantic retry or
     escalation belongs to the caller.
 
 ### Status and Evidence
 
-32. `ResolveRoute` returns the selected candidate plus the full candidate
+35. `ResolveRoute` returns the selected candidate plus the full candidate
     trace, power policy, sticky evidence, utilization evidence, and the selected
     model's catalog-projected power.
-33. `RouteStatus` reports recent decisions, cooldowns, provider reliability,
+36. `RouteStatus` reports recent decisions, cooldowns, provider reliability,
     sticky assignments, and routing-quality metrics. Routing quality is
     distinct from provider reliability.
-34. Session logs and final events record the actual attempted route and failure
+37. Session logs and final events record the actual attempted route and failure
     class. They use v0.11 `policy` / `power_policy` fields.
-35. When a route succeeds, fails, or rejects candidates, the evidence must be
+38. When a route succeeds, fails, or rejects candidates, the evidence must be
     explainable from the same assembled snapshot facts exposed by `fiz models`
     plus request-local constraints.
 
@@ -188,8 +205,8 @@ formula, and routing trace construction.
 | AC-FEAT-004-01 | The embedded manifest is schema v5 and validates models, policies, providers, billing, and supported requirements. | `go test ./internal/modelcatalog ./...` |
 | AC-FEAT-004-02 | `ListPolicies` returns exactly `air-gapped`, `cheap`, `default`, and `smart` with power bounds, `allow_local`, `require[]`, and manifest metadata. | `go test ./... -run ListPolicies` |
 | AC-FEAT-004-03 | `cheap`, `default`, `smart`, and `air-gapped` produce the documented local/subscription/remote behavior under representative inventories. | `go test ./internal/routing ./... -run Policy` |
-| AC-FEAT-004-04 | Pay-per-token default-deny providers are skipped in unpinned/default routing unless opted in, while explicit pins can select them. | `go test ./... -run IncludeByDefault` |
-| AC-FEAT-004-05 | Pins override default inclusion but not `require[]`; `air-gapped` plus a remote pin returns `ErrPolicyRequirementUnsatisfied`. | `go test ./internal/routing ./... -run Policy` |
+| AC-FEAT-004-04 | Pay-per-token providers are skipped in unpinned automatic routing unless provider default inclusion and metered opt-in both allow them, while explicit pins can select them. | `go test ./... -run 'IncludeByDefault|Metered'` |
+| AC-FEAT-004-05 | Pins override default inclusion and metered opt-in but not `require[]`; `air-gapped` plus a remote pin returns `ErrPolicyRequirementUnsatisfied`. | `go test ./internal/routing ./... -run Policy` |
 | AC-FEAT-004-06 | Soft power scoring penalizes undershooting `MinPower` more than overshooting `MaxPower` and does not replace an exact model pin. | `go test ./internal/routing ./... -run Power` |
 | AC-FEAT-004-07 | Route decisions consume the assembled snapshot, expose typed candidate rejection reasons, score components, selected endpoint/server instance, sticky evidence, and utilization evidence. | `go test ./... -run 'ResolveRoute|RouteStatus|routing_decision|ModelSnapshot'` |
 | AC-FEAT-004-08 | Removed v0.10 names are not advertised by policy listing, CLI help, or public service fields. | `go test ./agentcli ./cmd/fiz ./...` |

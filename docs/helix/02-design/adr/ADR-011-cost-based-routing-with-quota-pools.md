@@ -31,9 +31,9 @@ through several billing shapes:
 - per-token APIs, where each request burns metered input and output tokens;
 - local or fixed-cost providers, where marginal cost is zero but only if the
   provider is eligible for automatic routing;
-- provider surfaces excluded from default routing by `IncludeByDefault`, where
-  accidental spend or special-purpose endpoints must be impossible unless the
-  caller explicitly pins them.
+- provider surfaces excluded from default routing by `IncludeByDefault` or
+  metered-spend policy, where accidental spend or special-purpose endpoints
+  must be impossible unless the caller explicitly pins them.
 
 Recent implementation beads provide two pieces this ADR can rely on without
 specifying new code in this bead. `fizeau-c04be6b0` added catalog
@@ -57,18 +57,26 @@ before any cost ranking:
 1. Apply hard pins for harness, provider, and exact model identity.
 2. Drop candidates that fail policy requirements, capability requirements,
    health, context, tool, reasoning, or catalog auto-routing gates.
-3. Apply power bounds: `MinPower <= candidate.power <= MaxPower` when a maximum
-   is present, or `candidate.power >= MinPower` otherwise.
-4. Apply `IncludeByDefault`: a provider or catalog entry with
-   `IncludeByDefault: false` is absent from the default candidate set. This is a
-   hard filter, not a cost penalty. Explicit pins may bypass this gate exactly
-   as specified by ADR-009 and implemented by `fizeau-d18e11f5`.
+3. Apply `IncludeByDefault`: a provider or catalog entry with
+   `IncludeByDefault: false` is absent from the unpinned automatic candidate
+   set. This is a hard filter, not a cost penalty.
+4. Apply metered opt-in: a pay-per-token provider is absent from the unpinned
+   automatic candidate set unless provider default inclusion and explicit
+   metered-spend opt-in both allow it.
 5. Apply quota-pool exhaustion: when a quota pool is known exhausted, drop every
    candidate in that pool.
 
 Only surviving candidates receive cost scores. This preserves the ADR-006
 principle that manual pins are override signals and prevents price scoring from
 accidentally making an excluded provider "almost eligible."
+
+Power bounds are deliberately not a hard eligibility filter in this ADR. FEAT-004
+and ADR-009 define `MinPower` and `MaxPower` as soft scoring inputs after
+auto-routability gates: undershooting the requested floor is penalized more
+heavily than overshooting the requested ceiling, but an otherwise eligible model
+outside the band may still be ranked when its cost, health, and capability trade
+off is better than the alternatives. Exact model pins keep exact identity and do
+not substitute another model to satisfy power hints.
 
 ### Effective Cost Formula
 
@@ -84,9 +92,10 @@ effective_cost =
 ```
 
 For local or fixed-cost providers, `effective_cost = 0` after eligibility
-filters. They still lose to higher-capability candidates when power bounds or
-policy requirements demand that, and they still carry latency, reliability, and
-health signals outside this ADR's cost term.
+filters. They can still lose to candidates with a better policy power fit when
+the local candidate is materially underpowered for the requested policy, and
+they still carry latency, reliability, and health signals outside this ADR's
+cost term.
 
 For subscription candidates, the router computes the same nominal per-request
 metered cost when catalog price data exists, then discounts it by quota
@@ -121,9 +130,10 @@ pool; otherwise the effective pool is the provider system, matching
 Pool exhaustion is a hard candidate-set event. If the main OpenAI Codex pool is
 exhausted, every model in that pool is dropped together. A model in a different
 pool, such as `gpt-5.3-codex-spark` in `openai-codex-spark`, remains eligible
-when it satisfies the caller's power floor and other filters, even if it is not
-the newest model in the family. This intentionally enables "use spark when the
-main pool is empty" without encoding that fallback as a version-newest rule.
+when it passes auto-routability, capability, and policy filters and remains
+competitive under the caller's soft power-fit score, even if it is not the
+newest model in the family. This intentionally enables "use spark when the main
+pool is empty" without encoding that fallback as a version-newest rule.
 
 Quota signals are consumed in this priority order:
 
@@ -172,9 +182,15 @@ provider responses for reporting and future tuning.
 
 ### Ranking and Tie-Breaking
 
-Among eligible candidates, choose the minimum effective cost that satisfies the
-caller power floor. This ADR makes "cheapest qualified candidate" the primary
-rule, not "most powerful available candidate."
+Among eligible candidates, choose the lowest effective cost candidate whose
+policy power fit is sufficient for the caller's intent. This ADR makes
+"cheapest qualified candidate" the primary rule, not "most powerful available
+candidate." "Qualified" means the candidate passed hard constraints, policy
+requirements, default-inclusion and metered opt-in gates, auto-routability,
+liveness, quota, and capability gates, then remains competitive after the
+FEAT-004 soft power-fit score is applied. A free but substantially underpowered
+candidate should not beat an in-band routine implementation candidate solely
+because it is free.
 
 Tie-breaking is deterministic:
 
@@ -182,7 +198,7 @@ Tie-breaking is deterministic:
    cost is equal;
 2. prefer local or fixed-cost candidates over pay-as-you-go candidates when
    effective cost is equal and capability requirements are still satisfied;
-3. prefer the lower-power candidate when both exceed `MinPower`;
+3. prefer the lower-power candidate when both have acceptable power fit;
 4. prefer healthier and lower-latency candidates using ADR-005 route-health
    signals;
 5. preserve stable catalog order only as the final tie-break.
@@ -210,8 +226,8 @@ operator-visible route decision.
   removed.
 - Quota pools provide an explicit mechanism for fallback across independent
   subscription allocations without relying on model recency.
-- `IncludeByDefault` composes cleanly with cost ranking because excluded
-  providers never enter the default ranked set.
+- `IncludeByDefault` and metered opt-in compose cleanly with cost ranking
+  because excluded providers never enter the unpinned automatic ranked set.
 - The routing trace can explain cost decisions with concrete inputs:
   estimated tokens, price data, quota fraction, quota pool, and filter reason.
 

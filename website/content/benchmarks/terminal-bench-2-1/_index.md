@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-12 13:50:36 UTC · 2,614 trial reports · 22 active lanes</div>
+<div class="meta">Snapshot: 2026-05-13 15:38:48 UTC · 2,717 trial reports · 23 active lanes</div>
 <h2>How we run it</h2>
 <div class="narrative"><p><a href="https://terminal-bench.dev/">Terminal-Bench</a> 2.1 is a public coding-agent benchmark of 89 long-form tasks. Each task ships a prompt, an isolated Docker environment, and a deterministic verifier. An agent reads the prompt, runs shell commands, edits files inside the container, and is scored against the resulting state.</p>
 <p>Each Fizeau lane runs through <a href="https://github.com/laude-institute/harbor">Harbor</a> 0.3.x's installed-agent path. Harbor installs the agent runtime in the task container, runs the attempt, and then invokes the verifier separately. Lane configuration selects the provider, model, runtime, and harness without publishing private service locations. Each task runs five reps per lane; pass@1 is the per-rep success rate, and pass@k reports whether any of the five reps solved the task.</p>

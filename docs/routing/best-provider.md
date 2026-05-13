@@ -13,32 +13,39 @@ Automatic routing builds a complete candidate list before choosing.
    latency, prepaid quota, reset time, marginal cost, and local endpoint
    utilization when the provider type exposes it.
 4. Apply hard pins for model, provider source/endpoint, and harness. Pins can
-   consider providers that are not included by default.
+   consider providers that are not included by default or metered-enabled.
 5. Apply policy requirements such as `air-gapped` / `no_remote`. These
    requirements beat pins.
-6. Apply `--policy`, `--min-power`, and `--max-power` as automatic-routing
+6. Apply default inclusion and metered opt-in. Unpinned automatic routing
+   excludes default-deny providers and excludes pay-per-token providers unless
+   provider default inclusion and explicit metered-spend opt-in both allow them.
+7. Apply `--policy`, `--min-power`, and `--max-power` as automatic-routing
    policy and scoring inputs.
-7. Filter by context, tools, reasoning support, health, quota, and catalog
+8. Filter by context, tools, reasoning support, health, quota, and catalog
    status.
-8. Reuse an existing sticky route assignment when the request belongs to a
+9. Reuse an existing sticky route assignment when the request belongs to a
    known worker sequence and the assigned endpoint is still eligible.
-9. For a new sticky sequence, choose the least-loaded equivalent local endpoint
+10. For a new sticky sequence, choose the least-loaded equivalent local endpoint
    using provider utilization plus Fizeau in-flight lease counts.
-10. Score survivors by power, effective cost, quota, availability, speed, context,
+11. Score survivors by power, effective cost, quota, availability, speed, context,
    endpoint utilization pressure, and capability.
-11. Dispatch the top candidate once.
+12. Dispatch the top candidate once.
 
 Local/free candidates are preferred over paid cloud candidates when they satisfy
-the requested power, tools, context, health, and hard constraints. This
-preference never overrides a power bound, exact model pin, provider
-source/endpoint pin, harness pin, or required capability.
+the requested power intent, tools, context, health, and hard constraints. The
+router prefers the lowest effective marginal cost candidate whose power fit is
+sufficient for the selected policy, so a free but materially underpowered model
+does not beat an in-band `default` candidate solely because it is free. This
+preference never overrides an exact model pin, provider source/endpoint pin,
+harness pin, or required capability.
 
 Provider/deployment class is part of power assignment. A local or community
 copy does not tie a managed cloud frontier model solely because one benchmark
 looks similar.
 
 When no power bound or hard pin is supplied, the score still uses the full
-inventory and chooses the best lowest-cost viable auto-routable candidate.
+non-metered or explicitly metered-in inventory and chooses the best lowest-cost
+viable auto-routable candidate.
 
 Local endpoint load balancing is sticky. If four local servers all expose the
 same resolved model, new long-running workers spread across the least-loaded

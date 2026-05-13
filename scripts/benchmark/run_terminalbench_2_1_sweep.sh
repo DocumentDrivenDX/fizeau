@@ -23,6 +23,7 @@ SWEEP_PLAN="${REPO_ROOT}/scripts/benchmark/terminalbench-2-1-sweep.yaml"
 DRY_RUN=0
 PREPARE_ONLY=0
 FORCE_RERUN=0
+RETRY_INVALID=0
 MATRIX_JOBS_MANAGED="${BENCHMARK_MATRIX_JOBS_MANAGED:-auto}"
 PER_RUN_BUDGET_USD=""
 BUDGET_USD=""
@@ -144,6 +145,7 @@ Flags:
   --dry-run
   --prepare-only
   --force-rerun
+  --retry-invalid
   --budget-usd <n>
   --per-run-budget-usd <n>
   --matrix-jobs-managed <n|auto>
@@ -186,6 +188,8 @@ while [[ $# -gt 0 ]]; do
       PREPARE_ONLY=1; shift ;;
     --force-rerun)
       FORCE_RERUN=1; shift ;;
+    --retry-invalid)
+      RETRY_INVALID=1; shift ;;
     --budget-usd)
       BUDGET_USD="$2"; shift 2 ;;
     --budget-usd=*)
@@ -1045,6 +1049,9 @@ append_optional_sweep_args() {
   if [[ "${FORCE_RERUN}" = "1" ]]; then
     out_args+=(--force-rerun)
   fi
+  if [[ "${RETRY_INVALID}" = "1" ]]; then
+    out_args+=(--retry-invalid)
+  fi
   if [[ -n "${PER_RUN_BUDGET_USD}" ]]; then
     out_args+=(--per-run-budget-usd "${PER_RUN_BUDGET_USD}")
   fi
@@ -1210,11 +1217,8 @@ print_dry_run_plan() {
       --phase "${dry_phase}"
       --tasks-dir "${TASKS_DIR}"
       --out "${OUT}"
-      --matrix-jobs-managed "${MATRIX_JOBS_MANAGED}"
     )
-    if [[ -n "${LANES}" ]]; then
-      dry_args+=(--lanes "${LANES}")
-    fi
+    append_optional_sweep_args dry_args
     dry_args+=(--dry-run)
     "${BENCH_BIN}" "${dry_args[@]}"
   done < <(run_plan_phases)

@@ -554,6 +554,7 @@ func TestSweepBuildMatrixArgsIncludesResumeAndBudget(t *testing.T) {
 		wd:              wd,
 		outDir:          t.TempDir(),
 		resume:          true,
+		retryInvalid:    true,
 		forceRerun:      false,
 		perRunBudgetUSD: 5.0,
 		rgByID:          sweepRGMap(plan),
@@ -570,6 +571,9 @@ func TestSweepBuildMatrixArgsIncludesResumeAndBudget(t *testing.T) {
 
 	if !strings.Contains(argStr, "--resume") {
 		t.Error("matrix args missing --resume")
+	}
+	if !strings.Contains(argStr, "--retry-invalid") {
+		t.Error("matrix args missing --retry-invalid")
 	}
 	if !strings.Contains(argStr, "--per-run-budget-usd") {
 		t.Error("matrix args missing --per-run-budget-usd")

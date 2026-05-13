@@ -25,10 +25,15 @@ Undershooting `MinPower` carries a larger score penalty than overshooting
 `MaxPower`; a too-weak model is more likely to fail, while a too-strong model is
 mainly a cost/latency tradeoff.
 
-Provider `include_by_default` only affects unpinned/default routing. Pins can
-consider excluded providers, but pins do not bypass policy requirements. For
-example, `--policy air-gapped --provider openrouter` fails because the policy
-requires `no_remote`.
+Provider `include_by_default` only affects unpinned automatic routing. A request
+is unpinned when it has no `--harness`, no `--provider`, and no exact `--model`;
+policy, power, reasoning, capability, and token-estimate fields are not pins.
+Pay-per-token providers are excluded from unpinned automatic routing unless the
+provider is included by default and metered routing is explicitly enabled, for
+example with `routing.allow_metered: true`. Pins can consider excluded or
+metered providers, but pins do not bypass policy requirements. For example,
+`--policy air-gapped --provider openrouter` fails because the policy requires
+`no_remote`.
 
 Sticky affinity is keyed by validated `CorrelationID` and targets the server
 instance, such as `grendel` or `vidar`, rather than a model string. Related

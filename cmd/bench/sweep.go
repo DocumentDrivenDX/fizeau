@@ -175,6 +175,7 @@ func cmdSweep(args []string) int {
 	out := fs.String("out", "", "Output directory (default: benchmark-results/sweep-<timestamp> under work-dir)")
 	resume := fs.Bool("resume", true, "Skip terminal cells (default: true per sweep plan defaults)")
 	forceRerun := fs.Bool("force-rerun", false, "Rerun even terminal cells")
+	retryInvalid := fs.Bool("retry-invalid", false, "Rerun cells with non-empty invalid_class while resuming")
 	tasksDir := fs.String("tasks-dir", "", "Path to TB-2.1 tasks directory; enables Harbor-graded runs")
 	budgetUSD := fs.Float64("budget-usd", 0, "Total sweep budget in USD (0 = no cap)")
 	perRunBudgetUSD := fs.Float64("per-run-budget-usd", 0, "Per-run budget cap in USD (0 = no cap)")
@@ -223,6 +224,7 @@ func cmdSweep(args []string) int {
 		outDir:            outDir,
 		resume:            *resume,
 		forceRerun:        *forceRerun,
+		retryInvalid:      *retryInvalid,
 		tasksDir:          *tasksDir,
 		budgetUSD:         *budgetUSD,
 		perRunBudgetUSD:   *perRunBudgetUSD,
@@ -303,6 +305,7 @@ type sweepRunOpts struct {
 	outDir            string
 	resume            bool
 	forceRerun        bool
+	retryInvalid      bool
 	tasksDir          string
 	budgetUSD         float64
 	perRunBudgetUSD   float64
@@ -334,6 +337,7 @@ func printSweepDryRun(opts sweepRunOpts, phase sweepPhase) int {
 	fmt.Printf("  Output Dir:    %s\n", filepath.Join(opts.outDir, phase.ID))
 	fmt.Printf("  Resume:        %v\n", opts.resume)
 	fmt.Printf("  Force Rerun:   %v\n", opts.forceRerun)
+	fmt.Printf("  Retry Invalid: %v\n", opts.retryInvalid)
 	fmt.Println()
 
 	for _, laneID := range phase.Lanes {
@@ -597,6 +601,9 @@ func buildSweepMatrixArgs(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, 
 	}
 	if opts.forceRerun {
 		args = append(args, "--force-rerun")
+	}
+	if opts.retryInvalid {
+		args = append(args, "--retry-invalid")
 	}
 	if opts.tasksDir != "" {
 		args = append(args, "--tasks-dir", opts.tasksDir)

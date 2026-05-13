@@ -1,10 +1,11 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs capture-machine-info probe-reasoning
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs website-serve capture-machine-info probe-reasoning
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BINARY_NAME := fiz
 LDFLAGS := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
+PORT ?= 1314
 
 build:
 	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/fiz
@@ -58,6 +59,11 @@ docs-tools:
 # Run after adding, editing, or superseding an ADR.
 docs-adrs:
 	go run ./cmd/docgen-adrs --src docs/helix/02-design/adr --out website/content/docs/architecture/adr
+
+# website-serve starts the Hugo dev server with the same /fizeau/ base path
+# used by GitHub Pages. Override the port with `make website-serve PORT=1315`.
+website-serve:
+	cd website && hugo server --bind 0.0.0.0 --port $(PORT) --baseURL http://0.0.0.0:$(PORT)/fizeau/ --appendPort=false
 
 build-ci:
 	go build ./...

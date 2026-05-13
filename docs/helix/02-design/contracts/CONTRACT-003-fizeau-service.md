@@ -125,9 +125,16 @@ The service may auto-load configuration when `ServiceConfig` is nil and the
 config package registered a loader. Embedders that need deterministic behavior
 should pass `ServiceConfig` explicitly.
 
-`IncludeByDefault` controls unpinned/default routing participation. Explicit
-provider/model/harness pins may still consider a provider that is not included
-by default, but pins do not bypass policy `Require` constraints.
+`IncludeByDefault` controls unpinned automatic routing participation. For
+pay-per-token providers, `IncludeByDefault=true` is necessary but not
+sufficient: the configuration projection must also reflect explicit
+metered-spend opt-in, such as `routing.allow_metered: true`, before such a
+provider participates in unpinned automatic routing. ServiceConfig
+implementations that do not expose a separate metered flag should project this
+policy by leaving pay-per-token providers default-excluded until spend opt-in is
+known. Explicit provider/model/harness pins may still consider a provider that
+is not included by default or metered-enabled, but pins do not bypass policy
+`Require` constraints.
 
 ## Execute Request
 
@@ -185,8 +192,10 @@ type ServiceExecuteRequest struct {
 `Policy` is the named routing policy. `MinPower` and `MaxPower` are optional
 numeric power hints on the catalog's 1..10 scale. `Model`, `Provider`, and
 `Harness` are hard pins and are recorded as override signals for routing
-quality. `Role` and `CorrelationID` are observational metadata only; they do
-not affect candidate eligibility or scoring.
+quality. A request is unpinned when all three hard-pin fields are empty;
+`Policy`, power hints, reasoning, capability flags, and token estimates do not
+make a request pinned. `Role` and `CorrelationID` are observational metadata
+only; they do not affect candidate eligibility or scoring.
 
 `CachePolicy` accepts `""`, `"default"`, and `"off"`. `Reasoning` is the
 single public reasoning control; provider-specific names remain adapter
