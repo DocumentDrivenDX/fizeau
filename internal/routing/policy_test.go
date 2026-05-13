@@ -3,6 +3,8 @@ package routing
 import (
 	"errors"
 	"testing"
+
+	"github.com/easel/fizeau/internal/modelcatalog"
 )
 
 func TestPolicyRequireNoRemoteFiltersRemoteCandidates(t *testing.T) {
@@ -37,6 +39,54 @@ func TestPolicyRequireBlocksRemotePinConflict(t *testing.T) {
 	}
 	if typed.Policy != "air-gapped" || typed.Requirement != "no_remote" || typed.AttemptedPin != "openrouter" {
 		t.Fatalf("policy requirement error=%#v, want air-gapped/no_remote/openrouter", typed)
+	}
+}
+
+func TestPolicyRequireNoRemotePrefersTheUserConstraintWhenLocalCandidatesAreDown(t *testing.T) {
+	in := Inputs{Harnesses: []HarnessEntry{
+		{
+			Name:                "fiz",
+			Surface:             "embedded-openai",
+			CostClass:           "local",
+			IsLocal:             true,
+			AutoRoutingEligible: true,
+			Available:           false,
+			ExactPinSupport:     true,
+			SupportsTools:       true,
+			Providers: []ProviderEntry{{
+				Name:          "local",
+				CostClass:     "local",
+				DefaultModel:  "local-good",
+				SupportsTools: true,
+			}},
+		},
+		{
+			Name:                "openrouter",
+			Surface:             "embedded-openai",
+			CostClass:           "medium",
+			AutoRoutingEligible: true,
+			Available:           true,
+			ExactPinSupport:     true,
+			SupportsTools:       true,
+			Providers: []ProviderEntry{{
+				Name:          "remote",
+				CostClass:     "medium",
+				DefaultModel:  "remote-good",
+				SupportsTools: true,
+			}},
+		},
+	}}
+
+	_, err := Resolve(Request{Policy: "air-gapped", Require: []string{"no_remote"}}, in)
+	if err == nil {
+		t.Fatal("expected no_remote policy to fail when only local candidates are down")
+	}
+	var typed *ErrPolicyRequirementUnsatisfied
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As ErrPolicyRequirementUnsatisfied: %T %v", err, err)
+	}
+	if typed.Policy != "air-gapped" || typed.Requirement != "no_remote" {
+		t.Fatalf("policy requirement error=%#v, want air-gapped/no_remote", typed)
 	}
 }
 
@@ -86,6 +136,39 @@ func TestAllowLocalFalseExcludesLocalCandidates(t *testing.T) {
 	}
 	if local.Eligible || local.FilterReason != FilterReasonPolicyFiltered {
 		t.Fatalf("local candidate=%#v, want policy-filtered", local)
+	}
+}
+
+func TestMeteredOptInRequirementSurfacesWhenOnlyOptOutCandidatesRemain(t *testing.T) {
+	in := Inputs{Harnesses: []HarnessEntry{
+		{
+			Name:                "fiz",
+			Surface:             "embedded-openai",
+			CostClass:           "medium",
+			AutoRoutingEligible: true,
+			Available:           true,
+			ExactPinSupport:     true,
+			SupportsTools:       true,
+			Providers: []ProviderEntry{{
+				Name:                      "payg",
+				Billing:                   modelcatalog.BillingModelPerToken,
+				DefaultModel:              "remote-good",
+				ExcludeFromDefaultRouting: true,
+				SupportsTools:             true,
+			}},
+		},
+	}}
+
+	_, err := Resolve(Request{Policy: "default"}, in)
+	if err == nil {
+		t.Fatal("expected metered opt-in policy to fail when only opt-out candidates remain")
+	}
+	var typed *ErrPolicyRequirementUnsatisfied
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As ErrPolicyRequirementUnsatisfied: %T %v", err, err)
+	}
+	if typed.Policy != "default" || typed.Requirement != "metered opt-in" {
+		t.Fatalf("policy requirement error=%#v, want default/metered opt-in", typed)
 	}
 }
 

@@ -850,20 +850,27 @@ func missingPolicyRequirement(req Request, candidates []Candidate) string {
 	if req.Policy == "" {
 		return ""
 	}
-	if requiresNoRemote(req) && allCandidatesRejectedFor(candidates, FilterReasonPolicyFiltered) {
-		return "no_remote"
-	}
-	if !requestAllowsLocal(req) && allCandidatesRejectedFor(candidates, FilterReasonPolicyFiltered) {
-		return "allow_local=false"
-	}
 	switch req.ProviderPreference {
 	case ProviderPreferenceLocalOnly:
 		return "local endpoint"
 	case ProviderPreferenceSubscriptionOnly:
 		return "subscription harness"
-	default:
-		return ""
 	}
+	if requiresNoRemote(req) {
+		if anyLocalCandidate(candidates) && !anyEligibleCandidate(candidates) {
+			return "no_remote"
+		}
+		if allCandidatesRejectedFor(candidates, FilterReasonPolicyFiltered) {
+			return "no_remote"
+		}
+	}
+	if allCandidatesRejectedFor(candidates, FilterReasonMeteredOptInRequired) {
+		return "metered opt-in"
+	}
+	if !requestAllowsLocal(req) && allCandidatesRejectedFor(candidates, FilterReasonPolicyFiltered) {
+		return "allow_local=false"
+	}
+	return ""
 }
 
 func allCandidatesRejectedFor(candidates []Candidate, reason FilterReason) bool {
@@ -876,6 +883,31 @@ func allCandidatesRejectedFor(candidates []Candidate, reason FilterReason) bool 
 		}
 	}
 	return true
+}
+
+func anyEligibleCandidate(candidates []Candidate) bool {
+	for _, candidate := range candidates {
+		if candidate.Eligible {
+			return true
+		}
+	}
+	return false
+}
+
+func anyLocalCandidate(candidates []Candidate) bool {
+	for _, candidate := range candidates {
+		if candidateIsLocalCandidate(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func candidateIsLocalCandidate(candidate Candidate) bool {
+	if candidate.Billing == modelcatalog.BillingModelFixed || candidate.CostClass == "local" {
+		return true
+	}
+	return candidate.Harness == "fiz" && candidate.Provider == ""
 }
 
 func requestedModelIntent(req Request) string {

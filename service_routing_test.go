@@ -17,6 +17,7 @@ import (
 	"github.com/easel/fizeau/internal/harnesses"
 	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 	"github.com/easel/fizeau/internal/modelcatalog"
+	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/routing"
 	"gopkg.in/yaml.v3"
 )
@@ -780,7 +781,7 @@ func TestRoutingInputsUseClaudeQuotaWindows(t *testing.T) {
 	}
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 
-	inputs, _ := svc.buildRoutingInputsWithCatalog(context.Background(), nil)
+	inputs, _ := svc.buildRoutingInputsWithCatalog(context.Background(), nil, modelsnapshot.RefreshBackground)
 	claudeEntry, ok := findRoutingHarnessEntry(inputs.Harnesses, "claude")
 	if !ok {
 		t.Fatalf("missing claude entry in %#v", inputs.Harnesses)

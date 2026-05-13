@@ -32,7 +32,7 @@ func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
 	}
 
 	cat := serviceRoutingCatalog()
-	_, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat)
+	_, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat, modelsnapshot.RefreshBackground)
 	cooldown := s.routeAttemptTTL()
 	activeAttempts := s.activeRouteAttempts(report.GeneratedAt, cooldown)
 	successRate, latencyMS := s.routeMetricSignals(report.GeneratedAt, cooldown)

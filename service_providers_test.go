@@ -883,7 +883,7 @@ func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
 	}
 }
 
-func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) {
+func TestResolveRouteDoesNotTriggerAsyncQuotaRefresh(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("GEMINI_API_KEY", "")
@@ -900,14 +900,11 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
-	claudeStarted := make(chan struct{}, 1)
-	codexStarted := make(chan struct{}, 1)
-	release := make(chan struct{})
-	released := false
+	var claudeCalls atomic.Int32
+	var codexCalls atomic.Int32
 
 	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
-		claudeStarted <- struct{}{}
-		<-release
+		claudeCalls.Add(1)
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
@@ -915,26 +912,33 @@ func TestResolveRouteTriggersAsyncQuotaRefreshWithoutBlockingOnIt(t *testing.T) 
 	})
 
 	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
-		codexStarted <- struct{}{}
-		<-release
+		codexCalls.Add(1)
 		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
 	})
-	t.Cleanup(func() {
-		if !released {
-			close(release)
-		}
+
+	svc := newTestService(t, ServiceOptions{
+		ServiceConfig: &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"local": {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "model-a"},
+			},
+			names:       []string{"local"},
+			defaultName: "local",
+		},
 	})
-
-	svc := newTestService(t, ServiceOptions{})
-	_, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "smart"})
-	if err == nil {
-		t.Fatal("ResolveRoute should not wait for background quota refresh to make missing-cache subscription harnesses eligible")
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "model-a"})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
 	}
-
-	waitForQuotaRefreshStarts(t, claudeStarted, codexStarted)
-	close(release)
-	released = true
-	waitForQuotaRefreshFiles(t, claudeQuotaPath, codexQuotaPath)
+	if dec == nil || dec.Model != "model-a" {
+		t.Fatalf("decision=%#v, want local model-a route", dec)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := claudeCalls.Load(); got != 0 {
+		t.Fatalf("unexpected Claude quota refresh calls = %d", got)
+	}
+	if got := codexCalls.Load(); got != 0 {
+		t.Fatalf("unexpected Codex quota refresh calls = %d", got)
+	}
 }
 
 func resetPrimaryQuotaRefreshForTest(t *testing.T) {

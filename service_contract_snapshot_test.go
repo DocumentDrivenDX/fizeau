@@ -343,6 +343,8 @@ func decodeFinalEvent(t *testing.T, ev ServiceEvent) harnesses.FinalData {
 
 func TestAutoRoutingUsesUnifiedModelSnapshot(t *testing.T) {
 	fixture := newUnifiedSnapshotFixture(t)
+	alphaModelsBefore := fixture.alpha.modelsCallCount()
+	betaModelsBefore := fixture.beta.modelsCallCount()
 
 	listed := make(map[string]ModelInfo, len(fixture.models))
 	for _, row := range fixture.models {
@@ -378,6 +380,8 @@ func TestAutoRoutingUsesUnifiedModelSnapshot(t *testing.T) {
 	}, fixture.snapshot)
 	require.True(t, ok, "selected route must match snapshot")
 	require.Equal(t, "alpha", selected.Provider)
+	require.Equal(t, alphaModelsBefore, fixture.alpha.modelsCallCount(), "ResolveRoute should not probe alpha /v1/models")
+	require.Equal(t, betaModelsBefore, fixture.beta.modelsCallCount(), "ResolveRoute should not probe beta /v1/models")
 
 	rejected := false
 	for _, candidate := range candidates {
@@ -393,6 +397,8 @@ func TestAutoRoutingUsesUnifiedModelSnapshot(t *testing.T) {
 
 func TestExecuteRouteEvidenceMatchesModelsSnapshot(t *testing.T) {
 	fixture := newUnifiedSnapshotFixture(t)
+	alphaModelsBefore := fixture.alpha.modelsCallCount()
+	betaModelsBefore := fixture.beta.modelsCallCount()
 
 	ch, err := fixture.svc.Execute(context.Background(), ServiceExecuteRequest{
 		Prompt: "hello",
@@ -423,6 +429,8 @@ func TestExecuteRouteEvidenceMatchesModelsSnapshot(t *testing.T) {
 	require.NotEmpty(t, final.RoutingActual.ServerInstance)
 	require.Equal(t, 1, fixture.alpha.chatCallCount())
 	require.Equal(t, 0, fixture.beta.chatCallCount())
+	require.Equal(t, alphaModelsBefore, fixture.alpha.modelsCallCount(), "Execute should not probe alpha /v1/models")
+	require.Equal(t, betaModelsBefore, fixture.beta.modelsCallCount(), "Execute should not probe beta /v1/models")
 
 	var selectedCandidate *ServiceRoutingDecisionCandidate
 	var routeDecisionCandidates []ServiceRoutingDecisionCandidate

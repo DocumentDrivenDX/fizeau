@@ -56,7 +56,6 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			return nil, err
 		}
 	}
-	s.ensurePrimaryQuotaRefresh(ctx, quotaRefreshAsync)
 	cat := serviceRoutingCatalog()
 	requestedPolicy := req.Policy
 	policy := routingPolicyForName(cat, requestedPolicy)
@@ -68,7 +67,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			PowerPolicy:     powerPolicy,
 		}, err
 	}
-	in, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat)
+	in, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat, modelsnapshot.RefreshNone)
 
 	resolvedModel, modelCandidates, modelErr := s.resolveModelConstraint(req.Harness, req.Provider, req.Model, in, cat)
 	if modelErr != nil {
@@ -658,11 +657,11 @@ func (s *service) routeAttemptTTL() time.Duration {
 // and snapshot-derived provider inventory. The public routing engine stays
 // unchanged; only the source of provider/model candidates changes.
 func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
-	inputs, _ := s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog())
+	inputs, _ := s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog(), modelsnapshot.RefreshBackground)
 	return inputs
 }
 
-func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelcatalog.Catalog) (routing.Inputs, modelsnapshot.ModelSnapshot) {
+func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelcatalog.Catalog, refresh modelsnapshot.RefreshMode) (routing.Inputs, modelsnapshot.ModelSnapshot) {
 	statuses := s.registry.Discover()
 	statusByName := make(map[string]harnesses.HarnessStatus, len(statuses))
 	for _, st := range statuses {
@@ -677,7 +676,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 				s.opts.ServiceConfig,
 				cat,
 				cacheRoot,
-				modelsnapshot.AssembleOptions{Refresh: modelsnapshot.RefreshBackground},
+				modelsnapshot.AssembleOptions{Refresh: refresh},
 			)
 		}
 	}
