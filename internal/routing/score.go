@@ -13,6 +13,7 @@ var costClassRank = map[string]int{
 const StickyAffinityBonus = 250.0
 const unknownUtilizationPenalty = 5.0
 const unknownPerformancePenalty = 5.0
+const belowMinPowerPenalty = 12.0
 
 // scorePolicy returns a score for a candidate under the named policy.
 // Higher is better.
@@ -224,7 +225,9 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 	}
 	if cand.Power > 0 {
 		if cand.MinPower > 0 && cand.Power < cand.MinPower {
-			penalty := float64(cand.MinPower-cand.Power) * 5
+			// Below-min candidates need a materially steeper hit so a free but
+			// underpowered route does not outrank an in-band option purely on cost.
+			penalty := float64(cand.MinPower-cand.Power) * belowMinPowerPenalty
 			base -= penalty
 			add("power", -penalty)
 		}
@@ -242,7 +245,7 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 		base -= costPenalty
 		add("cost", -costPenalty)
 	}
-	if cand.Power > 0 && cand.CostUSDPer1kTokens == 0 {
+	if cand.Power > 0 && cand.CostUSDPer1kTokens == 0 && candidateWithinPowerBounds(cand) {
 		switch {
 		case cand.CostClass == "local":
 			base += 15
@@ -252,7 +255,7 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 			add("quota_health", 15)
 		}
 	}
-	if cand.Power >= 9 && cand.IsSubscription && cand.QuotaOK && !cand.QuotaStale && cand.QuotaPercentUsed < 80 {
+	if cand.Power >= 9 && cand.IsSubscription && candidateWithinPowerBounds(cand) && cand.QuotaOK && !cand.QuotaStale && cand.QuotaPercentUsed < 80 {
 		base += 20
 		add("power", 20)
 	}
@@ -315,4 +318,17 @@ func quotaPressurePenalty(percentUsed int) float64 {
 		penalty += float64(percentUsed-80) * 3
 	}
 	return penalty
+}
+
+func candidateWithinPowerBounds(cand candidateInternal) bool {
+	if cand.Power <= 0 {
+		return false
+	}
+	if cand.MinPower > 0 && cand.Power < cand.MinPower {
+		return false
+	}
+	if cand.MaxPower > 0 && cand.Power > cand.MaxPower {
+		return false
+	}
+	return true
 }

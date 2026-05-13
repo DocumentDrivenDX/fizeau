@@ -217,7 +217,9 @@ func scorePowerHintFit(power int, policy RoutePowerPolicy) float64 {
 		return 0
 	}
 	if policy.MinPower > 0 && power < policy.MinPower {
-		return -float64(policy.MinPower-power) * 5
+		// Mirror the engine scorer: materially underpowered routes should not
+		// win just because they are cheap.
+		return -float64(policy.MinPower-power) * 12
 	}
 	if policy.MaxPower > 0 && power > policy.MaxPower {
 		return -float64(power - policy.MaxPower)

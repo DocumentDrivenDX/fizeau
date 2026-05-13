@@ -66,6 +66,45 @@ func TestSoftPowerScoring_AsymmetricUndershootHeavier(t *testing.T) {
 	}
 }
 
+func TestSoftPowerScoring_DefaultPolicyPrefersInBandOverUnderpoweredFree(t *testing.T) {
+	in := scorePowerInputs()
+	in.Harnesses = in.Harnesses[:2]
+	in.ModelEligibility = testPowerLookup(map[string]int{
+		"local-good":  5,
+		"paid-strong": 8,
+	})
+
+	dec, err := Resolve(Request{Policy: "default", MinPower: 7, MaxPower: 8}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "paid" {
+		t.Fatalf("Provider=%q, want paid in-band candidate to beat free underpowered local route", dec.Provider)
+	}
+}
+
+func TestSoftPowerScoring_HealthySubscriptionBonusStopsBelowEffectiveMax(t *testing.T) {
+	in := scorePowerInputs()
+
+	dec, err := Resolve(Request{Policy: "default", MinPower: 7, MaxPower: 8}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	var codex Candidate
+	for _, c := range dec.Candidates {
+		if c.Harness == "codex" {
+			codex = c
+			break
+		}
+	}
+	if codex.Harness != "codex" {
+		t.Fatalf("codex candidate not found: %+v", dec.Candidates)
+	}
+	if got := codex.ScoreComponents["power"]; got != -2 {
+		t.Fatalf("codex power component=%v, want -2 with max_power=8 (bonus suppressed)", got)
+	}
+}
+
 func TestSoftPowerScoring_BelowMinPenaltyIsSteeperPerPoint(t *testing.T) {
 	in := softPowerInputs(map[string]int{
 		"below-min": 7,
