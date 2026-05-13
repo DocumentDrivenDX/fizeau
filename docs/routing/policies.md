@@ -7,7 +7,7 @@ Canonical policies:
 
 | Policy | MinPower | MaxPower | AllowLocal | Require | Intent |
 |--------|----------|----------|------------|---------|--------|
-| `cheap` | 5 | 5 | true | none | minimize marginal spend; local/fixed candidates preferred |
+| `cheap` | 5 | 5 | true | none | minimize effective cost; local/fixed candidates preferred |
 | `default` | 7 | 8 | true | none | balanced default; local/fixed or healthy subscription can win |
 | `smart` | 9 | 10 | false | none | quality-first; subscription/cloud-capable candidates preferred |
 | `air-gapped` | 5 | 5 | true | `no_remote` | local-only execution; remote/account providers rejected |
@@ -27,6 +27,12 @@ mainly a cost/latency tradeoff. Routing also considers the snapshot's
 effective_cost, actual_cash_spend, quota, reliability, latency, and utilization.
 Subscription candidates score with a PAYG-equivalent effective cost while
 retaining `actual_cash_spend=false`.
+
+`cheap` is not implemented as a list of frontier-model exclusion gates. It
+scores all dispatchable candidates and selects the lowest effective-cost model
+with enough expected capability. A maximum-quality frontier subscription model
+should lose to nano, mini, local, or fixed-cost candidates when those cheaper
+candidates satisfy the request constraints and policy intent.
 
 Provider `include_by_default` only affects unpinned automatic routing. A request
 is unpinned when it has no `--harness`, no `--provider`, and no exact `--model`;

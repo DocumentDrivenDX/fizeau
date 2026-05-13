@@ -36,13 +36,16 @@ Three requirements conflict without a cache:
 3. **Crash safety.** A killed refresh process must not leave the cache in a
    corrupt or permanently-locked state.
 
-The server/refresh coordinator owns background freshness and refresh
-coalescing. `fiz models` is quick by default: stale snapshot data is returned
-immediately when freshness is pending. `fiz models --refresh` blocks on
-routing-relevant stale fields, and `fiz models --refresh-all` blocks on every
-refreshable field. Without a running server, stale output should tell the
-operator to start the server or request a refresh rather than implying the
-snapshot is unavailable.
+Fizeau has no required daemon. Its cache contract is synchronous refresh plus
+cross-process locks. `fiz models` is quick by default: stale snapshot data is
+returned immediately when freshness is pending. It may request a best-effort
+background refresh for stale fields, but only through the same lock, marker, and
+single-flight path used by blocking refresh; a short-lived CLI process must not
+spawn independent probe storms or make correctness depend on a detached worker.
+`fiz models --refresh` blocks on routing-relevant stale fields, and
+`fiz models --refresh-all` blocks on every refreshable field. Without a
+long-running freshness maintainer, stale output should tell the operator to run
+`fiz models --refresh` or start/configure a DDx server freshness heartbeat.
 
 Fizeau already has a battle-tested file-locking idiom in
 `cmd/bench/matrix.go:acquireMatrixLock` (lines 1222–1259): atomic
@@ -280,8 +283,9 @@ func maybe_background_refresh(source):
     data, fresh = read(source)
     if fresh:
         return data
-    // Stale or missing — trigger background refresh via
+    // Stale or missing — request a best-effort refresh via
     // singleflight so concurrent callers share one goroutine.
+    // Route correctness uses ensure_fresh / force_refresh before scoring.
     go singleflightGroup.Do(source.key(), func():
         refresh_and_commit(source)
     )
@@ -300,6 +304,12 @@ func ensure_fresh(source):
 same key: if a refresh is already running, a second caller blocks
 on the same goroutine and gets the same result. This eliminates
 the in-process thundering herd without file IO overhead.
+
+The background helper is optional and process-lifetime scoped. A `fiz models`
+CLI invocation may call it after returning stale output, but no design depends
+on the goroutine surviving after process exit. Long-running clients such as the
+DDx server should call the same refresh APIs on a heartbeat when they want to
+maintain fresh cache state asynchronously.
 
 ### 5. Crash recovery
 
@@ -326,7 +336,9 @@ call to `claim_refresh`:
 3. Returns fresh data.
 
 Used by `fiz models --refresh` and by the `fiz cache refresh
-<source>` subcommand.
+<source>` subcommand. `ResolveRoute` and `Execute` also use this blocking path
+through `ensureFreshEnough(client_inputs, snapshot)` before autorouting scores
+when routing-relevant fields are stale or missing.
 
 `--refresh-all` is the strict variant that blocks until all refreshable fields
 are fresh enough for display, not just the routing-relevant subset. It uses the
@@ -382,16 +394,20 @@ as a child process) to avoid requiring external binaries.
 | 6 | `TestConcurrentNormalAndForce` | Concurrent `read` (normal) + `force_refresh`: normal returns stale immediately without blocking; `force_refresh` waits and singleflight deduplicates the goroutines. |
 | 7 | `TestAtomicRenameVerified` | 100 concurrent readers + 1 writer producing 100 versions; every read returns a complete, consistent version (verified by checksum); no version is ever partially written. |
 | 8 | `TestPruneDoesNotRaceActiveSources` | `fiz cache prune` with a source whose `.refreshing` marker is active; prune skips that source and does not remove any of its files. |
-| 9 | `TestStaleWhileRevalidate` | Stale cache entry: `read` returns stale data immediately (≤ 5 ms); a background refresh is triggered; after the refresh completes, subsequent `read` returns fresh data. |
+| 9 | `TestStaleWhileRevalidate` | Stale cache entry: `read` returns stale data immediately (≤ 5 ms); an optional background refresh request is coalesced through singleflight/markers; after a refresh completes, subsequent `read` returns fresh data. |
 | 10 | `TestPIDReuseSafety` | Marker contains a PID that has since been reused by an unrelated OS process (alive check passes); deadline check is the safety net — marker is treated as stale once `now > deadline + staleness_threshold`. |
 
 ## Consequences
 
 **Positive:**
 
-- `fiz models` never hangs. The read path is always cache-bounded
+- `fiz models` does not hang by default. The read path is always cache-bounded
   (≤ 100 ms) because `read` never waits on IO — it returns stale
-  data immediately and triggers background refresh.
+  data immediately and may request a coordinated best-effort background
+  refresh.
+- Autorouting can be correct even when no DDx server or other long-running
+  maintainer is active: route-time refresh uses the same synchronous,
+  lock-coordinated force-refresh path.
 - Multi-process safe across `ddx work`, `ddx try`, `fiz models`,
   and the routing layer. Exactly one process refreshes each source
   at a time; others either wait (force) or return stale
@@ -440,6 +456,9 @@ as a child process) to avoid requiring external binaries.
   strategy.
 - NFS / network filesystem support. The cache directory is always
   local.
+- A Fizeau-owned daemon. Asynchronous freshness is provided by callers that
+  choose to run long-lived processes, such as a DDx server heartbeat, over the
+  same synchronous lock-coordinated refresh primitives.
 
 ## References
 

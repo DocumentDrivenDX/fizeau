@@ -269,11 +269,16 @@ Per request, the service:
       models remain inspectable but are not eligible for automatic routing
       unless explicitly pinned.
    3. Joins live operational signals: source/endpoint health, endpoint
-      cooldown, observed latency, prepaid quota remaining/reset time, and known
-      marginal cost.
-   4. Uses ADR-012 cache semantics: stale snapshot data can be returned
-      immediately while refresh runs in the background; explicit refresh waits
-      for a current snapshot.
+      cooldown, observed latency, prepaid quota remaining/reset time, effective
+      cost, `actual_cash_spend`, and cost source.
+   4. Uses ADR-012 cache semantics: `fiz models` can return stale snapshot data
+      immediately while an optional coordinated refresh is requested; explicit
+      refresh waits for a current snapshot through cross-process locks.
+   5. Before autorouting scores, runs `ensureFreshEnough(client_inputs,
+      snapshot)` for routing-relevant fields: health, quota, discovery,
+      context/tool/reasoning support, billing/effective-cost metadata when
+      dynamic, and utilization when available. This may block. Autorouting
+      correctness is more important than route latency.
 3. Expands snapshot rows into route candidates. A candidate is the concrete
    `(harness, provider source, endpoint/server instance, model)` tuple that can
    be dispatched. Harness-as-provider snapshot rows are projected back onto the
@@ -337,17 +342,20 @@ Per request, the service:
          + latency_weight
          + placement_bonus
          + quota_bonus
-         - marginal_cost_penalty
+         - effective_cost_penalty
          - availability_penalty
          - stale_signal_penalty
    ```
 
    `power_hint_fit` applies the FEAT-004 asymmetric rule: candidates below
    `MinPower` receive a stronger penalty than candidates above `MaxPower`.
-   The scorer prefers the lowest effective marginal cost candidate whose power
+   The scorer prefers the lowest effective cost candidate whose power
    fit is sufficient for the selected policy, so a free but materially
    underpowered local route does not beat an in-band `default` candidate solely
-   because it is free.
+   because it is free. Subscription candidates use PAYG-equivalent effective
+   cost for comparison while retaining `actual_cash_spend=false`; they are not
+   treated as zero-cost merely because dispatch does not create per-token
+   billing.
 8. Dispatches the top candidate exactly once. On provider/harness failure, the
    service records the attempted route outcome and returns the full ranked
    trace. It does not try the next eligible candidate and it does not widen
@@ -397,8 +405,8 @@ Each row contains:
   auto-routable status, exact-pin-only status
 - capability: context window, tool support, reasoning support, streaming and
   structured-output support when known
-- economics: placement (local/free, prepaid, metered, test), marginal cost,
-  cost source, prepaid quota remaining/reset time
+- economics: placement (local/free, prepaid, metered, test), effective cost,
+  cost source, `actual_cash_spend`, prepaid quota remaining/reset time
 - operations: health, cooldown, recent latency
 - routing: power filter reasons and score components for supplied power bounds
 

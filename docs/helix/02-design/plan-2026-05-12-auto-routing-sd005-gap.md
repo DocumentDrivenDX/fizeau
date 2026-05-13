@@ -4,6 +4,13 @@
 **Status**: CONVERGED
 **Refinement Rounds**: 4
 
+**2026-05-13 amendment:** Freshness policy changed after this plan converged.
+Fizeau does not have a required daemon. Autorouting now refreshes stale
+routing-relevant snapshot fields synchronously through the ADR-012
+lock-coordinated refresh path before scoring. `fiz models` remains quick by
+default; DDx server freshness is an optional heartbeat over the same Fizeau
+refresh API, not a dependency for route correctness.
+
 ## Problem Statement
 
 SD-005 now defines auto-routing as a service-owned selection process over the
@@ -39,10 +46,12 @@ auditable from one source of truth.
 
 ### Non-Functional
 
-- Default route resolution must keep the stale-while-revalidate behavior and
-  avoid blocking on slow model discovery when cache data is usable.
-- Force-refresh behavior must be explicit; normal `Execute` should not perform
-  long synchronous refreshes.
+- `fiz models` must keep the quick stale-while-revalidate inspection behavior
+  and avoid blocking on slow model discovery by default.
+- `ResolveRoute` and `Execute` must call `ensureFreshEnough(client_inputs,
+  snapshot)` and may block on routing-relevant stale fields before scoring.
+  Force-refresh behavior is still explicit for CLI inspection through
+  `fiz models --refresh` and `fiz models --refresh-all`.
 - The adapter from snapshot to routing candidates must be deterministic and
   tested without real provider credentials.
 - Existing public request fields and session/event contracts must remain
@@ -86,7 +95,7 @@ auditable from one source of truth.
   lets root service code assemble the same snapshot without importing CLI-only
   concerns.
 - The routing engine's score component names are close but not yet aligned to
-  SD-005's public evidence vocabulary. `power_hint_fit`, marginal cost,
+  SD-005's public evidence vocabulary. `power_hint_fit`, effective cost,
   availability/staleness, and latency are present only indirectly through
   existing `power`, `cost`, `quota_health`, and `performance` buckets.
 - `RouteStatus` and error evidence do not yet prove that every route decision can
@@ -172,7 +181,9 @@ candidate that can be dispatched.
   should produce source metadata and unavailable candidates rather than aborting
   all routing.
 - Force-refresh failures should be visible in `fiz models --refresh` and route
-  evidence, but default routing may use stale data if cache semantics allow it.
+  evidence. Autorouting should only use stale routing-relevant data after the
+  coordinated refresh path has failed or timed out and the route evidence
+  records that freshness state.
 - Hard-pin misses return exact-constraint errors and candidate evidence; they do
   not suggest unrelated models.
 - No-candidate errors must report whether candidates were rejected by policy,
@@ -201,7 +212,8 @@ candidate that can be dispatched.
     fixture config/cache.
   - `ResolveRoute` and `RouteStatus` consume the same fixture snapshot and
     expose explainable candidate evidence.
-  - stale cache avoids live discovery in default mode; force refresh waits.
+  - `fiz models` default mode returns stale cache quickly; route-time freshness
+    waits for routing-relevant fields through the coordinated refresh path.
 - **E2E**:
   - with two local OpenAI-compatible fixture endpoints serving overlapping
     models, `fiz models`, `ResolveRoute`, `RouteStatus`, and `Execute` agree on

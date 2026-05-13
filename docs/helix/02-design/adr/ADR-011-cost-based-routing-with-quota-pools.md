@@ -26,10 +26,10 @@ should prefer the cheapest qualified candidate that is likely to complete the
 request. "Cheapest" cannot mean list price alone because Fizeau can dispatch
 through several billing shapes:
 
-- subscription harnesses, where marginal cost is effectively prepaid until a
-  quota pool is exhausted;
+- subscription harnesses, where dispatch does not create actual pay-per-token
+  spend but model choices still consume a scarce prepaid allocation;
 - per-token APIs, where each request burns metered input and output tokens;
-- local or fixed-cost providers, where marginal cost is zero but only if the
+- local or fixed-cost providers, where effective cost is zero but only if the
   provider is eligible for automatic routing;
 - provider surfaces excluded from unpinned automatic routing by
   `IncludeByDefault` or
@@ -84,6 +84,10 @@ exact identity and do not substitute another model to satisfy power hints.
 
 Effective cost is request-local and expressed in normalized dollars so
 subscription, metered, and local candidates can be compared in one ranking.
+Effective cost is not the same as actual cash spend. `actual_cash_spend`
+answers whether dispatch creates incremental pay-per-token billing;
+`effective_cost` answers how expensive the candidate is for scoring and quota
+stewardship.
 
 For per-token APIs:
 
@@ -101,29 +105,37 @@ cost term.
 
 For subscription candidates, `actual_cash_spend=false` remains true because the
 operator is not incurring per-request billing. The router computes a
-PAYG-equivalent effective cost from the comparable metered price when catalog
-price data exists, then discounts that shadow cost by quota fraction:
+PAYG-equivalent effective cost from the comparable metered price so subscription
+models with different underlying prices remain comparable:
 
 ```text
+payg_equivalent_cost =
+  payg_input_per_m  * estimated_input_tokens  / 1_000_000
++ payg_output_per_m * estimated_output_tokens / 1_000_000
+
 quota_fraction = remaining_quota / quota_limit
 
 if quota_fraction <= 0:
   drop the quota pool
 if quota_fraction >= 0.20:
-  effective_cost = 0
+  effective_cost = payg_equivalent_cost
 else:
-  effective_cost = payg_equivalent_cost * (1 - quota_fraction / 0.20)
+  scarcity_multiplier = 1 + (1 - quota_fraction / 0.20)
+  effective_cost = payg_equivalent_cost * scarcity_multiplier
 ```
 
 This quota fraction mapping is deliberately simple. Healthy prepaid quota is
-free at the margin. The final 20 percent of a pool is still usable, but it
-acquires a linear scarcity cost so another qualified subscription pool, a local
-candidate, or a cheap metered API that is explicitly opted into automatic
-routing can win before the pool reaches zero. When the catalog lacks a
-comparable per-token price for a subscription model, the router uses the
-cheapest known per-token model in the same provider family and power band as the
-PAYG-equivalent proxy; if no proxy exists, the scarcity cost is `0` until the
-pool is exhausted. Pay-per-token providers remain gated by explicit opt-in at
+not treated as free for scoring: a maximum-quality frontier model should still
+rank as more expensive than a nano, mini, local, or fixed-cost model when those
+cheaper candidates are sufficient. The final 20 percent of a pool is still
+usable, but it receives a linear scarcity multiplier so another qualified
+subscription pool, a local candidate, or a cheap metered API that is explicitly
+opted into automatic routing can win before the pool reaches zero. When the
+catalog lacks a comparable per-token price for a subscription model, the router
+uses the cheapest known per-token model in the same provider family and power
+band as the PAYG-equivalent proxy; if no proxy exists, the candidate keeps
+`actual_cash_spend=false` but receives an unknown-cost risk penalty instead of a
+zero-cost advantage. Pay-per-token providers remain gated by explicit opt-in at
 dispatch time so automatic routing never creates actual metered spend without
 user consent.
 
@@ -196,6 +208,9 @@ dispatchability, default-inclusion and metered opt-in gates, and quota
 exhaustion checks, then remains competitive after the FEAT-004 soft power-fit
 score is applied. A free but substantially underpowered candidate should not
 beat an in-band routine implementation candidate solely because it is free.
+Likewise, a subscription frontier model should not beat a cheaper sufficient
+subscription, local, or fixed-cost model merely because both avoid actual
+pay-per-token billing.
 
 Tie-breaking is deterministic:
 
@@ -227,9 +242,10 @@ operator-visible route decision.
 
 ### Positive
 
-- Cost routing now reflects the real marginal economics of subscriptions:
-  healthy quota is cheap, scarce quota is protected, and exhausted pools are
-  removed.
+- Cost routing now reflects both actual spend and opportunity cost:
+  subscription quota avoids actual pay-per-token billing, but model choices are
+  still compared with PAYG-equivalent effective cost, scarce quota is protected,
+  and exhausted pools are removed.
 - Quota pools provide an explicit mechanism for fallback across independent
   subscription allocations without relying on model recency.
 - `IncludeByDefault` and metered opt-in compose cleanly with cost ranking
@@ -244,8 +260,9 @@ operator-visible route decision.
 - Coarse token estimates can mis-rank close candidates. This is acceptable for
   v1 because actual billing remains visible and estimates can improve without
   changing the public contract.
-- Subscription models without comparable catalog pricing cannot express
-  scarcity cost until proxy data exists; they remain zero-cost until exhausted.
+- Subscription models without comparable catalog pricing need an unknown-cost
+  penalty until proxy data exists. This avoids treating unknown subscription
+  pricing as free.
 - No within-request retry means callers may see one quota error before fallback
   takes effect on the next request.
 

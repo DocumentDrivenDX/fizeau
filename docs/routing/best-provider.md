@@ -11,8 +11,8 @@ building the snapshot. The snapshot is the only source of routing facts.
    packaging differences, such as `Qwen3.6-27B-MLX-8bit`, use the matching
    catalog model's metadata when the mapping is unambiguous.
 3. Attach live usage and availability signals: health, cooldown, observed
-   latency, prepaid quota, reset time, marginal cost, and local endpoint
-   utilization when the provider type exposes it.
+   latency, prepaid quota, reset time, effective cost, `actual_cash_spend`, and
+   local endpoint utilization when the provider type exposes it.
 4. Apply hard pins for model, provider source/endpoint, and harness. Pins can
    consider providers that are not included by default or metered-enabled.
 5. Apply explicit user constraints such as `air-gapped` / `no_remote`. These
@@ -35,7 +35,7 @@ building the snapshot. The snapshot is the only source of routing facts.
 
 Local/free candidates are preferred over paid cloud candidates when they satisfy
 the requested power intent, tools, context, health, and hard constraints. The
-router prefers the lowest effective marginal cost candidate whose power fit is
+router prefers the lowest effective cost candidate whose power fit is
 sufficient for the selected policy, so a free but materially underpowered model
 does not beat an in-band `default` candidate solely because it is free. A
 subscription candidate may still score with PAYG-equivalent effective cost even

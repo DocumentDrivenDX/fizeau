@@ -30,9 +30,10 @@ ADR-009 owns the v0.11 routing vocabulary: callers express routing intent with
 The routing entrypoint is conceptually `route(client_inputs, fiz_models_snapshot)`.
 Client inputs include policy/profile, pins, `no_remote`, metered opt-in, tools,
 context, reasoning needs, and other explicit constraints. The `fiz models`
-snapshot is the only source of routing facts; background freshness and refresh
-coalescing are owned by the server/refresh coordinator rather than by the
-calling client.
+snapshot is the only source of routing facts. Fizeau does not require a daemon
+for correctness. Its freshness contract is synchronous, lock-coordinated
+refresh; long-running clients such as a DDx server may call that public refresh
+surface on a heartbeat to keep the snapshot warm.
 
 ## Interface
 
@@ -42,6 +43,7 @@ package fizeau
 import (
     "context"
     "io"
+    "time"
 )
 
 type FizeauService interface {
@@ -51,6 +53,7 @@ type FizeauService interface {
     ListHarnesses(ctx context.Context) ([]HarnessInfo, error)
     ListProviders(ctx context.Context) ([]ProviderInfo, error)
     ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
+    RefreshModels(ctx context.Context, opts ModelRefreshOptions) (*ModelSnapshotInfo, error)
     ListPolicies(ctx context.Context) ([]PolicyInfo, error)
 
     HealthCheck(ctx context.Context, target HealthTarget) error
@@ -70,7 +73,7 @@ func ValidateCachePolicy(v string) error
 func ValidatePowerBounds(minPower, maxPower int) error
 ```
 
-Fourteen service methods are public. `Execute` is the primary verb. The list
+Fifteen service methods are public. `Execute` is the primary verb. The list
 methods expose the live routing inventory and policy metadata. `HealthCheck`,
 `ResolveRoute`, `RecordRouteAttempt`, and `RouteStatus` are routing/status
 projections. The remaining methods project service-owned session logs for
@@ -208,6 +211,11 @@ only; they do not affect candidate eligibility or scoring.
 single public reasoning control; provider-specific names remain adapter
 terminology.
 
+Before scoring an unpinned or partially pinned automatic route, `Execute`
+ensures routing-relevant snapshot fields are fresh enough for the request. This
+uses the same synchronous refresh coordinator and locks as `RefreshModels`; it
+does not perform direct provider probes outside the snapshot path.
+
 ## Routing Types
 
 ```go
@@ -285,11 +293,56 @@ Cost, quality, health risk, latency, utilization, and power fit are scoring
 inputs. They do not become hard gates unless they make dispatch impossible.
 
 `fiz models` is the snapshot-first inspection path. It is expected to be quick,
-return stale output by default when freshness is pending, and use `--refresh`
-for routing-relevant stale fields or `--refresh-all` for every refreshable
-field. When the service is not running, stale output should tell the operator to
-start the server or request a refresh rather than implying that routing facts
-are unavailable.
+return stale output by default when freshness is pending, and use
+`RefreshModels` / `--refresh` for routing-relevant stale fields or
+`--refresh-all` for every refreshable field. If no DDx server or other
+long-running maintainer is keeping freshness warm, stale output should say so
+and suggest an explicit refresh.
+
+## Model Snapshot Freshness
+
+```go
+type ModelRefreshScope string
+
+const (
+    ModelRefreshRouting ModelRefreshScope = "routing"
+    ModelRefreshAll     ModelRefreshScope = "all"
+)
+
+type ModelRefreshOptions struct {
+    Scope ModelRefreshScope
+    Harness string
+    Provider string
+}
+
+type ModelSnapshotInfo struct {
+    Version string
+    CapturedAt time.Time
+    Fresh bool
+    RefreshInFlight bool
+    Fields []ModelFieldFreshness
+}
+
+type ModelFieldFreshness struct {
+    Field string
+    Source string
+    Fresh bool
+    CapturedAt time.Time
+    ExpiresAt time.Time
+    LastError *StatusError
+}
+```
+
+`RefreshModels` is synchronous. It blocks until the requested refresh scope is
+fresh or has conclusively failed, coalesces with other processes through the
+ADR-012 lock/marker contract, and writes snapshot state atomically. A DDx server
+maintains asynchronous freshness by calling this method from its own background
+task; Fizeau does not require a resident process.
+
+`ModelRefreshRouting` refreshes the fields needed before autorouting can score:
+health, quota, model availability/discovery, context/tool/reasoning support,
+billing/effective-cost metadata when dynamic, and utilization when available.
+`ModelRefreshAll` widens the scope to every refreshable display field.
 
 ## Inventory Types
 
@@ -348,6 +401,9 @@ type ModelInfo struct {
     Utilization RouteUtilizationState
     Capabilities []string
     Cost CostInfo
+    EffectiveCostUSD float64
+    CostSource string
+    ActualCashSpend bool
     PerfSignal PerfSignal
     Power int
     AutoRoutable bool
@@ -356,6 +412,8 @@ type ModelInfo struct {
     Available bool
     IsDefault bool
     RankPosition int
+    SnapshotVersion string
+    Freshness []ModelFieldFreshness
 }
 ```
 
@@ -363,6 +421,12 @@ type ModelInfo struct {
 `subscription`. Billing feeds routing cost and default inclusion, but it is
 also surfaced on harness, provider, and model inventory rows so operators can
 audit why a candidate participated or was skipped.
+
+`Cost` carries catalog/list price inputs. `EffectiveCostUSD` is the normalized
+request-local or representative scoring cost used for route comparison.
+Subscription rows keep `ActualCashSpend=false` while still carrying
+PAYG-equivalent effective cost; pay-per-token rows set `ActualCashSpend=true`
+when dispatch would create incremental metered billing.
 
 ## Routing Status and Usage
 

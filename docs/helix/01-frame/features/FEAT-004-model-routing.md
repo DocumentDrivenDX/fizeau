@@ -25,9 +25,11 @@ freshness.
 
 The snapshot is assembled from configured provider sources and harnesses,
 discovered model IDs, catalog metadata, and runtime signals joined into one set
-of provider/model facts. The server/refresh coordinator owns background
-freshness and refresh coalescing; model discovery and snapshot refresh must not
-spawn independent probe storms.
+of provider/model facts. Fizeau has no required daemon. Its freshness contract
+is synchronous refresh plus cross-process locks, single-flight coalescing, TTLs,
+cooldowns, bounded concurrency, and atomic snapshot writes. A long-running DDx
+server may call the same Fizeau refresh entrypoints to keep snapshot facts warm,
+but route correctness must not depend on that process.
 
 The public v0.11 routing surface is:
 
@@ -65,6 +67,11 @@ formula, and routing trace construction.
 - **Metered opt-in**: operator permission for pay-per-token candidates to
   participate in unpinned automatic routing. Provider default inclusion is still
   required.
+- **Effective cost**: normalized request-local scoring cost. Subscription
+  candidates use PAYG-equivalent pricing for comparison even when dispatch does
+  not create actual cash spend.
+- **Actual cash spend**: whether dispatching the candidate creates incremental
+  pay-per-token billing. This is separate from effective cost.
 - **Unpinned request**: a request with no `Harness`, no `Provider`, and no exact
   `Model`. `Policy`, `MinPower`, `MaxPower`, `Reasoning`, capability flags, and
   token estimates do not make a request pinned.
@@ -96,7 +103,7 @@ formula, and routing trace construction.
 
 | Policy | MinPower | MaxPower | AllowLocal | Require | Intent |
 |--------|----------|----------|------------|---------|--------|
-| `cheap` | 5 | 5 | true | none | minimize marginal spend; local/fixed candidates preferred |
+| `cheap` | 5 | 5 | true | none | minimize effective cost; local/fixed candidates preferred |
 | `default` | 7 | 8 | true | none | balanced default; local/fixed or healthy subscription can win |
 | `smart` | 9 | 10 | false | none | quality-first; subscription/cloud-capable candidates preferred |
 | `air-gapped` | 5 | 5 | true | `no_remote` | local-only execution; remote/account providers rejected |
@@ -132,48 +139,75 @@ formula, and routing trace construction.
 17. Test-only harnesses never leak into policy-based routing unless explicitly
     requested.
 
+### Snapshot Freshness
+
+18. `fiz models` is quick by default. It reads the current assembled snapshot,
+    returns available stale data with freshness metadata, and does not block on
+    slow discovery or runtime probes.
+19. `fiz models` may request a best-effort background refresh for stale fields,
+    but only through the same refresh coordinator, cross-process locks, and
+    single-flight markers used by blocking refresh. A short-lived CLI process
+    must not spawn independent probe storms or imply that background refresh is
+    required for correctness.
+20. `fiz models --refresh` blocks until routing-relevant stale fields have been
+    refreshed or conclusively failed. `fiz models --refresh-all` blocks on every
+    refreshable field.
+21. `ResolveRoute` and `Execute` call `ensureFreshEnough(client_inputs,
+    snapshot)` before scoring. The refresh set is derived from routing-relevant
+    facts for the request: health, quota, model availability/discovery,
+    context/tool/reasoning support, billing and effective-cost metadata when
+    dynamic, and utilization when available. Autorouting may wait for these
+    checks; correctness is more important than route latency.
+22. A DDx server or other long-running client may maintain freshness by calling
+    Fizeau's refresh/warmup entrypoints on a heartbeat. This is an optimization
+    over the same synchronous, lock-coordinated contract. If no maintainer is
+    running and `fiz models` observes stale fields, it should expose the stale
+    status and suggest `fiz models --refresh` or starting a DDx freshness
+    maintainer.
+
 ### Eligibility and Pins
 
-18. Hard pins narrow the candidate set before scoring:
+23. Hard pins narrow the candidate set before scoring:
     - `Harness` means only that harness may be used.
     - `Provider` means only that provider source or selected endpoint may be
       used.
     - `Model` means only that exact model identity may be used.
-19. Unpinned automatic routing excludes pay-per-token candidates unless the
+24. Unpinned automatic routing excludes pay-per-token candidates unless the
     provider is included by default and metered routing is explicitly opted in
     by user config.
-20. Pins override provider `include_by_default` and metered opt-in: a
+25. Pins override provider `include_by_default` and metered opt-in: a
     deliberately pinned default-deny pay-per-token provider can be considered.
-21. Pins do not override policy `require[]`; `air-gapped` plus a remote
+26. Pins do not override policy `require[]`; `air-gapped` plus a remote
     provider pin fails.
-22. Missing-power, inactive, deprecated, and exact-pin-only models are excluded
+27. Missing-power, inactive, deprecated, and exact-pin-only models are excluded
     from unpinned automatic routing. Exact model pins may still use them when
     the selected harness/provider can serve the model.
-23. Hard gates are limited to explicit user constraints and dispatchability:
+28. Hard gates are limited to explicit user constraints and dispatchability:
     pins, `require[]`, `no_remote`, metered opt-in, exact-pin support, and
-    whether the candidate can actually be dispatched. Cost, quality, health
-    risk, latency, utilization, and power fit are scoring inputs, not broad
-    vetoes.
+    whether the candidate can actually be dispatched. Known-down endpoints,
+    exhausted quota pools, and missing required context/tools/reasoning support
+    are dispatchability failures. Cost, quality, non-fatal health risk, latency,
+    utilization, and power fit are scoring inputs, not broad vetoes.
 
 ### Power Scoring
 
-24. `MinPower` and `MaxPower` are soft scoring hints, not closed candidate
+29. `MinPower` and `MaxPower` are soft scoring hints, not closed candidate
     lists, once a model has passed auto-routable eligibility.
-25. A candidate below `MinPower` receives a stronger penalty than a candidate
+30. A candidate below `MinPower` receives a stronger penalty than a candidate
     above `MaxPower`. This asymmetric scoring reflects failure risk: too weak
     is more likely to fail the task, while too strong is primarily a cost and
     latency concern.
-26. If no power hints are supplied, model power contributes positively to the
+31. If no power hints are supplied, model power contributes positively to the
     score alongside policy cost/placement preferences.
-27. Exact `Model` pins keep exact identity. Policy-derived power bounds are
+32. Exact `Model` pins keep exact identity. Policy-derived power bounds are
     still reported as evidence, but they do not substitute a different model.
 
 ### Ranking
 
-28. Ranking considers:
+33. Ranking considers:
     - policy baseline (`cheap`, `default`, `smart`, `air-gapped`);
     - catalog power;
-    - provider billing and effective marginal cost;
+    - provider billing and effective cost;
     - subscription shadow cost using PAYG-equivalent effective cost while
       retaining `actual_cash_spend=false`;
     - subscription quota health and burn-rate prediction;
@@ -182,38 +216,53 @@ formula, and routing trace construction.
     - observed latency/speed;
     - endpoint utilization and saturation;
     - sticky affinity.
-29. A qualified candidate is one that passes hard constraints, policy
+34. A qualified candidate is one that passes hard constraints, policy
     requirements, default-inclusion and metered opt-in gates, auto-routability,
     liveness, quota, and dispatchability. Power hints shape ranking inside that
     qualified set rather than replacing exact pins.
-30. For a given policy and qualified set, Fizeau prefers the lowest effective
-    marginal cost candidate whose power fit is sufficient for the policy intent.
+35. For a given policy and qualified set, Fizeau prefers the lowest effective
+    cost candidate whose power fit is sufficient for the policy intent.
     A zero-cost but substantially underpowered candidate should not beat an
     in-band candidate for routine `default` work solely because it is free. A
     subscription model may have `actual_cash_spend=false` and still carry a
     PAYG-equivalent effective cost for scoring.
-31. Local/fixed candidates are preferred by `cheap` and `default` when they are
+36. `cheap` selects the lowest effective-cost candidate with enough expected
+    capability for the request. It should naturally prefer nano, mini, local, or
+    fixed-cost candidates over maximum-quality frontier models when those
+    cheaper candidates are available and sufficient; this is a scoring outcome,
+    not a frontier-model exclusion gate.
+37. `default` selects a routine balanced candidate. It should avoid maximum
+    frontier models when lower-cost candidates satisfy the same routing
+    constraints and expected capability.
+38. Local/fixed candidates are preferred by `cheap` and `default` when they are
     eligible and capable. This preference never beats hard pins or
     `require[]`.
-32. `smart` prefers higher-capability subscription/cloud routes when healthy
+39. `smart` prefers higher-capability subscription/cloud routes when healthy
     and allowed.
-33. `air-gapped` is local-only through `require=["no_remote"]`.
-34. The router dispatches one selected candidate per request. Semantic retry or
+40. `air-gapped` is local-only through `require=["no_remote"]`.
+41. If at least one candidate is dispatchable under the user's explicit
+    constraints, automatic routing must select one candidate even when the
+    result is imperfect. If user constraints remove all candidates, routing
+    fails clearly and attributes the failure to those constraints.
+42. The router dispatches one selected candidate per request. Semantic retry or
     escalation belongs to the caller.
 
 ### Status and Evidence
 
-35. `ResolveRoute` returns the selected candidate plus the full candidate
+43. `ResolveRoute` returns the selected candidate plus the full candidate
     trace, power policy, sticky evidence, utilization evidence, and the selected
     model's catalog-projected power.
-36. `RouteStatus` reports recent decisions, cooldowns, provider reliability,
+44. `RouteStatus` reports recent decisions, cooldowns, provider reliability,
     sticky assignments, and routing-quality metrics. Routing quality is
     distinct from provider reliability.
-37. Session logs and final events record the actual attempted route and failure
+45. Session logs and final events record the actual attempted route and failure
     class. They use v0.11 `policy` / `power_policy` fields.
-38. When a route succeeds, fails, or rejects candidates, the evidence must be
+46. When a route succeeds, fails, or rejects candidates, the evidence must be
     explainable from the same assembled snapshot facts exposed by `fiz models`
     plus request-local constraints.
+47. Route evidence records the snapshot version, per-field freshness,
+    refresh-failure status, effective cost, cost source, billing kind, and
+    `actual_cash_spend` for selected and rejected candidates.
 
 ## Acceptance Criteria
 
@@ -226,7 +275,9 @@ formula, and routing trace construction.
 | AC-FEAT-004-05 | Pins override default inclusion and metered opt-in but not `require[]`; `air-gapped` plus a remote pin returns `ErrPolicyRequirementUnsatisfied`. | `go test ./internal/routing ./... -run Policy` |
 | AC-FEAT-004-06 | Soft power scoring penalizes undershooting `MinPower` more than overshooting `MaxPower` and does not replace an exact model pin. | `go test ./internal/routing ./... -run Power` |
 | AC-FEAT-004-07 | Route decisions consume the assembled snapshot, expose typed candidate rejection reasons, score components, selected endpoint/server instance, sticky evidence, and utilization evidence. | `go test ./... -run 'ResolveRoute|RouteStatus|routing_decision|ModelSnapshot'` |
-| AC-FEAT-004-08 | Removed v0.10 names are not advertised by policy listing, CLI help, or public service fields. | `go test ./agentcli ./cmd/fiz ./...` |
+| AC-FEAT-004-08 | `ResolveRoute` and `Execute` refresh stale routing-relevant snapshot fields through the lock-coordinated refresh path before scoring, while `fiz models` stays quick by default and `--refresh`/`--refresh-all` block explicitly. | `go test ./internal/discoverycache ./internal/modelregistry ./agentcli ./... -run 'Refresh|Fresh|Models'` |
+| AC-FEAT-004-09 | Subscription candidates use PAYG-equivalent effective cost for scoring while surfacing `actual_cash_spend=false`; pay-per-token candidates are hard-gated only when dispatch would create actual metered spend without opt-in. | `go test ./internal/routing ./... -run 'EffectiveCost|ActualCashSpend|Metered'` |
+| AC-FEAT-004-10 | Removed v0.10 names are not advertised by policy listing, CLI help, or public service fields. | `go test ./agentcli ./cmd/fiz ./...` |
 
 ## Constraints and Assumptions
 
@@ -234,7 +285,8 @@ formula, and routing trace construction.
   and cross-harness orchestration strategy.
 - Provider configs remain transport/auth definitions.
 - Catalog data can be refreshed explicitly, but normal request execution is
-  offline with respect to manifest fetching.
+  offline with respect to manifest fetching. Runtime snapshot facts may refresh
+  synchronously before autorouting when stale.
 - Benchmark inputs inform power, but deployment class and cost prevent local
   community copies from tying managed frontier models solely on one benchmark.
 

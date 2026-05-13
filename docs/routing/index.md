@@ -35,8 +35,9 @@ endpoint, or harness.
 `fiz models` is the snapshot-first inspection surface. It stays quick and
 returns stale data immediately when freshness is pending. `fiz models --refresh`
 blocks on routing-relevant stale fields, and `fiz models --refresh-all` blocks
-on all refreshable fields. Without a running server, stale output should point
-the operator toward starting the server or using `--refresh`.
+on all refreshable fields. If no DDx server or other long-running maintainer is
+keeping the snapshot warm, stale output should point the operator toward
+starting that freshness heartbeat or using `--refresh`.
 
 Useful commands:
 
