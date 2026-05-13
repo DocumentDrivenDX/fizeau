@@ -1,0 +1,59 @@
+{
+  "attempt_id": "20260513T202413-04a3fe23",
+  "bead_id": "fizeau-63ea7070",
+  "base_rev": "5b61d87693260843ff3d0aceaa563359f6746f84",
+  "created_at": "2026-05-13T20:24:16.66164358Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-63ea7070",
+    "title": "Add end-to-end snapshot autorouting fixtures",
+    "description": "Add end-to-end fixture coverage that proves the combined snapshot-first autorouting contract across CLI/service/routing surfaces.\\n\\nScenarios to cover:\\n- cheap chooses nano/mini/local over gpt-5.5 when sufficient.\\n- default chooses the cheapest routine-sufficient candidate, not frontier, when lower-cost candidates are healthy.\\n- smart can select gpt-5.5 when quality dominates.\\n- no_remote forces local selection or a clear constraint failure when all locals are down.\\n- metered opt-out rejects actual-cash-spend pay-per-token providers; opt-in lets them win if utility is best.\\n- exact model pin selects the pinned model or fails clearly when undispatchable.\\n- stale unknown health is refreshed or penalized according to snapshot freshness state; known-down is excluded.\\n- repeated fiz models does not create refresh storms.\\n\\nIn scope: fixture snapshots, integration-style tests, CLI golden JSON where useful.\\n\\nOut of scope: large live-provider tests; this bead should be deterministic/offline.",
+    "acceptance": "1. go test ./... -run 'Test.*SnapshotAutorouting|Test.*EffectiveCostRouting|Test.*NoRemote|Test.*MeteredOptIn|Test.*RefreshStorm' -count=1 passes.\\n2. Test fixtures live under an appropriate testdata directory and contain no live credentials.\\n3. At least one test replays a route decision using only fixture snapshot plus client inputs and asserts no provider call occurs.\\n4. At least one CLI-level test exercises fiz models stale behavior and route-status JSON evidence from fixtures.\\n5. go test ./... -count=1 passes.",
+    "parent": "fizeau-4847c99e",
+    "labels": [
+      "area:routing",
+      "area:test",
+      "kind:test",
+      "plan-2026-05-13-snapshot-routing"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-13T20:20:33Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-13T20:24:13.702590242Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-13T20:20:33.950980793Z",
+      "schema_version": 1,
+      "spec-id": "FEAT-004"
+    }
+  },
+  "governing": [
+    {
+      "id": "FEAT-004",
+      "path": "docs/helix/01-frame/features/FEAT-004-model-routing.md",
+      "title": "Feature Specification: FEAT-004 — Shared Model Catalog and Policy Routing"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260513T202413-04a3fe23",
+    "prompt": ".ddx/executions/20260513T202413-04a3fe23/prompt.md",
+    "manifest": ".ddx/executions/20260513T202413-04a3fe23/manifest.json",
+    "result": ".ddx/executions/20260513T202413-04a3fe23/result.json",
+    "checks": ".ddx/executions/20260513T202413-04a3fe23/checks.json",
+    "usage": ".ddx/executions/20260513T202413-04a3fe23/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-63ea7070-20260513T202413-04a3fe23"
+  },
+  "prompt_sha": "789517246c7d0d6bf70a4b91d8009827b29576362960bfd90ffb62c7a1556cbd"
+}
