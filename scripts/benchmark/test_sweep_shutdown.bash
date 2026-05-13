@@ -253,6 +253,7 @@ wait_for_no_sweep_processes() {
 start_sweep() {
   PATH="${TMP_ROOT}/bin:${PATH}" \
   SWEEP_SHUTDOWN_LOG="${TMP_ROOT}/sweep.log" \
+  BENCHMARK_ARTIFACT_DIR="${TMP_ROOT}/artifacts" \
   BENCHMARK_CONFIRM_DELAY=0 \
   BENCHMARK_SWEEP_TERM_GRACE_SECONDS=5 \
   HARBOR_SKIP_NATIVE_HOME=1 \

@@ -326,6 +326,9 @@ else
   OUT="$(abs_path "${OUT}")"
 fi
 
+ARTIFACT_DIR="${BENCHMARK_ARTIFACT_DIR:-${REPO_ROOT}/benchmark-results/bin}"
+ARTIFACT_DIR="$(abs_path "${ARTIFACT_DIR}")"
+
 need() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "missing required command: $1" >&2
@@ -375,11 +378,11 @@ container_goarch() {
 
 build_artifacts() {
   need go
-  mkdir -p "${REPO_ROOT}/benchmark-results/bin"
+  mkdir -p "${ARTIFACT_DIR}"
 
   CONTAINER_GOARCH="$(container_goarch)"
-  BENCH_BIN="${REPO_ROOT}/benchmark-results/bin/fiz-bench"
-  FIZ_ARTIFACT="${REPO_ROOT}/benchmark-results/bin/fiz-linux-${CONTAINER_GOARCH}"
+  BENCH_BIN="${ARTIFACT_DIR}/fiz-bench"
+  FIZ_ARTIFACT="${ARTIFACT_DIR}/fiz-linux-${CONTAINER_GOARCH}"
 
   echo "Building benchmark runner: ${BENCH_BIN}"
   rm -f "${BENCH_BIN}"
@@ -428,7 +431,7 @@ prepare_home_tarball() {
   fi
 
   local out_dir out_path tmp
-  out_dir="${REPO_ROOT}/benchmark-results/bin/native-homes"
+  out_dir="${ARTIFACT_DIR}/native-homes"
   out_path="${out_dir}/${out_name}"
   mkdir -p "${out_dir}"
   tmp="$(mktemp -d)"
@@ -456,8 +459,8 @@ prepare_home_tarball() {
 
 prepare_agent_runtime_bundle() {
   local context_dir image tag container_id tmp_bundle_dir node_version claude_version codex_version pi_version opencode_version
-  context_dir="${REPO_ROOT}/benchmark-results/bin/agent-runtime-context-${CONTAINER_GOARCH}"
-  HARBOR_AGENT_RUNTIME_BUNDLE="${REPO_ROOT}/benchmark-results/bin/agent-runtime-linux-${CONTAINER_GOARCH}.tgz"
+  context_dir="${ARTIFACT_DIR}/agent-runtime-context-${CONTAINER_GOARCH}"
+  HARBOR_AGENT_RUNTIME_BUNDLE="${ARTIFACT_DIR}/agent-runtime-linux-${CONTAINER_GOARCH}.tgz"
 
   # Operator escape hatch: skip docker rebuild and reuse the existing bundle.
   # Useful when the upstream agent image fails to build (e.g., transitive npm

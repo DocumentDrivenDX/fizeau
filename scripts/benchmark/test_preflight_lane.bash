@@ -298,6 +298,7 @@ run_sweep_script() {
     PATH="${TMP_ROOT}/bin:${PATH}" \
       REAL_CURL="${REAL_CURL}" \
       PREFLIGHT_TEST_CURL_LOG="${TMP_ROOT}/curl.log" \
+      BENCHMARK_ARTIFACT_DIR="${TMP_ROOT}/artifacts" \
       BENCHMARK_CONFIRM_DELAY=0 \
       OMLX_API_KEY=local \
       VLLM_API_KEY=local \
