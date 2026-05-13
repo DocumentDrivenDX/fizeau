@@ -22,3 +22,6 @@ hidden from this index.
 | [ADR-007](ADR-007) | Accepted | 2026-04-27 | Sampling Profiles Belong in the Model Catalog |
 | [ADR-008](ADR-008) | Accepted | 2026-05-05 | Service Package and Transcript Boundaries |
 | [ADR-009](ADR-009) | Proposed | 2026-05-09 | Routing Surface Redesign |
+| [ADR-010](ADR-010) | Accepted | 2026-05-11 | Reasoning Wire Form Belongs in the Model Catalog |
+| [ADR-011](ADR-011) | Proposed | 2026-05-12 | Cost-Based Routing With Quota Pools |
+| [ADR-012](ADR-012) | Accepted | 2026-05-11 | Per-Source On-Disk Cache for Discovery + Runtime Signals |

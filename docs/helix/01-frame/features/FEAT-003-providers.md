@@ -32,9 +32,9 @@ Provider data feeds the routing engine in three ways:
 - policy defaults: billing classification and `include_by_default`.
 
 ADR-009 makes provider billing and default inclusion part of the v0.11 routing
-contract. Pay-per-token providers are default-deny for automatic routing unless
-the provider is included by default and explicit metered-spend opt-in allows
-them.
+contract. Pay-per-token providers are default-deny for unpinned automatic
+routing unless the provider is included by default and explicit metered-spend
+opt-in allows them.
 
 ## Problem Statement
 
@@ -123,7 +123,7 @@ providers:
     inclusion is necessary but not sufficient.
 17. Explicit pins (`Provider`, `Harness`, or exact `Model`) override
     `include_by_default`, so an operator can deliberately use a provider that
-    is excluded from default automatic routing.
+    is excluded from unpinned automatic routing.
 18. Explicit pins also override metered opt-in, so a deliberately pinned
     pay-per-token provider or exact model can be considered without enabling
     pay-per-token providers for automatic routing.

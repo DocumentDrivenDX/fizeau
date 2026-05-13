@@ -117,7 +117,7 @@ Hard pins still narrow the candidate set before scoring:
 
 Pins override default inclusion and metered opt-in: an explicitly pinned
 pay-per-token provider or exact model may be considered even when that provider
-is default-deny for automatic routing.
+is default-deny for unpinned automatic routing.
 
 Pins do not override policy `require[]`. In particular, `Policy=air-gapped`
 adds `require=["no_remote"]`; pinning `Provider=openrouter`, `Harness=claude`,
@@ -155,7 +155,7 @@ model.
 - Historical ADR prose remains partly stale unless clearly marked. ADR-005 and
   ADR-006 are preserved as history, but this ADR owns the v0.11 public surface.
 - Operators with pay-per-token providers must opt in deliberately when they
-  want those providers to participate in default automatic routing.
+  want those providers to participate in unpinned automatic routing.
 
 ## Migration
 

@@ -130,7 +130,7 @@ formula, and routing trace construction.
     - `Model` means only that exact model identity may be used.
 19. Unpinned automatic routing excludes pay-per-token candidates unless the
     provider is included by default and metered routing is explicitly opted in
-    by user config or catalog policy.
+    by user config.
 20. Pins override provider `include_by_default` and metered opt-in: a
     deliberately pinned default-deny pay-per-token provider can be considered.
 21. Pins do not override policy `require[]`; `air-gapped` plus a remote
