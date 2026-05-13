@@ -1,0 +1,59 @@
+{
+  "attempt_id": "20260513T181913-39279aa0",
+  "bead_id": "fizeau-e415fad3",
+  "base_rev": "1ef079f4fee9f7df066db8fc68da1c12c8118ea2",
+  "created_at": "2026-05-13T18:19:17.051354742Z",
+  "requested": {
+    "harness": "codex",
+    "model": "gpt-5.4-mini",
+    "prompt": "synthesized"
+  },
+  "bead": {
+    "id": "fizeau-e415fad3",
+    "title": "Add refresh coordinator semantics without CLI refresh storms",
+    "description": "Implement or tighten Fizeau's synchronous refresh coordinator so stale health/quota/model facts are refreshed through one lock-coordinated path instead of each CLI process launching its own probes.\\n\\nDesired behavior:\\n- Fizeau has no required daemon; its contract is synchronous refresh plus cross-process locks, single-flight/coalescing, TTLs, cooldowns, bounded concurrency, and atomic snapshot writes.\\n- Repeated refresh requests for the same provider/field class coalesce into one in-flight operation per TTL/cooldown window.\\n- Refreshes are bounded, concurrent, and per-provider rate/cooldown aware.\\n- Routing-relevant refresh covers health, quota, model availability/discovery, context/tools/reasoning support, billing/effective cost metadata where dynamic, and utilization if available.\\n- Refresh results update the fiz models snapshot atomically with version/timestamp/freshness metadata.\\n- Refresh failure records refresh_failed/stale state for scoring and diagnostics; it must not create an unbounded retry loop.\\n- Long-running callers such as a DDx server can maintain async freshness by invoking this synchronous API from their own heartbeat; route correctness must not depend on that integration.\\n\\nIn scope: cache/refresh coordinator internals, process lock/single-flight logic, public refresh/warmup entrypoint for long-running callers, focused tests using fake refreshers.\\n\\nOut of scope: CLI flag UX; route scoring; changing DDx upstream server behavior if that lives outside this repo.",
+    "acceptance": "1. go test ./internal/modelregistry/... ./internal/runtimesignals/... ./agentcli/... -run 'Refresh|SingleFlight|Coalesc|Stale|Warm|Heartbeat' -count=1 passes.\\n2. A test proves repeated stale refresh requests create at most one in-flight refresh per provider/field key.\\n3. A test proves refresh failure records refresh_failed or stale freshness state without immediately retrying in a loop.\\n4. A test proves successful refresh atomically advances snapshot version or captured_at metadata.\\n5. A public sync refresh/warmup entrypoint exists for long-running callers, and tests show a caller can invoke it periodically without bypassing locks.\\n6. rg -n 'single.?flight|coalesc|refresh_failed|refresh_all|RefreshAll|RefreshRouting|Warm' internal agentcli service*.go returns production coverage.",
+    "parent": "fizeau-4847c99e",
+    "labels": [
+      "area:cache",
+      "area:service",
+      "kind:feature",
+      "plan-2026-05-13-snapshot-routing"
+    ],
+    "metadata": {
+      "claimed-at": "2026-05-13T18:16:15Z",
+      "claimed-machine": "eitri",
+      "claimed-pid": "2683682",
+      "events": [
+        {
+          "actor": "erik",
+          "body": "{\"rationale\":\"\",\"score\":0,\"suggested_fixes\":null,\"waivers_applied\":null,\"warning\":\"lint hook: dispatch-failure: ResolveRoute: policy \\\"air-gapped\\\" has no candidate satisfying local endpoint: 5 candidates rejected\"}",
+          "created_at": "2026-05-13T18:19:13.403640613Z",
+          "kind": "bead-quality.lint",
+          "source": "ddx agent execute-loop",
+          "summary": "warning score=0"
+        }
+      ],
+      "execute-loop-heartbeat-at": "2026-05-13T18:16:15.925718952Z",
+      "schema_version": 1,
+      "spec-id": "ADR-012"
+    }
+  },
+  "governing": [
+    {
+      "id": "ADR-012",
+      "path": "docs/helix/02-design/adr/ADR-012-per-source-on-disk-cache.md",
+      "title": "ADR-012: Per-Source On-Disk Cache for Discovery + Runtime Signals"
+    }
+  ],
+  "paths": {
+    "dir": ".ddx/executions/20260513T181913-39279aa0",
+    "prompt": ".ddx/executions/20260513T181913-39279aa0/prompt.md",
+    "manifest": ".ddx/executions/20260513T181913-39279aa0/manifest.json",
+    "result": ".ddx/executions/20260513T181913-39279aa0/result.json",
+    "checks": ".ddx/executions/20260513T181913-39279aa0/checks.json",
+    "usage": ".ddx/executions/20260513T181913-39279aa0/usage.json",
+    "worktree": "var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-e415fad3-20260513T181913-39279aa0"
+  },
+  "prompt_sha": "52fbaa61833658e6c0a46f082c2b9fa1825fcd89d29bb820b1a36c50b609534f"
+}
