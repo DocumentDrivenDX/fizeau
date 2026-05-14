@@ -6,6 +6,7 @@ package openaicompat
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,14 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/packages/param"
 )
+
+// DefaultConnectTimeout bounds the TCP connect phase of every request issued
+// by the OpenAI-compatible client. Go's net/http default Transport uses a
+// zero-value net.Dialer with no Timeout, which on Linux waits for the kernel's
+// full SYN-retransmit window (~30s) before surfacing a dial-class failure.
+// A dead local endpoint is a routing input — not a slow upstream — so the
+// connect phase is bounded independently of the request-streaming timeout.
+const DefaultConnectTimeout = 5 * time.Second
 
 // Config contains the protocol/client settings shared by providers that speak
 // the OpenAI-compatible Chat Completions API.
@@ -36,18 +45,30 @@ type Config struct {
 	// RuntimeSignalObserver, when set, receives the raw response headers,
 	// request latency, and any terminal error for every provider response.
 	RuntimeSignalObserver func(http.Header, time.Duration, error)
+	// ConnectTimeout bounds the TCP connect phase (dial) for every request.
+	// Zero or negative values fall back to DefaultConnectTimeout (5s). The
+	// request-streaming timeout is intentionally not bounded here: large
+	// completions legitimately take minutes once the connection is established.
+	ConnectTimeout time.Duration
 }
 
 // Client wraps openai-go with agent-native request and response conversion.
 type Client struct {
-	client *oai.Client
+	client         *oai.Client
+	connectTimeout time.Duration
 }
 
 // NewClient creates an OpenAI-compatible protocol client.
 func NewClient(cfg Config) *Client {
+	connectTimeout := cfg.ConnectTimeout
+	if connectTimeout <= 0 {
+		connectTimeout = DefaultConnectTimeout
+	}
+	httpClient := newHTTPClient(connectTimeout)
 	opts := []option.RequestOption{
 		option.WithBaseURL(cfg.BaseURL),
 		option.WithMaxRetries(0),
+		option.WithHTTPClient(httpClient),
 	}
 	if cfg.APIKey != "" {
 		opts = append(opts, option.WithAPIKey(cfg.APIKey))
@@ -72,7 +93,28 @@ func NewClient(cfg Config) *Client {
 	}
 
 	client := oai.NewClient(opts...)
-	return &Client{client: &client}
+	return &Client{client: &client, connectTimeout: connectTimeout}
+}
+
+// newHTTPClient returns an *http.Client whose Transport explicitly bounds the
+// TCP connect phase via net.Dialer.Timeout. The remaining transport knobs
+// mirror http.DefaultTransport so connection pooling, HTTP/2 negotiation, and
+// TLS handshake behavior stay identical to stdlib defaults.
+func newHTTPClient(connectTimeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   connectTimeout,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	return &http.Client{Transport: transport}
 }
 
 // quotaHeaderMiddleware returns a middleware that runs `parser` on every
