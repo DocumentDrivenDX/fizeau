@@ -111,6 +111,7 @@ func TestLoadSweepPlanHasAllLanes(t *testing.T) {
 		"fiz-openrouter-qwen3-6-27b",
 		"fiz-vidar-omlx-qwen3-6-27b",
 		"fiz-vidar-ds4",
+		"fiz-vidar-ds4-mtp",
 		"fiz-bragi-club-3090-qwen3-6-27b",
 		"fiz-grendel-rapid-mlx-qwen3-6-27b",
 		"fiz-sindri-vllm-qwen3-6-27b",

@@ -787,6 +787,40 @@ lanes:
       through the headline pass-rate table, not the within-Qwen
       comparison group.
 
+  - id: fiz-vidar-ds4-mtp
+    profile_id: vidar-ds4-mtp
+    lane_type: fiz_provider_native
+    comparison_groups: []
+    resource_group: rg-vidar-ds4
+    fizeau_env:
+      FIZEAU_PROVIDER: ds4
+      FIZEAU_MODEL: "deepseek-v4-flash"
+      FIZEAU_BASE_URL: "http://192.168.2.106:1236/v1"
+      FIZEAU_API_KEY_ENV: DS4_API_KEY
+      # TODO(erik): confirm the exact ds4 env or request param that enables
+      # multi-token prediction. Placeholder name follows the FIZEAU_*
+      # passthrough convention used elsewhere in this file.
+      FIZEAU_DS4_MTP: "true"
+    model_family: deepseek-v4-flash
+    model_id: "deepseek-v4-flash"
+    quant_label: ds4-native-bf16-mtp
+    provider_surface: vidar-ds4
+    runtime: ds4
+    hardware_label: vidar-apple-m
+    endpoint: "http://192.168.2.106:1236/v1"
+    sampling:
+      temperature: 0.6
+      reasoning: 4096
+      top_p: 0.95
+      top_k: 20
+    equivalence_note: >-
+      Same server, port, and base model as fiz-vidar-ds4 (rg-vidar-ds4
+      enforces mutual exclusion); the only operational difference is
+      Multi-Token Prediction enabled at request time. Output cells are
+      partitioned by lane id so MTP-on and MTP-off attempts compare
+      directly via the runtime_props capture (server-reported MTP state
+      lands in the per-cell evidence).
+
   - id: fiz-vidar-omlx-qwen3-6-27b
     profile_id: vidar-qwen3-6-27b
     lane_type: fiz_provider_native
