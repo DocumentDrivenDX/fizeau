@@ -203,6 +203,8 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 	tasksDir := fs.String("tasks-dir", "", "Path to TB-2 tasks directory; when set, harbor run is used for grading")
 	jobs := fs.Int("jobs", 1, "Number of tuple runs to execute concurrently (default: 1)")
 	noConsecutiveFailureHalt := fs.Bool("no-consecutive-failure-halt", false, "Disable lane abort after 5 consecutive identical graded_fail/harness_crash reports")
+	noCellRetry := fs.Bool("no-cell-retry", false, "Disable per-cell retry on transient errors (connection refused, 5xx, EOF/parse). Default: retry indefinitely with capped backoff until parent context is cancelled.")
+	cellRetryBackoffMax := fs.Duration("cell-retry-backoff-max", 60*time.Second, "Maximum backoff between cell retries on transient errors (exponential, starting at 1s)")
 	var extraEnv repeatStringFlag
 	fs.Var(&extraEnv, "env", "Extra KEY=VALUE environment pair to pass to Harbor/Fizeau; may be repeated")
 	if err := fs.Parse(args); err != nil {
@@ -367,6 +369,49 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 		return tupleResult{report: report, skipped: skipped, err: err}
 	}
 
+	// runTupleWithRetry wraps runTuple with an indefinite retry loop on
+	// transient errors (server bounce, network drop, mid-stream cutoff).
+	// Backoff is exponential starting at 1s, capped at cellRetryBackoffMax.
+	// The loop is interruptible via parentCtx — ctrl-C/SIGTERM cancels the
+	// wait and returns the last result so the caller can decide what to do.
+	runTupleWithRetry := func(spec tupleSpec) tupleResult {
+		if *noCellRetry {
+			return runTuple(spec)
+		}
+		backoff := 1 * time.Second
+		maxBackoff := *cellRetryBackoffMax
+		if maxBackoff <= 0 {
+			maxBackoff = 60 * time.Second
+		}
+		attempt := 0
+		for {
+			result := runTuple(spec)
+			if result.err != nil || result.skipped {
+				return result
+			}
+			if !matrixErrorIsTransient(result.report.Error) {
+				return result
+			}
+			attempt++
+			fmt.Fprintf(os.Stderr,
+				"[matrix] lane=%s task=%s rep=%d transient failure (attempt %d): %s — retrying in %s\n",
+				matrixLaneID(spec.harness, spec.prof.ID),
+				spec.task.ID, spec.rep, attempt,
+				matrixErrorPreview(result.report.Error), backoff)
+			select {
+			case <-time.After(backoff):
+			case <-parentCtx.Done():
+				return result
+			}
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		}
+	}
+
 	var results []tupleResult
 	if consecutiveFailureHalt {
 		if concurrency > 1 {
@@ -374,7 +419,7 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 		}
 		trackers := map[string]*matrixConsecutiveFailureTracker{}
 		for _, spec := range tuples {
-			result := runTuple(spec)
+			result := runTupleWithRetry(spec)
 			results = append(results, result)
 			if result.err != nil {
 				break
@@ -411,7 +456,7 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 				defer wg.Done()
 				sem <- struct{}{}
 				defer func() { <-sem }()
-				results[i] = runTuple(spec)
+				results[i] = runTupleWithRetry(spec)
 			}(i, spec)
 		}
 		wg.Wait()
@@ -552,7 +597,56 @@ func matrixReportCountsForFailureHalt(report matrixRunReport) bool {
 	if strings.TrimSpace(report.Error) == "" {
 		return false
 	}
+	if matrixErrorIsTransient(report.Error) {
+		return false
+	}
 	return report.FinalStatus == "graded_fail" || report.FinalStatus == "harness_crash"
+}
+
+// matrixTransientErrorPatterns identifies errors that indicate a temporary
+// upstream condition (server bounce, network drop, mid-stream cutoff) rather
+// than a reproducible logical failure. Matches are substring, case-insensitive.
+//
+// Three classes per the operator decision:
+//   - connection-class: server/network unreachable
+//   - HTTP 5xx: upstream returned a server-error status code
+//   - JSON parse / unexpected EOF: stream cutoff (often local server OOM/kill)
+//
+// HTTP 429 is intentionally NOT included — rate-limits are persistent enough
+// that an indefinite retry can stall the sweep; surface them as failures so
+// they're visible and tunable at the resource-group / sampling level.
+var matrixTransientErrorPatterns = []string{
+	// connection-class
+	"connection refused",
+	"connection reset",
+	"no route to host",
+	"network is unreachable",
+	"i/o timeout",
+	"dial tcp",
+	"context deadline exceeded",
+	"broken pipe",
+	"server closed",
+	"eof",
+	// JSON parse / mid-stream cutoff
+	"unexpected end of",
+	"invalid character",
+	"unexpected eof",
+}
+
+// matrixTransientHTTP5xx matches "HTTP <5xx>" or "status <5xx>" tokens.
+var matrixTransientHTTP5xx = regexp.MustCompile(`\b(?:http[ /]|status[ :=]?)\s*5\d{2}\b`)
+
+func matrixErrorIsTransient(errStr string) bool {
+	s := strings.ToLower(strings.TrimSpace(errStr))
+	if s == "" {
+		return false
+	}
+	for _, p := range matrixTransientErrorPatterns {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return matrixTransientHTTP5xx.MatchString(s)
 }
 
 func matrixFailureHash(report matrixRunReport) string {

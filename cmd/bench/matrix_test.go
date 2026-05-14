@@ -402,7 +402,7 @@ func TestHarborAgentArgsIncludesReferenceHarnessAdapters(t *testing.T) {
 }
 
 func TestConsecutiveFailureHaltTracker(t *testing.T) {
-	t.Run("graded fail provider errors halt", func(t *testing.T) {
+	t.Run("graded fail logical errors halt", func(t *testing.T) {
 		tracker := newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
 		var aborted bool
 		var details matrixFailureFingerprint
@@ -410,7 +410,7 @@ func TestConsecutiveFailureHaltTracker(t *testing.T) {
 			aborted, details = tracker.Observe(matrixRunReport{
 				TaskID:      fmt.Sprintf("task-%d", i),
 				FinalStatus: "graded_fail",
-				Error:       "agent: provider error: connection refused",
+				Error:       "agent: tool schema validation failed",
 			})
 		}
 		if !aborted {
@@ -418,6 +418,45 @@ func TestConsecutiveFailureHaltTracker(t *testing.T) {
 		}
 		if details.hash == "" || len(details.taskIDs) != matrixConsecutiveFailureLimit {
 			t.Fatalf("abort details incomplete: %+v", details)
+		}
+	})
+
+	t.Run("transient connection errors never halt", func(t *testing.T) {
+		tracker := newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
+		for i := 1; i <= matrixConsecutiveFailureLimit*2; i++ {
+			if aborted, _ := tracker.Observe(matrixRunReport{
+				TaskID:      fmt.Sprintf("task-%d", i),
+				FinalStatus: "graded_fail",
+				Error:       "agent: provider error: connection refused",
+			}); aborted {
+				t.Fatalf("tracker aborted on transient (connection refused) failure %d", i)
+			}
+		}
+	})
+
+	t.Run("transient 5xx never halt", func(t *testing.T) {
+		tracker := newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
+		for i := 1; i <= matrixConsecutiveFailureLimit*2; i++ {
+			if aborted, _ := tracker.Observe(matrixRunReport{
+				TaskID:      fmt.Sprintf("task-%d", i),
+				FinalStatus: "graded_fail",
+				Error:       "upstream returned HTTP 502 Bad Gateway",
+			}); aborted {
+				t.Fatalf("tracker aborted on transient 5xx failure %d", i)
+			}
+		}
+	})
+
+	t.Run("transient mid-stream EOF never halt", func(t *testing.T) {
+		tracker := newMatrixConsecutiveFailureTracker(matrixConsecutiveFailureLimit)
+		for i := 1; i <= matrixConsecutiveFailureLimit*2; i++ {
+			if aborted, _ := tracker.Observe(matrixRunReport{
+				TaskID:      fmt.Sprintf("task-%d", i),
+				FinalStatus: "graded_fail",
+				Error:       "stream: unexpected EOF after 1280 tokens",
+			}); aborted {
+				t.Fatalf("tracker aborted on transient EOF failure %d", i)
+			}
 		}
 	})
 
@@ -480,6 +519,42 @@ func TestConsecutiveFailureHaltTracker(t *testing.T) {
 			t.Fatal("tracker aborted despite a one-byte error difference")
 		}
 	})
+}
+
+func TestMatrixErrorIsTransient(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"empty", "", false},
+		{"connection refused", "dial tcp 10.0.0.1:1236: connection refused", true},
+		{"no route to host", "dial tcp: no route to host", true},
+		{"i/o timeout", "Get http://...: i/o timeout", true},
+		{"context deadline", "context deadline exceeded while reading response", true},
+		{"connection reset", "read tcp: connection reset by peer", true},
+		{"broken pipe", "write: broken pipe", true},
+		{"server closed", "http2: server closed idle connection", true},
+		{"http 502", "upstream returned HTTP 502 Bad Gateway", true},
+		{"http 503", "status: 503 Service Unavailable", true},
+		{"http 504", "http 504 Gateway Timeout", true},
+		{"unexpected eof", "stream: unexpected EOF after 1280 tokens", true},
+		{"json invalid char", "json: invalid character '<' looking for beginning of value", true},
+		{"raw eof", "EOF", true},
+		// negatives
+		{"graded fail logical", "agent: tool schema validation failed", false},
+		{"http 429 rate limit", "upstream returned HTTP 429 Too Many Requests", false},
+		{"http 4xx", "upstream returned HTTP 400 Bad Request", false},
+		{"context canceled (user ctrl-c)", "context canceled", false},
+		{"plain harness crash", "harness_crash: adapter not found", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matrixErrorIsTransient(tc.in); got != tc.want {
+				t.Fatalf("matrixErrorIsTransient(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestConsecutiveFailureHaltMatrixAbort(t *testing.T) {
