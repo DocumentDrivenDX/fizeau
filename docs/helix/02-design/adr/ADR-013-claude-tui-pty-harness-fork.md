@@ -48,6 +48,130 @@ ddx:
 > recorder reference in `harness-golden-integration.md` are removed
 > alongside this status flip.
 >
+> ---
+>
+> ### Prior art surveyed (2026-05-14)
+>
+> Two reference implementations exist for driving Claude Code outside
+> the `claude --print` batch path. Future re-proposal does not have to
+> redo this survey.
+>
+> | Project | Transport | Session lifetime | Notes |
+> |---------|-----------|------------------|-------|
+> | [smithersai/claude-p](https://github.com/smithersai/claude-p) | in-process PTY (zmux) + `--settings '<inline-json>'` to register `SessionStart`/`Stop` hooks | per-invocation, one-shot | A small ANSI scanner answers Ink's DA1/DA2/DSR/XTVERSION/window-size startup probes — no full terminal emulator. Final text + usage extracted by reading the JSONL transcript whose path is delivered in the `Stop` hook payload. README explicitly notes "client-side restrictions ... are fundamentally unenforceable"; no claim about subscription billing. |
+> | [dexhorthy/shannon](https://github.com/dexhorthy/shannon) | tmux session + `tmux send-keys` | persistent across turns | Reads the same JSONL transcript by tailing `~/.claude/projects/`. Rejected as a transport choice for Fizeau per ADR-002 (tmux is not part of the core path), but informative as convergent evidence for the parsing seam. |
+>
+> The convergent insight from both projects: **the parsing seam is the
+> on-disk JSONL transcript at `~/.claude/projects/<workdir>/<id>.jsonl`,
+> not rendered TUI output, regardless of transport choice**.
+> `internal/pty/terminal` frame derivation and screen pattern-matching
+> are not required for normal prompt execution under either reference
+> design; they remain required only for the `/usage` quota probe.
+>
+> ### Design direction for re-proposal
+>
+> The following decisions are recorded here so the future ADR-013
+> re-proposer can adopt them without re-deriving the rationale. They
+> are constraints, not interface contract — CONTRACT-004 and ADR-014
+> remain unaffected and transport-agnostic.
+>
+> 1. **Transport**: in-process PTY via the existing `internal/pty/`
+>    library, with hooks registered via `--settings '<inline-json>'`
+>    (Anthropic-published extension point). The `--settings` flag is
+>    explicitly distinguished from the previously-forbidden batch flags
+>    (`--print`, `-p`, `--output-format`, `--stream-json`, `--effort`,
+>    `--model`, `--permission-mode`, `--dangerously-skip-permissions`)
+>    because it configures end-user-facing behavior the way a user's
+>    `~/.claude/settings.json` would, not an automation/batch mode. The
+>    batch-flag prohibition stands; the `--settings` carve-out is
+>    additive.
+>
+> 2. **Output parsing**: read the JSONL transcript whose path is
+>    delivered in the `Stop` hook payload. Do not parse rendered TUI
+>    output. `internal/pty/terminal` (vt10x) is not required for
+>    Execute; the PTY layer is reduced to "enough to keep Ink happy at
+>    startup" — a small responder for DA1 / DA2 / DSR / XTVERSION /
+>    window-size probes. A reusable startup-probe responder belongs in
+>    `internal/pty/` so the quota probe path can consume it too.
+>
+> 3. **Streaming progress events**: use `PreToolUse` / `PostToolUse`
+>    hooks (or whichever Claude Code hooks are documented for tool-call
+>    boundaries at re-proposal time) to emit `tool_call` / `tool_result`
+>    events during the turn. claude-p is batch (only `Stop`); Fizeau's
+>    CONTRACT-004 requires intermediate `ProgressEvents` so this hook
+>    set is load-bearing.
+>
+> 4. **Session lifetime**: **pooled long-lived sessions with `/clear`
+>    between turns, lifetime bounded by the fiz process**. Rationale:
+>    Ink + auth startup is the expensive part (~50–200 ms per claude-p's
+>    measurements); amortizing it across the many Execute calls within
+>    a single fiz invocation is worth the pool-management cost.
+>    `/clear` resets conversation state without dropping the warm
+>    session. The pool dies when fiz dies — no PID files, no daemon, no
+>    cross-invocation persistence.
+>
+>    Pool key default: **per `(harness, workdir)`**. Claude sessions
+>    are bound to a working directory at startup; switching workdirs in
+>    an existing session is not supported by `claude`. Per-(harness)
+>    only would force serialization across all workdirs;
+>    per-(harness, workdir, model) is overkill — model selection is
+>    cheap enough to run via `/model` post-`/clear`.
+>
+>    Pool depth default: **1 per key**. Adequate for serial agent
+>    loops, which is the standalone CLI's usage. Service-mode
+>    concurrency can raise this with no contract change.
+>
+>    Pool placement: the pool lives at package scope (a singleton in
+>    `internal/harnesses/claude-tui/`) or at service scope (a
+>    constructor-injected dependency on the Runner), **not as a field
+>    on the Runner struct**. Two `&claudetui.Runner{}` instances must
+>    share the pool, otherwise the dispatcher's "construct a fresh
+>    Runner per Execute" pattern defeats the amortization. CONTRACT-004
+>    invariant #6 forbids mutable quota/account state on the Runner
+>    but does not forbid shared transport state behind a singleton;
+>    this is the right escape valve.
+>
+> 5. **Empirical `/clear` semantics gate** (pre-implementation): verify
+>    against the installed Claude Code that `/clear`:
+>    - resets conversation history (the point of the command);
+>    - does NOT reset model selection (otherwise per-turn `/model` is
+>      required, lengthening the per-turn ritual);
+>    - does NOT reset permission mode;
+>    - does NOT close the auth/session token;
+>    - starts a new transcript file at a path observable from the
+>      next turn's `Stop` hook payload.
+>
+>    If any of those don't hold, the per-turn ritual lengthens but
+>    the pool model is still worthwhile. If `/clear` doesn't exist or
+>    is unstable in the installed version, fall back to per-Execute
+>    sessions (claude-p model) and accept the cold-start cost.
+>
+> 6. **Orphan reaper**: fiz crashes leave pooled `claude` processes
+>    orphaned. A startup reaper analogous to the existing
+>    `service_stale_harness_reaper*.go` kills `claude` processes whose
+>    parent fiz PID is gone, before the new fiz instance constructs
+>    its pool. No persistent state across fiz invocations — the
+>    reaper inspects live process state only.
+>
+> 7. **Hook conflict handling**: a user's existing
+>    `~/.claude/settings.json` may declare its own `SessionStart` /
+>    `Stop` / `PreToolUse` / `PostToolUse` hooks. The `--settings
+>    '<inline-json>'` mechanism's merge semantics (replace vs. layer)
+>    are unspecified in claude-p's README and need explicit
+>    verification before claude-tui can ship. If hooks are
+>    replace-not-merge, Fizeau must compose with whatever the operator
+>    already has, not stomp it.
+>
+> 8. **Subscription billing observation**: still required as a
+>    promotion gate per ADR-014. Neither claude-p nor shannon claims
+>    subscription billing; both route through the same `claude`
+>    binary and inherit whatever billing classification that binary's
+>    request paths produce. The re-proposal must include an empirical
+>    measurement showing PTY+hooks-driven Claude moves the `/usage`
+>    window, otherwise the fork's economic premise is unverified.
+>
+> ---
+>
 > The content below remains for historical reference of the original
 > proposal.
 

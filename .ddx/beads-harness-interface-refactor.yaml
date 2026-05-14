@@ -65,8 +65,10 @@ beads:
       - "Service struct gains a harnessByName(name string) harnesses.Harness method consulting the registered-harnesses field"
       - "service_refresh_scheduler.go owns a debounced ticker per registered QuotaHarness firing at QuotaFreshness()/2 and per AccountHarness whose AccountFreshness() differs from quota"
       - "Scheduler discovers harnesses by iterating service.harnessByName over the registry and type-asserting to QuotaHarness / AccountHarness independently"
+      - "Scheduler reads QuotaStatus before each potential refresh to obtain CapturedAt; on cache-cold (State=QuotaUnavailable) the scheduler always calls RefreshQuota"
       - "Scheduler skips a tick when last-known QuotaStatus.CapturedAt is within QuotaFreshness() of now (cache-freshness dedup is the scheduler's job, not RefreshQuota's)"
-      - "Fake-clock tests prove debounce cadence, single-flight respect via cache lock, and clean ctx cancel"
+      - "Startup refresh kickoff fires once on scheduler construction for every registered QuotaHarness / AccountHarness with a cache-cold state, per the cache-cold path in primary-harness-capability-baseline.md"
+      - "Fake-clock tests prove debounce cadence, single-flight respect via cache lock, startup kickoff, and clean ctx cancel"
       - "Per-harness Refresh*Async helpers remain in place for now (deleted in each harness's e-step)"
     depends_on:
       - BEAD-HARNESS-IF-02
@@ -81,7 +83,7 @@ beads:
       - "RefreshQuota probes unconditionally and uses the existing cache lock for single-flight (queued callers consume in-flight result)"
       - "Routing-preference mapping helper translates today's PreferClaude+freshness into RoutingPreference"
       - "package claude doc comment (doc.go or runner.go top) mirrors SupportedLimitIDs() and SupportedAliases() return values"
-      - "harnesstest.Run*Conformance suites pass against &claude.Runner{}"
+      - "harnesstest.RunHarnessConformance, RunQuotaHarnessConformance, RunAccountHarnessConformance, RunModelDiscoveryHarnessConformance all pass against &claude.Runner{}"
       - "Old per-harness cache I/O functions still exported and unchanged; both surfaces coexist"
     depends_on:
       - BEAD-HARNESS-IF-04
@@ -153,7 +155,7 @@ beads:
       - "Session-token-count quota source folds into RefreshQuota as internal fallback"
       - "CodexAuthPath/ReadCodexAccount become the AccountStatus/RefreshAccount implementation"
       - "package codex doc comment mirrors Supported* return values (e.g. aliases gpt, gpt-5)"
-      - "harnesstest conformance suites pass against &codex.Runner{}"
+      - "harnesstest.RunHarnessConformance, RunQuotaHarnessConformance, RunAccountHarnessConformance, RunModelDiscoveryHarnessConformance all pass against &codex.Runner{}"
     depends_on:
       - BEAD-HARNESS-IF-04
 
@@ -222,7 +224,7 @@ beads:
       - "AuthSnapshot is the source of AccountSnapshot; AccountFreshness() returns 7 days; QuotaFreshness() returns 15 minutes"
       - "Tier facts (Flash / Flash Lite / Pro) live in QuotaStatus.Windows with distinguishing LimitID; no tier names in Detail"
       - "package gemini doc comment mirrors Supported* return values including per-tier LimitIDs"
-      - "harnesstest conformance suites pass against &gemini.Runner{}"
+      - "harnesstest.RunHarnessConformance, RunQuotaHarnessConformance, RunAccountHarnessConformance, RunModelDiscoveryHarnessConformance all pass against &gemini.Runner{}"
     depends_on:
       - BEAD-HARNESS-IF-04
 
@@ -237,10 +239,11 @@ beads:
       - BEAD-HARNESS-IF-03
 
   - id: BEAD-HARNESS-IF-07C
-    title: "Migrate service_providers.go gemini consumers (if any) and service_models.go"
+    title: "Migrate service_models.go and service_subscription_quota.go gemini consumers"
     spec_ref: docs/helix/02-design/plan-2026-05-14-harness-interface-refactor.md
     acceptance_criteria:
       - "Gemini call sites in service_models.go use ModelDiscoveryHarness; service_subscription_quota.go uses QuotaStatus.RoutingPreference"
+      - "service_providers.go has no gemini call sites to migrate (verified by grep at Step 0)"
       - "go test ./... passes; structural-diff fixtures pass"
     depends_on:
       - BEAD-HARNESS-IF-07B
@@ -278,7 +281,7 @@ beads:
       - "OpenCodeModelEvidence and OpenCodeModelCost fate decided (unexport unless external consumer surfaces)"
       - "package opencode and package pi doc comments mirror SupportedAliases()"
       - "service_models.go drops opencodeharness and piharness imports"
-      - "harnesstest conformance suite passes against both Runners"
+      - "harnesstest.RunHarnessConformance and RunModelDiscoveryHarnessConformance both pass against &opencode.Runner{} and &pi.Runner{} (these harnesses do not implement QuotaHarness or AccountHarness)"
       - "go test ./... passes; structural-diff fixtures pass"
     depends_on:
       - BEAD-HARNESS-IF-04

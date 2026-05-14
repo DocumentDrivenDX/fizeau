@@ -638,10 +638,23 @@ Each step's PR is independently revertable.
   `claude` through an `internal/harnesses/anthropic/` neutral
   subpackage (since both snapshots are now package-private, sharing
   them requires only moving the type into a shared internal
-  package). Re-proposal still requires empirical evidence that
-  PTY-driven Claude lands on subscription quota while
-  `claude --print` lands on per-token API pricing — the structural
-  refactor here does not validate that premise.
+  package).
+
+  ADR-013's withdrawal note records design constraints for the
+  re-proposal — prior art surveyed (claude-p, shannon),
+  transcript-JSONL-as-evidence convergence, hooks-driven transport
+  via `--settings '<inline-json>'`, pooled long-lived sessions with
+  `/clear` between turns bounded by the fiz process lifetime, pool
+  key per `(harness, workdir)` at package or service scope (not on
+  the Runner struct), startup orphan reaper analogous to the
+  existing `service_stale_harness_reaper*.go`, hook-conflict
+  handling against operator `~/.claude/settings.json`, and the
+  pre-implementation gate that verifies `/clear` semantics against
+  the installed Claude Code version. Re-proposal still requires
+  empirical evidence that PTY+hooks-driven Claude moves the
+  `/usage` window — the structural refactor here does not validate
+  that premise. CONTRACT-004 and ADR-014 are transport-agnostic and
+  unaffected by these constraints; they live below the interface.
 - **`HarnessConfig` registry cleanup.** The current `HarnessConfig`
   struct mixes interface-relevant metadata with subprocess-specific
   knobs. Splitting these is a separate cleanup; CONTRACT-004 does
