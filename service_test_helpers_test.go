@@ -12,8 +12,9 @@ func newTestService(t testing.TB, opts ServiceOptions, options ...testServiceOpt
 	t.Helper()
 
 	svc := &service{
-		opts:     opts,
-		registry: harnesses.NewRegistry(),
+		opts:             opts,
+		registry:         harnesses.NewRegistry(),
+		harnessInstances: defaultHarnessInstances(),
 	}
 	for _, option := range options {
 		option(svc)

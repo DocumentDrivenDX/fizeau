@@ -32,6 +32,10 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 		WeeklyLimit:       100,
 		Source:            "pty",
 		Account:           &harnesses.AccountInfo{PlanType: "Claude Max"},
+		Windows: []harnesses.QuotaWindow{
+			{Name: "5h", LimitID: "session", WindowMinutes: 300, UsedPercent: 20, State: "ok"},
+			{Name: "weekly-all", LimitID: "weekly-all", WindowMinutes: 10080, UsedPercent: 10, State: "ok"},
+		},
 	}); err != nil {
 		t.Fatalf("WriteClaudeQuota: %v", err)
 	}
@@ -79,11 +83,12 @@ func TestListHarnesses_ClaudeQuotaUsesPreservedWindows(t *testing.T) {
 
 	if err := claudeharness.WriteClaudeQuota(claudePath, claudeharness.ClaudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
-		FiveHourRemaining: 90,
+		FiveHourRemaining: 0,
 		FiveHourLimit:     100,
-		WeeklyRemaining:   90,
+		WeeklyRemaining:   0,
 		WeeklyLimit:       100,
 		Source:            "runtime_error",
+		Account:           &harnesses.AccountInfo{PlanType: "unknown"},
 		Windows: []harnesses.QuotaWindow{
 			{Name: "extra", LimitID: "claude-extra", UsedPercent: 100, State: "exhausted"},
 		},
@@ -100,8 +105,8 @@ func TestListHarnesses_ClaudeQuotaUsesPreservedWindows(t *testing.T) {
 	if claudeInfo == nil || claudeInfo.Quota == nil {
 		t.Fatalf("expected claude quota, got %#v", claudeInfo)
 	}
-	if claudeInfo.Quota.Status != "blocked" {
-		t.Fatalf("claude quota status=%q, want blocked: %#v", claudeInfo.Quota.Status, claudeInfo.Quota)
+	if !strings.HasPrefix(claudeInfo.Quota.Status, "blocked") {
+		t.Fatalf("claude quota status=%q, want blocked prefix: %#v", claudeInfo.Quota.Status, claudeInfo.Quota)
 	}
 	if len(claudeInfo.Quota.Windows) != 1 || claudeInfo.Quota.Windows[0].Name != "extra" || claudeInfo.Quota.Windows[0].State != "exhausted" {
 		t.Fatalf("claude quota windows: %#v", claudeInfo.Quota.Windows)

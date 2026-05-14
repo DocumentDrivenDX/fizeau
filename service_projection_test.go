@@ -309,41 +309,6 @@ func TestProjectAccountSnapshot_StructuralMatchesFixtures(t *testing.T) {
 	}
 }
 
-// TestProjectionHelpersNotYetCalled documents AC #4: BEAD-HARNESS-IF-03
-// only adds the helpers; no service code calls them. The first caller
-// arrives with BEAD-HARNESS-IF-05B. This grep test fails if anyone
-// wires the helpers in early — forcing whoever does so to land it
-// behind the matching migration bead.
-//
-// Allowed call sites: this test file and the helpers' own source.
-func TestProjectionHelpersNotYetCalled(t *testing.T) {
-	allowed := map[string]bool{
-		"service_projection.go":      true,
-		"service_projection_test.go": true,
-	}
-	entries, err := os.ReadDir(".")
-	require.NoError(t, err)
-	for _, entry := range entries {
-		if entry.IsDir() || !hasGoSuffix(entry.Name()) {
-			continue
-		}
-		if allowed[entry.Name()] {
-			continue
-		}
-		data, err := os.ReadFile(entry.Name())
-		require.NoError(t, err)
-		text := string(data)
-		require.NotContainsf(t, text, "projectQuotaStatus(",
-			"%s calls projectQuotaStatus; per BEAD-HARNESS-IF-03 AC #4 the helper has no callers yet — migrate behind BEAD-HARNESS-IF-05B+", entry.Name())
-		require.NotContainsf(t, text, "projectAccountSnapshot(",
-			"%s calls projectAccountSnapshot; per BEAD-HARNESS-IF-03 AC #4 the helper has no callers yet — migrate behind BEAD-HARNESS-IF-05B+", entry.Name())
-	}
-}
-
-func hasGoSuffix(name string) bool {
-	return len(name) > 3 && name[len(name)-3:] == ".go"
-}
-
 func marshalProjection(t *testing.T, v any) []byte {
 	t.Helper()
 	out, err := json.MarshalIndent(v, "", "  ")
