@@ -5,6 +5,164 @@ import (
 	"time"
 )
 
+// TestScorePolicy_MinPowerDoesNotDisableDefaultPolicy verifies that the default
+// policy still applies the +15 subscription/free bonus to in-bounds candidates
+// even when MinPower is set. Regression for fizeau-dc3cf359.
+func TestScorePolicy_MinPowerDoesNotDisableDefaultPolicy(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "claude",
+			Surface:             "claude",
+			CostClass:           "medium",
+			IsSubscription:      true,
+			AutoRoutingEligible: true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			ExactPinSupport:     true,
+			DefaultModel:        "claude-sonnet-4-6",
+			SupportedModels:     []string{"claude-sonnet-4-6"},
+			SupportsTools:       true,
+			Providers:           []ProviderEntry{{CostSource: CostSourceSubscription}},
+		}},
+		ModelEligibility: testPowerLookup(map[string]int{
+			"claude-sonnet-4-6": 8,
+		}),
+		Now: time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{MinPower: 8}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(dec.Candidates) != 1 {
+		t.Fatalf("Candidates len=%d, want 1", len(dec.Candidates))
+	}
+	cand := dec.Candidates[0]
+	if !cand.Eligible {
+		t.Fatalf("candidate ineligible: %#v", cand)
+	}
+	// Default policy gives +15 to subscription candidates within quota (quota_health
+	// component). With MinPower set this must still apply to in-bounds candidates.
+	quotaHealth := cand.ScoreComponents["quota_health"]
+	if quotaHealth < 15 {
+		t.Fatalf("quota_health=%.1f, want >= 15 (default policy +15 subscription bonus must apply with MinPower set)", quotaHealth)
+	}
+}
+
+// TestScorePolicy_MinPowerSonnetBeatsOpus_DefaultPolicy verifies that with
+// MinPower=8 and default policy, a subscription/free sonnet (power=8) scores
+// higher than a metered opus (power=10, cost=$0.045). This is the exact bug
+// reported in fizeau-dc3cf359: opus was winning due to policy scoring being
+// skipped entirely when MinPower was set.
+func TestScorePolicy_MinPowerSonnetBeatsOpus_DefaultPolicy(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "sonnet-harness",
+				Surface:             "claude",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				ExactPinSupport:     true,
+				DefaultModel:        "sonnet",
+				SupportedModels:     []string{"sonnet"},
+				SupportsTools:       true,
+				Providers:           []ProviderEntry{{CostSource: CostSourceSubscription}},
+			},
+			{
+				Name:                "opus-harness",
+				Surface:             "embedded-openai",
+				CostClass:           "medium",
+				AutoRoutingEligible: true,
+				Available:           true,
+				ExactPinSupport:     true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{{
+					Name:               "opus-provider",
+					DefaultModel:       "opus",
+					CostUSDPer1kTokens: 0.045,
+					CostSource:         CostSourceCatalog,
+					SupportsTools:      true,
+				}},
+			},
+		},
+		ModelEligibility: testPowerLookup(map[string]int{
+			"sonnet": 8,
+			"opus":   10,
+		}),
+		Now: time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{MinPower: 8}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Harness != "sonnet-harness" {
+		t.Fatalf("winner=%s, want sonnet-harness (subscription/free must beat metered opus with MinPower=8): candidates=%+v", dec.Harness, dec.Candidates)
+	}
+	var sonnetScore, opusScore float64
+	for _, c := range dec.Candidates {
+		switch c.Harness {
+		case "sonnet-harness":
+			sonnetScore = c.Score
+		case "opus-harness":
+			opusScore = c.Score
+		}
+	}
+	if sonnetScore <= opusScore {
+		t.Fatalf("sonnet score %.1f <= opus score %.1f; policy-preference scoring must apply to in-bounds candidates with MinPower set", sonnetScore, opusScore)
+	}
+}
+
+// TestScorePolicy_MaxPowerDoesNotDisableProviderPreference verifies that with
+// MaxPower=8 set, a subscription-first provider preference still adds the +30
+// quota_health bonus to in-bounds subscription candidates.
+func TestScorePolicy_MaxPowerDoesNotDisableProviderPreference(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "claude",
+			Surface:             "claude",
+			CostClass:           "medium",
+			IsSubscription:      true,
+			AutoRoutingEligible: true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			ExactPinSupport:     true,
+			DefaultModel:        "claude-sonnet-4-6",
+			SupportedModels:     []string{"claude-sonnet-4-6"},
+			SupportsTools:       true,
+			Providers:           []ProviderEntry{{CostSource: CostSourceSubscription}},
+		}},
+		ModelEligibility: testPowerLookup(map[string]int{
+			"claude-sonnet-4-6": 8,
+		}),
+		Now: time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC),
+	}
+
+	dec, err := Resolve(Request{MaxPower: 8, ProviderPreference: ProviderPreferenceSubscriptionFirst}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(dec.Candidates) != 1 {
+		t.Fatalf("Candidates len=%d, want 1", len(dec.Candidates))
+	}
+	cand := dec.Candidates[0]
+	if !cand.Eligible {
+		t.Fatalf("candidate ineligible: %#v", cand)
+	}
+	// subscription-first provider preference adds +30 to quota_health. With
+	// MaxPower set this must still apply to in-bounds subscription candidates.
+	quotaHealth := cand.ScoreComponents["quota_health"]
+	if quotaHealth < 30 {
+		t.Fatalf("quota_health=%.1f, want >= 30 (subscription-first +30 must apply with MaxPower set)", quotaHealth)
+	}
+}
+
 func TestScorePowerSelectsPrepaidFrontierWhenQuotaHealthy(t *testing.T) {
 	in := scorePowerInputs()
 

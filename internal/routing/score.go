@@ -57,9 +57,17 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 		components[name] += value
 	}
 
-	if !hasPowerBounds {
-		switch policy {
-		case "cheap":
+	// Policy preference scoring. When no power bounds are set the full policy
+	// block applies (original behavior). When power bounds are set, apply only
+	// the subscription/quota bonus to in-bounds candidates so that a free
+	// subscription candidate still beats a metered one among the eligible set.
+	// Locality bonuses and cost-class rank penalties remain gated on
+	// !hasPowerBounds: locality bonuses would otherwise let metered providers
+	// that inherit a "local" cost class from their harness outrank subscription
+	// candidates, and cost penalties would double-penalize metered candidates.
+	switch policy {
+	case "cheap":
+		if !hasPowerBounds {
 			if cand.CostClass == "local" {
 				base += 40
 				add("deployment_locality", 40)
@@ -69,8 +77,13 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 			}
 			base -= float64(cr) * 30
 			add("cost", -float64(cr)*30)
+		} else if candidateWithinPowerBounds(cand) && withinQuota {
+			base += 20
+			add("quota_health", 20)
+		}
 
-		case "default":
+	case "default":
+		if !hasPowerBounds {
 			if cand.CostClass == "local" {
 				base += 25
 				add("deployment_locality", 25)
@@ -80,8 +93,13 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 			}
 			base -= float64(cr) * 10
 			add("cost", -float64(cr)*10)
+		} else if candidateWithinPowerBounds(cand) && withinQuota {
+			base += 15
+			add("quota_health", 15)
+		}
 
-		case "smart":
+	case "smart":
+		if !hasPowerBounds {
 			// Quality first; higher cost rank approximates higher capability.
 			base += float64(cr) * 20
 			add("cost", float64(cr)*20)
@@ -89,9 +107,14 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 				base += 5
 				add("quota_health", 5)
 			}
+		} else if candidateWithinPowerBounds(cand) && withinQuota {
+			base += 5
+			add("quota_health", 5)
+		}
 
-		default:
-			// Treat unspecified as default.
+	default:
+		// Treat unspecified as default.
+		if !hasPowerBounds {
 			if cand.CostClass == "local" {
 				base += 25
 				add("deployment_locality", 25)
@@ -101,10 +124,16 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 			}
 			base -= float64(cr) * 10
 			add("cost", -float64(cr)*10)
+		} else if candidateWithinPowerBounds(cand) && withinQuota {
+			base += 15
+			add("quota_health", 15)
 		}
 	}
 
-	// Provider preference bias.
+	// Provider preference bias. When power bounds are set, apply only the
+	// subscription-first preference to in-bounds subscription candidates; the
+	// local-first bias is omitted for the same locality-inheritance reason as
+	// the policy locality bonuses above.
 	if !hasPowerBounds {
 		switch cand.ProviderPreference {
 		case "local-first", "":
@@ -118,6 +147,9 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 				add("quota_health", 30)
 			}
 		}
+	} else if candidateWithinPowerBounds(cand) && cand.ProviderPreference == "subscription-first" && cand.IsSubscription && cand.QuotaOK {
+		base += 30
+		add("quota_health", 30)
 	}
 
 	// Quota signals.
