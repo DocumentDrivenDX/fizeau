@@ -1120,34 +1120,53 @@ func (s *service) claudeAccountStatus(ctx context.Context) *AccountStatus {
 	return projectAccountSnapshot(snapshot)
 }
 
-// codexQuotaState reads the durable Codex quota cache and converts it to QuotaState.
-func codexQuotaState() *QuotaState {
-	snap, ok := codexharness.ReadCodexQuota()
-	if !ok || snap == nil {
-		source, err := codexharness.CodexQuotaCachePath()
-		if err != nil {
-			source = "codex quota cache"
-		}
-		return unavailableQuotaState(source, "codex quota cache unavailable")
+// codexQuotaState reads codex quota evidence through the CONTRACT-004
+// QuotaHarness interface and projects it onto the public QuotaState.
+func (s *service) codexQuotaState(ctx context.Context) *QuotaState {
+	qh, ok := s.harnessByName("codex").(harnesses.QuotaHarness)
+	if !ok {
+		return unavailableQuotaState("codex quota cache", "codex quota harness not registered")
 	}
-	fresh := codexharness.IsCodexQuotaFresh(snap, time.Now(), 0)
-	windows := append([]harnesses.QuotaWindow(nil), snap.Windows...)
+	status, err := qh.QuotaStatus(ctx, time.Now())
+	if err != nil {
+		return unavailableQuotaState("codex quota cache", err.Error())
+	}
+	if status.State == harnesses.QuotaUnavailable {
+		return unavailableQuotaState("codex quota cache", "codex quota cache unavailable")
+	}
+	windows := append([]harnesses.QuotaWindow(nil), status.Windows...)
 	return &QuotaState{
 		Windows:    windows,
-		CapturedAt: snap.CapturedAt,
-		Fresh:      fresh,
-		Source:     snap.Source,
-		Status:     quotaStatus(fresh, windows),
+		CapturedAt: status.CapturedAt,
+		Fresh:      status.Fresh,
+		Source:     status.Source,
+		Status:     quotaStatus(status.Fresh, windows),
 	}
 }
 
-func codexAccountStatus() *AccountStatus {
-	snap, ok := codexharness.ReadCodexQuota()
-	if !ok || snap == nil {
+func (s *service) codexAccountStatus(ctx context.Context) *AccountStatus {
+	ah, ok := s.harnessByName("codex").(harnesses.AccountHarness)
+	if !ok {
 		return nil
 	}
-	decision := codexharness.DecideCodexQuotaRouting(snap, time.Now(), 0)
-	return accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, decision.Fresh)
+	snap, err := ah.AccountStatus(ctx, time.Now())
+	if err != nil {
+		return nil
+	}
+	if !snap.Authenticated && !snap.Unauthenticated {
+		return nil
+	}
+	return &AccountStatus{
+		Authenticated:   snap.Authenticated,
+		Unauthenticated: snap.Unauthenticated,
+		Email:           snap.Email,
+		PlanType:        snap.PlanType,
+		OrgName:         snap.OrgName,
+		Source:          snap.Source,
+		CapturedAt:      snap.CapturedAt,
+		Fresh:           snap.Fresh,
+		Detail:          snap.Detail,
+	}
 }
 
 // geminiQuotaState reads the durable Gemini quota cache and converts it to
@@ -1343,8 +1362,8 @@ func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
 			info.Quota = s.claudeQuotaState(ctx)
 			info.Account = s.claudeAccountStatus(ctx)
 		case "codex":
-			info.Quota = codexQuotaState()
-			info.Account = codexAccountStatus()
+			info.Quota = s.codexQuotaState(ctx)
+			info.Account = s.codexAccountStatus(ctx)
 			info.UsageWindows = s.codexUsageWindows()
 		case "gemini":
 			info.Quota = geminiQuotaState()
