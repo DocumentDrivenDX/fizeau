@@ -57,6 +57,20 @@ func TestBenchmarkEvidenceFixturesValidate(t *testing.T) {
 	assertString(t, invalid, "denominator.policy", "exclude_invalid_runs")
 	assertString(t, invalid, "denominator.reason", "setup failure before first benchmark task")
 	assertString(t, invalid, "scope.denominator_rule", "exclude_invalid_runs")
+
+	// runtime_props: successful extraction fixture.
+	llamaProps := validate("local-llamacpp-runtime-props.json")
+	assertString(t, llamaProps, "runtime_props.extractor", "llamacpp")
+	assertString(t, llamaProps, "runtime_props.base_model", "Qwen3.6-27B-UD-Q3_K_XL.gguf")
+	assertString(t, llamaProps, "runtime_props.build_info", "b3001 (commit abc1234)")
+
+	// runtime_props: extraction-failed fixture.
+	ds4Props := validate("local-ds4-runtime-props-failed.json")
+	assertString(t, ds4Props, "runtime_props.extractor", "ds4")
+	assertString(t, ds4Props, "runtime_props.extracted_at", "2026-05-14T10:00:00Z")
+	if _, ok := lookupPath(ds4Props, "runtime_props.extraction_failed"); !ok {
+		t.Error("runtime_props.extraction_failed should be present in ds4 failure fixture")
+	}
 }
 
 func compileBenchmarkEvidenceSchema(t *testing.T) *jsonschema.Schema {

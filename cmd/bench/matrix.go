@@ -23,7 +23,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/easel/fizeau/internal/benchmark/evidence"
 	"github.com/easel/fizeau/internal/benchmark/profile"
+	"github.com/easel/fizeau/internal/benchmark/runtimeprops"
 	agentConfig "github.com/easel/fizeau/internal/config"
 	"github.com/easel/fizeau/internal/fiztools"
 )
@@ -100,6 +102,7 @@ type matrixRunReport struct {
 	FailureTaskIDs          []string                 `json:"failure_task_ids,omitempty"`
 	SamplingUsed            map[string]any           `json:"sampling_used,omitempty"`
 	ModelServerInfo         *profile.ModelServerInfo `json:"model_server_info,omitempty"`
+	RuntimeProps            *evidence.RuntimeProps   `json:"runtime_props,omitempty"`
 	StartedAt               time.Time                `json:"started_at"`
 	FinishedAt              time.Time                `json:"finished_at"`
 }
@@ -758,6 +761,7 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 		PricingSource:   profilePricingSource(opts.profile),
 		SamplingUsed:    samplingUsedFromProfile(opts.profile),
 		ModelServerInfo: queryModelServerInfo(opts.profile),
+		RuntimeProps:    extractCellRuntimeProps(opts.parentCtx, opts.profile),
 	}
 
 	if opts.budgetUSD > 0 && opts.accumulatedCost >= opts.budgetUSD {
@@ -2060,4 +2064,25 @@ func queryModelServerInfo(p *profile.Profile) *profile.ModelServerInfo {
 		MaxContextLength:    info.MaxContextLength,
 		Source:              url,
 	}
+}
+
+// extractCellRuntimeProps extracts server-reported runtime properties for the
+// platform identified by p.Provider.Type. Called once per cell after preflight
+// and before the bench run. On failure it logs the error and returns a Props
+// record with ExtractionFailed set — it never fails the cell.
+func extractCellRuntimeProps(ctx context.Context, p *profile.Profile) *evidence.RuntimeProps {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	lane := runtimeprops.LaneInfo{
+		Runtime: string(p.Provider.Type),
+		BaseURL: p.Provider.BaseURL,
+		Model:   p.Provider.Model,
+	}
+	props, err := runtimeprops.Extract(ctx, lane)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[matrix] runtime_props extraction failed for %s (%s): %v\n",
+			p.ID, p.Provider.Type, err)
+	}
+	return &props
 }

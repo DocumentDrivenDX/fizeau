@@ -381,6 +381,80 @@
         "type": ["number", "integer", "string", "boolean", "null", "array", "object"]
       }
     },
+    "runtime_props": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "extractor": {
+          "type": "string",
+          "description": "Platform name: llamacpp, vllm, ds4, omlx, lucebox, rapid-mlx, openrouter, openai, cloud"
+        },
+        "extracted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "extraction_failed": {
+          "type": "string",
+          "description": "Reason for extraction failure; only set when extraction was attempted but failed"
+        },
+        "base_model": {
+          "type": "string"
+        },
+        "model_quant": {
+          "type": "string"
+        },
+        "kv_quant": {
+          "type": "string"
+        },
+        "draft_model": {
+          "type": "string"
+        },
+        "draft_mode": {
+          "type": "string",
+          "description": "e.g. mtp, dflash, eagle, off"
+        },
+        "max_context": {
+          "type": "integer"
+        },
+        "gpu_layers": {
+          "type": "integer"
+        },
+        "mtp_enabled": {
+          "type": "boolean"
+        },
+        "speculative_n": {
+          "type": "integer"
+        },
+        "server_version": {
+          "type": "string"
+        },
+        "build_info": {
+          "type": "string"
+        },
+        "sampling_defaults": {
+          "type": "object",
+          "properties": {
+            "temperature": {
+              "type": "number"
+            },
+            "top_p": {
+              "type": "number"
+            },
+            "top_k": {
+              "type": "integer"
+            },
+            "repeat_penalty": {
+              "type": "number"
+            }
+          }
+        },
+        "platform_raw": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Full server response for grep-ability"
+        }
+      }
+    },
     "provenance": {
       "type": "object",
       "additionalProperties": {

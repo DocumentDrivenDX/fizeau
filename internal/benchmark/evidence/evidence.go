@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
 )
@@ -18,6 +19,37 @@ const (
 	SchemaRelativePath = "scripts/benchmark/benchmark-evidence.schema.json"
 	SchemaVersion      = "benchmark-evidence/v1"
 )
+
+// SamplingDefaults holds server-reported default sampling parameters.
+type SamplingDefaults struct {
+	Temperature   *float64 `json:"temperature,omitempty"`
+	TopP          *float64 `json:"top_p,omitempty"`
+	TopK          *int     `json:"top_k,omitempty"`
+	RepeatPenalty *float64 `json:"repeat_penalty,omitempty"`
+}
+
+// RuntimeProps holds per-cell server-reported properties captured before the
+// bench run. All fields are optional; platforms report different subsets.
+// When extraction fails the Extractor and ExtractionFailed fields are set and
+// the rest is zero-valued.
+type RuntimeProps struct {
+	Extractor         string            `json:"extractor,omitempty"`
+	ExtractedAt       *time.Time        `json:"extracted_at,omitempty"`
+	ExtractionFailed  string            `json:"extraction_failed,omitempty"`
+	BaseModel         string            `json:"base_model,omitempty"`
+	ModelQuant        string            `json:"model_quant,omitempty"`
+	KVQuant           string            `json:"kv_quant,omitempty"`
+	DraftModel        string            `json:"draft_model,omitempty"`
+	DraftMode         string            `json:"draft_mode,omitempty"`
+	MaxContext        *int              `json:"max_context,omitempty"`
+	GPULayers         *int              `json:"gpu_layers,omitempty"`
+	MTPEnabled        *bool             `json:"mtp_enabled,omitempty"`
+	SpeculativeN      *int              `json:"speculative_n,omitempty"`
+	ServerVersion     string            `json:"server_version,omitempty"`
+	BuildInfo         string            `json:"build_info,omitempty"`
+	SamplingDefaults  *SamplingDefaults `json:"sampling_defaults,omitempty"`
+	PlatformRaw       map[string]any    `json:"platform_raw,omitempty"`
+}
 
 // Validator loads and applies the benchmark evidence schema from a repo root.
 type Validator struct {
