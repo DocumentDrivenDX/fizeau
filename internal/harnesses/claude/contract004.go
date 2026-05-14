@@ -208,13 +208,27 @@ func claudeQuotaStatusFromSnapshot(snap *ClaudeQuotaSnapshot, now time.Time) har
 		State:             state,
 		Windows:           append([]harnesses.QuotaWindow(nil), snap.Windows...),
 		RoutingPreference: pref,
-		Reason:            decision.Reason,
+		Reason:            quotaReasonForProjection(decision, state),
 	}
 	if snap.Account != nil {
 		acct := claudeAccountSnapshotFromQuotaSnapshot(snap, now)
 		status.Account = &acct
 	}
 	return status
+}
+
+// quotaReasonForProjection trims the routing decision's diagnostic
+// reason so QuotaStatus.Reason carries information only when it adds
+// value beyond the State enum. The trivial QuotaOK success path
+// ("fresh snapshot has headroom") is suppressed so the public Status
+// string matches the contract-003 fixture (bare "ok"). All non-OK
+// states keep the decision reason because it surfaces why the state is
+// not ok (stale snapshot, incomplete account, exhausted window).
+func quotaReasonForProjection(decision ClaudeQuotaRoutingDecision, state harnesses.QuotaStateValue) string {
+	if state == harnesses.QuotaOK {
+		return ""
+	}
+	return decision.Reason
 }
 
 // mapClaudeRoutingPreference translates today's PreferClaude+freshness

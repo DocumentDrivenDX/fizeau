@@ -9,11 +9,8 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
-	opencodeharness "github.com/easel/fizeau/internal/harnesses/opencode"
-	piharness "github.com/easel/fizeau/internal/harnesses/pi"
 	"github.com/easel/fizeau/internal/routehealth"
 	"github.com/easel/fizeau/internal/serviceimpl"
 	sessionusage "github.com/easel/fizeau/internal/session"
@@ -1048,22 +1045,6 @@ func (s *service) harnessByName(name string) harnesses.Harness {
 	return s.harnessInstances[name]
 }
 
-// defaultHarnessInstances returns the production map of registered
-// Harness implementations keyed by harness name. Only subprocess
-// harnesses with concrete Runner types appear here; embedded
-// ("fiz", "virtual", "script") and HTTP-only providers do not own
-// quota/account state and are deliberately omitted — the scheduler
-// treats absence as "no QuotaHarness/AccountHarness behavior".
-func defaultHarnessInstances() map[string]harnesses.Harness {
-	return map[string]harnesses.Harness{
-		"claude":   &claudeharness.Runner{},
-		"codex":    &codexharness.Runner{},
-		"gemini":   &geminiharness.Runner{},
-		"opencode": &opencodeharness.Runner{},
-		"pi":       &piharness.Runner{},
-	}
-}
-
 // harnessType returns "native" for HTTP/embedded harnesses, "subprocess" for CLI-invoked ones.
 func harnessType(cfg harnesses.HarnessConfig) string {
 	if harnessRunsInProcessOrHTTP(cfg) {
@@ -1092,60 +1073,51 @@ func supportedReasoning(cfg harnesses.HarnessConfig) []string {
 	return append([]string(nil), cfg.ReasoningLevels...)
 }
 
-// claudeQuotaState reads the durable Claude quota cache and converts it to QuotaState.
-func claudeQuotaState() *QuotaState {
-	snap, ok := claudeharness.ReadClaudeQuota()
-	if !ok || snap == nil {
-		source, err := claudeharness.ClaudeQuotaCachePath()
-		if err != nil {
-			source = "claude quota cache"
-		}
-		return unavailableQuotaState(source, "claude quota cache unavailable")
-	}
-	now := time.Now()
-	decision := claudeharness.DecideClaudeQuotaRouting(snap, now, 0)
-	qs := &QuotaState{
-		CapturedAt: snap.CapturedAt,
-		Fresh:      decision.Fresh,
-		Source:     snap.Source,
-	}
-	if len(snap.Windows) > 0 {
-		qs.Windows = append(qs.Windows, snap.Windows...)
-	} else if snap.FiveHourLimit > 0 {
-		var used float64
-		if snap.FiveHourLimit > 0 {
-			used = float64(snap.FiveHourLimit-snap.FiveHourRemaining) / float64(snap.FiveHourLimit) * 100
-		}
-		qs.Windows = append(qs.Windows, harnesses.QuotaWindow{
-			Name:          "5h",
-			WindowMinutes: 300,
-			UsedPercent:   used,
-			State:         harnesses.QuotaStateFromUsedPercent(int(used)),
-		})
-	}
-	if len(snap.Windows) == 0 && snap.WeeklyLimit > 0 {
-		var used float64
-		if snap.WeeklyLimit > 0 {
-			used = float64(snap.WeeklyLimit-snap.WeeklyRemaining) / float64(snap.WeeklyLimit) * 100
-		}
-		qs.Windows = append(qs.Windows, harnesses.QuotaWindow{
-			Name:          "7d",
-			WindowMinutes: 10080,
-			UsedPercent:   used,
-			State:         harnesses.QuotaStateFromUsedPercent(int(used)),
-		})
-	}
-	qs.Status = quotaStatus(qs.Fresh, qs.Windows)
-	return qs
-}
-
-func claudeAccountStatus() *AccountStatus {
-	snap, ok := claudeharness.ReadClaudeQuota()
-	if !ok || snap == nil {
+// claudeQuotaState reads the registered claude harness's QuotaStatus and
+// projects it onto the public CONTRACT-003 QuotaState surface via the
+// service_projection helpers. Per CONTRACT-004, the harness owns the
+// State enum and routing semantics; this method is the public-surface
+// projection — it neither inspects per-harness snapshot fields nor
+// re-derives status from Windows.
+func (s *service) claudeQuotaState(ctx context.Context) *QuotaState {
+	qh, ok := s.harnessByName("claude").(harnesses.QuotaHarness)
+	if !ok {
 		return nil
 	}
-	decision := claudeharness.DecideClaudeQuotaRouting(snap, time.Now(), 0)
-	return accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, decision.Fresh)
+	status, err := qh.QuotaStatus(ctx, s.now())
+	if err != nil {
+		return &QuotaState{
+			Status: "error",
+			LastError: &StatusError{
+				Type:      "error",
+				Detail:    err.Error(),
+				Source:    "claude.QuotaStatus",
+				Timestamp: time.Now().UTC(),
+			},
+		}
+	}
+	return projectQuotaStatus(status)
+}
+
+// claudeAccountStatus reads the registered claude harness's
+// AccountStatus and projects it through service_projection helpers.
+// When the underlying snapshot carries no auth evidence (cold cache or
+// empty snapshot), the projection returns a zero-valued AccountStatus;
+// callers preserved the legacy nil-for-absent contract by returning nil
+// in that case.
+func (s *service) claudeAccountStatus(ctx context.Context) *AccountStatus {
+	ah, ok := s.harnessByName("claude").(harnesses.AccountHarness)
+	if !ok {
+		return nil
+	}
+	snapshot, err := ah.AccountStatus(ctx, s.now())
+	if err != nil {
+		return nil
+	}
+	if !snapshot.Authenticated && !snapshot.Unauthenticated && snapshot.Email == "" && snapshot.PlanType == "" && snapshot.Detail == "" {
+		return nil
+	}
+	return projectAccountSnapshot(snapshot)
 }
 
 // codexQuotaState reads the durable Codex quota cache and converts it to QuotaState.
@@ -1368,8 +1340,8 @@ func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
 		// Populate live Quota for harnesses that have durable quota caches.
 		switch name {
 		case "claude":
-			info.Quota = claudeQuotaState()
-			info.Account = claudeAccountStatus()
+			info.Quota = s.claudeQuotaState(ctx)
+			info.Account = s.claudeAccountStatus(ctx)
 		case "codex":
 			info.Quota = codexQuotaState()
 			info.Account = codexAccountStatus()
