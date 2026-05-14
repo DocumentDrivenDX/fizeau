@@ -737,16 +737,16 @@ phase_id = sys.argv[2]
 key = sys.argv[3]
 lane_filter = {item.strip() for item in sys.argv[4].split(",") if item.strip()}
 
-phases = plan.get("phases") or []
+recipes = plan.get("recipes") or []
 if phase_id == "all":
-    selected_phases = phases
+    selected_recipes = [r for r in recipes if r.get("staged")]
 else:
-    selected_phases = [p for p in phases if p.get("id") == phase_id]
+    selected_recipes = [r for r in recipes if r.get("id") == phase_id]
 
 selected_lane_ids = {
     lane_id
-    for phase in selected_phases
-    for lane_id in (phase.get("lanes") or [])
+    for recipe in selected_recipes
+    for lane_id in (recipe.get("lanes") or [])
 }
 if lane_filter:
     selected_lane_ids &= lane_filter
@@ -780,24 +780,25 @@ plan = yaml.safe_load(Path(sys.argv[1]).read_text())
 phase_id = sys.argv[2]
 lane_filter = [item.strip() for item in sys.argv[3].split(",") if item.strip()]
 
+recipes = plan.get("recipes") or []
 if phase_id == "all":
-    selected_phase_ids = {"canary", "local-qwen", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"}
+    # Staged recipes: those with staged: true.
+    selected_recipes = [r for r in recipes if r.get("staged")]
 else:
-    selected_phase_ids = {phase_id}
+    selected_recipes = [r for r in recipes if r.get("id") == phase_id]
 
-phases = [p for p in (plan.get("phases") or []) if p.get("id") in selected_phase_ids]
-if not phases:
-    raise SystemExit(f"preflight: phase {phase_id!r} not found in sweep plan")
+if not selected_recipes:
+    raise SystemExit(f"preflight: recipe {phase_id!r} not found in sweep plan")
 
 lane_by_id = {lane.get("id"): lane for lane in (plan.get("lanes") or [])}
 rg_by_id = {rg.get("id"): rg for rg in (plan.get("resource_groups") or [])}
 wanted = set(lane_filter)
 
 seen = set()
-for phase in phases:
-    phase_lanes = phase.get("lanes") or []
-    phase_lane_set = set(phase_lanes)
-    ordered_lanes = [lane_id for lane_id in lane_filter if lane_id in phase_lane_set] if wanted else phase_lanes
+for recipe in selected_recipes:
+    recipe_lanes = recipe.get("lanes") or []
+    recipe_lane_set = set(recipe_lanes)
+    ordered_lanes = [lane_id for lane_id in lane_filter if lane_id in recipe_lane_set] if wanted else recipe_lanes
     for lane_id in ordered_lanes:
         if lane_id in seen:
             continue
@@ -1071,7 +1072,7 @@ sweep_args_for_phase() {
     sweep
     --work-dir "${REPO_ROOT}"
     --sweep-plan "${SWEEP_PLAN}"
-    --phase "${phase}"
+    --recipe "${phase}"
     --tasks-dir "${TASKS_DIR}"
     --out "${OUT}"
   )
@@ -1094,7 +1095,7 @@ run_sweep_phase() {
     sweep
     --work-dir "${REPO_ROOT}"
     --sweep-plan "${SWEEP_PLAN}"
-    --phase "${phase}"
+    --recipe "${phase}"
     --tasks-dir "${TASKS_DIR}"
     --out "${OUT}"
   )

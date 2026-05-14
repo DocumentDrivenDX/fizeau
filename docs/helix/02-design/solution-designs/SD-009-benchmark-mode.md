@@ -99,6 +99,8 @@ The benchmark subset is versioned and committed to the repo as a YAML manifest a
 This file pins specific Terminal-Bench task IDs. The set is small enough to run in CI
 or manually, but representative enough to detect regressions.
 
+> **Amended 2026-05-14 (sweep schema v2, fizeau-596ff006):** the v1 subset is now one entry in the `subsets:` block of `scripts/benchmark/terminalbench-2-1-sweep.yaml`. The thresholds in §5 below remain scoped to the fiz-only run — formally `(subset=terminalbench-2-1-full, lane=fiz-only)` under the v2 schema. Subsets are now first-class and decoupled from lane/recipe membership; see [terminalbench-2-1-sweep-plan-2026-05-07.md §Subsets](../../../research/terminalbench-2-1-sweep-plan-2026-05-07.md#subsets).
+
 **v1 subset** (15 tasks, grouped by capability area):
 
 ```yaml

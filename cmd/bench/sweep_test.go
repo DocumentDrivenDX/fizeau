@@ -51,20 +51,45 @@ func sweepPlanPath(t *testing.T) string {
 	return filepath.Join(benchRepoRoot(t), defaultSweepPlanPath)
 }
 
-// TestLoadSweepPlanParsesAllPhases verifies the sweep plan YAML loads and
-// contains all expected phases.
-func TestLoadSweepPlanParsesAllPhases(t *testing.T) {
+// TestLoadSweepPlanParsesAllRecipes verifies the sweep plan YAML loads and
+// contains all expected recipes (in YAML order, which is the iteration contract
+// for --all-recipes and --staged-recipes).
+func TestLoadSweepPlanParsesAllRecipes(t *testing.T) {
 	plan, err := loadSweepPlan(sweepPlanPath(t))
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	wantPhases := []string{"canary", "local-qwen", "timing-baseline", "or-passing", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"}
-	if len(plan.Phases) != len(wantPhases) {
-		t.Fatalf("phases = %d, want %d", len(plan.Phases), len(wantPhases))
+	wantRecipes := []string{"canary", "local-qwen", "timing-baseline", "or-passing", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"}
+	if len(plan.Recipes) != len(wantRecipes) {
+		t.Fatalf("recipes = %d, want %d", len(plan.Recipes), len(wantRecipes))
 	}
-	for i, want := range wantPhases {
-		if got := plan.Phases[i].ID; got != want {
-			t.Errorf("phases[%d].ID = %q, want %q", i, got, want)
+	for i, want := range wantRecipes {
+		if got := plan.Recipes[i].ID; got != want {
+			t.Errorf("recipes[%d].ID = %q, want %q", i, got, want)
+		}
+	}
+}
+
+// TestSweepPlanSchemaShape verifies the v2 schema invariants: subsets[] and
+// recipes[] populated, no top-level Phases field on the struct, no Phases
+// field on lanes. (AC-1.)
+func TestSweepPlanSchemaShape(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+	if len(plan.Subsets) == 0 {
+		t.Fatal("plan.Subsets is empty; v2 schema requires subsets[]")
+	}
+	if len(plan.Recipes) == 0 {
+		t.Fatal("plan.Recipes is empty; v2 schema requires recipes[]")
+	}
+	for _, r := range plan.Recipes {
+		if r.Subset == "" {
+			t.Errorf("recipe %q has empty subset reference", r.ID)
+		}
+		if len(r.Lanes) == 0 {
+			t.Errorf("recipe %q has no lanes", r.ID)
 		}
 	}
 }
@@ -173,55 +198,65 @@ func TestSweepCGByLanePopulatesCorrectly(t *testing.T) {
 	}
 }
 
-// TestSelectSweepPhasesAllReturnsAll verifies --phase=all returns all phases.
-func TestSelectSweepPhasesAllReturnsAll(t *testing.T) {
+// TestBuildSweepRecipeRunsAllRecipes verifies that --all-recipes expands to
+// every recipe in YAML order.
+func TestBuildSweepRecipeRunsAllRecipes(t *testing.T) {
 	plan, err := loadSweepPlan(sweepPlanPath(t))
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	phases, err := selectSweepPhases(plan, "all")
+	runs, err := buildSweepRecipeRuns(plan, sweepSelector{allRecipes: true})
 	if err != nil {
-		t.Fatalf("selectSweepPhases(all): %v", err)
+		t.Fatalf("buildSweepRecipeRuns(--all-recipes): %v", err)
 	}
-	if len(phases) != len(plan.Phases) {
-		t.Fatalf("got %d phases, want %d", len(phases), len(plan.Phases))
+	if len(runs) != len(plan.Recipes) {
+		t.Fatalf("got %d runs, want %d", len(runs), len(plan.Recipes))
+	}
+	for i, r := range plan.Recipes {
+		if runs[i].ID != r.ID {
+			t.Errorf("run %d ID = %q, want %q", i, runs[i].ID, r.ID)
+		}
 	}
 }
 
-// TestSelectSweepPhasesSinglePhase verifies each named phase can be selected.
-func TestSelectSweepPhasesSinglePhase(t *testing.T) {
+// TestBuildSweepRecipeRunsSingleRecipe verifies each recipe can be selected by id.
+func TestBuildSweepRecipeRunsSingleRecipe(t *testing.T) {
 	plan, err := loadSweepPlan(sweepPlanPath(t))
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	for _, phaseID := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"} {
-		phases, err := selectSweepPhases(plan, phaseID)
+	for _, id := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"} {
+		runs, err := buildSweepRecipeRuns(plan, sweepSelector{recipeID: id})
 		if err != nil {
-			t.Errorf("selectSweepPhases(%q): %v", phaseID, err)
+			t.Errorf("buildSweepRecipeRuns(--recipe=%q): %v", id, err)
 			continue
 		}
-		if len(phases) != 1 || phases[0].ID != phaseID {
-			t.Errorf("selectSweepPhases(%q) = %v, want single phase", phaseID, phases)
+		if len(runs) != 1 || runs[0].ID != id {
+			t.Errorf("buildSweepRecipeRuns(--recipe=%q) = %v, want single run with that id", id, runs)
 		}
 	}
 }
 
-// TestSelectSweepPhasesUnknownReturnsError verifies unknown phase IDs error.
-func TestSelectSweepPhasesUnknownReturnsError(t *testing.T) {
+// TestBuildSweepRecipeRunsUnknownErrors verifies unknown recipe IDs error.
+func TestBuildSweepRecipeRunsUnknownErrors(t *testing.T) {
 	plan, err := loadSweepPlan(sweepPlanPath(t))
 	if err != nil {
 		t.Fatalf("loadSweepPlan: %v", err)
 	}
-	_, err = selectSweepPhases(plan, "no-such-phase")
+	_, err = buildSweepRecipeRuns(plan, sweepSelector{recipeID: "no-such-recipe"})
 	if err == nil {
-		t.Fatal("expected error for unknown phase, got nil")
+		t.Fatal("expected error for unknown recipe, got nil")
 	}
 }
 
-// TestSweepResolveSubsetPathKnownIDs verifies known subset IDs resolve to files
-// that exist under scripts/benchmark/.
-func TestSweepResolveSubsetPathKnownIDs(t *testing.T) {
+// TestSweepResolveSubsetPathFromPlan verifies subset paths resolve via the
+// plan's subsets[] block (preferred) and fall back to the hardcoded map.
+func TestSweepResolveSubsetPathFromPlan(t *testing.T) {
 	wd := benchRepoRoot(t)
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
 	cases := map[string]string{
 		"terminalbench-2-1-canary":          "scripts/benchmark/task-subset-tb21-canary.yaml",
 		"terminalbench-2-1-full":            "scripts/benchmark/task-subset-tb21-full.yaml",
@@ -231,7 +266,7 @@ func TestSweepResolveSubsetPathKnownIDs(t *testing.T) {
 		"terminalbench-2-1-timing-baseline": "scripts/benchmark/task-subset-tb21-timing-baseline.yaml",
 	}
 	for id, rel := range cases {
-		got := sweepResolveSubsetPath(wd, id)
+		got := sweepResolveSubsetPath(wd, plan, id)
 		want := filepath.Join(wd, rel)
 		if got != want {
 			t.Errorf("sweepResolveSubsetPath(%q) = %q, want %q", id, got, want)
@@ -334,7 +369,7 @@ func TestSweepDryRunCanaryPrints(t *testing.T) {
 	// AC-1: print phases, lane ids, comparison_group ids, task count, reps,
 	// resource groups, max parallelism, and output directory.
 	required := []string{
-		"Phase: canary",
+		"Recipe: canary",
 		"Dataset:",
 		"Subset ID:",
 		"Task Count:",
@@ -364,27 +399,27 @@ func TestSweepDryRunCanaryPrints(t *testing.T) {
 	}
 }
 
-// TestSweepDryRunAllPhasesContainsAllPhaseHeaders verifies --phase=all prints
-// headers for all four phases.
-func TestSweepDryRunAllPhasesContainsAllPhaseHeaders(t *testing.T) {
+// TestSweepDryRunStagedRecipesContainsAllRecipeHeaders verifies --staged-recipes
+// prints headers for every staged recipe (the historical --phase all gate).
+func TestSweepDryRunStagedRecipesContainsAllRecipeHeaders(t *testing.T) {
 	repoRoot := benchRepoRoot(t)
 	outDir := t.TempDir()
 
 	code, output := captureStdout(t, func() int {
 		return cmdSweep([]string{
 			"--work-dir", repoRoot,
-			"--phase", "all",
+			"--staged-recipes",
 			"--dry-run",
 			"--out", outDir,
 		})
 	})
 
 	if code != 0 {
-		t.Fatalf("cmdSweep dry-run all exit = %d\noutput:\n%s", code, output)
+		t.Fatalf("cmdSweep dry-run --staged-recipes exit = %d\noutput:\n%s", code, output)
 	}
-	for _, phase := range []string{"canary", "local-qwen", "tb21-all", "openai-cheap", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"} {
-		if !strings.Contains(output, "Phase: "+phase) {
-			t.Errorf("dry-run output missing Phase: %s", phase)
+	for _, recipe := range []string{"canary", "local-qwen", "sonnet-comparison", "gpt-comparison", "medium-model-canary", "medium-model"} {
+		if !strings.Contains(output, "Recipe: "+recipe) {
+			t.Errorf("dry-run output missing Recipe: %s", recipe)
 		}
 	}
 }
@@ -397,7 +432,7 @@ func TestSweepDryRunFullWithLaneFilterPrintsOnlySelectedLanes(t *testing.T) {
 		return cmdSweep([]string{
 			"--work-dir", repoRoot,
 			"--sweep-plan", filepath.Join(repoRoot, defaultSweepPlanPath),
-			"--phase", "tb21-all",
+			"--recipe", "tb21-all",
 			"--lanes", "fiz-sindri-vllm-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b",
 			"--dry-run",
 			"--out", outDir,
@@ -408,7 +443,7 @@ func TestSweepDryRunFullWithLaneFilterPrintsOnlySelectedLanes(t *testing.T) {
 		t.Fatalf("cmdSweep dry-run filtered full exit = %d\noutput:\n%s", code, output)
 	}
 	required := []string{
-		"Phase: tb21-all",
+		"Recipe: tb21-all",
 		"Subset ID:     terminalbench-2-1-all",
 		"Task Count:    89",
 		"Total Cells:   534",
@@ -492,12 +527,13 @@ func TestSweepBuildLaneMeta(t *testing.T) {
 		t.Fatal("resource group for vidar lane not found")
 	}
 
-	phase := plan.Phases[0] // canary
-	subsetPath := sweepResolveSubsetPath(wd, phase.Subset)
-	laneOutDir := filepath.Join(opts.outDir, phase.ID, lane.ID)
-	matrixArgs := buildSweepMatrixArgs(opts, phase, lane, rg, subsetPath, laneOutDir, 3)
+	recipe := plan.Recipes[0] // canary
+	run := sweepRecipeRun{ID: recipe.ID, SubsetID: recipe.Subset, Reps: 3, Lanes: recipe.Lanes}
+	subsetPath := sweepResolveSubsetPath(wd, plan, run.SubsetID)
+	laneOutDir := filepath.Join(opts.outDir, run.ID, lane.ID)
+	matrixArgs := buildSweepMatrixArgs(opts, run, lane, rg, subsetPath, laneOutDir, 3)
 
-	meta := buildSweepLaneMeta(opts, phase, lane, rg, subsetPath, laneOutDir, 3, matrixArgs)
+	meta := buildSweepLaneMeta(opts, run, lane, rg, subsetPath, laneOutDir, 3, matrixArgs)
 
 	// AC-8 required fields
 	checks := []struct {
@@ -562,11 +598,12 @@ func TestSweepBuildMatrixArgsIncludesResumeAndBudget(t *testing.T) {
 	}
 	lane := opts.laneByID["fiz-openrouter-claude-sonnet-4-6"]
 	rg := opts.rgByID[lane.ResourceGroup]
-	phase := plan.Phases[0]
-	subsetPath := sweepResolveSubsetPath(wd, phase.Subset)
-	laneOutDir := filepath.Join(opts.outDir, phase.ID, lane.ID)
+	recipe := plan.Recipes[0]
+	run := sweepRecipeRun{ID: recipe.ID, SubsetID: recipe.Subset, Reps: 3, Lanes: recipe.Lanes}
+	subsetPath := sweepResolveSubsetPath(wd, plan, run.SubsetID)
+	laneOutDir := filepath.Join(opts.outDir, run.ID, lane.ID)
 
-	args := buildSweepMatrixArgs(opts, phase, lane, rg, subsetPath, laneOutDir, 3)
+	args := buildSweepMatrixArgs(opts, run, lane, rg, subsetPath, laneOutDir, 3)
 	argStr := strings.Join(args, " ")
 
 	if !strings.Contains(argStr, "--resume") {
@@ -604,11 +641,12 @@ func TestSweepBuildMatrixArgsIncludesLaneFizeauEnv(t *testing.T) {
 		t.Fatal("harness lane not found")
 	}
 	rg := opts.rgByID[lane.ResourceGroup]
-	phase := plan.Phases[0]
-	subsetPath := sweepResolveSubsetPath(wd, phase.Subset)
-	laneOutDir := filepath.Join(opts.outDir, phase.ID, lane.ID)
+	recipe := plan.Recipes[0]
+	run := sweepRecipeRun{ID: recipe.ID, SubsetID: recipe.Subset, Reps: 1, Lanes: recipe.Lanes}
+	subsetPath := sweepResolveSubsetPath(wd, plan, run.SubsetID)
+	laneOutDir := filepath.Join(opts.outDir, run.ID, lane.ID)
 
-	args := buildSweepMatrixArgs(opts, phase, lane, rg, subsetPath, laneOutDir, 1)
+	args := buildSweepMatrixArgs(opts, run, lane, rg, subsetPath, laneOutDir, 1)
 	argStr := strings.Join(args, " ")
 
 	for _, want := range []string{
@@ -631,8 +669,11 @@ func TestSweepResourceGroupSchedulingSerializesLocalLanes(t *testing.T) {
 	plan := &sweepPlan{
 		Dataset:  "test",
 		Defaults: sweepDefaults{Reps: 1},
-		Phases: []sweepPhase{
-			{ID: "test-phase", Subset: "terminalbench-2-1-canary", Reps: 1,
+		Subsets: []sweepSubset{
+			{ID: "terminalbench-2-1-canary", Path: "scripts/benchmark/task-subset-tb21-canary.yaml", DefaultReps: 1},
+		},
+		Recipes: []sweepRecipe{
+			{ID: "test-recipe", Subset: "terminalbench-2-1-canary", Reps: 1,
 				Lanes: []string{"lane-a", "lane-b"}},
 		},
 		ResourceGroups: []sweepResourceGroup{
@@ -674,7 +715,7 @@ func TestSweepResourceGroupSchedulingSerializesLocalLanes(t *testing.T) {
 	var wg sync.WaitGroup
 	var counter int64
 
-	for i, laneID := range plan.Phases[0].Lanes {
+	for i, laneID := range plan.Recipes[0].Lanes {
 		lane := laneByID[laneID]
 		rg := rgByID[lane.ResourceGroup]
 		sem := rgSems[rg.ID]
@@ -908,5 +949,300 @@ func TestSweepCommandMissingSweepPlanExitsOne(t *testing.T) {
 	})
 	if code != 1 {
 		t.Errorf("cmdSweep(missing plan) = %d, want 1", code)
+	}
+}
+
+// captureStderr swaps os.Stderr with a pipe for the duration of fn and returns
+// the captured stderr contents alongside fn's exit code.
+func captureStderr(t *testing.T, fn func() int) (int, string) {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&buf, r) //nolint:errcheck
+		close(done)
+	}()
+	code := fn()
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stderr pipe: %v", err)
+	}
+	os.Stderr = old
+	<-done
+	if err := r.Close(); err != nil {
+		t.Fatalf("close stderr reader: %v", err)
+	}
+	return code, buf.String()
+}
+
+// TestSweepRecipeAliasArgs (AC-2): buildSweepRecipeRuns with --recipe canary
+// produces the same shape as legacy --phase canary.
+func TestSweepRecipeAliasArgs(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+	runsRecipe, err := buildSweepRecipeRuns(plan, sweepSelector{
+		recipeID:   "canary",
+		laneFilter: "fiz-sindri-lucebox-qwen3-6-27b",
+	})
+	if err != nil {
+		t.Fatalf("buildSweepRecipeRuns(--recipe=canary): %v", err)
+	}
+	if len(runsRecipe) != 1 {
+		t.Fatalf("got %d runs, want 1", len(runsRecipe))
+	}
+	r := runsRecipe[0]
+	if r.ID != "canary" {
+		t.Errorf("run.ID = %q, want canary", r.ID)
+	}
+	if r.SubsetID != "terminalbench-2-1-canary" {
+		t.Errorf("run.SubsetID = %q, want terminalbench-2-1-canary", r.SubsetID)
+	}
+	if len(r.Lanes) != 1 || r.Lanes[0] != "fiz-sindri-lucebox-qwen3-6-27b" {
+		t.Errorf("run.Lanes = %v, want [fiz-sindri-lucebox-qwen3-6-27b]", r.Lanes)
+	}
+	if r.Reps != 3 {
+		t.Errorf("run.Reps = %d, want 3 (canary recipe inherits subset default)", r.Reps)
+	}
+}
+
+// TestSweepSubsetAdhoc (AC-3): --subset X --lanes Y produces an ad-hoc run with
+// no recipe consulted; cell paths use the canonical cells/ template via --cells-root.
+func TestSweepSubsetAdhoc(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+	runs, err := buildSweepRecipeRuns(plan, sweepSelector{
+		subsetID:   "terminalbench-2-1-all",
+		laneFilter: "fiz-sindri-lucebox-qwen3-6-27b",
+	})
+	if err != nil {
+		t.Fatalf("buildSweepRecipeRuns(--subset): %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("got %d runs, want 1", len(runs))
+	}
+	r := runs[0]
+	if !r.IsAdhoc {
+		t.Error("run.IsAdhoc = false, want true for --subset invocation")
+	}
+	if r.ID != "adhoc-terminalbench-2-1-all" {
+		t.Errorf("run.ID = %q, want adhoc-terminalbench-2-1-all", r.ID)
+	}
+	if r.SubsetID != "terminalbench-2-1-all" {
+		t.Errorf("run.SubsetID = %q, want terminalbench-2-1-all", r.SubsetID)
+	}
+	// Verify the matrix args still use the canonical --cells-root path under <OUT>/cells.
+	wd := benchRepoRoot(t)
+	opts := sweepRunOpts{
+		plan:     plan,
+		wd:       wd,
+		outDir:   "/tmp/test-adhoc",
+		rgByID:   sweepRGMap(plan),
+		laneByID: sweepLaneMap(plan),
+	}
+	lane := opts.laneByID["fiz-sindri-lucebox-qwen3-6-27b"]
+	rg := opts.rgByID[lane.ResourceGroup]
+	subsetPath := sweepResolveSubsetPath(wd, plan, r.SubsetID)
+	args := buildSweepMatrixArgs(opts, r, lane, rg, subsetPath, "/tmp/test-adhoc/"+r.ID+"/"+lane.ID, r.Reps)
+	argStr := strings.Join(args, " ")
+	if !strings.Contains(argStr, "--cells-root /tmp/test-adhoc/cells") {
+		t.Errorf("matrix args missing canonical --cells-root path: %s", argStr)
+	}
+}
+
+// TestSweepEmptyRecipeLanesIntersectErrors (AC-4): explicit --recipe + --lanes
+// with empty intersection exits 2 (input error) with a clear stderr message.
+func TestSweepEmptyRecipeLanesIntersectErrors(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+	code, stderr := captureStderr(t, func() int {
+		return cmdSweep([]string{
+			"--work-dir", repoRoot,
+			"--recipe", "sonnet-comparison",
+			"--lanes", "fiz-sindri-lucebox-qwen3-6-27b",
+			"--dry-run",
+			"--out", outDir,
+		})
+	})
+	if code != 2 {
+		t.Errorf("cmdSweep exit = %d, want 2 (input error)", code)
+	}
+	want := "lane fiz-sindri-lucebox-qwen3-6-27b not in recipe sonnet-comparison"
+	if !strings.Contains(stderr, want) {
+		t.Errorf("stderr missing %q\nstderr:\n%s", want, stderr)
+	}
+}
+
+// TestSweepPhaseDeprecationAlias (AC-5): --phase X writes a stderr deprecation
+// notice and resolves to the same recipe shape as --recipe X.
+func TestSweepPhaseDeprecationAlias(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+	// Compare resolved shapes directly via buildSweepRecipeRuns is not enough — the
+	// deprecation rewrite happens inside cmdSweep. Invoke cmdSweep with --phase and
+	// confirm stderr carries the deprecation marker.
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+	code, stderr := captureStderr(t, func() int {
+		return cmdSweep([]string{
+			"--work-dir", repoRoot,
+			"--phase", "canary",
+			"--lanes", "fiz-sindri-lucebox-qwen3-6-27b",
+			"--dry-run",
+			"--out", outDir,
+		})
+	})
+	if code != 0 {
+		t.Fatalf("cmdSweep --phase canary exit = %d, want 0\nstderr:\n%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "deprecated") {
+		t.Errorf("stderr missing 'deprecated' marker\nstderr:\n%s", stderr)
+	}
+	// And the resolved shape should match --recipe canary.
+	runsRecipe, err := buildSweepRecipeRuns(plan, sweepSelector{recipeID: "canary", laneFilter: "fiz-sindri-lucebox-qwen3-6-27b"})
+	if err != nil {
+		t.Fatalf("buildSweepRecipeRuns(--recipe canary): %v", err)
+	}
+	if len(runsRecipe) != 1 || runsRecipe[0].ID != "canary" {
+		t.Fatalf("recipe-mode resolution returned unexpected shape: %v", runsRecipe)
+	}
+}
+
+// TestSweepAllRecipesWarnsAndSkipsPerRecipe (AC-6): --all-recipes --lanes Y
+// runs only recipes whose lane lists overlap Y; emits one "skipping recipe"
+// stderr line per non-matching recipe. lucebox is in 4 of 10 recipes today.
+func TestSweepAllRecipesWarnsAndSkipsPerRecipe(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+	runs, err := buildSweepRecipeRuns(plan, sweepSelector{
+		allRecipes: true,
+		laneFilter: "fiz-sindri-lucebox-qwen3-6-27b",
+	})
+	if err != nil {
+		t.Fatalf("buildSweepRecipeRuns(--all-recipes): %v", err)
+	}
+	want := []string{"canary", "local-qwen", "or-passing", "tb21-all"}
+	if len(runs) != len(want) {
+		t.Fatalf("got %d runs, want %d (lucebox-containing recipes)", len(runs), len(want))
+	}
+	for i, w := range want {
+		if runs[i].ID != w {
+			t.Errorf("run[%d].ID = %q, want %q", i, runs[i].ID, w)
+		}
+	}
+	// And cmdSweep --all-recipes --lanes lucebox should print one "skipping recipe" line per non-lucebox recipe.
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+	_, stderr := captureStderr(t, func() int {
+		return cmdSweep([]string{
+			"--work-dir", repoRoot,
+			"--all-recipes",
+			"--lanes", "fiz-sindri-lucebox-qwen3-6-27b",
+			"--dry-run",
+			"--out", outDir,
+		})
+	})
+	skips := strings.Count(stderr, "[sweep] skipping recipe ")
+	wantSkips := len(plan.Recipes) - len(want)
+	if skips != wantSkips {
+		t.Errorf("stderr has %d 'skipping recipe' lines, want %d\nstderr:\n%s", skips, wantSkips, stderr)
+	}
+}
+
+// TestSweepMatrixJobsManagedAuto (AC-7): sweepMatrixJobs derives jobs as
+// min(opts.matrixJobsManaged, recipe.max_concurrency_override (if set), rg.max_concurrency).
+func TestSweepMatrixJobsManagedAuto(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+	laneByID := sweepLaneMap(plan)
+	rgByID := sweepRGMap(plan)
+	recipeByID := sweepRecipeMap(plan)
+	cases := []struct {
+		recipe string
+		lane   string
+		cli    int
+		want   int
+	}{
+		// tb21-all has no override; rg-openrouter-qwen36-27b max_concurrency=10 caps below cli=16.
+		{"tb21-all", "fiz-openrouter-qwen3-6-27b", 16, 10},
+		// local-qwen has no override; rg-sindri-lucebox-dflash max_concurrency=1 caps below all.
+		{"local-qwen", "fiz-sindri-lucebox-qwen3-6-27b", 16, 1},
+		// sonnet-comparison has max_concurrency_override=5; caps below cli=16 and rg=10.
+		{"sonnet-comparison", "fiz-openrouter-claude-sonnet-4-6", 16, 5},
+		// canary has max_concurrency_override=1; caps below all.
+		{"canary", "fiz-openrouter-claude-sonnet-4-6", 16, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.recipe+"/"+c.lane, func(t *testing.T) {
+			r, ok := recipeByID[c.recipe]
+			if !ok {
+				t.Fatalf("recipe %q not found", c.recipe)
+			}
+			lane, ok := laneByID[c.lane]
+			if !ok {
+				t.Fatalf("lane %q not found", c.lane)
+			}
+			rg, ok := rgByID[lane.ResourceGroup]
+			if !ok {
+				t.Fatalf("rg %q not found", lane.ResourceGroup)
+			}
+			run := sweepRecipeRun{
+				ID:                     r.ID,
+				MaxConcurrencyOverride: r.MaxConcurrencyOverride,
+			}
+			opts := sweepRunOpts{matrixJobsManaged: c.cli}
+			got := sweepMatrixJobs(opts, run, rg)
+			if got != c.want {
+				t.Errorf("sweepMatrixJobs(%s, %s, cli=%d) = %d, want %d (recipe.override=%d, rg.max=%d)",
+					c.recipe, c.lane, c.cli, got, c.want, r.MaxConcurrencyOverride, rg.MaxConcurrency)
+			}
+		})
+	}
+}
+
+// TestSweepRecipeRepsOverridesSubsetDefault (AC-8): recipe.reps wins over the
+// subset default when set; subset default applies when recipe.reps is unset.
+func TestSweepRecipeRepsOverridesSubsetDefault(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+	cases := []struct {
+		recipe string
+		want   int
+	}{
+		{"canary", 3},              // no recipe.reps → subset default 3
+		{"medium-model-canary", 1}, // recipe.reps=1 overrides same subset's default 3
+	}
+	for _, c := range cases {
+		t.Run(c.recipe, func(t *testing.T) {
+			runs, err := buildSweepRecipeRuns(plan, sweepSelector{recipeID: c.recipe})
+			if err != nil {
+				t.Fatalf("buildSweepRecipeRuns(%q): %v", c.recipe, err)
+			}
+			if len(runs) != 1 {
+				t.Fatalf("got %d runs, want 1", len(runs))
+			}
+			if runs[0].SubsetID != "terminalbench-2-1-canary" {
+				t.Fatalf("runs[0].SubsetID = %q, want terminalbench-2-1-canary (both recipes use the same subset)", runs[0].SubsetID)
+			}
+			if runs[0].Reps != c.want {
+				t.Errorf("runs[0].Reps = %d, want %d", runs[0].Reps, c.want)
+			}
+		})
 	}
 }

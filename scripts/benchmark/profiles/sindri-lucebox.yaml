@@ -16,13 +16,13 @@ metadata:
   provider_surface: sindri-lucebox
   runtime: lucebox-dflash
   hardware_label: sindri-3090-ti
-  endpoint: http://sindri:1236/v1
+  endpoint: http://sindri.azgaard.home:1236/v1
   server: sindri
 
 provider:
   type: lucebox
   model: luce-dflash
-  base_url: http://sindri:1236/v1
+  base_url: http://sindri.azgaard.home:1236/v1
   api_key_env: LUCEBOX_API_KEY
 pricing:
   input_usd_per_mtok: 0.0
@@ -44,7 +44,7 @@ versioning:
     lucebox-hub dflash speculative decoder | served_model=luce-dflash
     | target=unsloth/Qwen3.6-27B-GGUF:Qwen3.6-27B-Q4_K_M.gguf
     | draft=z-lab/Qwen3.6-27B-DFlash:model.safetensors
-    | hw=sindri-3090-ti | endpoint=http://sindri:1236/v1
+    | hw=sindri-3090-ti | endpoint=http://sindri.azgaard.home:1236/v1
 
 # Start with the same conservative multiplier as the other slow local lanes.
 # Re-tune once enough joint-pass TB-2.1 cells exist for a lane-specific p95.

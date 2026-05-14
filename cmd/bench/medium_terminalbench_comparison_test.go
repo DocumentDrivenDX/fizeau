@@ -12,7 +12,7 @@ func TestMediumTerminalbenchComparisonDryRunPrintsOfficialFizWrapperLanes(t *tes
 	code, output := captureStdout(t, func() int {
 		return cmdSweep([]string{
 			"--work-dir", repoRoot,
-			"--phase", "medium-model",
+			"--recipe", "medium-model",
 			"--dry-run",
 			"--out", outDir,
 		})
@@ -22,7 +22,7 @@ func TestMediumTerminalbenchComparisonDryRunPrintsOfficialFizWrapperLanes(t *tes
 		t.Fatalf("cmdSweep dry-run medium-model exit = %d\noutput:\n%s", code, output)
 	}
 	required := []string{
-		"Phase: medium-model",
+		"Recipe: medium-model",
 		"Lane: fiz-harness-claude-sonnet-4-6",
 		"Lane: fiz-harness-codex-gpt-5-4-mini",
 		"Lane: fiz-harness-pi-gpt-5-4-mini",

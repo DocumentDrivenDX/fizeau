@@ -10,14 +10,24 @@ Use the repo-root `./benchmark` wrapper. It delegates to
 benchmark script entry point.
 
 ```bash
-./benchmark --phase canary
-./benchmark --phase openai-cheap
-./benchmark --phase full --lanes openai-gpt55
-./benchmark --phase full --lanes openrouter-qwen36
-./benchmark --phase full --lanes sindri-llamacpp,vidar
-./benchmark --phase full --lanes openrouter-qwen36,sindri-llamacpp,vidar
-./benchmark --phase qwen36-gpt55-full
+./benchmark --recipe canary
+./benchmark --recipe openai-cheap
+./benchmark --recipe tb21-all --lanes openai-gpt55
+./benchmark --recipe tb21-all --lanes openrouter-qwen36
+./benchmark --recipe tb21-all --lanes sindri-llamacpp,vidar
+./benchmark --recipe tb21-all --lanes openrouter-qwen36,sindri-llamacpp,vidar
+./benchmark --recipe qwen36-gpt55-full
+# Ad-hoc subset × lane (no recipe required):
+./benchmark --subset terminalbench-2-1-all --lanes sindri-llamacpp
+# Iterate every recipe in YAML order, lane-filtered:
+./benchmark --all-recipes --lanes sindri-llamacpp
+# Iterate the staged gating sequence (canary → local-qwen → … → medium-model):
+./benchmark --staged-recipes
 ```
+
+`--phase X` and `--phase all` remain as deprecated aliases of `--recipe X` and
+`--staged-recipes` respectively (stderr deprecation notice on use). The
+historical phase ids are preserved verbatim as recipe ids.
 
 Short lane aliases:
 
@@ -50,16 +60,32 @@ Provider keys are required only for selected lanes:
 
 Local provider lanes default to non-empty placeholder keys for local endpoints.
 
-## Main Phases
+## Subsets, Recipes, and Phases (deprecated)
+
+The sweep plan (`scripts/benchmark/terminalbench-2-1-sweep.yaml`) declares two
+orthogonal blocks since the v2 schema (2026-05-14, fizeau-596ff006):
+
+- **`subsets:`** — pure task lists. Each entry has `id`, `path`, `default_reps`.
+  Subsets carry no lane info.
+- **`recipes:`** — curated CLI bundles. Each pairs one `subset:` with a `lanes:`
+  list and optional overrides (`reps`, `max_concurrency_override`,
+  `parallel_policy`, `preflight`, `staged`). Recipes are pure sugar at runtime
+  — the executable matrix is `(subset, lane)`. Recipes with `staged: true`
+  participate in `--staged-recipes` (the historical `--phase all` gate).
+
+Main recipes in YAML order:
 
 - `canary`: 3 small tasks to prove selected lanes start and write artifacts.
-- `openai-cheap`: 35 lower-cost GPT-5.5 tasks at `k=5`, selected from observed
-  GPT-5.5 costs plus Qwen3.6 token-count proxies.
-- `full` / `tb21-all`: all 89 TerminalBench 2.1 tasks.
-- `qwen36-gpt55-full`: full run over OpenAI GPT-5.5, OpenRouter Qwen3.6 27B,
-  Sindri Qwen3.6 27B, and Vidar Qwen3.6 27B.
+- `local-qwen`: full Qwen3.6-27B local providers vs. fiz native lane.
+- `timing-baseline`, `or-passing`, `tb21-all`: targeted/full subsets,
+  non-staged.
+- `openai-cheap`: 35 lower-cost GPT-5.5 tasks at `k=5`.
+- `sonnet-comparison`, `gpt-comparison`: harness-vs-provider comparisons.
+- `medium-model-canary`, `medium-model`: official medium-model fiz-wrapper
+  comparison sweeps.
 
-The sweep plan is `scripts/benchmark/terminalbench-2-1-sweep.yaml`.
+`--phase X` and `--phase all` remain as deprecated aliases for `--recipe X` and
+`--staged-recipes` respectively.
 
 ## Output And Resume
 

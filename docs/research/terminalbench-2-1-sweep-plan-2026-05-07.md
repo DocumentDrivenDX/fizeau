@@ -19,6 +19,8 @@ ddx:
 
 **Status:** active — governs runner implementation (fizeau-85d36567) and sweep execution (fizeau-c770193a)
 
+**Amended:** 2026-05-14 — sweep schema v2 (fizeau-596ff006). Phases were split into two orthogonal concepts: **Subsets** (pure task lists, see [Subsets](#subsets)) and **Recipes** (curated CLI bundles pairing one subset with a lane list, see [Recipes](#recipes)). Lanes no longer enroll in phases; the runner's executable matrix is `(subset, lane)`. Recipes are CLI sugar for invoking a pre-curated `(subset, lanes[])` pair. The historical phase ids are preserved verbatim as recipe ids; `--phase` remains as a deprecated CLI alias.
+
 > **TB-2.0 preservation notice.** All TB-2.0 historical fixtures, subset manifests (`task-subset-v2.yaml`, `task-subset-v1.yaml`), evidence records, and research memos retain their `terminal-bench@2.0` labels. Nothing in this plan relabels or overwrites them. The machine-readable companion (`scripts/benchmark/terminalbench-2-1-sweep.yaml`) governs only TB-2.1 work.
 
 ---
@@ -37,11 +39,30 @@ Three experimental questions drive this sweep:
 
 ---
 
-## Phases
+## Subsets
 
-The sweep is staged. Each phase can run and resume independently.
+A subset is a pure task list — the YAML lives at `subsets:` in `scripts/benchmark/terminalbench-2-1-sweep.yaml`. Each entry carries `id`, `path` (subset YAML file), and `default_reps`. Subsets carry no lane information; the runner pairs them with lanes via either a recipe (curated bundle) or an ad-hoc `--subset X --lanes Y` CLI invocation.
 
-### Phase 1: canary
+| Subset id                          | Path                                             | Default reps |
+| ---------------------------------- | ------------------------------------------------ | ------------ |
+| `terminalbench-2-1-canary`         | scripts/benchmark/task-subset-tb21-canary.yaml   | 3            |
+| `terminalbench-2-1-full`           | scripts/benchmark/task-subset-tb21-full.yaml     | 3            |
+| `terminalbench-2-1-all`            | scripts/benchmark/task-subset-tb21-all.yaml      | 3            |
+| `terminalbench-2-1-openai-cheap`   | scripts/benchmark/task-subset-tb21-openai-cheap.yaml | 5        |
+| `terminalbench-2-1-or-passing`     | scripts/benchmark/task-subset-tb21-or-passing.yaml | 3          |
+| `terminalbench-2-1-timing-baseline`| scripts/benchmark/task-subset-tb21-timing-baseline.yaml | 3     |
+
+---
+
+## Recipes
+
+A recipe is a curated CLI bundle — the YAML lives at `recipes:`. It pairs one `subset:` with a `lanes:` list and optional overrides (`reps`, `max_concurrency_override`, `parallel_policy`, `preflight`, `staged`). Recipes are pure sugar at runtime: the executable matrix is still `(subset, lane)`, and an ad-hoc `--subset X --lanes Y` invocation bypasses recipes entirely.
+
+`staged: true` declares membership in the gating sequence iterated by `fiz-bench sweep --staged-recipes` (the historical `--phase all` behavior). Staged sequence runs in YAML order: canary → local-qwen → sonnet-comparison → gpt-comparison → medium-model-canary → medium-model. Non-staged recipes (timing-baseline, or-passing, tb21-all, openai-cheap) are operational one-offs — invoke them by name with `--recipe <id>` or include them via `--all-recipes` for an exhaustive pass. `recipe.reps` overrides `subset.default_reps` when set; e.g. `medium-model-canary` runs the `terminalbench-2-1-canary` subset at reps=1, while `canary` runs the same subset at reps=3.
+
+Each recipe can run and resume independently.
+
+### Recipe 1: canary
 
 **Purpose:** Prove every intended lane can start, reach its provider, write session/trajectory artifacts, and classify invalid cells (quota/auth/setup/provider) separately from graded failures.
 
@@ -60,7 +81,7 @@ The sweep is staged. Each phase can run and resume independently.
 
 **Gate:** canary must complete before starting phases 2–4.
 
-### Phase 2: local-qwen
+### Recipe 2: local-qwen
 
 **Purpose:** Compare Qwen3.6-27B-family performance across all reachable local inference providers using fiz's native provider path.
 
@@ -77,7 +98,7 @@ The sweep is staged. Each phase can run and resume independently.
 
 **Parallelism:** The three lanes use distinct resource groups (different servers); they may run in parallel.
 
-### Phase 3: sonnet-comparison
+### Recipe 3: sonnet-comparison
 
 **Purpose:** Compare fiz's native provider path to Sonnet through OpenRouter against fiz delegating to the authenticated Claude Code subscription harness.
 
@@ -93,7 +114,7 @@ The sweep is staged. Each phase can run and resume independently.
 
 **Parallelism:** The native OpenRouter lane uses OpenRouter auth. The Claude-harness lane requires staged Claude Code CLI artifacts plus the authenticated `.claude` home. Cap concurrency conservatively because both lanes consume subscription or cloud quota.
 
-### Phase 4: gpt-comparison
+### Recipe 4: gpt-comparison
 
 **Purpose:** Compare fiz's native provider path to GPT-5.4-mini through OpenRouter against fiz delegating to the authenticated Codex subscription harness.
 

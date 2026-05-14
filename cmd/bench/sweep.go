@@ -25,12 +25,19 @@ var harborTaskContainerPattern = regexp.MustCompile(`^[0-9a-f]{32}__[a-z0-9]+-ma
 
 // sweepPlan is the parsed terminalbench-2-1-sweep.yaml.
 // Only fields consumed by the runner are decoded; free-form doc fields are ignored.
+//
+// Schema v2 (2026-05-14): orthogonal subsets and lanes. The historical
+// `phases:` block is replaced by `subsets:` (pure task lists) + `recipes:`
+// (curated CLI bundles pairing one subset with a lane list). Lane definitions
+// no longer enroll in phases — the runner's matrix is (subset, lane). Recipes
+// are sugar for invoking a pre-curated (subset, lanes[]) pair.
 type sweepPlan struct {
 	SpecID           string               `yaml:"spec-id"`
 	Created          string               `yaml:"created"`
 	Dataset          string               `yaml:"dataset"`
 	Defaults         sweepDefaults        `yaml:"defaults"`
-	Phases           []sweepPhase         `yaml:"phases"`
+	Subsets          []sweepSubset        `yaml:"subsets"`
+	Recipes          []sweepRecipe        `yaml:"recipes"`
 	ComparisonGroups []sweepCmpGroup      `yaml:"comparison_groups"`
 	ResourceGroups   []sweepResourceGroup `yaml:"resource_groups"`
 	Lanes            []sweepLane          `yaml:"lanes"`
@@ -42,13 +49,46 @@ type sweepDefaults struct {
 	Resume bool `yaml:"resume"`
 }
 
-type sweepPhase struct {
-	ID             string   `yaml:"id"`
-	Description    string   `yaml:"description"`
-	Reps           int      `yaml:"reps"`
-	Subset         string   `yaml:"subset"`
-	Lanes          []string `yaml:"lanes"`
-	ParallelPolicy string   `yaml:"parallel_policy"`
+// sweepSubset is a pure task list. It carries no lane information.
+type sweepSubset struct {
+	ID          string `yaml:"id"`
+	Path        string `yaml:"path"`
+	DefaultReps int    `yaml:"default_reps"`
+}
+
+// sweepRecipe is a curated bundle pairing one subset with a lane list. Recipes
+// are CLI sugar — `fiz-bench sweep --recipe <id>` expands to that subset and
+// lane set. The runner's executable matrix is (subset, lane); recipes do not
+// constrain it. `staged: true` declares membership in the gating sequence
+// iterated by `--staged-recipes` (the historical `--phase all` behavior).
+type sweepRecipe struct {
+	ID                     string   `yaml:"id"`
+	Staged                 bool     `yaml:"staged"`
+	Description            string   `yaml:"description"`
+	Subset                 string   `yaml:"subset"`
+	Reps                   int      `yaml:"reps,omitempty"`
+	MaxConcurrencyOverride int      `yaml:"max_concurrency_override,omitempty"`
+	Lanes                  []string `yaml:"lanes"`
+	ParallelPolicy         string   `yaml:"parallel_policy"`
+	Preflight              []string `yaml:"preflight"`
+}
+
+// sweepRecipeRun is the internal runnable shape produced by buildSweepRecipeRuns.
+// Both recipe-driven and ad-hoc `--subset X --lanes Y` invocations resolve into
+// a slice of these. The ID field is the path component used for the matrix
+// summary directory (`<OUT>/<ID>/<lane>/matrix.json`): for recipe runs it is
+// the recipe id; for ad-hoc subset runs it is `adhoc-<subset>`.
+type sweepRecipeRun struct {
+	ID                     string
+	SubsetID               string
+	SubsetPath             string
+	Reps                   int
+	Lanes                  []string
+	MaxConcurrencyOverride int
+	Description            string
+	ParallelPolicy         string
+	Preflight              []string
+	IsAdhoc                bool // true for `--subset X --lanes Y` invocations
 }
 
 type sweepCmpGroup struct {
@@ -76,7 +116,6 @@ type sweepLane struct {
 	ID              string            `yaml:"id"`
 	ProfileID       string            `yaml:"profile_id"`
 	LaneType        string            `yaml:"lane_type"`
-	Phases          []string          `yaml:"phases"`
 	CompGroups      []string          `yaml:"comparison_groups"`
 	ResourceGroup   string            `yaml:"resource_group"`
 	FizeauEnv       map[string]string `yaml:"fizeau_env"`
@@ -168,8 +207,14 @@ func cmdSweep(args []string) int {
 
 	fs := flagSet("sweep")
 	sweepFile := fs.String("sweep-plan", "", "Path to sweep plan YAML (default: scripts/benchmark/terminalbench-2-1-sweep.yaml)")
-	phaseID := fs.String("phase", "all", "Phase to run: canary, openai-cheap, local-qwen, sonnet-comparison, gpt-comparison, medium-model-canary, medium-model, tb21-all, or all")
-	laneFilter := fs.String("lanes", "", "Comma-separated lane IDs to run from the selected phase(s)")
+	recipeID := fs.String("recipe", "", "Recipe id to run (curated subset+lanes bundle). Mutually exclusive with --subset and --recipes.")
+	recipesCSV := fs.String("recipes", "", "Comma-separated recipe ids to run, in order. Mutually exclusive with --recipe and --subset.")
+	subsetID := fs.String("subset", "", "Ad-hoc subset id to run; requires --lanes. Bypasses recipes; cell paths key on this subset id.")
+	allRecipes := fs.Bool("all-recipes", false, "Iterate every recipe in YAML order. Mutually exclusive with --recipe/--recipes/--subset.")
+	stagedRecipes := fs.Bool("staged-recipes", false, "Iterate every recipe with staged: true, in YAML order (the historical --phase all gate sequence).")
+	phaseID := fs.String("phase", "", "DEPRECATED: alias of --recipe (or --staged-recipes when value=all). Prints a deprecation warning to stderr.")
+	laneFilter := fs.String("lanes", "", "Comma-separated lane IDs to filter within selected recipe(s). For explicit --recipe X, empty intersection with X.lanes is an error; for --all-recipes / --recipes / --staged-recipes, empty intersection per recipe is warned and skipped.")
+	reps := fs.Int("reps", 0, "Repetition count override (default: recipe.reps, falling back to subset.default_reps).")
 	dryRun := fs.Bool("dry-run", false, "Print plan without launching Harbor or any matrix run")
 	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")
 	out := fs.String("out", "", "Output directory (default: benchmark-results/sweep-<timestamp> under work-dir)")
@@ -199,14 +244,36 @@ func cmdSweep(args []string) int {
 		return 1
 	}
 
-	phases, err := selectSweepPhases(plan, *phaseID)
+	// Translate deprecated --phase to its --recipe / --staged-recipes equivalent.
+	if *phaseID != "" {
+		if *recipeID != "" || *recipesCSV != "" || *subsetID != "" || *allRecipes || *stagedRecipes {
+			fmt.Fprintf(os.Stderr, "%s sweep: --phase cannot be combined with --recipe/--recipes/--subset/--all-recipes/--staged-recipes\n", benchCommandName())
+			return 2
+		}
+		if *phaseID == "all" {
+			fmt.Fprintf(os.Stderr, "%s sweep: --phase=all is deprecated; using --staged-recipes\n", benchCommandName())
+			*stagedRecipes = true
+		} else {
+			fmt.Fprintf(os.Stderr, "%s sweep: --phase=%s is deprecated; using --recipe=%s\n", benchCommandName(), *phaseID, *phaseID)
+			*recipeID = *phaseID
+		}
+	}
+
+	runs, err := buildSweepRecipeRuns(plan, sweepSelector{
+		recipeID:      *recipeID,
+		recipesCSV:    *recipesCSV,
+		subsetID:      *subsetID,
+		allRecipes:    *allRecipes,
+		stagedRecipes: *stagedRecipes,
+		laneFilter:    *laneFilter,
+		repsOverride:  *reps,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s sweep: %v\n", benchCommandName(), err)
 		return 2
 	}
-	phases, err = filterSweepPhasesByLanes(plan, phases, *laneFilter)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s sweep: %v\n", benchCommandName(), err)
+	if len(runs) == 0 {
+		fmt.Fprintf(os.Stderr, "%s sweep: no recipe/subset selected\n", benchCommandName())
 		return 2
 	}
 
@@ -235,13 +302,13 @@ func cmdSweep(args []string) int {
 		cgTypeByID:        sweepCGTypeMap(plan),
 	}
 
-	for _, phase := range phases {
+	for _, run := range runs {
 		if *dryRun {
-			if code := printSweepDryRun(opts, phase); code != 0 {
+			if code := printSweepDryRun(opts, run); code != 0 {
 				return code
 			}
 		} else {
-			if code := runSweepPhase(opts, phase); code != 0 {
+			if code := runSweepPhase(opts, run); code != 0 {
 				pruneStaleHarborTaskContainers(time.Hour)
 				return code
 			}
@@ -316,31 +383,35 @@ type sweepRunOpts struct {
 	cgTypeByID        map[string]string   // cg id → comparison type
 }
 
-func printSweepDryRun(opts sweepRunOpts, phase sweepPhase) int {
-	reps := phase.Reps
+func printSweepDryRun(opts sweepRunOpts, run sweepRecipeRun) int {
+	reps := run.Reps
 	if reps == 0 {
 		reps = opts.plan.Defaults.Reps
 	}
-	subsetPath := sweepResolveSubsetPath(opts.wd, phase.Subset)
+	subsetPath := sweepResolveSubsetPath(opts.wd, opts.plan, run.SubsetID)
 	taskCount := 0
 	if s, err := loadTermbenchSubset(subsetPath); err == nil {
 		taskCount = len(s.Tasks)
 	}
 
-	fmt.Printf("=== Phase: %s ===\n", phase.ID)
+	label := "Recipe"
+	if run.IsAdhoc {
+		label = "Ad-hoc Subset"
+	}
+	fmt.Printf("=== %s: %s ===\n", label, run.ID)
 	fmt.Printf("  Dataset:       %s\n", opts.plan.Dataset)
-	fmt.Printf("  Subset ID:     %s\n", phase.Subset)
+	fmt.Printf("  Subset ID:     %s\n", run.SubsetID)
 	fmt.Printf("  Subset Path:   %s\n", subsetPath)
 	fmt.Printf("  Task Count:    %d\n", taskCount)
 	fmt.Printf("  Reps:          %d\n", reps)
-	fmt.Printf("  Total Cells:   %d\n", taskCount*reps*len(phase.Lanes))
-	fmt.Printf("  Output Dir:    %s\n", filepath.Join(opts.outDir, phase.ID))
+	fmt.Printf("  Total Cells:   %d\n", taskCount*reps*len(run.Lanes))
+	fmt.Printf("  Output Dir:    %s\n", filepath.Join(opts.outDir, run.ID))
 	fmt.Printf("  Resume:        %v\n", opts.resume)
 	fmt.Printf("  Force Rerun:   %v\n", opts.forceRerun)
 	fmt.Printf("  Retry Invalid: %v\n", opts.retryInvalid)
 	fmt.Println()
 
-	for _, laneID := range phase.Lanes {
+	for _, laneID := range run.Lanes {
 		lane, ok := opts.laneByID[laneID]
 		if !ok {
 			fmt.Fprintf(os.Stderr, "%s sweep: dry-run: lane %q not found in sweep plan\n", benchCommandName(), laneID)
@@ -353,9 +424,9 @@ func printSweepDryRun(opts sweepRunOpts, phase sweepPhase) int {
 			return 1
 		}
 		cgs := opts.cgByLane[laneID]
-		laneOutDir := filepath.Join(opts.outDir, phase.ID, laneID)
-		matrixArgs := buildSweepMatrixArgs(opts, phase, lane, rg, subsetPath, laneOutDir, reps)
-		if jobs := sweepMatrixJobs(opts, rg); jobs > 1 {
+		laneOutDir := filepath.Join(opts.outDir, run.ID, laneID)
+		matrixArgs := buildSweepMatrixArgs(opts, run, lane, rg, subsetPath, laneOutDir, reps)
+		if jobs := sweepMatrixJobs(opts, run, rg); jobs > 1 {
 			matrixArgs = append(matrixArgs, "--jobs", fmt.Sprintf("%d", jobs))
 		}
 		cmd := append([]string{benchCommandName(), "matrix"}, matrixArgs...)
@@ -387,16 +458,16 @@ func printSweepDryRun(opts sweepRunOpts, phase sweepPhase) int {
 	return 0
 }
 
-func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
+func runSweepPhase(opts sweepRunOpts, run sweepRecipeRun) int {
 	ctx := opts.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	reps := phase.Reps
+	reps := run.Reps
 	if reps == 0 {
 		reps = opts.plan.Defaults.Reps
 	}
-	subsetPath := sweepResolveSubsetPath(opts.wd, phase.Subset)
+	subsetPath := sweepResolveSubsetPath(opts.wd, opts.plan, run.SubsetID)
 
 	// Per-resource-group semaphores enforce max_concurrency across concurrent lane goroutines.
 	rgSems := make(map[string]chan struct{}, len(opts.plan.ResourceGroups))
@@ -408,10 +479,10 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 		rgSems[rg.ID] = make(chan struct{}, cap)
 	}
 
-	outcomes := make([]sweepLaneOutcome, len(phase.Lanes))
+	outcomes := make([]sweepLaneOutcome, len(run.Lanes))
 	var wg sync.WaitGroup
 
-	for i, laneID := range phase.Lanes {
+	for i, laneID := range run.Lanes {
 		if ctx.Err() != nil {
 			outcomes[i] = sweepLaneOutcome{laneID: laneID, code: 130}
 			continue
@@ -444,14 +515,14 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 			}
 			defer func() { <-sem }()
 
-			laneOutDir := filepath.Join(opts.outDir, phase.ID, lane.ID)
-			jobs := sweepMatrixJobs(opts, rg)
-			matrixArgs := buildSweepMatrixArgs(opts, phase, lane, rg, subsetPath, laneOutDir, reps)
+			laneOutDir := filepath.Join(opts.outDir, run.ID, lane.ID)
+			jobs := sweepMatrixJobs(opts, run, rg)
+			matrixArgs := buildSweepMatrixArgs(opts, run, lane, rg, subsetPath, laneOutDir, reps)
 			if jobs > 1 {
 				matrixArgs = append(matrixArgs, "--jobs", fmt.Sprintf("%d", jobs))
 			}
 
-			meta := buildSweepLaneMeta(opts, phase, lane, rg, subsetPath, laneOutDir, reps, matrixArgs)
+			meta := buildSweepLaneMeta(opts, run, lane, rg, subsetPath, laneOutDir, reps, matrixArgs)
 			if err := os.MkdirAll(laneOutDir, 0o750); err != nil {
 				fmt.Fprintf(os.Stderr, "%s sweep: mkdir %s: %v\n", benchCommandName(), laneOutDir, err)
 				outcomes[i] = sweepLaneOutcome{laneID: lane.ID, code: 1, meta: meta}
@@ -463,10 +534,10 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 				return
 			}
 
-			fmt.Printf("[sweep] phase=%s lane=%s rg=%s (max_concurrency=%d) starting\n",
-				phase.ID, lane.ID, rg.ID, rg.MaxConcurrency)
+			fmt.Printf("[sweep] recipe=%s lane=%s rg=%s (max_concurrency=%d) starting\n",
+				run.ID, lane.ID, rg.ID, rg.MaxConcurrency)
 			code := cmdMatrixWithContext(ctx, matrixArgs)
-			fmt.Printf("[sweep] phase=%s lane=%s exit=%d\n", phase.ID, lane.ID, code)
+			fmt.Printf("[sweep] recipe=%s lane=%s exit=%d\n", run.ID, lane.ID, code)
 
 			var mout *matrixOutput
 			matrixPath := filepath.Join(laneOutDir, "matrix.json")
@@ -481,7 +552,7 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 	}
 	wg.Wait()
 
-	printSweepPhaseSummary(phase.ID, outcomes)
+	printSweepPhaseSummary(run.ID, outcomes)
 
 	for _, o := range outcomes {
 		if o.code != 0 {
@@ -491,13 +562,22 @@ func runSweepPhase(opts sweepRunOpts, phase sweepPhase) int {
 	return 0
 }
 
-func sweepMatrixJobs(opts sweepRunOpts, rg *sweepResourceGroup) int {
-	jobs := 1
-	if rg.MaxConcurrency > 1 && opts.matrixJobsManaged > 1 {
-		jobs = opts.matrixJobsManaged
-		if jobs > rg.MaxConcurrency {
-			jobs = rg.MaxConcurrency
-		}
+// sweepMatrixJobs computes the per-lane --jobs value passed to fiz-bench matrix.
+// jobs = min(cli --matrix-jobs-managed, recipe.max_concurrency_override (if set),
+// rg.max_concurrency). Floor of 1.
+func sweepMatrixJobs(opts sweepRunOpts, run sweepRecipeRun, rg *sweepResourceGroup) int {
+	jobs := opts.matrixJobsManaged
+	if jobs < 1 {
+		jobs = 1
+	}
+	if run.MaxConcurrencyOverride > 0 && run.MaxConcurrencyOverride < jobs {
+		jobs = run.MaxConcurrencyOverride
+	}
+	if rg.MaxConcurrency > 0 && rg.MaxConcurrency < jobs {
+		jobs = rg.MaxConcurrency
+	}
+	if jobs < 1 {
+		jobs = 1
 	}
 	return jobs
 }
@@ -586,7 +666,7 @@ func truncStr(s string, max int) string {
 }
 
 // buildSweepMatrixArgs constructs the argument slice for cmdMatrix for a given lane.
-func buildSweepMatrixArgs(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, rg *sweepResourceGroup, subsetPath, laneOutDir string, reps int) []string {
+func buildSweepMatrixArgs(opts sweepRunOpts, run sweepRecipeRun, lane *sweepLane, rg *sweepResourceGroup, subsetPath, laneOutDir string, reps int) []string {
 	args := []string{
 		"--work-dir", opts.wd,
 		"--subset", subsetPath,
@@ -632,7 +712,7 @@ func sortedMapKeys(values map[string]string) []string {
 	return keys
 }
 
-func buildSweepLaneMeta(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, rg *sweepResourceGroup, subsetPath, laneOutDir string, reps int, matrixArgs []string) sweepLaneMeta {
+func buildSweepLaneMeta(opts sweepRunOpts, run sweepRecipeRun, lane *sweepLane, rg *sweepResourceGroup, subsetPath, laneOutDir string, reps int, matrixArgs []string) sweepLaneMeta {
 	cgs := opts.cgByLane[lane.ID]
 	var cgTypes []string
 	for _, cgID := range cgs {
@@ -657,9 +737,9 @@ func buildSweepLaneMeta(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, rg
 	return sweepLaneMeta{
 		Dataset:          opts.plan.Dataset,
 		DatasetVersion:   "2.1",
-		SubsetID:         phase.Subset,
+		SubsetID:         run.SubsetID,
 		SubsetPath:       subsetPath,
-		Phase:            phase.ID,
+		Phase:            run.ID,
 		LaneID:           lane.ID,
 		ComparisonGroups: cgs,
 		ComparisonTypes:  cgTypes,
@@ -682,8 +762,19 @@ func buildSweepLaneMeta(opts sweepRunOpts, phase sweepPhase, lane *sweepLane, rg
 }
 
 // sweepResolveSubsetPath maps a symbolic subset ID to a YAML file path under
-// scripts/benchmark/, falling back to treating the ID as a direct path.
-func sweepResolveSubsetPath(wd, subsetID string) string {
+// scripts/benchmark/. Plan subsets[] entries take precedence; falls back to
+// the historical hardcoded map, then to treating the ID as a literal path.
+func sweepResolveSubsetPath(wd string, plan *sweepPlan, subsetID string) string {
+	if plan != nil {
+		for _, s := range plan.Subsets {
+			if s.ID == subsetID && s.Path != "" {
+				if filepath.IsAbs(s.Path) {
+					return s.Path
+				}
+				return filepath.Join(wd, s.Path)
+			}
+		}
+	}
 	if rel, ok := sweepSubsetPaths[subsetID]; ok {
 		return filepath.Join(wd, rel)
 	}
@@ -691,6 +782,24 @@ func sweepResolveSubsetPath(wd, subsetID string) string {
 		return subsetID
 	}
 	return filepath.Join(wd, subsetID)
+}
+
+func sweepSubsetMap(plan *sweepPlan) map[string]*sweepSubset {
+	m := make(map[string]*sweepSubset, len(plan.Subsets))
+	for i := range plan.Subsets {
+		s := &plan.Subsets[i]
+		m[s.ID] = s
+	}
+	return m
+}
+
+func sweepRecipeMap(plan *sweepPlan) map[string]*sweepRecipe {
+	m := make(map[string]*sweepRecipe, len(plan.Recipes))
+	for i := range plan.Recipes {
+		r := &plan.Recipes[i]
+		m[r.ID] = r
+	}
+	return m
 }
 
 func loadSweepPlan(path string) (*sweepPlan, error) {
@@ -702,78 +811,242 @@ func loadSweepPlan(path string) (*sweepPlan, error) {
 	if err := yaml.Unmarshal(data, &plan); err != nil {
 		return nil, fmt.Errorf("parse sweep plan: %w", err)
 	}
-	if len(plan.Phases) == 0 {
-		return nil, fmt.Errorf("sweep plan has no phases")
+	if len(plan.Subsets) == 0 {
+		return nil, fmt.Errorf("sweep plan has no subsets")
+	}
+	if len(plan.Recipes) == 0 {
+		return nil, fmt.Errorf("sweep plan has no recipes")
 	}
 	if len(plan.Lanes) == 0 {
 		return nil, fmt.Errorf("sweep plan has no lanes")
 	}
+	// Validate every recipe references a known subset, and every recipe lane is a known lane.
+	subsetByID := sweepSubsetMap(&plan)
+	laneByID := sweepLaneMap(&plan)
+	for _, r := range plan.Recipes {
+		if _, ok := subsetByID[r.Subset]; !ok {
+			return nil, fmt.Errorf("recipe %q references unknown subset %q", r.ID, r.Subset)
+		}
+		for _, laneID := range r.Lanes {
+			if _, ok := laneByID[laneID]; !ok {
+				return nil, fmt.Errorf("recipe %q references unknown lane %q", r.ID, laneID)
+			}
+		}
+	}
 	return &plan, nil
 }
 
-func selectSweepPhases(plan *sweepPlan, phaseID string) ([]sweepPhase, error) {
-	if phaseID == "all" {
-		return plan.Phases, nil
-	}
-	for _, p := range plan.Phases {
-		if p.ID == phaseID {
-			return []sweepPhase{p}, nil
-		}
-	}
-	var ids []string
-	for _, p := range plan.Phases {
-		ids = append(ids, p.ID)
-	}
-	return nil, fmt.Errorf("unknown phase %q; valid: %s", phaseID, strings.Join(ids, ", "))
+// sweepSelector captures the CLI selection state: which recipes/subsets/lanes
+// to run. buildSweepRecipeRuns resolves this into concrete []sweepRecipeRun.
+type sweepSelector struct {
+	recipeID      string
+	recipesCSV    string
+	subsetID      string
+	allRecipes    bool
+	stagedRecipes bool
+	laneFilter    string
+	repsOverride  int
 }
 
-func filterSweepPhasesByLanes(plan *sweepPlan, phases []sweepPhase, laneFilter string) ([]sweepPhase, error) {
-	laneFilter = strings.TrimSpace(laneFilter)
-	if laneFilter == "" {
-		return phases, nil
+// buildSweepRecipeRuns turns CLI selection into a list of runnable bundles.
+//
+// Empty-intersection semantics:
+//   - Explicit `--recipe X --lanes Y` with no overlap → error (exit 1).
+//   - Multi-recipe mode (`--all-recipes`, `--staged-recipes`, `--recipes a,b`)
+//     with `--lanes Y` → per-recipe warn+skip; succeed as long as at least
+//     one recipe contributed lanes. If every recipe was skipped, the caller
+//     gets an empty slice; cmdSweep treats that as "no recipe/subset selected".
+//
+// `--subset X --lanes Y` is the ad-hoc path: no recipe is consulted, the
+// returned run has IsAdhoc=true and ID=`adhoc-<X>`.
+func buildSweepRecipeRuns(plan *sweepPlan, sel sweepSelector) ([]sweepRecipeRun, error) {
+	// Mode mutual exclusion.
+	modes := 0
+	if sel.recipeID != "" {
+		modes++
+	}
+	if sel.recipesCSV != "" {
+		modes++
+	}
+	if sel.subsetID != "" {
+		modes++
+	}
+	if sel.allRecipes {
+		modes++
+	}
+	if sel.stagedRecipes {
+		modes++
+	}
+	if modes == 0 {
+		return nil, fmt.Errorf("one of --recipe, --recipes, --subset, --all-recipes, --staged-recipes is required")
+	}
+	if modes > 1 {
+		return nil, fmt.Errorf("--recipe/--recipes/--subset/--all-recipes/--staged-recipes are mutually exclusive")
 	}
 
+	laneFilter, err := parseSweepLaneFilter(plan, sel.laneFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ad-hoc subset path.
+	if sel.subsetID != "" {
+		subsetByID := sweepSubsetMap(plan)
+		sub, ok := subsetByID[sel.subsetID]
+		if !ok {
+			var ids []string
+			for _, s := range plan.Subsets {
+				ids = append(ids, s.ID)
+			}
+			return nil, fmt.Errorf("unknown subset %q; valid: %s", sel.subsetID, strings.Join(ids, ", "))
+		}
+		if len(laneFilter) == 0 {
+			return nil, fmt.Errorf("--subset requires --lanes")
+		}
+		reps := sel.repsOverride
+		if reps <= 0 {
+			reps = sub.DefaultReps
+		}
+		if reps <= 0 {
+			reps = plan.Defaults.Reps
+		}
+		return []sweepRecipeRun{{
+			ID:         "adhoc-" + sub.ID,
+			SubsetID:   sub.ID,
+			SubsetPath: sub.Path, // resolved at call site via sweepResolveSubsetPath if needed
+			Reps:       reps,
+			Lanes:      laneFilter,
+			IsAdhoc:    true,
+		}}, nil
+	}
+
+	// Recipe path(s).
+	recipeByID := sweepRecipeMap(plan)
+	var selectedRecipes []*sweepRecipe
+	multi := false
+	switch {
+	case sel.allRecipes:
+		multi = true
+		for i := range plan.Recipes {
+			selectedRecipes = append(selectedRecipes, &plan.Recipes[i])
+		}
+	case sel.stagedRecipes:
+		multi = true
+		for i := range plan.Recipes {
+			if plan.Recipes[i].Staged {
+				selectedRecipes = append(selectedRecipes, &plan.Recipes[i])
+			}
+		}
+		if len(selectedRecipes) == 0 {
+			return nil, fmt.Errorf("--staged-recipes selected but no recipe has staged: true")
+		}
+	case sel.recipesCSV != "":
+		multi = true
+		for _, raw := range strings.Split(sel.recipesCSV, ",") {
+			id := strings.TrimSpace(raw)
+			if id == "" {
+				continue
+			}
+			r, ok := recipeByID[id]
+			if !ok {
+				var ids []string
+				for _, r := range plan.Recipes {
+					ids = append(ids, r.ID)
+				}
+				return nil, fmt.Errorf("unknown recipe %q; valid: %s", id, strings.Join(ids, ", "))
+			}
+			selectedRecipes = append(selectedRecipes, r)
+		}
+	default: // sel.recipeID != ""
+		r, ok := recipeByID[sel.recipeID]
+		if !ok {
+			var ids []string
+			for _, r := range plan.Recipes {
+				ids = append(ids, r.ID)
+			}
+			return nil, fmt.Errorf("unknown recipe %q; valid: %s", sel.recipeID, strings.Join(ids, ", "))
+		}
+		selectedRecipes = []*sweepRecipe{r}
+	}
+
+	subsetByID := sweepSubsetMap(plan)
+	var runs []sweepRecipeRun
+	for _, r := range selectedRecipes {
+		laneSet := map[string]bool{}
+		for _, laneID := range r.Lanes {
+			laneSet[laneID] = true
+		}
+		var lanes []string
+		if len(laneFilter) == 0 {
+			lanes = append(lanes, r.Lanes...)
+		} else {
+			for _, laneID := range laneFilter {
+				if laneSet[laneID] {
+					lanes = append(lanes, laneID)
+				}
+			}
+		}
+		if len(lanes) == 0 {
+			if multi {
+				fmt.Fprintf(os.Stderr, "[sweep] skipping recipe %s: no overlap between --lanes and recipe lanes\n", r.ID)
+				continue
+			}
+			return nil, fmt.Errorf("lane %s not in recipe %s; recipe lanes: %s",
+				sel.laneFilter, r.ID, strings.Join(r.Lanes, ","))
+		}
+		sub := subsetByID[r.Subset] // existence validated by loadSweepPlan
+		reps := sel.repsOverride
+		if reps <= 0 {
+			reps = r.Reps
+		}
+		if reps <= 0 && sub != nil {
+			reps = sub.DefaultReps
+		}
+		if reps <= 0 {
+			reps = plan.Defaults.Reps
+		}
+		runs = append(runs, sweepRecipeRun{
+			ID:                     r.ID,
+			SubsetID:               r.Subset,
+			SubsetPath:             sub.Path,
+			Reps:                   reps,
+			Lanes:                  lanes,
+			MaxConcurrencyOverride: r.MaxConcurrencyOverride,
+			Description:            r.Description,
+			ParallelPolicy:         r.ParallelPolicy,
+			Preflight:              r.Preflight,
+		})
+	}
+	return runs, nil
+}
+
+// parseSweepLaneFilter validates a comma-separated lane id list and returns
+// the unique ids in input order. Empty filter returns nil with no error.
+func parseSweepLaneFilter(plan *sweepPlan, raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
 	known := sweepLaneMap(plan)
-	wanted := map[string]bool{}
+	seen := map[string]bool{}
 	var ordered []string
-	for _, raw := range strings.Split(laneFilter, ",") {
-		id := strings.TrimSpace(raw)
+	for _, p := range strings.Split(raw, ",") {
+		id := strings.TrimSpace(p)
 		if id == "" {
 			continue
 		}
 		if _, ok := known[id]; !ok {
 			return nil, fmt.Errorf("lane %q not found in sweep plan", id)
 		}
-		if !wanted[id] {
-			wanted[id] = true
+		if !seen[id] {
+			seen[id] = true
 			ordered = append(ordered, id)
 		}
 	}
 	if len(ordered) == 0 {
 		return nil, fmt.Errorf("--lanes did not include any lane IDs")
 	}
-
-	filtered := make([]sweepPhase, 0, len(phases))
-	for _, phase := range phases {
-		next := phase
-		next.Lanes = nil
-		phaseLaneSet := map[string]bool{}
-		for _, laneID := range phase.Lanes {
-			phaseLaneSet[laneID] = true
-		}
-		for _, laneID := range ordered {
-			if phaseLaneSet[laneID] {
-				next.Lanes = append(next.Lanes, laneID)
-			}
-		}
-		if len(next.Lanes) > 0 {
-			filtered = append(filtered, next)
-		}
-	}
-	if len(filtered) == 0 {
-		return nil, fmt.Errorf("none of --lanes %q are present in selected phase(s)", laneFilter)
-	}
-	return filtered, nil
+	return ordered, nil
 }
 
 func sweepRGMap(plan *sweepPlan) map[string]*sweepResourceGroup {
