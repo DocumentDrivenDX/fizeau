@@ -5,6 +5,19 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+### Added
+
+- `openaicompat.Config.ConnectTimeout` (defaults to 5 s via
+  `openaicompat.DefaultConnectTimeout`): explicit bound on the TCP connect
+  phase for OpenAI-compatible provider HTTP traffic. The default
+  `http.Transport` is replaced with one whose `DialContext` uses a
+  `net.Dialer{Timeout: ConnectTimeout}`, so an unreachable endpoint surfaces a
+  dial-class failure in ≤5 s instead of waiting the kernel's full ~30 s SYN-
+  retransmit window. Callers on high-latency networks (DDx, benchmarks) can
+  raise the bound by setting `ConnectTimeout` on the config; zero or negative
+  values fall back to the 5 s default. The request-streaming timeout is
+  unchanged — large completions can still take minutes once connected.
+
 ## [v0.14.0] — 2026-05-14
 
 ### Added
