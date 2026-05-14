@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/modelref"
 	openaiadapter "github.com/easel/fizeau/internal/provider/openai"
+	"github.com/easel/fizeau/internal/provider/utilization"
 )
 
 const (
@@ -61,10 +64,10 @@ func discoverProvider(ctx context.Context, providerName string, pc ProviderConfi
 	switch providerType {
 	case "claude", "codex":
 		return discoverHarnessProvider(providerName, providerType, cache, opts)
-	case "openai", "openrouter", "vidar-ds4", "sindri-llamacpp", "ds4", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai":
+	case "openai", "openrouter", "vidar-ds4", "sindri-llamacpp", "ds4", "lucebox", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai":
 		result := discoverOpenAICompatibleProvider(ctx, providerName, pc, cache, opts)
-		if providerType == "ds4" || providerType == "vidar-ds4" {
-			result.merge(discoverPropsProvider(providerName, pc, cache))
+		if hasPropsDiscovery(providerType) {
+			result.merge(discoverPropsProvider(ctx, providerName, pc, cache, opts))
 		}
 		return result
 	default:
@@ -158,11 +161,23 @@ func discoverOpenAICompatibleEndpoint(ctx context.Context, providerName, provide
 	})
 }
 
-func discoverPropsProvider(providerName string, pc ProviderConfig, cache *discoverycache.Cache) providerDiscoveryResult {
+func discoverPropsProvider(ctx context.Context, providerName string, pc ProviderConfig, cache *discoverycache.Cache, opts AssembleOptions) providerDiscoveryResult {
 	if cache == nil {
 		return providerDiscoveryResult{Sources: map[string]SourceMeta{providerName + ":props": {Stale: true, Error: "discovery cache is nil"}}}
 	}
 	src := discoverySource(providerName+"-props", discoveryTTLHTTPLocal, discoveryRefreshDeadlineHTTP)
+	refresher := func(refreshCtx context.Context) ([]byte, error) {
+		requestCtx := ctx
+		if requestCtx == nil {
+			requestCtx = refreshCtx
+		}
+		return fetchPropsDiscoveryPayload(requestCtx, firstBaseURL(pc))
+	}
+	if opts.Refresh == RefreshForce {
+		_ = cache.Refresh(src, refresher)
+	} else if opts.Refresh != RefreshNone {
+		cache.MaybeRefresh(src, refresher)
+	}
 	result := readDiscoveryCache(cache, src, providerName, SourcePropsAPI, discoveryIdentity{
 		Provider:        providerName,
 		ProviderType:    providerTypeFromProviderConfig(pc),
@@ -176,6 +191,121 @@ func discoverPropsProvider(providerName string, pc ProviderConfig, cache *discov
 	}
 	result.Sources = renamed
 	return result
+}
+
+func fetchPropsDiscoveryPayload(ctx context.Context, baseURL string) ([]byte, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, fmt.Errorf("props discovery: base_url is required")
+	}
+	endpoint := utilization.ServerRoot(baseURL) + "/props"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("props discovery: build request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("props discovery: GET %s: %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return nil, fmt.Errorf("props discovery: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("props discovery: read body: %w", err)
+	}
+	ids, reasoningLevels := parsePropsDiscovery(body)
+	return json.Marshal(discoveryPayload{
+		CapturedAt:      time.Now().UTC(),
+		Models:          ids,
+		ReasoningLevels: reasoningLevels,
+		Source:          "props:/props",
+	})
+}
+
+func parsePropsDiscovery(body []byte) ([]string, []string) {
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, nil
+	}
+	ids := make([]string, 0, 4)
+	addString := func(v any) {
+		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+			ids = append(ids, strings.TrimSpace(s))
+		}
+	}
+	addString(raw["id"])
+	addString(raw["model_id"])
+	if model, ok := raw["model"].(map[string]any); ok {
+		addString(model["id"])
+		addString(model["model_id"])
+		addString(model["name"])
+	}
+	if runtime, ok := raw["runtime"].(map[string]any); ok {
+		addString(runtime["model"])
+		addString(runtime["model_id"])
+	}
+	if server, ok := raw["server"].(map[string]any); ok && len(ids) == 0 {
+		addString(server["name"])
+	}
+	if models, ok := raw["models"].([]any); ok {
+		for _, item := range models {
+			switch typed := item.(type) {
+			case string:
+				addString(typed)
+			case map[string]any:
+				addString(typed["id"])
+				addString(typed["model_id"])
+			}
+		}
+	}
+	return uniqueSortedStrings(ids), parsePropsReasoningLevels(raw)
+}
+
+func parsePropsReasoningLevels(raw map[string]any) []string {
+	reasoning, ok := raw["reasoning"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	levels := stringsFromAny(reasoning["supported_efforts"])
+	if len(levels) == 0 {
+		levels = stringsFromAny(reasoning["reasoning_levels"])
+	}
+	if len(levels) == 0 {
+		levels = stringsFromAny(reasoning["levels"])
+	}
+	if len(levels) == 0 {
+		return nil
+	}
+	aliases := map[string]bool{}
+	if rawAliases, ok := reasoning["aliases"].(map[string]any); ok {
+		for key := range rawAliases {
+			aliases[key] = true
+		}
+	}
+	out := make([]string, 0, len(levels))
+	for _, level := range levels {
+		if aliases[level] {
+			continue
+		}
+		out = append(out, level)
+	}
+	return uniqueSortedStrings(out)
+}
+
+func stringsFromAny(v any) []string {
+	items, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+			out = append(out, strings.TrimSpace(s))
+		}
+	}
+	return out
 }
 
 func discoverHarnessProvider(providerName, providerType string, cache *discoverycache.Cache, opts AssembleOptions) providerDiscoveryResult {
@@ -400,10 +530,19 @@ func discoverySource(name string, ttl, deadline time.Duration) discoverycache.So
 
 func discoveryTTLForProvider(pc ProviderConfig) time.Duration {
 	switch normalizeProviderType(pc.Type) {
-	case "ds4", "vidar-ds4", "sindri-llamacpp", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama":
+	case "ds4", "vidar-ds4", "sindri-llamacpp", "lucebox", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama":
 		return discoveryTTLHTTPLocal
 	default:
 		return discoveryTTLHTTPRemote
+	}
+}
+
+func hasPropsDiscovery(providerType string) bool {
+	switch normalizeProviderType(providerType) {
+	case "ds4", "vidar-ds4", "lucebox":
+		return true
+	default:
+		return false
 	}
 }
 

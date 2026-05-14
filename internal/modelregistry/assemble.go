@@ -132,11 +132,11 @@ func ActiveSources(cfg *config.Config) []discoverycache.Source {
 				TTL:             discoveryTTLPTY,
 				RefreshDeadline: discoveryRefreshDeadlinePTY,
 			})
-		case "openai", "openrouter", "vidar-ds4", "sindri-llamacpp", "ds4", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai":
+		case "openai", "openrouter", "vidar-ds4", "sindri-llamacpp", "ds4", "lucebox", "lmstudio", "llama-server", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai":
 			for _, endpoint := range discoveryEndpoints(providerName, pcfg) {
 				sources = append(sources, discoverySource(endpointSourceName(providerName, endpoint.Name, endpoint.BaseURL, endpoint.ServerInstance), discoveryTTLForProvider(pcfg), discoveryRefreshDeadlineHTTP))
 			}
-			if normalizeProviderType(pcfg.Type) == "ds4" || normalizeProviderType(pcfg.Type) == "vidar-ds4" {
+			if hasPropsDiscovery(pcfg.Type) {
 				sources = append(sources, discoverySource(providerName+"-props", discoveryTTLHTTPLocal, discoveryRefreshDeadlineHTTP))
 			}
 		default:

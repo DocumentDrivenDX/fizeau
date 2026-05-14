@@ -184,6 +184,47 @@ func TestAssembleRefreshForceAdvancesCapturedAt(t *testing.T) {
 	require.True(t, snapshot.Models[0].DiscoveredAt.After(oldCapturedAt), "discovery refresh must advance captured_at metadata")
 }
 
+func TestAssembleLuceboxRefreshReadsProps(t *testing.T) {
+	t.Setenv("PATH", "")
+	cache := &discoverycache.Cache{Root: t.TempDir()}
+
+	var modelRequests int32
+	var propsRequests int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			atomic.AddInt32(&modelRequests, 1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"luce-dflash"}]}`))
+		case "/props":
+			atomic.AddInt32(&propsRequests, 1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"model":{"id":"luce-dflash"},"reasoning":{"supported":true},"runtime":{"max_ctx":131072}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := &config.Config{Providers: map[string]config.ProviderConfig{
+		"luce": {
+			Type:    "lucebox",
+			BaseURL: server.URL + "/v1",
+			Billing: string(modelcatalog.BillingModelFixed),
+		},
+	}}
+	cat := loadTestCatalog(t)
+
+	snapshot, err := AssembleWithOptions(context.Background(), cfg, cat, cache, AssembleOptions{Refresh: RefreshForce})
+	require.NoError(t, err)
+	require.Len(t, snapshot.Models, 1)
+	require.Equal(t, "luce-dflash", snapshot.Models[0].ID)
+	require.Contains(t, snapshot.Sources, "luce:props")
+	require.False(t, snapshot.Sources["luce:props"].Stale)
+	require.Equal(t, int32(1), atomic.LoadInt32(&modelRequests))
+	require.Equal(t, int32(1), atomic.LoadInt32(&propsRequests))
+}
+
 func TestRefreshModelsWarmupUsesLocks(t *testing.T) {
 	t.Setenv("PATH", "")
 	cache := &discoverycache.Cache{Root: t.TempDir()}

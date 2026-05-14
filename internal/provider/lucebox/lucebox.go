@@ -9,12 +9,10 @@
 // Capabilities mirror lmstudio for tool calling / streaming / structured
 // output, and additionally declare Thinking=true: the server returns
 // Qwen3-style thinking traces in a separate `reasoning_content` field
-// alongside `content` (verified empirically against Qwen3.5-27B-Q4_K_M
-// on bragi:1236 — a non-streaming chat with sufficient max_tokens
-// produces both fields). The provider's existing reasoning_content
-// handling on the openai-compat path covers this case; no separate
-// thinking wire format is set because the server doesn't expose a
-// request-side toggle (no enable_thinking / reasoning_effort field).
+// alongside `content`. The provider's existing reasoning_content handling on
+// the openai-compat path covers this case. Live `/props` introspection is used
+// when available to discover whether a build also exposes request-side
+// reasoning controls.
 //
 // Sampling: the server accepts the standard OpenAI sampler fields. Catalog
 // entries for lucebox-served models should not set sampling_control unless
@@ -28,6 +26,9 @@
 package lucebox
 
 import (
+	"context"
+	"time"
+
 	agentcore "github.com/easel/fizeau/internal/core"
 	"github.com/easel/fizeau/internal/provider/openai"
 	"github.com/easel/fizeau/internal/provider/registry"
@@ -50,8 +51,9 @@ func init() {
 				Reasoning:    in.Reasoning,
 			})
 		},
-		DefaultBaseURL: DefaultBaseURL,
-		DefaultPort:    1236,
+		DefaultBaseURL:  DefaultBaseURL,
+		DefaultPort:     1236,
+		IntrospectionFn: Introspect,
 	})
 }
 
@@ -81,6 +83,18 @@ func New(cfg Config) *openai.Provider {
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
 	}
+	caps := ProtocolCapabilities
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if intro, ok := registry.IntrospectProvider(ctx, "lucebox", baseURL, cfg.Model); ok {
+		if intro.EffectiveThinkingFormat != "" {
+			caps.ThinkingFormat = openai.ThinkingWireFormat(intro.EffectiveThinkingFormat)
+		}
+		caps.EffectiveReasoningLevels = intro.EffectiveReasoningLevels
+		caps.ReasoningAliasMap = intro.AliasMap
+		caps.SupportedRequestParams = intro.SupportedRequestParams
+		caps.ServerSideReasoningFormat = intro.ServerSideReasoningFormat
+	}
 	return openai.New(openai.Config{
 		BaseURL:        baseURL,
 		APIKey:         cfg.APIKey,
@@ -91,6 +105,6 @@ func New(cfg Config) *openai.Provider {
 		KnownModels:    cfg.KnownModels,
 		Headers:        cfg.Headers,
 		Reasoning:      cfg.Reasoning,
-		Capabilities:   &ProtocolCapabilities,
+		Capabilities:   &caps,
 	})
 }
