@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,6 +57,83 @@ func TestRecordRouteAttempt_DemotesFailedProviderForAutomaticRouting(t *testing.
 	}
 	if pinned.Provider != "bragi" {
 		t.Fatalf("provider pin after failure: got %q, want bragi", pinned.Provider)
+	}
+}
+
+// TestRecordRouteAttempt_DialFailureHardGatesProvider verifies FEAT-004 AC-28
+// path: a route-attempt record whose Error matches a dispatchability-failure
+// pattern (dial tcp / connection refused / i/o timeout / 5xx gateway) gets
+// promoted into ProviderUnreachable so the next ResolveRoute hard-gates the
+// provider — distinct from the soft-demotion path (context deadline,
+// validation error) which leaves the candidate eligible but down-scored.
+// This is the v0.13.1 follow-up to v0.13.0's snapshot-only hard-gate.
+func TestRecordRouteAttempt_DialFailureHardGatesProvider(t *testing.T) {
+	cases := []struct {
+		name string
+		err  string
+	}{
+		{"dial tcp timeout", `openai: Post "http://bragi:1234/v1/chat/completions": dial tcp 100.127.38.115:1234: i/o timeout`},
+		{"connection refused", `dial tcp 192.168.2.106:8020: connection refused`},
+		{"502 bad gateway", `POST "http://bragi:1234/v1/chat/completions": 502 Bad Gateway `},
+		{"no route to host", `dial tcp: no route to host`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			svc := routeAttemptTestService(t, 30*time.Second)
+
+			before, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "qwen"})
+			if err != nil {
+				t.Fatalf("ResolveRoute before failure: %v", err)
+			}
+			if before.Provider != "bragi" {
+				t.Fatalf("baseline provider: got %q, want bragi", before.Provider)
+			}
+
+			if err := svc.RecordRouteAttempt(context.Background(), RouteAttempt{
+				Harness:  "fiz",
+				Provider: "bragi",
+				Model:    "qwen",
+				Status:   "failed",
+				Error:    c.err,
+			}); err != nil {
+				t.Fatalf("RecordRouteAttempt: %v", err)
+			}
+
+			// After a dial-class failure, bragi must be hard-gated — its
+			// candidate row should be Eligible=false with FilterReasonUnhealthy.
+			after, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "qwen"})
+			if err != nil {
+				t.Fatalf("ResolveRoute after failure: %v", err)
+			}
+			if after.Provider == "bragi" {
+				t.Fatalf("after dial failure provider: got bragi, want hard-gated to alternative")
+			}
+			var bragiCand *RouteCandidate
+			for i := range after.Candidates {
+				if after.Candidates[i].Provider == "bragi" {
+					bragiCand = &after.Candidates[i]
+					break
+				}
+			}
+			if bragiCand == nil {
+				t.Fatal("bragi candidate row missing from decision")
+			}
+			if bragiCand.Eligible {
+				t.Errorf("bragi should be Eligible=false after dial failure; got Eligible=true")
+			}
+			if !strings.Contains(bragiCand.Reason, "known unreachable") {
+				t.Errorf("bragi.Reason = %q, want it to contain 'known unreachable'", bragiCand.Reason)
+			}
+
+			// Explicit provider pin still selects bragi (operator bypass).
+			pinned, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "qwen", Provider: "bragi"})
+			if err != nil {
+				t.Fatalf("ResolveRoute with provider pin: %v", err)
+			}
+			if pinned.Provider != "bragi" {
+				t.Fatalf("explicit pin after dial failure: got %q, want bragi", pinned.Provider)
+			}
+		})
 	}
 }
 

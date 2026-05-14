@@ -101,9 +101,15 @@ func TestIsSnapshotDialFailure(t *testing.T) {
 		{"network is unreachable", true},
 		{"no such host", true},
 		{"i/o timeout", true},
+		// Real shapes seen in ddx-server.log for bragi:
+		{`POST "http://bragi:1234/v1/chat/completions": 502 Bad Gateway `, true},
+		{`upstream returned 503 Service Unavailable`, true},
+		{`504 gateway timeout`, true},
 		{"unauthorized: invalid API key", false},
-		{"context deadline exceeded", false}, // not a dial-class signature
-		{"connection reset by peer", false},  // mid-stream, not dial
+		{"context deadline exceeded", false},                  // not a dial-class signature
+		{"connection reset by peer", false},                   // mid-stream, not dial
+		{"provider request timeout: wall-clock 15m0s", false}, // ambiguous; could be slow live host
+		{"429 too many requests", false},                      // rate-limit state machine
 	}
 	for _, c := range cases {
 		if got := isSnapshotDialFailure(c.in); got != c.want {

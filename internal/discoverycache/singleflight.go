@@ -37,3 +37,21 @@ func (c *Cache) MaybeRefresh(s Source, fn Refresher) {
 		_ = c.refreshWithClaim(s, fn)
 	}()
 }
+
+// MaybeRefreshSync refreshes synchronously only when the cache is stale or
+// absent. Returns the refresh error (nil if data was fresh or the refresh
+// succeeded). Composes with single-flight: concurrent callers share one
+// refreshAndCommit, both in-process (singleflight.Group) and cross-process
+// (the file marker). The routing hot path uses this to satisfy the
+// synchronous-freshness contract while keeping the cost bounded to actually-
+// stale entries.
+func (c *Cache) MaybeRefreshSync(s Source, fn Refresher) error {
+	res, err := c.Read(s)
+	if err != nil {
+		return err
+	}
+	if res.Fresh {
+		return nil
+	}
+	return c.Refresh(s, fn)
+}

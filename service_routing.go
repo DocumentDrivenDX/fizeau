@@ -654,6 +654,23 @@ func (s *service) applyRouteAttemptCooldowns(in *routing.Inputs) {
 			if !ok || record.RecordedAt.After(existing) {
 				in.ProviderCooldowns[record.Key.Provider] = record.RecordedAt
 			}
+			// FEAT-004 AC-28: route-attempt failures with dial-class errors
+			// (host unreachable, not a stream-level glitch) are dispatchability
+			// failures, not just non-fatal health risk. Promote them to
+			// ProviderUnreachable so the engine hard-gates on the next call
+			// without waiting for the snapshot's background refresh to catch
+			// up. Non-dial failures (5xx mid-stream, 4xx, context canceled)
+			// stay as soft demotion to preserve sticky-lease across single
+			// transient hiccups.
+			if isDispatchabilityFailure(record.Error) {
+				if in.ProviderUnreachable == nil {
+					in.ProviderUnreachable = make(map[string]time.Time)
+				}
+				existing, ok := in.ProviderUnreachable[record.Key.Provider]
+				if !ok || record.RecordedAt.After(existing) {
+					in.ProviderUnreachable[record.Key.Provider] = record.RecordedAt
+				}
+			}
 		}
 		if record.Key.Provider == "" && record.Key.Harness != "" {
 			for i := range in.Harnesses {
@@ -680,7 +697,12 @@ func (s *service) routeAttemptTTL() time.Duration {
 // and snapshot-derived provider inventory. The public routing engine stays
 // unchanged; only the source of provider/model candidates changes.
 func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
-	inputs, _ := s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog(), modelsnapshot.RefreshBackground)
+	// FEAT-004 §Snapshot Freshness — synchronous-freshness contract: at route
+	// decision time, refresh stale providers in-line so the engine sees
+	// current reachability. Fresh providers short-circuit on cache. Caps the
+	// per-route cost at ~5s × stale-provider-count (5s = discoveryRefresh
+	// deadline per source) instead of forcing every source to re-probe.
+	inputs, _ := s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog(), modelsnapshot.RefreshIfStale)
 	return inputs
 }
 
@@ -770,24 +792,43 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	}, snapshot
 }
 
-// dialFailurePattern matches discovery errors that indicate the upstream host
-// is unreachable (TCP-level failure or unrouted DNS). Treated as a
-// dispatchability failure per FEAT-004 AC-28.
-var dialFailureSubstrings = []string{
+// dispatchabilityFailureSubstrings matches errors that indicate the upstream
+// host is unreachable or the provider is currently unusable: TCP-level dial
+// failures, unrouted DNS, and HTTP 5xx gateway statuses (502/503/504/Bad
+// Gateway). Treated as dispatchability failures per FEAT-004 AC-28. Both
+// snapshot discovery errors and route-attempt record errors are classified
+// through this same predicate.
+//
+// Excluded on purpose:
+//   - 429 / rate-limit (different state machine, ProviderQuotaExhaustedUntil)
+//   - "context canceled" (operator interrupt; not a provider signal)
+//   - "provider request timeout: wall-clock" (could mean slow but live host)
+//   - generic 4xx (auth, validation — surfaces via FilterReasonAuth elsewhere)
+var dispatchabilityFailureSubstrings = []string{
 	"dial tcp",
 	"connection refused",
 	"no route to host",
 	"network is unreachable",
 	"i/o timeout",
 	"no such host",
+	"502 bad gateway",
+	"503 service unavailable",
+	"504 gateway timeout",
+	" 502 ", // bare status code form (e.g. `: 502 Bad Gateway`)
+	" 503 ",
+	" 504 ",
 }
 
-func isSnapshotDialFailure(errMsg string) bool {
+// isSnapshotDialFailure preserved as a back-compat alias for the v0.13.0
+// snapshot-side caller. Both now share the same broader predicate.
+func isSnapshotDialFailure(errMsg string) bool { return isDispatchabilityFailure(errMsg) }
+
+func isDispatchabilityFailure(errMsg string) bool {
 	if errMsg == "" {
 		return false
 	}
 	lower := strings.ToLower(errMsg)
-	for _, pat := range dialFailureSubstrings {
+	for _, pat := range dispatchabilityFailureSubstrings {
 		if strings.Contains(lower, pat) {
 			return true
 		}

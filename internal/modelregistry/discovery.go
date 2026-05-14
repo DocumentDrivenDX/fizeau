@@ -148,9 +148,14 @@ func discoverOpenAICompatibleEndpoint(ctx context.Context, providerName, provide
 			Source:     "openai-compatible:/v1/models",
 		})
 	}
-	if opts.Refresh == RefreshForce {
+	switch opts.Refresh {
+	case RefreshForce:
 		_ = cache.Refresh(src, refresher)
-	} else if opts.Refresh != RefreshNone {
+	case RefreshIfStale:
+		_ = cache.MaybeRefreshSync(src, refresher)
+	case RefreshNone:
+		// no-op
+	default:
 		cache.MaybeRefresh(src, refresher)
 	}
 	return readDiscoveryCache(cache, src, providerName, SourceNativeAPI, discoveryIdentity{
@@ -174,9 +179,14 @@ func discoverPropsProvider(ctx context.Context, providerName string, pc config.P
 		}
 		return fetchPropsDiscoveryPayload(requestCtx, firstBaseURL(pc))
 	}
-	if opts.Refresh == RefreshForce {
+	switch opts.Refresh {
+	case RefreshForce:
 		_ = cache.Refresh(src, refresher)
-	} else if opts.Refresh != RefreshNone {
+	case RefreshIfStale:
+		_ = cache.MaybeRefreshSync(src, refresher)
+	case RefreshNone:
+		// no-op
+	default:
 		cache.MaybeRefresh(src, refresher)
 	}
 	result := readDiscoveryCache(cache, src, providerName, SourcePropsAPI, discoveryIdentity{
@@ -329,19 +339,23 @@ func discoverHarnessProvider(providerName, providerType string, cache *discovery
 			ServerInstance: providerName,
 		})
 	}
-	if opts.Refresh == RefreshForce {
-		_ = cache.Refresh(src, func(context.Context) ([]byte, error) {
-			snapshot, err := harnesses.CachedModelDiscoverySnapshot(providerType, harnesses.EmbeddedDiscoverySource)
-			if err != nil {
-				return nil, err
-			}
-			return json.Marshal(discoveryPayload{
-				CapturedAt:      snapshot.CapturedAt,
-				Models:          snapshot.Models,
-				ReasoningLevels: snapshot.ReasoningLevels,
-				Source:          snapshot.Source,
-			})
+	refresher := func(context.Context) ([]byte, error) {
+		snapshot, err := harnesses.CachedModelDiscoverySnapshot(providerType, harnesses.EmbeddedDiscoverySource)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(discoveryPayload{
+			CapturedAt:      snapshot.CapturedAt,
+			Models:          snapshot.Models,
+			ReasoningLevels: snapshot.ReasoningLevels,
+			Source:          snapshot.Source,
 		})
+	}
+	switch opts.Refresh {
+	case RefreshForce:
+		_ = cache.Refresh(src, refresher)
+	case RefreshIfStale:
+		_ = cache.MaybeRefreshSync(src, refresher)
 	}
 	result := readDiscoveryCache(cache, src, providerName, SourceHarnessPTY, discoveryIdentity{
 		Provider:       providerName,
