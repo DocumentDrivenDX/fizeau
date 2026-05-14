@@ -12,29 +12,29 @@ import (
 	"github.com/easel/fizeau/internal/harnesses"
 )
 
-const OpenCodeModelDiscoveryFreshnessWindow = 24 * time.Hour
+const openCodeModelDiscoveryFreshnessWindow = 24 * time.Hour
 
 var opencodeModelLinePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[^\s]+$`)
 
-// OpenCodeModelCost captures the per-million-token prices printed by
+// openCodeModelCost captures the per-million-token prices printed by
 // `opencode models --verbose`.
-type OpenCodeModelCost struct {
+type openCodeModelCost struct {
 	InputUSDPerMTok      float64 `json:"input_usd_per_mtok"`
 	OutputUSDPerMTok     float64 `json:"output_usd_per_mtok"`
 	CacheReadUSDPerMTok  float64 `json:"cache_read_usd_per_mtok"`
 	CacheWriteUSDPerMTok float64 `json:"cache_write_usd_per_mtok"`
 }
 
-// OpenCodeModelEvidence captures the stable model metadata exposed by
+// openCodeModelEvidence captures the stable model metadata exposed by
 // `opencode models --verbose`. It intentionally does not include account or
 // quota state because the current opencode CLI does not expose those as
 // structured data.
-type OpenCodeModelEvidence struct {
+type openCodeModelEvidence struct {
 	Model        string             `json:"model"`
 	ProviderID   string             `json:"provider_id,omitempty"`
 	ModelID      string             `json:"model_id,omitempty"`
 	Status       string             `json:"status,omitempty"`
-	Cost         *OpenCodeModelCost `json:"cost,omitempty"`
+	Cost         *openCodeModelCost `json:"cost,omitempty"`
 	ContextLimit int                `json:"context_limit,omitempty"`
 	OutputLimit  int                `json:"output_limit,omitempty"`
 	Reasoning    bool               `json:"reasoning"`
@@ -43,18 +43,18 @@ type OpenCodeModelEvidence struct {
 	Variants     []string           `json:"variants,omitempty"`
 }
 
-func DefaultOpenCodeModelDiscovery() harnesses.ModelDiscoverySnapshot {
+func defaultOpenCodeModelDiscovery() harnesses.ModelDiscoverySnapshot {
 	return harnesses.ModelDiscoverySnapshot{
 		CapturedAt:      time.Now().UTC(),
 		Models:          []string{"opencode/gpt-5.4", "opencode/claude-sonnet-4-6"},
 		ReasoningLevels: []string{"minimal", "low", "medium", "high", "max"},
 		Source:          "compatibility-table:opencode-cli",
-		FreshnessWindow: OpenCodeModelDiscoveryFreshnessWindow.String(),
+		FreshnessWindow: openCodeModelDiscoveryFreshnessWindow.String(),
 		Detail:          "opencode models lists provider/model IDs; opencode models --verbose includes per-model costs and variants; opencode run --help documents -m/--model and --variant",
 	}
 }
 
-func ReadOpenCodeModelDiscovery(ctx context.Context, binary string, args ...string) (harnesses.ModelDiscoverySnapshot, error) {
+func readOpenCodeModelDiscovery(ctx context.Context, binary string, args ...string) (harnesses.ModelDiscoverySnapshot, error) {
 	if binary == "" {
 		binary = "opencode"
 	}
@@ -68,7 +68,7 @@ func ReadOpenCodeModelDiscovery(ctx context.Context, binary string, args ...stri
 	}
 	raw := string(out)
 	if len(parseOpenCodeModels(raw)) == 0 {
-		if evidence, err := ParseOpenCodeVerboseModelEvidence(raw); err != nil || len(evidence) == 0 {
+		if evidence, err := parseOpenCodeVerboseModelEvidence(raw); err != nil || len(evidence) == 0 {
 			return harnesses.ModelDiscoverySnapshot{}, fmt.Errorf("opencode models returned no provider/model IDs")
 		}
 	}
@@ -80,7 +80,7 @@ func ReadOpenCodeModelDiscovery(ctx context.Context, binary string, args ...stri
 	return snapshot, nil
 }
 
-func ReadOpenCodeVerboseModelEvidence(ctx context.Context, binary string, args ...string) ([]OpenCodeModelEvidence, error) {
+func readOpenCodeVerboseModelEvidence(ctx context.Context, binary string, args ...string) ([]openCodeModelEvidence, error) {
 	if binary == "" {
 		binary = "opencode"
 	}
@@ -92,15 +92,15 @@ func ReadOpenCodeVerboseModelEvidence(ctx context.Context, binary string, args .
 	if err != nil {
 		return nil, fmt.Errorf("opencode models --verbose: %w", err)
 	}
-	return ParseOpenCodeVerboseModelEvidence(string(out))
+	return parseOpenCodeVerboseModelEvidence(string(out))
 }
 
 func opencodeDiscoveryFromText(text, source string) harnesses.ModelDiscoverySnapshot {
-	snapshot := DefaultOpenCodeModelDiscovery()
+	snapshot := defaultOpenCodeModelDiscovery()
 	if source != "" {
 		snapshot.Source = source
 	}
-	if evidence, err := ParseOpenCodeVerboseModelEvidence(text); err == nil && len(evidence) > 0 {
+	if evidence, err := parseOpenCodeVerboseModelEvidence(text); err == nil && len(evidence) > 0 {
 		snapshot.Models = modelsFromOpenCodeEvidence(evidence)
 		if levels := reasoningLevelsFromOpenCodeEvidence(evidence); len(levels) > 0 {
 			snapshot.ReasoningLevels = levels
@@ -159,10 +159,10 @@ func sourceForOpenCodeModelArgs(args []string) string {
 	return source
 }
 
-func ParseOpenCodeVerboseModelEvidence(text string) ([]OpenCodeModelEvidence, error) {
+func parseOpenCodeVerboseModelEvidence(text string) ([]openCodeModelEvidence, error) {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	lines := strings.Split(text, "\n")
-	records := make([]OpenCodeModelEvidence, 0)
+	records := make([]openCodeModelEvidence, 0)
 	for i := 0; i < len(lines); i++ {
 		model := strings.TrimSpace(lines[i])
 		if !opencodeModelLinePattern.MatchString(model) {
@@ -238,7 +238,7 @@ func collectOpenCodeJSONBlock(lines []string, start int) (string, int, error) {
 	return "", len(lines) - 1, fmt.Errorf("unterminated JSON object")
 }
 
-func decodeOpenCodeModelEvidence(model, raw string) (OpenCodeModelEvidence, error) {
+func decodeOpenCodeModelEvidence(model, raw string) (openCodeModelEvidence, error) {
 	var env struct {
 		ID         string          `json:"id"`
 		ProviderID string          `json:"providerID"`
@@ -256,9 +256,9 @@ func decodeOpenCodeModelEvidence(model, raw string) (OpenCodeModelEvidence, erro
 		Variants map[string]json.RawMessage `json:"variants"`
 	}
 	if err := json.Unmarshal([]byte(raw), &env); err != nil {
-		return OpenCodeModelEvidence{}, err
+		return openCodeModelEvidence{}, err
 	}
-	evidence := OpenCodeModelEvidence{
+	evidence := openCodeModelEvidence{
 		Model:        model,
 		ProviderID:   env.ProviderID,
 		ModelID:      env.ID,
@@ -280,9 +280,9 @@ func decodeOpenCodeModelEvidence(model, raw string) (OpenCodeModelEvidence, erro
 			} `json:"cache"`
 		}
 		if err := json.Unmarshal(env.Cost, &cost); err != nil {
-			return OpenCodeModelEvidence{}, err
+			return openCodeModelEvidence{}, err
 		}
-		evidence.Cost = &OpenCodeModelCost{
+		evidence.Cost = &openCodeModelCost{
 			InputUSDPerMTok:      cost.Input,
 			OutputUSDPerMTok:     cost.Output,
 			CacheReadUSDPerMTok:  cost.Cache.Read,
@@ -332,7 +332,7 @@ func openCodeVariantRank(variant string) int {
 	}
 }
 
-func modelsFromOpenCodeEvidence(evidence []OpenCodeModelEvidence) []string {
+func modelsFromOpenCodeEvidence(evidence []openCodeModelEvidence) []string {
 	out := make([]string, 0, len(evidence))
 	for _, item := range evidence {
 		out = appendUniqueString(out, item.Model)
@@ -340,7 +340,7 @@ func modelsFromOpenCodeEvidence(evidence []OpenCodeModelEvidence) []string {
 	return out
 }
 
-func reasoningLevelsFromOpenCodeEvidence(evidence []OpenCodeModelEvidence) []string {
+func reasoningLevelsFromOpenCodeEvidence(evidence []openCodeModelEvidence) []string {
 	seen := map[string]bool{}
 	for _, item := range evidence {
 		for _, variant := range item.Variants {
@@ -363,7 +363,7 @@ func reasoningLevelsFromOpenCodeEvidence(evidence []OpenCodeModelEvidence) []str
 	return append(out, extra...)
 }
 
-func countOpenCodeCostEvidence(evidence []OpenCodeModelEvidence) int {
+func countOpenCodeCostEvidence(evidence []openCodeModelEvidence) int {
 	count := 0
 	for _, item := range evidence {
 		if item.Cost != nil {

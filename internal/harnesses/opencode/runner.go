@@ -339,3 +339,24 @@ func setProcessGroup(cmd *osexec.Cmd) {
 	}
 	setProcessGroupAttr(cmd.SysProcAttr)
 }
+
+// DefaultModelSnapshot returns the compatibility-table fallback used when
+// live opencode CLI model discovery is unavailable. Implements
+// harnesses.ModelDiscoveryHarness.
+func (r *Runner) DefaultModelSnapshot() harnesses.ModelDiscoverySnapshot {
+	return defaultOpenCodeModelDiscovery()
+}
+
+// SupportedAliases returns nil: opencode requires exact provider/model
+// identifiers and recognizes no family alias. Implements
+// harnesses.ModelDiscoveryHarness.
+func (r *Runner) SupportedAliases() []string {
+	return nil
+}
+
+// ResolveModelAlias always returns harnesses.ErrAliasNotResolvable because
+// opencode does not recognize family aliases. Implements
+// harnesses.ModelDiscoveryHarness.
+func (r *Runner) ResolveModelAlias(family string, snapshot harnesses.ModelDiscoverySnapshot) (string, error) {
+	return "", harnesses.ErrAliasNotResolvable
+}

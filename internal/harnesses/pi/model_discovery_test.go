@@ -48,7 +48,7 @@ Usage:
 EOF
 `), 0o700))
 
-	snapshot, err := ReadPiModelDiscoveryFromHelp(context.Background(), script)
+	snapshot, err := readPiModelDiscoveryFromHelp(context.Background(), script)
 	require.NoError(t, err)
 	require.Equal(t, []string{"gemini-2.5-flash"}, snapshot.Models)
 	require.Contains(t, snapshot.ReasoningLevels, "high")
@@ -69,7 +69,7 @@ google-gemini-cli  gemini-2.5-pro    1.0M     65.5K    yes       yes
 EOF
 `), 0o700))
 
-	snapshot, err := ReadPiModelDiscoveryFromListModels(context.Background(), script)
+	snapshot, err := readPiModelDiscoveryFromListModels(context.Background(), script)
 	require.NoError(t, err)
 	require.Equal(t, []string{"gemini-2.5-flash", "gemini-2.5-pro"}, snapshot.Models)
 	require.Contains(t, snapshot.ReasoningLevels, "xhigh")
@@ -84,7 +84,7 @@ omlx               qwen3.6-27b                128K     8K       no        no
 openrouter         anthropic/claude-sonnet-4  1M       64K      yes       yes
 `
 	rows := parsePiListModelsWithProvider(text)
-	require.Equal(t, []PiListModel{
+	require.Equal(t, []piListModel{
 		{Provider: "google-gemini-cli", Model: "gemini-2.5-flash"},
 		{Provider: "lmstudio", Model: "qwen3.6-27b"},
 		{Provider: "omlx", Model: "qwen3.6-27b"},
@@ -111,12 +111,12 @@ omlx               qwen3.6-27b       128K     8K       no        no
 EOF
 `), 0o700))
 
-	snapshot, err := ReadPiModelDiscoveryFromListModelsForProviders(context.Background(), script, []string{"lmstudio", "omlx"})
+	snapshot, err := readPiModelDiscoveryFromListModelsForProviders(context.Background(), script, []string{"lmstudio", "omlx"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"qwen3.6-27b"}, snapshot.Models)
 	require.Equal(t, "cli:list-models:providers", snapshot.Source)
 
-	_, err = ReadPiModelDiscoveryFromListModelsForProviders(context.Background(), script, []string{"does-not-exist"})
+	_, err = readPiModelDiscoveryFromListModelsForProviders(context.Background(), script, []string{"does-not-exist"})
 	require.Error(t, err)
 }
 
@@ -130,6 +130,6 @@ func TestReadPiModelDiscoveryFromListModelsRejectsEmpty(t *testing.T) {
 printf 'provider model context max-out thinking images\n'
 `), 0o700))
 
-	_, err := ReadPiModelDiscoveryFromListModels(context.Background(), script)
+	_, err := readPiModelDiscoveryFromListModels(context.Background(), script)
 	require.Error(t, err)
 }

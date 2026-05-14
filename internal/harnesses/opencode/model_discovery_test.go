@@ -11,7 +11,7 @@ import (
 )
 
 func TestDefaultOpenCodeModelDiscovery(t *testing.T) {
-	snapshot := DefaultOpenCodeModelDiscovery()
+	snapshot := defaultOpenCodeModelDiscovery()
 	if snapshot.Source != "compatibility-table:opencode-cli" {
 		t.Fatalf("Source = %q, want compatibility-table:opencode-cli", snapshot.Source)
 	}
@@ -19,8 +19,8 @@ func TestDefaultOpenCodeModelDiscovery(t *testing.T) {
 		t.Fatal("default discovery should include compatibility-table model IDs")
 	}
 	assertContainsString(t, snapshot.ReasoningLevels, "high", "reasoning")
-	if snapshot.FreshnessWindow != OpenCodeModelDiscoveryFreshnessWindow.String() {
-		t.Fatalf("FreshnessWindow = %q, want %q", snapshot.FreshnessWindow, OpenCodeModelDiscoveryFreshnessWindow.String())
+	if snapshot.FreshnessWindow != openCodeModelDiscoveryFreshnessWindow.String() {
+		t.Fatalf("FreshnessWindow = %q, want %q", snapshot.FreshnessWindow, openCodeModelDiscoveryFreshnessWindow.String())
 	}
 }
 
@@ -61,9 +61,9 @@ EOF
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	snapshot, err := ReadOpenCodeModelDiscovery(ctx, script)
+	snapshot, err := readOpenCodeModelDiscovery(ctx, script)
 	if err != nil {
-		t.Fatalf("ReadOpenCodeModelDiscovery: %v", err)
+		t.Fatalf("readOpenCodeModelDiscovery: %v", err)
 	}
 	if snapshot.Source != "cli:opencode models" {
 		t.Fatalf("Source = %q, want cli:opencode models", snapshot.Source)
@@ -146,9 +146,9 @@ EOF
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	snapshot, err := ReadOpenCodeModelDiscovery(ctx, script, "models", "--verbose")
+	snapshot, err := readOpenCodeModelDiscovery(ctx, script, "models", "--verbose")
 	if err != nil {
-		t.Fatalf("ReadOpenCodeModelDiscovery: %v", err)
+		t.Fatalf("readOpenCodeModelDiscovery: %v", err)
 	}
 	if snapshot.Source != "cli:opencode models --verbose" {
 		t.Fatalf("Source = %q, want cli:opencode models --verbose", snapshot.Source)
@@ -205,9 +205,9 @@ EOF
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	evidence, err := ReadOpenCodeVerboseModelEvidence(ctx, script)
+	evidence, err := readOpenCodeVerboseModelEvidence(ctx, script)
 	if err != nil {
-		t.Fatalf("ReadOpenCodeVerboseModelEvidence: %v", err)
+		t.Fatalf("readOpenCodeVerboseModelEvidence: %v", err)
 	}
 	if len(evidence) != 1 {
 		t.Fatalf("evidence = %#v, want one record", evidence)
@@ -253,13 +253,13 @@ printf 'no models here\n'
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if _, err := ReadOpenCodeModelDiscovery(ctx, script); err == nil {
+	if _, err := readOpenCodeModelDiscovery(ctx, script); err == nil {
 		t.Fatal("expected empty model output to fail discovery")
 	}
 }
 
 func TestParseOpenCodeVerboseModelEvidenceRejectsMalformedJSON(t *testing.T) {
-	_, err := ParseOpenCodeVerboseModelEvidence(`opencode/gpt-5.4
+	_, err := parseOpenCodeVerboseModelEvidence(`opencode/gpt-5.4
 {
   "id": "gpt-5.4"
 `)
