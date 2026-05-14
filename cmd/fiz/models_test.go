@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -473,9 +474,13 @@ func TestModelsRefreshFlags(t *testing.T) {
 	if err := os.WriteFile(catalogPath, []byte(testModelCatalogYAML()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	var requests int
+	// requests counts handler invocations; the handler runs on the
+	// httptest.Server's goroutines while the test reads it from the main
+	// goroutine, so the access must be synchronized (-race caught this on
+	// 098967da against TestModelsRefreshFlags).
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
+		requests.Add(1)
 		switch r.URL.Path {
 		case "/v1/models", "/v1/v1/models":
 		default:
@@ -507,15 +512,15 @@ providers:
 	if noRefresh.exitCode != 0 {
 		t.Fatalf("--no-refresh exit=%d stderr=%s stdout=%s", noRefresh.exitCode, noRefresh.stderr, noRefresh.stdout)
 	}
-	if requests != 0 {
-		t.Fatalf("--no-refresh triggered %d refresh requests", requests)
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("--no-refresh triggered %d refresh requests", got)
 	}
 
 	refresh := runFiz(t, fixture, "models", "--refresh")
 	if refresh.exitCode != 0 {
 		t.Fatalf("--refresh exit=%d stderr=%s stdout=%s", refresh.exitCode, refresh.stderr, refresh.stdout)
 	}
-	if requests == 0 {
+	if requests.Load() == 0 {
 		t.Fatal("--refresh did not synchronously call the discovery endpoint")
 	}
 	if !strings.Contains(refresh.stdout, "gpt-5.5") {
@@ -540,8 +545,8 @@ providers:
 	if refreshAll.exitCode != 0 {
 		t.Fatalf("--refresh-all exit=%d stderr=%s stdout=%s", refreshAll.exitCode, refreshAll.stderr, refreshAll.stdout)
 	}
-	if requests != 3 {
-		t.Fatalf("--refresh-all should trigger discovery and runtime refreshes, got %d requests", requests)
+	if got := requests.Load(); got != 3 {
+		t.Fatalf("--refresh-all should trigger discovery and runtime refreshes, got %d requests", got)
 	}
 	if !strings.Contains(refreshAll.stdout, "Freshness: fresh") {
 		t.Fatalf("--refresh-all did not report fresh snapshot:\n%s", refreshAll.stdout)
