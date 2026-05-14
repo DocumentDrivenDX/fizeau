@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
 	"github.com/easel/fizeau/internal/routehealth"
 	"github.com/easel/fizeau/internal/serviceimpl"
