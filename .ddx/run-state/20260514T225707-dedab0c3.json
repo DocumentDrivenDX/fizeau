@@ -1,0 +1,11 @@
+{
+  "bead_id": "fizeau-c47606b1",
+  "attempt_id": "20260514T225707-dedab0c3",
+  "harness": "claude",
+  "started_at": "2026-05-14T22:57:08.246048325Z",
+  "worktree_path": "/var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-c47606b1-20260514T225707-dedab0c3",
+  "pid": 1987522,
+  "session_id": "eb-124550b4",
+  "refreshed_at": "2026-05-14T23:03:38.273343347Z",
+  "expires_at": "2026-05-14T23:05:38.273343347Z"
+}
