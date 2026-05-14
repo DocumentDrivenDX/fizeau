@@ -1,2 +1,0 @@
-status: blocked
-reason: `lefthook run pre-commit --all-files` fails on a pre-existing formatting issue in `cmd/bench/sweep_test.go`. That file is outside this bead's allowed scope (`docs/helix/02-design/contracts/CONTRACT-003-fizeau-service.md` and optional routing cross-reference), so I cannot satisfy the hook without violating the bead constraints.

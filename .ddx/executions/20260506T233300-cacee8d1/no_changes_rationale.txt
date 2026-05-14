@@ -1,4 +1,0 @@
-verification_command: go test ./agentcli ./cmd/fiz
-what_is_done: The requested harness hard-pin surface is already implemented in agentcli/run.go, and the existing CLI test in agentcli/run_options_test.go already proves --harness codex is threaded into the service request used by fiz run.
-what_blocked: No blocking issue remains. The targeted test suite passed in this worktree.
-follow_up_needed: None. If DDx expects a code change commit for bookkeeping, it should treat this bead as already satisfied rather than requesting additional implementation.

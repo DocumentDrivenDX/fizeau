@@ -1,3 +1,0 @@
-status: needs_investigation
-reason: The requested provider documentation already contains the required llama-server, vLLM, and go-vcr wording, and CONTRACT-003 already exposes the relevant ProviderInfo/ModelInfo fields. I verified the acceptance text against the current docs and found no spec drift to correct in-scope.
-verification_command: rg -n 'llama-server|Provider Utilization Discovery|Real-Server Provider Cassettes|go-vcr' docs/helix/01-frame/features/FEAT-003-providers.md && rg -n 'D12A|D12B|D17|type: llama-server|type: vllm' docs/helix/02-design/solution-designs/SD-005-provider-config.md && rg -n 'AC-FEAT-003-12|AC-FEAT-003-13|AC-FEAT-003-14' docs/helix/01-frame/features/FEAT-003-providers.md && ddx doc stale
