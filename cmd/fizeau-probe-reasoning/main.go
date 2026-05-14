@@ -850,7 +850,7 @@ func writeArtifacts(artDir, label string, r probeResult) {
 
 func writeArtifact(artDir, name string, data []byte) {
 	path := filepath.Join(artDir, name)
-	if err := os.WriteFile(path, data, 0o640); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "warn: write artifact %s: %v\n", path, err)
 	}
 }
