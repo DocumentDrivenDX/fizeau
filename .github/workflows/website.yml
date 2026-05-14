@@ -3,6 +3,7 @@ name: Deploy Website
 on:
   push:
     branches: [master]
+    tags: ['v*']
     paths:
       - 'internal/modelcatalog/catalog/models.yaml'
       - 'catalogdist/**'
@@ -10,6 +11,8 @@ on:
       - 'Makefile'
       - 'website/**'
       - '.github/workflows/website.yml'
+  release:
+    types: [published]
   workflow_dispatch:
 
 env:

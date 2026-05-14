@@ -76,3 +76,4 @@ coverage.html
 website/public/
 /public/
 .ddx/worker-logs/
+website/static/catalog/
