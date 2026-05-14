@@ -3,6 +3,7 @@ package harnesses
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -297,4 +298,184 @@ type Harness interface {
 	// the channel is returned, all per-run failures are reported via a
 	// final event with Status != "success".
 	Execute(ctx context.Context, req ExecuteRequest) (<-chan Event, error)
+}
+
+// QuotaStateValue is the normalized state enumeration consumed by
+// CONTRACT-004 sub-interfaces. Only QuotaOK and QuotaStale carry
+// routing-usable signal; other values MUST NOT result in
+// RoutingPreferenceAvailable.
+type QuotaStateValue string
+
+const (
+	QuotaOK              QuotaStateValue = "ok"
+	QuotaStale           QuotaStateValue = "stale"
+	QuotaBlocked         QuotaStateValue = "blocked"
+	QuotaUnavailable     QuotaStateValue = "unavailable"
+	QuotaUnauthenticated QuotaStateValue = "unauthenticated"
+	QuotaUnknown         QuotaStateValue = "unknown"
+)
+
+// RoutingPreference is the routing layer's consumable signal indicating
+// whether a harness should be preferred given its current quota evidence.
+// It is an internal routing signal — never projected into the public
+// CONTRACT-003 surface.
+type RoutingPreference int
+
+const (
+	RoutingPreferenceUnknown RoutingPreference = iota
+	RoutingPreferenceAvailable
+	RoutingPreferenceBlocked
+)
+
+// QuotaStatus is the universal quota report defined by CONTRACT-004.
+// Each harness's private snapshot type projects into this; the private
+// snapshot is never exposed across package boundaries.
+type QuotaStatus struct {
+	// Source identifies how the underlying evidence was captured:
+	// "pty", "cache", "session-token-count", "cli", "api".
+	Source string
+
+	// CapturedAt is when the underlying evidence was observed (not when
+	// this status struct was assembled).
+	CapturedAt time.Time
+
+	// Fresh reports whether CapturedAt is within QuotaFreshness() at the
+	// time of the call.
+	Fresh bool
+
+	// Age is now - CapturedAt at the time of the call.
+	Age time.Duration
+
+	// State is the normalized state. Only QuotaOK and QuotaStale carry
+	// routing-usable signal.
+	State QuotaStateValue
+
+	// Windows captures per-window evidence (5h, weekly, tier-specific).
+	// Authoritative for any structured fact the routing layer or
+	// operator surfaces consume — including tier breakdowns.
+	Windows []QuotaWindow
+
+	// Account is the account/plan/auth evidence captured alongside
+	// quota. Nil when the harness has no concept of account or when
+	// account evidence is delivered through AccountHarness only.
+	Account *AccountSnapshot
+
+	// RoutingPreference indicates whether the routing layer should
+	// prefer this harness given the current evidence.
+	RoutingPreference RoutingPreference
+
+	// Reason is a short human-readable explanation of State and
+	// RoutingPreference — surfaced in operator views and routing logs.
+	Reason string
+
+	// Detail is harness-specific opaque metadata for diagnostic display
+	// only. Service code MAY surface it verbatim in operator views;
+	// service code MUST NOT branch on its keys or values for routing
+	// decisions.
+	Detail map[string]string
+}
+
+// AccountSnapshot is the universal account/auth report defined by
+// CONTRACT-004. Projects onto the public AccountStatus type defined in
+// CONTRACT-003.
+type AccountSnapshot struct {
+	Authenticated   bool
+	Unauthenticated bool
+	Email           string
+	PlanType        string
+	OrgName         string
+	Source          string // file path, env var name, "cache", "cli"
+	CapturedAt      time.Time
+	Fresh           bool
+	Detail          string // free-form diagnostic detail
+}
+
+// ErrAliasNotResolvable is returned by ModelDiscoveryHarness.ResolveModelAlias
+// when the requested family is not recognized or the supplied discovery
+// snapshot has no matching concrete model.
+var ErrAliasNotResolvable = errors.New("model alias not resolvable from snapshot")
+
+// QuotaHarness is implemented by harnesses that own a subscription or
+// quota window. See CONTRACT-004 for the full normative contract.
+type QuotaHarness interface {
+	Harness
+
+	// QuotaStatus returns the current quota state from the harness's
+	// owned cache, with Fresh/Age computed against now. MUST be cheap
+	// (no live probe) and safe to call on every routing decision.
+	// Absence of evidence is reported via State=QuotaUnavailable on a
+	// valid QuotaStatus value; the error return is reserved for call
+	// failure (ctx cancelled, IO failure, lock acquisition failure).
+	QuotaStatus(ctx context.Context, now time.Time) (QuotaStatus, error)
+
+	// RefreshQuota drives the harness's live probe, persists the
+	// result through the harness's owned cache, and returns the
+	// resulting status. Single-flight per harness instance via the
+	// harness's cache lock; concurrent callers block. Probe failure
+	// is reported as a QuotaStatus with State=QuotaUnavailable (or
+	// QuotaUnauthenticated for auth-related failures), not as an
+	// error. The error return is reserved for call failure.
+	RefreshQuota(ctx context.Context) (QuotaStatus, error)
+
+	// QuotaFreshness returns the harness's freshness window (e.g. 15m).
+	// Constant for the harness; cheap to call.
+	QuotaFreshness() time.Duration
+
+	// SupportedLimitIDs returns the harness's stable set of emitted
+	// Windows[].LimitID values. Constant for the harness; the
+	// conformance suite reads this value to verify that emitted
+	// Windows[].LimitID strings are a subset of this set. Empty
+	// slice is allowed for harnesses that emit no windows.
+	SupportedLimitIDs() []string
+}
+
+// AccountHarness is implemented by harnesses that expose authentication
+// or account state independent of quota. See CONTRACT-004 for the full
+// normative contract.
+type AccountHarness interface {
+	Harness
+
+	// AccountStatus returns the harness's current account/auth state.
+	// Cheap; reads cached evidence only. Absence of evidence is
+	// reported via AccountSnapshot fields on a valid snapshot; the
+	// error return is reserved for call failure.
+	AccountStatus(ctx context.Context, now time.Time) (AccountSnapshot, error)
+
+	// RefreshAccount drives the harness's account probe and persists
+	// the result. Single-flight per harness instance; concurrent
+	// callers block. Probe failure is reported via AccountSnapshot
+	// fields, not as an error.
+	RefreshAccount(ctx context.Context) (AccountSnapshot, error)
+
+	// AccountFreshness returns the harness's account freshness window
+	// (e.g. 7 days for gemini). Constant for the harness; cheap.
+	AccountFreshness() time.Duration
+}
+
+// ModelDiscoveryHarness is implemented by harnesses whose model surface
+// extends beyond a single Info().DefaultModel — i.e. they support family
+// aliases (sonnet, gpt, gemini) that resolve through discovery evidence.
+// See CONTRACT-004 for the full normative contract.
+type ModelDiscoveryHarness interface {
+	Harness
+
+	// DefaultModelSnapshot returns the harness's seed/fallback
+	// discovery snapshot. Used to bootstrap the catalog before the
+	// first live refresh lands. Stable for the harness; cheap.
+	DefaultModelSnapshot() ModelDiscoverySnapshot
+
+	// ResolveModelAlias maps a family-style requested model to a
+	// concrete model ID using the provided discovery snapshot.
+	// Returns ErrAliasNotResolvable if the family is not recognized
+	// or the snapshot has no matching concrete model.
+	ResolveModelAlias(family string, snapshot ModelDiscoverySnapshot) (string, error)
+
+	// SupportedAliases returns the harness's stable set of family
+	// aliases ResolveModelAlias recognizes. Constant for the harness;
+	// the conformance suite uses this value to verify
+	// ResolveModelAlias covers each documented family (positive path)
+	// and rejects out-of-set families with ErrAliasNotResolvable
+	// (negative path). Empty slice is allowed for harnesses that
+	// recognize no family aliases.
+	SupportedAliases() []string
 }
