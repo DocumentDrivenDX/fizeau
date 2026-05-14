@@ -877,6 +877,94 @@ func TestSmellSingleCooldownAbstraction(t *testing.T) {
 	}
 }
 
+// TestProviderUnreachableHardGatesCandidate verifies that a provider marked
+// unreachable in Inputs.ProviderUnreachable (within CooldownDuration) is hard-
+// gated — eligible=false with FilterReasonUnhealthy — instead of merely
+// demoted in score. This is the FEAT-004 AC-28 path: known-down endpoints are
+// dispatchability failures. Discovery failures feed this map via
+// service_routing.providerCooldownsFromSnapshotErrors.
+func TestProviderUnreachableHardGatesCandidate(t *testing.T) {
+	in := newTestRoutingEngine()
+
+	// Baseline: vidar-omlx wins with provider affinity.
+	baseReq := Request{Policy: "cheap", Harness: "fiz", Provider: "vidar-omlx", Model: "qwen/qwen3.6"}
+	dec0, err := Resolve(baseReq, in)
+	if err != nil {
+		t.Fatalf("baseline Resolve: %v", err)
+	}
+	if dec0.Provider != "vidar-omlx" {
+		t.Fatalf("baseline: vidar should win with affinity; got %q", dec0.Provider)
+	}
+
+	// Mark vidar-omlx unreachable. Without an explicit pin, the candidate
+	// should be hard-rejected (not just demoted) with FilterReasonUnhealthy.
+	in.ProviderUnreachable = map[string]time.Time{
+		"vidar-omlx": in.Now.Add(-5 * time.Second),
+	}
+	in.CooldownDuration = 30 * time.Second
+
+	cooldownReq := Request{Policy: "cheap", Harness: "fiz", Model: "qwen/qwen3.6"}
+	dec, err := Resolve(cooldownReq, in)
+	if err != nil {
+		t.Fatalf("Resolve under unreachable: %v", err)
+	}
+	if dec.Provider == "vidar-omlx" {
+		t.Errorf("unreachable vidar should NOT be top pick; got %q", dec.Provider)
+	}
+
+	// Find vidar's candidate row and assert it's hard-rejected, not demoted.
+	var vidar *Candidate
+	for i := range dec.Candidates {
+		if dec.Candidates[i].Provider == "vidar-omlx" {
+			vidar = &dec.Candidates[i]
+			break
+		}
+	}
+	if vidar == nil {
+		t.Fatal("vidar-omlx candidate row missing from decision")
+	}
+	if vidar.Eligible {
+		t.Errorf("vidar-omlx should be Eligible=false under ProviderUnreachable; got Eligible=true")
+	}
+	if vidar.FilterReason != FilterReasonUnhealthy {
+		t.Errorf("vidar-omlx FilterReason = %q, want %q", vidar.FilterReason, FilterReasonUnhealthy)
+	}
+	if !strings.Contains(vidar.Reason, "known unreachable") {
+		t.Errorf("vidar-omlx Reason = %q, want it to contain 'known unreachable'", vidar.Reason)
+	}
+
+	// After cooldown TTL expires, vidar is eligible again.
+	in.Now = in.Now.Add(60 * time.Second)
+	dec2, err := Resolve(baseReq, in)
+	if err != nil {
+		t.Fatalf("Resolve after TTL: %v", err)
+	}
+	if dec2.Provider != "vidar-omlx" {
+		t.Errorf("after TTL expiry with affinity, vidar should win; got %q", dec2.Provider)
+	}
+}
+
+// TestProviderUnreachableBypassedByExplicitPin verifies that an explicit
+// provider pin overrides the unreachable hard gate (the operator gets what
+// they asked for, with the dispatchability failure surfacing downstream).
+func TestProviderUnreachableBypassedByExplicitPin(t *testing.T) {
+	in := newTestRoutingEngine()
+	in.ProviderUnreachable = map[string]time.Time{
+		"vidar-omlx": in.Now.Add(-5 * time.Second),
+	}
+	in.CooldownDuration = 30 * time.Second
+
+	// Explicit pin to vidar-omlx must bypass the gate.
+	req := Request{Policy: "cheap", Harness: "fiz", Provider: "vidar-omlx", Model: "qwen/qwen3.6"}
+	dec, err := Resolve(req, in)
+	if err != nil {
+		t.Fatalf("Resolve with pin: %v", err)
+	}
+	if dec.Provider != "vidar-omlx" {
+		t.Errorf("explicit pin should bypass unreachable gate; got %q", dec.Provider)
+	}
+}
+
 // === Smell 6: TestOnly harnesses excluded from tier routing ===
 //
 // Regression for ddx-869848ec (carried forward from DDx routing.go):

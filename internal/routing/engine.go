@@ -378,8 +378,16 @@ type Inputs struct {
 	EndpointLoads                map[string]EndpointLoad
 	EndpointLoadResolver         func(provider, endpoint, model string) (EndpointLoad, bool)
 	StickyServerInstanceResolver func(stickyKey string) (string, bool)
-	ProviderCooldowns            map[string]time.Time // by provider name
+	ProviderCooldowns            map[string]time.Time // by provider name; soft demotion only
 	CooldownDuration             time.Duration        // 0 = no cooldown enforcement
+
+	// ProviderUnreachable maps provider name → time of last dial-class
+	// discovery failure. Hard gate per FEAT-004 AC-28: known-down endpoints
+	// are dispatchability failures, not scoring inputs. Populated from
+	// snapshot.Sources entries with errors matching dial-tcp / connection
+	// refused / i/o timeout patterns. Honors CooldownDuration as TTL; an
+	// explicit provider pin bypasses the gate.
+	ProviderUnreachable map[string]time.Time
 
 	// ProviderQuotaExhaustedUntil maps provider name → retry_after time.
 	// A provider with retry_after > Now is treated as quota_exhausted and
@@ -1138,6 +1146,24 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				if in.Now.Sub(failedAt) < in.CooldownDuration {
 					inCooldown = true
 				}
+			}
+		}
+
+		// FEAT-004 AC-28: known-down endpoints (provider snapshot says
+		// unreachable) are dispatchability failures — hard-gate them so the
+		// router doesn't burn ~30s per cell dialing a host that's already
+		// known to be off. Route-attempt cooldowns remain demotions (handled
+		// via inCooldown below) so a single transient failure doesn't break
+		// sticky-lease continuity; only proactive discovery failure flips
+		// this hard gate.
+		//
+		// An explicit provider pin bypasses the gate so the operator can
+		// still reach the provider intentionally.
+		if eligible && p.Name != "" && in.CooldownDuration > 0 && req.Provider != candidateProviderIdentity(h, p) {
+			if failedAt, ok := in.ProviderUnreachable[p.Name]; ok && in.Now.Sub(failedAt) < in.CooldownDuration {
+				eligible = false
+				reason = fmt.Sprintf("provider %s known unreachable (last dial failure %s ago)", candidateProviderIdentity(h, p), in.Now.Sub(failedAt).Truncate(time.Second))
+				filterReason = FilterReasonUnhealthy
 			}
 		}
 

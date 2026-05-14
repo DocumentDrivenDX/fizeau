@@ -744,16 +744,120 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		entries = append(entries, entry)
 	}
 	successRate, latencyMS := s.routeMetricSignals(now, s.routeAttemptTTL())
+
+	// FEAT-004 AC-28: known-down endpoints are dispatchability failures.
+	// Surface provider-level dial failures from the snapshot's discovery
+	// sources via ProviderUnreachable so the routing engine hard-gates them
+	// before any dispatch attempt. This is the synchronous-freshness
+	// contract from FEAT-004 §Snapshot Freshness — autorouting reads the
+	// snapshot, the snapshot owns reachability evidence, and stale-but-
+	// failed providers don't get re-dialed until the cooldown TTL expires.
+	healthCooldownTTL := s.routeAttemptTTL()
+	providerUnreachable := providerCooldownsFromSnapshotErrors(snapshot, s.opts.ServiceConfig, now, healthCooldownTTL)
+
 	return routing.Inputs{
 		Harnesses:                    entries,
 		ProviderSuccessRate:          successRate,
 		ObservedLatencyMS:            latencyMS,
 		ProviderQuotaExhaustedUntil:  s.providerQuotaExhaustedUntil(now),
+		ProviderUnreachable:          providerUnreachable,
+		CooldownDuration:             healthCooldownTTL,
+		Now:                          now,
 		ModelEligibility:             serviceRoutingModelEligibility(entries, cat),
 		ReasoningResolver:            serviceRoutingReasoningResolver(cat),
 		EndpointLoadResolver:         s.routeEndpointLoadsResolver(now),
 		StickyServerInstanceResolver: s.routeStickyServerInstanceResolver(now),
 	}, snapshot
+}
+
+// dialFailurePattern matches discovery errors that indicate the upstream host
+// is unreachable (TCP-level failure or unrouted DNS). Treated as a
+// dispatchability failure per FEAT-004 AC-28.
+var dialFailureSubstrings = []string{
+	"dial tcp",
+	"connection refused",
+	"no route to host",
+	"network is unreachable",
+	"i/o timeout",
+	"no such host",
+}
+
+func isSnapshotDialFailure(errMsg string) bool {
+	if errMsg == "" {
+		return false
+	}
+	lower := strings.ToLower(errMsg)
+	for _, pat := range dialFailureSubstrings {
+		if strings.Contains(lower, pat) {
+			return true
+		}
+	}
+	return false
+}
+
+// providerCooldownsFromSnapshotErrors walks snapshot.Sources and returns a map
+// of providerName → failure-time for any provider whose most recent discovery
+// attempt failed with a dial-class error within the cooldown window. The map
+// feeds routing.Inputs.ProviderCooldowns so engine.go can hard-gate the
+// candidate before any dispatch attempt.
+//
+// Source names are produced by endpointSourceName: they start with the
+// provider name (optionally followed by "-<endpoint>-<hash>" or "-props").
+// We match by prefix against the configured provider name set so a source
+// name like "rg-bragi-club-3090-props" correctly maps to provider
+// "rg-bragi-club-3090".
+func providerCooldownsFromSnapshotErrors(snapshot modelsnapshot.ModelSnapshot, cfg ServiceConfigSource, now time.Time, ttl time.Duration) map[string]time.Time {
+	if len(snapshot.Sources) == 0 {
+		return nil
+	}
+	providerNames := []string{}
+	if cfg != nil {
+		providerNames = cfg.ProviderNames()
+	}
+	if len(providerNames) == 0 {
+		return nil
+	}
+	// Sort longest first so "rg-bragi-club-3090" wins over a hypothetical
+	// "rg-bragi" prefix when both are configured.
+	sort.SliceStable(providerNames, func(i, j int) bool {
+		return len(providerNames[i]) > len(providerNames[j])
+	})
+
+	cooldowns := make(map[string]time.Time)
+	for srcName, meta := range snapshot.Sources {
+		if !isSnapshotDialFailure(meta.Error) {
+			continue
+		}
+		// Use LastRefreshedAt when present (when the cache holds the failure
+		// record itself); otherwise treat as "fresh enough" — the discovery
+		// only emits an error when it tried recently.
+		failedAt := meta.LastRefreshedAt
+		if failedAt.IsZero() {
+			failedAt = now
+		}
+		if ttl > 0 && now.Sub(failedAt) >= ttl {
+			continue
+		}
+		for _, name := range providerNames {
+			if name == srcName || strings.HasPrefix(srcName, name+"-") {
+				if existing, ok := cooldowns[name]; !ok || failedAt.After(existing) {
+					cooldowns[name] = failedAt
+				}
+				break
+			}
+		}
+	}
+	if len(cooldowns) == 0 {
+		return nil
+	}
+	return cooldowns
+}
+
+// ServiceConfigSource is the minimal interface providerCooldownsFromSnapshotErrors
+// needs from the service config. The real service.opts.ServiceConfig satisfies
+// it, and tests can pass a stub.
+type ServiceConfigSource interface {
+	ProviderNames() []string
 }
 
 func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog.Catalog, snapshot modelsnapshot.ModelSnapshot) []routing.ProviderEntry {
