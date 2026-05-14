@@ -12,6 +12,8 @@ import (
 	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
+	opencodeharness "github.com/easel/fizeau/internal/harnesses/opencode"
+	piharness "github.com/easel/fizeau/internal/harnesses/pi"
 	"github.com/easel/fizeau/internal/routehealth"
 	"github.com/easel/fizeau/internal/serviceimpl"
 	sessionusage "github.com/easel/fizeau/internal/session"
@@ -891,7 +893,14 @@ type StallPolicy struct {
 type service struct {
 	opts     ServiceOptions
 	registry *harnesses.Registry
-	hub      *sessionHub
+	// harnessInstances holds the registered Harness implementation for
+	// each known harness name. The refresh scheduler iterates over this
+	// map, type-asserting each instance to the optional CONTRACT-004
+	// sub-interfaces (QuotaHarness, AccountHarness). harnessByName is
+	// the consultation seam.
+	harnessInstances map[string]harnesses.Harness
+	refreshScheduler *refreshScheduler
+	hub              *sessionHub
 
 	// lastDecisionMu guards lastDecisionCache.
 	lastDecisionMu sync.RWMutex
@@ -992,6 +1001,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 	svc := &service{
 		opts:             opts,
 		registry:         harnesses.NewRegistry(),
+		harnessInstances: defaultHarnessInstances(),
 		hub:              newSessionHub(),
 		runtime:          serviceimpl.NewRuntime(serviceimpl.RuntimeDeps{}),
 		catalog:          newCatalogCache(catalogCacheOptions{AsyncRefreshTimeout: opts.catalogRefreshTimeout()}),
@@ -1020,7 +1030,38 @@ func New(opts ServiceOptions) (FizeauService, error) {
 	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()
 	svc.startQuotaRecoveryProbeLoop()
+	svc.refreshScheduler = newRefreshScheduler(svc.harnessByName, svc.registry.Names(), nil)
+	svc.refreshScheduler.Start(context.Background())
 	return svc, nil
+}
+
+// harnessByName returns the registered Harness instance for name. Returns
+// nil when no instance is registered under that name. Consumers
+// type-assert the result to the CONTRACT-004 sub-interfaces
+// (QuotaHarness, AccountHarness, ModelDiscoveryHarness) independently;
+// failed assertions mean the harness has not implemented that capability
+// (yet) and the caller MUST tolerate the absence.
+func (s *service) harnessByName(name string) harnesses.Harness {
+	if s == nil {
+		return nil
+	}
+	return s.harnessInstances[name]
+}
+
+// defaultHarnessInstances returns the production map of registered
+// Harness implementations keyed by harness name. Only subprocess
+// harnesses with concrete Runner types appear here; embedded
+// ("fiz", "virtual", "script") and HTTP-only providers do not own
+// quota/account state and are deliberately omitted — the scheduler
+// treats absence as "no QuotaHarness/AccountHarness behavior".
+func defaultHarnessInstances() map[string]harnesses.Harness {
+	return map[string]harnesses.Harness{
+		"claude":   &claudeharness.Runner{},
+		"codex":    &codexharness.Runner{},
+		"gemini":   &geminiharness.Runner{},
+		"opencode": &opencodeharness.Runner{},
+		"pi":       &piharness.Runner{},
+	}
 }
 
 // harnessType returns "native" for HTTP/embedded harnesses, "subprocess" for CLI-invoked ones.
