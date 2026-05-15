@@ -2,18 +2,21 @@ package fizeau
 
 import (
 	"context"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/easel/fizeau/internal/discoverycache"
+	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/routehealth"
 )
 
 // TestServiceStartup_ProbesConfiguredProviders asserts that startupAlivenessProbe
-// (called by Service.New) runs one TCP-connect probe per configured non-cloud
-// provider within the startup-bounded time (AC #1).
+// runs one TCP-connect probe per configured non-cloud provider within the
+// startup-bounded time when invoked explicitly.
 func TestServiceStartup_ProbesConfiguredProviders(t *testing.T) {
 	var mu sync.Mutex
 	var probed []string
@@ -47,7 +50,8 @@ func TestServiceStartup_ProbesConfiguredProviders(t *testing.T) {
 	})
 	svc.providerProbe = routehealth.NewProbeStore()
 
-	// startupAlivenessProbe is what Service.New() calls; test it directly.
+	// New starts the background probe loop; test the synchronous diagnostic path
+	// directly here.
 	svc.startupAlivenessProbe(context.Background())
 
 	mu.Lock()
@@ -184,6 +188,42 @@ func TestServiceStartup_SkippedProvidersRemainAbsentFromProbeUnreachable(t *test
 	}
 }
 
+func TestNew_DoesNotBlockOnLocalAlivenessProbe(t *testing.T) {
+	blocked := make(chan struct{})
+	start := time.Now()
+	rawSvc, err := New(ServiceOptions{
+		ServiceConfig: &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"grendel": {
+					Type:    "rapid-mlx",
+					BaseURL: "http://grendel:8000/v1",
+					Model:   "mlx-community/Qwen3.6-27B-8bit",
+				},
+			},
+			names:       []string{"grendel"},
+			defaultName: "grendel",
+		},
+		QuotaRefreshContext: canceledRefreshContext(),
+		AlivenessProber: func(ctx context.Context, _, _ string) bool {
+			select {
+			case <-ctx.Done():
+				return false
+			case <-blocked:
+				return true
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if rawSvc == nil {
+		t.Fatal("New returned nil service")
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("New elapsed %v, want nonblocking local aliveness startup", elapsed)
+	}
+}
+
 func TestServiceStartup_FailedProbeHardGatesRouting(t *testing.T) {
 	cacheRoot := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
@@ -215,7 +255,8 @@ func TestServiceStartup_FailedProbeHardGatesRouting(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	svc := rawSvc.(*service)
-	inputs, _ := svc.buildRoutingInputsWithCatalog(context.Background(), serviceRoutingCatalog(), modelsnapshot.RefreshIfStale)
+	svc.startupAlivenessProbe(context.Background())
+	inputs, _ := svc.buildRoutingInputsWithCatalog(context.Background(), serviceRoutingCatalog(), modelsnapshot.RefreshBackground)
 	if _, ok := inputs.ProbeUnreachable["down"]; !ok {
 		t.Fatalf("ProbeUnreachable missing down: %#v", inputs.ProbeUnreachable)
 	}
@@ -363,7 +404,8 @@ func TestProbeLoop_SkipsProvidersWithFreshProbes(t *testing.T) {
 	}
 }
 
-func TestResolveRoute_RefreshesUnknownLocalHealthBeforeScoring(t *testing.T) {
+func TestResolveRoute_UnknownLocalHealthDoesNotBlockSubscriptionFallback(t *testing.T) {
+	configureFreshCodexQuotaForRouting(t)
 	cacheRoot := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
 	cache := &discoverycache.Cache{Root: cacheRoot}
@@ -381,6 +423,13 @@ policies:
     max_power: 10
     allow_local: true
 models:
+  gpt-5.5:
+    family: gpt
+    status: active
+    power: 9
+    context_window: 200000
+    surfaces:
+      codex: gpt-5.5
   mlx-community/Qwen3.6-27B-8bit:
     family: qwen
     status: active
@@ -391,8 +440,8 @@ models:
 `)
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
-	var mu sync.Mutex
-	probeCount := 0
+	probeStarted := make(chan struct{}, 1)
+	blocked := make(chan struct{})
 	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"grendel": {
@@ -404,31 +453,38 @@ models:
 		},
 		names:       []string{"grendel"},
 		defaultName: "grendel",
-	}, func(_ context.Context, provider, gotBaseURL string) bool {
+	}, func(ctx context.Context, provider, gotBaseURL string) bool {
 		if provider != "grendel" || gotBaseURL != baseURL {
-			t.Fatalf("probe target = %q %q, want grendel %q", provider, gotBaseURL, baseURL)
+			t.Errorf("probe target = %q %q, want grendel %q", provider, gotBaseURL, baseURL)
+			return false
 		}
-		mu.Lock()
-		probeCount++
-		mu.Unlock()
-		return true
+		select {
+		case probeStarted <- struct{}{}:
+		default:
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-blocked:
+			return true
+		}
 	})
+	makeOnlyCodexSubprocessAvailable(svc)
 
-	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: modelID})
+	start := time.Now()
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "default"})
+	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
 	}
 	if dec == nil {
 		t.Fatal("ResolveRoute returned nil decision")
 	}
-	if dec.Provider != "grendel" || dec.Model != modelID {
-		t.Fatalf("decision=%#v, want grendel/%s", dec, modelID)
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("ResolveRoute elapsed %v, want nonblocking local aliveness path", elapsed)
 	}
-	mu.Lock()
-	gotProbeCount := probeCount
-	mu.Unlock()
-	if gotProbeCount != 1 {
-		t.Fatalf("probe count = %d, want 1 route-time refresh probe", gotProbeCount)
+	if dec.Harness != "codex" || dec.Model != "gpt-5.5" {
+		t.Fatalf("decision=%#v, want codex subscription fallback", dec)
 	}
 	var candidate *RouteCandidate
 	for i := range dec.Candidates {
@@ -441,14 +497,95 @@ models:
 		t.Fatalf("missing grendel candidate in %#v", dec.Candidates)
 	}
 	if !candidate.Eligible {
-		t.Fatalf("candidate=%#v, want eligible after successful route-time probe", *candidate)
+		t.Fatalf("grendel candidate=%#v, want eligible but demoted while health unknown", *candidate)
 	}
-	if candidate.LastProbeAt.IsZero() || !candidate.LastProbeSuccess {
-		t.Fatalf("candidate probe evidence=%#v, want successful route-time probe evidence", *candidate)
+	if candidate.Components.AvailabilityPenalty <= 0 {
+		t.Fatalf("grendel availability penalty = %#v, want unknown-health demotion", candidate.Components)
 	}
+	select {
+	case <-probeStarted:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected asynchronous local aliveness refresh request")
+	}
+	close(blocked)
 }
 
-func TestResolveRoute_UnknownLocalHealthRefreshFailureIsEvidence(t *testing.T) {
+func TestExecute_RouteResolutionUsesCallerContextAndNonblockingLocalHealth(t *testing.T) {
+	configureFreshCodexQuotaForRouting(t)
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	modelID := "mlx-community/Qwen3.6-27B-8bit"
+	baseURL := "http://grendel:8000/v1"
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", baseURL, "grendel"), time.Now().UTC(), []string{modelID})
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  gpt-5.5:
+    family: gpt
+    status: active
+    power: 9
+    context_window: 200000
+    surfaces:
+      codex: gpt-5.5
+  mlx-community/Qwen3.6-27B-8bit:
+    family: qwen
+    status: active
+    power: 7
+    context_window: 32768
+    surfaces:
+      embedded-openai: mlx-community/Qwen3.6-27B-8bit
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	blocked := make(chan struct{})
+	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"grendel": {
+				Type:           "rapid-mlx",
+				BaseURL:        baseURL,
+				ServerInstance: "grendel",
+				Model:          modelID,
+			},
+		},
+		names:       []string{"grendel"},
+		defaultName: "grendel",
+	}, func(ctx context.Context, _, _ string) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-blocked:
+			return true
+		}
+	})
+	makeOnlyCodexSubprocessAvailable(svc)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	dec, err := svc.resolveExecuteRouteContext(ctx, ServiceExecuteRequest{Policy: "default"})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("resolveExecuteRouteContext: %v", err)
+	}
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("resolveExecuteRouteContext elapsed %v, want nonblocking local aliveness path", elapsed)
+	}
+	if dec == nil || dec.Harness != "codex" || dec.Model != "gpt-5.5" {
+		t.Fatalf("decision=%#v, want codex subscription fallback", dec)
+	}
+	close(blocked)
+}
+
+func TestResolveRoute_KnownFailedLocalProbeIsEvidence(t *testing.T) {
 	cacheRoot := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
 	cache := &discoverycache.Cache{Root: cacheRoot}
@@ -479,8 +616,6 @@ models:
 `)
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
-	var mu sync.Mutex
-	probeCount := 0
 	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"grendel": {
@@ -499,11 +634,12 @@ models:
 		names:       []string{"grendel", "vidar"},
 		defaultName: "grendel",
 	}, func(_ context.Context, provider, _ string) bool {
-		mu.Lock()
-		probeCount++
-		mu.Unlock()
-		return provider != "grendel"
+		t.Fatalf("route hot path invoked aliveness prober for %s", provider)
+		return false
 	})
+	now := time.Now().UTC()
+	svc.providerProbe.RecordProbe("grendel", "", false, now)
+	svc.providerProbe.RecordProbe("vidar", "", true, now)
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: modelID})
 	if err != nil {
@@ -513,13 +649,7 @@ models:
 		t.Fatal("ResolveRoute returned nil decision")
 	}
 	if dec.Provider != "vidar" {
-		t.Fatalf("decision=%#v, want vidar after grendel refresh failure", dec)
-	}
-	mu.Lock()
-	gotProbeCount := probeCount
-	mu.Unlock()
-	if gotProbeCount != 2 {
-		t.Fatalf("probe count = %d, want 2 route-time refresh probes", gotProbeCount)
+		t.Fatalf("decision=%#v, want vidar after cached grendel probe failure", dec)
 	}
 	var sawGrendel bool
 	for _, candidate := range dec.Candidates {
@@ -570,8 +700,6 @@ models:
 `)
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
-	var mu sync.Mutex
-	probeCount := 0
 	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"grendel": {
@@ -584,11 +712,10 @@ models:
 		names:       []string{"grendel"},
 		defaultName: "grendel",
 	}, func(_ context.Context, _, _ string) bool {
-		mu.Lock()
-		probeCount++
-		mu.Unlock()
-		return true
+		t.Fatal("route hot path invoked aliveness prober despite fresh cached health")
+		return false
 	})
+	svc.providerProbe.RecordProbe("grendel", "", true, time.Now().UTC())
 
 	first, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: modelID})
 	if err != nil {
@@ -601,12 +728,6 @@ models:
 	if first == nil || second == nil {
 		t.Fatalf("decisions=%#v %#v, want non-nil decisions", first, second)
 	}
-	mu.Lock()
-	gotProbeCount := probeCount
-	mu.Unlock()
-	if gotProbeCount != 1 {
-		t.Fatalf("probe count = %d, want 1 route-time probe across two fresh resolves", gotProbeCount)
-	}
 }
 
 func newResolveRouteProbeTestService(t *testing.T, sc *fakeServiceConfig, prober ProviderAlivenessProber) *service {
@@ -615,9 +736,36 @@ func newResolveRouteProbeTestService(t *testing.T, sc *fakeServiceConfig, prober
 		ServiceConfig:       sc,
 		AlivenessProber:     prober,
 		HealthProbeInterval: time.Hour,
+		QuotaRefreshContext: canceledRefreshContext(),
 	})
 	svc.providerProbe = routehealth.NewProbeStore()
 	return svc
+}
+
+func configureFreshCodexQuotaForRouting(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "codex-quota.json")
+	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", path)
+	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-auth.json"))
+	writeCodexQuotaCacheFile(t, path, time.Now().UTC(), "pty",
+		&harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
+		[]harnesses.QuotaWindow{{
+			Name:        "5h",
+			LimitID:     "codex",
+			UsedPercent: 10,
+			State:       "ok",
+		}},
+	)
+}
+
+func makeOnlyCodexSubprocessAvailable(svc *service) {
+	svc.registry.LookPath = func(binary string) (string, error) {
+		if binary == "codex" {
+			return "/usr/bin/codex", nil
+		}
+		return "", exec.ErrNotFound
+	}
 }
 
 func TestExtractHostPort(t *testing.T) {

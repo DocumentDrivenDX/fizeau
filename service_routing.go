@@ -68,7 +68,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			PowerPolicy:     powerPolicy,
 		}, err
 	}
-	in, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat, modelsnapshot.RefreshIfStale)
+	in, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat, modelsnapshot.RefreshBackground)
 
 	resolvedModel, modelCandidates, modelErr := s.resolveModelConstraint(req.Harness, req.Provider, req.Model, in, cat)
 	if modelErr != nil {
@@ -658,18 +658,16 @@ func (s *service) routeAttemptTTL() time.Duration {
 // and snapshot-derived provider inventory. The public routing engine stays
 // unchanged; only the source of provider/model candidates changes.
 func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
-	// FEAT-004 §Snapshot Freshness — synchronous-freshness contract: at route
-	// decision time, refresh stale providers in-line so the engine sees
-	// current reachability. Fresh providers short-circuit on cache. Caps the
-	// per-route cost at ~5s × stale-provider-count (5s = discoveryRefresh
-	// deadline per source) instead of forcing every source to re-probe.
-	inputs, _ := s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog(), modelsnapshot.RefreshIfStale)
+	// Route hot paths are cache-first: stale or missing provider facts may
+	// request a coordinated background refresh, but routing never blocks on
+	// local provider probes or model discovery before scoring candidates.
+	inputs, _ := s.buildRoutingInputsWithCatalog(ctx, serviceRoutingCatalog(), modelsnapshot.RefreshBackground)
 	return inputs
 }
 
 func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelcatalog.Catalog, refresh modelsnapshot.RefreshMode) (routing.Inputs, modelsnapshot.ModelSnapshot) {
-	if refresh == modelsnapshot.RefreshIfStale {
-		s.refreshLocalHealthForRouting(ctx)
+	if refresh == modelsnapshot.RefreshBackground {
+		s.requestLocalHealthRefreshForRouting(ctx)
 	}
 	statuses := s.registry.Discover()
 	statusByName := make(map[string]harnesses.HarnessStatus, len(statuses))
@@ -732,12 +730,9 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	successRate, latencyMS := s.routeMetricSignals(now, s.routeAttemptTTL())
 
 	// FEAT-004 AC-28: known-down endpoints are dispatchability failures.
-	// Surface provider-level dial failures from the snapshot's discovery
-	// sources via ProviderUnreachable so the routing engine hard-gates them
-	// before any dispatch attempt. This is the synchronous-freshness
-	// contract from FEAT-004 §Snapshot Freshness — autorouting reads the
-	// snapshot, the snapshot owns reachability evidence, and stale-but-
-	// failed providers don't get re-dialed until the cooldown TTL expires.
+	// Surface provider-level dial failures from cached snapshot discovery
+	// sources via ProviderUnreachable so the routing engine hard-gates known
+	// failures before any dispatch attempt.
 	healthCooldownTTL := s.routeAttemptTTL()
 	providerUnreachable := providerCooldownsFromSnapshotErrors(snapshot, s.opts.ServiceConfig, now, healthCooldownTTL)
 
@@ -745,8 +740,10 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	// ProviderUnreachable which is populated from dial failures). TTL is
 	// HealthSignalTTL (default 10 min) — longer than the cooldown window.
 	var probeUnreachable map[string]time.Time
+	var probeUnknown map[string]time.Time
 	if s.providerProbe != nil {
 		probeUnreachable = s.providerProbe.UnreachableProviders(now, s.healthSignalTTL())
+		probeUnknown = s.probeUnknownProviders(now)
 	}
 
 	return routing.Inputs{
@@ -756,6 +753,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ProviderQuotaExhaustedUntil:  s.providerQuotaExhaustedUntil(now),
 		ProviderUnreachable:          providerUnreachable,
 		ProbeUnreachable:             probeUnreachable,
+		ProbeUnknown:                 probeUnknown,
 		CooldownDuration:             healthCooldownTTL,
 		Now:                          now,
 		ModelEligibility:             serviceRoutingModelEligibility(entries, cat),
@@ -1629,7 +1627,7 @@ func subscriptionEffectiveCostUSDPer1kTokens(baseCost float64, quotaPercentUsed 
 // It is invoked by Execute when the request is under-specified
 // (no PreResolved, no fully-specified Harness). Returns nil when the request
 // is already specific enough that the legacy resolveExecuteRoute path applies.
-func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*RouteDecision, error) {
+func (s *service) resolveExecuteRouteWithEngine(ctx context.Context, req ServiceExecuteRequest) (*RouteDecision, error) {
 	rr := RouteRequest{
 		Policy:                req.Policy,
 		Model:                 req.Model,
@@ -1645,7 +1643,7 @@ func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*Rou
 		Role:                  req.Role,
 		CorrelationID:         req.CorrelationID,
 	}
-	dec, err := s.ResolveRoute(context.Background(), rr)
+	dec, err := s.ResolveRoute(ctx, rr)
 	if err != nil {
 		if isExplicitPinError(err) {
 			return nil, err

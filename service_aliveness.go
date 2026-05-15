@@ -88,9 +88,9 @@ func (s *service) alivenessEndpoints() []alivenessEndpoint {
 	return endpoints
 }
 
-// startupAlivenessProbe probes all configured non-cloud providers synchronously
-// at service startup. The total probe time is bounded by startupProbeTotalTimeout
-// regardless of provider count.
+// startupAlivenessProbe probes all configured non-cloud providers synchronously.
+// It is reserved for explicit diagnostics/tests; New starts only the background
+// probe loop so service construction cannot block on dead local endpoints.
 func (s *service) startupAlivenessProbe(ctx context.Context) {
 	if s.providerProbe == nil {
 		return
@@ -142,11 +142,10 @@ func (s *service) persistProbeStore() {
 	s.persistRouteHealthSnapshot()
 }
 
-// refreshLocalHealthForRouting synchronously refreshes stale or missing local
-// provider aliveness evidence before ResolveRoute scores candidates. Providers
-// that cannot be probed within the route-time budget are recorded as failed so
-// automatic routing does not treat unknown local health as implicitly healthy.
-func (s *service) refreshLocalHealthForRouting(ctx context.Context) {
+// requestLocalHealthRefreshForRouting starts at most one asynchronous refresh
+// for stale or missing local provider aliveness evidence. Route hot paths use
+// cached probe evidence only; this method must not wait for provider IO.
+func (s *service) requestLocalHealthRefreshForRouting(_ context.Context) {
 	if s == nil || s.providerProbe == nil {
 		return
 	}
@@ -154,12 +153,48 @@ func (s *service) refreshLocalHealthForRouting(ctx context.Context) {
 	if len(endpoints) == 0 {
 		return
 	}
+	if !s.providerProbeRefreshInFlight.CompareAndSwap(false, true) {
+		return
+	}
 	prober := s.opts.AlivenessProber
 	if prober == nil {
 		prober = tcpAlivenessProber
 	}
-	runRouteTimeAlivenessProbes(ctx, endpoints, s.providerProbe, prober, routeTimeProbeTimeout)
-	s.persistProbeStore()
+	refreshCtx := context.Background()
+	go func() {
+		defer s.providerProbeRefreshInFlight.Store(false)
+		runRouteTimeAlivenessProbes(refreshCtx, endpoints, s.providerProbe, prober, routeTimeProbeTimeout)
+		s.persistProbeStore()
+	}()
+}
+
+func (s *service) probeUnknownProviders(now time.Time) map[string]time.Time {
+	if s == nil || s.providerProbe == nil {
+		return nil
+	}
+	endpoints := s.alivenessEndpoints()
+	if len(endpoints) == 0 {
+		return nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	ttl := s.healthSignalTTL()
+	out := make(map[string]time.Time)
+	for _, ep := range endpoints {
+		record, ok := s.providerProbe.LastProbe(ep.provider, "")
+		if !ok {
+			out[ep.provider] = time.Time{}
+			continue
+		}
+		if ttl > 0 && now.Sub(record.LastProbeAt) > ttl {
+			out[ep.provider] = record.LastProbeAt
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (s *service) routeTimeAlivenessEndpoints(now time.Time) []alivenessEndpoint {

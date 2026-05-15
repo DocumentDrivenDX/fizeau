@@ -11,6 +11,7 @@ import (
 
 type executeRouteResolver interface {
 	resolveExecuteRoute(ServiceExecuteRequest) (*RouteDecision, error)
+	resolveExecuteRouteContext(context.Context, ServiceExecuteRequest) (*RouteDecision, error)
 }
 
 type executeSessionLogOpener interface {

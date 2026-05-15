@@ -36,16 +36,17 @@ Three requirements conflict without a cache:
 3. **Crash safety.** A killed refresh process must not leave the cache in a
    corrupt or permanently-locked state.
 
-Fizeau has no required daemon. Its cache contract is synchronous refresh plus
-cross-process locks. `fiz models` is quick by default: stale snapshot data is
-returned immediately when freshness is pending. It may request a best-effort
-background refresh for stale fields, but only through the same lock, marker, and
-single-flight path used by blocking refresh; a short-lived CLI process must not
-spawn independent probe storms or make correctness depend on a detached worker.
-`fiz models --refresh` blocks on routing-relevant stale fields, and
-`fiz models --refresh-all` blocks on every refreshable field. Without a
-long-running freshness maintainer, stale output should tell the operator to run
-`fiz models --refresh` or start/configure a DDx server freshness heartbeat.
+Fizeau has no required daemon. Its cache contract is cache-first reads plus
+coordinated refresh through cross-process locks. `fiz models` and route hot
+paths are quick by default: stale snapshot data is returned immediately when
+freshness is pending. They may request a best-effort background refresh for
+stale fields, but only through the same lock, marker, and single-flight path
+used by blocking refresh; a short-lived CLI process must not spawn independent
+probe storms or make correctness depend on a detached worker. `fiz models
+--refresh` blocks on routing-relevant stale fields, and `fiz models
+--refresh-all` blocks on every refreshable field. Without a long-running
+freshness maintainer, stale output should tell the operator to run `fiz models
+--refresh` or start/configure a DDx server freshness heartbeat.
 
 Fizeau already has a battle-tested file-locking idiom in
 `cmd/bench/matrix.go:acquireMatrixLock` (lines 1222–1259): atomic
@@ -285,7 +286,8 @@ func maybe_background_refresh(source):
         return data
     // Stale or missing — request a best-effort refresh via
     // singleflight so concurrent callers share one goroutine.
-    // Route correctness uses ensure_fresh / force_refresh before scoring.
+    // Route hot paths also use this nonblocking form before scoring;
+    // explicit refresh/preflight surfaces use ensure_fresh / force_refresh.
     go singleflightGroup.Do(source.key(), func():
         refresh_and_commit(source)
     )
@@ -335,10 +337,12 @@ call to `claim_refresh`:
 2. If no refresh is in flight, runs one synchronously.
 3. Returns fresh data.
 
-Used by `fiz models --refresh` and by the `fiz cache refresh
-<source>` subcommand. `ResolveRoute` and `Execute` also use this blocking path
-through `ensureFreshEnough(client_inputs, snapshot)` before autorouting scores
-when routing-relevant fields are stale or missing.
+Used by `fiz models --refresh`, by the `fiz cache refresh <source>`
+subcommand, and by explicit preflight/test surfaces. `ResolveRoute` and
+`Execute` do not use this blocking path for ordinary autorouting: they read
+cached facts immediately, request coordinated background refresh for stale or
+missing local/provider facts, and let cached failure evidence gate known-dead
+providers.
 
 `--refresh-all` is the strict variant that blocks until all refreshable fields
 are fresh enough for display, not just the routing-relevant subset. It uses the
@@ -405,9 +409,9 @@ as a child process) to avoid requiring external binaries.
   (≤ 100 ms) because `read` never waits on IO — it returns stale
   data immediately and may request a coordinated best-effort background
   refresh.
-- Autorouting can be correct even when no DDx server or other long-running
-  maintainer is active: route-time refresh uses the same synchronous,
-  lock-coordinated force-refresh path.
+- Autorouting remains responsive even when no DDx server or other long-running
+  maintainer is active: route-time refresh requests use the same coordinated
+  cache machinery in the background, while scoring consumes cached evidence.
 - Multi-process safe across `ddx work`, `ddx try`, `fiz models`,
   and the routing layer. Exactly one process refreshes each source
   at a time; others either wait (force) or return stale

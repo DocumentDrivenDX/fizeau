@@ -430,6 +430,11 @@ type Inputs struct {
 	// attempts and discovery). An explicit provider pin bypasses this gate.
 	ProbeUnreachable map[string]time.Time
 
+	// ProbeUnknown maps local/fixed provider names whose aliveness evidence is
+	// missing or stale. It is a scoring input, not a hard gate: healthy cached
+	// alternatives should win, but local-only deployments can still route.
+	ProbeUnknown map[string]time.Time
+
 	Now              time.Time // injected for deterministic testing; default time.Now()
 	ModelEligibility func(model string) (ModelEligibility, bool)
 
@@ -487,6 +492,7 @@ type candidateInternal struct {
 	ObservedTokensPerSec  float64
 	ObservedLatencyMS     float64
 	InCooldown            bool
+	LocalHealthUnknown    bool
 	ProviderAffinityMatch bool
 	ProviderPreference    string
 	EndpointLoad          float64
@@ -1298,6 +1304,11 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				}
 			}
 
+			localHealthUnknown := false
+			if eligible && p.Name != "" && req.Provider != candidateProviderIdentity(h, p) && candidateIsLocal(h, p) {
+				_, localHealthUnknown = in.ProbeUnknown[p.Name]
+			}
+
 			// Provider quota-exhausted gate. The state machine lives in the
 			// service layer; the engine consumes the projected map of
 			// provider-name → retry_after. Apply only when the candidate would
@@ -1342,6 +1353,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				ObservedTokensPerSec:  obs,
 				ObservedLatencyMS:     latencyMS,
 				InCooldown:            inCooldown || h.InCooldown,
+				LocalHealthUnknown:    localHealthUnknown,
 				ProviderAffinityMatch: req.Provider != "" && req.Provider == candidateProviderIdentity(h, p),
 				ProviderPreference:    req.ProviderPreference,
 				EndpointLoad:          endpointLoad.NormalizedLoad,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
@@ -950,8 +951,9 @@ type service struct {
 	providerBurnRate *ProviderBurnRateTracker
 
 	// providerProbe stores aliveness probe results for configured non-cloud
-	// providers. Populated by startup and periodic background probes.
-	providerProbe *routehealth.ProbeStore
+	// providers. Populated by explicit diagnostics and background probes.
+	providerProbe                *routehealth.ProbeStore
+	providerProbeRefreshInFlight atomic.Bool
 
 	runtime serviceimpl.Runtime
 }
@@ -1054,7 +1056,6 @@ func New(opts ServiceOptions) (FizeauService, error) {
 	svc.ensurePrimaryQuotaRefresh(startupCtx, quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()
 	svc.startQuotaRecoveryProbeLoop()
-	svc.startupAlivenessProbe(context.Background())
 	svc.startAlivenessProbeLoop()
 	svc.refreshScheduler = routehealth.NewRefreshScheduler(svc.harnessByName, svc.registry.Names())
 	svc.refreshScheduler.Start(startupCtx)

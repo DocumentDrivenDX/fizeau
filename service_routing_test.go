@@ -18,6 +18,7 @@ import (
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/modelcatalog"
 	"github.com/easel/fizeau/internal/modelsnapshot"
+	"github.com/easel/fizeau/internal/routehealth"
 	"github.com/easel/fizeau/internal/routing"
 	"gopkg.in/yaml.v3"
 )
@@ -380,7 +381,7 @@ models:
 	}
 }
 
-func TestResolveRouteRefreshesStaleSnapshotAndHardGatesRefreshFailure(t *testing.T) {
+func TestResolveRouteRefreshesStaleSnapshotInBackgroundWithoutBlocking(t *testing.T) {
 	t.Setenv("PATH", "")
 	cacheDir := t.TempDir()
 	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
@@ -445,14 +446,30 @@ models:
 		names:       []string{"aaa-down", "zzz-up"},
 		defaultName: "aaa-down",
 	}
-	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+	svc := newTestService(t, ServiceOptions{
+		ServiceConfig:       sc,
+		QuotaRefreshContext: canceledRefreshContext(),
+		AlivenessProber: func(context.Context, string, string) bool {
+			t.Fatal("route hot path invoked aliveness prober")
+			return false
+		},
+	})
+	svc.providerProbe = routehealth.NewProbeStore()
+	now := time.Now().UTC()
+	svc.providerProbe.RecordProbe("aaa-down", "", false, now)
+	svc.providerProbe.RecordProbe("zzz-up", "", true, now)
 
+	start := time.Now()
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("ResolveRoute: %v", err)
 	}
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("ResolveRoute elapsed %v, want stale snapshot background refresh path", elapsed)
+	}
 	if dec.Provider != "zzz-up" {
-		t.Fatalf("provider = %q, want zzz-up after aaa-down refresh failure is hard-gated", dec.Provider)
+		t.Fatalf("provider = %q, want zzz-up after cached aaa-down probe failure is hard-gated", dec.Provider)
 	}
 	var downCandidate *RouteCandidate
 	for i := range dec.Candidates {
@@ -467,8 +484,8 @@ models:
 	if downCandidate.Eligible {
 		t.Fatalf("aaa-down candidate eligible after refresh failure: %#v", *downCandidate)
 	}
-	if downCandidate.FilterReason != FilterReasonUnhealthy {
-		t.Fatalf("aaa-down filter reason = %q, want %q", downCandidate.FilterReason, FilterReasonUnhealthy)
+	if downCandidate.FilterReason != FilterReasonEndpointUnreachable {
+		t.Fatalf("aaa-down filter reason = %q, want %q", downCandidate.FilterReason, FilterReasonEndpointUnreachable)
 	}
 }
 

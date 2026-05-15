@@ -5,6 +5,14 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+### Fixed
+
+- Route resolution is cache-first for local provider liveness and model
+  discovery. `ResolveRoute`/`Execute` no longer synchronously probe local
+  OpenAI-compatible providers or block on stale `/v1/models` refresh before
+  selecting an eligible subscription harness; cached failed probe evidence
+  still gates known-dead local providers with `endpoint_unreachable`.
+
 ### Changed
 
 - Consolidated repository benchmark assets under `bench/`: the runner now

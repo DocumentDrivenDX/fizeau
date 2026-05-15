@@ -84,7 +84,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	s.recordRoutingQualityForRequest(overrideCtx)
 
 	// Resolve the route.
-	decision, err := s.executeRouteResolver().resolveExecuteRoute(req)
+	decision, err := s.executeRouteResolver().resolveExecuteRouteContext(ctx, req)
 	if err != nil {
 		// NoViableProviderForNow is a transient quota signal — DDx
 		// callers pause their drain loop on RetryAfter and resume.
@@ -161,11 +161,15 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 // are present (engine runs within the harness's eligible models). When Harness
 // is set and Model is also set, the decision is accepted verbatim.
 func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision, error) {
+	return s.resolveExecuteRouteContext(context.Background(), req)
+}
+
+func (s *service) resolveExecuteRouteContext(ctx context.Context, req ServiceExecuteRequest) (*RouteDecision, error) {
 	// If Harness is omitted, route through the engine. The engine defaults to
 	// local-first and auto-selects from configured endpoints when no other
 	// constraints are specified — an empty request is valid if providers exist.
 	if req.Harness == "" {
-		return s.resolveExecuteRouteWithEngine(req)
+		return s.resolveExecuteRouteWithEngine(ctx, req)
 	}
 	canonical := harnesses.ResolveHarnessAlias(req.Harness)
 	if !s.registry.Has(canonical) {
@@ -209,7 +213,7 @@ func (s *service) resolveExecuteRoute(req ServiceExecuteRequest) (*RouteDecision
 			return nil, fmt.Errorf("no auto-resolution available for harness=%q: "+
 				"harness does not support auto-routing; supply an explicit --model", canonical)
 		}
-		return s.resolveExecuteRouteWithEngine(req)
+		return s.resolveExecuteRouteWithEngine(ctx, req)
 	}
 
 	resolvedModel := resolveSubprocessModelAlias(canonical, req.Model)

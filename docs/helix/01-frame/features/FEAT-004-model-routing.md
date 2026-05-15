@@ -26,10 +26,11 @@ freshness.
 The snapshot is assembled from configured provider sources and harnesses,
 discovered model IDs, catalog metadata, and runtime signals joined into one set
 of provider/model facts. Fizeau has no required daemon. Its freshness contract
-is synchronous refresh plus cross-process locks, single-flight coalescing, TTLs,
-cooldowns, bounded concurrency, and atomic snapshot writes. A long-running DDx
-server may call the same Fizeau refresh entrypoints to keep snapshot facts warm,
-but route correctness must not depend on that process.
+is cache-first stale-while-revalidate on route hot paths plus explicit blocking
+refresh surfaces, all sharing cross-process locks, single-flight coalescing,
+TTLs, cooldowns, bounded concurrency, and atomic snapshot writes. A long-running
+DDx server may call the same Fizeau refresh entrypoints to keep snapshot facts
+warm, but route correctness must not depend on that process.
 
 The public v0.11 routing surface is:
 
@@ -152,18 +153,20 @@ formula, and routing trace construction.
 20. `fiz models --refresh` blocks until routing-relevant stale fields have been
     refreshed or conclusively failed. `fiz models --refresh-all` blocks on every
     refreshable field.
-21. `ResolveRoute` and `Execute` call `ensureFreshEnough(client_inputs,
-    snapshot)` before scoring. The refresh set is derived from routing-relevant
-    facts for the request: health, quota, model availability/discovery,
-    context/tool/reasoning support, billing and effective-cost metadata when
-    dynamic, and utilization when available. Autorouting may wait for these
-    checks; correctness is more important than route latency.
+21. `ResolveRoute` and `Execute` are cache-first before scoring. They read the
+    freshest cached routing-relevant facts available for the request: health,
+    quota, model availability/discovery, context/tool/reasoning support,
+    billing and effective-cost metadata when dynamic, and utilization when
+    available. Stale or missing local-provider facts may request a coordinated
+    asynchronous refresh, but unpinned autorouting and explicit non-local
+    harness/provider selection must not synchronously contact a local model
+    provider or block on `/v1/models`. Cached failed probe/discovery evidence
+    still gates known-dead local providers with typed dispatchability reasons.
 22. A DDx server or other long-running client may maintain freshness by calling
     Fizeau's refresh/warmup entrypoints on a heartbeat. This is an optimization
-    over the same synchronous, lock-coordinated contract. If no maintainer is
-    running and `fiz models` observes stale fields, it should expose the stale
-    status and suggest `fiz models --refresh` or starting a DDx freshness
-    maintainer.
+    over the same lock-coordinated cache contract. If no maintainer is running
+    and `fiz models` observes stale fields, it should expose the stale status
+    and suggest `fiz models --refresh` or starting a DDx freshness maintainer.
 
 ### Eligibility and Pins
 
@@ -275,7 +278,7 @@ formula, and routing trace construction.
 | AC-FEAT-004-05 | Pins override default inclusion and metered opt-in but not `require[]`; `air-gapped` plus a remote pin returns `ErrPolicyRequirementUnsatisfied`. | `go test ./internal/routing ./... -run Policy` |
 | AC-FEAT-004-06 | Soft power scoring penalizes undershooting `MinPower` more than overshooting `MaxPower` and does not replace an exact model pin. | `go test ./internal/routing ./... -run Power` |
 | AC-FEAT-004-07 | Route decisions consume the assembled snapshot, expose typed candidate rejection reasons, score components, selected endpoint/server instance, sticky evidence, and utilization evidence. | `go test ./... -run 'ResolveRoute|RouteStatus|routing_decision|ModelSnapshot'` |
-| AC-FEAT-004-08 | `ResolveRoute` and `Execute` refresh stale routing-relevant snapshot fields through the lock-coordinated refresh path before scoring, while `fiz models` stays quick by default and `--refresh`/`--refresh-all` block explicitly. | `go test ./internal/discoverycache ./internal/modelregistry ./agentcli ./... -run 'Refresh|Fresh|Models'` |
+| AC-FEAT-004-08 | `ResolveRoute` and `Execute` are cache-first and may request coordinated asynchronous refresh for stale routing-relevant fields, while `fiz models` stays quick by default and `--refresh`/`--refresh-all` block explicitly. | `go test ./internal/discoverycache ./internal/modelregistry ./agentcli ./... -run 'Refresh|Fresh|Models'` |
 | AC-FEAT-004-09 | Subscription candidates use PAYG-equivalent effective cost for scoring while surfacing `actual_cash_spend=false`; pay-per-token candidates are hard-gated only when dispatch would create actual metered spend without opt-in. | `go test ./internal/routing ./... -run 'EffectiveCost|ActualCashSpend|Metered'` |
 | AC-FEAT-004-10 | Removed v0.10 names are not advertised by policy listing, CLI help, or public service fields. | `go test ./agentcli ./cmd/fiz ./...` |
 
@@ -285,8 +288,9 @@ formula, and routing trace construction.
   and cross-harness orchestration strategy.
 - Provider configs remain transport/auth definitions.
 - Catalog data can be refreshed explicitly, but normal request execution is
-  offline with respect to manifest fetching. Runtime snapshot facts may refresh
-  synchronously before autorouting when stale.
+  offline with respect to manifest fetching. Runtime snapshot facts may request
+  asynchronous refresh before or after autorouting, but route scoring uses cached
+  evidence and must not block on local provider contact.
 - Benchmark inputs inform power, but deployment class and cost prevent local
   community copies from tying managed frontier models solely on one benchmark.
 

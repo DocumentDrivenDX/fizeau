@@ -274,11 +274,12 @@ Per request, the service:
    4. Uses ADR-012 cache semantics: `fiz models` can return stale snapshot data
       immediately while an optional coordinated refresh is requested; explicit
       refresh waits for a current snapshot through cross-process locks.
-   5. Before autorouting scores, runs `ensureFreshEnough(client_inputs,
-      snapshot)` for routing-relevant fields: health, quota, discovery,
-      context/tool/reasoning support, billing/effective-cost metadata when
-      dynamic, and utilization when available. This may block. Autorouting
-      correctness is more important than route latency.
+   5. Before autorouting scores, reads cached routing-relevant fields: health,
+      quota, discovery, context/tool/reasoning support, billing/effective-cost
+      metadata when dynamic, and utilization when available. Stale or missing
+      local-provider facts may request a coordinated asynchronous refresh, but
+      route scoring must not block on local provider liveness or model
+      discovery; explicit refresh/preflight surfaces own blocking refresh.
 3. Expands snapshot rows into route candidates. A candidate is the concrete
    `(harness, provider source, endpoint/server instance, model)` tuple that can
    be dispatched. Harness-as-provider snapshot rows are projected back onto the

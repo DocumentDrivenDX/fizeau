@@ -42,9 +42,8 @@ func (c *Cache) MaybeRefresh(s Source, fn Refresher) {
 // absent. Returns the refresh error (nil if data was fresh or the refresh
 // succeeded). Composes with single-flight: concurrent callers share one
 // refreshAndCommit, both in-process (singleflight.Group) and cross-process
-// (the file marker). The routing hot path uses this to satisfy the
-// synchronous-freshness contract while keeping the cost bounded to actually-
-// stale entries.
+// (the file marker). This is for explicit refresh/preflight surfaces; route
+// hot paths use MaybeRefresh so stale providers cannot block scoring.
 func (c *Cache) MaybeRefreshSync(s Source, fn Refresher) error {
 	res, err := c.Read(s)
 	if err != nil {

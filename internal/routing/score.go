@@ -13,6 +13,7 @@ var costClassRank = map[string]int{
 const StickyAffinityBonus = 250.0
 const unknownUtilizationPenalty = 5.0
 const unknownPerformancePenalty = 5.0
+const unknownLocalHealthPenalty = 100.0
 const belowMinPowerPenalty = 12.0
 const aboveMaxPowerExclusionPenalty = 1000.0
 
@@ -210,6 +211,10 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 	if cand.InCooldown {
 		base -= 50
 		add("quota_health", -50)
+	}
+	if cand.LocalHealthUnknown {
+		base -= unknownLocalHealthPenalty
+		add("quota_health", -unknownLocalHealthPenalty)
 	}
 
 	// Sticky affinity is a bonus after eligibility, not a hard pin.

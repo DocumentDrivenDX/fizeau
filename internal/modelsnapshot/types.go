@@ -18,10 +18,9 @@ const (
 	// RefreshForce refreshes sources synchronously before reading them.
 	RefreshForce
 	// RefreshIfStale refreshes ONLY stale sources synchronously; fresh sources
-	// short-circuit on the cached entry. Use for the routing hot path where
-	// the synchronous-freshness contract (FEAT-004 §Snapshot Freshness)
-	// requires routing-relevant evidence to be current at decision time but
-	// where forcing every source to re-probe on every call would be wasteful.
+	// short-circuit on the cached entry. Reserve this for explicit refresh or
+	// preflight surfaces; request routing uses RefreshBackground so stale
+	// providers cannot block candidate scoring.
 	RefreshIfStale
 )
 

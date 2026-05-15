@@ -48,9 +48,10 @@ auditable from one source of truth.
 
 - `fiz models` must keep the quick stale-while-revalidate inspection behavior
   and avoid blocking on slow model discovery by default.
-- `ResolveRoute` and `Execute` must call `ensureFreshEnough(client_inputs,
-  snapshot)` and may block on routing-relevant stale fields before scoring.
-  Force-refresh behavior is still explicit for CLI inspection through
+- `ResolveRoute` and `Execute` must be cache-first before scoring. They may
+  request coordinated asynchronous refresh for stale routing-relevant fields,
+  but must not block on local provider liveness or model discovery. Blocking
+  force-refresh behavior remains explicit for CLI inspection through
   `fiz models --refresh` and `fiz models --refresh-all`.
 - The adapter from snapshot to routing candidates must be deterministic and
   tested without real provider credentials.
