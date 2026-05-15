@@ -19,8 +19,8 @@ The desired model is simpler:
 - The runner executes the Cartesian product of selected recipes and selected
   lanes by invoking the regular `fiz` binary for each cell.
 
-Everything else is preparation, validation, or reporting. Those steps should be
-explicit commands, not surprising side effects of starting a run.
+Everything else is validation or reporting. Those steps should be explicit
+commands, not surprising side effects of starting a run.
 
 ## Current Friction
 
@@ -52,7 +52,6 @@ The public operator contract should be:
 ```bash
 ./benchmark --lanes <lane[,lane...]> --recipes <recipe[,recipe...]>
 ./benchmark --lanes <lane[,lane...]> --recipes <recipe[,recipe...]> --plan
-./benchmark prepare --recipes <recipe[,recipe...]> --lanes <lane[,lane...]>
 ./benchmark validate
 ```
 
@@ -60,32 +59,41 @@ Rules:
 
 1. `--plan` is pure. It validates configuration and prints the exact matrix. It
    does not build, download, preflight endpoints, or create output directories.
-2. `prepare` is explicit. It may build binaries, fetch TerminalBench tasks, and
-   build task images. Its output is named and reusable.
-3. `run` creates output directories only immediately before launching a lane.
-4. Recipes and lanes are orthogonal. A recipe does not enroll lanes. Recipe
+2. `run` creates output directories only immediately before launching a cell.
+   The default output root is the existing `benchmark-results/` directory.
+3. Recipes and lanes are orthogonal. A recipe does not enroll lanes. Recipe
    selection picks tasks/defaults; lane selection picks execution targets.
-5. If an operator omits `--lanes`, the script errors and prints available lane
+4. If an operator omits `--lanes`, the script errors and prints available lane
    ids. No hidden "all lanes" default for paid or local-heavy runs.
-6. If an operator omits `--recipes`, the script errors and prints available
+5. If an operator omits `--recipes`, the script errors and prints available
    recipe ids. No legacy `phase=all` default.
-7. Aliases are data, not shell code. Every alias resolves through the lane
+6. Aliases are data, not shell code. Every alias resolves through the lane
    catalog and is visible in `./benchmark lanes`.
-8. Benchmark execution uses `fiz`, not `fiz-bench`. Go benchmark helpers may
+7. Benchmark execution uses `fiz`, not `fiz-bench`. Go benchmark helpers may
    validate, summarize, import evidence, or convert reports, but they do not
    own the cell execution loop.
+8. The manifest is declarative and directly readable by the runner. There is no
+   separate preparation state machine.
 
 ## Data Model
 
-Reshape the sweep plan around three top-level collections:
+Replace the sweep plan with a benchmark manifest around orthogonal top-level
+collections. The runner reads this manifest directly; there is no generated
+intermediate plan file required for execution.
 
 ```yaml
+dataset:
+  id: terminal-bench-2-1
+  type: harbor
+  source: terminal-bench/terminal-bench-2-1
+
+output:
+  root: benchmark-results
+
 recipes:
   - id: timing-baseline
     tasks: scripts/benchmark/task-subset-tb21-timing-baseline.yaml
     reps: 3
-    defaults:
-      matrix_jobs_managed: 16
 
 lanes:
   - id: vidar-ds4
@@ -102,6 +110,10 @@ resource_groups:
   - id: vidar-ds4
     max_concurrency: 1
 ```
+
+Recipe task files are plain declarative lists of task ids or task files. For
+TerminalBench, the task id is passed to Harbor. For simple prompt/file
+benchmarks, the task entry names the prompt/input path and optional grader.
 
 Remove recipe lane lists. If a named operational bundle truly needs a curated
 lane set, model it as a saved invocation preset, not as the recipe itself:
@@ -125,7 +137,6 @@ Keep one script, but make it thin:
 ./benchmark --recipes timing-baseline,or-passing --lanes ds4,ds4-mtp
 ./benchmark --preset timing-ds4
 ./benchmark --plan --recipes timing-baseline --lanes ds4-mtp
-./benchmark prepare --recipes timing-baseline --lanes ds4-mtp
 ./benchmark lanes
 ./benchmark recipes
 ./benchmark validate
@@ -134,12 +145,15 @@ Keep one script, but make it thin:
 Implementation detail:
 
 - `./benchmark` resolves the selected recipes and lanes into a concrete cell
-  list, then invokes `fiz` with explicit CLI flags and environment for each
-  cell.
-- Building `fiz` as a local prerequisite is acceptable. Docker/task
-  preparation is not implicit.
-- YAML parsing and validation can be implemented in shell plus `yq`/Python, or
-  by small support commands, but support commands must not own execution.
+  list from the manifest, then invokes `fiz` with explicit CLI flags and
+  environment for each cell.
+- Building `fiz` as a local prerequisite is acceptable. Docker image pulls or
+  task environment builds happen as part of the cell execution path that needs
+  them, with visible output in that cell's log. They are not a separate
+  `prepare` phase.
+- Manifest parsing has one implementation path: the benchmark script invokes a
+  small in-repo parser helper that reads YAML and emits JSON. Shell logic
+  consumes that JSON; it does not scrape YAML with ad hoc text processing.
 - The shell script owns matrix expansion, output path creation, resume checks,
   process supervision, and the `fiz` invocation.
 
@@ -168,6 +182,17 @@ env "${lane_env[@]}" \
 That is still the same principle: the benchmark runner expands the matrix;
 `fiz` performs agent execution; Harbor only supplies the benchmark harness.
 
+All output goes under `benchmark-results/` unless the operator passes an
+explicit `--out`. The canonical cell path should be stable enough for resume
+and reporting, for example:
+
+```text
+benchmark-results/runs/<run-id>/<recipe>/<lane>/<task-id>/rep-NNN/
+```
+
+Each terminal cell writes `report.json` plus the raw `fiz`/Harbor logs needed
+by existing report generation and evidence import.
+
 ## Startup Behavior
 
 The first visible output for any run should be the resolved plan:
@@ -177,13 +202,12 @@ Benchmark plan
   recipes: timing-baseline
   lanes:   vidar-ds4-mtp
   cells:   8 tasks × 1 lane × 3 reps = 24
-  output:  benchmark-results/fiz-tools-vN
-  prepare: required tasks overlay missing; run ./benchmark prepare ...
+  output:  benchmark-results/runs/20260515T010203Z
 ```
 
-If preparation is missing, fail before creating output directories. Do not
-start downloads or Docker builds from `run` unless the operator passed an
-explicit `--prepare` or used the `prepare` subcommand.
+The run should not create the run directory until after the plan prints and
+argument/config validation succeeds. It creates each cell directory only when
+that cell is about to start.
 
 ## Validation
 
@@ -197,7 +221,6 @@ explicit `--prepare` or used the `prepare` subcommand.
 - recipe task file is missing
 - resource group is missing
 - comparison group references unknown lanes
-- selected lane requires a preparation artifact that is absent
 - selected lane has placeholder env documented as operational
 
 Validation should be fast and offline. Live endpoint checks belong to
@@ -256,7 +279,6 @@ with a commit that names the removal:
   runtime props where available.
 - Invalid setup/provider/quota/auth classification.
 - Consecutive identical failure lane abort.
-- Budget and per-run budget caps, or a deliberate replacement.
 - Preflight endpoint probe as an explicit command.
 - Report aggregation and evidence import compatibility.
 - Stale Harbor container cleanup, if still needed after the shell process model
@@ -267,11 +289,11 @@ parity or retirement decision for each line.
 
 ## Migration Steps
 
-1. **Add pure planner and validator.**
+1. **Add pure manifest reader, planner, and validator.**
    - Add `./benchmark --plan`, `./benchmark validate`, `./benchmark lanes`, and
      `./benchmark recipes`.
-   - The planner may call a small helper for YAML parsing, but its output is a
-     shell-consumable JSON cell list and it does not execute cells.
+   - The runner reads the benchmark manifest directly and emits a
+     shell-consumable JSON cell list for `--plan --json`.
    - Move lane alias resolution into YAML.
    - Add profile/lane/resource/task validation.
    - Acceptance: `./benchmark --plan --recipes timing-baseline --lanes ds4-mtp`
@@ -294,16 +316,7 @@ parity or retirement decision for each line.
    - Acceptance: `bash -n scripts/benchmark/run_terminalbench_2_1_sweep.sh`
      passes and a plan-only run has no side effects.
 
-4. **Split preparation from execution.**
-   - Move task download, task overlay mutation, task Docker image builds, and
-     runtime image builds behind `./benchmark prepare`.
-   - `run` fails with a clear "prepare artifact missing" message instead of
-     doing preparation silently.
-   - Acceptance: starting from empty `benchmark-results/external`, `--plan`
-     and `validate` are still useful; `run` fails before output directory
-     creation with the exact missing preparation command.
-
-5. **Make recipes/lane selection orthogonal.**
+4. **Make recipes/lane selection orthogonal.**
    - Remove `recipes[].lanes`.
    - Add optional `presets[]` for named lane+recipe bundles.
    - Update the shell runner so `--recipes` and `--lanes` are both required
@@ -311,29 +324,29 @@ parity or retirement decision for each line.
    - Acceptance: any lane can run with any recipe unless validation marks the
      combination incompatible for a concrete reason.
 
-6. **Port or retire reporting behavior.**
+5. **Port or retire reporting behavior.**
    - Keep report aggregation and evidence import as support tooling if useful.
    - Move execution-only responsibilities out of `cmd/bench`.
    - Acceptance: existing report-generation/import tests pass against output
      from the shell runner, or the plan records the replacement command and
      test.
 
-7. **Clean up legacy vocabulary.**
+6. **Clean up legacy vocabulary.**
    - Remove `--phase`, `--subset`, `--all-recipes`, `--staged-recipes`,
      `preferred`, `full`, and `qwen36-gpt55-full` from the public script.
    - Keep compatibility only in internal helpers if needed for one release,
      with deprecation tests and a dated removal bead.
    - Acceptance: `./benchmark --help` shows only recipes, lanes, presets,
-     prepare, validate, plan, and run concepts.
+     validate, plan, and run concepts.
 
-8. **Wire DS4 MTP as a normal lane.**
+7. **Wire DS4 MTP as a normal lane.**
    - Add `vidar-ds4-mtp` profile and lane alias data.
    - Confirm whether MTP is a request parameter, provider option, or server
      startup mode; remove placeholder env if it is not real.
    - Acceptance: `./benchmark --plan --recipes timing-baseline --lanes ds4-mtp`
      works from a clean checkout, and `validate` proves profile/lane consistency.
 
-9. **Delete or demote the old Go runner.**
+8. **Delete or demote the old Go runner.**
    - Once parity fixtures pass and the functionality inventory has decisions,
      remove `cmd/bench sweep/matrix` execution commands or mark them as
      deprecated support tools that cannot launch benchmark cells.
@@ -345,15 +358,14 @@ parity or retirement decision for each line.
 
 Recommended bead sequence:
 
-1. Validator and pure planner.
+1. Manifest reader, validator, and pure planner.
 2. Parity fixture capture.
 3. Shell matrix runner that calls `fiz`.
-4. Explicit preparation command.
-5. Orthogonal recipes and lanes schema change.
-6. Reporting/evidence compatibility pass.
-7. Legacy CLI cleanup.
-8. DS4 MTP lane repair on the simplified schema.
-9. Old Go runner deletion/demotion.
+4. Orthogonal recipes and lanes schema change.
+5. Reporting/evidence compatibility pass.
+6. Legacy CLI cleanup.
+7. DS4 MTP lane repair on the simplified schema.
+8. Old Go runner deletion/demotion.
 
 The first three steps can land before the schema break. They immediately fix
 the "empty directories and nothing runs" experience. The schema break should
@@ -366,13 +378,13 @@ come after plan/validate coverage is strong enough to catch regressions.
 - Do not run full TerminalBench as part of this cleanup.
 - Do not add another lane-authoring layer before the runner contract is made
   simple.
+- Do not retain or add budget-cap machinery. The simplified runner is not
+  responsible for spend caps.
 - Do not leave two blessed benchmark execution paths. During migration there
   may be a dual-run period, but it must have parity tests and a deletion bead.
 
 ## Open Decisions
 
-- Whether `prepare` should be per recipe+lane selection or global for all task
-  images. Default should be selected-only to avoid expensive surprise work.
 - Whether endpoint preflight is automatic on `run` or explicit via
   `--preflight`. Default should be explicit until the command is fast and
   reliably scoped.
