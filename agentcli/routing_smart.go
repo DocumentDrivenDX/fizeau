@@ -784,6 +784,7 @@ type routeStatusCandidate struct {
 	ContextLength                 int                              `json:"context_length"`
 	ContextSource                 string                           `json:"context_source"`
 	Components                    routeStatusComponents            `json:"components"`
+	ScoreComponents               map[string]float64               `json:"score_components,omitempty"`
 	Utilization                   rootfizeau.RouteUtilizationState `json:"utilization,omitempty"`
 	Eligible                      bool                             `json:"eligible"`
 	FilterReason                  string                           `json:"filter_reason"`
@@ -948,6 +949,7 @@ func cmdRouteStatus(workDir string, args []string) int {
 				ModelDiscoveryFreshnessAt:     c.ModelDiscoveryFreshnessAt,
 				ModelDiscoveryFreshnessSource: c.ModelDiscoveryFreshnessSource,
 				Utilization:                   c.Utilization,
+				ScoreComponents:               c.ScoreComponents,
 				Components: routeStatusComponents{
 					Power:                   c.Components.Power,
 					Cost:                    c.Components.Cost,

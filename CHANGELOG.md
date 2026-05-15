@@ -17,6 +17,9 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ### Changed
 
+- `RouteDecision.Candidates` and routing-decision events now carry the raw
+  `ScoreComponents` / `score_components` map from the routing engine alongside
+  the stable aggregate component evidence. Tracks `fizeau-ce4216aa`.
 - Consolidated repository benchmark assets under `bench/`: the runner now
   lives at `bench/run`, the scorer package moved to `bench/scorer`, and the
   canonical results root is `bench/results/`.

@@ -324,6 +324,70 @@ func TestRoutingDecisionEventComponentsCarriesPerCandidateScores(t *testing.T) {
 	}
 }
 
+func TestRoutingDecisionEventCandidatesExposeRawScoreComponents(t *testing.T) {
+	candidates := []RouteCandidate{
+		{
+			Harness: "fiz",
+			Model:   "alpha-1",
+			ScoreComponents: map[string]float64{
+				"base":                100,
+				"power":               18,
+				"cost":                -4,
+				"quota_health":        6,
+				"deployment_locality": 12,
+				"utilization":         -3,
+				"context_headroom":    0.15,
+				"performance":         9,
+			},
+		},
+		{
+			Harness: "codex",
+			Model:   "beta-1",
+			ScoreComponents: map[string]float64{
+				"base":                100,
+				"power":               21,
+				"cost":                0,
+				"quota_health":        12,
+				"deployment_locality": 0,
+				"utilization":         5,
+				"context_headroom":    0.25,
+				"performance":         14,
+			},
+		},
+	}
+
+	out := routingDecisionEventCandidates(candidates)
+	if len(out) != len(candidates) {
+		t.Fatalf("len(out)=%d, want %d", len(out), len(candidates))
+	}
+	for i, candidate := range candidates {
+		for key, want := range candidate.ScoreComponents {
+			if got := out[i].ScoreComponents[key]; got != want {
+				t.Fatalf("candidate %d ScoreComponents[%q]=%v, want %v in %#v", i, key, got, want, out[i].ScoreComponents)
+			}
+		}
+		if out[i].Components != (ServiceRoutingDecisionComponents{}) {
+			t.Fatalf("candidate %d aggregate Components=%#v, want untouched zero aggregate", i, out[i].Components)
+		}
+	}
+	candidates[0].ScoreComponents["base"] = -999
+	if out[0].ScoreComponents["base"] != 100 {
+		t.Fatalf("event ScoreComponents aliases route candidate map; base=%v, want copied 100", out[0].ScoreComponents["base"])
+	}
+
+	raw, err := json.Marshal(out[0])
+	if err != nil {
+		t.Fatalf("marshal routing-decision candidate: %v", err)
+	}
+	var generic map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatalf("unmarshal routing-decision candidate: %v", err)
+	}
+	if _, ok := generic["score_components"]; !ok {
+		t.Fatalf("missing score_components in %s", raw)
+	}
+}
+
 // TestRouteRequestMinContextWindowDerivedFromEstimatedTokens verifies
 // the public-to-internal mapping for the auto-selection inputs that
 // ADR-005 step 1 added: EstimatedPromptTokens populates routing.Request

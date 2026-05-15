@@ -213,7 +213,19 @@ func routeCandidateFromInternal(candidate routing.Candidate, powerPolicy RoutePo
 		ContextLength:       candidate.ContextLength,
 		ContextSource:       candidate.ContextSource,
 		Components:          components,
+		ScoreComponents:     copyScoreComponents(candidate.ScoreComponents),
 	}
+}
+
+func copyScoreComponents(in map[string]float64) map[string]float64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]float64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func scorePowerHintFit(candidate routing.Candidate, policy RoutePowerPolicy) float64 {

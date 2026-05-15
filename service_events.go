@@ -171,6 +171,7 @@ func routingDecisionEventCandidates(in []RouteCandidate) []ServiceRoutingDecisio
 			Eligible:                      c.Eligible,
 			Reason:                        c.Reason,
 			FilterReason:                  c.FilterReason,
+			ScoreComponents:               copyScoreComponents(c.ScoreComponents),
 			SourceStatus:                  c.SourceStatus,
 			AutoRoutable:                  c.AutoRoutable,
 			ExactPinOnly:                  c.ExactPinOnly,
@@ -317,6 +318,7 @@ type ServiceRoutingDecisionCandidate struct {
 	Eligible                      bool                             `json:"eligible"`
 	Reason                        string                           `json:"reason,omitempty"`
 	FilterReason                  string                           `json:"filter_reason,omitempty"`
+	ScoreComponents               map[string]float64               `json:"score_components,omitempty"`
 	SourceStatus                  string                           `json:"source_status,omitempty"`
 	AutoRoutable                  bool                             `json:"auto_routable,omitempty"`
 	ExactPinOnly                  bool                             `json:"exact_pin_only,omitempty"`

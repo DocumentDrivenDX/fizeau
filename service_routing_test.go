@@ -122,6 +122,45 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 	}
 }
 
+func TestRouteDecisionCandidatesExposeRawScoreComponents(t *testing.T) {
+	rawComponents := map[string]float64{
+		"base":                100,
+		"power":               18,
+		"cost":                -4,
+		"quota_health":        6,
+		"deployment_locality": 12,
+		"utilization":         -3,
+		"context_headroom":    0.15,
+		"performance":         9,
+	}
+	got := routeCandidateFromInternal(routing.Candidate{
+		Harness:            "fiz",
+		Provider:           "local",
+		Model:              "model-a",
+		Score:              138.15,
+		Eligible:           true,
+		Power:              7,
+		CostUSDPer1kTokens: 0.012,
+		ScoreComponents:    rawComponents,
+	}, RoutePowerPolicy{})
+
+	if len(got.ScoreComponents) != len(rawComponents) {
+		t.Fatalf("len(ScoreComponents)=%d, want %d: %#v", len(got.ScoreComponents), len(rawComponents), got.ScoreComponents)
+	}
+	for key, want := range rawComponents {
+		if got.ScoreComponents[key] != want {
+			t.Fatalf("ScoreComponents[%q]=%v, want %v in %#v", key, got.ScoreComponents[key], want, got.ScoreComponents)
+		}
+	}
+	if got.Components.Power != 7 || got.Components.Cost != 0.012 {
+		t.Fatalf("aggregate Components=%#v, want preserved alongside raw ScoreComponents", got.Components)
+	}
+	rawComponents["base"] = -999
+	if got.ScoreComponents["base"] != 100 {
+		t.Fatalf("ScoreComponents aliases internal map; base=%v, want copied 100", got.ScoreComponents["base"])
+	}
+}
+
 func TestRouteCandidateFromInternalUsesExclusionStrengthForAboveMaxPower(t *testing.T) {
 	candidate := routing.Candidate{
 		Harness:      "codex",

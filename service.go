@@ -573,9 +573,13 @@ type RouteCandidate struct {
 	QuotaFreshnessSource          string
 	ModelDiscoveryFreshnessAt     time.Time
 	ModelDiscoveryFreshnessSource string
-	// Components carries the raw score inputs plus the SD-005 score-evidence
-	// breakdown used to explain the final Score without parsing Reason.
+	// Components carries the stable SD-005 score-evidence breakdown used to
+	// explain the final Score without parsing Reason.
 	Components RouteCandidateComponents
+	// ScoreComponents carries the raw internal routing score component map.
+	// It is intentionally separate from Components, which is the stable
+	// operator-facing aggregate/evidence shape.
+	ScoreComponents map[string]float64
 	// Utilization carries the normalized load sample used by the router.
 	Utilization RouteUtilizationState
 	// LastProbeAt is the time of the most recent aliveness probe for this
