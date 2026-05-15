@@ -50,7 +50,7 @@ func newFakeOpenAIServer(t *testing.T) *fakeOpenAIServer {
 		switch r.URL.Path {
 		case "/v1/models":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":[{"id":"stub-model"}]}`))
+			_, _ = w.Write([]byte(`{"data":[{"id":"stub-model"},{"id":"gpt-4o"},{"id":"qwen-smart"}]}`))
 		case "/v1/chat/completions":
 			require.Equal(t, http.MethodPost, r.Method)
 			defer r.Body.Close()

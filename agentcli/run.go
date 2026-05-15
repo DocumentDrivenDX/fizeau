@@ -263,10 +263,15 @@ func runWithOptions(opts Options) int {
 		Model:           *model,
 		AllowDeprecated: *allowDeprecatedModel,
 	}
-	selection, _, pc, err := resolveProviderForRun(cfg, wd, *providerFlag, overrides)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %s\n", err)
-		return 2
+	delegateProviderSelection := shouldDelegateRunProviderSelection(cfg, *providerFlag, *harnessFlag, overrides)
+	selection := delegatedRunProviderSelection(cfg, overrides)
+	var pc agentConfig.ProviderConfig
+	if !delegateProviderSelection {
+		selection, _, pc, err = resolveProviderForRun(cfg, wd, *providerFlag, overrides)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			return 2
+		}
 	}
 	resolvedReasoning, err := resolveRunReasoning(cfg, selection, *reasoningFlag)
 	if err != nil {
@@ -333,7 +338,7 @@ func runWithOptions(opts Options) int {
 	//      context_length from /v1/models entirely)
 	resolvedContextWindow := pc.ContextWindow
 	resolvedMaxTokens := pc.MaxTokens
-	if resolvedContextWindow == 0 || resolvedMaxTokens == 0 {
+	if !delegateProviderSelection && (resolvedContextWindow == 0 || resolvedMaxTokens == 0) {
 		limits := agentConfig.LookupModelLimits(ctx, pc, selection.ResolvedModel)
 		if resolvedContextWindow == 0 {
 			resolvedContextWindow = limits.ContextLength
@@ -381,7 +386,7 @@ func runWithOptions(opts Options) int {
 		}
 		res := sampling.Resolve(lookup, selection.ResolvedModel, "code", pc.Sampling)
 		samplingSource = sampling.SourceSummary(res.Sources)
-		if res.MissingProfile {
+		if res.MissingProfile && !delegateProviderSelection {
 			// ADR-007 §7 rule 4: tone the nudge by provider capability.
 			// Servers that auto-load generation_config.json (vLLM) get the
 			// soft note; servers that do not (omlx, lmstudio, lucebox) get
@@ -408,40 +413,41 @@ func runWithOptions(opts Options) int {
 	estimatedPromptTokens := estimateRunPromptTokens(promptText, sysPrompt)
 	requiresTools := runRequiresTools(*harnessFlag, preset, flagWasSet(fs, "preset"), anchorsEnabled)
 	req := buildServiceExecuteRequest(serviceExecuteRequestParams{
-		Prompt:                  promptText,
-		SystemPrompt:            sysPrompt,
-		WorkDir:                 wd,
-		Metadata:                promptMetadata,
-		Tools:                   tools,
-		ToolPreset:              preset,
-		SelectedProvider:        selection.Provider,
-		SelectedRoute:           selection.Route,
-		RequestedModel:          selection.RequestedModel,
-		ResolvedModel:           selection.ResolvedModel,
-		ExplicitProvider:        *providerFlag != "",
-		ExplicitModel:           *model != "",
-		Policy:                  *policyFlag,
-		Harness:                 *harnessFlag,
-		Reasoning:               resolvedReasoning,
-		EstimatedPromptTokens:   estimatedPromptTokens,
-		RequiresTools:           requiresTools,
-		NoStream:                selection.NoStream,
-		MinPower:                *minPower,
-		MaxPower:                *maxPower,
-		MaxIterations:           iterations,
-		MaxTokens:               resolvedMaxTokens,
-		ReasoningByteLimit:      cfg.ReasoningByteLimit,
-		CostCapUSD:              costCapUSD,
-		CompactionContextWindow: resolvedContextWindow,
-		CompactionReserveTokens: compactionCfg.ReserveTokens,
-		Temperature:             sTemp,
-		TopP:                    sTopP,
-		TopK:                    sTopK,
-		MinP:                    sMinP,
-		RepetitionPenalty:       sRep,
-		Seed:                    sSeed,
-		SamplingSource:          samplingSource,
-		PlanningMode:            *planFlag,
+		Prompt:                    promptText,
+		SystemPrompt:              sysPrompt,
+		WorkDir:                   wd,
+		Metadata:                  promptMetadata,
+		Tools:                     tools,
+		ToolPreset:                preset,
+		SelectedProvider:          selection.Provider,
+		SelectedRoute:             selection.Route,
+		RequestedModel:            selection.RequestedModel,
+		ResolvedModel:             selection.ResolvedModel,
+		ExplicitProvider:          *providerFlag != "",
+		ExplicitModel:             *model != "",
+		DelegateProviderSelection: delegateProviderSelection,
+		Policy:                    *policyFlag,
+		Harness:                   *harnessFlag,
+		Reasoning:                 resolvedReasoning,
+		EstimatedPromptTokens:     estimatedPromptTokens,
+		RequiresTools:             requiresTools,
+		NoStream:                  selection.NoStream,
+		MinPower:                  *minPower,
+		MaxPower:                  *maxPower,
+		MaxIterations:             iterations,
+		MaxTokens:                 resolvedMaxTokens,
+		ReasoningByteLimit:        cfg.ReasoningByteLimit,
+		CostCapUSD:                costCapUSD,
+		CompactionContextWindow:   resolvedContextWindow,
+		CompactionReserveTokens:   compactionCfg.ReserveTokens,
+		Temperature:               sTemp,
+		TopP:                      sTopP,
+		TopK:                      sTopK,
+		MinP:                      sMinP,
+		RepetitionPenalty:         sRep,
+		Seed:                      sSeed,
+		SamplingSource:            samplingSource,
+		PlanningMode:              *planFlag,
 	})
 
 	result, err := executeViaServiceFn(ctx, req, selection, sessionLogDir(wd, cfg), agentConfig.NewServiceConfig(cfg, wd))
@@ -582,32 +588,33 @@ func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, se
 }
 
 type serviceExecuteRequestParams struct {
-	Prompt                  string
-	SystemPrompt            string
-	WorkDir                 string
-	Metadata                map[string]string
-	Tools                   []fizeau.Tool
-	ToolPreset              string
-	Permissions             string
-	SelectedProvider        string
-	SelectedRoute           string
-	RequestedModel          string
-	ResolvedModel           string
-	ExplicitProvider        bool
-	ExplicitModel           bool
-	Policy                  string
-	Harness                 string
-	Reasoning               fizeau.Reasoning
-	EstimatedPromptTokens   int
-	RequiresTools           bool
-	NoStream                bool
-	MinPower                int
-	MaxPower                int
-	MaxIterations           int
-	MaxTokens               int
-	ReasoningByteLimit      int
-	CompactionContextWindow int
-	CompactionReserveTokens int
+	Prompt                    string
+	SystemPrompt              string
+	WorkDir                   string
+	Metadata                  map[string]string
+	Tools                     []fizeau.Tool
+	ToolPreset                string
+	Permissions               string
+	SelectedProvider          string
+	SelectedRoute             string
+	RequestedModel            string
+	ResolvedModel             string
+	ExplicitProvider          bool
+	ExplicitModel             bool
+	DelegateProviderSelection bool
+	Policy                    string
+	Harness                   string
+	Reasoning                 fizeau.Reasoning
+	EstimatedPromptTokens     int
+	RequiresTools             bool
+	NoStream                  bool
+	MinPower                  int
+	MaxPower                  int
+	MaxIterations             int
+	MaxTokens                 int
+	ReasoningByteLimit        int
+	CompactionContextWindow   int
+	CompactionReserveTokens   int
 
 	// CostCapUSD is the per-run cost cap (USD). Zero means no cap. Threaded
 	// straight into ServiceExecuteRequest.CostCapUSD; see FEAT-005 §26-29.
@@ -667,7 +674,21 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 	}
 	provider := params.SelectedProvider
 	harness := ""
-	if params.Harness != "" {
+	selectedRoute := params.SelectedRoute
+	if params.DelegateProviderSelection {
+		provider = ""
+		harness = params.Harness
+		model = params.RequestedModel
+		if model == "" {
+			model = params.SelectedRoute
+		}
+		if params.Harness != "" {
+			selectedRoute = ""
+			if !params.ExplicitModel {
+				model = ""
+			}
+		}
+	} else if params.Harness != "" {
 		harness = params.Harness
 		if !params.ExplicitModel {
 			model = ""
@@ -682,8 +703,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 	if permissions == "" {
 		permissions = "unrestricted"
 	}
-	selectedRoute := params.SelectedRoute
-	if params.Harness != "" {
+	if !params.DelegateProviderSelection && params.Harness != "" {
 		selectedRoute = ""
 	}
 	req := fizeau.ServiceExecuteRequest{

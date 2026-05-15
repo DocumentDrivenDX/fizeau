@@ -233,6 +233,7 @@ func TestCLI_Run_ModelByModelName(t *testing.T) {
 	home := t.TempDir()
 
 	bragi := newCountedOpenAIServer(t, http.StatusOK, "bragi-runtime-model", "bragi ok")
+	bragi.setModels("qwen3.5-27b")
 
 	writeTempConfig(t, workDir, `
 providers:

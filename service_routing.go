@@ -828,7 +828,7 @@ func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog
 		return nil
 	}
 	providerNames := s.opts.ServiceConfig.ProviderNames()
-	if len(providerNames) == 0 || len(snapshot.Models) == 0 {
+	if len(providerNames) == 0 {
 		return nil
 	}
 	grouped := make(map[snapshotProviderGroupKey][]modelsnapshot.KnownModel)
@@ -852,10 +852,6 @@ func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog
 		}
 		grouped[key] = append(grouped[key], row)
 	}
-	if len(grouped) == 0 {
-		return nil
-	}
-
 	groupCountByProvider := make(map[string]int)
 	for key := range grouped {
 		groupCountByProvider[key.Provider]++
@@ -879,11 +875,13 @@ func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog
 	})
 
 	var entries []routing.ProviderEntry
+	coveredProviders := make(map[string]bool, len(grouped))
 	for _, key := range keys {
 		pcfg, ok := s.opts.ServiceConfig.Provider(key.Provider)
 		if !ok || pcfg.ConfigError != "" {
 			continue
 		}
+		coveredProviders[key.Provider] = true
 		rows := append([]modelsnapshot.KnownModel(nil), grouped[key]...)
 		sort.Slice(rows, func(i, j int) bool {
 			if rows[i].EndpointName != rows[j].EndpointName {
@@ -944,7 +942,82 @@ func (s *service) snapshotProviderEntries(ctx context.Context, cat *modelcatalog
 		s.applyEndpointRoutingCost(&entry, pcfg, cat)
 		entries = append(entries, entry)
 	}
+	entries = append(entries, s.configuredProviderFallbackEntries(ctx, cat, coveredProviders)...)
 	return entries
+}
+
+func (s *service) configuredProviderFallbackEntries(ctx context.Context, cat *modelcatalog.Catalog, coveredProviders map[string]bool) []routing.ProviderEntry {
+	if s == nil || s.opts.ServiceConfig == nil {
+		return nil
+	}
+	var entries []routing.ProviderEntry
+	for _, providerName := range s.opts.ServiceConfig.ProviderNames() {
+		if coveredProviders[providerName] {
+			continue
+		}
+		pcfg, ok := s.opts.ServiceConfig.Provider(providerName)
+		if !ok || pcfg.ConfigError != "" {
+			continue
+		}
+		endpoints := modelDiscoveryEndpoints(pcfg)
+		if len(endpoints) == 0 {
+			endpoints = []modelDiscoveryEndpoint{{BaseURL: pcfg.BaseURL, ServerInstance: pcfg.ServerInstance}}
+		}
+		for _, endpoint := range endpoints {
+			entry := configuredProviderFallbackEntry(ctx, cat, providerName, pcfg, endpoint, len(endpoints) > 1)
+			s.applyEndpointRoutingCost(&entry, pcfg, cat)
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+func configuredProviderFallbackEntry(ctx context.Context, cat *modelcatalog.Catalog, providerName string, pcfg ServiceProviderEntry, endpoint modelDiscoveryEndpoint, multiEndpoint bool) routing.ProviderEntry {
+	endpointName := endpoint.Name
+	routeName := providerName
+	if multiEndpoint {
+		switch {
+		case endpointName != "":
+			routeName = endpointProviderRef(providerName, endpointName)
+		case endpoint.ServerInstance != "":
+			routeName = endpointProviderRef(providerName, endpoint.ServerInstance)
+		case endpoint.BaseURL != "":
+			routeName = endpointProviderRef(providerName, endpoint.BaseURL)
+		}
+	}
+	baseURL := endpoint.BaseURL
+	if baseURL == "" {
+		baseURL = pcfg.BaseURL
+	}
+	serverInstance := endpoint.ServerInstance
+	if serverInstance == "" {
+		serverInstance = pcfg.ServerInstance
+	}
+	serverInstance = serverinstance.Normalize(baseURL, serverInstance)
+	discoveredIDs := []string(nil)
+	if defaultModel := strings.TrimSpace(pcfg.Model); defaultModel != "" {
+		discoveredIDs = []string{defaultModel}
+	}
+	ctxWindows, ctxSources := buildProviderContextWindows(ctx, pcfg, cat, discoveredIDs)
+	return routing.ProviderEntry{
+		Name:                      routeName,
+		BaseURL:                   baseURL,
+		ServerInstance:            serverInstance,
+		EndpointName:              endpointName,
+		EndpointBaseURL:           baseURL,
+		DefaultModel:              pcfg.Model,
+		Billing:                   pcfg.Billing,
+		CostClass:                 providerRoutingCostClass(pcfg.Type),
+		DiscoveredIDs:             discoveredIDs,
+		DiscoveryAttempted:        false,
+		ContextWindows:            ctxWindows,
+		ContextWindowSources:      ctxSources,
+		ContextWindow:             pcfg.ContextWindow,
+		ContextWindowSource:       contextWindowSourceForProviderConfig(pcfg),
+		SupportsTools:             providerSupportsTools(cat, pcfg.Model, discoveredIDs),
+		SupportsToolsByModel:      modelSupportsToolsByID(cat, discoveredIDs),
+		ExcludeFromDefaultRouting: pcfg.IncludeByDefaultSet && !pcfg.IncludeByDefault,
+	}
 }
 
 type snapshotProviderGroupKey struct {

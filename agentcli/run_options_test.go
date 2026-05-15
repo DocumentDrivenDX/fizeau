@@ -3,7 +3,12 @@ package agentcli
 import (
 	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/easel/fizeau"
@@ -98,6 +103,112 @@ func TestBuildServiceExecuteRequest_HarnessPolicyLeavesModelAndProviderUnsetUnle
 	}
 	if explicit.Provider != "openrouter" {
 		t.Fatalf("explicit Provider=%q, want openrouter", explicit.Provider)
+	}
+}
+
+func TestRun_UnpinnedRequestDelegatesProviderSelectionToService(t *testing.T) {
+	gotReq, providerCalls, code, stdout, stderr := runAndCaptureServiceRequest(t, []string{"run", "-p", "hello"}, `
+providers:
+  local:
+    type: lmstudio
+    base_url: {{BASE_URL}}/v1
+    api_key: test
+    model: configured-model
+default: local
+`)
+	if code != 0 {
+		t.Fatalf("Run exit = %d, want 0; stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if gotReq.Harness != "" || gotReq.Provider != "" || gotReq.Model != "" || gotReq.SelectedRoute != "" {
+		t.Fatalf("request = harness %q provider %q model %q selected_route %q, want service-owned unpinned routing", gotReq.Harness, gotReq.Provider, gotReq.Model, gotReq.SelectedRoute)
+	}
+	if providerCalls != 0 {
+		t.Fatalf("provider was contacted %d times before service routing; want 0", providerCalls)
+	}
+}
+
+func TestRun_UnpinnedModelIntentDelegatesProviderSelectionToService(t *testing.T) {
+	gotReq, providerCalls, code, stdout, stderr := runAndCaptureServiceRequest(t, []string{"run", "--model", "qwen3.5-27b", "-p", "hello"}, `
+providers:
+  local:
+    type: lmstudio
+    base_url: {{BASE_URL}}/v1
+    api_key: test
+default: local
+`)
+	if code != 0 {
+		t.Fatalf("Run exit = %d, want 0; stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if gotReq.Harness != "" || gotReq.Provider != "" || gotReq.Model != "qwen3.5-27b" || gotReq.SelectedRoute != "qwen3.5-27b" {
+		t.Fatalf("request = harness %q provider %q model %q selected_route %q, want service-owned model intent", gotReq.Harness, gotReq.Provider, gotReq.Model, gotReq.SelectedRoute)
+	}
+	if providerCalls != 0 {
+		t.Fatalf("provider was contacted %d times before service routing; want 0", providerCalls)
+	}
+}
+
+func TestRun_DefaultModelIntentDelegatesProviderSelectionToService(t *testing.T) {
+	gotReq, providerCalls, code, stdout, stderr := runAndCaptureServiceRequest(t, []string{"run", "-p", "hello"}, `
+providers:
+  local:
+    type: lmstudio
+    base_url: {{BASE_URL}}/v1
+    api_key: test
+default: local
+routing:
+  default_model: qwen3.5-27b
+`)
+	if code != 0 {
+		t.Fatalf("Run exit = %d, want 0; stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	if gotReq.Harness != "" || gotReq.Provider != "" || gotReq.Model != "qwen3.5-27b" || gotReq.SelectedRoute != "qwen3.5-27b" {
+		t.Fatalf("request = harness %q provider %q model %q selected_route %q, want service-owned default model intent", gotReq.Harness, gotReq.Provider, gotReq.Model, gotReq.SelectedRoute)
+	}
+	if providerCalls != 0 {
+		t.Fatalf("provider was contacted %d times before service routing; want 0", providerCalls)
+	}
+}
+
+func runAndCaptureServiceRequest(t *testing.T, args []string, configBody string) (fizeau.ServiceExecuteRequest, int32, int, string, string) {
+	t.Helper()
+	oldExecuteViaService := executeViaServiceFn
+	t.Cleanup(func() { executeViaServiceFn = oldExecuteViaService })
+	isolateCatalogHome(t)
+	t.Setenv("FIZEAU_PROVIDER", "")
+	t.Setenv("FIZEAU_BASE_URL", "")
+	t.Setenv("FIZEAU_API_KEY", "")
+	t.Setenv("FIZEAU_MODEL", "")
+	t.Setenv("FIZEAU_SKILLS_DIR", "-")
+
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		http.Error(w, "provider should not be reached before service routing", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+
+	var gotReq fizeau.ServiceExecuteRequest
+	executeViaServiceFn = func(ctx context.Context, req fizeau.ServiceExecuteRequest, selection providerSelection, logDir string, serviceConfig fizeau.ServiceConfig) (cliExecutionResult, error) {
+		gotReq = req
+		return cliExecutionResult{Status: "success"}, nil
+	}
+
+	workDir := t.TempDir()
+	writeRunConfigFixture(t, workDir, strings.ReplaceAll(configBody, "{{BASE_URL}}", server.URL))
+	runArgs := append([]string{"--work-dir", workDir}, args...)
+	var stdout, stderr bytes.Buffer
+	code := Run(Options{Args: runArgs, Stdout: &stdout, Stderr: &stderr})
+	return gotReq, calls.Load(), code, stdout.String(), stderr.String()
+}
+
+func writeRunConfigFixture(t *testing.T, workDir, body string) {
+	t.Helper()
+	cfgDir := filepath.Join(workDir, ".fizeau")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
 }
 
