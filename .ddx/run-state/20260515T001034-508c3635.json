@@ -1,0 +1,12 @@
+{
+  "bead_id": "fizeau-361f4f4b",
+  "attempt_id": "20260515T001034-508c3635",
+  "harness": "claude",
+  "model": "claude-sonnet-4-6",
+  "started_at": "2026-05-15T00:10:35.346488518Z",
+  "worktree_path": "/var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-361f4f4b-20260515T001034-508c3635",
+  "pid": 2363431,
+  "session_id": "eb-5c2622b6",
+  "refreshed_at": "2026-05-15T00:17:45.376559624Z",
+  "expires_at": "2026-05-15T00:19:45.376559624Z"
+}
