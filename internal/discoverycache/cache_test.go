@@ -2,6 +2,7 @@ package discoverycache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -105,6 +106,23 @@ func TestRefreshIdempotent(t *testing.T) {
 	}
 	if !res.Fresh {
 		t.Error("expected Fresh=true after repeated Refresh")
+	}
+}
+
+func TestRefreshPassesDeadlineContextToRefresher(t *testing.T) {
+	c := newTestCache(t)
+	s := testSource("deadline", time.Hour, 20*time.Millisecond)
+
+	start := time.Now()
+	err := c.Refresh(s, func(ctx context.Context) ([]byte, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Refresh error = %v, want context deadline exceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("Refresh elapsed %v, want deadline-bounded refresh", elapsed)
 	}
 }
 

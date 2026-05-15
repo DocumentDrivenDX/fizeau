@@ -254,7 +254,15 @@ func (c *Cache) refreshAndCommit(s Source, fn Refresher) error {
 // marker.
 func (c *Cache) refreshWithClaim(s Source, fn Refresher) error {
 	// Run slow IO outside any lock.
-	data, fetchErr := fn(context.Background())
+	refreshCtx := context.Background()
+	var cancel context.CancelFunc
+	if s.RefreshDeadline > 0 {
+		refreshCtx, cancel = context.WithTimeout(refreshCtx, s.RefreshDeadline)
+	}
+	if cancel != nil {
+		defer cancel()
+	}
+	data, fetchErr := fn(refreshCtx)
 	if fetchErr != nil {
 		c.recordRefreshFailure(s, fetchErr)
 		return fetchErr
