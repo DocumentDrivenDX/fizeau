@@ -105,7 +105,7 @@ must have left-hand navigation populated by their child pages.
 │       ├── llamacpp-qwen3.md         chat_template_kwargs envelope; REASONING_FORMAT=auto
 │       ├── ds4-deepseek.md           alias collapse; flat reasoning_effort wire
 │       └── ...                       (one per engine × model class, NOT physical machine)
-├── /explorer/                        DYNAMIC raw-data viewer (DataTables.js)
+├── /explorer/                        DYNAMIC raw-data workbench (DuckDB-WASM + Parquet + Perspective; see FEAT-008/ADR-015/SD-015)
 ├── /methodology/                     SHARED methodology (HOW we measure)
 └── /reports/                         PER-RUN detail (raw audit trail)
     ├── /terminal-bench-2-1/
@@ -225,19 +225,15 @@ explanations so the absence is honest, not hidden.
 `benchmark-results/fiz-tools-v1/cells/<suite>/<task>/<lane>/rep-N/report.json`
 and produces:
 
-- `website/static/data/cells.json` — every cell, normalized schema
-- `website/static/data/cells-valid.json` — same, validity-filtered
-- `website/static/data/aggregates.json` — pre-computed per-(engine,
-  model, hardware) summaries for story-page tables/charts
-- `website/static/data/aggregates-rejected.json` — lanes excluded
-  with reasons
-- `website/static/data/machines.json` — derived from
-  `scripts/benchmark/machines.yaml` (consumed by hardware story page
-  for the chip cards). REPLACES the existing
-  `website/content/benchmarks/terminal-bench-2-1/data/machines.json`
-  pipeline; that file and any other content-tree JSON pipeline outputs
-  are removed by this aggregator's bead (W1) so there's a single
-  source of truth.
+- `website/static/data/cells.{json,parquet}` — normalized
+  result-bearing cells only: explicit timeouts, completed graded
+  passes, and completed graded failures
+- `website/static/data/task-combinations.{json,parquet}` —
+  precomputed per-task/model/runtime/hardware summaries
+- `website/static/data/cells.schema.json` — public feed schema
+- `website/static/data/benchmark-data-manifest.json` — generation
+  metadata, row counts, result-state counts, and exclusion counts for
+  invalid or non-result-bearing source reports
 
 ### Cell record schema
 
@@ -301,29 +297,21 @@ hardware_chip)` (the public descriptor's load-bearing dimensions) with:
 
 ## 6. Explorer
 
-Single-page DataTables.js interface loading the JSON feeds.
+The explorer implementation is superseded by FEAT-008, ADR-015, and
+SD-015. The binding architecture is now a browser-side analytical
+workbench over generated Parquet:
 
-**Default columns** (visible):
-- task | suite | harness | model | quant | engine | hardware | rep |
-  final_status | invalid_class | wall_seconds | reasoning_tokens |
-  cost_usd | turns | finished_at
+- `cells.parquet` is the primary result-bearing cell artifact.
+- DuckDB-WASM loads Parquet and runs preset filters plus aggregates.
+- Perspective renders the interactive datagrid/pivot UI.
+- The page remains static-site deployable; no Datasette, SQLite, DuckDB
+  server, or custom API is introduced.
 
-**Hidden columns** (toggleable):
-- internal_lane_id | model_id (provider's canonical) | engine_version |
-  weight_bits | kv_cache_quant | kv_cache_disk | hardware_tdp_watts |
-  reasoning_tokens_approx | started_at
-
-**Default filters:**
-- `valid_lane = true` (toggle off to show all)
-- Default sort: `finished_at` desc
-
-**Pre-built saved views** (linkable from story pages): "Story 1 raw
-data," "Story 2 raw data," "Recent failures," "By engine."
-
-**Implementation:** DataTables.js + jQuery via CDN. Cell count is
-bounded (~5K cells per benchmark suite); client-side handling fits.
-Migrate to Datasette-lite (WASM SQLite) only if cell count outgrows
-client-side capacity.
+The SD-014 information-architecture role is unchanged: `/explorer/` is
+the operator-facing raw-data surface. The technical decision changed
+because the required table is no longer a small JSON feed; it must
+support thousands of rows, hundreds of columns, and analytical
+aggregates over every collected benchmark variable.
 
 ## 7. Methodology page
 
@@ -401,7 +389,7 @@ than introduce parallel infrastructure:
 | Story 2 sub-pages | `aggregates.json` filtered to engine/hardware/backend cuts | Hugo template + SVG charts |
 | Reliability page | `aggregates.json` + `aggregates-rejected.json` | Hugo template (transparent rejection list) |
 | Methodology + provenance | Static markdown | None (pure docs) |
-| Explorer | `cells-valid.json` (default) + `cells.json` (toggle) | DataTables.js client-side |
+| Explorer | `cells.parquet` + `task-combinations.parquet` | DuckDB-WASM + Perspective client-side workbench (see SD-015) |
 | Reports per-suite | Existing per-run reports | None — preserved as-is |
 
 ## 10. Implementation phasing
@@ -414,7 +402,7 @@ than introduce parallel infrastructure:
 | **W2** | Methodology page | documents §4 validity, §5 schemas, reproducibility |
 | **W3** | Story 1 pages — harness comparison pillar + sub-pages | depends on W1; audits existing `website/content/benchmarks/terminal-bench-2-1/harnesses/*` (per §2.1) — reuse where token-compliant, rewrite otherwise |
 | **W4** | Story 2 pages — model landscape pillar + sub-pages | depends on W1; same audit treatment for `models/*` and `providers/*` |
-| **W5** | Explorer with DataTables.js | depends on W1; new shortcodes per §8.5 |
+| **W5** | Explorer workbench with DuckDB-WASM + Parquet + Perspective | depends on W1/FEAT-008/ADR-015/SD-015; no server component |
 | **W6** | Provenance pillar + stack-notes | self-contained docs; can land first |
 | **W7** | Profile YAML metadata backfill (per §3 required dimensions) | prerequisite to W1's aggregator passing the validity gate for all worth-including lanes |
 | **W8** | URL migration + 301 redirects from current per-(provider/harness/model) lane-name URLs | preserves bookmark/SEO continuity when descriptor-first replaces the old structure; runs after W3+W4 land |

@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs website-serve capture-machine-info probe-reasoning
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs benchmark-data website-serve capture-machine-info probe-reasoning
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -59,6 +59,13 @@ docs-tools:
 # Run after adding, editing, or superseding an ADR.
 docs-adrs:
 	go run ./cmd/docgen-adrs --src docs/helix/02-design/adr --out website/content/docs/architecture/adr
+
+# benchmark-data regenerates the microsite's normalized benchmark analytics
+# feeds from per-trial report.json files plus profile and machine metadata.
+# Parquet output requires scripts/website/requirements.txt.
+BENCHMARK_DATA_PYTHON ?= $(if $(wildcard .venv-report/bin/python),.venv-report/bin/python,python3)
+benchmark-data:
+	$(BENCHMARK_DATA_PYTHON) scripts/website/build-benchmark-data.py
 
 # website-serve starts the Hugo dev server with the same /fizeau/ base path
 # used by GitHub Pages. Override the port with `make website-serve PORT=1315`.
