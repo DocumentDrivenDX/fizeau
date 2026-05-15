@@ -407,6 +407,8 @@ models:
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
 	svc := publicRouteTraceService(nil)
+	t.Setenv("PATH", "")
+	forceAvailableHarnessesForTest(t, svc, "codex")
 	decision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
 		Harness: "codex",
 		Policy:  "default",
@@ -472,6 +474,8 @@ models:
 	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
 
 	svc := publicRouteTraceService(nil)
+	t.Setenv("PATH", "")
+	forceAvailableHarnessesForTest(t, svc, "codex")
 	decision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
 		Harness:               "codex",
 		Policy:                "default",

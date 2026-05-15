@@ -1201,6 +1201,30 @@ func publicRouteTraceService(sc ServiceConfig) *service {
 	}
 }
 
+func forceAvailableHarnessesForTest(t testing.TB, svc *service, names ...string) {
+	t.Helper()
+	if svc == nil || svc.registry == nil {
+		t.Fatal("service registry is nil")
+	}
+	available := make(map[string]string, len(names))
+	for _, name := range names {
+		cfg, ok := svc.registry.Get(name)
+		if !ok {
+			t.Fatalf("missing harness registry entry %q", name)
+		}
+		if cfg.Binary == "" {
+			continue
+		}
+		available[cfg.Binary] = "/test/bin/" + cfg.Binary
+	}
+	svc.registry.LookPath = func(file string) (string, error) {
+		if path, ok := available[file]; ok {
+			return path, nil
+		}
+		return "", errors.New("binary not found")
+	}
+}
+
 func loadRoutingFixtureCatalog(t *testing.T, contents string) *modelcatalog.Catalog {
 	t.Helper()
 	contents = normalizeRoutingFixtureManifest(t, contents)

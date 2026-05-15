@@ -369,7 +369,7 @@ func TestResolveRoute_RefreshesUnknownLocalHealthBeforeScoring(t *testing.T) {
 	cache := &discoverycache.Cache{Root: cacheRoot}
 	modelID := "mlx-community/Qwen3.6-27B-8bit"
 	baseURL := "http://grendel:8000/v1"
-	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", baseURL, ""), time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC), []string{modelID})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", baseURL, "grendel"), time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC), []string{modelID})
 
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 5
@@ -456,8 +456,8 @@ func TestResolveRoute_UnknownLocalHealthRefreshFailureIsEvidence(t *testing.T) {
 	grendelURL := "http://grendel:8000/v1"
 	vidarURL := "http://vidar:8001/v1"
 	capturedAt := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
-	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", grendelURL, ""), capturedAt, []string{modelID})
-	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("vidar", "vidar", vidarURL, ""), capturedAt, []string{modelID})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", grendelURL, "grendel"), capturedAt, []string{modelID})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("vidar", "vidar", vidarURL, "vidar"), capturedAt, []string{modelID})
 
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 5
@@ -548,7 +548,7 @@ func TestResolveRoute_DoesNotProbeFreshHealthOnEveryRun(t *testing.T) {
 	cache := &discoverycache.Cache{Root: cacheRoot}
 	modelID := "mlx-community/Qwen3.6-27B-8bit"
 	baseURL := "http://grendel:8000/v1"
-	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", baseURL, ""), time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC), []string{modelID})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", baseURL, "grendel"), time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC), []string{modelID})
 
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 5
