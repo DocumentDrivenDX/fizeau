@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/easel/fizeau/internal/discoverycache"
+	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/routehealth"
 )
 
@@ -103,6 +105,142 @@ func TestServiceStartup_TotalTimeoutBoundsProbes(t *testing.T) {
 	}
 }
 
+func TestServiceStartup_TotalTimeoutDoesNotRecordUnprobedProvidersAsFailed(t *testing.T) {
+	blocked := make(chan struct{})
+	var probeCount int
+	var mu sync.Mutex
+	fakeProber := ProviderAlivenessProber(func(ctx context.Context, _, _ string) bool {
+		mu.Lock()
+		probeCount++
+		mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return false
+		case <-blocked:
+			return true
+		}
+	})
+
+	targets := []alivenessEndpoint{
+		{provider: "a", baseURL: "http://a:1234"},
+		{provider: "b", baseURL: "http://b:1234"},
+		{provider: "c", baseURL: "http://c:1234"},
+	}
+
+	store := routehealth.NewProbeStore()
+	runStartupAlivenessProbes(context.Background(), targets, store, fakeProber, 20*time.Millisecond)
+
+	mu.Lock()
+	gotProbeCount := probeCount
+	mu.Unlock()
+	if gotProbeCount != 1 {
+		t.Fatalf("expected only the first probe to run before timeout, got %d probes", gotProbeCount)
+	}
+	record, ok := store.LastProbe("a", "")
+	if !ok {
+		t.Fatal("missing failed startup probe record for attempted provider")
+	}
+	if record.LastProbeSuccess {
+		t.Fatal("attempted provider recorded success, want failed")
+	}
+	for _, provider := range []string{"b", "c"} {
+		if _, ok := store.LastProbe(provider, ""); ok {
+			t.Fatalf("provider %q was never probed but has a startup probe record", provider)
+		}
+	}
+}
+
+func TestServiceStartup_SkippedProvidersRemainAbsentFromProbeUnreachable(t *testing.T) {
+	blocked := make(chan struct{})
+	fakeProber := ProviderAlivenessProber(func(ctx context.Context, _, _ string) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-blocked:
+			return true
+		}
+	})
+
+	targets := []alivenessEndpoint{
+		{provider: "a", baseURL: "http://a:1234"},
+		{provider: "b", baseURL: "http://b:1234"},
+		{provider: "c", baseURL: "http://c:1234"},
+	}
+
+	store := routehealth.NewProbeStore()
+	runStartupAlivenessProbes(context.Background(), targets, store, fakeProber, 20*time.Millisecond)
+
+	unreachable := store.UnreachableProviders(time.Now().UTC(), time.Minute)
+	if _, ok := unreachable["a"]; !ok {
+		t.Fatalf("attempted failed provider missing from ProbeUnreachable: %#v", unreachable)
+	}
+	for _, provider := range []string{"b", "c"} {
+		if _, ok := unreachable[provider]; ok {
+			t.Fatalf("skipped provider %q surfaced in ProbeUnreachable: %#v", provider, unreachable)
+		}
+		if _, ok := store.LastProbe(provider, ""); ok {
+			t.Fatalf("skipped provider %q has a probe record", provider)
+		}
+	}
+}
+
+func TestServiceStartup_FailedProbeHardGatesRouting(t *testing.T) {
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	baseURL := "http://127.0.0.1:1/v1"
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("down", "down", baseURL, ""), time.Now().UTC(), []string{"qwen3.5-27b"})
+
+	rawSvc, err := New(ServiceOptions{
+		ServiceConfig: &fakeServiceConfig{
+			providers: map[string]ServiceProviderEntry{
+				"down": {
+					Type:                "lmstudio",
+					BaseURL:             baseURL,
+					Model:               "qwen3.5-27b",
+					Billing:             BillingModelFixed,
+					IncludeByDefault:    true,
+					IncludeByDefaultSet: true,
+				},
+			},
+			names:       []string{"down"},
+			defaultName: "down",
+		},
+		QuotaRefreshContext: canceledRefreshContext(),
+		AlivenessProber: func(context.Context, string, string) bool {
+			return false
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	svc := rawSvc.(*service)
+	inputs, _ := svc.buildRoutingInputsWithCatalog(context.Background(), serviceRoutingCatalog(), modelsnapshot.RefreshIfStale)
+	if _, ok := inputs.ProbeUnreachable["down"]; !ok {
+		t.Fatalf("ProbeUnreachable missing down: %#v", inputs.ProbeUnreachable)
+	}
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "qwen3.5-27b"})
+	if err == nil {
+		t.Fatalf("ResolveRoute succeeded, decision=%#v", dec)
+	}
+	var sawDown bool
+	for _, c := range dec.Candidates {
+		if c.Provider != "down" {
+			continue
+		}
+		sawDown = true
+		if c.Eligible {
+			t.Fatalf("down provider should be gated by failed startup probe: %#v", c)
+		}
+		if c.FilterReason != FilterReasonEndpointUnreachable {
+			t.Fatalf("FilterReason=%q, want %q", c.FilterReason, FilterReasonEndpointUnreachable)
+		}
+	}
+	if !sawDown {
+		t.Fatalf("missing down provider candidate: %#v", dec.Candidates)
+	}
+}
+
 // TestProbeLoop_RetriesDeadProvidersOnInterval asserts that a provider marked
 // unreachable by probe is re-probed every HealthProbeInterval and recorded back
 // to reachable when it comes online (AC #2).
@@ -126,6 +264,9 @@ func TestProbeLoop_RetriesDeadProvidersOnInterval(t *testing.T) {
 	})
 
 	store := routehealth.NewProbeStore()
+	if !store.ProbeNeeded("never-probed", "", baseTime, interval) {
+		t.Fatal("never-probed providers should be considered due for probing")
+	}
 	targets := []alivenessEndpoint{
 		{provider: "bragi", baseURL: "http://bragi:1234"},
 	}

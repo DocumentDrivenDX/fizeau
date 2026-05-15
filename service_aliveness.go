@@ -101,6 +101,7 @@ func (s *service) startupAlivenessProbe(ctx context.Context) {
 		prober = tcpAlivenessProber
 	}
 	runStartupAlivenessProbes(ctx, endpoints, s.providerProbe, prober, startupProbeTotalTimeout)
+	s.persistProbeStore()
 }
 
 // runStartupAlivenessProbes probes each endpoint sequentially within totalTimeout.
@@ -127,8 +128,18 @@ func runStartupAlivenessProbes(
 			break
 		}
 		success := prober(probeCtx, ep.provider, ep.baseURL)
+		if probeCtx.Err() != nil {
+			success = false
+		}
 		store.RecordProbe(ep.provider, "", success, now)
 	}
+}
+
+func (s *service) persistProbeStore() {
+	if s == nil || s.providerProbe == nil || s.opts.PersistRouteHealth == "" {
+		return
+	}
+	_ = s.providerProbe.Save(s.opts.PersistRouteHealth)
 }
 
 // startAlivenessProbeLoop spawns the goroutine that periodically re-probes

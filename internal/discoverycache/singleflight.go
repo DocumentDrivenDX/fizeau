@@ -53,5 +53,8 @@ func (c *Cache) MaybeRefreshSync(s Source, fn Refresher) error {
 	if res.Fresh {
 		return nil
 	}
+	if state, stateErr := c.RefreshState(s); stateErr == nil && state.Failed && state.InFlight {
+		return nil
+	}
 	return c.Refresh(s, fn)
 }

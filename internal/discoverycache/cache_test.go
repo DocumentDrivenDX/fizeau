@@ -108,6 +108,94 @@ func TestRefreshIdempotent(t *testing.T) {
 	}
 }
 
+func TestMaybeRefreshSyncFailedRefreshRetryAfterMarkerStaleness(t *testing.T) {
+	c := newTestCache(t)
+	s := testSource("failed-retry", time.Hour, 5*time.Millisecond)
+
+	attempts := 0
+	if err := c.MaybeRefreshSync(s, func(_ context.Context) ([]byte, error) {
+		attempts++
+		return nil, fmt.Errorf("boom")
+	}); err == nil {
+		t.Fatal("expected initial failed refresh to return an error")
+	}
+	if attempts != 1 {
+		t.Fatalf("initial refresh attempts = %d, want 1", attempts)
+	}
+
+	state, err := c.RefreshState(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Failed || !state.InFlight {
+		t.Fatalf("after failed refresh state Failed=%v InFlight=%v, want both true", state.Failed, state.InFlight)
+	}
+
+	start := time.Now()
+	if err := c.MaybeRefreshSync(s, func(_ context.Context) ([]byte, error) {
+		attempts++
+		return []byte(`{"v":"unexpected"}`), nil
+	}); err != nil {
+		t.Fatalf("immediate retry suppression returned error: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("active failed marker suppression took %v, want < 100ms", elapsed)
+	}
+	if attempts != 1 {
+		t.Fatalf("immediate sync call retried while failed marker was active: attempts=%d, want 1", attempts)
+	}
+
+	waitForFailedMarkerStale(t, c, s)
+
+	if err := c.MaybeRefreshSync(s, func(_ context.Context) ([]byte, error) {
+		attempts++
+		return []byte(`{"v":"fresh"}`), nil
+	}); err != nil {
+		t.Fatalf("retry after marker staleness: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("retry after marker staleness attempts = %d, want 2", attempts)
+	}
+
+	state, err = c.RefreshState(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Failed {
+		t.Fatalf("successful stale-marker retry left failed state: %+v", state)
+	}
+	res, err := c.Read(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(res.Data) != `{"v":"fresh"}` {
+		t.Fatalf("Read() after retry = %q, want fresh payload", res.Data)
+	}
+	if !res.Fresh {
+		t.Fatalf("Read() after retry Fresh=false, Age=%v TTL=%v", res.Age, s.TTL)
+	}
+}
+
+func waitForFailedMarkerStale(t *testing.T, c *Cache, s Source) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		state, err := c.RefreshState(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.Failed && !state.InFlight {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	state, err := c.RefreshState(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("failed refresh marker did not become stale before timeout: %+v", state)
+}
+
 func TestReadIsSubHundredMs(t *testing.T) {
 	// AC: Cache.Read returns within 100ms p99 under no-contention baseline.
 	c := newTestCache(t)
