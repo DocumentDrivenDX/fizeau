@@ -27,8 +27,11 @@ jobs:
       - name: Vet
         run: make vet
 
+      - name: CONTRACT-004 import boundary
+        run: make contract004-import-lint
+
       - name: Lint
-        run: make lint
+        run: make lint-go
 
       - name: Security scan
         run: make gosec

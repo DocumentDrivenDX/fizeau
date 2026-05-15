@@ -2,11 +2,7 @@ package fizeau
 
 import (
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
-	opencodeharness "github.com/easel/fizeau/internal/harnesses/opencode"
-	piharness "github.com/easel/fizeau/internal/harnesses/pi"
+	"github.com/easel/fizeau/internal/harnesses/builtin"
 )
 
 // harnessInstanceHook, when non-nil, is applied to the default harness map
@@ -23,19 +19,12 @@ var harnessInstanceHook func(map[string]harnesses.Harness) map[string]harnesses.
 // quota/account state and are deliberately omitted — the scheduler
 // treats absence as "no QuotaHarness/AccountHarness behavior".
 //
-// This file isolates the per-harness package imports from service.go so
-// that service.go can drop them as each harness migrates onto the
-// CONTRACT-004 sub-interface surface. The dispatcher in
-// internal/serviceimpl/execute_dispatch.go is the only other
-// runner-construction seam allowed by CONTRACT-004 invariant #1.
+// This file intentionally stays on the interface side of CONTRACT-004:
+// concrete runner construction lives under internal/harnesses/, and the
+// dispatcher in internal/serviceimpl/execute_dispatch.go remains the only
+// allowed non-harness import seam for per-harness packages.
 func defaultHarnessInstances() map[string]harnesses.Harness {
-	instances := map[string]harnesses.Harness{
-		"claude":   &claudeharness.Runner{},
-		"codex":    &codexharness.Runner{},
-		"gemini":   &geminiharness.Runner{},
-		"opencode": &opencodeharness.Runner{},
-		"pi":       &piharness.Runner{},
-	}
+	instances := builtin.Instances()
 	if harnessInstanceHook != nil {
 		instances = harnessInstanceHook(instances)
 	}
