@@ -405,6 +405,8 @@ func runWithOptions(opts Options) int {
 		sRep = res.Profile.RepetitionPenalty
 		sSeed = res.Profile.Seed
 	}
+	estimatedPromptTokens := estimateRunPromptTokens(promptText, sysPrompt)
+	requiresTools := runRequiresTools(*harnessFlag, preset, flagWasSet(fs, "preset"), anchorsEnabled)
 	req := buildServiceExecuteRequest(serviceExecuteRequestParams{
 		Prompt:                  promptText,
 		SystemPrompt:            sysPrompt,
@@ -421,6 +423,8 @@ func runWithOptions(opts Options) int {
 		Policy:                  *policyFlag,
 		Harness:                 *harnessFlag,
 		Reasoning:               resolvedReasoning,
+		EstimatedPromptTokens:   estimatedPromptTokens,
+		RequiresTools:           requiresTools,
 		NoStream:                selection.NoStream,
 		MinPower:                *minPower,
 		MaxPower:                *maxPower,
@@ -488,9 +492,10 @@ func runWithOptions(opts Options) int {
 }
 
 var executeViaServiceFn = executeViaService
+var newServiceFn = fizeau.New
 
 func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, selection providerSelection, logDir string, serviceConfig fizeau.ServiceConfig) (cliExecutionResult, error) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: serviceConfig})
+	svc, err := newServiceFn(fizeau.ServiceOptions{ServiceConfig: serviceConfig})
 	if err != nil {
 		return cliExecutionResult{}, err
 	}
@@ -508,11 +513,11 @@ func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, se
 
 	result := cliExecutionResult{
 		Status:           "failed",
-		SelectedProvider: selection.Provider,
-		SelectedRoute:    selection.Route,
+		SelectedProvider: req.Provider,
+		SelectedRoute:    req.SelectedRoute,
 		RequestedModel:   selection.RequestedModel,
-		ResolvedModel:    selection.ResolvedModel,
-		Model:            selection.ResolvedModel,
+		ResolvedModel:    req.Model,
+		Model:            req.Model,
 		Reasoning:        req.Reasoning,
 	}
 	var sawFinal bool
@@ -525,6 +530,9 @@ func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, se
 		case fizeau.ServiceEventTypeRoutingDecision:
 			if decoded.RoutingDecision != nil {
 				result.SessionID = decoded.RoutingDecision.SessionID
+				result.SelectedProvider = decoded.RoutingDecision.Provider
+				result.ResolvedModel = decoded.RoutingDecision.Model
+				result.Model = decoded.RoutingDecision.Model
 			}
 		case fizeau.ServiceEventTypeTextDelta:
 			if decoded.TextDelta != nil {
@@ -590,6 +598,8 @@ type serviceExecuteRequestParams struct {
 	Policy                  string
 	Harness                 string
 	Reasoning               fizeau.Reasoning
+	EstimatedPromptTokens   int
+	RequiresTools           bool
 	NoStream                bool
 	MinPower                int
 	MaxPower                int
@@ -672,6 +682,10 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 	if permissions == "" {
 		permissions = "unrestricted"
 	}
+	selectedRoute := params.SelectedRoute
+	if params.Harness != "" {
+		selectedRoute = ""
+	}
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:                  params.Prompt,
 		SystemPrompt:            params.SystemPrompt,
@@ -681,6 +695,8 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 		Policy:                  params.Policy,
 		WorkDir:                 params.WorkDir,
 		Reasoning:               params.Reasoning,
+		EstimatedPromptTokens:   params.EstimatedPromptTokens,
+		RequiresTools:           params.RequiresTools,
 		NoStream:                params.NoStream,
 		MinPower:                params.MinPower,
 		MaxPower:                params.MaxPower,
@@ -694,7 +710,7 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 		CompactionContextWindow: params.CompactionContextWindow,
 		CompactionReserveTokens: params.CompactionReserveTokens,
 		CostCapUSD:              params.CostCapUSD,
-		SelectedRoute:           params.SelectedRoute,
+		SelectedRoute:           selectedRoute,
 		Temperature:             params.Temperature,
 		TopP:                    params.TopP,
 		TopK:                    params.TopK,
@@ -712,6 +728,27 @@ func derefInt(v *int) int {
 		return 0
 	}
 	return *v
+}
+
+func estimateRunPromptTokens(promptText, systemPrompt string) int {
+	total := len(promptText) + len(systemPrompt)
+	if total == 0 {
+		return 0
+	}
+	return (total + 3) / 4
+}
+
+func runRequiresTools(harness, preset string, presetExplicit, anchorsEnabled bool) bool {
+	// SD-005 D6: only assert RequiresTools when the request surface clearly
+	// exposes tool execution. Native runs do; subprocess harnesses only do so
+	// when the caller explicitly enables a tool-bearing surface.
+	if harness == "" || harness == "fiz" {
+		return true
+	}
+	if anchorsEnabled {
+		return true
+	}
+	return presetExplicit && preset != ""
 }
 
 // flagWasSet reports whether the flag with the given name was explicitly
