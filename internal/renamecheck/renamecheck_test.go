@@ -70,6 +70,23 @@ func TestRunReportOnlyReturnsFindingsAndNoError(t *testing.T) {
 	}
 }
 
+func TestScanHandlesLongLines(t *testing.T) {
+	root := t.TempDir()
+	prefix := strings.Repeat("x", 1024*1024+512)
+	writeFile(t, root, "fixture.json", prefix+"ddx-agent\n")
+
+	findings, err := Scan(Options{Root: root})
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("Scan() findings = %d, want 1: %#v", len(findings), findings)
+	}
+	if got, want := findings[0].Column, len(prefix)+1; got != want {
+		t.Fatalf("finding column = %d, want %d", got, want)
+	}
+}
+
 func writeFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))

@@ -206,13 +206,17 @@ func scanFile(root, rel string) ([]Finding, error) {
 	defer file.Close()
 
 	var findings []Finding
-	scanner := bufio.NewScanner(file)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	reader := bufio.NewReader(file)
 	lineNo := 0
-	for scanner.Scan() {
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, err
+		}
+		if line == "" && errors.Is(err, io.EOF) {
+			break
+		}
 		lineNo++
-		line := scanner.Text()
 		for _, r := range rules {
 			if r.rootGo && !isRootGoFile(rel) {
 				continue
@@ -229,8 +233,11 @@ func scanFile(root, rel string) ([]Finding, error) {
 				Match:   line[loc[0]:loc[1]],
 			})
 		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
 	}
-	return findings, scanner.Err()
+	return findings, nil
 }
 
 func shouldSkipDir(rel string) bool {
