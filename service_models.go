@@ -16,9 +16,7 @@ import (
 
 	"github.com/easel/fizeau/internal/compaction"
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
+	"github.com/easel/fizeau/internal/harnesses/builtin"
 	"github.com/easel/fizeau/internal/modelcatalog"
 	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/provider/lmstudio"
@@ -90,34 +88,16 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 
 func subprocessHarnessModelIDs(name string, cfg harnesses.HarnessConfig) []string {
 	models := append([]string(nil), cfg.Models...)
-	switch name {
-	case "claude":
-		runner := &claudeharness.Runner{}
-		snapshot := runner.DefaultModelSnapshot()
-		models = appendUniqueModelIDs(models, snapshot.Models...)
-		for _, family := range runner.SupportedAliases() {
-			if resolved, err := runner.ResolveModelAlias(family, snapshot); err == nil && resolved != family {
-				models = appendUniqueModelIDs(models, resolved)
-			}
-		}
-	case "codex":
-		runner := &codexharness.Runner{}
-		snapshot := runner.DefaultModelSnapshot()
-		models = appendUniqueModelIDs(models, snapshot.Models...)
-		for _, family := range runner.SupportedAliases() {
-			if resolved, err := runner.ResolveModelAlias(family, snapshot); err == nil && resolved != family {
-				models = appendUniqueModelIDs(models, resolved)
-			}
-		}
-	case "gemini":
-		mdh := &geminiharness.Runner{}
-		snapshot := mdh.DefaultModelSnapshot()
-		models = appendUniqueModelIDs(models, snapshot.Models...)
-		for _, family := range mdh.SupportedAliases() {
-			resolved, err := mdh.ResolveModelAlias(family, snapshot)
-			if err == nil && resolved != family {
-				models = appendUniqueModelIDs(models, resolved)
-			}
+	mdh, ok := builtin.New(name).(harnesses.ModelDiscoveryHarness)
+	if !ok {
+		return models
+	}
+	snapshot := mdh.DefaultModelSnapshot()
+	models = appendUniqueModelIDs(models, snapshot.Models...)
+	for _, family := range mdh.SupportedAliases() {
+		resolved, err := mdh.ResolveModelAlias(family, snapshot)
+		if err == nil && resolved != family {
+			models = appendUniqueModelIDs(models, resolved)
 		}
 	}
 	return models
@@ -127,22 +107,16 @@ func resolveSubprocessModelAlias(harness, model string) string {
 	switch harness {
 	case "claude":
 		return claudeCLIExecutableModel(model)
-	case "codex":
-		runner := &codexharness.Runner{}
-		resolved, err := runner.ResolveModelAlias(model, runner.DefaultModelSnapshot())
-		if err != nil {
+	default:
+		mdh, ok := builtin.New(harness).(harnesses.ModelDiscoveryHarness)
+		if !ok {
 			return model
 		}
-		return resolved
-	case "gemini":
-		mdh := &geminiharness.Runner{}
 		resolved, err := mdh.ResolveModelAlias(model, mdh.DefaultModelSnapshot())
 		if err != nil {
 			return model
 		}
 		return resolved
-	default:
-		return model
 	}
 }
 

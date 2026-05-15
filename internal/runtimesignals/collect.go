@@ -9,9 +9,7 @@ import (
 
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
+	"github.com/easel/fizeau/internal/harnesses/builtin"
 	"github.com/easel/fizeau/internal/provider/quotaheaders"
 )
 
@@ -28,16 +26,7 @@ const (
 var harnessByName = defaultHarnessByName
 
 func defaultHarnessByName(name string) harnesses.Harness {
-	switch name {
-	case "claude":
-		return &claudeharness.Runner{}
-	case "codex":
-		return &codexharness.Runner{}
-	case "gemini":
-		return &geminiharness.Runner{}
-	default:
-		return nil
-	}
+	return builtin.New(name)
 }
 
 // Store is the per-process in-memory state for runtime signal collection.

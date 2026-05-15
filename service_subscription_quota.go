@@ -5,9 +5,7 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
+	"github.com/easel/fizeau/internal/harnesses/builtin"
 	"github.com/easel/fizeau/internal/routing"
 )
 
@@ -22,77 +20,44 @@ type subscriptionQuotaView struct {
 }
 
 func subscriptionQuotaForHarness(name string, now time.Time) (subscriptionQuotaView, bool) {
-	switch name {
-	case "claude":
-		status, err := (&claudeharness.Runner{}).QuotaStatus(context.Background(), now)
-		if err != nil {
-			return subscriptionQuotaView{}, false
-		}
-		present := status.State != harnesses.QuotaUnavailable
-		view := subscriptionQuotaView{
-			OK:      status.RoutingPreference == harnesses.RoutingPreferenceAvailable,
-			Present: present,
-			Fresh:   status.Fresh,
-			Reason:  status.Reason,
-			Trend:   routing.QuotaTrendUnknown,
-		}
-		if present {
-			view.Windows = append([]harnesses.QuotaWindow(nil), status.Windows...)
-			view.PercentUsed = int(maxQuotaWindowUsedPercent(status.Windows))
-			view.Trend = quotaTrend(view.PercentUsed, status.Fresh)
-		}
-		return view, true
-	case "codex":
-		status, err := (&codexharness.Runner{}).QuotaStatus(context.Background(), now)
-		if err != nil {
-			return subscriptionQuotaView{}, false
-		}
-		present := status.State != harnesses.QuotaUnavailable
-		view := subscriptionQuotaView{
-			OK:      status.RoutingPreference == harnesses.RoutingPreferenceAvailable,
-			Present: present,
-			Fresh:   status.Fresh,
-			Reason:  status.Reason,
-			Trend:   routing.QuotaTrendUnknown,
-		}
-		if present {
-			view.Windows = append([]harnesses.QuotaWindow(nil), status.Windows...)
-			view.PercentUsed = int(maxQuotaWindowUsedPercent(status.Windows))
-			view.Trend = quotaTrend(view.PercentUsed, status.Fresh)
-		}
-		return view, true
-	case "gemini":
-		qh := &geminiharness.Runner{}
-		status, _ := qh.QuotaStatus(context.Background(), now)
-		view := subscriptionQuotaView{
-			OK:      status.RoutingPreference == harnesses.RoutingPreferenceAvailable,
-			Present: status.State != harnesses.QuotaUnavailable,
-			Fresh:   status.Fresh,
-			Reason:  status.Reason,
-			Trend:   routing.QuotaTrendUnknown,
-		}
-		if len(status.Windows) > 0 {
-			view.Windows = append([]harnesses.QuotaWindow(nil), status.Windows...)
-			view.PercentUsed = int(maxQuotaWindowUsedPercent(status.Windows))
-			exhausted, available := 0, 0
-			for _, w := range status.Windows {
-				switch w.State {
-				case "blocked":
-					exhausted++
-				case "ok":
-					available++
-				}
-			}
-			if exhausted > 0 && available == 0 {
-				view.Trend = routing.QuotaTrendExhausting
-			} else {
-				view.Trend = quotaTrend(view.PercentUsed, status.Fresh)
-			}
-		}
-		return view, true
-	default:
+	qh, ok := builtin.New(name).(harnesses.QuotaHarness)
+	if !ok {
 		return subscriptionQuotaView{}, false
 	}
+	status, err := qh.QuotaStatus(context.Background(), now)
+	if err != nil {
+		return subscriptionQuotaView{}, false
+	}
+	present := status.State != harnesses.QuotaUnavailable
+	view := subscriptionQuotaView{
+		OK:      status.RoutingPreference == harnesses.RoutingPreferenceAvailable,
+		Present: present,
+		Fresh:   status.Fresh,
+		Reason:  status.Reason,
+		Trend:   routing.QuotaTrendUnknown,
+	}
+	if !present {
+		return view, true
+	}
+	view.Windows = append([]harnesses.QuotaWindow(nil), status.Windows...)
+	view.PercentUsed = int(maxQuotaWindowUsedPercent(status.Windows))
+	if name == "gemini" {
+		exhausted, available := 0, 0
+		for _, w := range status.Windows {
+			switch w.State {
+			case "blocked":
+				exhausted++
+			case "ok":
+				available++
+			}
+		}
+		if exhausted > 0 && available == 0 {
+			view.Trend = routing.QuotaTrendExhausting
+			return view, true
+		}
+	}
+	view.Trend = quotaTrend(view.PercentUsed, status.Fresh)
+	return view, true
 }
 
 func maxQuotaWindowUsedPercent(windows []harnesses.QuotaWindow) float64 {

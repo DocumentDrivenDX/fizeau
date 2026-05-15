@@ -13,8 +13,10 @@ pre-push:
       run: make build-ci
     vet:
       run: make vet
+    contract004-import-lint:
+      run: make contract004-import-lint
     lint:
-      run: make lint
+      run: make lint-go
     gosec:
       run: make gosec
     govulncheck:
