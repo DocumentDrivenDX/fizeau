@@ -15,6 +15,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 PHASE="all"
+PHASE_SET=0
+SUBSET=""
 LANES=""
 FOUR_FULL_LANES="fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-llamacpp-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b"
 OUT=""
@@ -133,11 +135,12 @@ trap 'on_sweep_signal TERM' SIGTERM
 trap cleanup EXIT
 
 usage() {
-  cat <<EOF
+  cat <<'EOF'
 Usage: ./bench/run [flags]
 
 Flags:
   --phase canary|openai-cheap|preferred|full|qwen36-gpt55-full|local-qwen|sonnet-comparison|gpt-comparison|medium-model-canary|medium-model|tb21-all|all
+  --subset <id> (requires --lanes; mutually exclusive with --phase)
   --lanes <id,id,...>
   --out <dir>
   --tasks-dir <dir>
@@ -198,9 +201,13 @@ PY
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --phase)
-      PHASE="$2"; shift 2 ;;
+      PHASE="$2"; PHASE_SET=1; shift 2 ;;
     --phase=*)
-      PHASE="${1#*=}"; shift ;;
+      PHASE="${1#*=}"; PHASE_SET=1; shift ;;
+    --subset)
+      SUBSET="$2"; shift 2 ;;
+    --subset=*)
+      SUBSET="${1#*=}"; shift ;;
     --lanes)
       LANES="$2"; shift 2 ;;
     --lanes=*)
@@ -245,6 +252,15 @@ while [[ $# -gt 0 ]]; do
       exit 2 ;;
   esac
 done
+
+if [[ "${PHASE_SET}" = "1" && -n "${SUBSET}" ]]; then
+  echo "--phase and --subset are mutually exclusive" >&2
+  exit 2
+fi
+if [[ -n "${SUBSET}" && -z "${LANES}" ]]; then
+  echo "--subset requires --lanes" >&2
+  exit 2
+fi
 
 case "${PHASE}" in
   full) PHASE="tb21-all" ;;
@@ -563,6 +579,27 @@ subset_for_phase() {
   esac
 }
 
+subset_for_id() {
+  python3 - "${SWEEP_PLAN}" "$1" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+plan = yaml.safe_load(Path(sys.argv[1]).read_text()) or {}
+subset_id = sys.argv[2]
+for subset in plan.get("subsets") or []:
+    if subset.get("id") != subset_id:
+        continue
+    path = subset.get("path")
+    if not isinstance(path, str) or not path:
+        raise SystemExit(f"subset {subset_id!r} has no path in sweep plan")
+    print(path)
+    raise SystemExit(0)
+raise SystemExit(f"subset {subset_id!r} not found in sweep plan")
+PY
+}
+
 phases_to_validate() {
   case "${PHASE}" in
     all)
@@ -600,6 +637,20 @@ resolve_task_dir() {
 
 validate_tasks() {
   local subset id resolved
+  if [[ -n "${SUBSET}" ]]; then
+    subset="$(abs_path "$(subset_for_id "${SUBSET}")")"
+    [[ -f "${subset}" ]] || { echo "missing subset manifest: ${subset}" >&2; exit 1; }
+    while read -r id; do
+      [[ -n "${id}" ]] || continue
+      if ! resolved="$(resolve_task_dir "${id}")"; then
+        echo "TB-2.1 task ${id} from ${subset} does not resolve under ${TASKS_DIR}" >&2
+        exit 1
+      fi
+      printf '%s\t%s\t%s\n' "${SUBSET}" "${id}" "${resolved}" >> "${TARGET_TASKS_FILE}"
+    done < <(task_ids_from_subset "${subset}")
+    return
+  fi
+
   while read -r phase; do
     subset="$(subset_for_phase "${phase}")"
     [[ -f "${subset}" ]] || { echo "missing subset manifest: ${subset}" >&2; exit 1; }
@@ -748,7 +799,7 @@ prepare_env_keys() {
 
 selected_plan_requires_key() {
   local key="$1"
-  python3 - "${SWEEP_PLAN}" "${PHASE}" "${key}" "${LANES}" <<'PY'
+  python3 - "${SWEEP_PLAN}" "${PHASE}" "${SUBSET}" "${key}" "${LANES}" <<'PY'
 import sys
 from pathlib import Path
 
@@ -756,22 +807,25 @@ import yaml
 
 plan = yaml.safe_load(Path(sys.argv[1]).read_text())
 phase_id = sys.argv[2]
-key = sys.argv[3]
-lane_filter = {item.strip() for item in sys.argv[4].split(",") if item.strip()}
+subset_id = sys.argv[3]
+key = sys.argv[4]
+lane_filter = {item.strip() for item in sys.argv[5].split(",") if item.strip()}
 
-recipes = plan.get("recipes") or []
-if phase_id == "all":
-    selected_recipes = [r for r in recipes if r.get("staged")]
+if subset_id:
+    selected_lane_ids = set(lane_filter)
 else:
-    selected_recipes = [r for r in recipes if r.get("id") == phase_id]
-
-selected_lane_ids = {
-    lane_id
-    for recipe in selected_recipes
-    for lane_id in (recipe.get("lanes") or [])
-}
-if lane_filter:
-    selected_lane_ids &= lane_filter
+    recipes = plan.get("recipes") or []
+    if phase_id == "all":
+        selected_recipes = [r for r in recipes if r.get("staged")]
+    else:
+        selected_recipes = [r for r in recipes if r.get("id") == phase_id]
+    selected_lane_ids = {
+        lane_id
+        for recipe in selected_recipes
+        for lane_id in (recipe.get("lanes") or [])
+    }
+    if lane_filter:
+        selected_lane_ids &= lane_filter
 lanes = plan.get("lanes") or []
 for lane in lanes:
     if lane.get("id") not in selected_lane_ids:
@@ -791,7 +845,7 @@ preflight_provider_is_local() {
 }
 
 preflight_lanes_json() {
-  python3 - "${SWEEP_PLAN}" "${PHASE}" "${LANES}" <<'PY'
+  python3 - "${SWEEP_PLAN}" "${PHASE}" "${SUBSET}" "${LANES}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -800,31 +854,42 @@ import yaml
 
 plan = yaml.safe_load(Path(sys.argv[1]).read_text())
 phase_id = sys.argv[2]
-lane_filter = [item.strip() for item in sys.argv[3].split(",") if item.strip()]
-
-recipes = plan.get("recipes") or []
-if phase_id == "all":
-    # Staged recipes: those with staged: true.
-    selected_recipes = [r for r in recipes if r.get("staged")]
-else:
-    selected_recipes = [r for r in recipes if r.get("id") == phase_id]
-
-if not selected_recipes:
-    raise SystemExit(f"preflight: recipe {phase_id!r} not found in sweep plan")
+subset_id = sys.argv[3]
+lane_filter = [item.strip() for item in sys.argv[4].split(",") if item.strip()]
 
 lane_by_id = {lane.get("id"): lane for lane in (plan.get("lanes") or [])}
 rg_by_id = {rg.get("id"): rg for rg in (plan.get("resource_groups") or [])}
-wanted = set(lane_filter)
 
-seen = set()
-for recipe in selected_recipes:
-    recipe_lanes = recipe.get("lanes") or []
-    recipe_lane_set = set(recipe_lanes)
-    ordered_lanes = [lane_id for lane_id in lane_filter if lane_id in recipe_lane_set] if wanted else recipe_lanes
-    for lane_id in ordered_lanes:
-        if lane_id in seen:
-            continue
-        seen.add(lane_id)
+if subset_id:
+    if not lane_filter:
+        raise SystemExit("preflight: --subset requires --lanes")
+    ordered_lanes = lane_filter
+else:
+    recipes = plan.get("recipes") or []
+    if phase_id == "all":
+        # Staged recipes: those with staged: true.
+        selected_recipes = [r for r in recipes if r.get("staged")]
+    else:
+        selected_recipes = [r for r in recipes if r.get("id") == phase_id]
+
+    if not selected_recipes:
+        raise SystemExit(f"preflight: recipe {phase_id!r} not found in sweep plan")
+
+    wanted = set(lane_filter)
+
+    ordered_lanes = []
+    seen = set()
+    for recipe in selected_recipes:
+        recipe_lanes = recipe.get("lanes") or []
+        recipe_lane_set = set(recipe_lanes)
+        recipe_ordered = [lane_id for lane_id in lane_filter if lane_id in recipe_lane_set] if wanted else recipe_lanes
+        for lane_id in recipe_ordered:
+            if lane_id in seen:
+                continue
+            seen.add(lane_id)
+            ordered_lanes.append(lane_id)
+
+for lane_id in ordered_lanes:
         lane = lane_by_id.get(lane_id)
         if not lane:
             raise SystemExit(f"preflight: lane {lane_id!r} not found in sweep plan")
@@ -1094,16 +1159,22 @@ sweep_args_for_phase() {
     sweep
     --work-dir "${REPO_ROOT}"
     --sweep-plan "${SWEEP_PLAN}"
-    --recipe "${phase}"
     --tasks-dir "${TASKS_DIR}"
     --out "${OUT}"
   )
+  if [[ -n "${SUBSET}" ]]; then
+    args+=(--subset "${phase}")
+  else
+    args+=(--recipe "${phase}")
+  fi
   append_optional_sweep_args args
   printf '%q ' "${args[@]}"
 }
 
 run_plan_phases() {
-  if [[ "${PHASE}" = "all" ]]; then
+  if [[ -n "${SUBSET}" ]]; then
+    printf '%s\n' "${SUBSET}"
+  elif [[ "${PHASE}" = "all" ]]; then
     printf '%s\n' canary local-qwen sonnet-comparison gpt-comparison medium-model-canary medium-model
   else
     printf '%s\n' "${PHASE}"
@@ -1117,10 +1188,14 @@ run_sweep_phase() {
     sweep
     --work-dir "${REPO_ROOT}"
     --sweep-plan "${SWEEP_PLAN}"
-    --recipe "${phase}"
     --tasks-dir "${TASKS_DIR}"
     --out "${OUT}"
   )
+  if [[ -n "${SUBSET}" ]]; then
+    args+=(--subset "${phase}")
+  else
+    args+=(--recipe "${phase}")
+  fi
   append_optional_sweep_args args
   "${BENCH_BIN}" "${args[@]}" &
   pid=$!
@@ -1206,7 +1281,11 @@ PY
 print_summary_header() {
   echo
   echo "TerminalBench 2.1 sweep target"
-  echo "  phase:              ${PHASE}"
+  if [[ -n "${SUBSET}" ]]; then
+    echo "  subset:             ${SUBSET}"
+  else
+    echo "  phase:              ${PHASE}"
+  fi
   if [[ -n "${LANES}" ]]; then
     echo "  lanes:              ${LANES}"
   fi
@@ -1220,7 +1299,9 @@ print_summary_header() {
   echo "  runtime bundle:     ${HARBOR_AGENT_RUNTIME_BUNDLE}"
   echo "  Docker arch:        ${CONTAINER_GOARCH}"
   echo "  managed jobs:       ${MATRIX_JOBS_MANAGED}"
-  if [[ -n "${LANES}" ]]; then
+  if [[ -n "${SUBSET}" ]]; then
+    echo "  resume command:     ./bench/run --subset ${SUBSET} --lanes ${LANES} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
+  elif [[ -n "${LANES}" ]]; then
     echo "  resume command:     ./bench/run --phase ${PHASE} --lanes ${LANES} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
   else
     echo "  resume command:     ./bench/run --phase ${PHASE} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
@@ -1239,10 +1320,14 @@ print_dry_run_plan() {
       sweep
       --work-dir "${REPO_ROOT}"
       --sweep-plan "${SWEEP_PLAN}"
-      --phase "${dry_phase}"
       --tasks-dir "${TASKS_DIR}"
       --out "${OUT}"
     )
+    if [[ -n "${SUBSET}" ]]; then
+      dry_args+=(--subset "${dry_phase}")
+    else
+      dry_args+=(--recipe "${dry_phase}")
+    fi
     append_optional_sweep_args dry_args
     dry_args+=(--dry-run)
     "${BENCH_BIN}" "${dry_args[@]}"
