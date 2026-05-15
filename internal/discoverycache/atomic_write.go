@@ -7,7 +7,7 @@ import (
 
 // atomicWrite writes data to path using the tmp→fsync→rename pattern so
 // readers never observe a partial write. Mirrors the pattern in
-// internal/harnesses/claude/quota_cache.go:WriteClaudeQuota.
+// internal/harnesses/claude/quota_cache.go:writeClaudeQuota.
 func atomicWrite(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err

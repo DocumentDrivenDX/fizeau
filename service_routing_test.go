@@ -16,7 +16,6 @@ import (
 
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 	"github.com/easel/fizeau/internal/modelcatalog"
 	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/routing"
@@ -850,7 +849,7 @@ func TestRoutingInputsUseClaudeQuotaWindows(t *testing.T) {
 	cachePath := filepath.Join(dir, "claude-quota.json")
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
 
-	if err := claudeharness.WriteClaudeQuota(cachePath, claudeharness.ClaudeQuotaSnapshot{
+	writeClaudeQuotaCacheFile(t, cachePath, claudeTestQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 90,
 		FiveHourLimit:     100,
@@ -861,9 +860,7 @@ func TestRoutingInputsUseClaudeQuotaWindows(t *testing.T) {
 		Windows: []harnesses.QuotaWindow{
 			{Name: "extra", LimitID: "claude-extra", UsedPercent: 100, State: "exhausted"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteClaudeQuota: %v", err)
-	}
+	})
 
 	registry := harnesses.NewRegistry()
 	registry.LookPath = func(file string) (string, error) {

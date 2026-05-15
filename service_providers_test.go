@@ -523,7 +523,7 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
 
 	// Write a snapshot older than the 15m debounce.
-	staleSnap := claudeharness.ClaudeQuotaSnapshot{
+	staleSnap := claudeTestQuotaSnapshot{
 		CapturedAt:        time.Now().UTC().Add(-20 * time.Minute),
 		FiveHourRemaining: 80,
 		FiveHourLimit:     100,
@@ -531,9 +531,7 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 		WeeklyLimit:       100,
 		Source:            "pty",
 	}
-	if err := claudeharness.WriteClaudeQuota(cachePath, staleSnap); err != nil {
-		t.Fatalf("setup: WriteClaudeQuota: %v", err)
-	}
+	writeClaudeQuotaCacheFile(t, cachePath, staleSnap)
 
 	// Inject a fake refresher so no real PTY probe is invoked.
 	refreshCalled := false
@@ -557,7 +555,7 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 	}
 
 	// Verify the cache was rewritten with a newer timestamp.
-	loaded, ok := claudeharness.ReadClaudeQuotaFrom(cachePath)
+	loaded, ok := readClaudeQuotaCacheFile(t, cachePath)
 	if !ok {
 		t.Fatal("expected cache file to exist after refresh")
 	}
@@ -576,7 +574,7 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
 
 	// Write a snapshot that is only 30s old (fresh).
-	freshSnap := claudeharness.ClaudeQuotaSnapshot{
+	freshSnap := claudeTestQuotaSnapshot{
 		CapturedAt:        time.Now().UTC().Add(-30 * time.Second),
 		FiveHourRemaining: 80,
 		FiveHourLimit:     100,
@@ -585,9 +583,7 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 		Source:            "pty",
 		Account:           &harnesses.AccountInfo{PlanType: "Claude Max"},
 	}
-	if err := claudeharness.WriteClaudeQuota(cachePath, freshSnap); err != nil {
-		t.Fatalf("setup: WriteClaudeQuota: %v", err)
-	}
+	writeClaudeQuotaCacheFile(t, cachePath, freshSnap)
 
 	// Inject a fake refresher that must NOT be called.
 	refreshCalled := false
@@ -604,7 +600,7 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 	}
 
 	// Verify the cache timestamp is unchanged (still matches freshSnap).
-	loaded, ok := claudeharness.ReadClaudeQuotaFrom(cachePath)
+	loaded, ok := readClaudeQuotaCacheFile(t, cachePath)
 	if !ok {
 		t.Fatal("expected cache file to still exist")
 	}
@@ -672,7 +668,8 @@ func TestHealthCheck_CodexCallsRefreshQuota(t *testing.T) {
 
 func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	claudePath := filepath.Join(dir, "claude-quota.json")
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudePath)
 	resetPrimaryQuotaRefreshForTest(t)
 
 	var claudeCalls atomic.Int32
@@ -717,7 +714,8 @@ func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 
 func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
+	claudePath := filepath.Join(dir, "claude-quota.json")
+	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudePath)
 	resetPrimaryQuotaRefreshForTest(t)
 
 	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
@@ -736,7 +734,7 @@ func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if _, ok := claudeharness.ReadClaudeQuota(); !ok {
+	if _, ok := readClaudeQuotaCacheFile(t, claudePath); !ok {
 		t.Fatal("expected startup wait to allow Claude quota cache write")
 	}
 	if got := fake.refreshCalls.Load(); got == 0 {

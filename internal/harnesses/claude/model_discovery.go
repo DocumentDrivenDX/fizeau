@@ -24,7 +24,7 @@ var (
 	claudeEffortPattern            = regexp.MustCompile(`--effort\s+<level>.*\(([^)]*)\)`)
 )
 
-func DefaultClaudeModelDiscovery() harnesses.ModelDiscoverySnapshot {
+func defaultClaudeModelDiscovery() harnesses.ModelDiscoverySnapshot {
 	return harnesses.ModelDiscoverySnapshot{
 		CapturedAt:      time.Now().UTC(),
 		Models:          []string{"sonnet", "sonnet-4.6", "opus", "opus-4.7", "claude-sonnet-4-6"},
@@ -94,7 +94,7 @@ func ReadClaudeModelDiscoveryFromCassette(dir string) (harnesses.ModelDiscoveryS
 	return snapshot, nil
 }
 
-func ReadClaudeReasoningFromHelp(ctx context.Context, binary string, args ...string) ([]string, error) {
+func readClaudeReasoningFromHelp(ctx context.Context, binary string, args ...string) ([]string, error) {
 	if binary == "" {
 		binary = "claude"
 	}
@@ -118,7 +118,7 @@ func claudeModelDiscoveryComplete(text string) bool {
 }
 
 func claudeDiscoveryFromText(text, source string) harnesses.ModelDiscoverySnapshot {
-	snapshot := DefaultClaudeModelDiscovery()
+	snapshot := defaultClaudeModelDiscovery()
 	if source != "" {
 		snapshot.Source = source
 	}
@@ -153,7 +153,7 @@ func parseClaudeModels(text string) []string {
 	return models
 }
 
-func ResolveClaudeFamilyAlias(model string, snapshot harnesses.ModelDiscoverySnapshot) string {
+func resolveClaudeFamilyAlias(model string, snapshot harnesses.ModelDiscoverySnapshot) string {
 	family := strings.ToLower(strings.TrimSpace(model))
 	if family != "sonnet" && family != "opus" && family != "haiku" {
 		return model

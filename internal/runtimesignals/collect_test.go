@@ -2,7 +2,9 @@ package runtimesignals_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -12,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/easel/fizeau/internal/discoverycache"
-	claudecache "github.com/easel/fizeau/internal/harnesses/claude"
+	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/runtimesignals"
 )
 
@@ -61,7 +63,7 @@ func TestCollect_Claude_QuotaCache(t *testing.T) {
 	cachePath := filepath.Join(tmpDir, "claude-quota.json")
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
 
-	snap := claudecache.ClaudeQuotaSnapshot{
+	snap := claudeQuotaCacheFixture{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 500,
 		FiveHourLimit:     1000,
@@ -69,7 +71,7 @@ func TestCollect_Claude_QuotaCache(t *testing.T) {
 		WeeklyLimit:       10000,
 		Source:            "test",
 	}
-	require.NoError(t, claudecache.WriteClaudeQuota(cachePath, snap))
+	writeClaudeQuotaCacheFixture(t, cachePath, snap)
 
 	store := runtimesignals.NewStore()
 	sig, err := store.Collect(context.Background(), "claude-subscription", runtimesignals.CollectInput{Type: "claude"})
@@ -85,7 +87,7 @@ func TestCollect_Claude_Exhausted(t *testing.T) {
 	cachePath := filepath.Join(tmpDir, "claude-quota-exhausted.json")
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
 
-	snap := claudecache.ClaudeQuotaSnapshot{
+	snap := claudeQuotaCacheFixture{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 0,
 		FiveHourLimit:     1000,
@@ -93,7 +95,7 @@ func TestCollect_Claude_Exhausted(t *testing.T) {
 		WeeklyLimit:       10000,
 		Source:            "test",
 	}
-	require.NoError(t, claudecache.WriteClaudeQuota(cachePath, snap))
+	writeClaudeQuotaCacheFixture(t, cachePath, snap)
 
 	store := runtimesignals.NewStore()
 	sig, err := store.Collect(context.Background(), "claude-subscription", runtimesignals.CollectInput{Type: "claude"})
@@ -172,4 +174,33 @@ func TestReadCached_Missing(t *testing.T) {
 	got, ok := runtimesignals.ReadCached(cache, "nonexistent")
 	assert.False(t, ok)
 	assert.Nil(t, got)
+}
+
+type claudeQuotaCacheFixture struct {
+	CapturedAt        time.Time               `json:"captured_at"`
+	FiveHourRemaining int                     `json:"five_hour_remaining"`
+	FiveHourLimit     int                     `json:"five_hour_limit"`
+	WeeklyRemaining   int                     `json:"weekly_remaining"`
+	WeeklyLimit       int                     `json:"weekly_limit"`
+	Windows           []harnesses.QuotaWindow `json:"windows,omitempty"`
+	Source            string                  `json:"source"`
+}
+
+func writeClaudeQuotaCacheFixture(t *testing.T, path string, snap claudeQuotaCacheFixture) {
+	t.Helper()
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal claude quota cache: %v", err)
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatalf("mkdir claude quota cache dir: %v", err)
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		t.Fatalf("write claude quota cache: %v", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		t.Fatalf("rename claude quota cache: %v", err)
+	}
 }

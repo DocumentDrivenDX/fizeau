@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -21,7 +20,7 @@ func testClaudeAccount() *harnesses.AccountInfo {
 func TestClaudeQuotaCachePathXDG(t *testing.T) {
 	t.Setenv(claudeQuotaCacheEnv, "")
 	t.Setenv("XDG_STATE_HOME", "/tmp/xdg-state")
-	path, err := ClaudeQuotaCachePath()
+	path, err := claudeQuotaCachePath()
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join("/tmp/xdg-state", "fizeau", "claude-quota.json"), path)
 }
@@ -30,21 +29,21 @@ func TestClaudeQuotaCachePathHomeFallback(t *testing.T) {
 	t.Setenv(claudeQuotaCacheEnv, "")
 	t.Setenv("XDG_STATE_HOME", "")
 	t.Setenv("HOME", "/tmp/fake-home")
-	path, err := ClaudeQuotaCachePath()
+	path, err := claudeQuotaCachePath()
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join("/tmp/fake-home", ".local", "state", "fizeau", "claude-quota.json"), path)
 }
 
 func TestClaudeQuotaCachePathEnvOverride(t *testing.T) {
 	t.Setenv(claudeQuotaCacheEnv, "/tmp/override/cq.json")
-	path, err := ClaudeQuotaCachePath()
+	path, err := claudeQuotaCachePath()
 	require.NoError(t, err)
 	assert.Equal(t, "/tmp/override/cq.json", path)
 }
 
 func TestClaudeQuotaSnapshotRoundTrip(t *testing.T) {
 	captured := time.Date(2026, 4, 12, 10, 30, 0, 0, time.UTC)
-	original := ClaudeQuotaSnapshot{
+	original := claudeQuotaSnapshot{
 		CapturedAt:        captured,
 		FiveHourRemaining: 7500,
 		FiveHourLimit:     10000,
@@ -56,7 +55,7 @@ func TestClaudeQuotaSnapshotRoundTrip(t *testing.T) {
 	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
-	var decoded ClaudeQuotaSnapshot
+	var decoded claudeQuotaSnapshot
 	require.NoError(t, json.Unmarshal(data, &decoded))
 
 	assert.True(t, decoded.CapturedAt.Equal(original.CapturedAt))
@@ -71,7 +70,7 @@ func TestWriteClaudeQuotaAtomicAndMode(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "claude-quota.json")
 
-	snap := ClaudeQuotaSnapshot{
+	snap := claudeQuotaSnapshot{
 		CapturedAt:        time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC),
 		FiveHourRemaining: 8000,
 		FiveHourLimit:     10000,
@@ -80,10 +79,10 @@ func TestWriteClaudeQuotaAtomicAndMode(t *testing.T) {
 		Source:            "pty",
 	}
 
-	require.NoError(t, WriteClaudeQuota(path, snap))
+	require.NoError(t, writeClaudeQuota(path, snap))
 
 	// Read back and compare.
-	loaded, ok := ReadClaudeQuotaFrom(path)
+	loaded, ok := readClaudeQuotaFrom(path)
 	require.True(t, ok)
 	require.NotNil(t, loaded)
 	assert.True(t, loaded.CapturedAt.Equal(snap.CapturedAt))
@@ -104,8 +103,8 @@ func TestWriteClaudeQuotaAtomicAndMode(t *testing.T) {
 
 	// Overwriting the same path works (atomic replace).
 	snap.FiveHourRemaining = 100
-	require.NoError(t, WriteClaudeQuota(path, snap))
-	loaded2, ok := ReadClaudeQuotaFrom(path)
+	require.NoError(t, writeClaudeQuota(path, snap))
+	loaded2, ok := readClaudeQuotaFrom(path)
 	require.True(t, ok)
 	assert.Equal(t, 100, loaded2.FiveHourRemaining)
 }
@@ -113,7 +112,7 @@ func TestWriteClaudeQuotaAtomicAndMode(t *testing.T) {
 func TestReadClaudeQuotaMissingReturnsFalse(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "does-not-exist.json")
-	snap, ok := ReadClaudeQuotaFrom(path)
+	snap, ok := readClaudeQuotaFrom(path)
 	assert.False(t, ok)
 	assert.Nil(t, snap)
 }
@@ -122,7 +121,7 @@ func TestReadClaudeQuotaCorruptReturnsFalse(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not json"), 0o600))
-	snap, ok := ReadClaudeQuotaFrom(path)
+	snap, ok := readClaudeQuotaFrom(path)
 	assert.False(t, ok)
 	assert.Nil(t, snap)
 }
@@ -132,7 +131,7 @@ func TestReadClaudeQuotaUsesDefaultCachePath(t *testing.T) {
 	path := filepath.Join(dir, "claude-quota.json")
 	t.Setenv(claudeQuotaCacheEnv, path)
 
-	snap := ClaudeQuotaSnapshot{
+	snap := claudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 1,
 		FiveHourLimit:     2,
@@ -140,9 +139,9 @@ func TestReadClaudeQuotaUsesDefaultCachePath(t *testing.T) {
 		WeeklyLimit:       4,
 		Source:            "pty",
 	}
-	require.NoError(t, WriteClaudeQuota(path, snap))
+	require.NoError(t, writeClaudeQuota(path, snap))
 
-	loaded, ok := ReadClaudeQuota()
+	loaded, ok := readClaudeQuota()
 	require.True(t, ok)
 	require.NotNil(t, loaded)
 	assert.Equal(t, 1, loaded.FiveHourRemaining)
@@ -158,7 +157,7 @@ func TestReadClaudeQuotaDoesNotReadLegacyEnvPath(t *testing.T) {
 	t.Setenv(claudeQuotaCacheEnv, newPath)
 	t.Setenv("DDX_CLAUDE_QUOTA_CACHE", legacyPath)
 
-	legacySnap := ClaudeQuotaSnapshot{
+	legacySnap := claudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 9999,
 		FiveHourLimit:     10000,
@@ -166,9 +165,9 @@ func TestReadClaudeQuotaDoesNotReadLegacyEnvPath(t *testing.T) {
 		WeeklyLimit:       70000,
 		Source:            "pty",
 	}
-	require.NoError(t, WriteClaudeQuota(legacyPath, legacySnap))
+	require.NoError(t, writeClaudeQuota(legacyPath, legacySnap))
 
-	loaded, ok := ReadClaudeQuota()
+	loaded, ok := readClaudeQuota()
 	assert.False(t, ok, "legacy DDx cache env must not be read")
 	assert.Nil(t, loaded)
 }
@@ -182,7 +181,7 @@ func TestReadClaudeQuotaUsesNewPathOnly(t *testing.T) {
 	t.Setenv(claudeQuotaCacheEnv, newPath)
 	t.Setenv("DDX_CLAUDE_QUOTA_CACHE", legacyPath)
 
-	newSnap := ClaudeQuotaSnapshot{
+	newSnap := claudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 1111,
 		FiveHourLimit:     10000,
@@ -190,7 +189,7 @@ func TestReadClaudeQuotaUsesNewPathOnly(t *testing.T) {
 		WeeklyLimit:       70000,
 		Source:            "pty",
 	}
-	legacySnap := ClaudeQuotaSnapshot{
+	legacySnap := claudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 9999,
 		FiveHourLimit:     10000,
@@ -198,10 +197,10 @@ func TestReadClaudeQuotaUsesNewPathOnly(t *testing.T) {
 		WeeklyLimit:       70000,
 		Source:            "pty",
 	}
-	require.NoError(t, WriteClaudeQuota(newPath, newSnap))
-	require.NoError(t, WriteClaudeQuota(legacyPath, legacySnap))
+	require.NoError(t, writeClaudeQuota(newPath, newSnap))
+	require.NoError(t, writeClaudeQuota(legacyPath, legacySnap))
 
-	loaded, ok := ReadClaudeQuota()
+	loaded, ok := readClaudeQuota()
 	require.True(t, ok)
 	require.NotNil(t, loaded)
 	assert.Equal(t, 1111, loaded.FiveHourRemaining, "new path should take precedence over old path")
@@ -211,7 +210,7 @@ func TestIsClaudeQuotaFresh(t *testing.T) {
 	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
 	cases := []struct {
 		name       string
-		snapshot   *ClaudeQuotaSnapshot
+		snapshot   *claudeQuotaSnapshot
 		staleAfter time.Duration
 		wantFresh  bool
 	}{
@@ -222,28 +221,28 @@ func TestIsClaudeQuotaFresh(t *testing.T) {
 		},
 		{
 			name: "zero captured_at",
-			snapshot: &ClaudeQuotaSnapshot{
+			snapshot: &claudeQuotaSnapshot{
 				CapturedAt: time.Time{},
 			},
 			wantFresh: false,
 		},
 		{
 			name: "fresh within default ttl",
-			snapshot: &ClaudeQuotaSnapshot{
+			snapshot: &claudeQuotaSnapshot{
 				CapturedAt: now.Add(-2 * time.Minute),
 			},
 			wantFresh: true,
 		},
 		{
 			name: "stale past default ttl",
-			snapshot: &ClaudeQuotaSnapshot{
+			snapshot: &claudeQuotaSnapshot{
 				CapturedAt: now.Add(-20 * time.Minute),
 			},
 			wantFresh: false,
 		},
 		{
 			name: "fresh under custom ttl",
-			snapshot: &ClaudeQuotaSnapshot{
+			snapshot: &claudeQuotaSnapshot{
 				CapturedAt: now.Add(-1 * time.Hour),
 			},
 			staleAfter: 2 * time.Hour,
@@ -252,7 +251,7 @@ func TestIsClaudeQuotaFresh(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := IsClaudeQuotaFresh(tc.snapshot, now, tc.staleAfter)
+			got := isClaudeQuotaFresh(tc.snapshot, now, tc.staleAfter)
 			assert.Equal(t, tc.wantFresh, got)
 		})
 	}
@@ -261,21 +260,21 @@ func TestIsClaudeQuotaFresh(t *testing.T) {
 func TestClaudeQuotaSnapshotAge(t *testing.T) {
 	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
 	// Nil snapshot.
-	assert.Equal(t, time.Duration(0), ClaudeQuotaSnapshotAge(nil, now))
+	assert.Equal(t, time.Duration(0), claudeQuotaSnapshotAge(nil, now))
 	// Zero time.
-	assert.Equal(t, time.Duration(0), ClaudeQuotaSnapshotAge(&ClaudeQuotaSnapshot{}, now))
+	assert.Equal(t, time.Duration(0), claudeQuotaSnapshotAge(&claudeQuotaSnapshot{}, now))
 	// Future captured_at.
-	future := &ClaudeQuotaSnapshot{CapturedAt: now.Add(time.Hour)}
-	assert.Equal(t, time.Duration(0), ClaudeQuotaSnapshotAge(future, now))
+	future := &claudeQuotaSnapshot{CapturedAt: now.Add(time.Hour)}
+	assert.Equal(t, time.Duration(0), claudeQuotaSnapshotAge(future, now))
 	// Past captured_at.
-	past := &ClaudeQuotaSnapshot{CapturedAt: now.Add(-3 * time.Minute)}
-	assert.Equal(t, 3*time.Minute, ClaudeQuotaSnapshotAge(past, now))
+	past := &claudeQuotaSnapshot{CapturedAt: now.Add(-3 * time.Minute)}
+	assert.Equal(t, 3*time.Minute, claudeQuotaSnapshotAge(past, now))
 }
 
 func TestDecideClaudeQuotaRouting(t *testing.T) {
 	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
 
-	fresh := &ClaudeQuotaSnapshot{
+	fresh := &claudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
 		FiveHourRemaining: 5000,
 		FiveHourLimit:     10000,
@@ -284,7 +283,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		Source:            "pty",
 		Account:           testClaudeAccount(),
 	}
-	freshExhausted := &ClaudeQuotaSnapshot{
+	freshExhausted := &claudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
 		FiveHourRemaining: 0,
 		FiveHourLimit:     10000,
@@ -293,7 +292,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		Source:            "pty",
 		Account:           testClaudeAccount(),
 	}
-	freshWeeklyZero := &ClaudeQuotaSnapshot{
+	freshWeeklyZero := &claudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
 		FiveHourRemaining: 5000,
 		FiveHourLimit:     10000,
@@ -302,7 +301,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		Source:            "pty",
 		Account:           testClaudeAccount(),
 	}
-	freshExtraExhausted := &ClaudeQuotaSnapshot{
+	freshExtraExhausted := &claudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
 		FiveHourRemaining: 5000,
 		FiveHourLimit:     10000,
@@ -316,7 +315,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		Source:  "pty",
 		Account: testClaudeAccount(),
 	}
-	stale := &ClaudeQuotaSnapshot{
+	stale := &claudeQuotaSnapshot{
 		CapturedAt:        now.Add(-20 * time.Minute),
 		FiveHourRemaining: 5000,
 		FiveHourLimit:     10000,
@@ -324,7 +323,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		WeeklyLimit:       70000,
 		Source:            "pty",
 	}
-	freshMissingAccount := &ClaudeQuotaSnapshot{
+	freshMissingAccount := &claudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
 		FiveHourRemaining: 5000,
 		FiveHourLimit:     10000,
@@ -332,7 +331,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		WeeklyLimit:       70000,
 		Source:            "pty",
 	}
-	freshMissingSource := &ClaudeQuotaSnapshot{
+	freshMissingSource := &claudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
 		FiveHourRemaining: 5000,
 		FiveHourLimit:     10000,
@@ -340,7 +339,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 		WeeklyLimit:       70000,
 		Account:           testClaudeAccount(),
 	}
-	freshInvalidLimits := &ClaudeQuotaSnapshot{
+	freshInvalidLimits := &claudeQuotaSnapshot{
 		CapturedAt:        now.Add(-1 * time.Minute),
 		FiveHourRemaining: 101,
 		FiveHourLimit:     100,
@@ -352,7 +351,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 
 	cases := []struct {
 		name            string
-		snapshot        *ClaudeQuotaSnapshot
+		snapshot        *claudeQuotaSnapshot
 		wantPrefer      bool
 		wantPresent     bool
 		wantFresh       bool
@@ -434,7 +433,7 @@ func TestDecideClaudeQuotaRouting(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := DecideClaudeQuotaRouting(tc.snapshot, now, DefaultClaudeQuotaStaleAfter)
+			d := decideClaudeQuotaRouting(tc.snapshot, now, defaultClaudeQuotaStaleAfter)
 			assert.Equal(t, tc.wantPrefer, d.PreferClaude)
 			assert.Equal(t, tc.wantPresent, d.SnapshotPresent)
 			assert.Equal(t, tc.wantFresh, d.Fresh)
@@ -448,106 +447,14 @@ func TestClaudeQuotaExhaustedMessageMarksCache(t *testing.T) {
 	t.Setenv(claudeQuotaCacheEnv, path)
 	now := time.Date(2026, 5, 4, 22, 0, 0, 0, time.UTC)
 
-	ok := MarkClaudeQuotaExhaustedFromMessage("You're out of extra usage · resets May 7, 12am (America/New_York)", now)
+	ok := markClaudeQuotaExhaustedFromMessage("You're out of extra usage · resets May 7, 12am (America/New_York)", now)
 	require.True(t, ok)
 
-	snap, present := ReadClaudeQuotaFrom(path)
+	snap, present := readClaudeQuotaFrom(path)
 	require.True(t, present)
-	dec := DecideClaudeQuotaRouting(snap, now, DefaultClaudeQuotaStaleAfter)
+	dec := decideClaudeQuotaRouting(snap, now, defaultClaudeQuotaStaleAfter)
 	assert.False(t, dec.PreferClaude)
 	assert.True(t, dec.Fresh)
 	assert.Contains(t, dec.Reason, "exhausted")
 	assert.Contains(t, dec.Reason, "weekly-all")
-}
-
-func TestReadClaudeQuotaRoutingDecisionDefaultPath(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "claude-quota.json")
-	t.Setenv(claudeQuotaCacheEnv, path)
-
-	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
-
-	// No snapshot: fall back.
-	d := ReadClaudeQuotaRoutingDecision(now, DefaultClaudeQuotaStaleAfter)
-	assert.False(t, d.PreferClaude)
-	assert.False(t, d.SnapshotPresent)
-
-	// Write a fresh snapshot with headroom.
-	require.NoError(t, WriteClaudeQuota(path, ClaudeQuotaSnapshot{
-		CapturedAt:        now.Add(-30 * time.Second),
-		FiveHourRemaining: 9000,
-		FiveHourLimit:     10000,
-		WeeklyRemaining:   65000,
-		WeeklyLimit:       70000,
-		Source:            "pty",
-		Account:           testClaudeAccount(),
-	}))
-	d = ReadClaudeQuotaRoutingDecision(now, DefaultClaudeQuotaStaleAfter)
-	assert.True(t, d.PreferClaude)
-	assert.True(t, d.Fresh)
-	assert.True(t, d.SnapshotPresent)
-}
-
-func TestRefreshClaudeQuotaAsyncWritesCache(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "claude-quota.json")
-	t.Setenv(claudeQuotaCacheEnv, path)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	captureCalled := false
-	capture := func() (ClaudeQuotaSnapshot, error) {
-		defer wg.Done()
-		captureCalled = true
-		return ClaudeQuotaSnapshot{
-			CapturedAt:        time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC),
-			FiveHourRemaining: 1234,
-			FiveHourLimit:     10000,
-			WeeklyRemaining:   55000,
-			WeeklyLimit:       70000,
-			Source:            "pty",
-		}, nil
-	}
-
-	RefreshClaudeQuotaAsync(capture)
-	wg.Wait()
-
-	// Poll briefly for the file to land (goroutine writes after capture returns).
-	deadline := time.Now().Add(2 * time.Second)
-	var loaded *ClaudeQuotaSnapshot
-	for time.Now().Before(deadline) {
-		if s, ok := ReadClaudeQuotaFrom(path); ok {
-			loaded = s
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	require.True(t, captureCalled)
-	require.NotNil(t, loaded, "expected cache file to be written")
-	assert.Equal(t, 1234, loaded.FiveHourRemaining)
-	assert.Equal(t, "pty", loaded.Source)
-}
-
-func TestRefreshClaudeQuotaAsyncNilCapture(t *testing.T) {
-	// Nil capture is a no-op and must not panic.
-	RefreshClaudeQuotaAsync(nil)
-}
-
-func TestRefreshClaudeQuotaAsyncCaptureErrorLeavesCache(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "claude-quota.json")
-	t.Setenv(claudeQuotaCacheEnv, path)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	capture := func() (ClaudeQuotaSnapshot, error) {
-		defer wg.Done()
-		return ClaudeQuotaSnapshot{}, assert.AnError
-	}
-	RefreshClaudeQuotaAsync(capture)
-	wg.Wait()
-	// Give the goroutine a moment in case it would (wrongly) write.
-	time.Sleep(20 * time.Millisecond)
-	_, err := os.Stat(path)
-	assert.True(t, os.IsNotExist(err), "cache must not be created when capture errors")
 }

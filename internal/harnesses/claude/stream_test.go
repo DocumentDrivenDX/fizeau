@@ -474,9 +474,9 @@ exit 1
 	assert.Equal(t, "failed", final.Status)
 	assert.Contains(t, final.Error, "claude quota exhausted")
 
-	snap, ok := ReadClaudeQuotaFrom(cachePath)
+	snap, ok := readClaudeQuotaFrom(cachePath)
 	require.True(t, ok)
-	dec := DecideClaudeQuotaRouting(snap, time.Now().UTC(), DefaultClaudeQuotaStaleAfter)
+	dec := decideClaudeQuotaRouting(snap, time.Now().UTC(), defaultClaudeQuotaStaleAfter)
 	assert.False(t, dec.PreferClaude)
 	assert.Contains(t, dec.Reason, "exhausted")
 }

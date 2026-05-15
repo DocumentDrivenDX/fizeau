@@ -14,7 +14,7 @@ import (
 func Test_quotaCassetteReplayClaude(t *testing.T) {
 	dir := writeClaudeQuotaCassette(t, fixtureClaudeUsageOutput)
 
-	windows, account, err := ReadClaudeQuotaFromCassette(dir)
+	windows, account, err := readClaudeQuotaFromCassette(dir)
 	require.NoError(t, err)
 	require.NotNil(t, account)
 	require.Equal(t, "Claude Max", account.PlanType)

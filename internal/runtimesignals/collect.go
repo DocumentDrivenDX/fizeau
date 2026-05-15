@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
-	claudecache "github.com/easel/fizeau/internal/harnesses/claude"
 	codexcache "github.com/easel/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
+	"github.com/easel/fizeau/internal/productinfo"
 	"github.com/easel/fizeau/internal/provider/quotaheaders"
 )
 
@@ -171,11 +173,11 @@ func ReadCached(cache *discoverycache.Cache, providerName string) (*Signal, bool
 // ---- per-provider-type collectors -------------------------------------------
 
 func collectClaudeSignal(sig *Signal) {
-	snap, ok := claudecache.ReadClaudeQuota()
+	snap, ok := readClaudeQuotaCache()
 	if !ok || snap == nil {
 		return // StatusUnknown
 	}
-	if claudecache.ClaudeQuotaSnapshotAge(snap, time.Now()) > claudecache.DefaultClaudeQuotaStaleAfter {
+	if claudeQuotaCacheAge(snap, time.Now()) > defaultClaudeQuotaStaleAfter {
 		return // StatusUnknown; snapshot is stale
 	}
 	if snap.WeeklyRemaining <= 0 || snap.FiveHourRemaining <= 0 {
@@ -187,6 +189,58 @@ func collectClaudeSignal(sig *Signal) {
 	sig.Status = StatusAvailable
 	rem := snap.FiveHourRemaining
 	sig.QuotaRemaining = &rem
+}
+
+const (
+	claudeQuotaCacheEnv          = "FIZEAU_CLAUDE_QUOTA_CACHE"
+	defaultClaudeQuotaStaleAfter = 15 * time.Minute
+)
+
+type claudeQuotaCacheSnapshot struct {
+	CapturedAt        time.Time `json:"captured_at"`
+	FiveHourRemaining int       `json:"five_hour_remaining"`
+	WeeklyRemaining   int       `json:"weekly_remaining"`
+}
+
+func readClaudeQuotaCache() (*claudeQuotaCacheSnapshot, bool) {
+	path, err := claudeQuotaCachePath()
+	if err != nil {
+		return nil, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	var snap claudeQuotaCacheSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return nil, false
+	}
+	return &snap, true
+}
+
+func claudeQuotaCachePath() (string, error) {
+	if path := os.Getenv(claudeQuotaCacheEnv); path != "" {
+		return path, nil
+	}
+	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
+		return filepath.Join(xdg, productinfo.ConfigDir, "claude-quota.json"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "state", productinfo.ConfigDir, "claude-quota.json"), nil
+}
+
+func claudeQuotaCacheAge(snapshot *claudeQuotaCacheSnapshot, now time.Time) time.Duration {
+	if snapshot == nil || snapshot.CapturedAt.IsZero() {
+		return 0
+	}
+	age := now.UTC().Sub(snapshot.CapturedAt.UTC())
+	if age < 0 {
+		return 0
+	}
+	return age
 }
 
 func collectCodexSignal(sig *Signal) {

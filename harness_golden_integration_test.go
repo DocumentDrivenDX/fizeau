@@ -666,7 +666,7 @@ func assertGoldenCapabilities(t *testing.T, svc FizeauService) {
 func writeGoldenQuotaCaches(t *testing.T, claudePath, codexPath string) {
 	t.Helper()
 	now := time.Now().UTC()
-	if err := claudeharness.WriteClaudeQuota(claudePath, claudeharness.ClaudeQuotaSnapshot{
+	writeClaudeQuotaCacheFile(t, claudePath, claudeTestQuotaSnapshot{
 		CapturedAt:        now,
 		FiveHourRemaining: 90,
 		FiveHourLimit:     100,
@@ -674,9 +674,7 @@ func writeGoldenQuotaCaches(t *testing.T, claudePath, codexPath string) {
 		WeeklyLimit:       100,
 		Source:            "cassette",
 		Account:           &harnesses.AccountInfo{PlanType: "Claude Max"},
-	}); err != nil {
-		t.Fatalf("WriteClaudeQuota: %v", err)
-	}
+	})
 	writeCodexQuotaCacheFile(t, codexPath, now, "cassette",
 		&harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
 		[]harnesses.QuotaWindow{

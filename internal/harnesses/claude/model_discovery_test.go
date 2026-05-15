@@ -27,13 +27,13 @@ func TestParseClaudeModelsFromTUIVersionLabels(t *testing.T) {
 }
 
 func TestResolveClaudeFamilyAliasUsesLatestDiscoveredVersion(t *testing.T) {
-	snapshot := DefaultClaudeModelDiscovery()
+	snapshot := defaultClaudeModelDiscovery()
 	snapshot.Models = []string{"opus", "opus-4.6", "opus-4.10", "opus-4.7", "sonnet-4.6"}
 
-	require.Equal(t, "opus-4.10", ResolveClaudeFamilyAlias("opus", snapshot))
-	require.Equal(t, "sonnet-4.6", ResolveClaudeFamilyAlias("sonnet", snapshot))
-	require.Equal(t, "opus-4.7", ResolveClaudeFamilyAlias("opus-4.7", snapshot))
-	require.Equal(t, "gpt-5.4", ResolveClaudeFamilyAlias("gpt-5.4", snapshot))
+	require.Equal(t, "opus-4.10", resolveClaudeFamilyAlias("opus", snapshot))
+	require.Equal(t, "sonnet-4.6", resolveClaudeFamilyAlias("sonnet", snapshot))
+	require.Equal(t, "opus-4.7", resolveClaudeFamilyAlias("opus-4.7", snapshot))
+	require.Equal(t, "gpt-5.4", resolveClaudeFamilyAlias("gpt-5.4", snapshot))
 }
 
 func TestReadClaudeReasoningFromHelp(t *testing.T) {
@@ -49,7 +49,7 @@ Usage: claude [options]
 EOF
 `), 0o700))
 
-	levels, err := ReadClaudeReasoningFromHelp(context.Background(), script)
+	levels, err := readClaudeReasoningFromHelp(context.Background(), script)
 	require.NoError(t, err)
 	require.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, levels)
 }

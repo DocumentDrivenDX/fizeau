@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 )
 
 func TestResolveRouteExplicitHarnessModelIncompatible(t *testing.T) {
@@ -160,7 +159,7 @@ func TestResolveExplicitClaudeRejectedWhenFreshQuotaExhausted(t *testing.T) {
 
 	now := time.Now().UTC()
 	reset := now.Add(2 * time.Hour).Unix()
-	if err := claudeharness.WriteClaudeQuota(cachePath, claudeharness.ClaudeQuotaSnapshot{
+	writeClaudeQuotaCacheFile(t, cachePath, claudeTestQuotaSnapshot{
 		CapturedAt:        now,
 		FiveHourRemaining: 0,
 		FiveHourLimit:     100,
@@ -175,9 +174,7 @@ func TestResolveExplicitClaudeRejectedWhenFreshQuotaExhausted(t *testing.T) {
 		}},
 		Source:  "runtime_error",
 		Account: &harnesses.AccountInfo{PlanType: "Claude Max"},
-	}); err != nil {
-		t.Fatalf("WriteClaudeQuota: %v", err)
-	}
+	})
 
 	svc := testRoutingErrorService()
 	_, err := svc.resolveExecuteRoute(ServiceExecuteRequest{Harness: "claude", Model: "opus-4.7"})

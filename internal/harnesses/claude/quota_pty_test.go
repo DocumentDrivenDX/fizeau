@@ -28,7 +28,7 @@ sleep 5
 `), 0o700))
 	cassetteDir := filepath.Join(dir, "cassette")
 
-	windows, account, err := ReadClaudeQuotaViaPTY(200*time.Millisecond, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
+	windows, account, err := readClaudeQuotaViaPTY(200*time.Millisecond, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
 	require.Error(t, err)
 	require.Empty(t, windows)
 	require.Nil(t, account)
@@ -58,7 +58,7 @@ EOF
 sleep 1
 `), 0o700))
 
-	windows, account, err := ReadClaudeQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script))
+	windows, account, err := readClaudeQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script))
 	require.NoError(t, err)
 	require.NotNil(t, account)
 	require.True(t, hasQuotaWindow(windows, "session"))
@@ -90,14 +90,14 @@ sleep 1
 `), 0o700))
 	cassetteDir := filepath.Join(dir, "cassette")
 
-	_, _, err := ReadClaudeQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
+	_, _, err := readClaudeQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
 	require.NoError(t, err)
 	reader, err := cassette.Open(cassetteDir)
 	require.NoError(t, err)
 	require.Equal(t, "claude-test 1.2.3", reader.Manifest().Harness.BinaryVersion)
 	require.Equal(t, "Claude Max", reader.Quota().AccountClass)
 	require.NotEmpty(t, reader.Quota().CapturedAt)
-	require.Equal(t, DefaultClaudeQuotaStaleAfter.String(), reader.Quota().FreshnessWindow)
+	require.Equal(t, defaultClaudeQuotaStaleAfter.String(), reader.Quota().FreshnessWindow)
 	require.Contains(t, reader.Quota().StalenessBehavior, "automatic routing")
 }
 
@@ -122,7 +122,7 @@ sleep 1
 `), 0o700))
 	cassetteDir := filepath.Join(dir, "cassette")
 
-	windows, account, err := ReadClaudeQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
+	windows, account, err := readClaudeQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
 	require.Error(t, err)
 	require.Empty(t, windows)
 	require.Nil(t, account)

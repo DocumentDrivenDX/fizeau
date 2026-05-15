@@ -11,14 +11,14 @@ import (
 )
 
 // claudeQuotaFreshness is the constant freshness window for claude quota
-// evidence. Mirrors DefaultClaudeQuotaStaleAfter (kept as a separate name
+// evidence. Mirrors defaultClaudeQuotaStaleAfter (kept as a separate name
 // so the CONTRACT-004 method has a stable, contract-named constant).
-const claudeQuotaFreshness = DefaultClaudeQuotaStaleAfter
+const claudeQuotaFreshness = defaultClaudeQuotaStaleAfter
 
 // claudeAccountFreshness is the constant freshness window for claude
 // account evidence. Claude embeds account info in its quota probe so the
 // account refresh cadence matches quota.
-const claudeAccountFreshness = DefaultClaudeQuotaStaleAfter
+const claudeAccountFreshness = defaultClaudeQuotaStaleAfter
 
 // supportedLimitIDs is the stable public set of Windows[].LimitID values
 // claude's quota probe emits. Mirrored in doc.go for human readers.
@@ -83,7 +83,7 @@ func (r *Runner) QuotaStatus(ctx context.Context, now time.Time) (harnesses.Quot
 	if err := ctx.Err(); err != nil {
 		return harnesses.QuotaStatus{}, err
 	}
-	snap, ok := ReadClaudeQuota()
+	snap, ok := readClaudeQuota()
 	if !ok || snap == nil {
 		return harnesses.QuotaStatus{
 			Source:            "cache",
@@ -146,8 +146,8 @@ func (r *Runner) refreshQuotaLocked(ctx context.Context) harnesses.QuotaStatus {
 		}
 	}
 	snap := claudeQuotaSnapshotFromWindows(windows, account)
-	if path, pathErr := ClaudeQuotaCachePath(); pathErr == nil {
-		_ = WriteClaudeQuota(path, snap)
+	if path, pathErr := claudeQuotaCachePath(); pathErr == nil {
+		_ = writeClaudeQuota(path, snap)
 	}
 	return claudeQuotaStatusFromSnapshot(&snap, now)
 }
@@ -169,7 +169,7 @@ func (r *Runner) AccountStatus(ctx context.Context, now time.Time) (harnesses.Ac
 	if err := ctx.Err(); err != nil {
 		return harnesses.AccountSnapshot{}, err
 	}
-	snap, ok := ReadClaudeQuota()
+	snap, ok := readClaudeQuota()
 	if !ok || snap == nil {
 		return harnesses.AccountSnapshot{Source: "cache"}, nil
 	}
@@ -193,7 +193,7 @@ func (r *Runner) AccountFreshness() time.Duration {
 
 // DefaultModelSnapshot implements harnesses.ModelDiscoveryHarness.
 func (r *Runner) DefaultModelSnapshot() harnesses.ModelDiscoverySnapshot {
-	return DefaultClaudeModelDiscovery()
+	return defaultClaudeModelDiscovery()
 }
 
 // ResolveModelAlias implements harnesses.ModelDiscoveryHarness. Returns
@@ -205,7 +205,7 @@ func (r *Runner) ResolveModelAlias(family string, snapshot harnesses.ModelDiscov
 	if !isSupportedClaudeAlias(normalized) {
 		return "", harnesses.ErrAliasNotResolvable
 	}
-	resolved := ResolveClaudeFamilyAlias(normalized, snapshot)
+	resolved := resolveClaudeFamilyAlias(normalized, snapshot)
 	if resolved == "" {
 		return "", harnesses.ErrAliasNotResolvable
 	}
@@ -228,11 +228,11 @@ func isSupportedClaudeAlias(family string) bool {
 
 // claudeQuotaStatusFromSnapshot projects the per-harness snapshot onto
 // harnesses.QuotaStatus, deriving State and RoutingPreference via the
-// existing DecideClaudeQuotaRouting helper so today's "PreferClaude +
+// existing internal routing helper so today's "PreferClaude +
 // freshness" semantics map cleanly onto CONTRACT-004's RoutingPreference
 // enum.
-func claudeQuotaStatusFromSnapshot(snap *ClaudeQuotaSnapshot, now time.Time) harnesses.QuotaStatus {
-	decision := DecideClaudeQuotaRouting(snap, now, claudeQuotaFreshness)
+func claudeQuotaStatusFromSnapshot(snap *claudeQuotaSnapshot, now time.Time) harnesses.QuotaStatus {
+	decision := decideClaudeQuotaRouting(snap, now, claudeQuotaFreshness)
 	pref, state := mapClaudeRoutingPreference(decision)
 	status := harnesses.QuotaStatus{
 		Source:            snap.Source,
@@ -258,7 +258,7 @@ func claudeQuotaStatusFromSnapshot(snap *ClaudeQuotaSnapshot, now time.Time) har
 // string matches the contract-003 fixture (bare "ok"). All non-OK
 // states keep the decision reason because it surfaces why the state is
 // not ok (stale snapshot, incomplete account, exhausted window).
-func quotaReasonForProjection(decision ClaudeQuotaRoutingDecision, state harnesses.QuotaStateValue) string {
+func quotaReasonForProjection(decision claudeQuotaRoutingDecision, state harnesses.QuotaStateValue) string {
 	if state == harnesses.QuotaOK {
 		return ""
 	}
@@ -270,7 +270,7 @@ func quotaReasonForProjection(decision ClaudeQuotaRoutingDecision, state harness
 // pair. Legacy semantics: missing snapshot ⇒ Unavailable/Unknown;
 // stale ⇒ Stale/Blocked ("assume limited"); fresh+PreferClaude ⇒
 // OK/Available; fresh+!PreferClaude ⇒ Blocked/Blocked.
-func mapClaudeRoutingPreference(d ClaudeQuotaRoutingDecision) (harnesses.RoutingPreference, harnesses.QuotaStateValue) {
+func mapClaudeRoutingPreference(d claudeQuotaRoutingDecision) (harnesses.RoutingPreference, harnesses.QuotaStateValue) {
 	if !d.SnapshotPresent {
 		return harnesses.RoutingPreferenceUnknown, harnesses.QuotaUnavailable
 	}
@@ -285,13 +285,13 @@ func mapClaudeRoutingPreference(d ClaudeQuotaRoutingDecision) (harnesses.Routing
 
 // claudeAccountSnapshotFromQuotaSnapshot derives an AccountSnapshot from
 // the quota cache's embedded Account field. Plan-type "unknown" (written
-// by MarkClaudeQuotaExhaustedFromMessage on runtime errors) is reported
+// by markClaudeQuotaExhaustedFromMessage on runtime errors) is reported
 // as unauthenticated evidence rather than positive authentication.
-func claudeAccountSnapshotFromQuotaSnapshot(snap *ClaudeQuotaSnapshot, now time.Time) harnesses.AccountSnapshot {
+func claudeAccountSnapshotFromQuotaSnapshot(snap *claudeQuotaSnapshot, now time.Time) harnesses.AccountSnapshot {
 	out := harnesses.AccountSnapshot{
 		Source:     "cache",
 		CapturedAt: snap.CapturedAt,
-		Fresh:      IsClaudeQuotaFresh(snap, now, claudeAccountFreshness),
+		Fresh:      isClaudeQuotaFresh(snap, now, claudeAccountFreshness),
 	}
 	if snap.Account == nil {
 		return out

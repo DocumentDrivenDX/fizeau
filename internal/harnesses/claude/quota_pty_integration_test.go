@@ -18,7 +18,7 @@ func Test_quotaRecordClaudePTY(t *testing.T) {
 		t.Skip("set FIZEAU_HARNESS_RECORD=1 to refresh authenticated claude quota cassette")
 	}
 	dir := filepath.Join(recordBaseDir(t), "claude", "quota")
-	windows, account, err := ReadClaudeQuotaViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
+	windows, account, err := readClaudeQuotaViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
 	if err != nil {
 		assertNoAcceptedCassette(t, dir)
 		t.Fatalf("record claude quota via PTY: %v", err)

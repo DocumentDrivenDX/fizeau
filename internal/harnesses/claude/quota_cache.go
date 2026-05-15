@@ -12,14 +12,14 @@ import (
 	"github.com/easel/fizeau/internal/productinfo"
 )
 
-// ClaudeQuotaSnapshot captures Claude's current-quota headroom as absolute
+// claudeQuotaSnapshot captures Claude's current-quota headroom as absolute
 // token/message counts. It is written to a durable per-user cache by an
 // asynchronous capture path and read by foreground routing consumers.
 //
 // The snapshot is intentionally distinct from the percentage-based
 // QuotaSignal: foreground routing needs concrete numbers to reason about
 // 5-hour / weekly headroom without invoking PTY capture inline.
-type ClaudeQuotaSnapshot struct {
+type claudeQuotaSnapshot struct {
 	CapturedAt        time.Time               `json:"captured_at"`
 	FiveHourRemaining int                     `json:"five_hour_remaining"`
 	FiveHourLimit     int                     `json:"five_hour_limit"`
@@ -30,20 +30,20 @@ type ClaudeQuotaSnapshot struct {
 	Account           *harnesses.AccountInfo  `json:"account,omitempty"`
 }
 
-// DefaultClaudeQuotaStaleAfter is the default maximum age before a cached
+// defaultClaudeQuotaStaleAfter is the default maximum age before a cached
 // snapshot is considered stale and foreground routing should fall back to
 // the safe default.
-const DefaultClaudeQuotaStaleAfter = 15 * time.Minute
+const defaultClaudeQuotaStaleAfter = 15 * time.Minute
 
 // claudeQuotaCacheEnv lets tests override the cache file path.
 const claudeQuotaCacheEnv = "FIZEAU_CLAUDE_QUOTA_CACHE"
 
-// ClaudeQuotaCachePath returns the durable location for the Claude quota
+// claudeQuotaCachePath returns the durable location for the Claude quota
 // cache. It resolves to $XDG_STATE_HOME/<config-dir>/claude-quota.json, or
 // ~/.local/state/<config-dir>/claude-quota.json when XDG_STATE_HOME is unset.
 // The FIZEAU_CLAUDE_QUOTA_CACHE env var takes precedence (primarily for
 // tests).
-func ClaudeQuotaCachePath() (string, error) {
+func claudeQuotaCachePath() (string, error) {
 	if path := os.Getenv(claudeQuotaCacheEnv); path != "" {
 		return path, nil
 	}
@@ -57,11 +57,11 @@ func ClaudeQuotaCachePath() (string, error) {
 	return filepath.Join(home, ".local", "state", productinfo.ConfigDir, "claude-quota.json"), nil
 }
 
-// WriteClaudeQuota atomically persists a ClaudeQuotaSnapshot to the given
+// writeClaudeQuota atomically persists a claudeQuotaSnapshot to the given
 // path. The parent directory is created if necessary. The file is written
 // to a sibling .tmp file and renamed into place so readers never observe a
 // partially-written snapshot. The final file mode is 0600.
-func WriteClaudeQuota(path string, snapshot ClaudeQuotaSnapshot) error {
+func writeClaudeQuota(path string, snapshot claudeQuotaSnapshot) error {
 	if path == "" {
 		return fmt.Errorf("claude quota cache path is empty")
 	}
@@ -96,16 +96,16 @@ func WriteClaudeQuota(path string, snapshot ClaudeQuotaSnapshot) error {
 	return nil
 }
 
-// ReadClaudeQuotaFrom reads the snapshot at the given path. Returns
+// readClaudeQuotaFrom reads the snapshot at the given path. Returns
 // (nil, false) if the file does not exist or cannot be decoded. Non-
 // existence is NOT an error: foreground callers are expected to fall back
 // to a safe default when no snapshot is present.
-func ReadClaudeQuotaFrom(path string) (*ClaudeQuotaSnapshot, bool) {
+func readClaudeQuotaFrom(path string) (*claudeQuotaSnapshot, bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
-	var snap ClaudeQuotaSnapshot
+	var snap claudeQuotaSnapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
 		return nil, false
 	}
@@ -115,21 +115,21 @@ func ReadClaudeQuotaFrom(path string) (*ClaudeQuotaSnapshot, bool) {
 // The second return value is false if no snapshot is present or cannot be
 // decoded.
 //
-// Callers SHOULD check snapshot age via ClaudeQuotaSnapshotAge (or
-// IsClaudeQuotaFresh) before trusting the values; this function does not
+// Callers SHOULD check snapshot age via claudeQuotaSnapshotAge (or
+// isClaudeQuotaFresh) before trusting the values; this function does not
 // itself enforce a TTL so that callers can report stale snapshots in
 // diagnostic surfaces like `ddx agent doctor --routing`.
-func ReadClaudeQuota() (*ClaudeQuotaSnapshot, bool) {
-	path, err := ClaudeQuotaCachePath()
+func readClaudeQuota() (*claudeQuotaSnapshot, bool) {
+	path, err := claudeQuotaCachePath()
 	if err != nil {
 		return nil, false
 	}
-	return ReadClaudeQuotaFrom(path)
+	return readClaudeQuotaFrom(path)
 }
 
-// ClaudeQuotaSnapshotAge reports the age of a snapshot relative to now.
+// claudeQuotaSnapshotAge reports the age of a snapshot relative to now.
 // A zero or future CapturedAt yields a zero age.
-func ClaudeQuotaSnapshotAge(snapshot *ClaudeQuotaSnapshot, now time.Time) time.Duration {
+func claudeQuotaSnapshotAge(snapshot *claudeQuotaSnapshot, now time.Time) time.Duration {
 	if snapshot == nil || snapshot.CapturedAt.IsZero() {
 		return 0
 	}
@@ -140,22 +140,22 @@ func ClaudeQuotaSnapshotAge(snapshot *ClaudeQuotaSnapshot, now time.Time) time.D
 	return age
 }
 
-// IsClaudeQuotaFresh reports whether a snapshot exists and is newer than
+// isClaudeQuotaFresh reports whether a snapshot exists and is newer than
 // staleAfter relative to now. A nil snapshot is never fresh. A zero
-// staleAfter falls back to DefaultClaudeQuotaStaleAfter.
-func IsClaudeQuotaFresh(snapshot *ClaudeQuotaSnapshot, now time.Time, staleAfter time.Duration) bool {
+// staleAfter falls back to defaultClaudeQuotaStaleAfter.
+func isClaudeQuotaFresh(snapshot *claudeQuotaSnapshot, now time.Time, staleAfter time.Duration) bool {
 	if snapshot == nil || snapshot.CapturedAt.IsZero() {
 		return false
 	}
 	if staleAfter <= 0 {
-		staleAfter = DefaultClaudeQuotaStaleAfter
+		staleAfter = defaultClaudeQuotaStaleAfter
 	}
-	return ClaudeQuotaSnapshotAge(snapshot, now) <= staleAfter
+	return claudeQuotaSnapshotAge(snapshot, now) <= staleAfter
 }
 
-// ClaudeQuotaRoutingDecision summarises what foreground routing should do
+// claudeQuotaRoutingDecision summarises what foreground routing should do
 // given the current cached snapshot.
-type ClaudeQuotaRoutingDecision struct {
+type claudeQuotaRoutingDecision struct {
 	// PreferClaude is true when a fresh snapshot shows headroom in both the
 	// 5-hour and weekly windows. When false, routing should prefer a
 	// non-claude fallback harness.
@@ -168,19 +168,19 @@ type ClaudeQuotaRoutingDecision struct {
 	// Age is the age of the snapshot relative to now (zero when absent).
 	Age time.Duration
 	// Snapshot is the cached snapshot when present.
-	Snapshot *ClaudeQuotaSnapshot
+	Snapshot *claudeQuotaSnapshot
 	// Reason describes why the decision was made (diagnostic surface).
 	Reason string
 }
 
-// DecideClaudeQuotaRouting turns a cached snapshot into a routing decision
+// decideClaudeQuotaRouting turns a cached snapshot into a routing decision
 // for foreground callers. When the snapshot is missing or stale, the safe
 // default is NOT to prefer claude (assume limited).
 //
 // A snapshot counts as "limited" when either window reports zero or
 // negative remaining headroom.
-func DecideClaudeQuotaRouting(snapshot *ClaudeQuotaSnapshot, now time.Time, staleAfter time.Duration) ClaudeQuotaRoutingDecision {
-	decision := ClaudeQuotaRoutingDecision{
+func decideClaudeQuotaRouting(snapshot *claudeQuotaSnapshot, now time.Time, staleAfter time.Duration) claudeQuotaRoutingDecision {
+	decision := claudeQuotaRoutingDecision{
 		Snapshot: snapshot,
 	}
 	if snapshot == nil {
@@ -188,8 +188,8 @@ func DecideClaudeQuotaRouting(snapshot *ClaudeQuotaSnapshot, now time.Time, stal
 		return decision
 	}
 	decision.SnapshotPresent = true
-	decision.Age = ClaudeQuotaSnapshotAge(snapshot, now)
-	if !IsClaudeQuotaFresh(snapshot, now, staleAfter) {
+	decision.Age = claudeQuotaSnapshotAge(snapshot, now)
+	if !isClaudeQuotaFresh(snapshot, now, staleAfter) {
 		decision.Reason = "cached snapshot is stale; assume limited"
 		return decision
 	}
@@ -211,7 +211,7 @@ func DecideClaudeQuotaRouting(snapshot *ClaudeQuotaSnapshot, now time.Time, stal
 	return decision
 }
 
-func validateClaudeQuotaSnapshotForRouting(snapshot *ClaudeQuotaSnapshot) error {
+func validateClaudeQuotaSnapshotForRouting(snapshot *claudeQuotaSnapshot) error {
 	if snapshot == nil {
 		return fmt.Errorf("missing snapshot")
 	}
@@ -257,20 +257,11 @@ func claudeQuotaWindowExhausted(window harnesses.QuotaWindow) bool {
 	return state == "exhausted" || window.UsedPercent >= 100
 }
 
-// ReadClaudeQuotaRoutingDecision is a convenience wrapper that reads the
-// default cache and produces a routing decision in one call. It is the
-// entry point foreground routing should use instead of any inline PTY
-// capture.
-func ReadClaudeQuotaRoutingDecision(now time.Time, staleAfter time.Duration) ClaudeQuotaRoutingDecision {
-	snap, _ := ReadClaudeQuota()
-	return DecideClaudeQuotaRouting(snap, now, staleAfter)
-}
-
-// IsClaudeQuotaExhaustedMessage recognizes Claude CLI quota failures that are
+// isClaudeQuotaExhaustedMessage recognizes Claude CLI quota failures that are
 // emitted as plain text rather than structured quota data. Claude currently
 // reports weekly exhaustion with wording like "out of extra usage", so callers
 // must treat these strings as a hard quota signal.
-func IsClaudeQuotaExhaustedMessage(text string) bool {
+func isClaudeQuotaExhaustedMessage(text string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(text))
 	return strings.Contains(normalized, "out of extra usage") ||
 		strings.Contains(normalized, "usage limit reached") ||
@@ -279,21 +270,21 @@ func IsClaudeQuotaExhaustedMessage(text string) bool {
 		strings.Contains(normalized, "current week") && strings.Contains(normalized, "exhaust")
 }
 
-// MarkClaudeQuotaExhaustedFromMessage records a runtime Claude quota failure
+// markClaudeQuotaExhaustedFromMessage records a runtime Claude quota failure
 // in the durable cache so later automatic routing avoids Claude until a fresh
 // quota probe proves headroom again.
-func MarkClaudeQuotaExhaustedFromMessage(text string, now time.Time) bool {
-	if !IsClaudeQuotaExhaustedMessage(text) {
+func markClaudeQuotaExhaustedFromMessage(text string, now time.Time) bool {
+	if !isClaudeQuotaExhaustedMessage(text) {
 		return false
 	}
-	path, err := ClaudeQuotaCachePath()
+	path, err := claudeQuotaCachePath()
 	if err != nil {
 		return true
 	}
 	if now.IsZero() {
 		now = time.Now()
 	}
-	snap := ClaudeQuotaSnapshot{
+	snap := claudeQuotaSnapshot{
 		CapturedAt:        now.UTC(),
 		FiveHourLimit:     100,
 		FiveHourRemaining: 0,
@@ -306,33 +297,6 @@ func MarkClaudeQuotaExhaustedFromMessage(text string, now time.Time) bool {
 		Source:  "runtime_error",
 		Account: &harnesses.AccountInfo{PlanType: "unknown"},
 	}
-	_ = WriteClaudeQuota(path, snap)
+	_ = writeClaudeQuota(path, snap)
 	return true
-}
-
-// RefreshClaudeQuotaAsync launches a background goroutine that invokes
-// capture and writes the result to the default cache path. It returns
-// immediately; callers never block on capture.
-//
-// The capture function is injected so that the durable cache layer does
-// not depend on any specific PTY implementation. A future `ddx claude
-// refresh-quota` subcommand can pass a real PTY-backed capture; tests can
-// pass deterministic fakes.
-//
-// If capture returns an error, the cache is not touched.
-func RefreshClaudeQuotaAsync(capture func() (ClaudeQuotaSnapshot, error)) {
-	if capture == nil {
-		return
-	}
-	go func() {
-		snap, err := capture()
-		if err != nil {
-			return
-		}
-		path, pathErr := ClaudeQuotaCachePath()
-		if pathErr != nil {
-			return
-		}
-		_ = WriteClaudeQuota(path, snap)
-	}()
 }

@@ -10,7 +10,6 @@ import (
 
 	agentcore "github.com/easel/fizeau/internal/core"
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 	"github.com/easel/fizeau/internal/serviceimpl"
 	sessionlog "github.com/easel/fizeau/internal/session"
 )
@@ -23,7 +22,7 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", codexPath)
 
 	capturedAt := time.Now().UTC().Add(-time.Minute)
-	if err := claudeharness.WriteClaudeQuota(claudePath, claudeharness.ClaudeQuotaSnapshot{
+	writeClaudeQuotaCacheFile(t, claudePath, claudeTestQuotaSnapshot{
 		CapturedAt:        capturedAt,
 		FiveHourRemaining: 80,
 		FiveHourLimit:     100,
@@ -35,9 +34,7 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 			{Name: "5h", LimitID: "session", WindowMinutes: 300, UsedPercent: 20, State: "ok"},
 			{Name: "weekly-all", LimitID: "weekly-all", WindowMinutes: 10080, UsedPercent: 10, State: "ok"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteClaudeQuota: %v", err)
-	}
+	})
 	writeCodexQuotaCacheFile(t, codexPath, capturedAt, "pty",
 		nil,
 		[]harnesses.QuotaWindow{
@@ -77,7 +74,7 @@ func TestListHarnesses_ClaudeQuotaUsesPreservedWindows(t *testing.T) {
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudePath)
 	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
 
-	if err := claudeharness.WriteClaudeQuota(claudePath, claudeharness.ClaudeQuotaSnapshot{
+	writeClaudeQuotaCacheFile(t, claudePath, claudeTestQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourRemaining: 0,
 		FiveHourLimit:     100,
@@ -88,9 +85,7 @@ func TestListHarnesses_ClaudeQuotaUsesPreservedWindows(t *testing.T) {
 		Windows: []harnesses.QuotaWindow{
 			{Name: "extra", LimitID: "claude-extra", UsedPercent: 100, State: "exhausted"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteClaudeQuota: %v", err)
-	}
+	})
 
 	svc := newTestService(t, ServiceOptions{})
 	infos, err := svc.ListHarnesses(context.Background())

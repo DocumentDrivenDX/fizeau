@@ -179,7 +179,7 @@ func (r *Runner) run(ctx context.Context, binary string, req harnesses.ExecuteRe
 	}
 	quotaMessage := claudeQuotaMessage(stderr, runErr, agg)
 	if quotaMessage != "" {
-		MarkClaudeQuotaExhaustedFromMessage(quotaMessage, time.Now())
+		markClaudeQuotaExhaustedFromMessage(quotaMessage, time.Now())
 	}
 	if runErr != nil && status != "success" {
 		final.Error = runErr.Error()
@@ -232,7 +232,7 @@ func claudeQuotaMessage(stderr string, runErr error, agg *streamAggregate) strin
 			return runErr.Error()
 		}(),
 	} {
-		if IsClaudeQuotaExhaustedMessage(candidate) {
+		if isClaudeQuotaExhaustedMessage(candidate) {
 			return candidate
 		}
 	}

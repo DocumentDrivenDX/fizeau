@@ -47,20 +47,20 @@ func WithQuotaPTYCassetteDir(dir string) QuotaPTYOption {
 	}
 }
 
-func ReadClaudeQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+func readClaudeQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 	windows, account, _, err := captureClaudeQuotaViaPTY(context.Background(), timeout, opts...)
 	return windows, account, err
 }
 
-func RefreshClaudeQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) (ClaudeQuotaSnapshot, error) {
+func refreshClaudeQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) (claudeQuotaSnapshot, error) {
 	windows, account, _, err := captureClaudeQuotaViaPTY(context.Background(), timeout, opts...)
 	if err != nil {
-		return ClaudeQuotaSnapshot{}, err
+		return claudeQuotaSnapshot{}, err
 	}
 	return claudeQuotaSnapshotFromWindows(windows, account), nil
 }
 
-func ReadClaudeQuotaFromCassette(dir string) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+func readClaudeQuotaFromCassette(dir string) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 	reader, err := cassette.Open(dir)
 	if err != nil {
 		return nil, nil, err
@@ -129,13 +129,13 @@ func captureClaudeQuotaViaPTY(ctx context.Context, timeout time.Duration, opts .
 	return windows, account, result, nil
 }
 
-func claudeQuotaSnapshotFromWindows(windows []harnesses.QuotaWindow, account *harnesses.AccountInfo) ClaudeQuotaSnapshot {
+func claudeQuotaSnapshotFromWindows(windows []harnesses.QuotaWindow, account *harnesses.AccountInfo) claudeQuotaSnapshot {
 	fiveHourUsed := usedPercentFor(windows, "session")
 	weeklyUsed := usedPercentFor(windows, "weekly-all")
 	if weeklyUsed < 0 {
 		weeklyUsed = usedPercentFor(windows, "weekly-sonnet")
 	}
-	return ClaudeQuotaSnapshot{
+	return claudeQuotaSnapshot{
 		CapturedAt:        time.Now().UTC(),
 		FiveHourLimit:     100,
 		FiveHourRemaining: remainingPercent(fiveHourUsed),
@@ -209,7 +209,7 @@ func quotaRecord(windows []harnesses.QuotaWindow, metadata map[string]any) casse
 		Source:            "pty",
 		Status:            string(ptyquota.StatusOK),
 		CapturedAt:        time.Now().UTC().Format(time.RFC3339),
-		FreshnessWindow:   DefaultClaudeQuotaStaleAfter.String(),
+		FreshnessWindow:   defaultClaudeQuotaStaleAfter.String(),
 		StalenessBehavior: "stale quota evidence keeps Claude out of automatic routing and is treated as limited",
 		AccountClass:      accountClass,
 		Windows:           records,

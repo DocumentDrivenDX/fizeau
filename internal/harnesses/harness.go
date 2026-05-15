@@ -49,17 +49,16 @@ type HarnessStatus struct {
 
 // HarnessState captures the runtime routing-relevant state of a harness.
 type HarnessState struct {
-	Installed           bool                        `json:"installed"`
-	Reachable           bool                        `json:"reachable"`
-	Authenticated       bool                        `json:"authenticated"`
-	QuotaOK             bool                        `json:"quota_ok"`
-	QuotaState          string                      `json:"quota_state,omitempty"` // ok, blocked, unknown
-	Degraded            bool                        `json:"degraded"`
-	PolicyOK            bool                        `json:"policy_ok"`
-	LastCheckedUnix     int64                       `json:"last_checked_unix,omitempty"`
-	Error               string                      `json:"error,omitempty"`
-	Quota               *QuotaInfo                  `json:"quota,omitempty"`
-	ClaudeQuotaDecision *ClaudeQuotaRoutingDecision `json:"claude_quota_decision,omitempty"`
+	Installed       bool       `json:"installed"`
+	Reachable       bool       `json:"reachable"`
+	Authenticated   bool       `json:"authenticated"`
+	QuotaOK         bool       `json:"quota_ok"`
+	QuotaState      string     `json:"quota_state,omitempty"` // ok, blocked, unknown
+	Degraded        bool       `json:"degraded"`
+	PolicyOK        bool       `json:"policy_ok"`
+	LastCheckedUnix int64      `json:"last_checked_unix,omitempty"`
+	Error           string     `json:"error,omitempty"`
+	Quota           *QuotaInfo `json:"quota,omitempty"`
 }
 
 // QuotaInfo holds parsed quota data from CLI introspection.
@@ -67,12 +66,4 @@ type QuotaInfo struct {
 	PercentUsed int    `json:"percent_used"`
 	LimitWindow string `json:"limit_window,omitempty"` // e.g. "5h", "7 day"
 	ResetDate   string `json:"reset_date,omitempty"`   // e.g. "April 12"
-}
-
-// ClaudeQuotaRoutingDecision is the result of evaluating the durable Claude
-// quota cache for foreground routing decisions.
-type ClaudeQuotaRoutingDecision struct {
-	Fresh        bool   `json:"fresh"`
-	PreferClaude bool   `json:"prefer_claude"`
-	Reason       string `json:"reason,omitempty"`
 }
