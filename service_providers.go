@@ -4,22 +4,20 @@ package fizeau
 // It lives in the root package to avoid import cycles; provider config data is
 // injected via the ServiceConfig interface defined in service.go.
 //
-// Note: We cannot import agent/config or provider/openai here because both
-// packages import the root agent package, creating a cycle. Provider probing
-// is done inline using net/http.
+// Provider probing and model/provider metadata helpers live behind
+// internal/serviceimpl; this root file keeps the public service methods and
+// status projections stable at github.com/easel/fizeau.
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/serverinstance"
+	"github.com/easel/fizeau/internal/serviceimpl"
 )
 
 const (
@@ -391,33 +389,15 @@ func probeServiceProvider(ctx context.Context, entry ServiceProviderEntry) (stat
 }
 
 func probeServiceProviderDetailed(ctx context.Context, entry ServiceProviderEntry) providerProbeResult {
-	switch entry.Type {
-	case "anthropic":
-		if entry.APIKey == "" {
-			return providerProbeResult{status: "error: api_key not configured", detail: "api_key not configured"}
-		}
-		// Anthropic does not expose an unauthenticated /v1/models list endpoint.
-		// Treat key presence as the connectivity signal.
-		return providerProbeResult{status: "connected", caps: providerCapabilities(entry)}
-
-	case "openai", "openrouter", "lmstudio", "llama-server", "ds4", "omlx", "rapid-mlx", "vllm", "ollama", "minimax", "qwen", "zai", "":
-		if entry.BaseURL == "" {
-			return providerProbeResult{status: "error: base_url not configured", detail: "base_url not configured"}
-		}
-		n, err := discoverOpenAIModels(ctx, entry.BaseURL, entry.APIKey)
-		if err != nil {
-			msg := err.Error()
-			if serviceIsUnreachable(msg) {
-				return providerProbeResult{status: "unreachable", detail: serviceTrimError(msg)}
-			}
-			detail := serviceTrimError(msg)
-			return providerProbeResult{status: "error: " + detail, detail: detail}
-		}
-		return providerProbeResult{status: "connected", modelCount: n, caps: providerCapabilities(entry)}
-
-	default:
-		detail := "unknown provider type " + entry.Type
-		return providerProbeResult{status: "error: " + detail, detail: detail}
+	probe := serviceimpl.ProbeServiceProviderDetailed(ctx, serviceImplProviderEntry(entry))
+	return providerProbeResult{
+		status:         probe.Status,
+		modelCount:     probe.ModelCount,
+		caps:           append([]string(nil), probe.Capabilities...),
+		detail:         probe.Detail,
+		endpointName:   probe.EndpointName,
+		baseURL:        probe.BaseURL,
+		serverInstance: probe.ServerInstance,
 	}
 }
 
@@ -464,58 +444,14 @@ func probeProviderStatus(ctx context.Context, entry ServiceProviderEntry, captur
 }
 
 func shouldPreferProviderProbe(candidate, current providerProbeResult) bool {
-	return providerProbePriority(candidate.status) < providerProbePriority(current.status)
+	return serviceimpl.ShouldPreferProviderProbe(
+		serviceimpl.ProviderProbeResult{Status: candidate.status},
+		serviceimpl.ProviderProbeResult{Status: current.status},
+	)
 }
 
 func providerProbePriority(status string) int {
-	switch endpointStatus(status) {
-	case "connected":
-		return 0
-	case "unauthenticated":
-		return 1
-	case "unreachable":
-		return 2
-	default:
-		return 3
-	}
-}
-
-// discoverOpenAIModels queries the /v1/models endpoint and returns the model count.
-// This is a minimal inline version of provider/openai.DiscoverModels that avoids
-// the import cycle (provider/openai imports the root agent package).
-func discoverOpenAIModels(ctx context.Context, baseURL, apiKey string) (int, error) {
-	base := strings.TrimRight(baseURL, "/")
-	endpoint := base + "/models"
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return 0, fmt.Errorf("discovery: build request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return 0, fmt.Errorf("discovery: %s returned HTTP %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	var mr struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
-		return 0, fmt.Errorf("discovery: decode response from %s: %w", endpoint, err)
-	}
-	return len(mr.Data), nil
+	return serviceimpl.ProviderProbePriority(status)
 }
 
 // serviceProviderCooldown is retained for the provider status field; live
@@ -525,29 +461,15 @@ func serviceProviderCooldown(sc ServiceConfig, providerName string, cooldown tim
 }
 
 func normalizeServiceProviderType(t string) string {
-	t = strings.ToLower(strings.TrimSpace(t))
-	if t == "" {
-		return "openai"
-	}
-	return t
+	return serviceimpl.NormalizeProviderType(t)
 }
 
 func serviceIsUnreachable(msg string) bool {
-	lower := strings.ToLower(msg)
-	return strings.Contains(lower, "connection refused") ||
-		strings.Contains(lower, "no such host") ||
-		strings.Contains(lower, "dial tcp") ||
-		strings.Contains(lower, "unreachable") ||
-		strings.Contains(lower, "connection reset") ||
-		strings.Contains(lower, "i/o timeout")
+	return serviceimpl.ServiceIsUnreachable(msg)
 }
 
 func serviceTrimError(msg string) string {
-	const maxLen = 120
-	if len(msg) > maxLen {
-		return msg[:maxLen] + "..."
-	}
-	return msg
+	return serviceimpl.ServiceTrimError(msg)
 }
 
 func providerEndpointStatusesFromProbe(entry ServiceProviderEntry, probe providerProbeResult, capturedAt time.Time) []EndpointStatus {

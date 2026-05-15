@@ -4,55 +4,27 @@ import (
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/modelcatalog"
 	"github.com/easel/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/serviceimpl"
 )
 
 func harnessPaymentKind(name string, cfg harnesses.HarnessConfig) BillingModel {
-	if name == "" {
-		name = cfg.Name
-	}
-	if billing := modelcatalog.BillingForHarness(name); billing != modelcatalog.BillingModelUnknown {
-		return billing
-	}
-	if billing := modelcatalog.BillingForProviderSystem(name); billing != modelcatalog.BillingModelUnknown {
-		return billing
-	}
-	if cfg.IsSubscription {
-		return modelcatalog.BillingModelSubscription
-	}
-	if cfg.IsLocal {
-		return modelcatalog.BillingModelFixed
-	}
-	return modelcatalog.BillingModelUnknown
+	return serviceimpl.HarnessPaymentKind(name, cfg)
 }
 
 func harnessRunsInProcessOrHTTP(cfg harnesses.HarnessConfig) bool {
-	return cfg.IsHTTPProvider || cfg.IsLocal
+	return serviceimpl.HarnessRunsInProcessOrHTTP(cfg)
 }
 
 func serviceProviderBilling(entry ServiceProviderEntry) BillingModel {
-	if entry.Billing != modelcatalog.BillingModelUnknown {
-		return entry.Billing
-	}
-	if billing := modelcatalog.BillingForProviderSystem(entry.Type); billing != modelcatalog.BillingModelUnknown {
-		return billing
-	}
-	return modelcatalog.BillingForHarness(entry.Type)
+	return serviceimpl.ServiceProviderBilling(serviceImplProviderEntry(entry))
 }
 
 func serviceProviderDefaultInclusion(entry ServiceProviderEntry) bool {
-	if entry.IncludeByDefaultSet {
-		return entry.IncludeByDefault
-	}
-	switch serviceProviderBilling(entry) {
-	case modelcatalog.BillingModelFixed, modelcatalog.BillingModelSubscription:
-		return true
-	default:
-		return false
-	}
+	return serviceimpl.ServiceProviderDefaultInclusion(serviceImplProviderEntry(entry))
 }
 
 func providerTypeUsesFixedBilling(providerType string) bool {
-	return modelcatalog.BillingForProviderSystem(providerType) == modelcatalog.BillingModelFixed
+	return serviceimpl.ProviderTypeUsesFixedBilling(providerType)
 }
 
 func routingHarnessEntryFromMetadata(name string, cfg harnesses.HarnessConfig, st harnesses.HarnessStatus) routing.HarnessEntry {

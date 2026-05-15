@@ -11,18 +11,13 @@ package fizeau
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
-	"github.com/easel/fizeau/internal/compaction"
 	"github.com/easel/fizeau/internal/harnesses"
-	"github.com/easel/fizeau/internal/harnesses/builtin"
 	"github.com/easel/fizeau/internal/modelcatalog"
 	"github.com/easel/fizeau/internal/modelsnapshot"
-	"github.com/easel/fizeau/internal/provider/lmstudio"
-	"github.com/easel/fizeau/internal/provider/omlx"
-	"github.com/easel/fizeau/internal/provider/openrouter"
 	"github.com/easel/fizeau/internal/serverinstance"
+	"github.com/easel/fizeau/internal/serviceimpl"
 )
 
 // ListModels returns models matching the filter, with full metadata.
@@ -87,82 +82,23 @@ func (s *service) listModelsForSubprocessHarness(filter ModelFilter) []ModelInfo
 }
 
 func subprocessHarnessModelIDs(name string, cfg harnesses.HarnessConfig) []string {
-	models := append([]string(nil), cfg.Models...)
-	mdh, ok := builtin.New(name).(harnesses.ModelDiscoveryHarness)
-	if !ok {
-		return models
-	}
-	snapshot := mdh.DefaultModelSnapshot()
-	models = appendUniqueModelIDs(models, snapshot.Models...)
-	for _, family := range mdh.SupportedAliases() {
-		resolved, err := mdh.ResolveModelAlias(family, snapshot)
-		if err == nil && resolved != family {
-			models = appendUniqueModelIDs(models, resolved)
-		}
-	}
-	return models
+	return serviceimpl.SubprocessHarnessModelIDs(name, cfg)
 }
 
 func subprocessHarnessAutoRoutingModels(name string, cfg harnesses.HarnessConfig) []string {
-	models := make([]string, 0)
-	if cfg.DefaultModel != "" {
-		models = appendUniqueModelIDs(models, resolveSubprocessModelAlias(name, cfg.DefaultModel))
-	}
-	for _, id := range subprocessHarnessModelIDs(name, cfg) {
-		models = appendUniqueModelIDs(models, resolveSubprocessModelAlias(name, id))
-	}
-	return models
+	return serviceimpl.SubprocessHarnessAutoRoutingModels(name, cfg)
 }
 
 func resolveSubprocessModelAlias(harness, model string) string {
-	switch harness {
-	case "claude":
-		return claudeCLIExecutableModel(model)
-	default:
-		mdh, ok := builtin.New(harness).(harnesses.ModelDiscoveryHarness)
-		if !ok {
-			return model
-		}
-		resolved, err := mdh.ResolveModelAlias(model, mdh.DefaultModelSnapshot())
-		if err != nil {
-			return model
-		}
-		return resolved
-	}
+	return serviceimpl.ResolveSubprocessModelAlias(harness, model)
 }
 
 func claudeCLIExecutableModel(model string) string {
-	normalized := strings.ToLower(strings.TrimSpace(model))
-	switch {
-	case normalized == "sonnet" || strings.HasPrefix(normalized, "sonnet-") || strings.HasPrefix(normalized, "claude-sonnet-"):
-		return "sonnet"
-	case normalized == "opus" || strings.HasPrefix(normalized, "opus-") || strings.HasPrefix(normalized, "claude-opus-"):
-		return "opus"
-	case normalized == "haiku" || strings.HasPrefix(normalized, "haiku-") || strings.HasPrefix(normalized, "claude-haiku-"):
-		return "haiku"
-	default:
-		return model
-	}
+	return serviceimpl.ClaudeCLIExecutableModel(model)
 }
 
 func appendUniqueModelIDs(values []string, additions ...string) []string {
-	for _, value := range additions {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		found := false
-		for _, existing := range values {
-			if existing == value {
-				found = true
-				break
-			}
-		}
-		if !found {
-			values = append(values, value)
-		}
-	}
-	return values
+	return serviceimpl.AppendUniqueModelIDs(values, additions...)
 }
 
 func (s *service) listModelsFromSnapshot(ctx context.Context, sc ServiceConfig, cat *modelcatalog.Catalog, snapshot modelsnapshot.ModelSnapshot, filter ModelFilter) []ModelInfo {
@@ -264,110 +200,36 @@ type modelDiscoveryEndpoint struct {
 }
 
 func modelDiscoveryEndpoints(entry ServiceProviderEntry) []modelDiscoveryEndpoint {
-	if len(entry.Endpoints) > 0 {
-		out := make([]modelDiscoveryEndpoint, 0, len(entry.Endpoints))
-		for _, ep := range entry.Endpoints {
-			if strings.TrimSpace(ep.BaseURL) == "" {
-				continue
-			}
-			out = append(out, modelDiscoveryEndpoint{
-				Name:           endpointDisplayName(ep.Name, ep.BaseURL),
-				BaseURL:        ep.BaseURL,
-				ServerInstance: serverinstance.Normalize(ep.BaseURL, ep.ServerInstance),
-			})
-		}
-		return out
+	endpoints := serviceimpl.ModelDiscoveryEndpoints(serviceImplProviderEntry(entry))
+	out := make([]modelDiscoveryEndpoint, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		out = append(out, modelDiscoveryEndpoint{
+			Name:           endpoint.Name,
+			BaseURL:        endpoint.BaseURL,
+			ServerInstance: endpoint.ServerInstance,
+		})
 	}
-	if strings.TrimSpace(entry.BaseURL) == "" {
-		return nil
-	}
-	return []modelDiscoveryEndpoint{{
-		Name:           endpointDisplayName("default", entry.BaseURL),
-		BaseURL:        entry.BaseURL,
-		ServerInstance: serverinstance.Normalize(entry.BaseURL, entry.ServerInstance),
-	}}
+	return out
 }
 
 func endpointDisplayName(name, baseURL string) string {
-	if trimmed := strings.TrimSpace(name); trimmed != "" {
-		return trimmed
-	}
-	u, err := url.Parse(baseURL)
-	if err == nil && u.Host != "" {
-		return u.Host
-	}
-	return "default"
+	return serviceimpl.EndpointDisplayName(name, baseURL)
 }
 
 // resolveContextEvidence resolves the context window for a model using the
 // precedence chain: provider config > provider API > catalog > default.
 func resolveContextEvidence(ctx context.Context, entry ServiceProviderEntry, modelID string, cat *modelcatalog.Catalog) (int, string) {
-	modelID = strings.TrimSpace(modelID)
-	if modelID == "" {
-		return 0, ContextSourceUnknown
-	}
-	if entry.ContextWindow > 0 {
-		return entry.ContextWindow, ContextSourceProviderConfig
-	}
-	if limits, source := providerAPIContextEvidence(ctx, entry, modelID); limits > 0 {
-		return limits, source
-	}
-	if cat != nil {
-		if n := cat.ContextWindowForModel(modelID); n > 0 {
-			return n, ContextSourceCatalog
-		}
-	}
-	return compaction.DefaultContextWindow, ContextSourceDefault
-}
-
-func providerAPIContextEvidence(ctx context.Context, entry ServiceProviderEntry, modelID string) (int, string) {
-	switch entry.Type {
-	case "lmstudio":
-		if entry.BaseURL == "" {
-			return 0, ""
-		}
-		if limits := lmstudio.LookupModelLimits(ctx, entry.BaseURL, modelID); limits.ContextLength > 0 {
-			return limits.ContextLength, ContextSourceProviderAPI
-		}
-	case "omlx":
-		if entry.BaseURL == "" {
-			return 0, ""
-		}
-		if limits := omlx.LookupModelLimits(ctx, entry.BaseURL, modelID); limits.ContextLength > 0 {
-			return limits.ContextLength, ContextSourceProviderAPI
-		}
-	case "openrouter":
-		if entry.BaseURL == "" {
-			return 0, ""
-		}
-		if limits := openrouter.LookupModelLimits(ctx, entry.BaseURL, entry.APIKey, entry.Headers, modelID); limits.ContextLength > 0 {
-			return limits.ContextLength, ContextSourceProviderAPI
-		}
-	}
-	return 0, ""
+	return serviceimpl.ResolveContextEvidence(ctx, serviceImplProviderEntry(entry), modelID, cat)
 }
 
 // catalogCostAndPerf extracts CostInfo and PerfSignal for a model from the catalog.
 func catalogCostAndPerf(cat *modelcatalog.Catalog, modelID string) (CostInfo, PerfSignal) {
-	entry, ok := cat.LookupModel(modelID)
-	if !ok {
-		return CostInfo{}, PerfSignal{}
-	}
-	return CostInfo{
-			InputPerMTok:  catalogEntryInputCost(entry),
-			OutputPerMTok: catalogEntryOutputCost(entry),
-		}, PerfSignal{
-			SpeedTokensPerSec: entry.SpeedTokensPerSec,
-			SWEBenchVerified:  entry.SWEBenchVerified,
-		}
+	cost, perf := serviceimpl.CatalogCostAndPerf(cat, modelID)
+	return adaptServiceImplCostInfo(cost), adaptServiceImplPerfSignal(perf)
 }
 
 func catalogPowerEligibility(cat *modelcatalog.Catalog, modelID string) (int, bool, bool) {
-	eligibility, ok := cat.ModelEligibility(modelID)
-	if !ok {
-		return 0, false, false
-	}
-	return eligibility.Power, eligibility.AutoRoutable, eligibility.ExactPinOnly
+	return serviceimpl.CatalogPowerEligibility(cat, modelID)
 }
 
 // catalogPowerForModel returns the catalog-projected power for a model
@@ -376,35 +238,10 @@ func catalogPowerEligibility(cat *modelcatalog.Catalog, modelID string) (int, bo
 // "unknown / exact-pin-only / no catalog entry" for the
 // ServiceRoutingActual.Power surface.
 func catalogPowerForModel(cat *modelcatalog.Catalog, modelID string) int {
-	if cat == nil || modelID == "" {
-		return 0
-	}
-	power, _, _ := catalogPowerEligibility(cat, modelID)
-	return power
-}
-
-func catalogEntryInputCost(entry modelcatalog.ModelEntry) float64 {
-	if entry.CostInputPerM != 0 {
-		return entry.CostInputPerM
-	}
-	return entry.CostInputPerMTok
-}
-
-func catalogEntryOutputCost(entry modelcatalog.ModelEntry) float64 {
-	if entry.CostOutputPerM != 0 {
-		return entry.CostOutputPerM
-	}
-	return entry.CostOutputPerMTok
+	return serviceimpl.CatalogPowerForModel(cat, modelID)
 }
 
 // providerCapabilities returns the capability set for a provider entry.
 func providerCapabilities(entry ServiceProviderEntry) []string {
-	switch normalizeServiceProviderType(entry.Type) {
-	case "anthropic":
-		return []string{"tool_use", "vision", "streaming"}
-	case "omlx":
-		return []string{"tool_use", "streaming", "json_mode", "reasoning_control"}
-	default:
-		return []string{"tool_use", "streaming", "json_mode"}
-	}
+	return serviceimpl.ProviderCapabilities(serviceImplProviderEntry(entry))
 }

@@ -64,6 +64,54 @@ classes:
 - `Implementation-owned`: concrete mechanics or white-box tests that should
   move behind the named internal-package owner.
 
+## Post-extraction root source allowlist
+
+Update 2026-05-15: the ADR-008 extraction chain is now far enough along that
+the module root should be read as an explicit allowlist, not as the planning
+inventory above. The enforced source-file set is locked by
+`TestRootFacadeSourceAllowlist` in `service_root_facade_allowlist_test.go`.
+
+### Public contract and compatibility surface
+
+These files are the deliberate import boundary for `github.com/easel/fizeau`:
+
+- Contract types, constructors, and public metrics:
+  `service.go`, `service_events.go`, `service_session_projection.go`,
+  `service_routing_quality.go`, `routing_errors.go`, `role_correlation.go`.
+- Public aliases, wrappers, and CLI-facing compatibility seams:
+  `public_api.go`, `public_cli_api.go`, `provider_quota_state.go`,
+  `provider_burn_rate.go`, `service_catalog_impl_adapters.go`,
+  `metadata_billing.go`, `service_models.go`, `service_providers.go`,
+  `service_policies.go`, `service_status.go`, `service_snapshot.go`,
+  `service_aliveness.go`, `service_capabilities.go`,
+  `service_catalog_cache.go`, `service_execute_fanout.go`,
+  `service_progress.go`, `service_session_log.go`, `service_taillog.go`.
+- Build-tag and test-seam compatibility files:
+  `options_prod.go`, `options_testseam.go`, `service_execute_seam_prod.go`,
+  `service_execute_seam_testseam.go`, `testseam_types.go`.
+
+### Root facade adapters over internal owners
+
+These root files still exist on purpose, but after the extraction chain they
+are adapters/wiring over internal execution, routing, and quota owners rather
+than the old home of the implementation bulk:
+
+- Execution and harness dispatch:
+  `service_execute.go`, `service_execute_dispatch.go`,
+  `service_harness_instances.go`, `service_model_resolution.go`,
+  `service_native_provider.go`, `service_override.go`,
+  `service_projection.go`, `service_reasoning.go`.
+- Routing, status, and quota adapters:
+  `service_probe.go`, `service_route_attempts.go`,
+  `service_route_leases.go`, `service_routestatus.go`,
+  `service_routing.go`, `service_subscription_quota.go`.
+- Platform-specific lifecycle adapters:
+  `service_stale_harness_reaper.go`,
+  `service_stale_harness_reaper_unix.go`,
+  `service_stale_harness_reaper_windows.go`.
+
+Anything outside this allowlist is drift and should fail the root-facade audit.
+
 ### Public facade
 
 These files define the public contract, or black-box tests that intentionally

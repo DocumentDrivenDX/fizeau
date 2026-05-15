@@ -10,6 +10,10 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 - Consolidated repository benchmark assets under `bench/`: the runner now
   lives at `bench/run`, the scorer package moved to `bench/scorer`, and the
   canonical results root is `bench/results/`.
+- Model/provider listing, provider probing, billing classification, and policy
+  metadata helpers now live behind `internal/serviceimpl`; the root
+  `github.com/easel/fizeau` package keeps the same public import path and
+  method names as a thin facade over those internal owners.
 
 ## [v0.14.1] — 2026-05-15
 
