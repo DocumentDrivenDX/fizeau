@@ -1,4 +1,4 @@
-package fizeau
+package routehealth
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"github.com/easel/fizeau/internal/harnesses/harnesstest"
 )
 
-// fakeClock is a controllable clock for refreshScheduler tests. Time
-// only advances when the test calls Advance; tickers fire synchronously
-// from the caller's goroutine when their next-fire instant is reached.
+// fakeClock is a controllable clock for RefreshScheduler tests. Time only
+// advances when the test calls Advance; tickers fire synchronously from the
+// caller's goroutine when their next-fire instant is reached.
 type fakeClock struct {
 	mu      sync.Mutex
 	now     time.Time
@@ -41,11 +41,6 @@ func (c *fakeClock) NewTicker(d time.Duration) schedulerTicker {
 	return t
 }
 
-// Advance moves the fake clock forward by d and fires every ticker
-// whose next-fire instant is at or before the new now. Each ticker
-// fires at most once per Advance — chained ticks within a single
-// Advance window are coalesced (matching time.Ticker's drop-on-full
-// behavior).
 func (c *fakeClock) Advance(d time.Duration) {
 	c.mu.Lock()
 	c.now = c.now.Add(d)
@@ -89,8 +84,6 @@ func (t *fakeTicker) fireUpTo(now time.Time) {
 	}
 }
 
-// waitForTick waits for the scheduler to publish a tick-completed
-// notification for any harness, or fails the test on timeout.
 func waitForTick(t *testing.T, ch <-chan string, timeout time.Duration) string {
 	t.Helper()
 	select {
@@ -102,16 +95,11 @@ func waitForTick(t *testing.T, ch <-chan string, timeout time.Duration) string {
 	}
 }
 
-// TestRefreshScheduler_Debounces verifies that the scheduler fires
-// RefreshQuota at QuotaFreshness()/2 cadence, and skips ticks when the
-// cached CapturedAt is still within QuotaFreshness() of now.
 func TestRefreshScheduler_Debounces(t *testing.T) {
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	clock := newFakeClock(start)
 
 	freshness := 30 * time.Minute
-	// Seed CapturedAt at start time; State=QuotaOK so it isn't
-	// treated as cache-cold.
 	qh := harnesstest.NewSyntheticQuotaHarness("synth", harnesses.QuotaStatus{
 		State:      harnesses.QuotaOK,
 		CapturedAt: start,
@@ -130,32 +118,23 @@ func TestRefreshScheduler_Debounces(t *testing.T) {
 	sched.Start(context.Background())
 	t.Cleanup(sched.Stop)
 
-	// Tick 1 at freshness/2 (15m): CapturedAt is 15m old, still
-	// within freshness → skip.
 	clock.Advance(freshness / 2)
 	waitForTick(t, notify, time.Second)
 	if got := qh.ProbeCount(); got != 0 {
 		t.Fatalf("after first tick: ProbeCount=%d want 0 (still fresh)", got)
 	}
 
-	// Tick 2 at freshness (30m total): CapturedAt is 30m old,
-	// outside freshness → refresh.
 	clock.Advance(freshness / 2)
 	waitForTick(t, notify, time.Second)
 	if got := qh.ProbeCount(); got != 1 {
 		t.Fatalf("after second tick: ProbeCount=%d want 1", got)
 	}
 
-	// The refresh stored the same QuotaStatus as before (with the
-	// CapturedAt from the original status, which is still `start`).
-	// Update synthetic status to reflect "just refreshed" so the
-	// next tick is correctly classified as still-fresh.
 	qh.SetQuotaStatus(harnesses.QuotaStatus{
 		State:      harnesses.QuotaOK,
 		CapturedAt: clock.Now(),
 	})
 
-	// Tick 3 at freshness*1.5 (45m): CapturedAt is 15m old → skip.
 	clock.Advance(freshness / 2)
 	waitForTick(t, notify, time.Second)
 	if got := qh.ProbeCount(); got != 1 {
@@ -163,9 +142,6 @@ func TestRefreshScheduler_Debounces(t *testing.T) {
 	}
 }
 
-// TestRefreshScheduler_StartupKickoff verifies that scheduler
-// construction fires a single RefreshQuota for every registered
-// QuotaHarness whose cached state is QuotaUnavailable (cache-cold).
 func TestRefreshScheduler_StartupKickoff(t *testing.T) {
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	clock := newFakeClock(start)
@@ -181,9 +157,7 @@ func TestRefreshScheduler_StartupKickoff(t *testing.T) {
 	}, nil)
 	warmQuota.SetQuotaFreshness(30 * time.Minute)
 
-	coldAccount := harnesstest.NewSyntheticAccountHarness("coldacct", harnesses.AccountSnapshot{
-		// CapturedAt zero → cache-cold.
-	}, 7*24*time.Hour)
+	coldAccount := harnesstest.NewSyntheticAccountHarness("coldacct", harnesses.AccountSnapshot{}, 7*24*time.Hour)
 
 	lookup := func(name string) harnesses.Harness {
 		switch name {
@@ -201,7 +175,6 @@ func TestRefreshScheduler_StartupKickoff(t *testing.T) {
 	sched.Start(context.Background())
 	t.Cleanup(sched.Stop)
 
-	// Wait for the startup goroutines to complete by polling.
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		if coldQuota.ProbeCount() == 1 && coldAccount.ProbeCount() == 1 {
@@ -221,24 +194,18 @@ func TestRefreshScheduler_StartupKickoff(t *testing.T) {
 	}
 }
 
-// TestRefreshScheduler_SingleFlight verifies that concurrent
-// RefreshQuota callers driven by the scheduler share one underlying
-// probe through the harness's cache lock — the scheduler does not
-// double-probe under simultaneous tick + external refresh.
 func TestRefreshScheduler_SingleFlight(t *testing.T) {
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	clock := newFakeClock(start)
 
 	freshness := 30 * time.Minute
-	captured := start.Add(-2 * freshness) // stale so the tick refreshes
+	captured := start.Add(-2 * freshness)
 	qh := harnesstest.NewSyntheticQuotaHarness("synth", harnesses.QuotaStatus{
 		State:      harnesses.QuotaOK,
 		CapturedAt: captured,
 	}, nil)
 	qh.SetQuotaFreshness(freshness)
 
-	// Latch: the scheduler's RefreshQuota and an external
-	// RefreshQuota must collide in the same single-flight cohort.
 	latch := make(chan struct{})
 	qh.SetProbeLatch(latch)
 
@@ -253,18 +220,14 @@ func TestRefreshScheduler_SingleFlight(t *testing.T) {
 	sched.Start(context.Background())
 	t.Cleanup(sched.Stop)
 
-	// Drive the tick.
 	clock.Advance(freshness / 2)
 
-	// External caller races the scheduler. Both should resolve to
-	// a single probe.
 	externalDone := make(chan struct{})
 	go func() {
 		_, _ = qh.RefreshQuota(context.Background())
 		close(externalDone)
 	}()
 
-	// Wait long enough for both callers to enter the probe.
 	time.Sleep(20 * time.Millisecond)
 	close(latch)
 
@@ -280,9 +243,6 @@ func TestRefreshScheduler_SingleFlight(t *testing.T) {
 	}
 }
 
-// TestRefreshScheduler_StopCancelsTickers verifies that Stop cancels
-// the scheduler context, all ticker goroutines exit, and no further
-// refreshes fire after Stop returns.
 func TestRefreshScheduler_StopCancelsTickers(t *testing.T) {
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	clock := newFakeClock(start)
@@ -304,25 +264,16 @@ func TestRefreshScheduler_StopCancelsTickers(t *testing.T) {
 	sched.Start(context.Background())
 	sched.Stop()
 
-	// After Stop returns, the ticker goroutine has exited (wg
-	// drained). Subsequent Advance must not race with the goroutine
-	// or cause further refreshes.
 	before := qh.ProbeCount()
 	clock.Advance(freshness * 4)
-	// Give any (incorrectly) leaked goroutine time to misbehave.
 	time.Sleep(20 * time.Millisecond)
 	if got := qh.ProbeCount(); got != before {
 		t.Fatalf("post-Stop ProbeCount=%d want %d (no refresh after Stop)", got, before)
 	}
 
-	// Stop is idempotent.
 	sched.Stop()
 }
 
-// TestRefreshScheduler_AccountTickerSkippedWhenSameCadence verifies
-// that a harness implementing both QuotaHarness and AccountHarness
-// with matching freshness windows runs only the quota ticker — no
-// duplicate account ticker is registered.
 func TestRefreshScheduler_AccountTickerSkippedWhenSameCadence(t *testing.T) {
 	start := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
 	clock := newFakeClock(start)
@@ -348,13 +299,11 @@ func TestRefreshScheduler_AccountTickerSkippedWhenSameCadence(t *testing.T) {
 		return nil
 	}, []string{"combo"}, clock)
 	sched.tickNotify = notify
-
 	sched.Start(context.Background())
 	t.Cleanup(sched.Stop)
 
 	clock.Advance(freshness / 2)
 	waitForTick(t, notify, time.Second)
-
 	if got := combo.quota.ProbeCount(); got != 1 {
 		t.Fatalf("quota probe count: %d want 1", got)
 	}
@@ -363,49 +312,44 @@ func TestRefreshScheduler_AccountTickerSkippedWhenSameCadence(t *testing.T) {
 	}
 }
 
-// comboHarness implements both QuotaHarness and AccountHarness by
-// delegating to underlying synthetic instances. Used to exercise the
+// comboHarness implements both QuotaHarness and AccountHarness by delegating to
+// underlying synthetic instances. Used to exercise the
 // account-ticker-suppression branch.
 type comboHarness struct {
 	quota   *harnesstest.SyntheticQuotaHarness
 	account *harnesstest.SyntheticAccountHarness
 }
 
-func (c *comboHarness) Info() harnesses.HarnessInfo { return c.quota.Info() }
-func (c *comboHarness) HealthCheck(ctx context.Context) error {
-	return c.quota.HealthCheck(ctx)
-}
-func (c *comboHarness) Execute(ctx context.Context, req harnesses.ExecuteRequest) (<-chan harnesses.Event, error) {
-	return c.quota.Execute(ctx, req)
-}
-func (c *comboHarness) QuotaStatus(ctx context.Context, now time.Time) (harnesses.QuotaStatus, error) {
-	return c.quota.QuotaStatus(ctx, now)
-}
-func (c *comboHarness) RefreshQuota(ctx context.Context) (harnesses.QuotaStatus, error) {
-	return c.quota.RefreshQuota(ctx)
-}
-func (c *comboHarness) QuotaFreshness() time.Duration { return c.quota.QuotaFreshness() }
-func (c *comboHarness) SupportedLimitIDs() []string   { return c.quota.SupportedLimitIDs() }
-func (c *comboHarness) AccountStatus(ctx context.Context, now time.Time) (harnesses.AccountSnapshot, error) {
-	return c.account.AccountStatus(ctx, now)
-}
-func (c *comboHarness) RefreshAccount(ctx context.Context) (harnesses.AccountSnapshot, error) {
-	return c.account.RefreshAccount(ctx)
-}
-func (c *comboHarness) AccountFreshness() time.Duration { return c.account.AccountFreshness() }
+func (h *comboHarness) Info() harnesses.HarnessInfo { return h.quota.Info() }
 
-// TestHarnessByName verifies the service.harnessByName helper returns
-// the registered Harness instance for each known harness and nil for
-// unknown names.
-func TestHarnessByName(t *testing.T) {
-	svc := &service{harnessInstances: defaultHarnessInstances()}
+func (h *comboHarness) HealthCheck(ctx context.Context) error { return h.quota.HealthCheck(ctx) }
 
-	for _, name := range []string{"claude", "codex", "gemini", "opencode", "pi"} {
-		if h := svc.harnessByName(name); h == nil {
-			t.Errorf("harnessByName(%q) = nil; want non-nil instance", name)
-		}
-	}
-	if h := svc.harnessByName("does-not-exist"); h != nil {
-		t.Errorf("harnessByName(unknown) = %v; want nil", h)
-	}
+func (h *comboHarness) Execute(ctx context.Context, req harnesses.ExecuteRequest) (<-chan harnesses.Event, error) {
+	return h.quota.Execute(ctx, req)
+}
+
+func (h *comboHarness) QuotaStatus(ctx context.Context, now time.Time) (harnesses.QuotaStatus, error) {
+	return h.quota.QuotaStatus(ctx, now)
+}
+
+func (h *comboHarness) RefreshQuota(ctx context.Context) (harnesses.QuotaStatus, error) {
+	return h.quota.RefreshQuota(ctx)
+}
+
+func (h *comboHarness) QuotaFreshness() time.Duration {
+	return h.quota.QuotaFreshness()
+}
+
+func (h *comboHarness) SupportedLimitIDs() []string { return h.quota.SupportedLimitIDs() }
+
+func (h *comboHarness) AccountStatus(ctx context.Context, now time.Time) (harnesses.AccountSnapshot, error) {
+	return h.account.AccountStatus(ctx, now)
+}
+
+func (h *comboHarness) RefreshAccount(ctx context.Context) (harnesses.AccountSnapshot, error) {
+	return h.account.RefreshAccount(ctx)
+}
+
+func (h *comboHarness) AccountFreshness() time.Duration {
+	return h.account.AccountFreshness()
 }

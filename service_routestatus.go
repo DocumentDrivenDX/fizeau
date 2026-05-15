@@ -185,30 +185,34 @@ func routeAttemptCandidateCooldown(records []routehealth.Record, providerName, e
 	}
 }
 
+type lastDecisionEntry struct {
+	decision *RouteDecision
+	at       time.Time
+}
+
 // cacheRouteDecision stores a ResolveRoute result keyed by routeKey.
 // Called by ResolveRoute after a successful resolution.
 func (s *service) cacheRouteDecision(routeKey string, dec *RouteDecision) {
 	if routeKey == "" || dec == nil {
 		return
 	}
-	s.lastDecisionMu.Lock()
-	defer s.lastDecisionMu.Unlock()
-	if s.lastDecisionCache == nil {
-		s.lastDecisionCache = make(map[string]lastDecisionEntry)
+	if s.routeStatusCache == nil {
+		s.routeStatusCache = routehealth.NewDecisionStore[*RouteDecision]()
 	}
-	s.lastDecisionCache[routeKey] = lastDecisionEntry{
-		decision: dec,
-		at:       time.Now(),
-	}
+	s.routeStatusCache.Store(routeKey, dec, time.Now())
 }
 
 // lookupRouteDecision retrieves a cached decision for routeKey.
 func (s *service) lookupRouteDecision(routeKey string) (lastDecisionEntry, bool) {
-	s.lastDecisionMu.RLock()
-	defer s.lastDecisionMu.RUnlock()
-	if s.lastDecisionCache == nil {
+	if s == nil || s.routeStatusCache == nil {
 		return lastDecisionEntry{}, false
 	}
-	e, ok := s.lastDecisionCache[routeKey]
-	return e, ok
+	decision, ok := s.routeStatusCache.Lookup(routeKey)
+	if !ok {
+		return lastDecisionEntry{}, false
+	}
+	return lastDecisionEntry{
+		decision: decision.Decision,
+		at:       decision.At,
+	}, true
 }

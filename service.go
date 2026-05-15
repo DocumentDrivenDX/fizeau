@@ -6,7 +6,6 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
@@ -918,18 +917,12 @@ type service struct {
 	// sub-interfaces (QuotaHarness, AccountHarness). harnessByName is
 	// the consultation seam.
 	harnessInstances map[string]harnesses.Harness
-	refreshScheduler *refreshScheduler
+	refreshScheduler *routehealth.RefreshScheduler
 	hub              *serviceimpl.SessionHub
 
-	// lastDecisionMu guards lastDecisionCache.
-	lastDecisionMu sync.RWMutex
-	// lastDecisionCache maps route key → (decision, time). Populated by
-	// ResolveRoute; read by RouteStatus.
-	lastDecisionCache map[string]lastDecisionEntry
-
 	routeHealth      *routehealth.Store
-	routeLeases      *routehealth.LeaseStore
-	routeUtilization *routehealth.UtilizationStore
+	routeStatusCache *routehealth.DecisionStore[*RouteDecision]
+	routeSticky      *routehealth.StickyState
 
 	// catalog is the service-scope model-catalog cache. Populated lazily
 	// on first use by routing + chat paths; shared across requests so the
@@ -983,12 +976,6 @@ func (s *service) now() time.Time {
 	return s.runtime.Now()
 }
 
-// lastDecisionEntry caches the most recent RouteDecision for a route key.
-type lastDecisionEntry struct {
-	decision *RouteDecision
-	at       time.Time
-}
-
 // loadServiceConfig, when non-nil, is called by New to load a ServiceConfig
 // from a directory path when opts.ServiceConfig is nil. It is registered by
 // the config package via init() to break the import cycle (config imports root).
@@ -1029,8 +1016,8 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		runtime:          serviceimpl.NewRuntime(serviceimpl.RuntimeDeps{}),
 		catalog:          newCatalogCache(catalogCacheOptions{AsyncRefreshTimeout: opts.catalogRefreshTimeout()}),
 		routeHealth:      routehealth.NewStore(),
-		routeLeases:      routehealth.NewLeaseStore(),
-		routeUtilization: routehealth.NewUtilizationStore(),
+		routeStatusCache: routehealth.NewDecisionStore[*RouteDecision](),
+		routeSticky:      routehealth.NewStickyState(),
 		routingQuality:   newRoutingQualityStore(),
 		providerQuota:    NewProviderQuotaStateStore(),
 		providerBurnRate: NewProviderBurnRateTracker(),
@@ -1067,7 +1054,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 	svc.startQuotaRecoveryProbeLoop()
 	svc.startupAlivenessProbe(context.Background())
 	svc.startAlivenessProbeLoop()
-	svc.refreshScheduler = newRefreshScheduler(svc.harnessByName, svc.registry.Names(), nil)
+	svc.refreshScheduler = routehealth.NewRefreshScheduler(svc.harnessByName, svc.registry.Names())
 	svc.refreshScheduler.Start(startupCtx)
 	return svc, nil
 }
