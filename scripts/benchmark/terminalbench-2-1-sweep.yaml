@@ -35,6 +35,34 @@ defaults:
       from provider slowness.
 
 # ---------------------------------------------------------------------------
+# Lane Aliases
+# ---------------------------------------------------------------------------
+# Short CLI aliases used by ./bench/run and fiz-bench sweep --lanes. Keep this
+# as the single alias source; shell wrappers should read from here rather than
+# hand-maintaining a case arm per alias.
+
+lane_aliases:
+  openai-gpt55: fiz-openai-gpt-5-5
+  gpt55: fiz-openai-gpt-5-5
+  openai: fiz-openai-gpt-5-5
+  openrouter-qwen36: fiz-openrouter-qwen3-6-27b
+  or-qwen36: fiz-openrouter-qwen3-6-27b
+  qwen36-or: fiz-openrouter-qwen3-6-27b
+  sindri-llamacpp: fiz-sindri-llamacpp-qwen3-6-27b
+  sindri-llcpp: fiz-sindri-llamacpp-qwen3-6-27b
+  sindri-vllm: fiz-sindri-vllm-qwen3-6-27b
+  sindri-lucebox: fiz-sindri-lucebox-qwen3-6-27b
+  luce-dflash: fiz-sindri-lucebox-qwen3-6-27b
+  lucebox-dflash: fiz-sindri-lucebox-qwen3-6-27b
+  dflash: fiz-sindri-lucebox-qwen3-6-27b
+  vidar: fiz-vidar-omlx-qwen3-6-27b
+  vidar-omlx: fiz-vidar-omlx-qwen3-6-27b
+  vidar-ds4: fiz-vidar-ds4
+  ds4: fiz-vidar-ds4
+  vidar-ds4-mtp: fiz-vidar-ds4-mtp
+  ds4-mtp: fiz-vidar-ds4-mtp
+
+# ---------------------------------------------------------------------------
 # Subsets
 # ---------------------------------------------------------------------------
 # A subset is a curated task list. It carries the path to the TB-2.1 subset

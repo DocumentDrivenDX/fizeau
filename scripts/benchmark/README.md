@@ -23,13 +23,44 @@ benchmark script entry point.
 The wrapper keeps the historical `--phase` surface and maps those phase ids to
 the underlying recipe-based sweep plan.
 
-Short lane aliases:
+Short lane aliases are data-driven from `lane_aliases:` in
+`scripts/benchmark/terminalbench-2-1-sweep.yaml`. Current defaults include:
 
 - `openai-gpt55` -> `fiz-openai-gpt-5-5`
 - `openrouter-qwen36` -> `fiz-openrouter-qwen3-6-27b`
 - `sindri-llamacpp` -> `fiz-sindri-llamacpp-qwen3-6-27b`
 - `sindri-vllm` -> `fiz-sindri-vllm-qwen3-6-27b`
 - `vidar` -> `fiz-vidar-omlx-qwen3-6-27b`
+- `vidar-ds4` -> `fiz-vidar-ds4`
+- `vidar-ds4-mtp` -> `fiz-vidar-ds4-mtp`
+
+## Authoring Lanes
+
+Use `lanes clone` to create a new sweep lane/profile pair from an existing one
+without hand-editing YAML. The command updates the sweep plan, writes the new
+profile YAML, enrolls recipes, and adds short aliases in one pass.
+
+This reproduces the intended `fiz-vidar-ds4-mtp` lane/profile in a scratch
+checkout without manual edits:
+
+```bash
+go run ./cmd/bench lanes clone \
+  --work-dir /tmp/fizeau-lane-scratch \
+  --from-lane fiz-vidar-ds4 \
+  --lane-id fiz-vidar-ds4-mtp \
+  --profile-id vidar-ds4-mtp \
+  --recipes timing-baseline,or-passing,tb21-all \
+  --aliases vidar-ds4-mtp,ds4-mtp \
+  --quant-label ds4-native-bf16-mtp \
+  --env FIZEAU_DS4_MTP=true \
+  --metadata mtp=enabled \
+  --resolved-at 2026-05-15 \
+  --snapshot-suffix " | mtp=enabled" \
+  --dry-run
+```
+
+Drop `--dry-run` to write the files. If you already built the helper, replace
+`go run ./cmd/bench` with `fiz-bench`.
 
 ## Prerequisites
 

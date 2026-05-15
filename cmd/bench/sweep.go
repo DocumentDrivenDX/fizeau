@@ -38,6 +38,7 @@ type sweepPlan struct {
 	Created          string               `yaml:"created"`
 	Dataset          string               `yaml:"dataset"`
 	Defaults         sweepDefaults        `yaml:"defaults"`
+	LaneAliases      map[string]string    `yaml:"lane_aliases"`
 	Subsets          []sweepSubset        `yaml:"subsets"`
 	Recipes          []sweepRecipe        `yaml:"recipes"`
 	ComparisonGroups []sweepCmpGroup      `yaml:"comparison_groups"`
@@ -857,6 +858,19 @@ func loadSweepPlan(path string) (*sweepPlan, error) {
 			}
 		}
 	}
+	for alias, laneID := range plan.LaneAliases {
+		alias = strings.TrimSpace(alias)
+		laneID = strings.TrimSpace(laneID)
+		if alias == "" {
+			return nil, fmt.Errorf("lane_aliases contains an empty alias key")
+		}
+		if laneID == "" {
+			return nil, fmt.Errorf("lane_aliases[%q] must not be empty", alias)
+		}
+		if _, ok := laneByID[laneID]; !ok {
+			return nil, fmt.Errorf("lane_aliases[%q] references unknown lane %q", alias, laneID)
+		}
+	}
 	for _, r := range plan.Recipes {
 		if _, ok := subsetByID[r.Subset]; !ok {
 			return nil, fmt.Errorf("recipe %q references unknown subset %q", r.ID, r.Subset)
@@ -1111,12 +1125,16 @@ func parseSweepLaneFilter(plan *sweepPlan, raw string) ([]string, error) {
 		return nil, nil
 	}
 	known := sweepLaneMap(plan)
+	aliases := sweepAliasMap(plan)
 	seen := map[string]bool{}
 	var ordered []string
 	for _, p := range strings.Split(raw, ",") {
 		id := strings.TrimSpace(p)
 		if id == "" {
 			continue
+		}
+		if resolved := strings.TrimSpace(aliases[id]); resolved != "" {
+			id = resolved
 		}
 		if _, ok := known[id]; !ok {
 			return nil, fmt.Errorf("lane %q not found in sweep plan", id)
@@ -1130,6 +1148,22 @@ func parseSweepLaneFilter(plan *sweepPlan, raw string) ([]string, error) {
 		return nil, fmt.Errorf("--lanes did not include any lane IDs")
 	}
 	return ordered, nil
+}
+
+func sweepAliasMap(plan *sweepPlan) map[string]string {
+	if plan == nil || len(plan.LaneAliases) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(plan.LaneAliases))
+	for alias, laneID := range plan.LaneAliases {
+		alias = strings.TrimSpace(alias)
+		laneID = strings.TrimSpace(laneID)
+		if alias == "" || laneID == "" {
+			continue
+		}
+		out[alias] = laneID
+	}
+	return out
 }
 
 func sweepRGMap(plan *sweepPlan) map[string]*sweepResourceGroup {

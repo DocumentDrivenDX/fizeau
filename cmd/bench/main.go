@@ -41,6 +41,8 @@ func run(args []string) int {
 		return cmdMatrixIndex(args[1:])
 	case "sweep":
 		return cmdSweep(args[1:])
+	case "lanes":
+		return cmdLanes(args[1:])
 	case "help", "-h", "--help":
 		printUsage()
 		return 0
@@ -71,6 +73,7 @@ Commands:
   matrix-index
              Consolidate report.json files into phase-independent indexes
   sweep      Run the TB-2.1 staged sweep with phase and resource-group scheduling
+  lanes      Clone benchmark lanes/profiles into the TB-2.1 sweep plan
 
 Run '%s <command> -h' for command-specific flags.
 `, benchCommandName(), benchCommandName())
