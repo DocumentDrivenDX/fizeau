@@ -172,37 +172,17 @@ func routeStatusMetricKey(provider, endpoint, model string) string {
 }
 
 func routeAttemptCandidateCooldown(records []routehealth.Record, providerName, endpointName, model string, cooldown time.Duration) *CooldownState {
-	var newest *routehealth.Record
-	for i := range records {
-		record := &records[i]
-		if record.Key.Provider == "" {
-			continue
-		}
-		recordProvider := record.Key.Provider
-		recordEndpoint := record.Key.Endpoint
-		if base, ep, ok := splitEndpointProviderRef(recordProvider); ok {
-			recordProvider = base
-			if recordEndpoint == "" {
-				recordEndpoint = ep
-			}
-		}
-		if providerName != "" && recordProvider != providerName {
-			continue
-		}
-		if endpointName != "" && recordEndpoint != "" && recordEndpoint != endpointName {
-			continue
-		}
-		if record.Key.Model != "" && model != "" && record.Key.Model != model {
-			continue
-		}
-		if newest == nil || record.RecordedAt.After(newest.RecordedAt) {
-			newest = record
-		}
-	}
-	if newest == nil {
+	internal := routehealth.CandidateCooldown(records, providerName, endpointName, model, cooldown)
+	if internal == nil {
 		return nil
 	}
-	return routeAttemptCooldown(*newest, cooldown)
+	return &CooldownState{
+		Reason:      internal.Reason,
+		Until:       internal.Until,
+		FailCount:   internal.FailCount,
+		LastError:   internal.LastError,
+		LastAttempt: internal.LastAttempt,
+	}
 }
 
 // cacheRouteDecision stores a ResolveRoute result keyed by routeKey.

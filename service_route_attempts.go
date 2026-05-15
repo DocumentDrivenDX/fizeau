@@ -7,8 +7,6 @@ import (
 	"github.com/easel/fizeau/internal/routehealth"
 )
 
-const defaultRouteAttemptCooldown = routehealth.DefaultCooldown
-
 func (s *service) RecordRouteAttempt(_ context.Context, attempt RouteAttempt) error {
 	if s == nil {
 		s = &service{}
@@ -41,19 +39,13 @@ func (s *service) activeRouteAttempts(now time.Time, ttl time.Duration) []routeh
 }
 
 func routeAttemptCooldown(record routehealth.Record, ttl time.Duration) *CooldownState {
-	if ttl <= 0 {
-		ttl = defaultRouteAttemptCooldown
-	}
-	reason := record.Reason
-	if reason == "" {
-		reason = "route_attempt_failure"
-	}
+	cooldown := routehealth.CooldownFromRecord(record, ttl)
 	return &CooldownState{
-		Reason:      reason,
-		Until:       record.RecordedAt.Add(ttl),
-		FailCount:   1,
-		LastError:   record.Error,
-		LastAttempt: record.RecordedAt,
+		Reason:      cooldown.Reason,
+		Until:       cooldown.Until,
+		FailCount:   cooldown.FailCount,
+		LastError:   cooldown.LastError,
+		LastAttempt: cooldown.LastAttempt,
 	}
 }
 
