@@ -20,7 +20,6 @@ import (
 
 	"github.com/easel/fizeau/internal/harnesses"
 	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	"github.com/easel/fizeau/internal/serverinstance"
 )
 
@@ -35,14 +34,6 @@ const (
 // without spawning real harness sessions.
 var healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 	return claudeharness.ReadClaudeQuotaViaPTY(timeout)
-}
-
-var healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
-	return codexharness.ReadCodexQuotaViaPTY(timeout)
-}
-
-var healthCheckCodexSessionQuotaReader = func() (*codexharness.CodexQuotaSnapshot, bool) {
-	return codexharness.ReadCodexQuotaFromSessionTokenCounts()
 }
 
 var healthCheckQuotaProbeMu sync.RWMutex
@@ -91,11 +82,11 @@ func (s *service) ensurePrimaryQuotaRefresh(ctx context.Context, mode quotaRefre
 	policy := s.quotaRefreshPolicy()
 	var waits []<-chan struct{}
 	for _, name := range []string{"claude", "codex"} {
-		status := primaryQuotaCacheStatus(name, policy.debounce)
+		status := primaryQuotaCacheStatus(ctx, name, policy.debounce, s.harnessByName)
 		if !status.needsRefresh {
 			continue
 		}
-		done := requestPrimaryQuotaRefresh(ctx, name, policy)
+		done := requestPrimaryQuotaRefresh(ctx, name, policy, s.harnessByName)
 		if mode == quotaRefreshStartup && !status.usable && done != nil {
 			waits = append(waits, done)
 		}
@@ -145,7 +136,7 @@ func (s *service) startPrimaryQuotaRefreshWorker() {
 	}()
 }
 
-func requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy quotaRefreshPolicy) <-chan struct{} {
+func requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy quotaRefreshPolicy, harnessByName func(string) harnesses.Harness) <-chan struct{} {
 	done := make(chan struct{})
 	if ctx == nil {
 		ctx = context.Background()
@@ -183,7 +174,9 @@ func requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy 
 		case "claude":
 			refreshClaudeQuotaCache(ctx, policy.debounce, policy.probeTimeout)
 		case "codex":
-			refreshCodexQuotaCache(ctx, policy.debounce, policy.probeTimeout)
+			if qh, ok := harnessByName("codex").(harnesses.QuotaHarness); ok {
+				_, _ = qh.RefreshQuota(ctx)
+			}
 		}
 	}()
 	return done
@@ -200,7 +193,7 @@ func waitForPrimaryQuotaRefreshes(waits []<-chan struct{}, timeout time.Duration
 	}
 }
 
-func primaryQuotaCacheStatus(harnessName string, debounce time.Duration) quotaCacheStatus {
+func primaryQuotaCacheStatus(ctx context.Context, harnessName string, debounce time.Duration, harnessByName func(string) harnesses.Harness) quotaCacheStatus {
 	now := time.Now()
 	switch harnessName {
 	case "claude":
@@ -218,31 +211,25 @@ func primaryQuotaCacheStatus(harnessName string, debounce time.Duration) quotaCa
 			usable:       decision.Fresh,
 		}
 	case "codex":
-		cachePath, err := codexharness.CodexQuotaCachePath()
+		qh, ok := harnessByName("codex").(harnesses.QuotaHarness)
+		if !ok {
+			return quotaCacheStatus{}
+		}
+		status, err := qh.QuotaStatus(ctx, now)
 		if err != nil {
 			return quotaCacheStatus{}
 		}
-		snap, _ := codexharness.ReadCodexQuotaFrom(cachePath)
-		if snap == nil {
+		if status.State == harnesses.QuotaUnavailable {
 			return quotaCacheStatus{needsRefresh: true}
 		}
-		decision := codexharness.DecideCodexQuotaRouting(snap, now, debounce)
+		usable := status.Fresh && status.RoutingPreference == harnesses.RoutingPreferenceAvailable
 		return quotaCacheStatus{
-			needsRefresh: !decision.Fresh || !codexQuotaCacheComplete(snap),
-			usable:       decision.Fresh && decision.PreferCodex,
+			needsRefresh: !usable,
+			usable:       usable,
 		}
 	default:
 		return quotaCacheStatus{}
 	}
-}
-
-func codexQuotaCacheComplete(snap *codexharness.CodexQuotaSnapshot) bool {
-	return snap != nil &&
-		!snap.CapturedAt.IsZero() &&
-		strings.TrimSpace(snap.Source) != "" &&
-		len(snap.Windows) > 0 &&
-		snap.Account != nil &&
-		strings.TrimSpace(snap.Account.PlanType) != ""
 }
 
 // ListProviders returns providers known to the native fiz harness with live
@@ -375,7 +362,9 @@ func (s *service) HealthCheck(ctx context.Context, health HealthTarget) error {
 				healthCheckRefreshClaudeQuota(ctx)
 			}
 			if health.Name == "codex" {
-				healthCheckRefreshCodexQuota(ctx)
+				if qh, ok := s.harnessByName("codex").(harnesses.QuotaHarness); ok {
+					_, _ = qh.RefreshQuota(ctx)
+				}
 			}
 			return nil
 		}
@@ -640,63 +629,9 @@ func refreshClaudeQuotaCache(_ context.Context, debounce, timeout time.Duration)
 	_ = claudeharness.WriteClaudeQuota(cachePath, newSnap)
 }
 
-func healthCheckRefreshCodexQuota(ctx context.Context) {
-	refreshCodexQuotaCache(ctx, defaultQuotaRefreshDebounce, defaultQuotaRefreshProbeTimeout)
-}
-
-func refreshCodexQuotaCache(_ context.Context, debounce, timeout time.Duration) {
-	cachePath, err := codexharness.CodexQuotaCachePath()
-	if err != nil {
-		return
-	}
-
-	snap, _ := codexharness.ReadCodexQuotaFrom(cachePath)
-	if snap != nil && codexharness.IsCodexQuotaFresh(snap, time.Now(), debounce) && codexQuotaCacheComplete(snap) {
-		return
-	}
-
-	if sessionSnap, ok := callHealthCheckCodexSessionQuotaReader(); ok && codexSessionQuotaUsable(sessionSnap, debounce) {
-		_ = codexharness.WriteCodexQuota(cachePath, *sessionSnap)
-		return
-	}
-
-	windows, probeErr := callHealthCheckCodexQuotaRefresher(timeout)
-	if probeErr != nil || len(windows) == 0 {
-		return
-	}
-
-	_ = codexharness.WriteCodexQuota(cachePath, codexharness.CodexQuotaSnapshot{
-		CapturedAt: time.Now().UTC(),
-		Windows:    windows,
-		Source:     "pty",
-	})
-}
-
 func callHealthCheckClaudeQuotaRefresher(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 	healthCheckQuotaProbeMu.RLock()
 	fn := healthCheckClaudeQuotaRefresher
 	healthCheckQuotaProbeMu.RUnlock()
 	return fn(timeout)
-}
-
-func callHealthCheckCodexQuotaRefresher(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
-	healthCheckQuotaProbeMu.RLock()
-	fn := healthCheckCodexQuotaRefresher
-	healthCheckQuotaProbeMu.RUnlock()
-	return fn(timeout)
-}
-
-func callHealthCheckCodexSessionQuotaReader() (*codexharness.CodexQuotaSnapshot, bool) {
-	healthCheckQuotaProbeMu.RLock()
-	fn := healthCheckCodexSessionQuotaReader
-	healthCheckQuotaProbeMu.RUnlock()
-	return fn()
-}
-
-func codexSessionQuotaUsable(snap *codexharness.CodexQuotaSnapshot, debounce time.Duration) bool {
-	if !codexQuotaCacheComplete(snap) {
-		return false
-	}
-	decision := codexharness.DecideCodexQuotaRouting(snap, time.Now(), debounce)
-	return decision.Fresh && decision.PreferCodex
 }

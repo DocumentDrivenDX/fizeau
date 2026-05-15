@@ -119,7 +119,7 @@ func TestListHarnesses_CodexUsageWindowsFromDDXSessionLogs(t *testing.T) {
 	t.Setenv("CODEX_HOME", filepath.Join(dir, "private-codex"))
 	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "missing-codex-quota.json"))
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
-	disableCodexSessionQuotaReaderForTest(t)
+	setFakeCodexHarness(t, newFakeCodexQuotaHarness())
 	if err := os.MkdirAll(filepath.Join(dir, "private-codex", "sessions"), 0o755); err != nil {
 		t.Fatal(err)
 	}

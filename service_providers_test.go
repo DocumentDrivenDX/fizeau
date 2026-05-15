@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/easel/fizeau/internal/harnesses"
 	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 )
 
 // fakeServiceConfig implements ServiceConfig for tests.
@@ -42,6 +40,58 @@ func (f *fakeServiceConfig) SessionLogDir() string {
 	}
 	return filepath.Join(f.workDir, ".fizeau", "sessions")
 }
+
+// fakeCodexQuotaHarness is a minimal harnesses.QuotaHarness for tests that
+// need to observe or control codex quota refresh calls without invoking the
+// real codex CLI. QuotaStatus always returns QuotaUnavailable so that
+// primaryQuotaCacheStatus sees the cache as missing and requests a refresh;
+// RefreshQuota invokes refreshFn (if set) or returns a fresh-available status.
+type fakeCodexQuotaHarness struct {
+	refreshFn    func(ctx context.Context) (harnesses.QuotaStatus, error)
+	refreshCalls atomic.Int32
+}
+
+func newFakeCodexQuotaHarness() *fakeCodexQuotaHarness {
+	return &fakeCodexQuotaHarness{}
+}
+
+func (f *fakeCodexQuotaHarness) Info() harnesses.HarnessInfo {
+	return harnesses.HarnessInfo{Name: "codex", Type: "subprocess"}
+}
+func (f *fakeCodexQuotaHarness) HealthCheck(_ context.Context) error { return nil }
+func (f *fakeCodexQuotaHarness) Execute(_ context.Context, _ harnesses.ExecuteRequest) (<-chan harnesses.Event, error) {
+	panic("fakeCodexQuotaHarness: Execute not supported")
+}
+func (f *fakeCodexQuotaHarness) QuotaStatus(_ context.Context, _ time.Time) (harnesses.QuotaStatus, error) {
+	return harnesses.QuotaStatus{State: harnesses.QuotaUnavailable}, nil
+}
+func (f *fakeCodexQuotaHarness) RefreshQuota(ctx context.Context) (harnesses.QuotaStatus, error) {
+	f.refreshCalls.Add(1)
+	if f.refreshFn != nil {
+		return f.refreshFn(ctx)
+	}
+	return harnesses.QuotaStatus{
+		Fresh:             true,
+		State:             harnesses.QuotaOK,
+		RoutingPreference: harnesses.RoutingPreferenceAvailable,
+	}, nil
+}
+func (f *fakeCodexQuotaHarness) QuotaFreshness() time.Duration { return 15 * time.Minute }
+func (f *fakeCodexQuotaHarness) SupportedLimitIDs() []string   { return []string{"codex"} }
+
+// setFakeCodexHarness installs h as the "codex" entry in harnessInstanceHook
+// so both New() and newTestService() pick it up. Restores the previous hook
+// via t.Cleanup.
+func setFakeCodexHarness(t *testing.T, h *fakeCodexQuotaHarness) {
+	t.Helper()
+	prev := harnessInstanceHook
+	harnessInstanceHook = func(instances map[string]harnesses.Harness) map[string]harnesses.Harness {
+		instances["codex"] = h
+		return instances
+	}
+	t.Cleanup(func() { harnessInstanceHook = prev })
+}
+
 func TestListProviders_NoServiceConfig(t *testing.T) {
 	svc := newTestService(t, ServiceOptions{})
 	_, err := svc.ListProviders(context.Background())
@@ -584,146 +634,44 @@ func TestHealthCheck_GeminiDoesNotInvokeQuotaProbe(t *testing.T) {
 	}
 }
 
-func TestHealthCheck_CodexRefreshesQuotaWhenStale(t *testing.T) {
-	dir := t.TempDir()
-	cachePath := filepath.Join(dir, "codex-quota.json")
-	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", cachePath)
-	disableCodexSessionQuotaReaderForTest(t)
+// TestHealthCheck_CodexCallsRefreshQuota verifies that requestPrimaryQuotaRefresh
+// for "codex" delegates to QuotaHarness.RefreshQuota rather than calling
+// codex-package PTY helpers directly (CONTRACT-004 migration).
+func TestHealthCheck_CodexCallsRefreshQuota(t *testing.T) {
+	resetPrimaryQuotaRefreshForTest(t)
 
-	staleSnap := codexharness.CodexQuotaSnapshot{
-		CapturedAt: time.Now().UTC().Add(-20 * time.Minute),
-		Source:     "pty",
-		Windows:    []harnesses.QuotaWindow{{LimitID: "codex", UsedPercent: 80}},
-	}
-	if err := codexharness.WriteCodexQuota(cachePath, staleSnap); err != nil {
-		t.Fatalf("setup: WriteCodexQuota: %v", err)
-	}
-
+	fake := newFakeCodexQuotaHarness()
 	refreshCalled := false
-	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	fake.refreshFn = func(_ context.Context) (harnesses.QuotaStatus, error) {
 		refreshCalled = true
-		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
+		return harnesses.QuotaStatus{
+			Fresh:             true,
+			State:             harnesses.QuotaOK,
+			RoutingPreference: harnesses.RoutingPreferenceAvailable,
+		}, nil
+	}
+
+	done := requestPrimaryQuotaRefresh(context.Background(), "codex", quotaRefreshPolicy{
+		debounce:     time.Hour,
+		probeTimeout: time.Second,
+	}, func(name string) harnesses.Harness {
+		if name == "codex" {
+			return fake
+		}
+		return nil
 	})
-
-	healthCheckRefreshCodexQuota(context.Background())
-
+	if done == nil {
+		t.Fatal("expected non-nil done channel from requestPrimaryQuotaRefresh")
+	}
+	<-done
 	if !refreshCalled {
-		t.Error("expected healthCheckCodexQuotaRefresher to be called for stale cache")
-	}
-	loaded, ok := codexharness.ReadCodexQuotaFrom(cachePath)
-	if !ok {
-		t.Fatal("expected cache file to exist after refresh")
-	}
-	if !loaded.CapturedAt.After(staleSnap.CapturedAt) {
-		t.Errorf("expected cache CapturedAt to be newer than stale snapshot: got %v, stale was %v",
-			loaded.CapturedAt, staleSnap.CapturedAt)
-	}
-}
-
-func TestHealthCheck_CodexUsesFreshSessionQuotaBeforePTY(t *testing.T) {
-	dir := t.TempDir()
-	cachePath := filepath.Join(dir, "codex-quota.json")
-	sessionRoot := filepath.Join(dir, "sessions")
-	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", cachePath)
-	t.Setenv("FIZEAU_CODEX_SESSIONS_DIR", sessionRoot)
-	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-auth.json"))
-
-	staleSnap := codexharness.CodexQuotaSnapshot{
-		CapturedAt: time.Now().UTC().Add(-20 * time.Minute),
-		Source:     "pty",
-		Windows:    []harnesses.QuotaWindow{{LimitID: "codex", UsedPercent: 80}},
-		Account:    &harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
-	}
-	if err := codexharness.WriteCodexQuota(cachePath, staleSnap); err != nil {
-		t.Fatalf("setup: WriteCodexQuota: %v", err)
-	}
-	captured := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
-	writeServiceCodexSessionLine(t, filepath.Join(sessionRoot, "fresh.jsonl"), captured, serviceCodexTokenCountLine(captured, "pro", 12))
-
-	refreshCalled := false
-	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
-		refreshCalled = true
-		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 1, State: "ok"}}, nil
-	})
-
-	healthCheckRefreshCodexQuota(context.Background())
-
-	if refreshCalled {
-		t.Fatal("PTY refresher should not be called when fresh session token_count quota is usable")
-	}
-	loaded, ok := codexharness.ReadCodexQuotaFrom(cachePath)
-	if !ok {
-		t.Fatal("expected cache file to exist after session refresh")
-	}
-	if loaded.Source != "codex_session_token_count" {
-		t.Fatalf("Source: got %q", loaded.Source)
-	}
-	if !loaded.CapturedAt.Equal(captured) {
-		t.Fatalf("CapturedAt: got %s, want session evidence %s", loaded.CapturedAt, captured)
-	}
-	if loaded.CapturedAt.After(time.Now().UTC().Add(-30 * time.Second)) {
-		t.Fatalf("session-derived CapturedAt appears to be time.Now: %s", loaded.CapturedAt)
-	}
-	if loaded.Account == nil || loaded.Account.PlanType != "ChatGPT Pro" || loaded.Windows[0].UsedPercent != 12 {
-		t.Fatalf("loaded snapshot: %#v", loaded)
-	}
-}
-
-func TestHealthCheck_CodexFallsBackToPTYForStaleOrNonSubsidizedSessionQuota(t *testing.T) {
-	cases := []struct {
-		name     string
-		planType string
-		age      time.Duration
-	}{
-		{name: "stale", planType: "pro", age: 20 * time.Minute},
-		{name: "non_subsidized", planType: "free", age: time.Minute},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			cachePath := filepath.Join(dir, "codex-quota.json")
-			sessionRoot := filepath.Join(dir, "sessions")
-			t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", cachePath)
-			t.Setenv("FIZEAU_CODEX_SESSIONS_DIR", sessionRoot)
-			t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-auth.json"))
-			if err := codexharness.WriteCodexQuota(cachePath, codexharness.CodexQuotaSnapshot{
-				CapturedAt: time.Now().UTC().Add(-20 * time.Minute),
-				Source:     "pty",
-				Windows:    []harnesses.QuotaWindow{{LimitID: "codex", UsedPercent: 80}},
-				Account:    &harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
-			}); err != nil {
-				t.Fatalf("setup: WriteCodexQuota: %v", err)
-			}
-			captured := time.Now().UTC().Add(-tc.age).Truncate(time.Second)
-			writeServiceCodexSessionLine(t, filepath.Join(sessionRoot, "session.jsonl"), captured, serviceCodexTokenCountLine(captured, tc.planType, 12))
-
-			refreshCalled := false
-			setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
-				refreshCalled = true
-				return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 3, State: "ok"}}, nil
-			})
-
-			healthCheckRefreshCodexQuota(context.Background())
-			if !refreshCalled {
-				t.Fatal("expected PTY fallback")
-			}
-			loaded, ok := codexharness.ReadCodexQuotaFrom(cachePath)
-			if !ok {
-				t.Fatal("expected cache after PTY fallback")
-			}
-			if loaded.Source != "pty" {
-				t.Fatalf("Source after fallback: got %q", loaded.Source)
-			}
-		})
+		t.Error("expected QuotaHarness.RefreshQuota to be called for codex")
 	}
 }
 
 func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
-	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
-	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
 	var claudeCalls atomic.Int32
@@ -739,11 +687,13 @@ func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
 	})
 
-	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	fake := newFakeCodexQuotaHarness()
+	fake.refreshFn = func(_ context.Context) (harnesses.QuotaStatus, error) {
 		codexCalls.Add(1)
 		done <- "codex"
-		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	})
+		return harnesses.QuotaStatus{Fresh: true, State: harnesses.QuotaOK, RoutingPreference: harnesses.RoutingPreferenceAvailable}, nil
+	}
+	setFakeCodexHarness(t, fake)
 
 	svc := newTestService(t, ServiceOptions{})
 	if _, err := svc.ListHarnesses(context.Background()); err != nil {
@@ -767,9 +717,6 @@ func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
-	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
-	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
 	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
@@ -779,9 +726,8 @@ func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
 	})
 
-	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
-		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	})
+	fake := newFakeCodexQuotaHarness()
+	setFakeCodexHarness(t, fake)
 
 	if _, err := New(ServiceOptions{QuotaRefreshStartupWait: time.Second}); err != nil {
 		t.Fatalf("New: %v", err)
@@ -789,17 +735,14 @@ func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 	if _, ok := claudeharness.ReadClaudeQuota(); !ok {
 		t.Fatal("expected startup wait to allow Claude quota cache write")
 	}
-	if _, ok := codexharness.ReadCodexQuota(); !ok {
-		t.Fatal("expected startup wait to allow Codex quota cache write")
+	if got := fake.refreshCalls.Load(); got == 0 {
+		t.Fatal("expected startup wait to trigger Codex QuotaHarness.RefreshQuota")
 	}
 }
 
 func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
-	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
-	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
 	release := make(chan struct{})
@@ -818,10 +761,12 @@ func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
 	})
 
-	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	fake := newFakeCodexQuotaHarness()
+	fake.refreshFn = func(_ context.Context) (harnesses.QuotaStatus, error) {
 		<-release
-		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	})
+		return harnesses.QuotaStatus{Fresh: true, State: harnesses.QuotaOK, RoutingPreference: harnesses.RoutingPreferenceAvailable}, nil
+	}
+	setFakeCodexHarness(t, fake)
 
 	start := time.Now()
 	if _, err := New(ServiceOptions{QuotaRefreshStartupWait: 20 * time.Millisecond}); err != nil {
@@ -832,18 +777,21 @@ func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 	}
 	close(release)
 	released = true
-	waitForQuotaRefreshFiles(t,
-		filepath.Join(dir, "claude-quota.json"),
-		filepath.Join(dir, "codex-quota.json"),
-	)
+	waitForQuotaRefreshFiles(t, filepath.Join(dir, "claude-quota.json"))
+	deadline := time.After(time.Second)
+	for fake.refreshCalls.Load() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for Codex QuotaHarness.RefreshQuota to complete after release")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
 }
 
 func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "claude-quota.json"))
-	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", filepath.Join(dir, "codex-quota.json"))
-	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
-	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
 	var claudeCalls atomic.Int32
@@ -856,10 +804,12 @@ func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
 	})
 
-	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
+	fake := newFakeCodexQuotaHarness()
+	fake.refreshFn = func(_ context.Context) (harnesses.QuotaStatus, error) {
 		codexCalls.Add(1)
-		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	})
+		return harnesses.QuotaStatus{Fresh: true, State: harnesses.QuotaOK, RoutingPreference: harnesses.RoutingPreferenceAvailable}, nil
+	}
+	setFakeCodexHarness(t, fake)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -893,15 +843,10 @@ func TestResolveRouteDoesNotTriggerAsyncQuotaRefresh(t *testing.T) {
 	t.Setenv("GEMINI_CLI_USE_COMPUTE_ADC", "")
 	t.Setenv("CLOUD_SHELL", "")
 	claudeQuotaPath := filepath.Join(dir, "missing-claude-quota.json")
-	codexQuotaPath := filepath.Join(dir, "missing-codex-quota.json")
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudeQuotaPath)
-	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", codexQuotaPath)
-	t.Setenv("FIZEAU_CODEX_AUTH", filepath.Join(dir, "missing-codex-auth.json"))
-	disableCodexSessionQuotaReaderForTest(t)
 	resetPrimaryQuotaRefreshForTest(t)
 
 	var claudeCalls atomic.Int32
-	var codexCalls atomic.Int32
 
 	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		claudeCalls.Add(1)
@@ -911,10 +856,8 @@ func TestResolveRouteDoesNotTriggerAsyncQuotaRefresh(t *testing.T) {
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
 	})
 
-	setCodexQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
-		codexCalls.Add(1)
-		return []harnesses.QuotaWindow{{LimitID: "codex", Name: "5h", UsedPercent: 10, State: "ok"}}, nil
-	})
+	fake := newFakeCodexQuotaHarness()
+	setFakeCodexHarness(t, fake)
 
 	svc := newTestService(t, ServiceOptions{
 		ServiceConfig: &fakeServiceConfig{
@@ -936,7 +879,7 @@ func TestResolveRouteDoesNotTriggerAsyncQuotaRefresh(t *testing.T) {
 	if got := claudeCalls.Load(); got != 0 {
 		t.Fatalf("unexpected Claude quota refresh calls = %d", got)
 	}
-	if got := codexCalls.Load(); got != 0 {
+	if got := fake.refreshCalls.Load(); got != 0 {
 		t.Fatalf("unexpected Codex quota refresh calls = %d", got)
 	}
 }
@@ -970,51 +913,6 @@ func setClaudeQuotaRefresherForTest(t *testing.T, fn func(time.Duration) ([]harn
 	})
 }
 
-func setCodexQuotaRefresherForTest(t *testing.T, fn func(time.Duration) ([]harnesses.QuotaWindow, error)) {
-	t.Helper()
-	healthCheckQuotaProbeMu.Lock()
-	orig := healthCheckCodexQuotaRefresher
-	healthCheckCodexQuotaRefresher = fn
-	healthCheckQuotaProbeMu.Unlock()
-	t.Cleanup(func() {
-		healthCheckQuotaProbeMu.Lock()
-		healthCheckCodexQuotaRefresher = orig
-		healthCheckQuotaProbeMu.Unlock()
-	})
-}
-
-func disableCodexSessionQuotaReaderForTest(t *testing.T) {
-	t.Helper()
-	healthCheckQuotaProbeMu.Lock()
-	orig := healthCheckCodexSessionQuotaReader
-	healthCheckCodexSessionQuotaReader = func() (*codexharness.CodexQuotaSnapshot, bool) {
-		return nil, false
-	}
-	healthCheckQuotaProbeMu.Unlock()
-	t.Cleanup(func() {
-		healthCheckQuotaProbeMu.Lock()
-		healthCheckCodexSessionQuotaReader = orig
-		healthCheckQuotaProbeMu.Unlock()
-	})
-}
-
-func writeServiceCodexSessionLine(t *testing.T, path string, mtime time.Time, line string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(line+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chtimes(path, mtime, mtime); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func serviceCodexTokenCountLine(captured time.Time, planType string, used int) string {
-	return `{"type":"event_msg","timestamp":"` + captured.Format(time.RFC3339Nano) + `","payload":{"type":"token_count","info":{"rate_limits":{"plan_type":"` + planType + `","primary":{"used_percent":` + strconv.Itoa(used) + `,"window_minutes":300,"resets_at":1776840333,"limit_id":"codex"}}}}}`
-}
-
 func waitForQuotaRefreshes(t *testing.T, done <-chan string, want ...string) {
 	t.Helper()
 	seen := map[string]bool{}
@@ -1030,20 +928,6 @@ func waitForQuotaRefreshes(t *testing.T, done <-chan string, want ...string) {
 	for _, name := range want {
 		if !seen[name] {
 			t.Fatalf("missing quota refresh %q; saw %v", name, seen)
-		}
-	}
-}
-
-func waitForQuotaRefreshStarts(t *testing.T, claudeStarted, codexStarted <-chan struct{}) {
-	t.Helper()
-	for name, ch := range map[string]<-chan struct{}{
-		"claude": claudeStarted,
-		"codex":  codexStarted,
-	} {
-		select {
-		case <-ch:
-		case <-time.After(time.Second):
-			t.Fatalf("timed out waiting for %s quota refresh to start", name)
 		}
 	}
 }
