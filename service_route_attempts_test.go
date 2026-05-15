@@ -370,31 +370,27 @@ func TestBuildRoutingInputs_GeminiQuotaGatesAutoRouting(t *testing.T) {
 	}
 
 	// Stale snapshot: ineligible even though windows show headroom.
-	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
+	writeGeminiTestQuota(t, quotaPath, geminiTestQuotaSnapshot{
 		CapturedAt: time.Now().UTC().Add(-1 * time.Hour),
 		Source:     "pty",
 		Windows: []harnesses.QuotaWindow{
 			{Name: "Flash", LimitID: "gemini-flash", UsedPercent: 4, State: "ok"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteGeminiQuota stale: %v", err)
-	}
+	})
 	gemini = routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "gemini")
 	if gemini.SubscriptionOK || !gemini.QuotaStale {
 		t.Fatalf("stale gemini quota: SubscriptionOK=%v QuotaStale=%v", gemini.SubscriptionOK, gemini.QuotaStale)
 	}
 
 	// Fresh but all tiers exhausted: routing must still mark ineligible.
-	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
+	writeGeminiTestQuota(t, quotaPath, geminiTestQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Source:     "pty",
 		Windows: []harnesses.QuotaWindow{
 			{Name: "Flash", LimitID: "gemini-flash", UsedPercent: 100, State: "exhausted"},
 			{Name: "Pro", LimitID: "gemini-pro", UsedPercent: 100, State: "exhausted"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteGeminiQuota exhausted: %v", err)
-	}
+	})
 	gemini = routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "gemini")
 	if gemini.SubscriptionOK {
 		t.Fatalf("all tiers exhausted must block gemini auto-routing: %+v", gemini)
@@ -404,16 +400,14 @@ func TestBuildRoutingInputs_GeminiQuotaGatesAutoRouting(t *testing.T) {
 	}
 
 	// Fresh with at least one non-exhausted tier: routing marks eligible.
-	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
+	writeGeminiTestQuota(t, quotaPath, geminiTestQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Source:     "pty",
 		Windows: []harnesses.QuotaWindow{
 			{Name: "Flash", LimitID: "gemini-flash", UsedPercent: 4, State: "ok"},
 			{Name: "Pro", LimitID: "gemini-pro", UsedPercent: 100, State: "exhausted"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteGeminiQuota ok: %v", err)
-	}
+	})
 	gemini = routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "gemini")
 	if !gemini.SubscriptionOK || !gemini.QuotaOK {
 		t.Fatalf("fresh gemini quota with headroom should mark gemini SubscriptionOK/QuotaOK: %+v", gemini)
@@ -461,7 +455,7 @@ func TestResolveRoute_GeminiCatalogModelsResolveByConcreteModel(t *testing.T) {
 	dir := t.TempDir()
 	quotaPath := filepath.Join(dir, "gemini-quota.json")
 	t.Setenv("FIZEAU_GEMINI_QUOTA_CACHE", quotaPath)
-	if err := geminiharness.WriteGeminiQuota(quotaPath, geminiharness.GeminiQuotaSnapshot{
+	writeGeminiTestQuota(t, quotaPath, geminiTestQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Source:     "pty",
 		Windows: []harnesses.QuotaWindow{
@@ -469,9 +463,7 @@ func TestResolveRoute_GeminiCatalogModelsResolveByConcreteModel(t *testing.T) {
 			{Name: "Flash Lite", LimitID: "gemini-flash-lite", UsedPercent: 0, State: "ok"},
 			{Name: "Pro", LimitID: "gemini-pro", UsedPercent: 10, State: "ok"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteGeminiQuota: %v", err)
-	}
+	})
 	registry := harnesses.NewRegistry()
 	registry.LookPath = func(file string) (string, error) {
 		if file == "gemini" {
@@ -530,4 +522,25 @@ func containsRouteString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+type geminiTestQuotaSnapshot struct {
+	CapturedAt time.Time               `json:"captured_at"`
+	Windows    []harnesses.QuotaWindow `json:"windows"`
+	Source     string                  `json:"source"`
+	Account    *harnesses.AccountInfo  `json:"account,omitempty"`
+}
+
+func writeGeminiTestQuota(t *testing.T, path string, snap geminiTestQuotaSnapshot) {
+	t.Helper()
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal gemini test quota: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatalf("mkdir gemini quota dir: %v", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		t.Fatalf("write gemini quota: %v", err)
+	}
 }

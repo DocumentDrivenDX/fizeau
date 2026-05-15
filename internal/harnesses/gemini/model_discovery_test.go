@@ -11,7 +11,7 @@ func TestParseGeminiModels(t *testing.T) {
 	require.Equal(t, []string{"gemini-2.5-pro", "gemini-2.5-flash"}, models)
 }
 
-func TestresolveGeminiModelAliasUsesLatestDiscoveredVersion(t *testing.T) {
+func TestResolveGeminiModelAliasUsesLatestDiscoveredVersion(t *testing.T) {
 	snapshot := defaultGeminiModelDiscovery()
 	snapshot.Models = []string{"gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.0-flash"}
 
