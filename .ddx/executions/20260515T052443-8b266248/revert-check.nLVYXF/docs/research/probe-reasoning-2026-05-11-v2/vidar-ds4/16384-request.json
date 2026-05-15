@@ -1,0 +1,11 @@
+{
+  "max_tokens": 512,
+  "messages": [
+    {
+      "content": "Briefly explain what 2+2 equals.",
+      "role": "user"
+    }
+  ],
+  "model": "deepseek-v4-flash",
+  "reasoning_effort": "high"
+}
