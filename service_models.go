@@ -110,11 +110,12 @@ func subprocessHarnessModelIDs(name string, cfg harnesses.HarnessConfig) []strin
 			}
 		}
 	case "gemini":
-		snapshot := geminiharness.DefaultGeminiModelDiscovery()
+		mdh := &geminiharness.Runner{}
+		snapshot := mdh.DefaultModelSnapshot()
 		models = appendUniqueModelIDs(models, snapshot.Models...)
-		for _, family := range []string{"gemini", "gemini-2.5"} {
-			resolved := geminiharness.ResolveGeminiModelAlias(family, snapshot)
-			if resolved != family {
+		for _, family := range mdh.SupportedAliases() {
+			resolved, err := mdh.ResolveModelAlias(family, snapshot)
+			if err == nil && resolved != family {
 				models = appendUniqueModelIDs(models, resolved)
 			}
 		}
@@ -129,7 +130,12 @@ func resolveSubprocessModelAlias(harness, model string) string {
 	case "codex":
 		return codexharness.ResolveCodexModelAlias(model, codexharness.DefaultCodexModelDiscovery())
 	case "gemini":
-		return geminiharness.ResolveGeminiModelAlias(model, geminiharness.DefaultGeminiModelDiscovery())
+		mdh := &geminiharness.Runner{}
+		resolved, err := mdh.ResolveModelAlias(model, mdh.DefaultModelSnapshot())
+		if err != nil {
+			return model
+		}
+		return resolved
 	default:
 		return model
 	}
