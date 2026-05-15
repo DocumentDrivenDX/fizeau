@@ -38,6 +38,7 @@ benchmark-workbench.js
   - initializes DuckDB-WASM worker
   - registers Parquet files by URL
   - creates cells_enriched and workbench_cells SQL views
+  - manages hash-addressable explorer panes
   - runs preset filters and aggregate SQL
   - runs pairwise model-family comparison SQL
   - loads workbench_cells into Perspective datagrid
@@ -49,15 +50,32 @@ serve HTML, CSS, JS, WASM, worker files, and Parquet artifacts.
 ## Page Structure
 
 `website/content/benchmarks/explorer/_index.md` contains a single
-instrument-panel workbench:
+instrument-panel workbench with persistent local navigation. The
+navigation entries are hash routes, not Hugo subpages:
 
-- status strip with generated artifact metadata
-- controls for text search, task, model, engine, GPU, pass-only, max GPU RAM,
-  saved views, and low/medium-cardinality enum filters
-- aggregate readout cards
-- pairwise model-family gap table
-- Perspective datagrid with every cell column available
-- combination aggregate table below the grid
+- `#summary`
+- `#data`
+- `#compare`
+- `#combinations`
+
+`benchmark-workbench.js` owns this small router by reading
+`window.location.hash`, toggling `[data-bw-pane]`, and marking the
+matching `[data-bw-route]` link with `aria-current="page"`. The design
+keeps the left navigation fixed on desktop and turns it into a compact
+top local nav on narrow screens.
+
+The panes are:
+
+- Summary: result-bearing dataset explanation, unfiltered aggregate
+  metrics, task-type/GPU distribution charts, and wall-time charts by
+  GPU and model.
+- Raw database: raw search, outcome/task/model/engine/GPU/RAM controls,
+  enum filters, saved views, current aggregate readouts, and the
+  Perspective datagrid with every cell column available.
+- Comparison: pairwise model-family controls, comparison scope filters,
+  and the sortable pairwise gap table.
+- Combinations: task/model/GPU/pass controls and the sortable
+  combination aggregate table.
 
 The workbench lives outside the prose-width cap. It uses full available
 viewport width and a stable grid height so the table is not trapped in a
@@ -103,8 +121,12 @@ Selects all raw columns and adds:
 `workbench_cells`
 
 Current filtered view. Presets and controls recreate this view with a
-deterministic `WHERE` clause, then the grid and aggregates reload from
-the same view.
+deterministic `WHERE` clause, then the raw grid and raw aggregate cards
+reload from the same view.
+
+The comparison and combination panes do not consume the raw database
+pane's transient filter state. Their controls are intentionally
+separate so each pane owns the query scope for the table it displays.
 
 ## Default Columns
 
@@ -123,10 +145,10 @@ The grid initially shows:
 
 All other columns remain available through Perspective's column chooser.
 
-## Comparison Filters
+## Raw Database Filters
 
 The workbench promotes low/medium-cardinality fields into native select
-controls so the common comparison questions do not require opening the
+controls so the common raw inspection questions do not require opening the
 Perspective configuration panel first:
 
 - model family, model quant, KV cache, K/V quant, MTP
@@ -137,6 +159,11 @@ Perspective configuration panel first:
 
 Controls with no populated values hide themselves after DuckDB loads the
 artifact.
+
+The raw database pane creates `workbench_cells` from `cells_enriched`
+using these controls. The Perspective datagrid then attaches to
+`workbench_cells`, so native Perspective sorting, filtering, column
+selection, grouping, and pivoting remain available inside the raw table.
 
 ## Presets
 
@@ -153,11 +180,10 @@ sort, group, and pivot controls remain available for deeper analysis.
 
 ## Pairwise Gap Query
 
-The pairwise comparison panel answers "where is the delta?" questions
+The pairwise comparison pane answers "where is the delta?" questions
 such as Qwen versus Claude/Anthropic. It compares two selected
-`model_family` values over the current filter scope, excluding the
-standalone model and model-family filters so users can still use the
-model picker for the raw table without destroying the comparison.
+`model_family` values over the comparison pane's own filter scope. It
+does not inherit raw database filters.
 
 Supported group-by dimensions:
 
@@ -175,9 +201,27 @@ For each bucket it reports:
 When grouped by task, the task cell links to the canonical
 Terminal-Bench task page.
 
+The table renders its headers as buttons. Header clicks update the
+client-side sort state and rerender the current result set without
+rerunning unrelated raw database queries.
+
+## Summary Queries
+
+The Summary pane queries `cells_enriched` directly and ignores pane
+filters. It renders:
+
+- row count, pass rate, timeout count, distinct task/model/GPU counts,
+  token total, and p50 wall time
+- pie distributions for task category and effective GPU model
+- bar charts for median wall time by effective GPU model and model
+  family/display name
+
+These charts are simple HTML/CSS renderings fed by DuckDB result rows;
+no charting dependency is added.
+
 ## Aggregate Queries
 
-Aggregate cards query `workbench_cells`:
+Raw database aggregate cards query `workbench_cells`:
 
 - `count(*)`
 - pass count, fail count, and timeout count from `result_state`
@@ -197,6 +241,10 @@ effective_gpu_ram_gb`
 and reports rows, passes, failures, timeouts, pass rate, tokens, known
 cost, and wall p50.
 
+The Combinations pane queries `cells_enriched` with its own task, model,
+GPU, and pass-only controls. Its table headers are buttons that sort the
+aggregate rows in place.
+
 ## Design Constraints
 
 - No marketing hero; the workbench is the first screen.
@@ -206,6 +254,8 @@ cost, and wall p50.
   nest cards inside cards.
 - The grid gets full available page width and at least viewport-height
   scale. It is not constrained by the docs prose width.
+- Controls are colocated with the table or charts they affect.
+- The local navigation remains stable while pane content changes.
 - Existing static report tables keep their lightbox enhancer; the
   workbench is a separate component.
 
@@ -235,5 +285,6 @@ The module no-ops on pages without `[data-benchmark-workbench]`.
 - Run `npm run build:benchmark-workbench`.
 - Run `hugo --source website`.
 - Use a local Hugo server to open `/benchmarks/explorer/` and confirm:
-  rows load, all columns are available, saved views apply, aggregate
-  cards update, and the combination table reflects the filtered set.
+  rows load, hash navigation works, all columns are available, saved
+  views apply, aggregate cards update, charts render, task links point
+  to Terminal-Bench, and pairwise/combination headers sort their tables.

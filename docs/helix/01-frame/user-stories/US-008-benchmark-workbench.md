@@ -24,6 +24,8 @@ field.
 - The default visible columns are useful for outcome, model, quant,
   runtime, hardware, resource, and provenance inspection.
 - Users can add hidden columns without rebuilding the site.
+- The raw database pane can be opened directly through a URL hash and
+  contains the controls that affect the raw grid.
 
 ## US-008-002 - Find Passing Combinations
 
@@ -36,9 +38,11 @@ can identify viable model/runtime/hardware combinations.
 - A selected test/task filter can be combined with pass-only.
 - A selected GPU filter can be combined with pass-only.
 - A maximum GPU RAM filter can be combined with pass-only.
-- The aggregate combination table updates from the same filtered
-  result set and reports passes, failures, timeouts, pass rate, cost,
-  tokens, and wall p50.
+- The aggregate combination table updates from its colocated task,
+  model, GPU, and pass-only controls and reports passes, failures,
+  timeouts, pass rate, cost, tokens, and wall p50.
+- The combination table's column headers sort the aggregate rows in
+  place.
 
 ## US-008-003 - Investigate Cost and Resource Use
 
@@ -54,6 +58,8 @@ budget and runtime of comparable configurations.
   zero.
 - Runtime and token fields remain available as sortable/filterable grid
   columns.
+- The summary pane shows unfiltered dataset shape and distribution
+  charts before users begin narrowing the raw database.
 
 ## US-008-004 - Preserve Curated Reports
 
@@ -86,3 +92,23 @@ individual tasks, runtime, hardware, provider, or harness effects.
   rate, pass-rate gap in percentage points, row counts, graded-fail
   counts, timeout counts, token totals, and p50 wall time.
 - Individual task rows link to the canonical Terminal-Bench task page.
+- The comparison table's column headers sort the displayed buckets in
+  place.
+- The comparison pane can be deep-linked and keeps comparison controls
+  colocated with the pairwise table.
+
+## US-008-006 - Navigate Analytical Panes
+
+As a benchmark reader, I want the explorer to have stable local
+navigation for summary, raw data, comparison, and combinations, so that
+I can move among related analytical modes without hunting through one
+long stacked page.
+
+**Acceptance Criteria**
+
+- The explorer defaults to the Summary pane.
+- Summary, Raw database, Comparison, and Combinations panes are addressable
+  via URL hashes.
+- The left-hand local navigation remains visible across pane changes on
+  desktop and collapses to a compact top nav on narrow screens.
+- Each pane contains the controls for the table or charts it changes.

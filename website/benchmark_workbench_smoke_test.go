@@ -39,18 +39,24 @@ type workbenchReadyState struct {
 type workbenchSnapshot struct {
 	ActiveFilters           []string `json:"activeFilters"`
 	CombinationRowCount     int      `json:"combinationRowCount"`
+	CombinationTaskSort     string   `json:"combinationTaskSort"`
 	CombinationTaskLinkHref string   `json:"combinationTaskLinkHref"`
 	CompareA                string   `json:"compareA"`
 	CompareB                string   `json:"compareB"`
 	ComparisonGapText       string   `json:"comparisonGapText"`
+	ComparisonGapSort       string   `json:"comparisonGapSort"`
 	ComparisonRowCount      int      `json:"comparisonRowCount"`
 	ComparisonTaskLinkHref  string   `json:"comparisonTaskLinkHref"`
+	CurrentRoute            string   `json:"currentRoute"`
+	LocationHash            string   `json:"locationHash"`
 	ModelOptionCount        int      `json:"modelOptionCount"`
 	ModelOptions            []string `json:"modelOptions"`
 	ProviderOptionCount     int      `json:"providerOptionCount"`
 	ProviderOptions         []string `json:"providerOptions"`
 	ResultOptionCount       int      `json:"resultOptionCount"`
 	Rows                    string   `json:"rows"`
+	SummaryChartCount       int      `json:"summaryChartCount"`
+	SummaryRows             string   `json:"summaryRows"`
 	Status                  string   `json:"status"`
 	TaskOptionCount         int      `json:"taskOptionCount"`
 	VisibleColumns          []string `json:"visibleColumns"`
@@ -72,6 +78,15 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	snapshot := captureWorkbenchSnapshot(t, browserCtx)
 	if got := parseCount(t, snapshot.Rows); got != expectedRows {
 		t.Fatalf("unexpected initial row count: got %d, want %d", got, expectedRows)
+	}
+	if snapshot.CurrentRoute != "summary" || snapshot.LocationHash != "#summary" {
+		t.Fatalf("expected default summary route, got route=%q hash=%q", snapshot.CurrentRoute, snapshot.LocationHash)
+	}
+	if got := parseCount(t, snapshot.SummaryRows); got != expectedRows {
+		t.Fatalf("unexpected summary row count: got %d, want %d", got, expectedRows)
+	}
+	if snapshot.SummaryChartCount == 0 {
+		t.Fatal("expected summary charts to render")
 	}
 	if snapshot.Status == "" || !strings.Contains(snapshot.Status, "rows loaded") {
 		t.Fatalf("expected loaded status, got %q", snapshot.Status)
@@ -113,7 +128,16 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 		t.Fatalf("expected aggregate task links to point at Terminal-Bench, got %q", snapshot.CombinationTaskLinkHref)
 	}
 
+	click(t, browserCtx, "[data-bw-route=\"data\"]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "data" && current.LocationHash == "#data"
+	})
+
 	setSelectValue(t, browserCtx, "[data-bw-compare-dimension]", "task")
+	click(t, browserCtx, "[data-bw-route=\"compare\"]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "compare" && current.LocationHash == "#compare"
+	})
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return current.ComparisonTaskLinkHref != ""
 	})
@@ -121,7 +145,24 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	if !strings.HasPrefix(snapshot.ComparisonTaskLinkHref, terminalBenchTaskBase) {
 		t.Fatalf("expected pairwise task links to point at Terminal-Bench, got %q", snapshot.ComparisonTaskLinkHref)
 	}
+	click(t, browserCtx, "[data-bw-comparison] th:nth-child(4) button")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.ComparisonGapSort == "ascending"
+	})
 
+	click(t, browserCtx, "[data-bw-route=\"combinations\"]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "combinations" && current.LocationHash == "#combinations"
+	})
+	click(t, browserCtx, "[data-bw-combinations] th:first-child button")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CombinationTaskSort == "ascending"
+	})
+
+	click(t, browserCtx, "[data-bw-route=\"data\"]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "data"
+	})
 	setSelectValue(t, browserCtx, "[data-bw-model]", snapshot.ModelOptions[0])
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return parseCount(t, current.Rows) < expectedRows && hasFilterPrefix(current.ActiveFilters, "Model:")
@@ -385,18 +426,24 @@ const workbenchSnapshotJS = `(async () => {
   return {
     activeFilters: [...(root?.querySelectorAll('[data-bw-active-filters] span') ?? [])].map((el) => el.textContent.trim()),
     combinationRowCount: root?.querySelectorAll('[data-bw-combinations] tbody tr').length ?? 0,
+    combinationTaskSort: root?.querySelector('[data-bw-combinations] th:first-child')?.getAttribute('aria-sort') ?? '',
     combinationTaskLinkHref: combinationTaskLink?.href ?? '',
     compareA: root?.querySelector('[data-bw-compare-a]')?.value ?? '',
     compareB: root?.querySelector('[data-bw-compare-b]')?.value ?? '',
     comparisonGapText: text('[data-bw-comparison] tbody tr td:nth-child(4)'),
+    comparisonGapSort: root?.querySelector('[data-bw-comparison] th:nth-child(4)')?.getAttribute('aria-sort') ?? '',
     comparisonRowCount: root?.querySelectorAll('[data-bw-comparison] tbody tr').length ?? 0,
     comparisonTaskLinkHref: comparisonTaskLink?.href ?? '',
+    currentRoute: root?.querySelector('[data-bw-route][aria-current="page"]')?.dataset.bwRoute ?? '',
+    locationHash: window.location.hash,
     modelOptionCount: options('[data-bw-model]').length,
     modelOptions: values('[data-bw-model]'),
     providerOptionCount: options('[data-bw-filter-field="provider_type"]').length,
     providerOptions: values('[data-bw-filter-field="provider_type"]'),
     resultOptionCount: options('[data-bw-result-state]').length,
     rows: text('[data-bw-metric="rows"]'),
+    summaryChartCount: root?.querySelectorAll('.bench-workbench__pie, .bench-workbench__bar-row').length ?? 0,
+    summaryRows: text('[data-bw-summary-metric="rows"]'),
     status: text('[data-bw-status]'),
     taskOptionCount: options('[data-bw-task]').length,
     visibleColumns: config?.columns ?? [],

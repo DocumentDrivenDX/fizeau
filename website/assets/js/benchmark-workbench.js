@@ -88,6 +88,66 @@ const COMPARISON_DIMENSIONS = {
   harness_label: { key: "harness_label", label: "Harness" },
 };
 
+const ROUTES = {
+  summary: "Summary",
+  data: "Raw database",
+  compare: "Comparison",
+  combinations: "Combinations",
+};
+
+const COMPARE_FILTER_FIELDS = [
+  { key: "task_category", label: "Task category", allLabel: "All categories" },
+  { key: "task_difficulty", label: "Difficulty", allLabel: "All difficulties" },
+  { key: "task", label: "Task", allLabel: "All tasks" },
+  { key: "engine", label: "Engine", allLabel: "All engines" },
+  { key: "effective_gpu_model", label: "GPU", allLabel: "All GPUs" },
+  { key: "provider_type", label: "Provider", allLabel: "All providers" },
+  { key: "harness_label", label: "Harness", allLabel: "All harnesses" },
+  { key: "model_quant", label: "Model quant", allLabel: "All model quants" },
+  { key: "kv_cache_quant", label: "KV cache", allLabel: "All KV caches" },
+  { key: "runtime_mtp_enabled", label: "MTP", allLabel: "All MTP states" },
+  { key: "gpu_vendor", label: "GPU vendor", allLabel: "All vendors" },
+  { key: "sampling_reasoning", label: "Reasoning", allLabel: "All reasoning" },
+];
+
+const COMPARISON_SORTS = {
+  bucket: { type: "string" },
+  a_pass_rate: { type: "number" },
+  b_pass_rate: { type: "number" },
+  gap_pp: { type: "number" },
+  a_rows: { type: "number" },
+  b_rows: { type: "number" },
+  a_fail: { type: "number" },
+  b_fail: { type: "number" },
+  a_timeout: { type: "number" },
+  b_timeout: { type: "number" },
+  a_tokens: { type: "number" },
+  b_tokens: { type: "number" },
+  a_wall_p50: { type: "number" },
+  b_wall_p50: { type: "number" },
+};
+
+const COMBINATION_SORTS = {
+  task: { type: "string" },
+  model_display_name: { type: "string" },
+  model_quant: { type: "string" },
+  kv_cache_quant: { type: "string" },
+  runtime_mtp_enabled: { type: "string" },
+  engine: { type: "string" },
+  gpu: { type: "string" },
+  gpu_ram_gb: { type: "number" },
+  n_rows: { type: "number" },
+  n_pass: { type: "number" },
+  n_fail: { type: "number" },
+  n_timeout: { type: "number" },
+  pass_rate: { type: "number" },
+  token_total: { type: "number" },
+  cost_total: { type: "number" },
+  wall_p50: { type: "number" },
+};
+
+const SUMMARY_COLORS = ["#0a8e8e", "#c46a00", "#5e3aa8", "#1f7a3f", "#b22b2b", "#4f6f9f", "#7a5c1d", "#4a7a64"];
+
 const NUMBER_FORMAT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const INTEGER_FORMAT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 const USD_FORMAT = new Intl.NumberFormat(undefined, {
@@ -159,7 +219,53 @@ function formatGap(value) {
   return `${sign}${NUMBER_FORMAT.format(num)} pp`;
 }
 
+function compareSortValue(row, key, sortDefs) {
+  const value = sortDefs[key]?.value ? sortDefs[key].value(row) : row[key];
+  if (value === null || value === undefined || value === "") return null;
+  if (sortDefs[key]?.type === "number") {
+    const num = Number(normalizeScalar(value));
+    return Number.isFinite(num) ? num : null;
+  }
+  return String(value).toLowerCase();
+}
+
+function sortRows(rows, sort, sortDefs) {
+  const def = sortDefs[sort.key];
+  if (!def) return rows;
+  const direction = sort.direction === "asc" ? 1 : -1;
+  return [...rows].sort((left, right) => {
+    const a = compareSortValue(left, sort.key, sortDefs);
+    const b = compareSortValue(right, sort.key, sortDefs);
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    if (a < b) return -direction;
+    if (a > b) return direction;
+    return 0;
+  });
+}
+
+function nextSort(current, key) {
+  if (current.key !== key) return { key, direction: "asc" };
+  return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+}
+
+function sortHeader(label, key, state) {
+  const active = state.key === key;
+  const direction = active ? state.direction : "none";
+  const indicator = active ? (state.direction === "asc" ? "^" : "v") : "";
+  return `
+    <th aria-sort="${direction === "none" ? "none" : direction === "asc" ? "ascending" : "descending"}">
+      <button type="button" data-bw-sort="${escapeHtml(key)}" aria-label="Sort by ${escapeHtml(label)}">
+        <span>${escapeHtml(label)}</span>
+        <span aria-hidden="true">${indicator}</span>
+      </button>
+    </th>
+  `;
+}
+
 function setOptions(select, rows, valueKey, labelKey, allLabel) {
+  if (!select) return;
   const current = select.value;
   select.innerHTML = "";
   const all = document.createElement("option");
@@ -235,6 +341,8 @@ class BenchmarkWorkbench {
   constructor(root) {
     this.root = root;
     this.status = root.querySelector("[data-bw-status]");
+    this.routes = new Map([...root.querySelectorAll("[data-bw-route]")].map((el) => [el.dataset.bwRoute, el]));
+    this.panes = new Map([...root.querySelectorAll("[data-bw-pane]")].map((el) => [el.dataset.bwPane, el]));
     this.viewer = root.querySelector("[data-bw-viewer]");
     this.search = root.querySelector("[data-bw-search]");
     this.resultState = root.querySelector("[data-bw-result-state]");
@@ -249,20 +357,39 @@ class BenchmarkWorkbench {
     this.compareA = root.querySelector("[data-bw-compare-a]");
     this.compareB = root.querySelector("[data-bw-compare-b]");
     this.compareDimension = root.querySelector("[data-bw-compare-dimension]");
+    this.compareMaxRam = root.querySelector("[data-bw-compare-max-ram]");
     this.comparison = root.querySelector("[data-bw-comparison]");
+    this.comboTask = root.querySelector("[data-bw-combo-task]");
+    this.comboModel = root.querySelector("[data-bw-combo-model]");
+    this.comboGpu = root.querySelector("[data-bw-combo-gpu]");
+    this.comboPassedOnly = root.querySelector("[data-bw-combo-passed-only]");
     this.combinations = root.querySelector("[data-bw-combinations]");
     this.openConfig = root.querySelector("[data-bw-open-config]");
     this.enumFilters = new Map(
       [...root.querySelectorAll("[data-bw-filter-field]")].map((select) => [select.dataset.bwFilterField, select]),
     );
+    this.compareFilters = new Map(
+      [...root.querySelectorAll("[data-bw-compare-filter-field]")].map((select) => [select.dataset.bwCompareFilterField, select]),
+    );
     this.metrics = Object.fromEntries(
       [...root.querySelectorAll("[data-bw-metric]")].map((el) => [el.dataset.bwMetric, el]),
+    );
+    this.summaryMetrics = Object.fromEntries(
+      [...root.querySelectorAll("[data-bw-summary-metric]")].map((el) => [el.dataset.bwSummaryMetric, el]),
+    );
+    this.summaryCharts = Object.fromEntries(
+      [...root.querySelectorAll("[data-bw-chart]")].map((el) => [el.dataset.bwChart, el]),
     );
     this.cellsUrl = absolutize(root.dataset.cellsUrl || "/data/cells.parquet");
     this.manifestUrl = absolutize(root.dataset.manifestUrl || "/data/benchmark-data-manifest.json");
     this.duckdbBase = absolutize(root.dataset.duckdbBase || "/vendor/duckdb/");
     this.activePreset = "all";
+    this.activePane = "summary";
+    this.comparisonSort = { key: "gap_pp", direction: "desc" };
+    this.combinationSort = { key: "n_pass", direction: "desc" };
     this.reloadTimer = null;
+    this.compareReloadTimer = null;
+    this.comboReloadTimer = null;
     this.taskLinkUnsubscribe = null;
     this.taskLinkTable = null;
   }
@@ -287,6 +414,7 @@ class BenchmarkWorkbench {
     this.setStatus("Preparing controls...");
     await this.populateControls();
     this.bindEvents();
+    this.activateRoute(this.routeFromHash(), { replace: true });
 
     this.setStatus("Loading analytical grid...");
     await this.reload();
@@ -399,8 +527,15 @@ class BenchmarkWorkbench {
       GROUP BY ${field.key}
       ORDER BY n DESC, value
     `));
+    const compareFilterQueries = COMPARE_FILTER_FIELDS.map((field) => queryRows(this.conn, `
+      SELECT CAST(${field.key} AS VARCHAR) AS value, count(*) AS n
+      FROM cells_enriched
+      WHERE ${field.key} IS NOT NULL AND CAST(${field.key} AS VARCHAR) <> ''
+      GROUP BY ${field.key}
+      ORDER BY n DESC, value
+    `));
 
-    const [resultStates, tasks, models, modelFamilies, engines, gpus, ...enumRows] = await Promise.all([
+    const [resultStates, tasks, models, modelFamilies, engines, gpus, ...controlRows] = await Promise.all([
       queryRows(this.conn, `
         SELECT result_state, count(*) AS n
         FROM cells_enriched
@@ -447,16 +582,22 @@ class BenchmarkWorkbench {
         ORDER BY n DESC, effective_gpu_model
       `),
       ...enumQueries,
+      ...compareFilterQueries,
     ]);
+    const enumRows = controlRows.slice(0, FILTER_FIELDS.length);
+    const compareFilterRows = controlRows.slice(FILTER_FIELDS.length);
 
     setOptions(this.resultState, resultStates, "result_state", "result_state", "All outcomes");
     setOptions(this.task, tasks, "task", "task", "All tests");
     setOptions(this.model, models, "model", "model", "All models");
+    setOptions(this.comboTask, tasks, "task", "task", "All tests");
+    setOptions(this.comboModel, models, "model", "model", "All models");
     setOptions(this.compareA, modelFamilies, "value", "label", "Baseline family");
     setOptions(this.compareB, modelFamilies, "value", "label", "Compare family");
     this.setDefaultComparison(modelFamilies.map((row) => String(row.value)));
     setOptions(this.engine, engines, "engine", "engine", "All engines");
     setOptions(this.gpu, gpus, "gpu", "gpu", "All GPUs");
+    setOptions(this.comboGpu, gpus, "gpu", "gpu", "All GPUs");
 
     FILTER_FIELDS.forEach((field, index) => {
       const select = this.enumFilters.get(field.key);
@@ -465,28 +606,60 @@ class BenchmarkWorkbench {
       const control = select.closest(".bench-workbench__control");
       if (control) control.hidden = select.options.length <= 1;
     });
+    COMPARE_FILTER_FIELDS.forEach((field, index) => {
+      const select = this.compareFilters.get(field.key);
+      if (!select) return;
+      setOptions(select, compareFilterRows[index], "value", "value", field.allLabel);
+      const control = select.closest(".bench-workbench__control");
+      if (control) control.hidden = select.options.length <= 1;
+    });
   }
 
   bindEvents() {
-    const schedule = () => {
+    const scheduleRaw = () => {
       clearTimeout(this.reloadTimer);
-      this.reloadTimer = window.setTimeout(() => this.reload().catch((error) => this.fail(error)), 180);
+      this.reloadTimer = window.setTimeout(() => this.reloadRaw().catch((error) => this.fail(error)), 180);
+    };
+    const scheduleComparison = () => {
+      clearTimeout(this.compareReloadTimer);
+      this.compareReloadTimer = window.setTimeout(() => this.loadComparison().catch((error) => this.fail(error)), 180);
+    };
+    const scheduleCombinations = () => {
+      clearTimeout(this.comboReloadTimer);
+      this.comboReloadTimer = window.setTimeout(() => this.loadCombinationAggregates().catch((error) => this.fail(error)), 180);
     };
 
-    this.search.addEventListener("input", schedule);
-    this.resultState.addEventListener("change", schedule);
-    this.task.addEventListener("change", schedule);
-    this.model.addEventListener("change", schedule);
-    this.engine.addEventListener("change", schedule);
-    this.gpu.addEventListener("change", schedule);
-    this.maxRam.addEventListener("input", schedule);
-    this.passedOnly.addEventListener("change", schedule);
-    this.enumFilters.forEach((select) => {
-      select.addEventListener("change", schedule);
+    window.addEventListener("hashchange", () => this.activateRoute(this.routeFromHash()));
+    window.addEventListener("popstate", () => this.activateRoute(this.routeFromHash()));
+    this.routes.forEach((link, route) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        this.activateRoute(route, { push: true });
+      });
     });
-    this.compareA.addEventListener("change", schedule);
-    this.compareB.addEventListener("change", schedule);
-    this.compareDimension.addEventListener("change", schedule);
+
+    this.search.addEventListener("input", scheduleRaw);
+    this.resultState.addEventListener("change", scheduleRaw);
+    this.task.addEventListener("change", scheduleRaw);
+    this.model.addEventListener("change", scheduleRaw);
+    this.engine.addEventListener("change", scheduleRaw);
+    this.gpu.addEventListener("change", scheduleRaw);
+    this.maxRam.addEventListener("input", scheduleRaw);
+    this.passedOnly.addEventListener("change", scheduleRaw);
+    this.enumFilters.forEach((select) => {
+      select.addEventListener("change", scheduleRaw);
+    });
+    this.compareA.addEventListener("change", scheduleComparison);
+    this.compareB.addEventListener("change", scheduleComparison);
+    this.compareDimension.addEventListener("change", scheduleComparison);
+    this.compareMaxRam?.addEventListener("input", scheduleComparison);
+    this.compareFilters.forEach((select) => {
+      select.addEventListener("change", scheduleComparison);
+    });
+    this.comboTask?.addEventListener("change", scheduleCombinations);
+    this.comboModel?.addEventListener("change", scheduleCombinations);
+    this.comboGpu?.addEventListener("change", scheduleCombinations);
+    this.comboPassedOnly?.addEventListener("change", scheduleCombinations);
 
     this.root.querySelectorAll("[data-bw-preset]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -494,14 +667,62 @@ class BenchmarkWorkbench {
       });
     });
 
-    this.openConfig.addEventListener("click", () => {
+    this.openConfig?.addEventListener("click", () => {
       this.viewer.toggleConfig();
     });
 
     this.clearFilters?.addEventListener("click", () => {
       this.resetFilters();
-      this.reload().catch((error) => this.fail(error));
+      this.reloadRaw().catch((error) => this.fail(error));
     });
+
+    this.comparison.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("button[data-bw-sort]") : null;
+      if (!button) return;
+      this.comparisonSort = nextSort(this.comparisonSort, button.dataset.bwSort);
+      this.loadComparison().catch((error) => this.fail(error));
+    });
+
+    this.combinations.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("button[data-bw-sort]") : null;
+      if (!button) return;
+      this.combinationSort = nextSort(this.combinationSort, button.dataset.bwSort);
+      this.loadCombinationAggregates().catch((error) => this.fail(error));
+    });
+  }
+
+  routeFromHash() {
+    const route = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+    return Object.prototype.hasOwnProperty.call(ROUTES, route) ? route : "summary";
+  }
+
+  activateRoute(route, options = {}) {
+    const nextRoute = Object.prototype.hasOwnProperty.call(ROUTES, route) ? route : "summary";
+    this.activePane = nextRoute;
+    this.panes.forEach((pane, key) => {
+      pane.hidden = key !== nextRoute;
+    });
+    this.routes.forEach((link, key) => {
+      if (key === nextRoute) {
+        link.setAttribute("aria-current", "page");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+    });
+
+    const targetHash = `#${nextRoute}`;
+    if (options.push && window.location.hash !== targetHash) {
+      window.history.pushState(null, "", targetHash);
+    } else if (options.replace && window.location.hash !== targetHash) {
+      window.history.replaceState(null, "", targetHash);
+    }
+
+    if (nextRoute === "data") {
+      requestAnimationFrame(() => {
+        this.viewer?.flush?.();
+        if (this.taskLinkTable) this.linkVisibleTaskCells(this.taskLinkTable);
+      });
+    }
   }
 
   applyPreset(preset) {
@@ -518,7 +739,7 @@ class BenchmarkWorkbench {
       this.resultState.value = RESULT_STATE_PASSED;
     }
 
-    this.reload().catch((error) => this.fail(error));
+    this.reloadRaw().catch((error) => this.fail(error));
   }
 
   setDefaultComparison(families) {
@@ -608,6 +829,48 @@ class BenchmarkWorkbench {
     return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   }
 
+  compareFilterClauses() {
+    const clauses = [];
+    const maxRam = Number(this.compareMaxRam?.value);
+    if (Number.isFinite(maxRam) && this.compareMaxRam?.value !== "") {
+      clauses.push(`effective_gpu_ram_gb IS NOT NULL AND effective_gpu_ram_gb < ${maxRam}`);
+    }
+    for (const field of COMPARE_FILTER_FIELDS) {
+      const value = this.compareFilters.get(field.key)?.value;
+      if (value) {
+        clauses.push(`CAST(${field.key} AS VARCHAR) = ${sqlString(value)}`);
+      }
+    }
+    return clauses;
+  }
+
+  compareWhereClause() {
+    const clauses = this.compareFilterClauses();
+    return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  }
+
+  combinationFilterClauses() {
+    const clauses = [];
+    if (this.comboTask?.value) {
+      clauses.push(`task = ${sqlString(this.comboTask.value)}`);
+    }
+    if (this.comboModel?.value) {
+      clauses.push(`model_display_name = ${sqlString(this.comboModel.value)}`);
+    }
+    if (this.comboGpu?.value) {
+      clauses.push(`effective_gpu_model = ${sqlString(this.comboGpu.value)}`);
+    }
+    if (this.comboPassedOnly?.checked) {
+      clauses.push("result_state = 'passed'");
+    }
+    return clauses;
+  }
+
+  combinationWhereClause() {
+    const clauses = this.combinationFilterClauses();
+    return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  }
+
   sortClause() {
     if (this.activePreset === "recent-failures") {
       return "ORDER BY finished_at DESC NULLS LAST";
@@ -616,6 +879,10 @@ class BenchmarkWorkbench {
   }
 
   async reload() {
+    await Promise.all([this.loadSummary(), this.reloadRaw(), this.loadComparison(), this.loadCombinationAggregates()]);
+  }
+
+  async reloadRaw() {
     const where = this.whereClause();
     await this.conn.query(`
       CREATE OR REPLACE TABLE workbench_cells AS
@@ -624,10 +891,149 @@ class BenchmarkWorkbench {
       ${this.sortClause()}
     `);
 
-    await Promise.all([this.loadGrid(), this.loadMetrics(), this.loadComparison(), this.loadCombinationAggregates()]);
+    await Promise.all([this.loadGrid(), this.loadMetrics()]);
     this.renderActiveFilters();
     const metricRows = this.metrics.rows?.textContent || "-";
     this.setStatus(`${metricRows} rows loaded${this.manifestText()}`);
+  }
+
+  async loadSummary() {
+    const [metrics] = await queryRows(this.conn, `
+      SELECT
+        count(*) AS n_rows,
+        CAST(count(*) FILTER (WHERE result_state = 'passed') AS DOUBLE) AS n_pass,
+        CAST(count(*) FILTER (WHERE result_state = 'failed') AS DOUBLE) AS n_fail,
+        CAST(count(*) FILTER (WHERE result_state = 'timeout') AS DOUBLE) AS n_timeout,
+        count(DISTINCT task) FILTER (WHERE task IS NOT NULL) AS n_tasks,
+        count(DISTINCT model_display_name) FILTER (WHERE model_display_name IS NOT NULL) AS n_models,
+        count(DISTINCT effective_gpu_model) FILTER (WHERE effective_gpu_model IS NOT NULL AND effective_gpu_model <> 'unknown') AS n_gpus,
+        CAST(sum(total_tokens) AS DOUBLE) AS token_total,
+        median(wall_seconds) FILTER (WHERE wall_seconds IS NOT NULL) AS wall_p50
+      FROM cells_enriched
+    `);
+
+    const passes = Number(metrics.n_pass || 0);
+    const failures = Number(metrics.n_fail || 0);
+    const completed = passes + failures;
+    this.setSummaryMetric("rows", formatCount(metrics.n_rows));
+    this.setSummaryMetric("pass_rate", completed ? `${formatNumber((passes / completed) * 100, "%")} (${formatCount(passes)})` : "-");
+    this.setSummaryMetric("timeouts", formatCount(metrics.n_timeout));
+    this.setSummaryMetric("tasks", formatCount(metrics.n_tasks));
+    this.setSummaryMetric("models", formatCount(metrics.n_models));
+    this.setSummaryMetric("gpus", formatCount(metrics.n_gpus));
+    this.setSummaryMetric("tokens", formatCount(metrics.token_total));
+    this.setSummaryMetric("wall_p50", formatNumber(metrics.wall_p50, "s"));
+
+    const [taskCategories, gpus, wallByGpu, wallByModel] = await Promise.all([
+      queryRows(this.conn, `
+        SELECT COALESCE(NULLIF(CAST(task_category AS VARCHAR), ''), '(missing)') AS label, count(*) AS n
+        FROM cells_enriched
+        GROUP BY label
+        ORDER BY n DESC, label
+        LIMIT 8
+      `),
+      queryRows(this.conn, `
+        SELECT COALESCE(NULLIF(CAST(effective_gpu_model AS VARCHAR), ''), '(missing)') AS label, count(*) AS n
+        FROM cells_enriched
+        WHERE effective_gpu_model IS NOT NULL AND effective_gpu_model <> 'unknown'
+        GROUP BY label
+        ORDER BY n DESC, label
+        LIMIT 8
+      `),
+      queryRows(this.conn, `
+        SELECT
+          COALESCE(NULLIF(CAST(effective_gpu_model AS VARCHAR), ''), '(missing)') AS label,
+          median(wall_seconds) FILTER (WHERE wall_seconds IS NOT NULL) AS value,
+          count(*) AS n
+        FROM cells_enriched
+        WHERE effective_gpu_model IS NOT NULL AND effective_gpu_model <> 'unknown' AND wall_seconds IS NOT NULL
+        GROUP BY label
+        ORDER BY value DESC, n DESC
+        LIMIT 12
+      `),
+      queryRows(this.conn, `
+        SELECT
+          COALESCE(NULLIF(CAST(model_family AS VARCHAR), ''), NULLIF(CAST(model_display_name AS VARCHAR), ''), '(missing)') AS label,
+          median(wall_seconds) FILTER (WHERE wall_seconds IS NOT NULL) AS value,
+          count(*) AS n
+        FROM cells_enriched
+        WHERE wall_seconds IS NOT NULL
+        GROUP BY label
+        ORDER BY value DESC, n DESC
+        LIMIT 12
+      `),
+    ]);
+
+    this.renderPieChart("task_category", taskCategories);
+    this.renderPieChart("gpu", gpus);
+    this.renderBarChart("wall_by_gpu", wallByGpu, "s");
+    this.renderBarChart("wall_by_model", wallByModel, "s");
+  }
+
+  setSummaryMetric(key, value) {
+    if (this.summaryMetrics[key]) this.summaryMetrics[key].textContent = value;
+  }
+
+  renderPieChart(key, rows) {
+    const target = this.summaryCharts[key];
+    if (!target) return;
+    const total = rows.reduce((sum, row) => sum + Number(row.n || 0), 0);
+    if (!total) {
+      target.innerHTML = '<p class="bench-workbench__empty">No data.</p>';
+      return;
+    }
+
+    let start = 0;
+    const segments = rows.map((row, index) => {
+      const count = Number(row.n || 0);
+      const end = start + (count / total) * 100;
+      const color = SUMMARY_COLORS[index % SUMMARY_COLORS.length];
+      const segment = `${color} ${start}% ${end}%`;
+      start = end;
+      return segment;
+    });
+
+    const legend = rows.map((row, index) => {
+      const count = Number(row.n || 0);
+      const pct = total ? (count / total) * 100 : 0;
+      return `
+        <li>
+          <span style="background:${SUMMARY_COLORS[index % SUMMARY_COLORS.length]}"></span>
+          <strong>${escapeHtml(row.label)}</strong>
+          <em>${formatCount(count)} / ${formatNumber(pct, "%")}</em>
+        </li>
+      `;
+    }).join("");
+
+    target.innerHTML = `
+      <div class="bench-workbench__pie-wrap">
+        <div class="bench-workbench__pie" role="img" aria-label="Distribution chart" style="background: conic-gradient(${segments.join(", ")});"></div>
+        <ol>${legend}</ol>
+      </div>
+    `;
+  }
+
+  renderBarChart(key, rows, suffix = "") {
+    const target = this.summaryCharts[key];
+    if (!target) return;
+    const max = Math.max(...rows.map((row) => Number(row.value || 0)), 0);
+    if (!max) {
+      target.innerHTML = '<p class="bench-workbench__empty">No timed rows.</p>';
+      return;
+    }
+
+    const bars = rows.map((row) => {
+      const value = Number(row.value || 0);
+      const width = Math.max(2, (value / max) * 100);
+      return `
+        <div class="bench-workbench__bar-row">
+          <span>${escapeHtml(row.label)}</span>
+          <div><i style="width:${width}%"></i></div>
+          <strong>${formatNumber(value, suffix)}</strong>
+        </div>
+      `;
+    }).join("");
+    target.innerHTML = `<div class="bench-workbench__bars">${bars}</div>`;
   }
 
   async loadGrid() {
@@ -757,7 +1163,7 @@ class BenchmarkWorkbench {
     const rows = await queryRows(this.conn, `
       WITH scoped AS (
         SELECT * FROM cells_enriched
-        ${this.whereClause({ skipModel: true, skipModelFamily: true })}
+        ${this.compareWhereClause()}
       ),
       grouped AS (
         SELECT
@@ -805,17 +1211,12 @@ class BenchmarkWorkbench {
               - CAST(a_pass AS DOUBLE) / CAST(a_graded AS DOUBLE)
             )
           ELSE NULL
-        END AS gap_pp
+      END AS gap_pp
       FROM pivoted
       WHERE COALESCE(a_rows, 0) > 0 OR COALESCE(b_rows, 0) > 0
-      ORDER BY
-        abs(COALESCE(gap_pp, 0)) DESC,
-        COALESCE(a_rows, 0) + COALESCE(b_rows, 0) DESC,
-        bucket
-      LIMIT 60
     `);
 
-    this.renderComparison(rows, dimension);
+    this.renderComparison(sortRows(rows, this.comparisonSort, COMPARISON_SORTS), dimension);
   }
 
   renderComparison(rows, dimension) {
@@ -827,20 +1228,20 @@ class BenchmarkWorkbench {
     const labelA = this.selectedOptionLabel(this.compareA);
     const labelB = this.selectedOptionLabel(this.compareB);
     const headers = [
-      dimension.label,
-      `${labelA} pass`,
-      `${labelB} pass`,
-      "Gap",
-      `${labelA} rows`,
-      `${labelB} rows`,
-      `${labelA} fails`,
-      `${labelB} fails`,
-      `${labelA} timeouts`,
-      `${labelB} timeouts`,
-      `${labelA} tokens`,
-      `${labelB} tokens`,
-      `${labelA} p50`,
-      `${labelB} p50`,
+      [dimension.label, "bucket"],
+      [`${labelA} pass`, "a_pass_rate"],
+      [`${labelB} pass`, "b_pass_rate"],
+      ["Gap", "gap_pp"],
+      [`${labelA} rows`, "a_rows"],
+      [`${labelB} rows`, "b_rows"],
+      [`${labelA} fails`, "a_fail"],
+      [`${labelB} fails`, "b_fail"],
+      [`${labelA} timeouts`, "a_timeout"],
+      [`${labelB} timeouts`, "b_timeout"],
+      [`${labelA} tokens`, "a_tokens"],
+      [`${labelB} tokens`, "b_tokens"],
+      [`${labelA} p50`, "a_wall_p50"],
+      [`${labelB} p50`, "b_wall_p50"],
     ];
 
     const htmlRows = rows.map((row) => {
@@ -875,7 +1276,7 @@ class BenchmarkWorkbench {
     this.comparison.innerHTML = `
       <table>
         <thead>
-          <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+          <tr>${headers.map(([label, key]) => sortHeader(label, key, this.comparisonSort)).join("")}</tr>
         </thead>
         <tbody>${htmlRows}</tbody>
       </table>
@@ -922,7 +1323,8 @@ class BenchmarkWorkbench {
         CAST(sum(total_tokens) AS DOUBLE) AS token_total,
         sum(cost_usd) FILTER (WHERE cost_usd IS NOT NULL) AS cost_total,
         median(wall_seconds) FILTER (WHERE wall_seconds IS NOT NULL) AS wall_p50
-      FROM workbench_cells
+      FROM cells_enriched
+      ${this.combinationWhereClause()}
       GROUP BY
         task,
         model_display_name,
@@ -935,17 +1337,33 @@ class BenchmarkWorkbench {
         engine,
         effective_gpu_model,
         effective_gpu_ram_gb
-      ORDER BY n_pass DESC, pass_rate DESC, n_rows DESC, task
-      LIMIT 80
     `);
+    const sortedRows = sortRows(rows, this.combinationSort, COMBINATION_SORTS);
 
-    if (rows.length === 0) {
+    if (sortedRows.length === 0) {
       this.combinations.innerHTML = "<p>No combinations match the current filters.</p>";
       return;
     }
 
-    const headers = ["Test", "Model", "Quant", "KV", "MTP", "Engine", "GPU", "RAM", "Rows", "Passes", "Fails", "Timeouts", "Pass rate", "Tokens", "Cost", "Wall p50"];
-    const htmlRows = rows.map((row) => `
+    const headers = [
+      ["Test", "task"],
+      ["Model", "model_display_name"],
+      ["Quant", "model_quant"],
+      ["KV", "kv_cache_quant"],
+      ["MTP", "runtime_mtp_enabled"],
+      ["Engine", "engine"],
+      ["GPU", "gpu"],
+      ["RAM", "gpu_ram_gb"],
+      ["Rows", "n_rows"],
+      ["Passes", "n_pass"],
+      ["Fails", "n_fail"],
+      ["Timeouts", "n_timeout"],
+      ["Pass rate", "pass_rate"],
+      ["Tokens", "token_total"],
+      ["Cost", "cost_total"],
+      ["Wall p50", "wall_p50"],
+    ];
+    const htmlRows = sortedRows.map((row) => `
       <tr>
         <td>${taskAnchor(row)}</td>
         <td>${escapeHtml(row.model_display_name)}</td>
@@ -969,7 +1387,7 @@ class BenchmarkWorkbench {
     this.combinations.innerHTML = `
       <table>
         <thead>
-          <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
+          <tr>${headers.map(([label, key]) => sortHeader(label, key, this.combinationSort)).join("")}</tr>
         </thead>
         <tbody>${htmlRows}</tbody>
       </table>
