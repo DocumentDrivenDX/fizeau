@@ -35,14 +35,6 @@ const (
 // drives refreshes through QuotaHarness.RefreshQuota — see
 // requestPrimaryQuotaRefresh and HealthCheck below.
 
-var healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
-	return codexharness.ReadCodexQuotaViaPTY(timeout)
-}
-
-var healthCheckCodexSessionQuotaReader = func() (*codexharness.CodexQuotaSnapshot, bool) {
-	return codexharness.ReadCodexQuotaFromSessionTokenCounts()
-}
-
 var healthCheckQuotaProbeMu sync.RWMutex
 
 var primaryQuotaRefresh = &quotaRefreshCoordinator{
@@ -185,7 +177,9 @@ func (s *service) requestPrimaryQuotaRefresh(ctx context.Context, harnessName st
 				probeCancel()
 			}
 		case "codex":
-			refreshCodexQuotaCache(ctx, policy.debounce, policy.probeTimeout)
+			if qh, ok := harnessByName("codex").(harnesses.QuotaHarness); ok {
+				_, _ = qh.RefreshQuota(ctx)
+			}
 		}
 	}()
 	return done
@@ -223,31 +217,25 @@ func (s *service) primaryQuotaCacheStatus(ctx context.Context, harnessName strin
 			usable:       !stale,
 		}
 	case "codex":
-		cachePath, err := codexharness.CodexQuotaCachePath()
+		qh, ok := harnessByName("codex").(harnesses.QuotaHarness)
+		if !ok {
+			return quotaCacheStatus{}
+		}
+		status, err := qh.QuotaStatus(ctx, now)
 		if err != nil {
 			return quotaCacheStatus{}
 		}
-		snap, _ := codexharness.ReadCodexQuotaFrom(cachePath)
-		if snap == nil {
+		if status.State == harnesses.QuotaUnavailable {
 			return quotaCacheStatus{needsRefresh: true}
 		}
-		decision := codexharness.DecideCodexQuotaRouting(snap, now, debounce)
+		usable := status.Fresh && status.RoutingPreference == harnesses.RoutingPreferenceAvailable
 		return quotaCacheStatus{
-			needsRefresh: !decision.Fresh || !codexQuotaCacheComplete(snap),
-			usable:       decision.Fresh && decision.PreferCodex,
+			needsRefresh: !usable,
+			usable:       usable,
 		}
 	default:
 		return quotaCacheStatus{}
 	}
-}
-
-func codexQuotaCacheComplete(snap *codexharness.CodexQuotaSnapshot) bool {
-	return snap != nil &&
-		!snap.CapturedAt.IsZero() &&
-		strings.TrimSpace(snap.Source) != "" &&
-		len(snap.Windows) > 0 &&
-		snap.Account != nil &&
-		strings.TrimSpace(snap.Account.PlanType) != ""
 }
 
 // ListProviders returns providers known to the native fiz harness with live
@@ -380,7 +368,9 @@ func (s *service) HealthCheck(ctx context.Context, health HealthTarget) error {
 				s.healthCheckRefreshClaudeQuota(ctx)
 			}
 			if health.Name == "codex" {
-				healthCheckRefreshCodexQuota(ctx)
+				if qh, ok := s.harnessByName("codex").(harnesses.QuotaHarness); ok {
+					_, _ = qh.RefreshQuota(ctx)
+				}
 			}
 			return nil
 		}
