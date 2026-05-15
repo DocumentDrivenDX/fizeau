@@ -56,24 +56,6 @@ func ReadGeminiQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) ([]har
 	return windows, err
 }
 
-// RefreshGeminiQuotaViaPTY launches the probe and returns a ready-to-write
-// durable snapshot. The Account field is filled from ReadAuthEvidence so the
-// snapshot records auth/account context alongside quota evidence (but the
-// quota decision is still gated on parsed windows, not on Account alone).
-func RefreshGeminiQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) (GeminiQuotaSnapshot, error) {
-	windows, _, err := captureGeminiQuotaViaPTY(context.Background(), timeout, opts...)
-	if err != nil {
-		return GeminiQuotaSnapshot{}, err
-	}
-	account := ReadAuthEvidence(time.Now()).Account
-	return GeminiQuotaSnapshot{
-		CapturedAt: time.Now().UTC(),
-		Windows:    windows,
-		Source:     "pty",
-		Account:    account,
-	}, nil
-}
-
 // ReadGeminiQuotaFromCassette replays a previously recorded cassette and
 // re-parses its final frame as Gemini /model manage output.
 func ReadGeminiQuotaFromCassette(dir string) ([]harnesses.QuotaWindow, error) {
@@ -159,7 +141,7 @@ func geminiQuotaRecord(windows []harnesses.QuotaWindow) cassette.QuotaRecord {
 		Source:            "pty",
 		Status:            string(ptyquota.StatusOK),
 		CapturedAt:        time.Now().UTC().Format(time.RFC3339),
-		FreshnessWindow:   DefaultGeminiQuotaStaleAfter.String(),
+		FreshnessWindow:   defaultGeminiQuotaStaleAfter.String(),
 		StalenessBehavior: "stale gemini quota evidence keeps Gemini out of automatic routing and is treated as limited",
 		Windows:           records,
 	}

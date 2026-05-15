@@ -17,7 +17,7 @@ var (
 	geminiMajorPattern        = regexp.MustCompile(`^gemini-[0-9]+(?:[.-][0-9]+)?$`)
 )
 
-func DefaultGeminiModelDiscovery() harnesses.ModelDiscoverySnapshot {
+func defaultGeminiModelDiscovery() harnesses.ModelDiscoverySnapshot {
 	return harnesses.ModelDiscoverySnapshot{
 		CapturedAt:      time.Now().UTC(),
 		Models:          []string{"gemini", "gemini-2.5", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"},
@@ -31,7 +31,7 @@ func DefaultGeminiModelDiscovery() harnesses.ModelDiscoverySnapshot {
 // ModelDiscoveryFromText extracts Gemini model IDs from caller-provided CLI
 // output without assuming a current default model list.
 func ModelDiscoveryFromText(text, source string) harnesses.ModelDiscoverySnapshot {
-	snapshot := DefaultGeminiModelDiscovery()
+	snapshot := defaultGeminiModelDiscovery()
 	if source == "" {
 		source = "cli-output:gemini"
 	}
@@ -61,7 +61,7 @@ func uniqueGeminiStrings(values []string) []string {
 	return out
 }
 
-func ResolveGeminiModelAlias(model string, snapshot harnesses.ModelDiscoverySnapshot) string {
+func resolveGeminiModelAlias(model string, snapshot harnesses.ModelDiscoverySnapshot) string {
 	model = strings.ToLower(strings.TrimSpace(model))
 	if model == "" {
 		return model

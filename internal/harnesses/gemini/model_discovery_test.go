@@ -11,12 +11,12 @@ func TestParseGeminiModels(t *testing.T) {
 	require.Equal(t, []string{"gemini-2.5-pro", "gemini-2.5-flash"}, models)
 }
 
-func TestResolveGeminiModelAliasUsesLatestDiscoveredVersion(t *testing.T) {
-	snapshot := DefaultGeminiModelDiscovery()
+func TestresolveGeminiModelAliasUsesLatestDiscoveredVersion(t *testing.T) {
+	snapshot := defaultGeminiModelDiscovery()
 	snapshot.Models = []string{"gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.0-flash"}
 
-	require.Equal(t, "gemini-3.0-flash", ResolveGeminiModelAlias("gemini", snapshot))
-	require.Equal(t, "gemini-2.5-pro", ResolveGeminiModelAlias("gemini-2.5", snapshot))
-	require.Equal(t, "gemini-2.5-flash", ResolveGeminiModelAlias("gemini-2.5-flash", snapshot))
-	require.Equal(t, "qwen3.6", ResolveGeminiModelAlias("qwen3.6", snapshot))
+	require.Equal(t, "gemini-3.0-flash", resolveGeminiModelAlias("gemini", snapshot))
+	require.Equal(t, "gemini-2.5-pro", resolveGeminiModelAlias("gemini-2.5", snapshot))
+	require.Equal(t, "gemini-2.5-flash", resolveGeminiModelAlias("gemini-2.5-flash", snapshot))
+	require.Equal(t, "qwen3.6", resolveGeminiModelAlias("qwen3.6", snapshot))
 }
