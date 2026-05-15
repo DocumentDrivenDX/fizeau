@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/easel/fizeau/internal/benchmark/profile"
+	"github.com/easel/fizeau/internal/safefs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -748,14 +749,10 @@ func yamlStringNode(value string) *yaml.Node {
 }
 
 func writeTextAtomic(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	if err := safefs.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return safefs.WriteFileAtomic(path, data, 0o600)
 }
 
 func copyTextFile(src, dst string) error {
