@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
@@ -151,10 +150,12 @@ type ServiceOptions struct {
 	// for configured non-cloud providers. Zero uses the default (60s).
 	HealthProbeInterval time.Duration
 	// HealthSignalTTL is the maximum age of a probe result before it expires
-	// for routing purposes. Zero uses the default (10 min).
+	// for routing purposes and when loading persisted route-health snapshots.
+	// Zero uses the default (10 min).
 	HealthSignalTTL time.Duration
-	// PersistRouteHealth, when non-empty, is the file path where probe results
-	// are persisted across processes so a fresh process skips redundant probing.
+	// PersistRouteHealth, when non-empty, is the file path where route-attempt
+	// feedback and probe results are persisted across processes. The default is
+	// "" so persistence stays opt-in.
 	PersistRouteHealth string
 	// AlivenessProber, when non-nil, overrides the default TCP-connect prober
 	// used during startup and periodic aliveness probing. Nil uses the default.
@@ -1023,6 +1024,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		providerQuota:    NewProviderQuotaStateStore(),
 		providerBurnRate: NewProviderBurnRateTracker(),
 	}
+	svc.providerProbe = routehealth.NewProbeStore()
 	// Hydrate per-provider daily_token_budget from ServiceConfig so the
 	// burn-rate tracker can predict exhaustion before the upstream quota
 	// signal arrives.
@@ -1037,13 +1039,11 @@ func New(opts ServiceOptions) (FizeauService, error) {
 			}
 		}
 	}
-	if opts.PersistRouteHealth == "" {
-		opts.PersistRouteHealth = defaultRouteHealthPath(opts.ServiceConfig)
-	}
 	svc.opts = opts
-	svc.providerProbe = routehealth.NewProbeStore()
 	if opts.PersistRouteHealth != "" {
-		_ = svc.providerProbe.Load(opts.PersistRouteHealth)
+		if err := routehealth.LoadPersistedState(opts.PersistRouteHealth, svc.healthSignalTTL(), svc.routeHealth, svc.providerProbe); err != nil {
+			logPersistRouteHealthWarning(opts.Logger, opts.PersistRouteHealth, err)
+		}
 	}
 	startupCtx := opts.QuotaRefreshContext
 	if startupCtx == nil {
@@ -1060,15 +1060,11 @@ func New(opts ServiceOptions) (FizeauService, error) {
 	return svc, nil
 }
 
-func defaultRouteHealthPath(sc ServiceConfig) string {
-	if sc == nil {
-		return ""
+func logPersistRouteHealthWarning(w io.Writer, path string, err error) {
+	if w == nil || err == nil {
+		return
 	}
-	workDir := strings.TrimSpace(sc.WorkDir())
-	if workDir == "" {
-		return ""
-	}
-	return filepath.Join(workDir, ".fizeau", "route-health-main.json")
+	fmt.Fprintf(w, "warning: route health persistence: cannot load %s: %v; starting with empty state\n", path, err)
 }
 
 // harnessByName returns the registered Harness instance for name. Returns

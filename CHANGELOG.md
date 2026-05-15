@@ -14,6 +14,10 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
   metadata helpers now live behind `internal/serviceimpl`; the root
   `github.com/easel/fizeau` package keeps the same public import path and
   method names as a thin facade over those internal owners.
+- `ServiceOptions.PersistRouteHealth` now persists route-attempt feedback as
+  well as probe results across process boundaries, and persisted snapshots are
+  filtered on load by `HealthSignalTTL`. The option now defaults to `""` so
+  cross-process route-health sharing remains opt-in.
 
 ## [v0.14.1] — 2026-05-15
 

@@ -11,7 +11,7 @@ func (s *service) RecordRouteAttempt(_ context.Context, attempt RouteAttempt) er
 	if s == nil {
 		s = &service{}
 	}
-	return s.routeHealthStore().RecordAttempt(routehealth.Attempt{
+	if err := s.routeHealthStore().RecordAttempt(routehealth.Attempt{
 		Harness:   attempt.Harness,
 		Provider:  attempt.Provider,
 		Model:     attempt.Model,
@@ -21,7 +21,11 @@ func (s *service) RecordRouteAttempt(_ context.Context, attempt RouteAttempt) er
 		Error:     attempt.Error,
 		Duration:  attempt.Duration,
 		Timestamp: attempt.Timestamp,
-	})
+	}); err != nil {
+		return err
+	}
+	s.persistRouteHealthSnapshot()
+	return nil
 }
 
 func (s *service) routeHealthStore() *routehealth.Store {
@@ -54,4 +58,11 @@ func (s *service) routeMetricSignals(now time.Time, ttl time.Duration) (map[stri
 		return nil, nil
 	}
 	return s.routeHealth.MetricSignals(now, ttl)
+}
+
+func (s *service) persistRouteHealthSnapshot() {
+	if s == nil || s.opts.PersistRouteHealth == "" {
+		return
+	}
+	_ = routehealth.SavePersistedState(s.opts.PersistRouteHealth, s.routeHealth, s.providerProbe)
 }

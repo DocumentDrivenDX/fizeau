@@ -1,12 +1,9 @@
 package routehealth
 
 import (
-	"encoding/json"
 	"os"
 	"sync"
 	"time"
-
-	"github.com/easel/fizeau/internal/safefs"
 )
 
 // ProbeRecord records the most recent aliveness probe result for a provider endpoint.
@@ -111,26 +108,9 @@ func (ps *ProbeStore) UnreachableProviders(now time.Time, ttl time.Duration) map
 	return out
 }
 
-type persistedProbeStore struct {
-	Records []ProbeRecord `json:"records"`
-}
-
 // Save persists probe records to a JSON file at path.
 func (ps *ProbeStore) Save(path string) error {
-	if ps == nil || path == "" {
-		return nil
-	}
-	ps.mu.RLock()
-	records := make([]ProbeRecord, 0, len(ps.records))
-	for _, r := range ps.records {
-		records = append(records, r)
-	}
-	ps.mu.RUnlock()
-	data, err := json.MarshalIndent(persistedProbeStore{Records: records}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return safefs.WriteFile(path, data, 0o600)
+	return SavePersistedState(path, nil, ps)
 }
 
 // Load reads probe records from a JSON file at path. Non-existent files are silently ignored.
@@ -138,28 +118,11 @@ func (ps *ProbeStore) Load(path string) error {
 	if ps == nil || path == "" {
 		return nil
 	}
-	data, err := safefs.ReadFile(path)
-	if err != nil {
+	if err := LoadPersistedState(path, 0, nil, ps); err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return err
-	}
-	var stored persistedProbeStore
-	if err := json.Unmarshal(data, &stored); err != nil {
-		return err
-	}
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-	for _, r := range stored.Records {
-		if r.Provider == "" {
-			continue
-		}
-		key := probeKey{Provider: r.Provider, Endpoint: r.Endpoint}
-		existing, ok := ps.records[key]
-		if !ok || r.LastProbeAt.After(existing.LastProbeAt) {
-			ps.records[key] = r
-		}
 	}
 	return nil
 }

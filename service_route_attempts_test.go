@@ -1,6 +1,7 @@
 package fizeau
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -191,6 +192,131 @@ func TestRecordRouteAttempt_TTLExpiryRemovesDemotion(t *testing.T) {
 	if dec.Provider != "bragi" {
 		t.Fatalf("Provider after TTL expiry: got %q, want bragi", dec.Provider)
 	}
+}
+
+func TestRouteHealth_PersistsAcrossInstances(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routehealth.json")
+	now := time.Now().UTC()
+	recordedAt := now.Add(-5 * time.Second)
+
+	svc1 := newTestService(t, ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		PersistRouteHealth:  path,
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
+	if err := svc1.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Harness:   "fiz",
+		Provider:  "bragi",
+		Model:     "qwen",
+		Status:    "failed",
+		Reason:    "timeout",
+		Error:     "dial tcp: i/o timeout",
+		Timestamp: recordedAt,
+	}); err != nil {
+		t.Fatalf("RecordRouteAttempt: %v", err)
+	}
+
+	rawSvc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		PersistRouteHealth:  path,
+		HealthSignalTTL:     10 * time.Minute,
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	svc2 := rawSvc.(*service)
+
+	records := svc2.activeRouteAttempts(now, time.Minute)
+	if len(records) != 1 {
+		t.Fatalf("activeRouteAttempts len = %d, want 1", len(records))
+	}
+	if records[0].Key.Provider != "bragi" {
+		t.Fatalf("provider = %q, want bragi", records[0].Key.Provider)
+	}
+	if !records[0].RecordedAt.Equal(recordedAt) {
+		t.Fatalf("RecordedAt = %v, want %v", records[0].RecordedAt, recordedAt)
+	}
+}
+
+func TestRouteHealth_TTLExpiresStaleSignals(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routehealth.json")
+	now := time.Now().UTC()
+
+	svc1 := newTestService(t, ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		PersistRouteHealth:  path,
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
+	if err := svc1.RecordRouteAttempt(context.Background(), RouteAttempt{
+		Harness:   "fiz",
+		Provider:  "bragi",
+		Model:     "qwen",
+		Status:    "failed",
+		Timestamp: now.Add(-11 * time.Minute),
+	}); err != nil {
+		t.Fatalf("RecordRouteAttempt: %v", err)
+	}
+
+	rawSvc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		PersistRouteHealth:  path,
+		HealthSignalTTL:     10 * time.Minute,
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	svc2 := rawSvc.(*service)
+
+	if got := svc2.activeRouteAttempts(now, time.Hour); len(got) != 0 {
+		t.Fatalf("activeRouteAttempts = %d, want 0 after persisted TTL expiry", len(got))
+	}
+}
+
+func TestRouteHealth_MissingFileBootsClean(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-routehealth.json")
+	var logs bytes.Buffer
+
+	rawSvc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		PersistRouteHealth:  path,
+		Logger:              &logs,
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	svc := rawSvc.(*service)
+
+	if got := svc.activeRouteAttempts(time.Now().UTC(), time.Hour); len(got) != 0 {
+		t.Fatalf("activeRouteAttempts = %d, want empty store", len(got))
+	}
+	assertSingleWarningLine(t, logs.String(), path)
+}
+
+func TestRouteHealth_CorruptFileBootsClean(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "routehealth.json")
+	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
+		t.Fatalf("write corrupt snapshot: %v", err)
+	}
+	var logs bytes.Buffer
+
+	rawSvc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		PersistRouteHealth:  path,
+		Logger:              &logs,
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	svc := rawSvc.(*service)
+
+	if got := svc.activeRouteAttempts(time.Now().UTC(), time.Hour); len(got) != 0 {
+		t.Fatalf("activeRouteAttempts = %d, want empty store", len(got))
+	}
+	assertSingleWarningLine(t, logs.String(), path)
 }
 
 func TestRouteStatus_RouteAttemptCooldownSurfaces(t *testing.T) {
@@ -517,6 +643,24 @@ func containsRouteString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func assertSingleWarningLine(t *testing.T, logs string, path string) {
+	t.Helper()
+	trimmed := strings.TrimSpace(logs)
+	if trimmed == "" {
+		t.Fatal("expected warning log, got empty output")
+	}
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) != 1 {
+		t.Fatalf("warning log lines = %d, want 1: %q", len(lines), trimmed)
+	}
+	if !strings.Contains(lines[0], "warning:") {
+		t.Fatalf("warning log = %q, want warning prefix", lines[0])
+	}
+	if !strings.Contains(lines[0], path) {
+		t.Fatalf("warning log = %q, want path %q", lines[0], path)
+	}
 }
 
 type geminiTestQuotaSnapshot struct {

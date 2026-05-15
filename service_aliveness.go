@@ -139,10 +139,7 @@ func runStartupAlivenessProbes(
 }
 
 func (s *service) persistProbeStore() {
-	if s == nil || s.providerProbe == nil || s.opts.PersistRouteHealth == "" {
-		return
-	}
-	_ = s.providerProbe.Save(s.opts.PersistRouteHealth)
+	s.persistRouteHealthSnapshot()
 }
 
 // refreshLocalHealthForRouting synchronously refreshes stale or missing local
