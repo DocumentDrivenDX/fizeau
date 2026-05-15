@@ -133,7 +133,7 @@ trap 'on_sweep_signal TERM' SIGTERM
 trap cleanup EXIT
 
 usage() {
-  cat <<'EOF'
+  cat <<EOF
 Usage: ./bench/run [flags]
 
 Flags:
@@ -156,8 +156,43 @@ prints the exact target plan, waits briefly for Ctrl-C, then runs the sweep.
 catalog.
 
 Short lane aliases:
-  openai-gpt55, openrouter-qwen36, sindri-llamacpp, sindri-vllm, sindri-lucebox, vidar
 EOF
+  print_short_lane_aliases
+}
+
+print_short_lane_aliases() {
+  python3 - "$SWEEP_PLAN" <<'PY'
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except Exception:
+    print("  (PyYAML unavailable; aliases live in lane_aliases: within the sweep plan)")
+    raise SystemExit(0)
+
+plan_path = Path(sys.argv[1])
+if not plan_path.exists():
+    print(f"  (sweep plan not found at {plan_path})")
+    raise SystemExit(0)
+
+plan = yaml.safe_load(plan_path.read_text()) or {}
+aliases = plan.get("lane_aliases") or {}
+if not aliases:
+    print("  (none)")
+    raise SystemExit(0)
+
+grouped = {}
+order = []
+for alias, lane_id in aliases.items():
+    grouped.setdefault(lane_id, [])
+    if lane_id not in order:
+        order.append(lane_id)
+    grouped[lane_id].append(alias)
+
+for lane_id in order:
+    print(f"  {', '.join(grouped[lane_id])} -> {lane_id}")
+PY
 }
 
 while [[ $# -gt 0 ]]; do
@@ -261,37 +296,24 @@ resolve_matrix_jobs_managed() {
   fi
 }
 
-expand_lane_alias() {
-  case "$1" in
-    openai-gpt55|gpt55|openai) echo "fiz-openai-gpt-5-5" ;;
-    openrouter-qwen36|or-qwen36|qwen36-or) echo "fiz-openrouter-qwen3-6-27b" ;;
-    sindri-llamacpp|sindri-llcpp) echo "fiz-sindri-llamacpp-qwen3-6-27b" ;;
-    sindri-vllm) echo "fiz-sindri-vllm-qwen3-6-27b" ;;
-    vidar|vidar-omlx) echo "fiz-vidar-omlx-qwen3-6-27b" ;;
-    vidar-ds4|ds4) echo "fiz-vidar-ds4" ;;
-    sindri-lucebox|luce-dflash|lucebox-dflash|dflash) echo "fiz-sindri-lucebox-qwen3-6-27b" ;;
-    *) echo "$1" ;;
-  esac
-}
-
 normalize_lanes() {
   local raw="$1"
-  local out=""
-  local item expanded
-  IFS=',' read -ra items <<< "${raw}"
-  for item in "${items[@]}"; do
-    item="${item#"${item%%[![:space:]]*}"}"
-    item="${item%"${item##*[![:space:]]}"}"
-    if [[ -z "${item}" ]]; then
-      continue
-    fi
-    expanded="$(expand_lane_alias "${item}")"
-    if [[ -n "${out}" ]]; then
-      out+=","
-    fi
-    out+="${expanded}"
-  done
-  echo "${out}"
+  python3 - "$SWEEP_PLAN" "${raw}" <<'PY'
+import sys
+from pathlib import Path
+
+import yaml
+
+plan = yaml.safe_load(Path(sys.argv[1]).read_text()) or {}
+aliases = plan.get("lane_aliases") or {}
+out = []
+for raw in sys.argv[2].split(","):
+    item = raw.strip()
+    if not item:
+        continue
+    out.append(aliases.get(item, item))
+print(",".join(out))
+PY
 }
 
 if [[ -n "${LANES}" ]]; then
