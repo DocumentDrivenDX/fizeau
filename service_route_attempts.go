@@ -2,8 +2,10 @@ package fizeau
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/routehealth"
 )
 
@@ -26,6 +28,98 @@ func (s *service) RecordRouteAttempt(_ context.Context, attempt RouteAttempt) er
 	}
 	s.persistRouteHealthSnapshot()
 	return nil
+}
+
+func (s *service) recordRouteAttemptFromFinal(final harnesses.FinalData) {
+	attempt, ok := routeAttemptFromFinal(final)
+	if !ok {
+		return
+	}
+	_ = s.RecordRouteAttempt(context.Background(), attempt)
+}
+
+func routeAttemptFromFinal(final harnesses.FinalData) (RouteAttempt, bool) {
+	if final.RoutingActual == nil {
+		return RouteAttempt{}, false
+	}
+	attempt := RouteAttempt{
+		Harness:  strings.TrimSpace(final.RoutingActual.Harness),
+		Provider: strings.TrimSpace(final.RoutingActual.Provider),
+		Model:    strings.TrimSpace(final.RoutingActual.Model),
+		Status:   strings.TrimSpace(final.Status),
+		Reason:   routeAttemptFailureClass(final),
+		Error:    strings.TrimSpace(final.Error),
+	}
+	if attempt.Status == "" || (attempt.Harness == "" && attempt.Provider == "") {
+		return RouteAttempt{}, false
+	}
+	if final.DurationMS > 0 {
+		attempt.Duration = time.Duration(final.DurationMS) * time.Millisecond
+	}
+	if providerName, endpointName, ok := splitEndpointProviderRef(attempt.Provider); ok {
+		attempt.Provider = providerName
+		attempt.Endpoint = endpointName
+	}
+	if routehealth.Succeeded(strings.ToLower(attempt.Status)) {
+		return attempt, true
+	}
+	if !isRouteAttemptDispatchFailure(attempt.Reason) {
+		return RouteAttempt{}, false
+	}
+	return attempt, true
+}
+
+func routeAttemptFailureClass(final harnesses.FinalData) string {
+	if final.RoutingActual == nil {
+		return ""
+	}
+	if cls := strings.ToLower(strings.TrimSpace(final.RoutingActual.FailureClass)); cls != "" {
+		return cls
+	}
+	return classifyRouteAttemptFailure(final.Error)
+}
+
+func isRouteAttemptDispatchFailure(class string) bool {
+	switch strings.ToLower(strings.TrimSpace(class)) {
+	case "availability", "protocol", "transport":
+		return true
+	default:
+		return false
+	}
+}
+
+func classifyRouteAttemptFailure(errMsg string) string {
+	msg := strings.ToLower(strings.TrimSpace(errMsg))
+	switch {
+	case msg == "":
+		return ""
+	case strings.Contains(msg, "no provider configured"),
+		strings.Contains(msg, "not available"),
+		strings.Contains(msg, "exhausted"),
+		strings.Contains(msg, "not configured"),
+		strings.Contains(msg, "binary not found"):
+		return "availability"
+	case strings.Contains(msg, "timeout"),
+		strings.Contains(msg, "deadline"),
+		strings.Contains(msg, "connection"),
+		strings.Contains(msg, "refused"),
+		strings.Contains(msg, "no such host"),
+		strings.Contains(msg, "transport"),
+		strings.Contains(msg, "dial tcp"),
+		strings.Contains(msg, "network is unreachable"),
+		strings.Contains(msg, "no route to host"),
+		strings.Contains(msg, "i/o timeout"):
+		return "transport"
+	case strings.Contains(msg, "http "),
+		strings.Contains(msg, "status "),
+		strings.Contains(msg, "bad request"),
+		strings.Contains(msg, "unauthorized"),
+		strings.Contains(msg, "not found"),
+		strings.Contains(msg, "unsupported"):
+		return "protocol"
+	default:
+		return ""
+	}
 }
 
 func (s *service) routeHealthStore() *routehealth.Store {

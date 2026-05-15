@@ -542,6 +542,7 @@ func (s *service) runVirtual(ctx context.Context, req ServiceExecuteRequest, dec
 	if progressFinal := progress.noteResponseComplete(final); progressFinal != nil {
 		emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
 	}
+	s.recordRouteAttemptFromFinal(final)
 	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
 
@@ -556,6 +557,7 @@ func (s *service) runScript(ctx context.Context, req ServiceExecuteRequest, deci
 	if progressFinal := progress.noteResponseComplete(final); progressFinal != nil {
 		emitProgress(out, seq, sl, sessionID, meta, *progressFinal)
 	}
+	s.recordRouteAttemptFromFinal(final)
 	finalizeAndEmit(out, seq, meta, req, sl, final)
 }
 
@@ -705,6 +707,7 @@ func (s *service) runNative(ctx context.Context, req ServiceExecuteRequest, deci
 			}
 		},
 		Finalize: func(final harnesses.FinalData) {
+			s.recordRouteAttemptFromFinal(final)
 			finalizeAndEmit(out, seq, meta, req, sl, final)
 		},
 		ToolWiringHook:          s.toolWiringHook(),
@@ -824,6 +827,7 @@ func (s *service) runSubprocess(ctx context.Context, req ServiceExecuteRequest, 
 			}
 		},
 		Finalize: func(final harnesses.FinalData) {
+			s.recordRouteAttemptFromFinal(final)
 			finalizeAndEmit(out, seq, meta, req, sl, final)
 		},
 		WriteEnd: func(finalMeta map[string]string, final harnesses.FinalData) {

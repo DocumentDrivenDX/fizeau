@@ -13,7 +13,68 @@ import (
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/routing"
+	"github.com/easel/fizeau/internal/serviceimpl"
 )
+
+func TestExecuteDispatchFailureRecordsRouteAttemptForNextRoute(t *testing.T) {
+	svc := routeAttemptTestService(t, 30*time.Second)
+
+	before, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "qwen"})
+	if err != nil {
+		t.Fatalf("ResolveRoute before Execute: %v", err)
+	}
+	if before.Provider != "bragi" {
+		t.Fatalf("before Execute Provider: got %q, want bragi", before.Provider)
+	}
+
+	ch, err := svc.Execute(context.Background(), ServiceExecuteRequest{
+		Prompt:          "try once",
+		Model:           "qwen",
+		Timeout:         2 * time.Second,
+		ProviderTimeout: 500 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	events := drainRouteAttemptServiceEvents(t, ch, 5*time.Second)
+	final := finalRouteAttemptServiceData(t, events)
+	if final.Status != "failed" {
+		t.Fatalf("final.Status = %q, want failed", final.Status)
+	}
+	if final.RoutingActual == nil {
+		t.Fatal("final.RoutingActual is nil")
+	}
+	if final.RoutingActual.Provider != "bragi" || final.RoutingActual.Model != "qwen" {
+		t.Fatalf("final.RoutingActual = %#v, want attempted bragi/qwen", final.RoutingActual)
+	}
+	if final.RoutingActual.FailureClass != "transport" {
+		t.Fatalf("final.RoutingActual.FailureClass = %q, want transport", final.RoutingActual.FailureClass)
+	}
+
+	after, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: "qwen"})
+	if err != nil {
+		t.Fatalf("ResolveRoute after Execute: %v", err)
+	}
+	if after.Provider == "bragi" {
+		t.Fatalf("after Execute Provider: got bragi, want route health to reject failed provider")
+	}
+	var bragiCand *RouteCandidate
+	for i := range after.Candidates {
+		if after.Candidates[i].Provider == "bragi" {
+			bragiCand = &after.Candidates[i]
+			break
+		}
+	}
+	if bragiCand == nil {
+		t.Fatal("bragi candidate row missing after Execute failure")
+	}
+	if bragiCand.Eligible {
+		t.Fatal("bragi should be ineligible after Execute dispatch failure")
+	}
+	if !strings.Contains(bragiCand.Reason, "known unreachable") {
+		t.Fatalf("bragi candidate reason = %q, want known unreachable", bragiCand.Reason)
+	}
+}
 
 func TestRecordRouteAttempt_DemotesFailedProviderForAutomaticRouting(t *testing.T) {
 	svc := routeAttemptTestService(t, 30*time.Second)
@@ -191,6 +252,47 @@ func TestRecordRouteAttempt_TTLExpiryRemovesDemotion(t *testing.T) {
 	}
 	if dec.Provider != "bragi" {
 		t.Fatalf("Provider after TTL expiry: got %q, want bragi", dec.Provider)
+	}
+}
+
+func TestRecordRouteAttempt_FromFinalSplitsEndpointProviderRef(t *testing.T) {
+	attempt, ok := routeAttemptFromFinal(harnesses.FinalData{
+		Status:     "failed",
+		Error:      "502 bad gateway",
+		DurationMS: 125,
+		RoutingActual: &harnesses.RoutingActual{
+			Harness:      "fiz",
+			Provider:     "bragi@rack-a",
+			Model:        "qwen",
+			FailureClass: "protocol",
+		},
+	})
+	if !ok {
+		t.Fatal("routeAttemptFromFinal should record endpoint-qualified dispatch failures")
+	}
+	if attempt.Provider != "bragi" || attempt.Endpoint != "rack-a" {
+		t.Fatalf("attempt provider split = %q/%q, want bragi/rack-a", attempt.Provider, attempt.Endpoint)
+	}
+	if attempt.Reason != "protocol" {
+		t.Fatalf("attempt.Reason = %q, want protocol", attempt.Reason)
+	}
+	if attempt.Duration != 125*time.Millisecond {
+		t.Fatalf("attempt.Duration = %s, want 125ms", attempt.Duration)
+	}
+}
+
+func TestRecordRouteAttempt_FromFinalIgnoresSemanticFailures(t *testing.T) {
+	if _, ok := routeAttemptFromFinal(harnesses.FinalData{
+		Status: "failed",
+		Error:  "validator rejected malformed tool payload",
+		RoutingActual: &harnesses.RoutingActual{
+			Harness:      "fiz",
+			Provider:     "bragi",
+			Model:        "qwen",
+			FailureClass: "unknown",
+		},
+	}); ok {
+		t.Fatal("routeAttemptFromFinal should ignore non-dispatch failures")
 	}
 }
 
@@ -622,7 +724,9 @@ func routeAttemptTestService(t *testing.T, cooldown time.Duration) *service {
 		defaultName:    "bragi",
 		healthCooldown: cooldown,
 	}
-	return newTestService(t, ServiceOptions{ServiceConfig: sc})
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+	svc.hub = serviceimpl.NewSessionHub()
+	return svc
 }
 
 func routingHarnessEntry(t *testing.T, entries []routing.HarnessEntry, name string) routing.HarnessEntry {
@@ -707,4 +811,39 @@ func writeGeminiTestQuota(t *testing.T, path string, snap geminiTestQuotaSnapsho
 	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
 		t.Fatalf("write gemini quota: %v", err)
 	}
+}
+
+func drainRouteAttemptServiceEvents(t *testing.T, ch <-chan ServiceEvent, timeout time.Duration) []ServiceEvent {
+	t.Helper()
+	var events []ServiceEvent
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case ev, ok := <-ch:
+			if !ok {
+				return events
+			}
+			events = append(events, ev)
+		case <-timer.C:
+			t.Fatalf("timed out waiting for service events")
+			return events
+		}
+	}
+}
+
+func finalRouteAttemptServiceData(t *testing.T, events []ServiceEvent) ServiceFinalData {
+	t.Helper()
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type != ServiceEventTypeFinal {
+			continue
+		}
+		var final ServiceFinalData
+		if err := json.Unmarshal(events[i].Data, &final); err != nil {
+			t.Fatalf("unmarshal final: %v", err)
+		}
+		return final
+	}
+	t.Fatalf("final event not found in %v", events)
+	return ServiceFinalData{}
 }

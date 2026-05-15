@@ -82,6 +82,7 @@ func (s *service) dispatchExecuteRun(ctx context.Context, run executeRunContext)
 			return ok && cfg.IsHTTPProvider
 		},
 		Finalize: func(final harnesses.FinalData) {
+			s.recordRouteAttemptFromFinal(final)
 			finalizeAndEmit(run.out, run.seq, run.meta, run.req, run.sl, final)
 		},
 	})
