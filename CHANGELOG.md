@@ -11,7 +11,9 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
   discovery. `ResolveRoute`/`Execute` no longer synchronously probe local
   OpenAI-compatible providers or block on stale `/v1/models` refresh before
   selecting an eligible subscription harness; cached failed probe evidence
-  still gates known-dead local providers with `endpoint_unreachable`.
+  still gates known-dead local providers with `endpoint_unreachable`, and
+  all-dead cached provider sets fail fast with a no-live-provider route error.
+  Tracks `fizeau-f02ada30` and `fizeau-a77e62b6`.
 
 ### Changed
 

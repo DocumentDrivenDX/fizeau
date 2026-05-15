@@ -2,8 +2,10 @@ package fizeau
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -583,6 +585,176 @@ models:
 		t.Fatalf("decision=%#v, want codex subscription fallback", dec)
 	}
 	close(blocked)
+}
+
+func TestRouter_DeadLocalProvider_FallsThroughToSubscription(t *testing.T) {
+	configureFreshCodexQuotaForRouting(t)
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	modelID := "mlx-community/Qwen3.6-27B-8bit"
+	baseURL := "http://grendel:8000/v1"
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", baseURL, "grendel"), time.Now().UTC(), []string{modelID})
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  gpt-5.5:
+    family: gpt
+    status: active
+    power: 9
+    context_window: 200000
+    surfaces:
+      codex: gpt-5.5
+  mlx-community/Qwen3.6-27B-8bit:
+    family: qwen
+    status: active
+    power: 7
+    context_window: 32768
+    surfaces:
+      embedded-openai: mlx-community/Qwen3.6-27B-8bit
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"grendel": {
+				Type:           "rapid-mlx",
+				BaseURL:        baseURL,
+				ServerInstance: "grendel",
+				Model:          modelID,
+			},
+		},
+		names:       []string{"grendel"},
+		defaultName: "grendel",
+	}, func(_ context.Context, provider, _ string) bool {
+		t.Fatalf("route hot path invoked aliveness prober for %s", provider)
+		return false
+	})
+	makeOnlyCodexSubprocessAvailable(svc)
+	svc.providerProbe.RecordProbe("grendel", "", false, time.Now().UTC())
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "default"})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil || dec.Harness != "codex" || dec.Model != "gpt-5.5" {
+		t.Fatalf("decision=%#v, want codex subscription fallback", dec)
+	}
+	var local *RouteCandidate
+	for i := range dec.Candidates {
+		if dec.Candidates[i].Provider == "grendel" {
+			local = &dec.Candidates[i]
+			break
+		}
+	}
+	if local == nil {
+		t.Fatalf("missing grendel candidate in %#v", dec.Candidates)
+	}
+	if local.Eligible {
+		t.Fatalf("grendel candidate=%#v, want rejected by cached probe failure", *local)
+	}
+	if local.FilterReason != FilterReasonEndpointUnreachable {
+		t.Fatalf("grendel FilterReason=%q, want %q", local.FilterReason, FilterReasonEndpointUnreachable)
+	}
+	if local.LastProbeAt.IsZero() || local.LastProbeSuccess {
+		t.Fatalf("grendel probe evidence=%#v, want failed probe evidence", *local)
+	}
+}
+
+func TestRouter_AllProvidersDead_FailsFast(t *testing.T) {
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	modelID := "mlx-community/Qwen3.6-27B-8bit"
+	grendelURL := "http://grendel:8000/v1"
+	vidarURL := "http://vidar:8001/v1"
+	capturedAt := time.Now().UTC()
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", grendelURL, "grendel"), capturedAt, []string{modelID})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("vidar", "vidar", vidarURL, "vidar"), capturedAt, []string{modelID})
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  mlx-community/Qwen3.6-27B-8bit:
+    family: qwen
+    status: active
+    power: 7
+    context_window: 32768
+    surfaces:
+      embedded-openai: mlx-community/Qwen3.6-27B-8bit
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"grendel": {
+				Type:           "rapid-mlx",
+				BaseURL:        grendelURL,
+				ServerInstance: "grendel",
+				Model:          modelID,
+			},
+			"vidar": {
+				Type:           "rapid-mlx",
+				BaseURL:        vidarURL,
+				ServerInstance: "vidar",
+				Model:          modelID,
+			},
+		},
+		names:       []string{"grendel", "vidar"},
+		defaultName: "grendel",
+	}, func(_ context.Context, provider, _ string) bool {
+		t.Fatalf("route hot path invoked aliveness prober for %s", provider)
+		return false
+	})
+	svc.registry.LookPath = func(string) (string, error) {
+		return "", exec.ErrNotFound
+	}
+	now := time.Now().UTC()
+	svc.providerProbe.RecordProbe("grendel", "", false, now)
+	svc.providerProbe.RecordProbe("vidar", "", false, now)
+
+	start := time.Now()
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Policy: "default"})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatalf("ResolveRoute succeeded, decision=%#v", dec)
+	}
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("ResolveRoute elapsed %v, want fail-fast cached all-dead routing", elapsed)
+	}
+	if strings.Contains(err.Error(), "provider_connectivity") {
+		t.Fatalf("error=%q, want no-live/no-viable route error, not provider_connectivity", err.Error())
+	}
+	var noLive *ErrNoLiveProvider
+	if !errors.As(err, &noLive) {
+		t.Fatalf("error=%T %v, want ErrNoLiveProvider", err, err)
+	}
+	for _, candidate := range dec.Candidates {
+		if candidate.Provider != "grendel" && candidate.Provider != "vidar" {
+			continue
+		}
+		if candidate.Eligible {
+			t.Fatalf("candidate=%#v, want rejected by cached probe failure", candidate)
+		}
+		if candidate.FilterReason != FilterReasonEndpointUnreachable {
+			t.Fatalf("candidate=%#v FilterReason=%q, want %q", candidate, candidate.FilterReason, FilterReasonEndpointUnreachable)
+		}
+	}
 }
 
 func TestResolveRoute_KnownFailedLocalProbeIsEvidence(t *testing.T) {
