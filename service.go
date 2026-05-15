@@ -145,6 +145,19 @@ type ServiceOptions struct {
 	// StaleHarnessReaperGrace is the minimum age before a startup reaper may
 	// terminate an owned subprocess record. Zero uses the default grace window.
 	StaleHarnessReaperGrace time.Duration
+
+	// HealthProbeInterval is the interval between background aliveness probes
+	// for configured non-cloud providers. Zero uses the default (60s).
+	HealthProbeInterval time.Duration
+	// HealthSignalTTL is the maximum age of a probe result before it expires
+	// for routing purposes. Zero uses the default (10 min).
+	HealthSignalTTL time.Duration
+	// PersistRouteHealth, when non-empty, is the file path where probe results
+	// are persisted across processes so a fresh process skips redundant probing.
+	PersistRouteHealth string
+	// AlivenessProber, when non-nil, overrides the default TCP-connect prober
+	// used during startup and periodic aliveness probing. Nil uses the default.
+	AlivenessProber ProviderAlivenessProber
 }
 
 // SubscriptionCostCurve tunes effective subscription cost by quota utilization.
@@ -562,6 +575,12 @@ type RouteCandidate struct {
 	Components RouteCandidateComponents
 	// Utilization carries the normalized load sample used by the router.
 	Utilization RouteUtilizationState
+	// LastProbeAt is the time of the most recent aliveness probe for this
+	// endpoint. Zero when no probe has been performed.
+	LastProbeAt time.Time
+	// LastProbeSuccess reports whether the most recent aliveness probe succeeded.
+	// Only meaningful when LastProbeAt is non-zero.
+	LastProbeSuccess bool
 }
 
 // FilterReason* enumerate the canonical disqualification reasons surfaced
@@ -574,6 +593,10 @@ const (
 	FilterReasonScoredBelowTop              = "scored_below_top"
 	FilterReasonProviderExcludedFromDefault = "provider_excluded_from_default_routing"
 	FilterReasonMeteredOptInRequired        = "metered_opt_in_required"
+	// FilterReasonEndpointUnreachable is set when a proactive aliveness probe
+	// recorded the provider's endpoint as unreachable within HealthSignalTTL
+	// and at least one alternate candidate is available.
+	FilterReasonEndpointUnreachable = "endpoint_unreachable"
 )
 
 // RouteCandidateComponents breaks down the inputs that fed a candidate's
@@ -929,6 +952,10 @@ type service struct {
 	// budget will be exceeded before the next UTC daily reset.
 	providerBurnRate *ProviderBurnRateTracker
 
+	// providerProbe stores aliveness probe results for configured non-cloud
+	// providers. Populated by startup and periodic background probes.
+	providerProbe *routehealth.ProbeStore
+
 	runtime serviceimpl.Runtime
 }
 
@@ -1021,10 +1048,16 @@ func New(opts ServiceOptions) (FizeauService, error) {
 			}
 		}
 	}
+	svc.providerProbe = routehealth.NewProbeStore()
+	if opts.PersistRouteHealth != "" {
+		_ = svc.providerProbe.Load(opts.PersistRouteHealth)
+	}
 	svc.reapStaleHarnessSessions()
 	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()
 	svc.startQuotaRecoveryProbeLoop()
+	svc.startupAlivenessProbe(context.Background())
+	svc.startAlivenessProbeLoop()
 	svc.refreshScheduler = newRefreshScheduler(svc.harnessByName, svc.registry.Names(), nil)
 	svc.refreshScheduler.Start(context.Background())
 	return svc, nil

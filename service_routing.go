@@ -403,6 +403,37 @@ func (s *service) annotateRouteDecisionEvidence(decision *RouteDecision) {
 			decision.Candidates[i].Endpoint,
 			decision.Candidates[i].Model,
 		)
+		s.annotateProbeEvidence(&decision.Candidates[i])
+	}
+}
+
+// annotateProbeEvidence populates LastProbeAt and LastProbeSuccess on a
+// RouteCandidate from the service's probe store when a record is available.
+func (s *service) annotateProbeEvidence(c *RouteCandidate) {
+	if s == nil || s.providerProbe == nil || c == nil {
+		return
+	}
+	provider := strings.TrimSpace(c.Provider)
+	if provider == "" {
+		return
+	}
+	endpoint := strings.TrimSpace(c.Endpoint)
+	if base, ep, ok := splitEndpointProviderRef(provider); ok {
+		provider = base
+		if endpoint == "" {
+			endpoint = ep
+		}
+	}
+	if r, ok := s.providerProbe.LastProbe(provider, endpoint); ok {
+		c.LastProbeAt = r.LastProbeAt
+		c.LastProbeSuccess = r.LastProbeSuccess
+		return
+	}
+	if endpoint != "" {
+		if r, ok := s.providerProbe.LastProbe(provider, ""); ok {
+			c.LastProbeAt = r.LastProbeAt
+			c.LastProbeSuccess = r.LastProbeSuccess
+		}
 	}
 }
 
@@ -778,12 +809,21 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	healthCooldownTTL := s.routeAttemptTTL()
 	providerUnreachable := providerCooldownsFromSnapshotErrors(snapshot, s.opts.ServiceConfig, now, healthCooldownTTL)
 
+	// Proactive probe failures feed ProbeUnreachable (separate from
+	// ProviderUnreachable which is populated from dial failures). TTL is
+	// HealthSignalTTL (default 10 min) — longer than the cooldown window.
+	var probeUnreachable map[string]time.Time
+	if s.providerProbe != nil {
+		probeUnreachable = s.providerProbe.UnreachableProviders(now, s.healthSignalTTL())
+	}
+
 	return routing.Inputs{
 		Harnesses:                    entries,
 		ProviderSuccessRate:          successRate,
 		ObservedLatencyMS:            latencyMS,
 		ProviderQuotaExhaustedUntil:  s.providerQuotaExhaustedUntil(now),
 		ProviderUnreachable:          providerUnreachable,
+		ProbeUnreachable:             probeUnreachable,
 		CooldownDuration:             healthCooldownTTL,
 		Now:                          now,
 		ModelEligibility:             serviceRoutingModelEligibility(entries, cat),

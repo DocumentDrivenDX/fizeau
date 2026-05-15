@@ -286,6 +286,11 @@ const (
 	// entry in the caller's RouteRequest. Distinguishes caller-driven re-routes
 	// from internal health signals in routing-quality observability.
 	FilterReasonCallerExcluded FilterReason = "caller_excluded"
+	// FilterReasonEndpointUnreachable: provider's endpoint failed a proactive
+	// aliveness probe within the health signal TTL and alternates are available.
+	// Distinct from FilterReasonUnhealthy (route-attempt failure cooldowns).
+	// An explicit provider pin bypasses this gate.
+	FilterReasonEndpointUnreachable FilterReason = "endpoint_unreachable"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -412,8 +417,15 @@ type Inputs struct {
 	// per-provider quota state machine and projects it into this map for
 	// each routing call.
 	ProviderQuotaExhaustedUntil map[string]time.Time
-	Now                         time.Time // injected for deterministic testing; default time.Now()
-	ModelEligibility            func(model string) (ModelEligibility, bool)
+
+	// ProbeUnreachable maps provider name → time of last failed aliveness probe.
+	// Populated from proactive startup and periodic probes (distinct from
+	// ProviderUnreachable which is populated from dial failures during route
+	// attempts and discovery). An explicit provider pin bypasses this gate.
+	ProbeUnreachable map[string]time.Time
+
+	Now              time.Time // injected for deterministic testing; default time.Now()
+	ModelEligibility func(model string) (ModelEligibility, bool)
 
 	// ReasoningResolver returns the catalog's reasoning default for a
 	// (policy, surface) pair. When set, buildHarnessCandidates uses it
@@ -540,6 +552,21 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		ranked = append(ranked, entries...)
 	}
 
+	// Sole-candidate probe fallback (AC #3): when no candidate survived all
+	// gates and the only rejections are from the endpoint-probe gate, re-admit
+	// those candidates so the request can still be served. This fires only when
+	// there is no viable alternative — the probe gate is a soft preference, not
+	// an absolute block.
+	if !hasAnyEligible(ranked) {
+		for i := range ranked {
+			if ranked[i].out.FilterReason == FilterReasonEndpointUnreachable {
+				ranked[i].out.Eligible = true
+				ranked[i].out.FilterReason = ""
+				ranked[i].out.Reason = ""
+			}
+		}
+	}
+
 	// Compute scores only after eligibility is final. Rejected candidates keep
 	// a zero score because cost/utilization/performance/sticky ranking should
 	// never influence the eligibility boundary.
@@ -625,6 +652,15 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		}
 	}
 	return &Decision{Candidates: out}, noViableCandidateError(req, len(out))
+}
+
+func hasAnyEligible(ranked []rankedCandidate) bool {
+	for _, rc := range ranked {
+		if rc.out.Eligible {
+			return true
+		}
+	}
+	return false
 }
 
 // allProvidersQuotaExhaustedError returns ErrAllProvidersQuotaExhausted when
@@ -1204,6 +1240,17 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				eligible = false
 				reason = fmt.Sprintf("provider %s known unreachable (last dial failure %s ago)", candidateProviderIdentity(h, p), in.Now.Sub(failedAt).Truncate(time.Second))
 				filterReason = FilterReasonUnhealthy
+			}
+		}
+
+		// Proactive probe gate: endpoints known unreachable from background/startup
+		// probing are hard-gated. An explicit provider pin bypasses the gate so
+		// operators can still force a dead-endpoint route.
+		if eligible && p.Name != "" && req.Provider != candidateProviderIdentity(h, p) {
+			if _, ok := in.ProbeUnreachable[p.Name]; ok {
+				eligible = false
+				reason = fmt.Sprintf("provider %s endpoint unreachable (aliveness probe failed)", candidateProviderIdentity(h, p))
+				filterReason = FilterReasonEndpointUnreachable
 			}
 		}
 

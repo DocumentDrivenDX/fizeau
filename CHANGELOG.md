@@ -7,6 +7,34 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ### Added
 
+- **Proactive endpoint aliveness probing** for configured non-cloud (local)
+  providers. `Service.New` now runs a startup TCP-connect probe per configured
+  non-cloud provider (bounded by a 5 s total cap via `startupProbeTotalTimeout`),
+  and a background goroutine re-probes those providers every `HealthProbeInterval`
+  (default 60 s). A dead provider is filtered from routing with filter reason
+  `endpoint_unreachable` via the new `routing.Inputs.ProbeUnreachable` gate;
+  an explicit provider pin bypasses the gate so operators can still force a
+  dead-endpoint route. Probe results are persisted across processes when
+  `ServiceOptions.PersistRouteHealth` is set, so a fresh process skips
+  re-discovering a known-down provider on its first routing decision.
+
+- **New `ServiceOptions` knobs** for aliveness probing:
+  - `HealthProbeInterval` — interval between background probes; zero uses the
+    default (60 s).
+  - `HealthSignalTTL` — how long a probe result drives the `ProbeUnreachable`
+    gate; zero uses the default (10 min).
+  - `PersistRouteHealth` — file path for JSON persistence of probe results
+    across process restarts.
+  - `AlivenessProber` — optional override for the TCP-connect probe function
+    (useful in tests and custom deployments).
+
+- **`RouteCandidate.LastProbeAt` / `RouteCandidate.LastProbeSuccess`** fields
+  expose per-candidate probe evidence in `RouteDecision` so operators can audit
+  why a provider was filtered with `endpoint_unreachable`.
+
+- **`FilterReasonEndpointUnreachable`** (`"endpoint_unreachable"`) public
+  constant for callers that inspect `RouteCandidate.FilterReason`.
+
 - `openaicompat.Config.ConnectTimeout` (defaults to 5 s via
   `openaicompat.DefaultConnectTimeout`): explicit bound on the TCP connect
   phase for OpenAI-compatible provider HTTP traffic. The default
