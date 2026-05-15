@@ -43,18 +43,22 @@ func subscriptionQuotaForHarness(name string, now time.Time) (subscriptionQuotaV
 		}
 		return view, true
 	case "codex":
-		dec := codexharness.ReadCodexQuotaRoutingDecision(now, 0)
+		status, err := (&codexharness.Runner{}).QuotaStatus(context.Background(), now)
+		if err != nil {
+			return subscriptionQuotaView{}, false
+		}
+		present := status.State != harnesses.QuotaUnavailable
 		view := subscriptionQuotaView{
-			OK:      dec.PreferCodex,
-			Present: dec.SnapshotPresent,
-			Fresh:   dec.Fresh,
-			Reason:  dec.Reason,
+			OK:      status.RoutingPreference == harnesses.RoutingPreferenceAvailable,
+			Present: present,
+			Fresh:   status.Fresh,
+			Reason:  status.Reason,
 			Trend:   routing.QuotaTrendUnknown,
 		}
-		if dec.Snapshot != nil {
-			view.Windows = append([]harnesses.QuotaWindow(nil), dec.Snapshot.Windows...)
-			view.PercentUsed = int(maxQuotaWindowUsedPercent(dec.Snapshot.Windows))
-			view.Trend = quotaTrend(view.PercentUsed, dec.Fresh)
+		if present {
+			view.Windows = append([]harnesses.QuotaWindow(nil), status.Windows...)
+			view.PercentUsed = int(maxQuotaWindowUsedPercent(status.Windows))
+			view.Trend = quotaTrend(view.PercentUsed, status.Fresh)
 		}
 		return view, true
 	case "gemini":

@@ -101,11 +101,11 @@ func subprocessHarnessModelIDs(name string, cfg harnesses.HarnessConfig) []strin
 			}
 		}
 	case "codex":
-		snapshot := codexharness.DefaultCodexModelDiscovery()
+		runner := &codexharness.Runner{}
+		snapshot := runner.DefaultModelSnapshot()
 		models = appendUniqueModelIDs(models, snapshot.Models...)
-		for _, family := range []string{"gpt", "gpt-5"} {
-			resolved := codexharness.ResolveCodexModelAlias(family, snapshot)
-			if resolved != family {
+		for _, family := range runner.SupportedAliases() {
+			if resolved, err := runner.ResolveModelAlias(family, snapshot); err == nil && resolved != family {
 				models = appendUniqueModelIDs(models, resolved)
 			}
 		}
@@ -128,7 +128,12 @@ func resolveSubprocessModelAlias(harness, model string) string {
 	case "claude":
 		return claudeCLIExecutableModel(model)
 	case "codex":
-		return codexharness.ResolveCodexModelAlias(model, codexharness.DefaultCodexModelDiscovery())
+		runner := &codexharness.Runner{}
+		resolved, err := runner.ResolveModelAlias(model, runner.DefaultModelSnapshot())
+		if err != nil {
+			return model
+		}
+		return resolved
 	case "gemini":
 		mdh := &geminiharness.Runner{}
 		resolved, err := mdh.ResolveModelAlias(model, mdh.DefaultModelSnapshot())
