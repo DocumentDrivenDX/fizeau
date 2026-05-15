@@ -92,11 +92,11 @@ func subprocessHarnessModelIDs(name string, cfg harnesses.HarnessConfig) []strin
 	models := append([]string(nil), cfg.Models...)
 	switch name {
 	case "claude":
-		snapshot := claudeharness.DefaultClaudeModelDiscovery()
+		runner := &claudeharness.Runner{}
+		snapshot := runner.DefaultModelSnapshot()
 		models = appendUniqueModelIDs(models, snapshot.Models...)
-		for _, family := range []string{"sonnet", "opus", "haiku"} {
-			resolved := claudeharness.ResolveClaudeFamilyAlias(family, snapshot)
-			if resolved != family {
+		for _, family := range runner.SupportedAliases() {
+			if resolved, err := runner.ResolveModelAlias(family, snapshot); err == nil && resolved != family {
 				models = appendUniqueModelIDs(models, resolved)
 			}
 		}
