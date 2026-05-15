@@ -1,4 +1,4 @@
-.PHONY: build build-ci install-quality-tools test test-no-race test-race lint lint-go contract004-import-lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs benchmark-data website-serve capture-machine-info probe-reasoning
+.PHONY: build build-ci install-quality-tools test test-no-race test-race lint lint-go contract004-import-lint vet fmt fmt-check gosec govulncheck ci-checks ci adapter-pytest check clean coverage coverage-ratchet coverage-bump coverage-history catalog-dist rename-noise-check demos-capture demos-capture-docker demos-capture-subcommands demos-docker-build demos-regen docs-cli docs-embedding docs-tools docs-adrs benchmark-data benchmark-workbench-smoke website-serve capture-machine-info probe-reasoning
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -71,6 +71,12 @@ benchmark-data:
 # used by GitHub Pages. Override the port with `make website-serve PORT=1315`.
 website-serve:
 	cd website && hugo server --bind 0.0.0.0 --port $(PORT) --baseURL http://0.0.0.0:$(PORT)/fizeau/ --appendPort=false
+
+# benchmark-workbench-smoke builds the static Hugo site and verifies that the
+# browser-side benchmark explorer loads DuckDB/Perspective data and core UI
+# slices correctly. Requires `hugo`; installs Playwright Chromium on demand.
+benchmark-workbench-smoke:
+	cd website && go test ./... -run TestBenchmarkWorkbenchSmoke -count=1
 
 build-ci:
 	go build ./...
