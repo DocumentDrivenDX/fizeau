@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -367,6 +368,154 @@ func TestExecute_Class2HarnessEmptyModelWithPolicy_FailsClearly(t *testing.T) {
 	}
 }
 
+func TestExecuteHarnessPolicyDefaultSelectsCodexSupportedModel(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  gpt-5.5:
+    family: gpt
+    status: active
+    power: 9
+    exact_pin_only: true
+    surfaces:
+      codex: gpt-5.5
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 8
+    surfaces:
+      codex: gpt-5.4
+  gpt-5.4-mini:
+    family: gpt
+    status: active
+    power: 6
+    surfaces:
+      codex: gpt-5.4-mini
+  qwen3.5-27b:
+    family: qwen
+    status: active
+    power: 8
+    surfaces:
+      agent.openai: qwen3.5-27b
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := publicRouteTraceService(nil)
+	decision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
+		Harness: "codex",
+		Policy:  "default",
+		Prompt:  "x",
+	})
+	if err != nil {
+		t.Fatalf("resolveExecuteRoute: %v", err)
+	}
+	if decision == nil {
+		t.Fatal("resolveExecuteRoute returned nil decision")
+	}
+	if decision.Harness != "codex" {
+		t.Fatalf("Harness=%q, want codex", decision.Harness)
+	}
+	if decision.Model != "gpt-5.4" {
+		t.Fatalf("Model=%q, want gpt-5.4", decision.Model)
+	}
+	cfg, ok := svc.registry.Get("codex")
+	if !ok {
+		t.Fatal("missing codex registry entry")
+	}
+	if !slices.Contains(subprocessHarnessModelIDs("codex", cfg), decision.Model) {
+		t.Fatalf("Model=%q must be in codex supported models %v", decision.Model, subprocessHarnessModelIDs("codex", cfg))
+	}
+	if decision.Model == "qwen3.5-27b" || !strings.HasPrefix(decision.Model, "gpt") {
+		t.Fatalf("Model=%q must remain on a codex-supported GPT route", decision.Model)
+	}
+}
+
+func TestResolveExecuteRouteWithEngineForwardsPromptShape(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  gpt-5.5:
+    family: gpt
+    status: active
+    power: 9
+    context_window: 4096
+    surfaces:
+      codex: gpt-5.5
+  gpt-5.4:
+    family: gpt
+    status: active
+    power: 8
+    context_window: 200000
+    surfaces:
+      codex: gpt-5.4
+  gpt-5.4-mini:
+    family: gpt
+    status: active
+    power: 6
+    context_window: 200000
+    no_tools: true
+    surfaces:
+      codex: gpt-5.4-mini
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := publicRouteTraceService(nil)
+	decision, err := svc.resolveExecuteRoute(ServiceExecuteRequest{
+		Harness:               "codex",
+		Policy:                "default",
+		Prompt:                "x",
+		EstimatedPromptTokens: 100000,
+		RequiresTools:         true,
+	})
+	if err != nil {
+		t.Fatalf("resolveExecuteRoute: %v", err)
+	}
+	if decision == nil {
+		t.Fatal("resolveExecuteRoute returned nil decision")
+	}
+	if decision.Model != "gpt-5.4" {
+		t.Fatalf("Model=%q, want gpt-5.4 after prompt-shape gating", decision.Model)
+	}
+	smallCtx := findRouteCandidateByHarnessAndModel(t, decision, "codex", "gpt-5.5")
+	if smallCtx.Eligible || smallCtx.FilterReason != FilterReasonContextTooSmall {
+		t.Fatalf("gpt-5.5 candidate=%#v, want context-window rejection", smallCtx)
+	}
+	noTools := findRouteCandidateByHarnessAndModel(t, decision, "codex", "gpt-5.4-mini")
+	if noTools.Eligible || noTools.FilterReason != FilterReasonNoToolSupport {
+		t.Fatalf("gpt-5.4-mini candidate=%#v, want no-tools rejection", noTools)
+	}
+}
+
+func TestExecuteHarnessPolicyRejectsUnsupportedEngineDecisionBeforeDispatch(t *testing.T) {
+	svc := publicRouteTraceService(nil)
+	err := svc.validateEngineResolvedExecuteDecision(
+		ServiceExecuteRequest{Harness: "codex", Policy: "default", Prompt: "x"},
+		&RouteDecision{Harness: "codex", Model: "qwen3.5-27b"},
+	)
+	if err == nil {
+		t.Fatal("expected unsupported engine decision to fail before dispatch")
+	}
+	var typed *ErrHarnessModelIncompatible
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As should extract ErrHarnessModelIncompatible: %T %v", err, err)
+	}
+	if typed.Harness != "codex" || typed.Model != "qwen3.5-27b" {
+		t.Fatalf("typed error=%#v, want codex/qwen3.5-27b", typed)
+	}
+}
+
 func readFinalEvent(t *testing.T, ch <-chan ServiceEvent, timeout time.Duration) ServiceFinalData {
 	t.Helper()
 	deadline := time.NewTimer(timeout)
@@ -390,4 +539,18 @@ func readFinalEvent(t *testing.T, ch <-chan ServiceEvent, timeout time.Duration)
 			return ServiceFinalData{}
 		}
 	}
+}
+
+func findRouteCandidateByHarnessAndModel(t *testing.T, decision *RouteDecision, harness, model string) RouteCandidate {
+	t.Helper()
+	if decision == nil {
+		t.Fatal("nil route decision")
+	}
+	for _, candidate := range decision.Candidates {
+		if candidate.Harness == harness && candidate.Model == model {
+			return candidate
+		}
+	}
+	t.Fatalf("candidate harness=%q model=%q not found in %#v", harness, model, decision.Candidates)
+	return RouteCandidate{}
 }

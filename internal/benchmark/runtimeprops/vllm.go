@@ -21,9 +21,9 @@ type vllmModelsResponse struct {
 
 // vllmServerInfo is the shape of GET /v1/server_info (some vLLM forks).
 type vllmServerInfo struct {
-	Version     string `json:"version,omitempty"`
-	ModelName   string `json:"model_name,omitempty"`
-	MaxModelLen int    `json:"max_model_len,omitempty"`
+	Version      string `json:"version,omitempty"`
+	ModelName    string `json:"model_name,omitempty"`
+	MaxModelLen  int    `json:"max_model_len,omitempty"`
 	Quantization string `json:"quantization,omitempty"`
 }
 

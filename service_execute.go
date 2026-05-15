@@ -395,6 +395,34 @@ func modelSupportedForHarness(name string, cfg harnesses.HarnessConfig, model, p
 	}
 }
 
+func (s *service) validateEngineResolvedExecuteDecision(req ServiceExecuteRequest, decision *RouteDecision) error {
+	if decision == nil || strings.TrimSpace(req.Harness) == "" || strings.TrimSpace(req.Model) != "" {
+		return nil
+	}
+	canonical := harnesses.ResolveHarnessAlias(req.Harness)
+	if decision.Harness != "" && decision.Harness != canonical {
+		return &ErrUnsatisfiablePin{
+			Pin:    "harness=" + canonical,
+			Reason: "routing engine returned a different harness",
+		}
+	}
+	cfg, ok := s.registry.Get(canonical)
+	if !ok {
+		return fmt.Errorf("unknown harness %q", req.Harness)
+	}
+	normalizedModel := resolveSubprocessModelAlias(canonical, decision.Model)
+	if err := validateExplicitHarnessModel(canonical, cfg, normalizedModel, decision.Provider); err != nil {
+		return err
+	}
+	decision.Harness = canonical
+	decision.Model = normalizedModel
+	if decision.Endpoint == "" {
+		_, endpoint, _ := splitEndpointProviderRef(decision.Provider)
+		decision.Endpoint = endpoint
+	}
+	return nil
+}
+
 func validateExplicitHarnessReasoning(name string, cfg harnesses.HarnessConfig, value Reasoning) error {
 	if cfg.TestOnly {
 		return nil

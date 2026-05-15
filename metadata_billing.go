@@ -69,6 +69,7 @@ func routingHarnessEntryFromMetadata(name string, cfg harnesses.HarnessConfig, s
 		ExactPinSupport:     cfg.ExactPinSupport,
 		DefaultModel:        cfg.DefaultModel,
 		SupportedModels:     subprocessHarnessModelIDs(name, cfg),
+		AutoRoutingModels:   subprocessHarnessAutoRoutingModels(name, cfg),
 		SupportedReasoning:  supportedReasoning(cfg),
 		MaxReasoningTokens:  cfg.MaxReasoningTokens,
 		SupportedPerms:      supportedPermissions(cfg),

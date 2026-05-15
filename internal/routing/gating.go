@@ -125,12 +125,13 @@ func CheckGating(cap Capabilities, req Request) (string, FilterReason) {
 	return "", FilterReasonEligible
 }
 
-// CheckPowerEligibility applies catalog-power gates for unpinned automatic
-// routing. Any explicit hard route pin (harness, provider, or model) bypasses
-// this gate so caller-chosen routes are never broadened or overridden by
-// power policy.
+// CheckPowerEligibility applies catalog-power gates for automatic model
+// selection. Explicit Model and Provider pins bypass this gate so caller-
+// chosen routes are never broadened or overridden by power policy. A Harness
+// pin with an empty Model still flows through this gate because the engine is
+// choosing within that harness's eligible model set.
 func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model string, req Request) (string, FilterReason) {
-	if req.Model != "" || req.Provider != "" || req.Harness != "" || lookup == nil {
+	if req.Model != "" || req.Provider != "" || lookup == nil {
 		return "", FilterReasonEligible
 	}
 	if model == "" {

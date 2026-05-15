@@ -416,6 +416,8 @@ func runWithOptions(opts Options) int {
 		SelectedRoute:           selection.Route,
 		RequestedModel:          selection.RequestedModel,
 		ResolvedModel:           selection.ResolvedModel,
+		ExplicitProvider:        *providerFlag != "",
+		ExplicitModel:           *model != "",
 		Policy:                  *policyFlag,
 		Harness:                 *harnessFlag,
 		Reasoning:               resolvedReasoning,
@@ -583,6 +585,8 @@ type serviceExecuteRequestParams struct {
 	SelectedRoute           string
 	RequestedModel          string
 	ResolvedModel           string
+	ExplicitProvider        bool
+	ExplicitModel           bool
 	Policy                  string
 	Harness                 string
 	Reasoning               fizeau.Reasoning
@@ -655,6 +659,12 @@ func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.Servi
 	harness := ""
 	if params.Harness != "" {
 		harness = params.Harness
+		if !params.ExplicitModel {
+			model = ""
+		}
+		if !params.ExplicitProvider {
+			provider = ""
+		}
 	} else if params.SelectedProvider != "" {
 		harness = "fiz"
 	}

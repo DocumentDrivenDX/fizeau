@@ -15,20 +15,20 @@ import (
 // https://github.com/ggerganov/llama.cpp/blob/master/examples/server/README.md
 type llamaCPPProps struct {
 	DefaultGenerationSettings struct {
-		NCtx        int     `json:"n_ctx"`
-		NPredict    int     `json:"n_predict"`
-		Temperature float64 `json:"temperature"`
-		TopP        float64 `json:"top_p"`
-		TopK        int     `json:"top_k"`
+		NCtx          int     `json:"n_ctx"`
+		NPredict      int     `json:"n_predict"`
+		Temperature   float64 `json:"temperature"`
+		TopP          float64 `json:"top_p"`
+		TopK          int     `json:"top_k"`
 		RepeatPenalty float64 `json:"repeat_penalty"`
 	} `json:"default_generation_settings"`
-	ModelAlias   string `json:"model_alias"`
-	ModelPath    string `json:"model_path"`
-	TotalSlots   int    `json:"total_slots"`
-	BuildInfo    string `json:"build_info"`
+	ModelAlias string `json:"model_alias"`
+	ModelPath  string `json:"model_path"`
+	TotalSlots int    `json:"total_slots"`
+	BuildInfo  string `json:"build_info"`
 	// Some builds expose these at top level.
-	NCtxTrain   int    `json:"n_ctx_train,omitempty"`
-	GGMLType    string `json:"ggml_type,omitempty"`
+	NCtxTrain int    `json:"n_ctx_train,omitempty"`
+	GGMLType  string `json:"ggml_type,omitempty"`
 }
 
 func extractLlamaCPP(ctx context.Context, lane LaneInfo) (evidence.RuntimeProps, error) {
