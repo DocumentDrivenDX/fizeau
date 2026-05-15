@@ -29,7 +29,7 @@ func TestAssembleFixtureIncludesDiscoveredProviderModels(t *testing.T) {
 	}}
 	cat := loadTestCatalog(t)
 
-	snapshot, err := Assemble(context.Background(), cfg, cat, cache)
+	snapshot, err := AssembleWithOptions(context.Background(), cfg, cat, cache, AssembleOptions{Refresh: RefreshNone})
 	if err != nil {
 		t.Fatalf("Assemble() error = %v", err)
 	}
@@ -64,7 +64,7 @@ func TestAssembleSuppressesCatalogOnlyModels(t *testing.T) {
 	}}
 	cat := loadTestCatalog(t)
 
-	snapshot, err := Assemble(context.Background(), cfg, cat, cache)
+	snapshot, err := AssembleWithOptions(context.Background(), cfg, cat, cache, AssembleOptions{Refresh: RefreshNone})
 	if err != nil {
 		t.Fatalf("Assemble() error = %v", err)
 	}
@@ -97,7 +97,7 @@ func TestAssembleSnapshotIncludesRuntimeQuotaAndLatency(t *testing.T) {
 	}}
 	cat := loadTestCatalog(t)
 
-	snapshot, err := Assemble(context.Background(), cfg, cat, cache)
+	snapshot, err := AssembleWithOptions(context.Background(), cfg, cat, cache, AssembleOptions{Refresh: RefreshNone})
 	if err != nil {
 		t.Fatalf("Assemble() error = %v", err)
 	}
@@ -137,7 +137,7 @@ func TestAssembleSnapshotFreshnessFields(t *testing.T) {
 	}}
 	cat := loadTestCatalog(t)
 
-	snapshot, err := Assemble(context.Background(), cfg, cat, cache)
+	snapshot, err := AssembleWithOptions(context.Background(), cfg, cat, cache, AssembleOptions{Refresh: RefreshNone})
 	if err != nil {
 		t.Fatalf("Assemble() error = %v", err)
 	}
@@ -182,7 +182,7 @@ func TestAssembleSnapshotEffectiveCostAndActualCashSpend(t *testing.T) {
 	}}
 	cat := loadTestCatalog(t)
 
-	snapshot, err := Assemble(context.Background(), cfg, cat, cache)
+	snapshot, err := AssembleWithOptions(context.Background(), cfg, cat, cache, AssembleOptions{Refresh: RefreshNone})
 	if err != nil {
 		t.Fatalf("Assemble() error = %v", err)
 	}
