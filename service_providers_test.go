@@ -499,7 +499,7 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 	// If claude is not in PATH, the harness is unavailable → the quota refresh
 	// is never reached. To keep the test self-contained we call the helper
 	// directly rather than going through HealthCheck's availability gate.
-	healthCheckRefreshClaudeQuota(context.Background())
+	svc.healthCheckRefreshClaudeQuota(context.Background())
 
 	if !refreshCalled {
 		t.Error("expected healthCheckClaudeQuotaRefresher to be called for stale cache")
@@ -514,7 +514,6 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 		t.Errorf("expected cache CapturedAt to be newer than stale snapshot: got %v, stale was %v",
 			loaded.CapturedAt, staleSnap.CapturedAt)
 	}
-	_ = svc
 }
 
 // TestHealthCheck_ClaudeSkipsRefreshWhenFresh verifies that HealthCheck does
@@ -546,7 +545,8 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 		return nil, nil, nil
 	})
 
-	healthCheckRefreshClaudeQuota(context.Background())
+	svc := newTestService(t, ServiceOptions{})
+	svc.healthCheckRefreshClaudeQuota(context.Background())
 
 	if refreshCalled {
 		t.Error("expected healthCheckClaudeQuotaRefresher NOT to be called for fresh cache")
@@ -959,15 +959,10 @@ func resetPrimaryQuotaRefreshForTest(t *testing.T) {
 
 func setClaudeQuotaRefresherForTest(t *testing.T, fn func(time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error)) {
 	t.Helper()
-	healthCheckQuotaProbeMu.Lock()
-	orig := healthCheckClaudeQuotaRefresher
-	healthCheckClaudeQuotaRefresher = fn
-	healthCheckQuotaProbeMu.Unlock()
-	t.Cleanup(func() {
-		healthCheckQuotaProbeMu.Lock()
-		healthCheckClaudeQuotaRefresher = orig
-		healthCheckQuotaProbeMu.Unlock()
+	restore := claudeharness.SetCaptureForTest(func(_ context.Context, timeout time.Duration, _ ...claudeharness.QuotaPTYOption) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+		return fn(timeout)
 	})
+	t.Cleanup(restore)
 }
 
 func setCodexQuotaRefresherForTest(t *testing.T, fn func(time.Duration) ([]harnesses.QuotaWindow, error)) {
