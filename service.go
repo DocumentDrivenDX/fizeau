@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
-	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
 	"github.com/easel/fizeau/internal/routehealth"
 	"github.com/easel/fizeau/internal/serviceimpl"
 	sessionusage "github.com/easel/fizeau/internal/session"
@@ -1168,46 +1167,39 @@ func (s *service) codexAccountStatus(ctx context.Context) *AccountStatus {
 	}
 }
 
-// geminiQuotaState reads the durable Gemini quota cache and converts it to
-// QuotaState. Auth/account freshness alone is NOT promoted to quota status —
-// a missing or stale quota cache returns an "unavailable" state.
-func geminiQuotaState() *QuotaState {
-	snap, ok := geminiharness.ReadGeminiQuota()
-	if !ok || snap == nil {
-		source, err := geminiharness.GeminiQuotaCachePath()
-		if err != nil {
-			source = "gemini quota cache"
-		}
-		return unavailableQuotaState(source, "gemini quota cache unavailable")
+// geminiQuotaState reads quota status through the AccountHarness interface
+// and projects it onto the public CONTRACT-003 QuotaState surface. When the
+// cache is absent or harness not registered, returns an unavailable state.
+func (s *service) geminiQuotaState(ctx context.Context) *QuotaState {
+	qh, ok := s.harnessByName("gemini").(harnesses.QuotaHarness)
+	if !ok {
+		return unavailableQuotaState("gemini quota cache", "gemini quota harness not registered")
 	}
-	fresh := geminiharness.IsGeminiQuotaFresh(snap, time.Now(), 0)
-	windows := append([]harnesses.QuotaWindow(nil), snap.Windows...)
-	return &QuotaState{
-		Windows:    windows,
-		CapturedAt: snap.CapturedAt,
-		Fresh:      fresh,
-		Source:     snap.Source,
-		Status:     quotaStatus(fresh, windows),
+	status, err := qh.QuotaStatus(ctx, s.now())
+	if err != nil {
+		return unavailableQuotaState("gemini quota cache", err.Error())
 	}
+	if status.State == harnesses.QuotaUnavailable {
+		return unavailableQuotaState("gemini quota cache", "gemini quota cache unavailable")
+	}
+	return projectQuotaStatus(status)
 }
 
-func geminiAccountStatus() *AccountStatus {
-	snap := geminiharness.ReadAuthEvidence(time.Now())
-	if !snap.Authenticated {
-		return &AccountStatus{
-			Unauthenticated: true,
-			Source:          snap.Source,
-			CapturedAt:      snap.CapturedAt,
-			Fresh:           snap.Fresh,
-			Detail:          snap.Detail,
-		}
+// geminiAccountStatus reads account state through the AccountHarness interface
+// and projects it onto the public CONTRACT-003 AccountStatus surface.
+func (s *service) geminiAccountStatus(ctx context.Context) *AccountStatus {
+	ah, ok := s.harnessByName("gemini").(harnesses.AccountHarness)
+	if !ok {
+		return nil
 	}
-	status := accountStatusFromInfo(snap.Account, snap.Source, snap.CapturedAt, snap.Fresh)
-	if status == nil {
-		status = &AccountStatus{Authenticated: true, Source: snap.Source, CapturedAt: snap.CapturedAt, Fresh: snap.Fresh}
+	snapshot, err := ah.AccountStatus(ctx, s.now())
+	if err != nil {
+		return nil
 	}
-	status.Detail = snap.Detail
-	return status
+	if !snapshot.Authenticated && !snapshot.Unauthenticated && snapshot.Email == "" && snapshot.PlanType == "" && snapshot.Detail == "" {
+		return nil
+	}
+	return projectAccountSnapshot(snapshot)
 }
 
 func (s *service) codexUsageWindows() []UsageWindow {
@@ -1365,8 +1357,8 @@ func (s *service) ListHarnesses(ctx context.Context) ([]HarnessInfo, error) {
 			info.Account = s.codexAccountStatus(ctx)
 			info.UsageWindows = s.codexUsageWindows()
 		case "gemini":
-			info.Quota = geminiQuotaState()
-			info.Account = geminiAccountStatus()
+			info.Quota = s.geminiQuotaState(ctx)
+			info.Account = s.geminiAccountStatus(ctx)
 			info.UsageWindows = s.geminiUsageWindows()
 		}
 
