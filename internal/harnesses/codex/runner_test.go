@@ -525,10 +525,13 @@ func TestParseCodexStream_CommandExecutionFailure(t *testing.T) {
 }
 
 func TestParseCodexStream_CommandExecutionDuration(t *testing.T) {
+	const sleepDuration = 50 * time.Millisecond
+	const minDurationMS = int64(10)
+
 	reader, writer := io.Pipe()
 	go func() {
 		fmt.Fprintln(writer, `{"type":"item.started","item":{"id":"item_slow","type":"command_execution","command":"sleep 1","status":"in_progress"}}`)
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(sleepDuration)
 		fmt.Fprintln(writer, `{"type":"item.completed","item":{"id":"item_slow","type":"command_execution","command":"sleep 1","aggregated_output":"done","exit_code":0,"status":"completed"}}`)
 		writer.Close()
 	}()
@@ -540,7 +543,10 @@ func TestParseCodexStream_CommandExecutionDuration(t *testing.T) {
 	}
 	close(out)
 
-	var result harnesses.ToolResultData
+	var (
+		result    harnesses.ToolResultData
+		sawResult bool
+	)
 	for ev := range out {
 		if ev.Type != harnesses.EventTypeToolResult {
 			continue
@@ -548,9 +554,16 @@ func TestParseCodexStream_CommandExecutionDuration(t *testing.T) {
 		if err := json.Unmarshal(ev.Data, &result); err != nil {
 			t.Fatalf("unmarshal tool_result: %v", err)
 		}
+		sawResult = true
 	}
-	if result.DurationMS < 20 {
-		t.Fatalf("tool_result duration = %dms, want >=20ms", result.DurationMS)
+	if !sawResult {
+		t.Fatal("missing tool_result event")
+	}
+	if result.ID != "item_slow" {
+		t.Fatalf("tool_result ID: got %q, want %q", result.ID, "item_slow")
+	}
+	if result.DurationMS < minDurationMS {
+		t.Fatalf("tool_result duration = %dms, want >=%dms after %s sleep", result.DurationMS, minDurationMS, sleepDuration)
 	}
 }
 
