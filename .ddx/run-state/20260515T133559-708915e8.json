@@ -1,0 +1,12 @@
+{
+  "bead_id": "fizeau-4cf91f64",
+  "attempt_id": "20260515T133559-708915e8",
+  "harness": "codex",
+  "model": "gpt-5.4",
+  "started_at": "2026-05-15T13:36:01.34024253Z",
+  "worktree_path": "/var/tmp/ddx-exec-wt/.execute-bead-wt-fizeau-4cf91f64-20260515T133559-708915e8",
+  "pid": 3313494,
+  "session_id": "eb-2bc46948",
+  "refreshed_at": "2026-05-15T13:47:31.392101954Z",
+  "expires_at": "2026-05-15T13:49:31.392101954Z"
+}
