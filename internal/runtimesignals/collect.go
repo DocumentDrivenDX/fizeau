@@ -4,16 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
-	codexcache "github.com/easel/fizeau/internal/harnesses/codex"
+	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
+	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
-	"github.com/easel/fizeau/internal/productinfo"
 	"github.com/easel/fizeau/internal/provider/quotaheaders"
 )
 
@@ -26,6 +24,21 @@ const (
 	defaultWindowSize = 100
 	aliveCheckTimeout = 3 * time.Second
 )
+
+var harnessByName = defaultHarnessByName
+
+func defaultHarnessByName(name string) harnesses.Harness {
+	switch name {
+	case "claude":
+		return &claudeharness.Runner{}
+	case "codex":
+		return &codexharness.Runner{}
+	case "gemini":
+		return &geminiharness.Runner{}
+	default:
+		return nil
+	}
+}
 
 // Store is the per-process in-memory state for runtime signal collection.
 // It holds per-provider latency windows and the most recently observed
@@ -93,17 +106,21 @@ func Collect(ctx context.Context, providerName string, cfg CollectInput) (Signal
 // Collect assembles a runtime Signal for providerName. The cfg.Type field
 // controls which collection path is used:
 //
-//   - "claude"       → existing internal/harnesses/claude/quota_cache.go
-//   - "codex"        → existing internal/harnesses/codex/quota_cache.go
-//   - "gemini"       → existing internal/harnesses/gemini/quota_cache.go
+//   - "claude"       → QuotaHarness-backed cached quota state
+//   - "codex"        → QuotaHarness-backed cached quota state
+//   - "gemini"       → QuotaHarness-backed cached quota state
 //   - "openrouter"   → most recently recorded rate-limit headers (OpenRouter parser)
 //   - "openai", "anthropic", and unknown HTTP types → rate-limit headers
 //   - local types    → HTTP GET /v1/models alive check (no quota concept)
 func (s *Store) Collect(ctx context.Context, providerName string, cfg CollectInput) (Signal, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	now := time.Now()
 	sig := Signal{
 		Provider:   providerName,
 		Status:     StatusUnknown,
-		RecordedAt: time.Now().UTC(),
+		RecordedAt: now.UTC(),
 	}
 
 	s.mu.RLock()
@@ -117,11 +134,11 @@ func (s *Store) Collect(ctx context.Context, providerName string, cfg CollectInp
 
 	switch providerType {
 	case "claude":
-		collectClaudeSignal(&sig)
+		collectQuotaHarnessSignal(ctx, now, providerType, &sig)
 	case "codex":
-		collectCodexSignal(&sig)
+		collectQuotaHarnessSignal(ctx, now, providerType, &sig)
 	case "gemini":
-		collectGeminiSignal(&sig)
+		collectQuotaHarnessSignal(ctx, now, providerType, &sig)
 	case "ds4", "llama-server", "omlx", "lmstudio", "lucebox", "vllm", "rapid-mlx", "ollama":
 		collectLocalSignal(ctx, cfg.BaseURL, &sig)
 	default:
@@ -172,80 +189,13 @@ func ReadCached(cache *discoverycache.Cache, providerName string) (*Signal, bool
 
 // ---- per-provider-type collectors -------------------------------------------
 
-func collectClaudeSignal(sig *Signal) {
-	snap, ok := readClaudeQuotaCache()
-	if !ok || snap == nil {
-		return // StatusUnknown
-	}
-	if claudeQuotaCacheAge(snap, time.Now()) > defaultClaudeQuotaStaleAfter {
-		return // StatusUnknown; snapshot is stale
-	}
-	if snap.WeeklyRemaining <= 0 || snap.FiveHourRemaining <= 0 {
-		sig.Status = StatusExhausted
-		zero := 0
-		sig.QuotaRemaining = &zero
+func collectQuotaHarnessSignal(ctx context.Context, now time.Time, harnessName string, sig *Signal) {
+	h := harnessByName(harnessName)
+	qh, ok := h.(harnesses.QuotaHarness)
+	if !ok {
 		return
 	}
-	sig.Status = StatusAvailable
-	rem := snap.FiveHourRemaining
-	sig.QuotaRemaining = &rem
-}
-
-const (
-	claudeQuotaCacheEnv          = "FIZEAU_CLAUDE_QUOTA_CACHE"
-	defaultClaudeQuotaStaleAfter = 15 * time.Minute
-)
-
-type claudeQuotaCacheSnapshot struct {
-	CapturedAt        time.Time `json:"captured_at"`
-	FiveHourRemaining int       `json:"five_hour_remaining"`
-	WeeklyRemaining   int       `json:"weekly_remaining"`
-}
-
-func readClaudeQuotaCache() (*claudeQuotaCacheSnapshot, bool) {
-	path, err := claudeQuotaCachePath()
-	if err != nil {
-		return nil, false
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false
-	}
-	var snap claudeQuotaCacheSnapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
-		return nil, false
-	}
-	return &snap, true
-}
-
-func claudeQuotaCachePath() (string, error) {
-	if path := os.Getenv(claudeQuotaCacheEnv); path != "" {
-		return path, nil
-	}
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, productinfo.ConfigDir, "claude-quota.json"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local", "state", productinfo.ConfigDir, "claude-quota.json"), nil
-}
-
-func claudeQuotaCacheAge(snapshot *claudeQuotaCacheSnapshot, now time.Time) time.Duration {
-	if snapshot == nil || snapshot.CapturedAt.IsZero() {
-		return 0
-	}
-	age := now.UTC().Sub(snapshot.CapturedAt.UTC())
-	if age < 0 {
-		return 0
-	}
-	return age
-}
-
-func collectCodexSignal(sig *Signal) {
-	r := &codexcache.Runner{}
-	status, err := r.QuotaStatus(context.Background(), time.Now())
+	status, err := qh.QuotaStatus(ctx, now)
 	if err != nil {
 		return
 	}
@@ -256,24 +206,6 @@ func collectCodexSignal(sig *Signal) {
 		sig.Status = StatusExhausted
 		zero := 0
 		sig.QuotaRemaining = &zero
-		// QuotaUnavailable and QuotaStale both leave Status as StatusUnknown
-	}
-}
-
-func collectGeminiSignal(sig *Signal) {
-	r := &geminiharness.Runner{}
-	status, err := r.QuotaStatus(context.Background(), time.Now())
-	if err != nil {
-		return
-	}
-	switch status.State {
-	case harnesses.QuotaOK:
-		sig.Status = StatusAvailable
-	case harnesses.QuotaBlocked:
-		sig.Status = StatusExhausted
-		zero := 0
-		sig.QuotaRemaining = &zero
-		// QuotaUnavailable and QuotaStale both leave Status as StatusUnknown
 	}
 }
 

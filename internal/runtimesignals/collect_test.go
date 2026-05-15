@@ -1,10 +1,8 @@
-package runtimesignals_test
+package runtimesignals
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -15,14 +13,13 @@ import (
 
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
-	"github.com/easel/fizeau/internal/runtimesignals"
+	"github.com/easel/fizeau/internal/harnesses/harnesstest"
 )
 
-// TestCollect_OpenRouter_RateLimitHeaders verifies AC2:
-// Collect() against a mock OR provider with rate-limit headers parses
-// QuotaRemaining correctly.
+// TestCollect_OpenRouter_RateLimitHeaders verifies that Collect parses
+// OpenRouter rate-limit headers into an available runtime signal.
 func TestCollect_OpenRouter_RateLimitHeaders(t *testing.T) {
-	store := runtimesignals.NewStore()
+	store := NewStore()
 
 	h := http.Header{}
 	h.Set("x-ratelimit-remaining", "42")
@@ -31,9 +28,9 @@ func TestCollect_OpenRouter_RateLimitHeaders(t *testing.T) {
 
 	store.RecordResponse("openrouter", h, 100*time.Millisecond, "openrouter")
 
-	sig, err := store.Collect(context.Background(), "openrouter", runtimesignals.CollectInput{Type: "openrouter"})
+	sig, err := store.Collect(context.Background(), "openrouter", CollectInput{Type: "openrouter"})
 	require.NoError(t, err)
-	assert.Equal(t, runtimesignals.StatusAvailable, sig.Status)
+	assert.Equal(t, StatusAvailable, sig.Status)
 	require.NotNil(t, sig.QuotaRemaining, "QuotaRemaining should be set from x-ratelimit-remaining")
 	assert.Equal(t, 42, *sig.QuotaRemaining)
 }
@@ -41,7 +38,7 @@ func TestCollect_OpenRouter_RateLimitHeaders(t *testing.T) {
 // TestCollect_OpenRouter_Exhausted verifies that a zero remaining-requests
 // header drives StatusExhausted.
 func TestCollect_OpenRouter_Exhausted(t *testing.T) {
-	store := runtimesignals.NewStore()
+	store := NewStore()
 
 	h := http.Header{}
 	h.Set("x-ratelimit-remaining", "0")
@@ -49,111 +46,139 @@ func TestCollect_OpenRouter_Exhausted(t *testing.T) {
 
 	store.RecordResponse("or-exhausted", h, 50*time.Millisecond, "openrouter")
 
-	sig, err := store.Collect(context.Background(), "or-exhausted", runtimesignals.CollectInput{Type: "openrouter"})
+	sig, err := store.Collect(context.Background(), "or-exhausted", CollectInput{Type: "openrouter"})
 	require.NoError(t, err)
-	assert.Equal(t, runtimesignals.StatusExhausted, sig.Status)
+	assert.Equal(t, StatusExhausted, sig.Status)
 	require.NotNil(t, sig.QuotaRemaining)
 	assert.Equal(t, 0, *sig.QuotaRemaining)
 }
 
-// TestCollect_Claude_QuotaCache verifies AC3:
-// Collect() against a mock claude harness reads the existing quota_cache.go data.
-func TestCollect_Claude_QuotaCache(t *testing.T) {
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "claude-quota.json")
-	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
-
-	snap := claudeQuotaCacheFixture{
-		CapturedAt:        time.Now().UTC(),
-		FiveHourRemaining: 500,
-		FiveHourLimit:     1000,
-		WeeklyRemaining:   5000,
-		WeeklyLimit:       10000,
-		Source:            "test",
+func TestCollect_QuotaHarnessAvailable(t *testing.T) {
+	tests := []struct {
+		name         string
+		providerType string
+		limitID      string
+	}{
+		{name: "claude", providerType: "claude", limitID: "session"},
+		{name: "codex", providerType: "codex", limitID: "codex"},
+		{name: "gemini", providerType: "gemini", limitID: "gemini-pro"},
 	}
-	writeClaudeQuotaCacheFixture(t, cachePath, snap)
 
-	store := runtimesignals.NewStore()
-	sig, err := store.Collect(context.Background(), "claude-subscription", runtimesignals.CollectInput{Type: "claude"})
-	require.NoError(t, err)
-	assert.Equal(t, runtimesignals.StatusAvailable, sig.Status)
-	require.NotNil(t, sig.QuotaRemaining, "QuotaRemaining should reflect FiveHourRemaining")
-	assert.Equal(t, 500, *sig.QuotaRemaining)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setHarnessByNameForTest(t, tt.providerType, harnesstest.NewSyntheticQuotaHarness(tt.providerType, harnesses.QuotaStatus{
+				Source:            "test",
+				CapturedAt:        time.Now().UTC(),
+				Fresh:             true,
+				State:             harnesses.QuotaOK,
+				RoutingPreference: harnesses.RoutingPreferenceAvailable,
+				Windows: []harnesses.QuotaWindow{{
+					Name:          tt.limitID,
+					LimitID:       tt.limitID,
+					WindowMinutes: 300,
+					UsedPercent:   25,
+					State:         "ok",
+				}},
+			}, []string{tt.limitID}))
+
+			store := NewStore()
+			sig, err := store.Collect(context.Background(), tt.providerType+"-subscription", CollectInput{Type: tt.providerType})
+			require.NoError(t, err)
+			assert.Equal(t, StatusAvailable, sig.Status)
+			assert.Nil(t, sig.QuotaRemaining)
+		})
+	}
 }
 
-// TestCollect_Claude_Exhausted verifies that a zero 5h window drives StatusExhausted.
-func TestCollect_Claude_Exhausted(t *testing.T) {
-	tmpDir := t.TempDir()
-	cachePath := filepath.Join(tmpDir, "claude-quota-exhausted.json")
-	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", cachePath)
-
-	snap := claudeQuotaCacheFixture{
-		CapturedAt:        time.Now().UTC(),
-		FiveHourRemaining: 0,
-		FiveHourLimit:     1000,
-		WeeklyRemaining:   5000,
-		WeeklyLimit:       10000,
-		Source:            "test",
+func TestCollect_QuotaHarnessExhausted(t *testing.T) {
+	tests := []struct {
+		name         string
+		providerType string
+		limitID      string
+	}{
+		{name: "claude", providerType: "claude", limitID: "session"},
+		{name: "codex", providerType: "codex", limitID: "codex"},
+		{name: "gemini", providerType: "gemini", limitID: "gemini-pro"},
 	}
-	writeClaudeQuotaCacheFixture(t, cachePath, snap)
 
-	store := runtimesignals.NewStore()
-	sig, err := store.Collect(context.Background(), "claude-subscription", runtimesignals.CollectInput{Type: "claude"})
-	require.NoError(t, err)
-	assert.Equal(t, runtimesignals.StatusExhausted, sig.Status)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setHarnessByNameForTest(t, tt.providerType, harnesstest.NewSyntheticQuotaHarness(tt.providerType, harnesses.QuotaStatus{
+				Source:            "test",
+				CapturedAt:        time.Now().UTC(),
+				Fresh:             true,
+				State:             harnesses.QuotaBlocked,
+				RoutingPreference: harnesses.RoutingPreferenceBlocked,
+				Windows: []harnesses.QuotaWindow{{
+					Name:          tt.limitID,
+					LimitID:       tt.limitID,
+					WindowMinutes: 300,
+					UsedPercent:   100,
+					State:         "blocked",
+				}},
+			}, []string{tt.limitID}))
+
+			store := NewStore()
+			sig, err := store.Collect(context.Background(), tt.providerType+"-subscription", CollectInput{Type: tt.providerType})
+			require.NoError(t, err)
+			assert.Equal(t, StatusExhausted, sig.Status)
+			require.NotNil(t, sig.QuotaRemaining)
+			assert.Equal(t, 0, *sig.QuotaRemaining)
+		})
+	}
 }
 
 // TestCollect_NoHeaders_Unknown verifies that a provider with no observed
 // headers or quota cache is reported as StatusUnknown.
 func TestCollect_NoHeaders_Unknown(t *testing.T) {
-	store := runtimesignals.NewStore()
+	store := NewStore()
 
-	sig, err := store.Collect(context.Background(), "unknown-provider", runtimesignals.CollectInput{Type: "openai"})
+	sig, err := store.Collect(context.Background(), "unknown-provider", CollectInput{Type: "openai"})
 	require.NoError(t, err)
-	assert.Equal(t, runtimesignals.StatusUnknown, sig.Status)
+	assert.Equal(t, StatusUnknown, sig.Status)
 }
 
 // TestCollect_LatencyRecorded verifies that a recorded latency appears in
 // the collected signal's RecentP50Latency.
 func TestCollect_LatencyRecorded(t *testing.T) {
-	store := runtimesignals.NewStore()
+	store := NewStore()
 
 	for _, d := range []time.Duration{10, 20, 30} {
 		store.RecordResponse("latency-test", nil, d*time.Millisecond, "openai")
 	}
 
-	sig, err := store.Collect(context.Background(), "latency-test", runtimesignals.CollectInput{Type: "openai"})
+	sig, err := store.Collect(context.Background(), "latency-test", CollectInput{Type: "openai"})
 	require.NoError(t, err)
 	// Three samples: 10ms, 20ms, 30ms. P50 = sorted[3/2] = sorted[1] = 20ms.
 	assert.Equal(t, 20*time.Millisecond, sig.RecentP50Latency)
 }
 
-// TestCacheRoundTrip verifies AC5:
-// Runtime cache file path is runtime/<provider>.json and Signal data
-// round-trips through M1's cache API without loss.
+// TestCacheRoundTrip verifies that Runtime cache file path is
+// runtime/<provider>.json and Signal data round-trips through M1's cache
+// API without loss.
 func TestCacheRoundTrip(t *testing.T) {
 	cacheDir := t.TempDir()
 	cache := &discoverycache.Cache{Root: cacheDir}
 
 	remaining := 100
 	resetAt := time.Now().UTC().Truncate(time.Second).Add(5 * time.Minute)
-	sig := runtimesignals.Signal{
+	sig := Signal{
 		Provider:         "test-provider",
-		Status:           runtimesignals.StatusAvailable,
+		Status:           StatusAvailable,
 		QuotaRemaining:   &remaining,
 		QuotaResetAt:     &resetAt,
 		RecentP50Latency: 50 * time.Millisecond,
 		RecordedAt:       time.Now().UTC().Truncate(time.Second),
 	}
 
-	require.NoError(t, runtimesignals.Write(cache, sig))
+	require.NoError(t, Write(cache, sig))
 
 	// Verify the file lands at runtime/<provider>.json.
 	expectedPath := filepath.Join(cacheDir, "runtime", "test-provider.json")
 	require.FileExists(t, expectedPath, "cache file must be at runtime/<provider>.json")
 
 	// Read back and verify the data round-trips intact.
-	got, ok := runtimesignals.ReadCached(cache, "test-provider")
+	got, ok := ReadCached(cache, "test-provider")
 	require.True(t, ok)
 	require.NotNil(t, got)
 	assert.Equal(t, sig.Provider, got.Provider)
@@ -171,36 +196,23 @@ func TestReadCached_Missing(t *testing.T) {
 	cacheDir := t.TempDir()
 	cache := &discoverycache.Cache{Root: cacheDir}
 
-	got, ok := runtimesignals.ReadCached(cache, "nonexistent")
+	got, ok := ReadCached(cache, "nonexistent")
 	assert.False(t, ok)
 	assert.Nil(t, got)
 }
 
-type claudeQuotaCacheFixture struct {
-	CapturedAt        time.Time               `json:"captured_at"`
-	FiveHourRemaining int                     `json:"five_hour_remaining"`
-	FiveHourLimit     int                     `json:"five_hour_limit"`
-	WeeklyRemaining   int                     `json:"weekly_remaining"`
-	WeeklyLimit       int                     `json:"weekly_limit"`
-	Windows           []harnesses.QuotaWindow `json:"windows,omitempty"`
-	Source            string                  `json:"source"`
-}
-
-func writeClaudeQuotaCacheFixture(t *testing.T, path string, snap claudeQuotaCacheFixture) {
+func setHarnessByNameForTest(t *testing.T, name string, h harnesses.Harness) {
 	t.Helper()
-	data, err := json.MarshalIndent(snap, "", "  ")
-	if err != nil {
-		t.Fatalf("marshal claude quota cache: %v", err)
+
+	prev := harnessByName
+	harnessByName = func(requested string) harnesses.Harness {
+		if requested == name {
+			return h
+		}
+		if prev == nil {
+			return nil
+		}
+		return prev(requested)
 	}
-	data = append(data, '\n')
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		t.Fatalf("mkdir claude quota cache dir: %v", err)
-	}
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
-		t.Fatalf("write claude quota cache: %v", err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		t.Fatalf("rename claude quota cache: %v", err)
-	}
+	t.Cleanup(func() { harnessByName = prev })
 }
