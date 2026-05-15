@@ -82,10 +82,9 @@ func TestRouter_FiltersUnreachableEndpointsWhenAlternatesExist(t *testing.T) {
 	}
 }
 
-// TestRouter_AcceptsUnreachableEndpointWhenSoleCandidate asserts that when the
-// operator explicitly pins bragi (an unreachable provider), the probe gate is
-// bypassed and the router still routes to bragi (AC #4).
-func TestRouter_AcceptsUnreachableEndpointWhenSoleCandidate(t *testing.T) {
+// TestRouter_RejectsUnreachableEndpointWhenSoleAutomaticCandidate asserts that
+// a known-dead endpoint is not re-admitted just because no alternative exists.
+func TestRouter_RejectsUnreachableEndpointWhenSoleAutomaticCandidate(t *testing.T) {
 	now := time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)
 	in := Inputs{
 		Now: now,
@@ -116,11 +115,46 @@ func TestRouter_AcceptsUnreachableEndpointWhenSoleCandidate(t *testing.T) {
 		},
 	}
 
-	// Explicit provider pin must bypass the probe gate.
-	req := Request{
-		Policy:   "default",
-		Provider: "bragi",
+	_, err := Resolve(Request{Policy: "default"}, in)
+	if err == nil {
+		t.Fatal("Resolve succeeded for sole probe-unreachable automatic candidate")
 	}
+}
+
+// TestRouter_AcceptsUnreachableEndpointWhenExplicitlyPinned asserts that the
+// operator can still force a known-dead provider intentionally.
+func TestRouter_AcceptsUnreachableEndpointWhenExplicitlyPinned(t *testing.T) {
+	now := time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)
+	in := Inputs{
+		Now: now,
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "fiz",
+				Surface:             "embedded-openai",
+				CostClass:           "local",
+				IsLocal:             true,
+				AutoRoutingEligible: true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{
+					{
+						Name:          "bragi",
+						BaseURL:       "http://bragi:1234",
+						DefaultModel:  "qwen3.6",
+						DiscoveredIDs: []string{"qwen3.6"},
+						SupportsTools: true,
+					},
+				},
+			},
+		},
+		ProbeUnreachable: map[string]time.Time{
+			"bragi": now.Add(-5 * time.Minute),
+		},
+	}
+
+	req := Request{Policy: "default", Provider: "bragi"}
 	dec, err := Resolve(req, in)
 	if err != nil {
 		t.Fatalf("Resolve with explicit pin to probe-unreachable provider: %v", err)

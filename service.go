@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -1048,19 +1049,38 @@ func New(opts ServiceOptions) (FizeauService, error) {
 			}
 		}
 	}
+	if opts.PersistRouteHealth == "" {
+		opts.PersistRouteHealth = defaultRouteHealthPath(opts.ServiceConfig)
+	}
+	svc.opts = opts
 	svc.providerProbe = routehealth.NewProbeStore()
 	if opts.PersistRouteHealth != "" {
 		_ = svc.providerProbe.Load(opts.PersistRouteHealth)
 	}
+	startupCtx := opts.QuotaRefreshContext
+	if startupCtx == nil {
+		startupCtx = context.Background()
+	}
 	svc.reapStaleHarnessSessions()
-	svc.ensurePrimaryQuotaRefresh(context.Background(), quotaRefreshStartup)
+	svc.ensurePrimaryQuotaRefresh(startupCtx, quotaRefreshStartup)
 	svc.startPrimaryQuotaRefreshWorker()
 	svc.startQuotaRecoveryProbeLoop()
 	svc.startupAlivenessProbe(context.Background())
 	svc.startAlivenessProbeLoop()
 	svc.refreshScheduler = newRefreshScheduler(svc.harnessByName, svc.registry.Names(), nil)
-	svc.refreshScheduler.Start(context.Background())
+	svc.refreshScheduler.Start(startupCtx)
 	return svc, nil
+}
+
+func defaultRouteHealthPath(sc ServiceConfig) string {
+	if sc == nil {
+		return ""
+	}
+	workDir := strings.TrimSpace(sc.WorkDir())
+	if workDir == "" {
+		return ""
+	}
+	return filepath.Join(workDir, ".fizeau", "route-health-main.json")
 }
 
 // harnessByName returns the registered Harness instance for name. Returns

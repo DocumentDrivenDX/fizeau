@@ -250,7 +250,7 @@ func TestTailSessionLog_multipleSubscribers(t *testing.T) {
 // TestTailSessionLog_unknownSessionReturnsError verifies that calling
 // TailSessionLog with a sessionID that was never registered returns an error.
 func TestTailSessionLog_unknownSessionReturnsError(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

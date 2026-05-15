@@ -69,7 +69,7 @@ models:
 				names:       []string{"live"},
 				defaultName: "live",
 			}
-			svc, err := New(ServiceOptions{ServiceConfig: sc})
+			svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -123,7 +123,7 @@ models:
 			names:       []string{"live"},
 			defaultName: "live",
 		}
-		svc, err := New(ServiceOptions{ServiceConfig: sc})
+		svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -158,7 +158,7 @@ models:
 			names:       []string{"live"},
 			defaultName: "live",
 		}
-		svc, err := New(ServiceOptions{ServiceConfig: sc})
+		svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -230,7 +230,7 @@ models:
 				names:       []string{"live"},
 				defaultName: "live",
 			}
-			svc, err := New(ServiceOptions{ServiceConfig: sc})
+			svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}

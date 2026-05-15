@@ -35,7 +35,7 @@ func drainOverrideEvents(t *testing.T, ch <-chan fizeau.ServiceEvent, timeout ti
 			}
 			events = append(events, ev)
 		case <-deadline.C:
-			t.Fatalf("timed out after %s waiting for channel close; collected %d events", timeout, len(events))
+			t.Fatalf("timed out after %s waiting for channel close; collected %d events: %v", timeout, len(events), overrideEventTypes(events))
 			return events
 		}
 	}
@@ -196,13 +196,15 @@ func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
 	// Use an explicit empty ServiceConfig so this test does not auto-load the
 	// developer's repo-local provider config and accidentally perform a live
 	// unpinned routing attempt.
-	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ch, execErr := svc.Execute(context.Background(), fizeau.ServiceExecuteRequest{
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, execErr := svc.Execute(ctx, fizeau.ServiceExecuteRequest{
 		Prompt: "hi",
 	})
+	cancel()
 	// The Execute contract for the unpinned/under-specified path returns a
 	// channel that yields a single failed final event and closes — no
 	// pre-dispatch typed error and no override surface activity. Either
@@ -218,7 +220,7 @@ func TestExecuteEmitsNoOverrideEventForUnpinnedRequest(t *testing.T) {
 	if ch == nil {
 		t.Fatal("Execute returned nil channel and nil error for unpinned request")
 	}
-	events := drainOverrideEvents(t, ch, 15*time.Second)
+	events := drainOverrideEvents(t, ch, 2*time.Second)
 	if ov := findOverride(events); ov != nil {
 		t.Fatalf("unpinned request emitted override event: %+v", ov)
 	}
@@ -294,7 +296,7 @@ func TestExecuteEmitsOverrideEventBeforeFinal(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc, err := fizeau.New(fizeau.ServiceOptions{})
+			svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -337,7 +339,7 @@ func TestExecuteSessionLogOverrideEventPersistsBeforeClose(t *testing.T) {
 	logs, restore := captureServiceLogs(t)
 	defer restore()
 
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -426,7 +428,7 @@ func TestExecuteSessionLogOverrideEventPersistsBeforeClose(t *testing.T) {
 // TestOverrideEventCoincidentalAgreement, where a real fakeServiceConfig
 // anchors the auto resolution to the same value the user pinned.
 func TestOverrideEventCoincidentalAgreementStillFiresViaPublicAPI(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -529,7 +531,7 @@ func TestOverrideEventOutcomePopulatedFromFinal(t *testing.T) {
 // override event. The wrapped typed error carries the payload so callers
 // can extract it via AsRejectedOverride.
 func TestRejectedOverrideEventOnOrphanModel(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -637,7 +639,7 @@ func TestOverrideEventPromptFeaturesPopulation(t *testing.T) {
 // is invisible to historical and cross-restart reporting.
 func TestRejectedOverrideEventPersistedToSessionLog(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

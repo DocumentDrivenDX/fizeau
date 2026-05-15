@@ -2,6 +2,8 @@ package agentcli_test
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,10 +46,15 @@ func TestSnapshotAutoroutingCLI(t *testing.T) {
 
 	fixture := loadSnapshotAutoroutingFixture(t)
 	manifestPath := snapshotAutoroutingManifestPath(t)
-	writeTempConfig(t, workDir, renderSnapshotAutoroutingConfig(t, fixture, manifestPath, "http://127.0.0.1:1/v1"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unexpected discovery request", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	baseURL := srv.URL + "/v1"
+	writeTempConfig(t, workDir, renderSnapshotAutoroutingConfig(t, fixture, manifestPath, baseURL))
 
 	cache := &discoverycache.Cache{Root: cacheDir}
-	seedSnapshotAutoroutingCache(t, cache, fixture, "http://127.0.0.1:1/v1")
+	seedSnapshotAutoroutingCache(t, cache, fixture, baseURL, true)
 
 	env := testEnvWithHome(home, map[string]string{
 		"PATH":             "",
@@ -66,6 +73,7 @@ func TestSnapshotAutoroutingCLI(t *testing.T) {
 	require.Equal(t, "stale", freshness.FreshnessState)
 	require.Contains(t, freshness.FreshnessHint, "fiz models --refresh")
 
+	seedSnapshotAutoroutingCache(t, cache, fixture, baseURL, false)
 	out := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "route-status", "--model", "gpt-5.4-mini", "--json")
 	require.Equal(t, 0, out.exitCode, "stderr=%s stdout=%s", out.stderr, out.stdout)
 
@@ -179,12 +187,12 @@ func renderSnapshotAutoroutingConfig(t *testing.T, fixture snapshotAutoroutingFi
 	return b.String()
 }
 
-func seedSnapshotAutoroutingCache(t *testing.T, cache *discoverycache.Cache, fixture snapshotAutoroutingFixture, baseURL string) {
+func seedSnapshotAutoroutingCache(t *testing.T, cache *discoverycache.Cache, fixture snapshotAutoroutingFixture, baseURL string, ageStale bool) {
 	t.Helper()
 	for _, p := range fixture.Providers {
 		source := testDiscoverySourceName(p.Name, p.EndpointName, baseURL, p.ServerInstance)
 		writeSnapshotDiscoveryFixture(t, cache, source, p.Discovery.CapturedAt, append([]string(nil), p.Discovery.Models...))
-		if p.Discovery.Stale {
+		if ageStale && p.Discovery.Stale {
 			path := filepath.Join(cache.Root, "discovery", source+".json")
 			past := time.Now().Add(-2 * time.Hour)
 			require.NoError(t, os.Chtimes(path, past, past))

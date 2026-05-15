@@ -39,6 +39,7 @@ func TestRouteStatusOutputIncludesPowerPolicy(t *testing.T) {
 // every window), one 48h ago (inside 7d but outside 24h), one 30d ago
 // (outside both).
 func TestRouteStatusOverridesSinceFilter(t *testing.T) {
+	isolateCatalogHome(t)
 	workDir := t.TempDir()
 	logDir := filepath.Join(workDir, ".fizeau", "sessions")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
@@ -89,6 +90,7 @@ func TestRouteStatusOverridesSinceFilter(t *testing.T) {
 // TestRouteStatusOverridesAxisFilter verifies that --axis filters the
 // breakdown rows to overrides on the named axis only.
 func TestRouteStatusOverridesAxisFilter(t *testing.T) {
+	isolateCatalogHome(t)
 	workDir := t.TempDir()
 	logDir := filepath.Join(workDir, ".fizeau", "sessions")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
@@ -135,6 +137,7 @@ func TestRouteStatusOverridesAxisFilter(t *testing.T) {
 // TestRouteStatusOverridesEmptyWindow verifies AC #6: with zero overrides
 // the command exits 0 with an empty breakdown rather than erroring.
 func TestRouteStatusOverridesEmptyWindow(t *testing.T) {
+	isolateCatalogHome(t)
 	workDir := t.TempDir()
 	now := time.Now().UTC()
 

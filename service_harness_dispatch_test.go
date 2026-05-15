@@ -42,7 +42,7 @@ EOF
 `)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -92,7 +92,7 @@ EOF
 }
 
 func TestExecute_SubprocessHarnessMissingBinaryFinalFailure(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestExecute_SubprocessHarnessMissingBinaryFinalFailure(t *testing.T) {
 }
 
 func TestExecute_DispatchesVirtualAndScriptHarnesses(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

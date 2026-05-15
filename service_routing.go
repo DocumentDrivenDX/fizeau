@@ -67,7 +67,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 			PowerPolicy:     powerPolicy,
 		}, err
 	}
-	in, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat, modelsnapshot.RefreshNone)
+	in, snapshot := s.buildRoutingInputsWithCatalog(ctx, cat, modelsnapshot.RefreshIfStale)
 
 	resolvedModel, modelCandidates, modelErr := s.resolveModelConstraint(req.Harness, req.Provider, req.Model, in, cat)
 	if modelErr != nil {

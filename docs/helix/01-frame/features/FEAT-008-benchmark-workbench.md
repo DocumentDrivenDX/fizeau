@@ -61,9 +61,11 @@ when the default visible column set is smaller.
    timestamps.
 5. Users can search text across the important descriptor fields without
    knowing the exact column name.
-6. Users can filter by result state, selected task, engine, GPU,
-   pass-only, and maximum GPU RAM, and can continue filtering, sorting,
-   and grouping in the grid itself.
+6. Users can filter by result state, selected task, model, engine, GPU,
+   pass-only, maximum GPU RAM, and low/medium-cardinality enum fields
+   such as model family, quantization, provider, harness, lane,
+   deployment class, hardware family, and sampling settings. Users can
+   continue filtering, sorting, and grouping in the grid itself.
 7. Saved views answer the currently required questions:
    all cells; passing cells for the selected test; passing cells for the
    selected test on the selected GPU; passing cells for the selected
@@ -74,11 +76,16 @@ when the default visible column set is smaller.
 9. A combination aggregate table groups by test, model, quantization,
    KV cache, engine, MTP, GPU, and GPU RAM, then reports rows, passes,
    failures, timeouts, pass rate, cost, tokens, and wall p50.
-10. The workbench must not require a server, database daemon, or private
+10. A pairwise gap table compares two model families and groups pass-rate
+    deltas by high-signal dimensions: task category, difficulty, task,
+    outcome, engine, model quant, deployment class, GPU, provider, and
+    harness. This supports questions like "where is Qwen trailing
+    Claude/Anthropic, and by what kind of task or runtime condition?"
+11. The workbench must not require a server, database daemon, or private
    API. Static hosting is sufficient.
-11. Terminal-Bench task slugs in the grid link to the canonical task
+12. Terminal-Bench task slugs in the grid link to the canonical task
     detail page for that task.
-12. The page must honor `website/DESIGN.md`: scientific instrument
+13. The page must honor `website/DESIGN.md`: scientific instrument
     aesthetic, no shadows, design tokens, dense tables, stable sizing,
     and no marketing layout.
 
@@ -131,6 +138,9 @@ table.
 - An operator can answer "which models passed this test on RTX 3090"
   and "which models passed this test with less than 24GB VRAM" from the
   explorer.
+- An operator can answer "where is the pass-rate gap between Qwen and
+  Anthropic/Claude largest" by task category, difficulty, individual
+  task, runtime, quantization, provider, and hardware dimension.
 - All generated cell columns are available in the grid.
 - The workbench builds with the microsite and does not regress existing
   benchmark report pages.

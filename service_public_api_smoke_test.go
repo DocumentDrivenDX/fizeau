@@ -15,7 +15,7 @@ func TestPublicServiceAPISmoke(t *testing.T) {
 	t.Setenv("HOME", fakeHome)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(fakeHome, ".config"))
 
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

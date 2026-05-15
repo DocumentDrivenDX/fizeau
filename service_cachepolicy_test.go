@@ -24,7 +24,10 @@ func TestRouteRequestHasCachePolicy(t *testing.T) {
 // svc.Execute rejects unknown CachePolicy values at the boundary, before any
 // session is opened or events are emitted.
 func TestServiceExecuteRequestRejectsUnknownCachePolicy(t *testing.T) {
-	svc, err := New(ServiceOptions{})
+	svc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

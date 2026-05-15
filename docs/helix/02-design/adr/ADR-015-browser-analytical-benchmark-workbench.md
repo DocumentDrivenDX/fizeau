@@ -48,7 +48,8 @@ The workbench is a static Hugo page that loads:
   combination rows when needed by follow-up pages.
 - Self-hosted DuckDB-WASM worker and WASM assets copied from npm.
 - A bundled workbench module that initializes DuckDB, creates derived
-  views, runs aggregate SQL, and loads a Perspective datagrid.
+  views, runs aggregate and pairwise comparison SQL, and loads a
+  Perspective datagrid.
 
 All data processing stays in the browser. No Datasette server, SQLite
 service, DuckDB daemon, or custom API is introduced.
@@ -74,7 +75,8 @@ grouping, pivots, and aggregate configuration. It avoids building and
 maintaining a bespoke grid for hundreds of fields.
 
 The workbench uses Perspective as the operator-facing grid and uses
-DuckDB SQL for the page-level presets and summary aggregates. If
+DuckDB SQL for the page-level presets, summary aggregates, and pairwise
+model-family gap analysis. If
 Perspective's DuckDB virtual-table bridge proves too brittle across
 versions, loading Arrow results from DuckDB into a local Perspective
 table remains an acceptable implementation fallback without changing
@@ -119,5 +121,5 @@ Neutral:
   DuckDB assets.
 - `hugo --source website` renders the page with the workbench markup.
 - Browser initialization loads `cells.parquet`, reports row counts, and
-  populates the grid plus aggregate cards.
+  populates the grid, aggregate cards, and pairwise gap table.
 - No new server process is required to use the static build.

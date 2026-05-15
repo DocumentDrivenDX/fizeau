@@ -66,7 +66,10 @@ func TestNew_LoadsFromConfigPathWhenServiceConfigNil(t *testing.T) {
 	// config.Load(filepath.Dir(ConfigPath)) = config.Load(workDir).
 	cfgPath := filepath.Join(workDir, "config.yaml")
 
-	svc, err := fizeau.New(fizeau.ServiceOptions{ConfigPath: cfgPath})
+	svc, err := fizeau.New(fizeau.ServiceOptions{
+		ConfigPath:          cfgPath,
+		QuotaRefreshContext: canceledPublicRefreshContext(),
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -106,13 +109,19 @@ providers:
     base_url: http://broken.invalid/v1
   local:
     type: rapid-mlx
-    base_url: http://grendel:8000/v1
+    base_url: http://127.0.0.1:1/v1
 default: broken
 `), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
-	svc, err := fizeau.New(fizeau.ServiceOptions{ConfigPath: filepath.Join(workDir, "config.yaml")})
+	svc, err := fizeau.New(fizeau.ServiceOptions{
+		ConfigPath:          filepath.Join(workDir, "config.yaml"),
+		QuotaRefreshContext: canceledPublicRefreshContext(),
+		AlivenessProber: func(context.Context, string, string) bool {
+			return false
+		},
+	})
 	if err != nil {
 		t.Fatalf("New should not hard-fail on one invalid provider: %v", err)
 	}
@@ -148,6 +157,14 @@ func TestNew_FallsBackToDefaultPath(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(fakeHome, ".config"))
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(fakeHome); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
 	// Unset any env vars that could inject a real provider so we get a
 	// predictable empty config from the global path (which likely doesn't
 	// exist in CI).
@@ -157,7 +174,7 @@ func TestNew_FallsBackToDefaultPath(t *testing.T) {
 	t.Setenv("FIZEAU_MODEL", "")
 
 	// New should not fail even when config is missing or empty.
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New with no config: %v", err)
 	}
@@ -191,8 +208,9 @@ default: wrong-provider
 
 	sc := &stubServiceConfig{defaultName: "explicit"}
 	svc, err := fizeau.New(fizeau.ServiceOptions{
-		ServiceConfig: sc,
-		ConfigPath:    cfgPath,
+		ServiceConfig:       sc,
+		ConfigPath:          cfgPath,
+		QuotaRefreshContext: canceledPublicRefreshContext(),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -224,3 +242,9 @@ func (s *stubServiceConfig) Provider(string) (fizeau.ServiceProviderEntry, bool)
 func (s *stubServiceConfig) HealthCooldown() time.Duration { return 0 }
 func (s *stubServiceConfig) WorkDir() string               { return "" }
 func (s *stubServiceConfig) SessionLogDir() string         { return "" }
+
+func canceledPublicRefreshContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
+}

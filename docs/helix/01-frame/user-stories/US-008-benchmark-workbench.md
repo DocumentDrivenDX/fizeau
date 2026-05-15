@@ -67,3 +67,22 @@ readable while raw data remains available for deeper inspection.
 - Existing `/benchmarks/terminal-bench-2-1/` report pages still render.
 - The legacy static table enhancer remains scoped to report tables and
   does not interfere with the workbench grid.
+
+## US-008-005 - Locate Pairwise Model Gaps
+
+As a curious benchmark reader, I want to compare two model families and
+see where their pass-rate gap is largest, so that I can understand
+whether a headline delta comes from task type, task difficulty,
+individual tasks, runtime, hardware, provider, or harness effects.
+
+**Acceptance Criteria**
+
+- The explorer has independent baseline and compare selectors for
+  model families.
+- The comparison can group by task category, task difficulty,
+  individual task, outcome, engine, model quant, deployment class,
+  GPU/GPU vendor, provider, and harness.
+- The comparison table reports baseline pass rate, comparison pass
+  rate, pass-rate gap in percentage points, row counts, graded-fail
+  counts, timeout counts, token totals, and p50 wall time.
+- Individual task rows link to the canonical Terminal-Bench task page.

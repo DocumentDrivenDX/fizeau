@@ -552,21 +552,6 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		ranked = append(ranked, entries...)
 	}
 
-	// Sole-candidate probe fallback (AC #3): when no candidate survived all
-	// gates and the only rejections are from the endpoint-probe gate, re-admit
-	// those candidates so the request can still be served. This fires only when
-	// there is no viable alternative — the probe gate is a soft preference, not
-	// an absolute block.
-	if !hasAnyEligible(ranked) {
-		for i := range ranked {
-			if ranked[i].out.FilterReason == FilterReasonEndpointUnreachable {
-				ranked[i].out.Eligible = true
-				ranked[i].out.FilterReason = ""
-				ranked[i].out.Reason = ""
-			}
-		}
-	}
-
 	// Compute scores only after eligibility is final. Rejected candidates keep
 	// a zero score because cost/utilization/performance/sticky ranking should
 	// never influence the eligibility boundary.

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
 	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 )
@@ -729,7 +730,10 @@ func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 	fake := newFakeCodexQuotaHarness()
 	setFakeCodexHarness(t, fake)
 
-	if _, err := New(ServiceOptions{QuotaRefreshStartupWait: time.Second}); err != nil {
+	if _, err := New(ServiceOptions{
+		ServiceConfig:           &fakeServiceConfig{},
+		QuotaRefreshStartupWait: time.Second,
+	}); err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	if _, ok := claudeharness.ReadClaudeQuota(); !ok {
@@ -769,7 +773,10 @@ func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 	setFakeCodexHarness(t, fake)
 
 	start := time.Now()
-	if _, err := New(ServiceOptions{QuotaRefreshStartupWait: 20 * time.Millisecond}); err != nil {
+	if _, err := New(ServiceOptions{
+		ServiceConfig:           &fakeServiceConfig{},
+		QuotaRefreshStartupWait: 20 * time.Millisecond,
+	}); err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
@@ -814,6 +821,7 @@ func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	if _, err := New(ServiceOptions{
+		ServiceConfig:           &fakeServiceConfig{},
 		QuotaRefreshContext:     ctx,
 		QuotaRefreshDebounce:    time.Millisecond,
 		QuotaRefreshStartupWait: time.Second,
@@ -845,6 +853,10 @@ func TestResolveRouteDoesNotTriggerAsyncQuotaRefresh(t *testing.T) {
 	claudeQuotaPath := filepath.Join(dir, "missing-claude-quota.json")
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudeQuotaPath)
 	resetPrimaryQuotaRefreshForTest(t)
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("local", "local", "http://127.0.0.1:9999/v1", ""), time.Now().UTC(), []string{"model-a"})
 
 	var claudeCalls atomic.Int32
 

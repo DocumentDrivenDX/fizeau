@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -351,6 +352,98 @@ models:
 
 	if probeHits.Load() != 0 {
 		t.Fatalf("unexpected discovery probe count = %d", probeHits.Load())
+	}
+}
+
+func TestResolveRouteRefreshesStaleSnapshotAndHardGatesRefreshFailure(t *testing.T) {
+	t.Setenv("PATH", "")
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen on free port: %v", err)
+	}
+	downBaseURL := "http://" + ln.Addr().String() + "/v1"
+	if err := ln.Close(); err != nil {
+		t.Fatalf("close free-port listener: %v", err)
+	}
+
+	cache := &discoverycache.Cache{Root: cacheDir}
+	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
+	downSource := testDiscoverySourceName("aaa-down", "aaa-down", downBaseURL, "down-1")
+	upSource := testDiscoverySourceName("zzz-up", "zzz-up", "http://up.example/v1", "up-1")
+	writeSnapshotDiscoveryFixture(t, cache, downSource, capturedAt, []string{"shared-model"})
+	writeSnapshotDiscoveryFixture(t, cache, upSource, capturedAt, []string{"shared-model"})
+
+	stalePath := filepath.Join(cacheDir, "discovery", downSource+".json")
+	past := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(stalePath, past, past); err != nil {
+		t.Fatalf("mark stale discovery fixture: %v", err)
+	}
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  shared-model:
+    family: shared
+    status: active
+    power: 6
+    context_window: 16384
+    surfaces:
+      embedded-openai: shared-model
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"aaa-down": {
+				Type:           "lmstudio",
+				BaseURL:        downBaseURL,
+				ServerInstance: "down-1",
+				Model:          "shared-model",
+			},
+			"zzz-up": {
+				Type:           "lmstudio",
+				BaseURL:        "http://up.example/v1",
+				ServerInstance: "up-1",
+				Model:          "shared-model",
+			},
+		},
+		names:       []string{"aaa-down", "zzz-up"},
+		defaultName: "aaa-down",
+	}
+	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec.Provider != "zzz-up" {
+		t.Fatalf("provider = %q, want zzz-up after aaa-down refresh failure is hard-gated", dec.Provider)
+	}
+	var downCandidate *RouteCandidate
+	for i := range dec.Candidates {
+		if dec.Candidates[i].Provider == "aaa-down" {
+			downCandidate = &dec.Candidates[i]
+			break
+		}
+	}
+	if downCandidate == nil {
+		t.Fatal("aaa-down candidate missing")
+	}
+	if downCandidate.Eligible {
+		t.Fatalf("aaa-down candidate eligible after refresh failure: %#v", *downCandidate)
+	}
+	if downCandidate.FilterReason != FilterReasonUnhealthy {
+		t.Fatalf("aaa-down filter reason = %q, want %q", downCandidate.FilterReason, FilterReasonUnhealthy)
 	}
 }
 

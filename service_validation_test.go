@@ -10,7 +10,10 @@ import (
 )
 
 func TestExecuteRejectsUnsupportedSubprocessModelBeforeRun(t *testing.T) {
-	svc, err := New(ServiceOptions{})
+	svc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -38,7 +41,10 @@ func TestExecuteRejectsUnsupportedSubprocessModelBeforeRun(t *testing.T) {
 }
 
 func TestExecuteRejectsUnsupportedSubprocessReasoningBeforeRun(t *testing.T) {
-	svc, err := New(ServiceOptions{})
+	svc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

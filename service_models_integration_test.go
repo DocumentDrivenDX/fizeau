@@ -83,6 +83,7 @@ func assertLiveListModelsProvider(t *testing.T, provider liveListModelsProvider)
 	svc, err := New(ServiceOptions{
 		ServiceConfig: &liveListModelsServiceConfig{provider: provider},
 		// Keep this service-boundary test focused on model listing.
+		QuotaRefreshContext:     canceledRefreshContext(),
 		QuotaRefreshStartupWait: time.Nanosecond,
 	})
 	if err != nil {

@@ -57,7 +57,7 @@ func TestSnapshotAutoroutingFromFixtures(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	sc := buildSnapshotAutoroutingServiceConfig(t, fixture, srv.URL+"/v1")
-	seedSnapshotAutoroutingCache(t, cacheRoot, fixture, srv.URL+"/v1")
+	seedSnapshotAutoroutingCache(t, cacheRoot, fixture, srv.URL+"/v1", false)
 
 	svc := newTestService(t, ServiceOptions{ServiceConfig: sc})
 	decisions := map[string]*RouteDecision{}
@@ -154,7 +154,7 @@ func TestSnapshotAutoroutingFromFixtures(t *testing.T) {
 	})
 
 	if got := calls.Load(); got != 0 {
-		t.Fatalf("unexpected provider call count = %d; snapshot replay must not probe providers", got)
+		t.Fatalf("unexpected provider call count = %d; fresh snapshot replay must not probe providers", got)
 	}
 
 	_ = decisions
@@ -213,13 +213,13 @@ func buildSnapshotAutoroutingServiceConfig(t *testing.T, fixture snapshotAutorou
 	}
 }
 
-func seedSnapshotAutoroutingCache(t *testing.T, cacheRoot string, fixture snapshotAutoroutingFixture, baseURL string) {
+func seedSnapshotAutoroutingCache(t *testing.T, cacheRoot string, fixture snapshotAutoroutingFixture, baseURL string, ageStale bool) {
 	t.Helper()
 	cache := &discoverycache.Cache{Root: cacheRoot}
 	for _, p := range fixture.Providers {
 		source := testDiscoverySourceName(p.Name, p.EndpointName, baseURL, p.ServerInstance)
 		writeSnapshotDiscoveryFixture(t, cache, source, p.Discovery.CapturedAt, append([]string(nil), p.Discovery.Models...))
-		if p.Discovery.Stale {
+		if ageStale && p.Discovery.Stale {
 			path := filepath.Join(cacheRoot, "discovery", source+".json")
 			past := time.Now().Add(-2 * time.Hour)
 			if err := os.Chtimes(path, past, past); err != nil {

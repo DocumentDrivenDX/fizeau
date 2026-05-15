@@ -6,7 +6,6 @@ import { DuckDBHandler } from "@perspective-dev/client/dist/esm/virtual_servers/
 const DEFAULT_COLUMNS = [
   "suite",
   "task",
-  "terminalbench_task_url",
   "task_subsets",
   "result_state",
   "passed",
@@ -43,6 +42,51 @@ const DEFAULT_COLUMNS = [
   "started_at",
   "finished_at",
 ];
+
+const FILTER_FIELDS = [
+  { key: "model_family", label: "Model family", allLabel: "All families" },
+  { key: "model_quant", label: "Model quant", allLabel: "All model quants" },
+  { key: "kv_cache_quant", label: "KV cache", allLabel: "All KV caches" },
+  { key: "k_quant", label: "K quant", allLabel: "All K quants" },
+  { key: "v_quant", label: "V quant", allLabel: "All V quants" },
+  { key: "runtime_mtp_enabled", label: "MTP", allLabel: "All MTP states" },
+  { key: "provider_type", label: "Provider", allLabel: "All providers" },
+  { key: "provider_surface", label: "Surface", allLabel: "All surfaces" },
+  { key: "harness_label", label: "Harness", allLabel: "All harnesses" },
+  { key: "lane_label", label: "Lane", allLabel: "All lanes" },
+  { key: "task_category", label: "Task category", allLabel: "All categories" },
+  { key: "task_difficulty", label: "Difficulty", allLabel: "All difficulties" },
+  { key: "deployment_class", label: "Deployment", allLabel: "All deployments" },
+  { key: "machine", label: "Machine", allLabel: "All machines" },
+  { key: "gpu_vendor", label: "GPU vendor", allLabel: "All vendors" },
+  { key: "hardware_chip_family", label: "Chip family", allLabel: "All chip families" },
+  { key: "hardware_memory_type", label: "Memory type", allLabel: "All memory types" },
+  { key: "backend", label: "Backend", allLabel: "All backends" },
+  { key: "runtime_draft_mode", label: "Draft mode", allLabel: "All draft modes" },
+  { key: "runtime_draft_model", label: "Draft model", allLabel: "All draft models" },
+  { key: "kv_cache_disk", label: "KV disk", allLabel: "All KV disk states" },
+  { key: "sampling_reasoning", label: "Reasoning", allLabel: "All reasoning" },
+  { key: "sampling_temperature", label: "Temperature", allLabel: "All temperatures" },
+  { key: "sampling_top_p", label: "Top-p", allLabel: "All top-p values" },
+  { key: "sampling_top_k", label: "Top-k", allLabel: "All top-k values" },
+  { key: "context_tokens", label: "Context", allLabel: "All contexts" },
+  { key: "max_output_tokens", label: "Output cap", allLabel: "All output caps" },
+];
+
+const COMPARISON_DIMENSIONS = {
+  task_category: { key: "task_category", label: "Task category" },
+  task_difficulty: { key: "task_difficulty", label: "Task difficulty" },
+  task: { key: "task", label: "Task" },
+  result_state: { key: "result_state", label: "Outcome" },
+  engine: { key: "engine", label: "Engine" },
+  model_quant: { key: "model_quant", label: "Model quant" },
+  deployment_class: { key: "deployment_class", label: "Deployment" },
+  gpu_vendor: { key: "gpu_vendor", label: "GPU vendor" },
+  effective_gpu_model: { key: "effective_gpu_model", label: "GPU" },
+  sampling_reasoning: { key: "sampling_reasoning", label: "Reasoning" },
+  provider_type: { key: "provider_type", label: "Provider" },
+  harness_label: { key: "harness_label", label: "Harness" },
+};
 
 const NUMBER_FORMAT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const INTEGER_FORMAT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -102,6 +146,19 @@ function formatNumber(value, suffix = "") {
   return `${NUMBER_FORMAT.format(num)}${suffix}`;
 }
 
+function formatPercent(value) {
+  const num = Number(normalizeScalar(value));
+  if (value === null || value === undefined || !Number.isFinite(num)) return "-";
+  return `${NUMBER_FORMAT.format(num * 100)}%`;
+}
+
+function formatGap(value) {
+  const num = Number(normalizeScalar(value));
+  if (value === null || value === undefined || !Number.isFinite(num)) return "-";
+  const sign = num > 0 ? "+" : "";
+  return `${sign}${NUMBER_FORMAT.format(num)} pp`;
+}
+
 function setOptions(select, rows, valueKey, labelKey, allLabel) {
   const current = select.value;
   select.innerHTML = "";
@@ -113,9 +170,11 @@ function setOptions(select, rows, valueKey, labelKey, allLabel) {
   for (const row of rows) {
     const value = valueOf(row, valueKey);
     if (value === null || value === undefined || value === "") continue;
+    const label = labelKey ? String(valueOf(row, labelKey)) : String(value);
     const option = document.createElement("option");
     option.value = String(value);
-    option.textContent = labelKey ? `${valueOf(row, labelKey)} (${formatCount(row.n)})` : `${value} (${formatCount(row.n)})`;
+    option.dataset.label = label;
+    option.textContent = `${label} (${formatCount(row.n)})`;
     select.appendChild(option);
   }
 
@@ -168,6 +227,10 @@ function makePerspectiveClient(handler, mod) {
   });
 }
 
+function taskUrl(task) {
+  return `${TERMINAL_BENCH_TASK_BASE}${encodeURIComponent(String(task))}`;
+}
+
 class BenchmarkWorkbench {
   constructor(root) {
     this.root = root;
@@ -176,12 +239,22 @@ class BenchmarkWorkbench {
     this.search = root.querySelector("[data-bw-search]");
     this.resultState = root.querySelector("[data-bw-result-state]");
     this.task = root.querySelector("[data-bw-task]");
+    this.model = root.querySelector("[data-bw-model]");
     this.engine = root.querySelector("[data-bw-engine]");
     this.gpu = root.querySelector("[data-bw-gpu]");
     this.maxRam = root.querySelector("[data-bw-max-ram]");
     this.passedOnly = root.querySelector("[data-bw-passed-only]");
+    this.activeFilters = root.querySelector("[data-bw-active-filters]");
+    this.clearFilters = root.querySelector("[data-bw-clear-filters]");
+    this.compareA = root.querySelector("[data-bw-compare-a]");
+    this.compareB = root.querySelector("[data-bw-compare-b]");
+    this.compareDimension = root.querySelector("[data-bw-compare-dimension]");
+    this.comparison = root.querySelector("[data-bw-comparison]");
     this.combinations = root.querySelector("[data-bw-combinations]");
     this.openConfig = root.querySelector("[data-bw-open-config]");
+    this.enumFilters = new Map(
+      [...root.querySelectorAll("[data-bw-filter-field]")].map((select) => [select.dataset.bwFilterField, select]),
+    );
     this.metrics = Object.fromEntries(
       [...root.querySelectorAll("[data-bw-metric]")].map((el) => [el.dataset.bwMetric, el]),
     );
@@ -190,6 +263,8 @@ class BenchmarkWorkbench {
     this.duckdbBase = absolutize(root.dataset.duckdbBase || "/vendor/duckdb/");
     this.activePreset = "all";
     this.reloadTimer = null;
+    this.taskLinkUnsubscribe = null;
+    this.taskLinkTable = null;
   }
 
   async init() {
@@ -275,15 +350,34 @@ class BenchmarkWorkbench {
           COALESCE(CAST(provider_type AS VARCHAR), ''),
           COALESCE(CAST(provider_surface AS VARCHAR), ''),
           COALESCE(CAST(model_display_name AS VARCHAR), ''),
+          COALESCE(CAST(model_family AS VARCHAR), ''),
           COALESCE(CAST(model AS VARCHAR), ''),
           COALESCE(CAST(model_quant AS VARCHAR), ''),
           COALESCE(CAST(quant_display AS VARCHAR), ''),
           COALESCE(CAST(kv_cache_quant AS VARCHAR), ''),
           COALESCE(CAST(k_quant AS VARCHAR), ''),
           COALESCE(CAST(v_quant AS VARCHAR), ''),
+          COALESCE(CAST(runtime_mtp_enabled AS VARCHAR), ''),
+          COALESCE(CAST(runtime_draft_mode AS VARCHAR), ''),
+          COALESCE(CAST(runtime_draft_model AS VARCHAR), ''),
           COALESCE(CAST(engine AS VARCHAR), ''),
+          COALESCE(CAST(backend AS VARCHAR), ''),
           COALESCE(CAST(gpu_model AS VARCHAR), ''),
+          COALESCE(CAST(gpu_vendor AS VARCHAR), ''),
+          COALESCE(CAST(hardware_chip_family AS VARCHAR), ''),
+          COALESCE(CAST(hardware_memory_type AS VARCHAR), ''),
+          COALESCE(CAST(task_category AS VARCHAR), ''),
+          COALESCE(CAST(task_difficulty AS VARCHAR), ''),
+          COALESCE(CAST(lane_label AS VARCHAR), ''),
+          COALESCE(CAST(deployment_class AS VARCHAR), ''),
+          COALESCE(CAST(sampling_reasoning AS VARCHAR), ''),
+          COALESCE(CAST(sampling_temperature AS VARCHAR), ''),
+          COALESCE(CAST(sampling_top_p AS VARCHAR), ''),
+          COALESCE(CAST(sampling_top_k AS VARCHAR), ''),
+          COALESCE(CAST(context_tokens AS VARCHAR), ''),
+          COALESCE(CAST(max_output_tokens AS VARCHAR), ''),
           COALESCE(CAST(machine AS VARCHAR), ''),
+          COALESCE(CAST(machine_label AS VARCHAR), ''),
           COALESCE(CAST(final_status AS VARCHAR), ''),
           COALESCE(CAST(invalid_class AS VARCHAR), ''),
           COALESCE(CAST(descriptor AS VARCHAR), '')
@@ -298,7 +392,15 @@ class BenchmarkWorkbench {
   }
 
   async populateControls() {
-    const [resultStates, tasks, engines, gpus] = await Promise.all([
+    const enumQueries = FILTER_FIELDS.map((field) => queryRows(this.conn, `
+      SELECT CAST(${field.key} AS VARCHAR) AS value, count(*) AS n
+      FROM cells_enriched
+      WHERE ${field.key} IS NOT NULL AND CAST(${field.key} AS VARCHAR) <> ''
+      GROUP BY ${field.key}
+      ORDER BY n DESC, value
+    `));
+
+    const [resultStates, tasks, models, modelFamilies, engines, gpus, ...enumRows] = await Promise.all([
       queryRows(this.conn, `
         SELECT result_state, count(*) AS n
         FROM cells_enriched
@@ -314,6 +416,23 @@ class BenchmarkWorkbench {
         ORDER BY task
       `),
       queryRows(this.conn, `
+        SELECT model_display_name AS model, count(*) AS n
+        FROM cells_enriched
+        WHERE model_display_name IS NOT NULL AND model_display_name <> ''
+        GROUP BY model_display_name
+        ORDER BY n DESC, model_display_name
+      `),
+      queryRows(this.conn, `
+        SELECT
+          model_family AS value,
+          concat(any_value(model_display_name), ' · ', model_family) AS label,
+          count(*) AS n
+        FROM cells_enriched
+        WHERE model_family IS NOT NULL AND model_family <> ''
+        GROUP BY model_family
+        ORDER BY n DESC, model_family
+      `),
+      queryRows(this.conn, `
         SELECT engine, count(*) AS n
         FROM cells_enriched
         WHERE engine IS NOT NULL AND engine <> ''
@@ -327,12 +446,25 @@ class BenchmarkWorkbench {
         GROUP BY effective_gpu_model
         ORDER BY n DESC, effective_gpu_model
       `),
+      ...enumQueries,
     ]);
 
     setOptions(this.resultState, resultStates, "result_state", "result_state", "All outcomes");
     setOptions(this.task, tasks, "task", "task", "All tests");
+    setOptions(this.model, models, "model", "model", "All models");
+    setOptions(this.compareA, modelFamilies, "value", "label", "Baseline family");
+    setOptions(this.compareB, modelFamilies, "value", "label", "Compare family");
+    this.setDefaultComparison(modelFamilies.map((row) => String(row.value)));
     setOptions(this.engine, engines, "engine", "engine", "All engines");
     setOptions(this.gpu, gpus, "gpu", "gpu", "All GPUs");
+
+    FILTER_FIELDS.forEach((field, index) => {
+      const select = this.enumFilters.get(field.key);
+      if (!select) return;
+      setOptions(select, enumRows[index], "value", "value", field.allLabel);
+      const control = select.closest(".bench-workbench__control");
+      if (control) control.hidden = select.options.length <= 1;
+    });
   }
 
   bindEvents() {
@@ -344,10 +476,17 @@ class BenchmarkWorkbench {
     this.search.addEventListener("input", schedule);
     this.resultState.addEventListener("change", schedule);
     this.task.addEventListener("change", schedule);
+    this.model.addEventListener("change", schedule);
     this.engine.addEventListener("change", schedule);
     this.gpu.addEventListener("change", schedule);
     this.maxRam.addEventListener("input", schedule);
     this.passedOnly.addEventListener("change", schedule);
+    this.enumFilters.forEach((select) => {
+      select.addEventListener("change", schedule);
+    });
+    this.compareA.addEventListener("change", schedule);
+    this.compareB.addEventListener("change", schedule);
+    this.compareDimension.addEventListener("change", schedule);
 
     this.root.querySelectorAll("[data-bw-preset]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -359,17 +498,9 @@ class BenchmarkWorkbench {
       this.viewer.toggleConfig();
     });
 
-    this.viewer.addEventListener("perspective-click", (event) => {
-      const column = event.detail?.column_names?.[0];
-      const columnName = Array.isArray(column) ? column.at(-1) : column;
-      if (columnName !== "task") return;
-
-      const task = event.detail?.row?.task;
-      if (!task) return;
-
-      const url = `${TERMINAL_BENCH_TASK_BASE}${encodeURIComponent(String(task))}`;
-      const opened = window.open(url, "_blank", "noopener,noreferrer");
-      if (!opened) window.location.assign(url);
+    this.clearFilters?.addEventListener("click", () => {
+      this.resetFilters();
+      this.reload().catch((error) => this.fail(error));
     });
   }
 
@@ -390,11 +521,45 @@ class BenchmarkWorkbench {
     this.reload().catch((error) => this.fail(error));
   }
 
-  whereClause() {
+  setDefaultComparison(families) {
+    const has = (value) => families.includes(value);
+    if (!this.compareA.value) {
+      this.compareA.value = has("claude-sonnet-4") ? "claude-sonnet-4" : families[1] || families[0] || "";
+    }
+    if (!this.compareB.value) {
+      this.compareB.value = has("qwen3-6-27b")
+        ? "qwen3-6-27b"
+        : families.find((family) => family !== this.compareA.value) || "";
+    }
+    if (this.compareA.value === this.compareB.value) {
+      this.compareB.value = families.find((family) => family !== this.compareA.value) || "";
+    }
+  }
+
+  resetFilters() {
+    this.activePreset = "all";
+    this.root.querySelectorAll("[data-bw-preset]").forEach((button) => {
+      button.setAttribute("aria-pressed", button.dataset.bwPreset === "all" ? "true" : "false");
+    });
+    this.search.value = "";
+    this.resultState.value = "";
+    this.task.value = "";
+    this.model.value = "";
+    this.engine.value = "";
+    this.gpu.value = "";
+    this.maxRam.value = "";
+    this.passedOnly.checked = false;
+    this.enumFilters.forEach((select) => {
+      select.value = "";
+    });
+  }
+
+  filterClauses(options = {}) {
     const clauses = [];
     const search = this.search.value.trim();
     const resultState = this.resultState.value;
     const task = this.task.value;
+    const model = this.model.value;
     const engine = this.engine.value;
     const gpu = this.gpu.value;
     const maxRam = Number(this.maxRam.value);
@@ -408,6 +573,9 @@ class BenchmarkWorkbench {
     }
     if (task) {
       clauses.push(`task = ${sqlString(task)}`);
+    }
+    if (model && !options.skipModel) {
+      clauses.push(`model_display_name = ${sqlString(model)}`);
     }
     if (engine) {
       clauses.push(`engine = ${sqlString(engine)}`);
@@ -424,7 +592,19 @@ class BenchmarkWorkbench {
     if (this.activePreset === "recent-failures") {
       clauses.push("result_state <> 'passed'");
     }
+    for (const field of FILTER_FIELDS) {
+      if (options.skipModelFamily && field.key === "model_family") continue;
+      const value = this.enumFilters.get(field.key)?.value;
+      if (value) {
+        clauses.push(`CAST(${field.key} AS VARCHAR) = ${sqlString(value)}`);
+      }
+    }
 
+    return clauses;
+  }
+
+  whereClause(options = {}) {
+    const clauses = this.filterClauses(options);
     return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   }
 
@@ -444,7 +624,8 @@ class BenchmarkWorkbench {
       ${this.sortClause()}
     `);
 
-    await Promise.all([this.loadGrid(), this.loadMetrics(), this.loadCombinationAggregates()]);
+    await Promise.all([this.loadGrid(), this.loadMetrics(), this.loadComparison(), this.loadCombinationAggregates()]);
+    this.renderActiveFilters();
     const metricRows = this.metrics.rows?.textContent || "-";
     this.setStatus(`${metricRows} rows loaded${this.manifestText()}`);
   }
@@ -465,6 +646,72 @@ class BenchmarkWorkbench {
       split_by: [],
       filter: [],
       settings: false,
+    });
+    await this.viewer.flush?.();
+    await this.installTaskLinks();
+  }
+
+  async installTaskLinks() {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const datagrid = await this.findDatagridPlugin();
+    const regularTable = datagrid?.regular_table;
+    if (!regularTable) return;
+
+    if (this.taskLinkTable !== regularTable) {
+      this.taskLinkUnsubscribe?.();
+      this.taskLinkTable = regularTable;
+      this.taskLinkUnsubscribe = regularTable.addStyleListener(() => this.linkVisibleTaskCells(regularTable));
+      regularTable.addEventListener(
+        "click",
+        (event) => {
+          const anchor = event.target instanceof Element ? event.target.closest("a[data-terminalbench-task-link]") : null;
+          if (anchor) event.stopPropagation();
+        },
+        true,
+      );
+    }
+
+    this.linkVisibleTaskCells(regularTable);
+  }
+
+  async findDatagridPlugin() {
+    try {
+      const plugin = await this.viewer.getPlugin?.("Datagrid");
+      if (plugin) return plugin;
+    } catch {
+      // Fall through to DOM lookup for older Perspective builds.
+    }
+    return (
+      this.viewer.querySelector("perspective-viewer-datagrid") ||
+      this.viewer.shadowRoot?.querySelector("perspective-viewer-datagrid") ||
+      null
+    );
+  }
+
+  linkVisibleTaskCells(regularTable) {
+    regularTable.querySelectorAll("tbody td").forEach((cell) => {
+      const metadata = regularTable.getMeta(cell);
+      const columnName = metadata?.column_header?.at(-1);
+      if (columnName !== "task") return;
+
+      const task = String(metadata?.value ?? cell.textContent ?? "").trim();
+      if (!task || task === "-") return;
+
+      const existing = cell.querySelector("a[data-terminalbench-task-link]");
+      if (existing && existing.textContent === task) return;
+
+      const anchor = document.createElement("a");
+      anchor.dataset.terminalbenchTaskLink = "true";
+      anchor.href = taskUrl(task);
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.textContent = task;
+      anchor.style.color = "var(--accent-cyan)";
+      anchor.style.textDecorationThickness = "1px";
+      anchor.style.textUnderlineOffset = "2px";
+      cell.textContent = "";
+      cell.appendChild(anchor);
+      cell.classList.add("bench-workbench__task-cell");
     });
   }
 
@@ -495,6 +742,157 @@ class BenchmarkWorkbench {
     this.metrics.tokens.textContent = formatCount(row.token_total);
     this.metrics.cost.textContent = row.cost_total === null || row.cost_total === undefined ? "-" : USD_FORMAT.format(Number(row.cost_total));
     this.metrics.wall_p50.textContent = formatNumber(row.wall_p50, "s");
+  }
+
+  async loadComparison() {
+    const familyA = this.compareA.value;
+    const familyB = this.compareB.value;
+    const dimension = COMPARISON_DIMENSIONS[this.compareDimension.value] || COMPARISON_DIMENSIONS.task_category;
+
+    if (!familyA || !familyB || familyA === familyB) {
+      this.comparison.innerHTML = "<p>Select two different model families.</p>";
+      return;
+    }
+
+    const rows = await queryRows(this.conn, `
+      WITH scoped AS (
+        SELECT * FROM cells_enriched
+        ${this.whereClause({ skipModel: true, skipModelFamily: true })}
+      ),
+      grouped AS (
+        SELECT
+          COALESCE(NULLIF(CAST(${dimension.key} AS VARCHAR), ''), '(missing)') AS bucket,
+          model_family,
+          count(*) AS n_rows,
+          count(*) FILTER (WHERE result_state IN ('passed', 'failed')) AS n_graded,
+          count(*) FILTER (WHERE result_state = 'passed') AS n_pass,
+          count(*) FILTER (WHERE result_state = 'failed') AS n_fail,
+          count(*) FILTER (WHERE result_state = 'timeout') AS n_timeout,
+          CAST(sum(total_tokens) AS DOUBLE) AS token_total,
+          median(wall_seconds) FILTER (WHERE wall_seconds IS NOT NULL) AS wall_p50
+        FROM scoped
+        WHERE model_family IN (${sqlString(familyA)}, ${sqlString(familyB)})
+        GROUP BY bucket, model_family
+      ),
+      pivoted AS (
+        SELECT
+          bucket,
+          max(n_rows) FILTER (WHERE model_family = ${sqlString(familyA)}) AS a_rows,
+          max(n_graded) FILTER (WHERE model_family = ${sqlString(familyA)}) AS a_graded,
+          max(n_pass) FILTER (WHERE model_family = ${sqlString(familyA)}) AS a_pass,
+          max(n_fail) FILTER (WHERE model_family = ${sqlString(familyA)}) AS a_fail,
+          max(n_timeout) FILTER (WHERE model_family = ${sqlString(familyA)}) AS a_timeout,
+          max(token_total) FILTER (WHERE model_family = ${sqlString(familyA)}) AS a_tokens,
+          max(wall_p50) FILTER (WHERE model_family = ${sqlString(familyA)}) AS a_wall_p50,
+          max(n_rows) FILTER (WHERE model_family = ${sqlString(familyB)}) AS b_rows,
+          max(n_graded) FILTER (WHERE model_family = ${sqlString(familyB)}) AS b_graded,
+          max(n_pass) FILTER (WHERE model_family = ${sqlString(familyB)}) AS b_pass,
+          max(n_fail) FILTER (WHERE model_family = ${sqlString(familyB)}) AS b_fail,
+          max(n_timeout) FILTER (WHERE model_family = ${sqlString(familyB)}) AS b_timeout,
+          max(token_total) FILTER (WHERE model_family = ${sqlString(familyB)}) AS b_tokens,
+          max(wall_p50) FILTER (WHERE model_family = ${sqlString(familyB)}) AS b_wall_p50
+        FROM grouped
+        GROUP BY bucket
+      )
+      SELECT
+        *,
+        CASE WHEN a_graded > 0 THEN CAST(a_pass AS DOUBLE) / CAST(a_graded AS DOUBLE) ELSE NULL END AS a_pass_rate,
+        CASE WHEN b_graded > 0 THEN CAST(b_pass AS DOUBLE) / CAST(b_graded AS DOUBLE) ELSE NULL END AS b_pass_rate,
+        CASE
+          WHEN a_graded > 0 AND b_graded > 0 THEN
+            100 * (
+              CAST(b_pass AS DOUBLE) / CAST(b_graded AS DOUBLE)
+              - CAST(a_pass AS DOUBLE) / CAST(a_graded AS DOUBLE)
+            )
+          ELSE NULL
+        END AS gap_pp
+      FROM pivoted
+      WHERE COALESCE(a_rows, 0) > 0 OR COALESCE(b_rows, 0) > 0
+      ORDER BY
+        abs(COALESCE(gap_pp, 0)) DESC,
+        COALESCE(a_rows, 0) + COALESCE(b_rows, 0) DESC,
+        bucket
+      LIMIT 60
+    `);
+
+    this.renderComparison(rows, dimension);
+  }
+
+  renderComparison(rows, dimension) {
+    if (rows.length === 0) {
+      this.comparison.innerHTML = "<p>No comparison rows match the current filters.</p>";
+      return;
+    }
+
+    const labelA = this.selectedOptionLabel(this.compareA);
+    const labelB = this.selectedOptionLabel(this.compareB);
+    const headers = [
+      dimension.label,
+      `${labelA} pass`,
+      `${labelB} pass`,
+      "Gap",
+      `${labelA} rows`,
+      `${labelB} rows`,
+      `${labelA} fails`,
+      `${labelB} fails`,
+      `${labelA} timeouts`,
+      `${labelB} timeouts`,
+      `${labelA} tokens`,
+      `${labelB} tokens`,
+      `${labelA} p50`,
+      `${labelB} p50`,
+    ];
+
+    const htmlRows = rows.map((row) => {
+      const gap = Number(row.gap_pp);
+      const gapClass = Number.isFinite(gap)
+        ? gap > 0
+          ? "bench-workbench__gap-positive"
+          : gap < 0
+            ? "bench-workbench__gap-negative"
+            : ""
+        : "";
+      return `
+        <tr>
+          <td>${this.comparisonBucket(row.bucket, dimension.key)}</td>
+          <td>${formatPercent(row.a_pass_rate)}</td>
+          <td>${formatPercent(row.b_pass_rate)}</td>
+          <td class="${gapClass}">${formatGap(row.gap_pp)}</td>
+          <td>${formatCount(row.a_rows)}</td>
+          <td>${formatCount(row.b_rows)}</td>
+          <td>${formatCount(row.a_fail)}</td>
+          <td>${formatCount(row.b_fail)}</td>
+          <td>${formatCount(row.a_timeout)}</td>
+          <td>${formatCount(row.b_timeout)}</td>
+          <td>${formatCount(row.a_tokens)}</td>
+          <td>${formatCount(row.b_tokens)}</td>
+          <td>${formatNumber(row.a_wall_p50, "s")}</td>
+          <td>${formatNumber(row.b_wall_p50, "s")}</td>
+        </tr>
+      `;
+    }).join("");
+
+    this.comparison.innerHTML = `
+      <table>
+        <thead>
+          <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+        </thead>
+        <tbody>${htmlRows}</tbody>
+      </table>
+    `;
+  }
+
+  comparisonBucket(bucket, dimensionKey) {
+    if (dimensionKey === "task" && bucket && bucket !== "(missing)") {
+      const task = escapeHtml(bucket);
+      return `<a href="${escapeHtml(taskUrl(bucket))}" target="_blank" rel="noopener noreferrer">${task}</a>`;
+    }
+    return escapeHtml(bucket);
+  }
+
+  selectedOptionLabel(select) {
+    const selected = select.selectedOptions?.[0];
+    return selected?.dataset.label || selected?.textContent || select.value;
   }
 
   async loadCombinationAggregates() {
@@ -576,6 +974,37 @@ class BenchmarkWorkbench {
         <tbody>${htmlRows}</tbody>
       </table>
     `;
+  }
+
+  renderActiveFilters() {
+    if (!this.activeFilters) return;
+    const labels = this.activeFilterLabels();
+    this.activeFilters.hidden = labels.length === 0;
+    this.activeFilters.innerHTML = labels.map((label) => `<span>${escapeHtml(label)}</span>`).join("");
+  }
+
+  activeFilterLabels() {
+    const labels = [];
+    const preset = this.root.querySelector(`[data-bw-preset="${this.activePreset}"]`)?.textContent?.trim();
+    if (this.activePreset !== "all" && preset) labels.push(`View: ${preset}`);
+    if (this.search.value.trim()) labels.push(`Search: ${this.search.value.trim()}`);
+    this.pushSelectFilter(labels, "Outcome", this.resultState);
+    this.pushSelectFilter(labels, "Task", this.task);
+    this.pushSelectFilter(labels, "Model", this.model);
+    this.pushSelectFilter(labels, "Engine", this.engine);
+    this.pushSelectFilter(labels, "GPU", this.gpu);
+    if (this.maxRam.value !== "") labels.push(`Max GPU RAM: ${this.maxRam.value} GB`);
+    if (this.passedOnly.checked) labels.push("Passed only");
+    for (const field of FILTER_FIELDS) {
+      this.pushSelectFilter(labels, field.label, this.enumFilters.get(field.key));
+    }
+    return labels;
+  }
+
+  pushSelectFilter(labels, label, select) {
+    if (!select?.value) return;
+    const selected = select.selectedOptions?.[0];
+    labels.push(`${label}: ${selected?.dataset.label || selected?.textContent || select.value}`);
   }
 
   manifestText() {

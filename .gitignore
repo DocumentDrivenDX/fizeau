@@ -30,6 +30,7 @@ website/resources/
 
 # fizeau local provider config (machine-specific, not for commit)
 .fizeau/config.yaml
+.fizeau/route-health-*.json
 .ddx/run-state.json
 .ddx/executions/
 .ddx/.execute-bead-wt-agent-*/

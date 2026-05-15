@@ -1,6 +1,7 @@
 package fizeau
 
 import (
+	"context"
 	"testing"
 
 	"github.com/easel/fizeau/internal/harnesses"
@@ -20,6 +21,12 @@ func newTestService(t testing.TB, opts ServiceOptions, options ...testServiceOpt
 		option(svc)
 	}
 	return svc
+}
+
+func canceledRefreshContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
 }
 
 func TestNewTestServiceInitializesCommonRuntimeState(t *testing.T) {

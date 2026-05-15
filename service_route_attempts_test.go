@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/routing"
 )
@@ -479,8 +480,13 @@ func TestResolveRoute_GeminiCatalogModelsResolveByConcreteModel(t *testing.T) {
 
 func routeAttemptTestService(t *testing.T, cooldown time.Duration) *service {
 	t.Helper()
-	t.Setenv("FIZEAU_CACHE_DIR", t.TempDir())
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
 	t.Setenv("PATH", "")
+	cache := &discoverycache.Cache{Root: cacheDir}
+	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("bragi", "bragi", "http://127.0.0.1:9999/v1", ""), capturedAt, []string{"qwen"})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("openrouter", "openrouter", "https://openrouter.invalid/v1", ""), capturedAt, []string{"qwen"})
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"bragi":      {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "qwen"},

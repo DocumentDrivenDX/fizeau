@@ -165,7 +165,7 @@ func indexEventType(events []fizeau.ServiceEvent, want string) int {
 }
 
 func TestExecute_ReturnsExplicitHarnessModelErrorBeforeDispatch(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -833,7 +833,7 @@ func TestExecute_StallPolicy_NonMutatingBashCountsAsNoProgress(t *testing.T) {
 // no provider and no FakeProvider yields Status="failed" with an explicit
 // orphan-model error message.
 func TestExecute_OrphanModelFails(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

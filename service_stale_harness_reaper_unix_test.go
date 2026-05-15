@@ -32,6 +32,8 @@ func TestServiceStartupReapsStaleHarnessSessions(t *testing.T) {
 	}
 
 	_, err = New(ServiceOptions{
+		ServiceConfig:           &fakeServiceConfig{},
+		QuotaRefreshContext:     canceledRefreshContext(),
 		SessionLogDir:           logDir,
 		StaleHarnessReaperGrace: time.Millisecond,
 	})

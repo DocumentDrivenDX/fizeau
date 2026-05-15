@@ -47,7 +47,7 @@ func virtualReqWithRoleCorr(role, correlationID, response string) fizeau.Service
 
 // policy_statement: Role + CorrelationID are echoed into RoutingDecision + Final events.
 func TestRoleAndCorrelationID_EchoedIntoRoutingDecisionAndFinal(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestRoleAndCorrelationID_EchoedIntoRoutingDecisionAndFinal(t *testing.T) {
 // policy_statement: Role + CorrelationID are NOT echoed into text_delta event metadata
 // (existing Metadata echo path on text_delta still applies for other keys).
 func TestRoleAndCorrelationID_NotEchoedIntoTextDelta(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestRoleAndCorrelationID_NotEchoedIntoTextDelta(t *testing.T) {
 // policy_statement: Role + CorrelationID are echoed into the session-log header.
 func TestRoleAndCorrelationID_EchoedIntoSessionLogHeader(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestRoleAndCorrelationID_EchoedIntoSessionLogHeader(t *testing.T) {
 // without Role/CorrelationID must produce the same outcome (decision and/or
 // error). Day 1 these two fields are observational only.
 func TestRoleAndCorrelationID_DoNotAffectRouting(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestRoleAndCorrelationID_DoNotAffectRouting(t *testing.T) {
 // Execute also exercises, so identical RouteDecision (or identical error)
 // proves the parity statement.
 func TestRoleAndCorrelationID_ResolveRouteParityWithExecute(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestRoleAndCorrelationID_ResolveRouteParityWithExecute(t *testing.T) {
 // policy_statement: Invalid Role / CorrelationID values rejected pre-dispatch
 // with the typed errors.
 func TestRoleAndCorrelationID_InvalidValuesRejectedPreDispatch(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestRoleAndCorrelationID_InvalidValuesRejectedPreDispatch(t *testing.T) {
 // We assert the field is present and serialized — its absence would mean the
 // echo path was never wired.
 func TestRoleAndCorrelationID_RoutingActualPowerSurface(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestRoleAndCorrelationID_RoutingActualPowerSurface(t *testing.T) {
 // policy_statement: When caller sets both top-level Role and Metadata['role'],
 // top-level wins and a MetadataKeyCollision warning is emitted.
 func TestRoleAndCorrelationID_TopLevelWinsOnMetadataCollisionWithWarning(t *testing.T) {
-	svc, err := fizeau.New(fizeau.ServiceOptions{})
+	svc, err := fizeau.New(fizeau.ServiceOptions{ServiceConfig: &stubServiceConfig{}, QuotaRefreshContext: canceledPublicRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

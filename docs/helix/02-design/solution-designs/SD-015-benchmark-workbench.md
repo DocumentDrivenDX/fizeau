@@ -39,6 +39,7 @@ benchmark-workbench.js
   - registers Parquet files by URL
   - creates cells_enriched and workbench_cells SQL views
   - runs preset filters and aggregate SQL
+  - runs pairwise model-family comparison SQL
   - loads workbench_cells into Perspective datagrid
 ```
 
@@ -51,9 +52,10 @@ serve HTML, CSS, JS, WASM, worker files, and Parquet artifacts.
 instrument-panel workbench:
 
 - status strip with generated artifact metadata
-- controls for text search, task, engine, GPU, pass-only, max GPU RAM,
-  and saved views
+- controls for text search, task, model, engine, GPU, pass-only, max GPU RAM,
+  saved views, and low/medium-cardinality enum filters
 - aggregate readout cards
+- pairwise model-family gap table
 - Perspective datagrid with every cell column available
 - combination aggregate table below the grid
 
@@ -79,6 +81,12 @@ Rows with `invalid_class` and rows that are neither timeout nor graded
 are excluded from `cells.parquet`; their counts remain in the manifest
 for audit.
 
+The builder also enriches task category and difficulty from source
+reports when present, then falls back to checked-in Terminal-Bench task
+metadata and subset YAML metadata. This keeps pairwise "what kind of
+task explains the gap?" views from collapsing into missing buckets when
+older reports did not carry category fields.
+
 `cells_enriched`
 
 Selects all raw columns and adds:
@@ -89,7 +97,8 @@ Selects all raw columns and adds:
   max-GPU-RAM filter.
 - `effective_gpu_model`: public GPU label fallback chain.
 - `terminalbench_task_url`: canonical Terminal-Bench task detail URL for
-  Terminal-Bench suite rows.
+  Terminal-Bench suite rows. The URL is used as the link target for task
+  cells and is not part of the default visible grid column set.
 
 `workbench_cells`
 
@@ -101,7 +110,7 @@ the same view.
 
 The grid initially shows:
 
-- suite, task, terminalbench_task_url, task_subsets
+- suite, task, task_subsets
 - result_state, passed, grader_passed, final_status, invalid_class
 - harness, harness_label, provider_type, provider_surface
 - model_display_name, model, model_quant, quant_display, weight_bits
@@ -113,6 +122,21 @@ The grid initially shows:
 - started_at, finished_at
 
 All other columns remain available through Perspective's column chooser.
+
+## Comparison Filters
+
+The workbench promotes low/medium-cardinality fields into native select
+controls so the common comparison questions do not require opening the
+Perspective configuration panel first:
+
+- model family, model quant, KV cache, K/V quant, MTP
+- provider type/surface, harness, lane, deployment class, machine
+- task category and difficulty
+- GPU vendor, chip family, memory type, backend, KV disk
+- reasoning, temperature, top-p, top-k, context, and output cap
+
+Controls with no populated values hide themselves after DuckDB loads the
+artifact.
 
 ## Presets
 
@@ -126,6 +150,30 @@ All other columns remain available through Perspective's column chooser.
 
 Controls are composable. Presets set intent; the grid's own filter,
 sort, group, and pivot controls remain available for deeper analysis.
+
+## Pairwise Gap Query
+
+The pairwise comparison panel answers "where is the delta?" questions
+such as Qwen versus Claude/Anthropic. It compares two selected
+`model_family` values over the current filter scope, excluding the
+standalone model and model-family filters so users can still use the
+model picker for the raw table without destroying the comparison.
+
+Supported group-by dimensions:
+
+`task_category, task_difficulty, task, result_state, engine,
+model_quant, deployment_class, gpu_vendor, effective_gpu_model,
+sampling_reasoning, provider_type, harness_label`
+
+For each bucket it reports:
+
+- baseline pass rate and comparison pass rate over graded rows
+- pass-rate gap in percentage points (`compare - baseline`)
+- row counts, graded-fail counts, and timeout counts for each side
+- token totals and p50 wall time for each side
+
+When grouped by task, the task cell links to the canonical
+Terminal-Bench task page.
 
 ## Aggregate Queries
 

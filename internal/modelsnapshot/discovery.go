@@ -399,6 +399,18 @@ func readDiscoveryCache(cache *discoverycache.Cache, src discoverycache.Source, 
 		return result
 	}
 	result.Sources[src.Name] = meta
+	refreshFailed := false
+	if state, stateErr := cache.RefreshState(src); stateErr == nil && state.Failed {
+		refreshFailed = true
+		if meta.Error == "" {
+			meta.Error = "refresh_failed: " + state.LastError
+		}
+		if !state.StartedAt.IsZero() {
+			meta.LastRefreshedAt = state.StartedAt.UTC()
+		}
+		meta.Stale = true
+		result.Sources[src.Name] = meta
+	}
 	if read.Data == nil {
 		return result
 	}
@@ -408,7 +420,7 @@ func readDiscoveryCache(cache *discoverycache.Cache, src discoverycache.Source, 
 		result.Sources[src.Name] = meta
 		return result
 	}
-	if !capturedAt.IsZero() {
+	if !capturedAt.IsZero() && !refreshFailed {
 		meta.LastRefreshedAt = capturedAt.UTC()
 		result.Sources[src.Name] = meta
 	}

@@ -49,7 +49,10 @@ func TestValidatePowerBounds(t *testing.T) {
 }
 
 func TestServiceExecuteRequestRejectsInvalidPowerBounds(t *testing.T) {
-	svc, err := New(ServiceOptions{})
+	svc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -71,7 +74,10 @@ func TestServiceExecuteRequestRejectsInvalidPowerBounds(t *testing.T) {
 }
 
 func TestResolveRouteRejectsInvalidPowerBounds(t *testing.T) {
-	svc, err := New(ServiceOptions{})
+	svc, err := New(ServiceOptions{
+		ServiceConfig:       &fakeServiceConfig{},
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

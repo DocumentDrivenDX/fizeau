@@ -22,7 +22,7 @@ Every per-turn timing — first-token latency, decode rate, prefill time — lan
 
 ## Raw data explorer
 
-The [benchmark workbench](explorer/) exposes every collected cell as a browser-side analytical table with search, sort, filters, and aggregate views over model, quantization, runtime, hardware, tokens, cost, and outcomes.
+The [benchmark workbench](explorer/) exposes every collected cell as a browser-side analytical table with search, sort, filters, pairwise model-gap slices, and aggregate views over model, quantization, runtime, hardware, tokens, cost, and outcomes.
 
 ## What's measured
 

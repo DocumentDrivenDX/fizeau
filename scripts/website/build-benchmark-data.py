@@ -30,6 +30,9 @@ DEFAULT_CELLS_ROOT = REPO / "benchmark-results/fiz-tools-v1/cells"
 DEFAULT_PROFILES_DIR = REPO / "scripts/benchmark/profiles"
 DEFAULT_MACHINES_FILE = REPO / "scripts/benchmark/machines.yaml"
 DEFAULT_SUBSET_GLOB = "scripts/benchmark/task-subset-tb21-*.yaml"
+DEFAULT_TASK_METADATA_FILES = (
+    REPO / "scripts/beadbench/external/termbench-full.json",
+)
 DEFAULT_OUT_DIR = REPO / "website/static/data"
 DEFAULT_SCHEMA = REPO / "docs/benchmarks/schema/benchmark-cells.schema.json"
 DEFAULT_SUITE = "terminal-bench-2-1"
@@ -225,6 +228,34 @@ def load_subsets(pattern: str) -> dict[str, set[str]]:
         }
         subsets[path.stem.replace("task-subset-tb21-", "")] = tasks
     return subsets
+
+
+def load_task_metadata(pattern: str) -> dict[str, dict[str, Any]]:
+    metadata: dict[str, dict[str, Any]] = {}
+
+    for path in DEFAULT_TASK_METADATA_FILES:
+        if not path.is_file():
+            continue
+        with path.open(encoding="utf-8") as f:
+            doc = json.load(f)
+        merge_task_metadata(metadata, doc.get("tasks") or [])
+
+    for path in sorted(REPO.glob(pattern)):
+        doc = load_yaml(path)
+        merge_task_metadata(metadata, doc.get("tasks") or [])
+
+    return metadata
+
+
+def merge_task_metadata(metadata: dict[str, dict[str, Any]], tasks: list[Any]) -> None:
+    for task in tasks:
+        if not isinstance(task, dict) or not task.get("id"):
+            continue
+        task_id = str(task["id"])
+        item = metadata.setdefault(task_id, {})
+        for key in ("category", "difficulty"):
+            if task.get(key):
+                item[key] = task[key]
 
 
 def iter_report_paths(cells_root: Path, suite: str) -> list[Path]:
@@ -535,6 +566,7 @@ def build_cell_row(
     machines: dict[str, dict[str, Any]],
     hardware_profiles: dict[str, dict[str, Any]],
     subsets: dict[str, set[str]],
+    task_metadata: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     with report_path.open(encoding="utf-8") as f:
         report = json.load(f)
@@ -556,6 +588,7 @@ def build_cell_row(
     hardware_profile_id = machine.get("hardware_profile") if machine else None
     hardware_profile = hardware_profiles.get(str(hardware_profile_id)) if hardware_profile_id else None
     hardware = (machine or {}).get("hardware") or {}
+    task_meta = task_metadata.get(task) or {}
 
     provider_type = provider.get("type")
     engine = coalesce(metadata.get("engine"), metadata.get("runtime"), provider_type)
@@ -587,8 +620,8 @@ def build_cell_row(
         "task": task,
         "test": task,
         "report_task_id": report.get("task_id"),
-        "task_category": report.get("category"),
-        "task_difficulty": report.get("difficulty"),
+        "task_category": coalesce(report.get("category"), task_meta.get("category")),
+        "task_difficulty": coalesce(report.get("difficulty"), task_meta.get("difficulty")),
         "task_subsets": sorted(name for name, tasks in subsets.items() if task in tasks),
         "harness": report.get("harness"),
         "harness_label": harness_label(profile_id, profile, report.get("harness")),
@@ -767,6 +800,7 @@ def build_cell_dataset(
     profiles = load_profiles(profiles_dir)
     machines, hardware_profiles = load_machine_registry(machines_file)
     subsets = load_subsets(subset_glob)
+    task_metadata = load_task_metadata(subset_glob)
     rows: list[dict[str, Any]] = []
     diagnostics: dict[str, Any] = {
         "n_reports": 0,
@@ -782,7 +816,7 @@ def build_cell_dataset(
     for suite in suites:
         for report_path in iter_report_paths(cells_root, suite):
             diagnostics["n_reports"] += 1
-            row = build_cell_row(report_path, cells_root, profiles, machines, hardware_profiles, subsets)
+            row = build_cell_row(report_path, cells_root, profiles, machines, hardware_profiles, subsets, task_metadata)
             result_state = result_state_for_row(row)
             if result_state is None:
                 summarize_excluded_row(diagnostics, row)

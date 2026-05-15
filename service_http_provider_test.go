@@ -44,7 +44,7 @@ func TestExecuteHTTPProviderHarnessResolvesByType(t *testing.T) {
 				names:       []string{tc.providerName},
 				defaultName: tc.providerName,
 			}
-			svc, err := New(ServiceOptions{ServiceConfig: sc})
+			svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}
@@ -152,7 +152,7 @@ func TestExecuteHTTPProviderHarnessNoMatchDiagnostic(t *testing.T) {
 		names:       []string{"router", "vidar-omlx"},
 		defaultName: "router",
 	}
-	svc, err := New(ServiceOptions{ServiceConfig: sc})
+	svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestExecuteEndpointFirstRoutingSkipsDeadAndNormalizesModel(t *testing.T) {
 		names:       []string{"dead", "live"},
 		defaultName: "dead",
 	}
-	svc, err := New(ServiceOptions{ServiceConfig: sc})
+	svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestExecuteEndpointFirstRoutingIgnoresStaleCacheForDeadEndpoint(t *testing.
 		names:       []string{"dead", "live"},
 		defaultName: "dead",
 	}
-	rawSvc, err := New(ServiceOptions{ServiceConfig: sc})
+	rawSvc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestExecuteEndpointFirstRoutingUsesMetricsBeforeConfigOrder(t *testing.T) {
 		names:       []string{"slow", "fast"},
 		defaultName: "slow",
 	}
-	svc, err := New(ServiceOptions{ServiceConfig: sc})
+	svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestExecuteEndpointFirstRoutingNoLiveModelMatchDiagnostic(t *testing.T) {
 		names:       []string{"live"},
 		defaultName: "live",
 	}
-	svc, err := New(ServiceOptions{ServiceConfig: sc})
+	svc, err := New(ServiceOptions{ServiceConfig: sc, QuotaRefreshContext: canceledRefreshContext()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
