@@ -51,6 +51,154 @@ func sweepPlanPath(t *testing.T) string {
 	return filepath.Join(benchRepoRoot(t), defaultSweepPlanPath)
 }
 
+func writeSweepPlanFixture(t *testing.T, root, planYAML string, profiles map[string]string) string {
+	t.Helper()
+	planPath := filepath.Join(root, defaultSweepPlanPath)
+	writeTestFile(t, planPath, planYAML)
+	for relPath, contents := range profiles {
+		writeTestFile(t, filepath.Join(root, relPath), contents)
+	}
+	return planPath
+}
+
+func writeTestFile(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", path, err)
+	}
+}
+
+func minimalBenchmarkProfileYAML(id, providerType, model, baseURL, apiKeyEnv string) string {
+	return fmt.Sprintf(`id: %s
+provider:
+  type: %s
+  model: %s
+  base_url: %s
+  api_key_env: %s
+pricing:
+  input_usd_per_mtok: 0
+  output_usd_per_mtok: 0
+  cached_input_usd_per_mtok: 0
+limits:
+  max_output_tokens: 1024
+  context_tokens: 8192
+  rate_limit_rpm: 60
+  rate_limit_tpm: 60000
+sampling:
+  temperature: 0
+versioning:
+  resolved_at: "2026-05-15"
+  snapshot: "test"
+`, id, providerType, model, baseURL, apiKeyEnv)
+}
+
+func TestLoadSweepPlanRejectsLaneWithoutProfile(t *testing.T) {
+	root := t.TempDir()
+	planPath := writeSweepPlanFixture(t, root, `dataset: terminal-bench/terminal-bench-2-1
+defaults:
+  reps: 1
+subsets:
+  - id: terminalbench-2-1-canary
+    path: scripts/benchmark/task-subset-tb21-canary.yaml
+    default_reps: 1
+recipes:
+  - id: canary
+    subset: terminalbench-2-1-canary
+    lanes: [fiz-vidar-ds4-mtp]
+resource_groups:
+  - id: rg-vidar-ds4
+    provider_type: ds4
+    base_url: http://192.168.2.106:1236/v1
+    max_concurrency: 1
+lanes:
+  - id: fiz-vidar-ds4-mtp
+    profile_id: vidar-ds4-mtp
+    lane_type: fiz_provider_native
+    comparison_groups: []
+    resource_group: rg-vidar-ds4
+    fizeau_env:
+      FIZEAU_PROVIDER: ds4
+      FIZEAU_MODEL: deepseek-v4-flash
+      FIZEAU_BASE_URL: http://192.168.2.106:1236/v1
+      FIZEAU_API_KEY_ENV: DS4_API_KEY
+    model_family: deepseek-v4-flash
+    model_id: deepseek-v4-flash
+    quant_label: ds4-native-bf16-mtp
+    provider_surface: vidar-ds4
+`, nil)
+
+	_, err := loadSweepPlan(planPath)
+	if err == nil {
+		t.Fatal("loadSweepPlan succeeded, want missing profile error")
+	}
+	for _, want := range []string{"fiz-vidar-ds4-mtp", "vidar-ds4-mtp", "profile_id"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("loadSweepPlan error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestLoadSweepPlanRejectsLaneProfileMismatch(t *testing.T) {
+	root := t.TempDir()
+	planPath := writeSweepPlanFixture(t, root, `dataset: terminal-bench/terminal-bench-2-1
+defaults:
+  reps: 1
+subsets:
+  - id: terminalbench-2-1-canary
+    path: scripts/benchmark/task-subset-tb21-canary.yaml
+    default_reps: 1
+recipes:
+  - id: canary
+    subset: terminalbench-2-1-canary
+    lanes: [fiz-openrouter-gpt-5-4-mini]
+resource_groups:
+  - id: rg-openrouter
+    provider_type: openrouter
+    base_url: https://openrouter.ai/api/v1
+    max_concurrency: 2
+comparison_groups:
+  - id: cg-gpt-harness-fiz
+    type: approximate_same_family
+    lanes: [fiz-openrouter-gpt-5-4-mini]
+lanes:
+  - id: fiz-openrouter-gpt-5-4-mini
+    profile_id: fiz-openrouter-gpt-5-4-mini
+    lane_type: fiz_provider_native
+    comparison_groups: [cg-gpt-harness-fiz]
+    resource_group: rg-openrouter
+    fizeau_env:
+      FIZEAU_PROVIDER: openrouter
+      FIZEAU_MODEL: openai/gpt-5.4-mini
+      FIZEAU_BASE_URL: https://openrouter.ai/api/v1
+      FIZEAU_API_KEY_ENV: OPENROUTER_API_KEY
+    model_family: gpt-5-mini
+    model_id: openai/gpt-5.4-mini
+    quant_label: cloud-hosted
+    provider_surface: openrouter
+`, map[string]string{
+		filepath.Join("scripts", "benchmark", "profiles", "fiz-openrouter-gpt-5-4-mini.yaml"): minimalBenchmarkProfileYAML(
+			"fiz-openrouter-gpt-5-4-mini",
+			"openrouter",
+			"openai/gpt-5.5",
+			"https://openrouter.ai/api/v1",
+			"OPENROUTER_API_KEY",
+		),
+	})
+
+	_, err := loadSweepPlan(planPath)
+	if err == nil {
+		t.Fatal("loadSweepPlan succeeded, want lane/profile mismatch error")
+	}
+	for _, want := range []string{"fiz-openrouter-gpt-5-4-mini", "profile", "FIZEAU_MODEL"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("loadSweepPlan error %q missing %q", err, want)
+		}
+	}
+}
+
 // TestLoadSweepPlanParsesAllRecipes verifies the sweep plan YAML loads and
 // contains all expected recipes (in YAML order, which is the iteration contract
 // for --all-recipes and --staged-recipes).

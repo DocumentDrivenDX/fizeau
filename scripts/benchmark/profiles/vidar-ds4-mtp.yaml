@@ -1,0 +1,53 @@
+# DeepSeek V4 Flash via DwarfStar 4 (antirez/ds4) on vidar, port 1236, with
+# multi-token prediction enabled as a distinct benchmark lane variant.
+#
+# This profile intentionally mirrors vidar-ds4.yaml for the shared server,
+# model, and pricing envelope while reserving a unique profile_id so canonical
+# cell storage and report joins do not collide with the non-MTP lane.
+id: vidar-ds4-mtp
+metadata:
+  model_family: deepseek-v4-flash
+  model_id: deepseek-v4-flash
+  gguf_filename: DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf
+  quant_label: gguf-iq2xxs-mixed-q2k-q8
+  provider_surface: vidar-ds4
+  runtime: ds4
+  backend: metal
+  kv_disk_dir: /Volumes/Samsung/ds4-kv
+  kv_disk_space_mb: 131072
+  hardware_label: vidar-m2-ultra-192gb
+  endpoint: http://192.168.2.106:1236/v1
+  server: vidar
+  mtp: enabled
+
+provider:
+  type: ds4
+  model: deepseek-v4-flash
+  base_url: http://192.168.2.106:1236/v1
+  api_key_env: DS4_API_KEY
+pricing:
+  input_usd_per_mtok: 0.0
+  output_usd_per_mtok: 0.0
+  cached_input_usd_per_mtok: 0.0
+limits:
+  max_output_tokens: 32768
+  context_tokens: 393216
+  rate_limit_rpm: 60
+  rate_limit_tpm: 100000
+sampling:
+  temperature: 0.6
+  reasoning: low
+  top_p: 0.95
+  top_k: 20
+versioning:
+  resolved_at: "2026-05-15"
+  snapshot: >-
+    deepseek-v4-flash via ds4-server antirez/ds4@ae302c2f
+    | gguf=DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf
+    | hw=apple-m2-ultra-192gb
+    | backend=metal
+    | kv_disk=/Volumes/Samsung/ds4-kv@131072MB
+    | ctx=393216
+    | mtp=enabled
+
+agent_timeout_multiplier: 5.0

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/easel/fizeau/internal/benchmark/profile"
 	"gopkg.in/yaml.v3"
 )
 
@@ -823,6 +825,38 @@ func loadSweepPlan(path string) (*sweepPlan, error) {
 	// Validate every recipe references a known subset, and every recipe lane is a known lane.
 	subsetByID := sweepSubsetMap(&plan)
 	laneByID := sweepLaneMap(&plan)
+	rgByID := sweepRGMap(&plan)
+	cgByID := sweepCGMap(&plan)
+	profilesDir := filepath.Join(filepath.Dir(path), "profiles")
+	loadedProfiles := make(map[string]*profile.Profile)
+	for i := range plan.Lanes {
+		lane := &plan.Lanes[i]
+		if strings.TrimSpace(lane.ProfileID) == "" {
+			return nil, fmt.Errorf("lane %q profile %q missing profile_id", lane.ID, lane.ProfileID)
+		}
+		if _, ok := rgByID[lane.ResourceGroup]; !ok {
+			return nil, fmt.Errorf("lane %q profile %q missing resource_group %q", lane.ID, lane.ProfileID, lane.ResourceGroup)
+		}
+		prof, err := loadSweepLaneProfile(profilesDir, loadedProfiles, lane)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateSweepLaneProfile(lane, prof); err != nil {
+			return nil, err
+		}
+		for _, groupID := range lane.CompGroups {
+			if _, ok := cgByID[groupID]; !ok {
+				return nil, fmt.Errorf("lane %q profile %q comparison_groups references unknown group %q", lane.ID, lane.ProfileID, groupID)
+			}
+		}
+	}
+	for _, cg := range plan.ComparisonGroups {
+		for _, laneID := range cg.Lanes {
+			if _, ok := laneByID[laneID]; !ok {
+				return nil, fmt.Errorf("comparison_group %q references unknown lane %q", cg.ID, laneID)
+			}
+		}
+	}
 	for _, r := range plan.Recipes {
 		if _, ok := subsetByID[r.Subset]; !ok {
 			return nil, fmt.Errorf("recipe %q references unknown subset %q", r.ID, r.Subset)
@@ -834,6 +868,55 @@ func loadSweepPlan(path string) (*sweepPlan, error) {
 		}
 	}
 	return &plan, nil
+}
+
+func loadSweepLaneProfile(profilesDir string, loadedProfiles map[string]*profile.Profile, lane *sweepLane) (*profile.Profile, error) {
+	if prof, ok := loadedProfiles[lane.ProfileID]; ok {
+		return prof, nil
+	}
+	profilePath := filepath.Join(profilesDir, lane.ProfileID+".yaml")
+	prof, err := profile.Load(profilePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) || os.IsNotExist(err) {
+			return nil, fmt.Errorf("lane %q profile %q missing profile file %q (field profile_id)", lane.ID, lane.ProfileID, profilePath)
+		}
+		return nil, fmt.Errorf("lane %q profile %q failed to load %q: %w", lane.ID, lane.ProfileID, profilePath, err)
+	}
+	loadedProfiles[lane.ProfileID] = prof
+	return prof, nil
+}
+
+func validateSweepLaneProfile(lane *sweepLane, prof *profile.Profile) error {
+	if prof == nil {
+		return fmt.Errorf("lane %q profile %q did not load", lane.ID, lane.ProfileID)
+	}
+	if prof.ID != lane.ProfileID {
+		return fmt.Errorf("lane %q profile %q mismatched profile.id: profile file declares %q", lane.ID, lane.ProfileID, prof.ID)
+	}
+	if err := validateSweepLaneEnvMatch(lane, "FIZEAU_PROVIDER", string(prof.Provider.Type), "provider.type"); err != nil {
+		return err
+	}
+	if err := validateSweepLaneEnvMatch(lane, "FIZEAU_MODEL", prof.Provider.Model, "provider.model"); err != nil {
+		return err
+	}
+	if err := validateSweepLaneEnvMatch(lane, "FIZEAU_BASE_URL", prof.Provider.BaseURL, "provider.base_url"); err != nil {
+		return err
+	}
+	if err := validateSweepLaneEnvMatch(lane, "FIZEAU_API_KEY_ENV", prof.Provider.APIKeyEnv, "provider.api_key_env"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateSweepLaneEnvMatch(lane *sweepLane, envKey, want, profileField string) error {
+	got := strings.TrimSpace(lane.FizeauEnv[envKey])
+	if got == "" || strings.TrimSpace(want) == "" {
+		return nil
+	}
+	if got != want {
+		return fmt.Errorf("lane %q profile %q mismatched %s: lane has %q, profile %s has %q", lane.ID, lane.ProfileID, envKey, got, profileField, want)
+	}
+	return nil
 }
 
 // sweepSelector captures the CLI selection state: which recipes/subsets/lanes
@@ -1054,6 +1137,15 @@ func sweepRGMap(plan *sweepPlan) map[string]*sweepResourceGroup {
 	for i := range plan.ResourceGroups {
 		rg := &plan.ResourceGroups[i]
 		m[rg.ID] = rg
+	}
+	return m
+}
+
+func sweepCGMap(plan *sweepPlan) map[string]*sweepCmpGroup {
+	m := make(map[string]*sweepCmpGroup, len(plan.ComparisonGroups))
+	for i := range plan.ComparisonGroups {
+		cg := &plan.ComparisonGroups[i]
+		m[cg.ID] = cg
 	}
 	return m
 }
