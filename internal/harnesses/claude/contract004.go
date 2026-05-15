@@ -40,6 +40,40 @@ var supportedAliases = []string{"sonnet", "opus", "haiku"}
 // runner instances per call (which the dispatcher does today).
 var refreshGroup singleflight.Group
 
+// QuotaProbeFunc is the signature of the PTY-quota probe that
+// Runner.RefreshQuota delegates to. Exposing it as a named type keeps
+// the SetCaptureForTest seam decoupled from the internal ptyquota
+// package; the test seam discards the ptyquota.Result that the live
+// probe returns.
+type QuotaProbeFunc func(ctx context.Context, timeout time.Duration, opts ...QuotaPTYOption) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error)
+
+// captureQuotaProbe is the live PTY probe used by RefreshQuota. It is a
+// package-level variable so tests can swap it via SetCaptureForTest
+// without spawning the claude binary. The default delegates to
+// captureClaudeQuotaViaPTY and discards the ptyquota.Result.
+var captureQuotaProbe QuotaProbeFunc = func(ctx context.Context, timeout time.Duration, opts ...QuotaPTYOption) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	windows, account, _, err := captureClaudeQuotaViaPTY(ctx, timeout, opts...)
+	return windows, account, err
+}
+
+// SetCaptureForTest swaps the package-level PTY probe used by
+// Runner.RefreshQuota and returns a restore function. Production code
+// MUST NOT call this — it exists so service-level tests can inject
+// deterministic PTY responses while exercising the real cache I/O
+// inside Runner.refreshQuotaLocked. The call also forgets any
+// in-flight RefreshQuota cohort so the next caller runs a fresh
+// single-flight execution against the new probe instead of piggybacking
+// on a prior test's probe.
+func SetCaptureForTest(fn QuotaProbeFunc) func() {
+	prev := captureQuotaProbe
+	captureQuotaProbe = fn
+	refreshGroup.Forget("claude:refresh-quota")
+	return func() {
+		captureQuotaProbe = prev
+		refreshGroup.Forget("claude:refresh-quota")
+	}
+}
+
 // QuotaStatus implements harnesses.QuotaHarness. It reads the cached
 // snapshot owned by this harness and projects it onto QuotaStatus. A
 // missing or undecodable cache is reported as State=QuotaUnavailable on
@@ -96,7 +130,7 @@ func (r *Runner) refreshQuotaLocked(ctx context.Context) harnesses.QuotaStatus {
 	if r.Binary != "" {
 		opts = append(opts, WithQuotaPTYCommand(r.Binary))
 	}
-	windows, account, _, err := captureClaudeQuotaViaPTY(ctx, timeout, opts...)
+	windows, account, err := captureQuotaProbe(ctx, timeout, opts...)
 	if err != nil {
 		state := harnesses.QuotaUnavailable
 		reason := err.Error()

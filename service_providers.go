@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	"github.com/easel/fizeau/internal/serverinstance"
 )
@@ -30,12 +29,11 @@ const (
 	defaultQuotaRefreshProbeTimeout = 30 * time.Second
 )
 
-// healthCheckClaudeQuotaRefresher is the function used to probe Claude's direct
-// PTY quota. It is a package-level variable so tests can substitute a fake
-// without spawning real harness sessions.
-var healthCheckClaudeQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
-	return claudeharness.ReadClaudeQuotaViaPTY(timeout)
-}
+// Claude PTY-probe injection used to live here as a package-level
+// healthCheckClaudeQuotaRefresher var. Under CONTRACT-004 the Runner
+// owns the probe seam (claude.SetCaptureForTest) and service_providers
+// drives refreshes through QuotaHarness.RefreshQuota — see
+// requestPrimaryQuotaRefresh and HealthCheck below.
 
 var healthCheckCodexQuotaRefresher = func(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
 	return codexharness.ReadCodexQuotaViaPTY(timeout)
@@ -91,11 +89,11 @@ func (s *service) ensurePrimaryQuotaRefresh(ctx context.Context, mode quotaRefre
 	policy := s.quotaRefreshPolicy()
 	var waits []<-chan struct{}
 	for _, name := range []string{"claude", "codex"} {
-		status := primaryQuotaCacheStatus(name, policy.debounce)
+		status := s.primaryQuotaCacheStatus(ctx, name, policy.debounce)
 		if !status.needsRefresh {
 			continue
 		}
-		done := requestPrimaryQuotaRefresh(ctx, name, policy)
+		done := s.requestPrimaryQuotaRefresh(ctx, name, policy)
 		if mode == quotaRefreshStartup && !status.usable && done != nil {
 			waits = append(waits, done)
 		}
@@ -145,7 +143,7 @@ func (s *service) startPrimaryQuotaRefreshWorker() {
 	}()
 }
 
-func requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy quotaRefreshPolicy) <-chan struct{} {
+func (s *service) requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy quotaRefreshPolicy) <-chan struct{} {
 	done := make(chan struct{})
 	if ctx == nil {
 		ctx = context.Background()
@@ -181,7 +179,11 @@ func requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy 
 
 		switch harnessName {
 		case "claude":
-			refreshClaudeQuotaCache(ctx, policy.debounce, policy.probeTimeout)
+			if qh, ok := s.harnessByName("claude").(harnesses.QuotaHarness); ok {
+				probeCtx, probeCancel := context.WithTimeout(ctx, policy.probeTimeout)
+				_, _ = qh.RefreshQuota(probeCtx)
+				probeCancel()
+			}
 		case "codex":
 			refreshCodexQuotaCache(ctx, policy.debounce, policy.probeTimeout)
 		}
@@ -200,22 +202,25 @@ func waitForPrimaryQuotaRefreshes(waits []<-chan struct{}, timeout time.Duration
 	}
 }
 
-func primaryQuotaCacheStatus(harnessName string, debounce time.Duration) quotaCacheStatus {
+func (s *service) primaryQuotaCacheStatus(ctx context.Context, harnessName string, debounce time.Duration) quotaCacheStatus {
 	now := time.Now()
 	switch harnessName {
 	case "claude":
-		cachePath, err := claudeharness.ClaudeQuotaCachePath()
+		qh, ok := s.harnessByName("claude").(harnesses.QuotaHarness)
+		if !ok {
+			return quotaCacheStatus{}
+		}
+		status, err := qh.QuotaStatus(ctx, now)
 		if err != nil {
 			return quotaCacheStatus{}
 		}
-		snap, _ := claudeharness.ReadClaudeQuotaFrom(cachePath)
-		if snap == nil {
+		if status.State == harnesses.QuotaUnavailable {
 			return quotaCacheStatus{needsRefresh: true}
 		}
-		decision := claudeharness.DecideClaudeQuotaRouting(snap, now, debounce)
+		stale := !status.CapturedAt.IsZero() && now.Sub(status.CapturedAt) >= debounce
 		return quotaCacheStatus{
-			needsRefresh: !decision.Fresh,
-			usable:       decision.Fresh,
+			needsRefresh: stale,
+			usable:       !stale,
 		}
 	case "codex":
 		cachePath, err := codexharness.CodexQuotaCachePath()
@@ -372,7 +377,7 @@ func (s *service) HealthCheck(ctx context.Context, health HealthTarget) error {
 			}
 			// For subscription harnesses, refresh the quota cache when stale.
 			if health.Name == "claude" {
-				healthCheckRefreshClaudeQuota(ctx)
+				s.healthCheckRefreshClaudeQuota(ctx)
 			}
 			if health.Name == "codex" {
 				healthCheckRefreshCodexQuota(ctx)
@@ -589,55 +594,27 @@ func endpointStatusFromProbe(name, baseURL string, probe providerProbeResult, ca
 	return out
 }
 
-// healthCheckRefreshClaudeQuota refreshes the Claude direct PTY quota cache when
-// the cached snapshot is older than the default refresh debounce. It is a
-// best-effort operation: errors are silently discarded so that a claude absence
-// does not fail HealthCheck.
-func healthCheckRefreshClaudeQuota(ctx context.Context) {
-	refreshClaudeQuotaCache(ctx, defaultQuotaRefreshDebounce, defaultQuotaRefreshProbeTimeout)
-}
-
-func refreshClaudeQuotaCache(_ context.Context, debounce, timeout time.Duration) {
-	cachePath, err := claudeharness.ClaudeQuotaCachePath()
-	if err != nil {
+// healthCheckRefreshClaudeQuota refreshes the Claude quota cache when
+// the cached snapshot is older than the default refresh debounce. It is
+// a best-effort operation: errors are silently discarded so that a
+// claude absence does not fail HealthCheck. Under CONTRACT-004 the
+// refresh delegates to QuotaHarness.RefreshQuota, which owns the PTY
+// probe and cache I/O.
+func (s *service) healthCheckRefreshClaudeQuota(ctx context.Context) {
+	qh, ok := s.harnessByName("claude").(harnesses.QuotaHarness)
+	if !ok {
 		return
 	}
-
-	snap, _ := claudeharness.ReadClaudeQuotaFrom(cachePath)
-	if snap != nil && claudeharness.DecideClaudeQuotaRouting(snap, time.Now(), debounce).Fresh {
-		// Cache is fresh enough; skip the expensive PTY probe.
-		return
-	}
-
-	// Cache is absent or stale - run a direct PTY probe with a bounded timeout.
-	windows, acct, probeErr := callHealthCheckClaudeQuotaRefresher(timeout)
-	if probeErr != nil || len(windows) == 0 {
-		return
-	}
-
-	// Convert QuotaWindow slice to ClaudeQuotaSnapshot. The PTY path returns
-	// percent-based windows; synthesise remaining counts from UsedPercent.
-	newSnap := claudeharness.ClaudeQuotaSnapshot{
-		CapturedAt: time.Now().UTC(),
-		Source:     "pty",
-		Account:    acct,
-		Windows:    append([]harnesses.QuotaWindow(nil), windows...),
-	}
-	for _, w := range windows {
-		switch w.LimitID {
-		case "session":
-			// 5-hour window; use a nominal limit of 100 so Remaining = 100-Used.
-			used := int(w.UsedPercent)
-			newSnap.FiveHourLimit = 100
-			newSnap.FiveHourRemaining = 100 - used
-		case "weekly-all", "weekly-sonnet":
-			used := int(w.UsedPercent)
-			newSnap.WeeklyLimit = 100
-			newSnap.WeeklyRemaining = 100 - used
+	now := time.Now()
+	if status, err := qh.QuotaStatus(ctx, now); err == nil {
+		if status.State != harnesses.QuotaUnavailable && !status.CapturedAt.IsZero() && now.Sub(status.CapturedAt) < defaultQuotaRefreshDebounce {
+			// Cache is fresh enough; skip the expensive PTY probe.
+			return
 		}
 	}
-
-	_ = claudeharness.WriteClaudeQuota(cachePath, newSnap)
+	probeCtx, cancel := context.WithTimeout(ctx, defaultQuotaRefreshProbeTimeout)
+	defer cancel()
+	_, _ = qh.RefreshQuota(probeCtx)
 }
 
 func healthCheckRefreshCodexQuota(ctx context.Context) {
@@ -670,13 +647,6 @@ func refreshCodexQuotaCache(_ context.Context, debounce, timeout time.Duration) 
 		Windows:    windows,
 		Source:     "pty",
 	})
-}
-
-func callHealthCheckClaudeQuotaRefresher(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
-	healthCheckQuotaProbeMu.RLock()
-	fn := healthCheckClaudeQuotaRefresher
-	healthCheckQuotaProbeMu.RUnlock()
-	return fn(timeout)
 }
 
 func callHealthCheckCodexQuotaRefresher(timeout time.Duration) ([]harnesses.QuotaWindow, error) {
