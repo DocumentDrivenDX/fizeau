@@ -1,6 +1,7 @@
 package fizeau
 
 import (
+	"context"
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
@@ -53,21 +54,31 @@ func subscriptionQuotaForHarness(name string, now time.Time) (subscriptionQuotaV
 		}
 		return view, true
 	case "gemini":
-		dec := geminiharness.ReadGeminiQuotaRoutingDecision(now, 0)
+		qh := &geminiharness.Runner{}
+		status, _ := qh.QuotaStatus(context.Background(), now)
 		view := subscriptionQuotaView{
-			OK:      dec.PreferGemini,
-			Present: dec.SnapshotPresent,
-			Fresh:   dec.Fresh,
-			Reason:  dec.Reason,
+			OK:      status.RoutingPreference == harnesses.RoutingPreferenceAvailable,
+			Present: status.State != harnesses.QuotaUnavailable,
+			Fresh:   status.Fresh,
+			Reason:  status.Reason,
 			Trend:   routing.QuotaTrendUnknown,
 		}
-		if dec.Snapshot != nil {
-			view.Windows = append([]harnesses.QuotaWindow(nil), dec.Snapshot.Windows...)
-			view.PercentUsed = int(dec.Snapshot.MaxUsedPercent())
-			if len(dec.ExhaustedTiers) > 0 && len(dec.AvailableTiers) == 0 {
+		if len(status.Windows) > 0 {
+			view.Windows = append([]harnesses.QuotaWindow(nil), status.Windows...)
+			view.PercentUsed = int(maxQuotaWindowUsedPercent(status.Windows))
+			exhausted, available := 0, 0
+			for _, w := range status.Windows {
+				switch w.State {
+				case "blocked":
+					exhausted++
+				case "ok":
+					available++
+				}
+			}
+			if exhausted > 0 && available == 0 {
 				view.Trend = routing.QuotaTrendExhausting
 			} else {
-				view.Trend = quotaTrend(view.PercentUsed, dec.Fresh)
+				view.Trend = quotaTrend(view.PercentUsed, status.Fresh)
 			}
 		}
 		return view, true
