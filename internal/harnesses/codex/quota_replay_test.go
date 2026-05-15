@@ -14,7 +14,7 @@ import (
 func Test_quotaCassetteReplayCodex(t *testing.T) {
 	dir := writeCodexQuotaCassette(t, fixtureCodexStatusOutput)
 
-	windows, err := ReadCodexQuotaFromCassette(dir)
+	windows, err := readCodexQuotaFromCassette(dir)
 	require.NoError(t, err)
 	require.Len(t, windows, 2)
 

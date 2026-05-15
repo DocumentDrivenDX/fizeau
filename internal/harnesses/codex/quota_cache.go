@@ -12,21 +12,21 @@ import (
 	"github.com/easel/fizeau/internal/safefs"
 )
 
-// CodexQuotaSnapshot captures Codex subscription quota windows in a durable
+// codexQuotaSnapshot captures Codex subscription quota windows in a durable
 // cache so foreground service status calls do not need to spawn a live PTY probe.
-type CodexQuotaSnapshot struct {
+type codexQuotaSnapshot struct {
 	CapturedAt time.Time               `json:"captured_at"`
 	Windows    []harnesses.QuotaWindow `json:"windows"`
 	Source     string                  `json:"source"`
 	Account    *harnesses.AccountInfo  `json:"account,omitempty"`
 }
 
-const DefaultCodexQuotaStaleAfter = 15 * time.Minute
+const defaultCodexQuotaStaleAfter = 15 * time.Minute
 
 const codexQuotaCacheEnv = "FIZEAU_CODEX_QUOTA_CACHE"
 
-// CodexQuotaCachePath returns the durable location for the Codex quota cache.
-func CodexQuotaCachePath() (string, error) {
+// codexQuotaCachePath returns the durable location for the Codex quota cache.
+func codexQuotaCachePath() (string, error) {
 	if path := os.Getenv(codexQuotaCacheEnv); path != "" {
 		return path, nil
 	}
@@ -40,8 +40,8 @@ func CodexQuotaCachePath() (string, error) {
 	return filepath.Join(home, ".local", "state", productinfo.ConfigDir, "codex-quota.json"), nil
 }
 
-// WriteCodexQuota atomically persists a CodexQuotaSnapshot to path.
-func WriteCodexQuota(path string, snapshot CodexQuotaSnapshot) error {
+// writeCodexQuota atomically persists a codexQuotaSnapshot to path.
+func writeCodexQuota(path string, snapshot codexQuotaSnapshot) error {
 	if path == "" {
 		return fmt.Errorf("codex quota cache path is empty")
 	}
@@ -54,7 +54,7 @@ func WriteCodexQuota(path string, snapshot CodexQuotaSnapshot) error {
 		snapshot.Source = "pty"
 	}
 	if snapshot.Account == nil {
-		if account, ok := ReadCodexAccount(); ok {
+		if account, ok := readCodexAccount(); ok {
 			snapshot.Account = account
 		}
 	}
@@ -80,30 +80,30 @@ func WriteCodexQuota(path string, snapshot CodexQuotaSnapshot) error {
 	return nil
 }
 
-// ReadCodexQuotaFrom reads one Codex quota snapshot.
-func ReadCodexQuotaFrom(path string) (*CodexQuotaSnapshot, bool) {
+// readCodexQuotaFrom reads one Codex quota snapshot.
+func readCodexQuotaFrom(path string) (*codexQuotaSnapshot, bool) {
 	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
-	var snap CodexQuotaSnapshot
+	var snap codexQuotaSnapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
 		return nil, false
 	}
 	return &snap, true
 }
 
-// ReadCodexQuota reads the default Codex quota cache.
-func ReadCodexQuota() (*CodexQuotaSnapshot, bool) {
-	path, err := CodexQuotaCachePath()
+// readCodexQuota reads the default Codex quota cache.
+func readCodexQuota() (*codexQuotaSnapshot, bool) {
+	path, err := codexQuotaCachePath()
 	if err != nil {
 		return nil, false
 	}
-	return ReadCodexQuotaFrom(path)
+	return readCodexQuotaFrom(path)
 }
 
-// CodexQuotaSnapshotAge reports snapshot age relative to now.
-func CodexQuotaSnapshotAge(snapshot *CodexQuotaSnapshot, now time.Time) time.Duration {
+// codexQuotaSnapshotAge reports snapshot age relative to now.
+func codexQuotaSnapshotAge(snapshot *codexQuotaSnapshot, now time.Time) time.Duration {
 	if snapshot == nil || snapshot.CapturedAt.IsZero() {
 		return 0
 	}
@@ -114,40 +114,40 @@ func CodexQuotaSnapshotAge(snapshot *CodexQuotaSnapshot, now time.Time) time.Dur
 	return age
 }
 
-// IsCodexQuotaFresh reports whether a snapshot is present and fresh.
-func IsCodexQuotaFresh(snapshot *CodexQuotaSnapshot, now time.Time, staleAfter time.Duration) bool {
+// isCodexQuotaFresh reports whether a snapshot is present and fresh.
+func isCodexQuotaFresh(snapshot *codexQuotaSnapshot, now time.Time, staleAfter time.Duration) bool {
 	if snapshot == nil || snapshot.CapturedAt.IsZero() {
 		return false
 	}
 	if staleAfter <= 0 {
-		staleAfter = DefaultCodexQuotaStaleAfter
+		staleAfter = defaultCodexQuotaStaleAfter
 	}
-	return CodexQuotaSnapshotAge(snapshot, now) <= staleAfter
+	return codexQuotaSnapshotAge(snapshot, now) <= staleAfter
 }
 
-// CodexQuotaRoutingDecision summarises whether foreground routing may select
+// codexQuotaRoutingDecision summarises whether foreground routing may select
 // Codex without probing the CLI inline.
-type CodexQuotaRoutingDecision struct {
+type codexQuotaRoutingDecision struct {
 	PreferCodex     bool
 	SnapshotPresent bool
 	Fresh           bool
 	Age             time.Duration
-	Snapshot        *CodexQuotaSnapshot
+	Snapshot        *codexQuotaSnapshot
 	Reason          string
 }
 
-// DecideCodexQuotaRouting turns a durable quota snapshot into a foreground
+// decideCodexQuotaRouting turns a durable quota snapshot into a foreground
 // routing decision. Missing, stale, empty, or blocked quota evidence keeps
 // Codex out of automatic routing; explicit Harness=codex remains available.
-func DecideCodexQuotaRouting(snapshot *CodexQuotaSnapshot, now time.Time, staleAfter time.Duration) CodexQuotaRoutingDecision {
-	decision := CodexQuotaRoutingDecision{Snapshot: snapshot}
+func decideCodexQuotaRouting(snapshot *codexQuotaSnapshot, now time.Time, staleAfter time.Duration) codexQuotaRoutingDecision {
+	decision := codexQuotaRoutingDecision{Snapshot: snapshot}
 	if snapshot == nil {
 		decision.Reason = "no cached snapshot; assume limited"
 		return decision
 	}
 	decision.SnapshotPresent = true
-	decision.Age = CodexQuotaSnapshotAge(snapshot, now)
-	if !IsCodexQuotaFresh(snapshot, now, staleAfter) {
+	decision.Age = codexQuotaSnapshotAge(snapshot, now)
+	if !isCodexQuotaFresh(snapshot, now, staleAfter) {
 		decision.Reason = "cached snapshot is stale; assume limited"
 		return decision
 	}
@@ -169,11 +169,4 @@ func DecideCodexQuotaRouting(snapshot *CodexQuotaSnapshot, now time.Time, staleA
 	decision.PreferCodex = true
 	decision.Reason = "fresh snapshot has headroom"
 	return decision
-}
-
-// ReadCodexQuotaRoutingDecision reads the default cache and produces a routing
-// decision in one call.
-func ReadCodexQuotaRoutingDecision(now time.Time, staleAfter time.Duration) CodexQuotaRoutingDecision {
-	snap, _ := ReadCodexQuota()
-	return DecideCodexQuotaRouting(snap, now, staleAfter)
 }

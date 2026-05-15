@@ -11,7 +11,6 @@ import (
 	agentcore "github.com/easel/fizeau/internal/core"
 	"github.com/easel/fizeau/internal/harnesses"
 	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	"github.com/easel/fizeau/internal/serviceimpl"
 	sessionlog "github.com/easel/fizeau/internal/session"
 )
@@ -39,15 +38,12 @@ func TestListHarnesses_QuotaAndAccountStatus(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("WriteClaudeQuota: %v", err)
 	}
-	if err := codexharness.WriteCodexQuota(codexPath, codexharness.CodexQuotaSnapshot{
-		CapturedAt: capturedAt,
-		Source:     "pty",
-		Windows: []harnesses.QuotaWindow{
+	writeCodexQuotaCacheFile(t, codexPath, capturedAt, "pty",
+		nil,
+		[]harnesses.QuotaWindow{
 			{Name: "5h", LimitID: "codex", WindowMinutes: 300, UsedPercent: 20, State: "ok"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteCodexQuota: %v", err)
-	}
+	)
 
 	svc := newTestService(t, ServiceOptions{})
 	harnesses, err := svc.ListHarnesses(context.Background())

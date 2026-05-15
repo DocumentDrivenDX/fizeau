@@ -15,8 +15,8 @@ const codexAuthPathEnv = "FIZEAU_CODEX_AUTH"
 
 const codexAuthNamespace = "https://api.openai.com/auth"
 
-// CodexAuthPath returns the local Codex auth file used for account metadata.
-func CodexAuthPath() (string, error) {
+// codexAuthPath returns the local Codex auth file used for account metadata.
+func codexAuthPath() (string, error) {
 	if path := os.Getenv(codexAuthPathEnv); path != "" {
 		return path, nil
 	}
@@ -30,17 +30,17 @@ func CodexAuthPath() (string, error) {
 	return filepath.Join(home, ".codex", "auth.json"), nil
 }
 
-// ReadCodexAccount extracts non-secret account metadata from Codex auth state.
-func ReadCodexAccount() (*harnesses.AccountInfo, bool) {
-	path, err := CodexAuthPath()
+// readCodexAccount extracts non-secret account metadata from Codex auth state.
+func readCodexAccount() (*harnesses.AccountInfo, bool) {
+	path, err := codexAuthPath()
 	if err != nil {
 		return nil, false
 	}
-	return ReadCodexAccountFrom(path)
+	return readCodexAccountFrom(path)
 }
 
-// ReadCodexAccountFrom reads auth.json and extracts email, plan, and org info.
-func ReadCodexAccountFrom(path string) (*harnesses.AccountInfo, bool) {
+// readCodexAccountFrom reads auth.json and extracts email, plan, and org info.
+func readCodexAccountFrom(path string) (*harnesses.AccountInfo, bool) {
 	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, false

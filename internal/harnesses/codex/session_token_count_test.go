@@ -10,26 +10,26 @@ import (
 func TestCodexSessionsRootUsesOverrideAndCodeXHome(t *testing.T) {
 	override := filepath.Join(t.TempDir(), "override")
 	t.Setenv(codexSessionsRootEnv, override)
-	if got, err := CodexSessionsRoot(); err != nil || got != override {
+	if got, err := codexSessionsRoot(); err != nil || got != override {
 		t.Fatalf("override root: got %q err=%v, want %q", got, err, override)
 	}
 
 	t.Setenv(codexSessionsRootEnv, "")
 	home := filepath.Join(t.TempDir(), "codex-home")
 	t.Setenv("CODEX_HOME", home)
-	if got, err := CodexSessionsRoot(); err != nil || got != filepath.Join(home, "sessions") {
+	if got, err := codexSessionsRoot(); err != nil || got != filepath.Join(home, "sessions") {
 		t.Fatalf("CODEX_HOME root: got %q err=%v", got, err)
 	}
 }
 
-func TestReadCodexQuotaFromSessionTokenCountsNewestFresh(t *testing.T) {
+func TestReadCodexQuotaFromSessionTokenCounts_NewestFresh(t *testing.T) {
 	now := mustTime(t, "2026-04-22T02:00:00Z")
 	root := t.TempDir()
 	t.Setenv(codexSessionsRootEnv, root)
 	writeSessionJSONL(t, filepath.Join(root, "old.jsonl"), now.Add(-10*time.Minute), tokenCountLine("2026-04-22T01:50:00Z", `"used_percent":20`))
 	writeSessionJSONL(t, filepath.Join(root, "nested", "new.jsonl"), now.Add(-1*time.Minute), tokenCountLine("2026-04-22T01:59:30Z", `"used_percent":4.5`))
 
-	snap, ok := ReadCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now))
+	snap, ok := readCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now))
 	if !ok {
 		t.Fatal("expected fresh token_count quota snapshot")
 	}
@@ -58,14 +58,14 @@ func TestReadCodexQuotaFromSessionTokenCountsNewestFresh(t *testing.T) {
 	}
 }
 
-func TestReadCodexQuotaFromSessionTokenCountsFallbackMtimeAndStale(t *testing.T) {
+func TestReadCodexQuotaFromSessionTokenCounts_FallbackMtimeAndStale(t *testing.T) {
 	now := mustTime(t, "2026-04-22T02:00:00Z")
 	root := t.TempDir()
 	t.Setenv(codexSessionsRootEnv, root)
 	fileMTime := now.Add(-5 * time.Minute)
 	writeSessionJSONL(t, filepath.Join(root, "fresh.jsonl"), fileMTime, tokenCountLine("not-a-time", `"used_percent":10`))
 
-	snap, ok := ReadCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now))
+	snap, ok := readCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now))
 	if !ok {
 		t.Fatal("expected mtime-derived fresh snapshot")
 	}
@@ -76,25 +76,25 @@ func TestReadCodexQuotaFromSessionTokenCountsFallbackMtimeAndStale(t *testing.T)
 	staleRoot := t.TempDir()
 	t.Setenv(codexSessionsRootEnv, staleRoot)
 	writeSessionJSONL(t, filepath.Join(staleRoot, "stale.jsonl"), now.Add(-20*time.Minute), tokenCountLine("", `"used_percent":10`))
-	if snap, ok := ReadCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now)); ok || snap != nil {
+	if snap, ok := readCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now)); ok || snap != nil {
 		t.Fatalf("stale evidence should be ignored: snap=%#v ok=%v", snap, ok)
 	}
 }
 
-func TestReadCodexQuotaFromSessionTokenCountsBoundsAndSymlinks(t *testing.T) {
+func TestReadCodexQuotaFromSessionTokenCounts_BoundsAndSymlinks(t *testing.T) {
 	now := mustTime(t, "2026-04-22T02:00:00Z")
 	root := t.TempDir()
 	t.Setenv(codexSessionsRootEnv, root)
 	writeSessionJSONL(t, filepath.Join(root, "older-valid.jsonl"), now.Add(-2*time.Minute), tokenCountLine("2026-04-22T01:58:00Z", `"used_percent":10`))
 	writeSessionJSONL(t, filepath.Join(root, "newer-malformed.jsonl"), now.Add(-1*time.Minute), `{"type":"event_msg","payload":{"type":"token_count","info":{"rate_limits":{"primary":{"used_percent":"bad","window_minutes":300}}}}}`)
 
-	if snap, ok := ReadCodexQuotaFromSessionTokenCounts(
+	if snap, ok := readCodexQuotaFromSessionTokenCounts(
 		WithCodexSessionTokenCountNow(now),
 		WithCodexSessionTokenCountLimits(1, defaultCodexSessionMaxBytesPerFile, defaultCodexSessionMaxLineBytes),
 	); ok || snap != nil {
 		t.Fatalf("maxFiles=1 should only inspect newest malformed file: snap=%#v ok=%v", snap, ok)
 	}
-	if snap, ok := ReadCodexQuotaFromSessionTokenCounts(
+	if snap, ok := readCodexQuotaFromSessionTokenCounts(
 		WithCodexSessionTokenCountNow(now),
 		WithCodexSessionTokenCountLimits(2, defaultCodexSessionMaxBytesPerFile, defaultCodexSessionMaxLineBytes),
 	); !ok || snap == nil {
@@ -104,7 +104,7 @@ func TestReadCodexQuotaFromSessionTokenCountsBoundsAndSymlinks(t *testing.T) {
 	tooLargeRoot := t.TempDir()
 	t.Setenv(codexSessionsRootEnv, tooLargeRoot)
 	writeSessionJSONL(t, filepath.Join(tooLargeRoot, "large.jsonl"), now.Add(-time.Minute), tokenCountLine("2026-04-22T01:59:00Z", `"used_percent":10`))
-	if snap, ok := ReadCodexQuotaFromSessionTokenCounts(
+	if snap, ok := readCodexQuotaFromSessionTokenCounts(
 		WithCodexSessionTokenCountNow(now),
 		WithCodexSessionTokenCountLimits(10, 10, defaultCodexSessionMaxLineBytes),
 	); ok || snap != nil {
@@ -122,12 +122,12 @@ func TestReadCodexQuotaFromSessionTokenCountsBoundsAndSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(codexSessionsRootEnv, symlinkRoot)
-	if snap, ok := ReadCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now)); ok || snap != nil {
+	if snap, ok := readCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now)); ok || snap != nil {
 		t.Fatalf("symlinked session file should be skipped: snap=%#v ok=%v", snap, ok)
 	}
 }
 
-func TestReadCodexQuotaFromSessionTokenCountsNewestWithinFileAndPrivacy(t *testing.T) {
+func TestReadCodexQuotaFromSessionTokenCounts_NewestWithinFileAndPrivacy(t *testing.T) {
 	now := mustTime(t, "2026-04-22T02:00:00Z")
 	root := t.TempDir()
 	t.Setenv(codexSessionsRootEnv, root)
@@ -137,7 +137,7 @@ func TestReadCodexQuotaFromSessionTokenCountsNewestWithinFileAndPrivacy(t *testi
 		tokenCountLine("2026-04-22T01:59:00Z", `"used_percent":7`),
 	)
 
-	snap, ok := ReadCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now))
+	snap, ok := readCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now))
 	if !ok {
 		t.Fatal("expected newest token_count within file")
 	}

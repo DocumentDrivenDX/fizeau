@@ -190,22 +190,20 @@ func collectClaudeSignal(sig *Signal) {
 }
 
 func collectCodexSignal(sig *Signal) {
-	snap, ok := codexcache.ReadCodexQuota()
-	if !ok || snap == nil {
-		return // StatusUnknown
+	r := &codexcache.Runner{}
+	status, err := r.QuotaStatus(context.Background(), time.Now())
+	if err != nil {
+		return
 	}
-	if codexcache.CodexQuotaSnapshotAge(snap, time.Now()) > codexcache.DefaultCodexQuotaStaleAfter {
-		return // StatusUnknown; snapshot is stale
+	switch status.State {
+	case harnesses.QuotaOK:
+		sig.Status = StatusAvailable
+	case harnesses.QuotaBlocked:
+		sig.Status = StatusExhausted
+		zero := 0
+		sig.QuotaRemaining = &zero
+		// QuotaUnavailable and QuotaStale both leave Status as StatusUnknown
 	}
-	for _, w := range snap.Windows {
-		if w.UsedPercent >= 95 || w.State == "blocked" {
-			sig.Status = StatusExhausted
-			zero := 0
-			sig.QuotaRemaining = &zero
-			return
-		}
-	}
-	sig.Status = StatusAvailable
 }
 
 func collectGeminiSignal(sig *Signal) {

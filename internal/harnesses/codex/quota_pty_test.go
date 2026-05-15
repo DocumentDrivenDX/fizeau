@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestReadCodexQuotaViaPTYRecordsStatusOutput(t *testing.T) {
+func TestReadCodexQuotaViaPTY_RecordsStatusOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell-backed PTY probes require Unix PTY support")
 	}
@@ -40,7 +40,7 @@ sleep 1
 `), 0o700))
 	cassetteDir := filepath.Join(dir, "cassette")
 
-	windows, err := ReadCodexQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
+	windows, err := readCodexQuotaViaPTY(2*time.Second, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
 	require.NoError(t, err)
 	require.Len(t, windows, 2)
 	require.Equal(t, 27.0, windows[0].UsedPercent)
@@ -52,12 +52,12 @@ sleep 1
 	require.Equal(t, "ChatGPT Pro", reader.Quota().Metadata["plan_type"])
 	require.Equal(t, "ChatGPT Pro", reader.Quota().AccountClass)
 	require.NotEmpty(t, reader.Quota().CapturedAt)
-	require.Equal(t, DefaultCodexQuotaStaleAfter.String(), reader.Quota().FreshnessWindow)
+	require.Equal(t, defaultCodexQuotaStaleAfter.String(), reader.Quota().FreshnessWindow)
 	require.Contains(t, reader.Quota().StalenessBehavior, "automatic routing")
 	require.NotEmpty(t, reader.Manifest().Harness.BinaryVersion)
 }
 
-func TestReadCodexQuotaViaPTYDoesNotAcceptStaleStartupStatus(t *testing.T) {
+func TestReadCodexQuotaViaPTY_DoesNotAcceptStaleStartupStatus(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell-backed PTY probes require Unix PTY support")
 	}
@@ -70,7 +70,7 @@ sleep 5
 `), 0o700))
 	cassetteDir := filepath.Join(dir, "cassette")
 
-	windows, err := ReadCodexQuotaViaPTY(200*time.Millisecond, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
+	windows, err := readCodexQuotaViaPTY(200*time.Millisecond, WithQuotaPTYCommand(script), WithQuotaPTYCassetteDir(cassetteDir))
 	require.Error(t, err)
 	require.Empty(t, windows)
 	require.Equal(t, ptyquota.StatusError, ptyquota.ErrorStatus(err))

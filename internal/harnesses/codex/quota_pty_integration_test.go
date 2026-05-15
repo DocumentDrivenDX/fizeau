@@ -18,7 +18,7 @@ func Test_quotaRecordCodexPTY(t *testing.T) {
 		t.Skip("set FIZEAU_HARNESS_RECORD=1 to refresh authenticated codex quota cassette")
 	}
 	dir := filepath.Join(recordBaseDir(t), "codex", "quota")
-	windows, err := ReadCodexQuotaViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
+	windows, err := readCodexQuotaViaPTY(45*time.Second, WithQuotaPTYCassetteDir(dir))
 	if err != nil {
 		assertNoAcceptedCassette(t, dir)
 		t.Fatalf("record codex quota via PTY: %v", err)

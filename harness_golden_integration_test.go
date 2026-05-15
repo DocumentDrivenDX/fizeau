@@ -16,7 +16,6 @@ import (
 
 	"github.com/easel/fizeau/internal/harnesses"
 	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	"github.com/easel/fizeau/internal/pty/cassette"
 )
 
@@ -678,16 +677,12 @@ func writeGoldenQuotaCaches(t *testing.T, claudePath, codexPath string) {
 	}); err != nil {
 		t.Fatalf("WriteClaudeQuota: %v", err)
 	}
-	if err := codexharness.WriteCodexQuota(codexPath, codexharness.CodexQuotaSnapshot{
-		CapturedAt: now,
-		Source:     "cassette",
-		Account:    &harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
-		Windows: []harnesses.QuotaWindow{
+	writeCodexQuotaCacheFile(t, codexPath, now, "cassette",
+		&harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
+		[]harnesses.QuotaWindow{
 			{Name: "5h", LimitID: "codex", WindowMinutes: 300, UsedPercent: 10, State: "ok"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteCodexQuota: %v", err)
-	}
+	)
 }
 
 func writeGoldenHarnessScript(t *testing.T, dir, name, body string) {
