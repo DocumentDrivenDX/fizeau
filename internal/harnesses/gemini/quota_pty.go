@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
@@ -10,6 +11,8 @@ import (
 	"github.com/easel/fizeau/internal/pty/cassette"
 	"github.com/easel/fizeau/internal/pty/session"
 )
+
+const geminiQuotaSettleTime = 150 * time.Millisecond
 
 type quotaPTYOptions struct {
 	binary      string
@@ -93,7 +96,7 @@ func captureGeminiQuotaViaPTY(ctx context.Context, timeout time.Duration, opts .
 		Env:          cfg.env,
 		Command:      "/model manage\r",
 		ReadyMarkers: []string{">", "❯"},
-		DoneWhen:     geminiQuotaComplete,
+		DoneWhen:     geminiQuotaComplete(geminiQuotaSettleTime),
 		Timeout:      timeout,
 		Size:         session.Size{Rows: 50, Cols: 220},
 		CassetteDir:  cfg.cassetteDir,
@@ -117,13 +120,43 @@ func captureGeminiQuotaViaPTY(ctx context.Context, timeout time.Duration, opts .
 	return windows, result, nil
 }
 
-// geminiQuotaComplete is the probe's DoneWhen predicate. Gemini CLI renders
-// tiers one by one as the dialog loads. Waiting for at least one tier with a
-// parsed "% used" token is enough: tiers that never appear in the rendered
-// dialog were not surfaced by this CLI version.
-func geminiQuotaComplete(text string) bool {
-	windows := ParseGeminiModelManage(text)
-	return len(windows) >= 1
+// geminiQuotaComplete returns a DoneWhen predicate that waits for the parsed
+// tier set to stop changing. Gemini CLI renders /model manage incrementally, so
+// the first parsed row is not enough evidence that the dialog has settled.
+func geminiQuotaComplete(stableFor time.Duration) func(string) bool {
+	var lastSignature string
+	var lastChange time.Time
+	return func(text string) bool {
+		windows := ParseGeminiModelManage(text)
+		if len(windows) == 0 {
+			lastSignature = ""
+			lastChange = time.Time{}
+			return false
+		}
+		if stableFor <= 0 {
+			return true
+		}
+		signature := geminiQuotaSignature(windows)
+		now := time.Now()
+		if signature != lastSignature {
+			lastSignature = signature
+			lastChange = now
+			return false
+		}
+		if lastChange.IsZero() {
+			lastChange = now
+			return false
+		}
+		return now.Sub(lastChange) >= stableFor
+	}
+}
+
+func geminiQuotaSignature(windows []harnesses.QuotaWindow) string {
+	var b strings.Builder
+	for _, window := range windows {
+		fmt.Fprintf(&b, "%s|%s|%g|%s|%s\n", window.LimitID, window.Name, window.UsedPercent, window.ResetsAt, window.State)
+	}
+	return b.String()
 }
 
 func geminiQuotaRecord(windows []harnesses.QuotaWindow) cassette.QuotaRecord {

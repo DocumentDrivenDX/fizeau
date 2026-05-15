@@ -17,20 +17,21 @@ func TestReadGeminiQuotaViaPTY_CapturesTierUsage(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "fake-gemini")
 	// Emits a ready prompt, reads the slash-command, then prints a
-	// fixture resembling Gemini CLI 0.38.2 /model manage output. The
-	// sleep keeps the script alive long enough for the probe to harvest
-	// the screen before we send SIGTERM via the probe's stop path.
+	// fixture resembling Gemini CLI 0.38.2 /model manage output one tier
+	// at a time. The sleeps force the probe to tolerate incremental PTY
+	// rendering instead of assuming the first parsed row is the final
+	// screen. The final sleep keeps the script alive long enough for the
+	// probe to harvest the screen before we send SIGTERM via the probe's
+	// stop path.
 	body := `#!/bin/sh
 printf 'Gemini CLI 0.38.2\r\n> '
 IFS= read line
-cat <<'EOF'
-Model management
-
-  Flash         4% used      Resets 9:13 PM (23h 46m)
-  Flash Lite    0% used      Resets 9:27 PM (24h)
-  Pro         100% used
-
-EOF
+printf 'Model management\r\n\r\n'
+printf '  Flash         4%% used      Resets 9:13 PM (23h 46m)\r\n'
+sleep 0.1
+printf '  Flash Lite    0%% used      Resets 9:27 PM (24h)\r\n'
+sleep 0.1
+printf '  Pro         100%% used\r\n\r\n'
 sleep 2
 `
 	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
