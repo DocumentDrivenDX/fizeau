@@ -61,7 +61,7 @@ proceeds. The grid renders `—` for `runtime_props` fields in this case.
 |---|---|---|
 | `llama-server` / `llamacpp` | `GET /props` | Confirmed (llama.cpp canonical) |
 | `vllm` | `GET /v1/models`, `GET /v1/server_info` | `/v1/models` confirmed; `/v1/server_info` optional |
-| `ds4` | `GET /props`, `GET /v1/models` | `/v1/models` confirmed; `/props` TODO — verify on live vidar:1236 |
+| `ds4` | `GET /props`, `GET /v1/models` | Confirmed on live vidar:1236; `/props` exposes `model.mtp`, `model.mtp_draft_tokens`, and `runtime.ctx_size` |
 | `omlx` | `GET /v1/models` | Confirmed at vidar:1235 |
 | `lucebox` / `lucebox-dflash` | `GET /props`, `GET /v1/models` | `/v1/models` confirmed; `/props` TODO — verify on live sindri:1236 |
 | `rapid-mlx` | `GET /v1/models` | Confirmed at grendel:8000 |

@@ -234,7 +234,6 @@ func laneCloneExampleArgs(root string, dryRun bool) []string {
 		"--recipes", "timing-baseline,or-passing,tb21-all",
 		"--aliases", "vidar-ds4-mtp,ds4-mtp",
 		"--quant-label", "ds4-native-bf16-mtp",
-		"--env", "FIZEAU_DS4_MTP=true",
 		"--metadata", "mtp=enabled",
 		"--resolved-at", "2026-05-15",
 		"--snapshot-suffix", " | mtp=enabled",

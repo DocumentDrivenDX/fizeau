@@ -90,6 +90,14 @@ func TestRuntimePropsImportToCellEvidence(t *testing.T) {
 			if props.Extractor != tc.laneRuntime {
 				t.Errorf("extractor = %q, want %q", props.Extractor, tc.laneRuntime)
 			}
+			if tc.laneRuntime == "ds4" {
+				if props.MTPEnabled == nil || !*props.MTPEnabled {
+					t.Fatal("ds4 fixture should import model.mtp=true as runtime_props.mtp_enabled=true")
+				}
+				if props.DraftMode != "mtp" {
+					t.Fatalf("draft_mode = %q, want mtp for ds4 fixture", props.DraftMode)
+				}
+			}
 
 			// Step 4: prove the import is lossless — the raw /props response is
 			// preserved in platform_raw so any downstream analyzer or future

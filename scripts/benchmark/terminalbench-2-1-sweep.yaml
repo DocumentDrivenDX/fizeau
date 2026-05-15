@@ -169,16 +169,19 @@ recipes:
       timeout tuning; expanded 2026-05-11 to also cover sindri-llamacpp
       and OR-Qwen3 to verify post-wire-fix (commit cfdcdcc4) reasoning
       control across all three benchmark lanes before committing to a
-      full 52-task or-passing sweep.
+      full 52-task or-passing sweep. The paired ds4 / ds4-mtp lanes keep
+      the same server and task mix so runtime_props can show the MTP-on
+      versus MTP-off server state directly.
     subset: terminalbench-2-1-timing-baseline
     lanes:
       - fiz-openrouter-qwen3-6-27b
       - fiz-sindri-llamacpp-qwen3-6-27b
       - fiz-vidar-ds4
+      - fiz-vidar-ds4-mtp
     parallel_policy: >-
-      ds4 serializes to one cell at a time regardless of harness
-      concurrency. sindri-llamacpp and OR run in their own resource groups
-      and can proceed in parallel with ds4.
+      rg-vidar-ds4 lanes serialize to one cell at a time regardless of
+      harness concurrency. sindri-llamacpp and OR run in their own
+      resource groups and can proceed in parallel with ds4.
 
   - id: or-passing
     staged: false
@@ -192,6 +195,7 @@ recipes:
     lanes:
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-vidar-ds4
+      - fiz-vidar-ds4-mtp
       - fiz-bragi-club-3090-qwen3-6-27b
       - fiz-sindri-lucebox-qwen3-6-27b
       - fiz-sindri-vllm-qwen3-6-27b
@@ -214,6 +218,7 @@ recipes:
       - fiz-openrouter-qwen3-6-27b
       - fiz-vidar-omlx-qwen3-6-27b
       - fiz-vidar-ds4
+      - fiz-vidar-ds4-mtp
       - fiz-harness-pi-vidar-qwen3-6-27b
       - fiz-harness-opencode-vidar-qwen3-6-27b
       - fiz-bragi-club-3090-qwen3-6-27b
@@ -825,10 +830,6 @@ lanes:
       FIZEAU_MODEL: "deepseek-v4-flash"
       FIZEAU_BASE_URL: "http://192.168.2.106:1236/v1"
       FIZEAU_API_KEY_ENV: DS4_API_KEY
-      # TODO(erik): confirm the exact ds4 env or request param that enables
-      # multi-token prediction. Placeholder name follows the FIZEAU_*
-      # passthrough convention used elsewhere in this file.
-      FIZEAU_DS4_MTP: "true"
     model_family: deepseek-v4-flash
     model_id: "deepseek-v4-flash"
     quant_label: ds4-native-bf16-mtp
@@ -843,11 +844,10 @@ lanes:
       top_k: 20
     equivalence_note: >-
       Same server, port, and base model as fiz-vidar-ds4 (rg-vidar-ds4
-      enforces mutual exclusion); the only operational difference is
-      Multi-Token Prediction enabled at request time. Output cells are
-      partitioned by lane id so MTP-on and MTP-off attempts compare
-      directly via the runtime_props capture (server-reported MTP state
-      lands in the per-cell evidence).
+      enforces mutual exclusion); the MTP distinction is server-reported,
+      not a Fizeau request env knob. The live ds4 /props capture reports
+      model.mtp=true for this variant, and runtime_props persists that
+      per-cell so MTP-on evidence stays explicit in the results.
 
   - id: fiz-vidar-omlx-qwen3-6-27b
     profile_id: vidar-qwen3-6-27b
