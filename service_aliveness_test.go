@@ -363,6 +363,263 @@ func TestProbeLoop_SkipsProvidersWithFreshProbes(t *testing.T) {
 	}
 }
 
+func TestResolveRoute_RefreshesUnknownLocalHealthBeforeScoring(t *testing.T) {
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	modelID := "mlx-community/Qwen3.6-27B-8bit"
+	baseURL := "http://grendel:8000/v1"
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", baseURL, ""), time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC), []string{modelID})
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  mlx-community/Qwen3.6-27B-8bit:
+    family: qwen
+    status: active
+    power: 7
+    context_window: 32768
+    surfaces:
+      embedded-openai: mlx-community/Qwen3.6-27B-8bit
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	var mu sync.Mutex
+	probeCount := 0
+	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"grendel": {
+				Type:           "rapid-mlx",
+				BaseURL:        baseURL,
+				ServerInstance: "grendel",
+				Model:          modelID,
+			},
+		},
+		names:       []string{"grendel"},
+		defaultName: "grendel",
+	}, func(_ context.Context, provider, gotBaseURL string) bool {
+		if provider != "grendel" || gotBaseURL != baseURL {
+			t.Fatalf("probe target = %q %q, want grendel %q", provider, gotBaseURL, baseURL)
+		}
+		mu.Lock()
+		probeCount++
+		mu.Unlock()
+		return true
+	})
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: modelID})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	if dec.Provider != "grendel" || dec.Model != modelID {
+		t.Fatalf("decision=%#v, want grendel/%s", dec, modelID)
+	}
+	mu.Lock()
+	gotProbeCount := probeCount
+	mu.Unlock()
+	if gotProbeCount != 1 {
+		t.Fatalf("probe count = %d, want 1 route-time refresh probe", gotProbeCount)
+	}
+	var candidate *RouteCandidate
+	for i := range dec.Candidates {
+		if dec.Candidates[i].Provider == "grendel" {
+			candidate = &dec.Candidates[i]
+			break
+		}
+	}
+	if candidate == nil {
+		t.Fatalf("missing grendel candidate in %#v", dec.Candidates)
+	}
+	if !candidate.Eligible {
+		t.Fatalf("candidate=%#v, want eligible after successful route-time probe", *candidate)
+	}
+	if candidate.LastProbeAt.IsZero() || !candidate.LastProbeSuccess {
+		t.Fatalf("candidate probe evidence=%#v, want successful route-time probe evidence", *candidate)
+	}
+}
+
+func TestResolveRoute_UnknownLocalHealthRefreshFailureIsEvidence(t *testing.T) {
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	modelID := "mlx-community/Qwen3.6-27B-8bit"
+	grendelURL := "http://grendel:8000/v1"
+	vidarURL := "http://vidar:8001/v1"
+	capturedAt := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", grendelURL, ""), capturedAt, []string{modelID})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("vidar", "vidar", vidarURL, ""), capturedAt, []string{modelID})
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  mlx-community/Qwen3.6-27B-8bit:
+    family: qwen
+    status: active
+    power: 7
+    context_window: 32768
+    surfaces:
+      embedded-openai: mlx-community/Qwen3.6-27B-8bit
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	var mu sync.Mutex
+	probeCount := 0
+	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"grendel": {
+				Type:           "rapid-mlx",
+				BaseURL:        grendelURL,
+				ServerInstance: "grendel",
+				Model:          modelID,
+			},
+			"vidar": {
+				Type:           "rapid-mlx",
+				BaseURL:        vidarURL,
+				ServerInstance: "vidar",
+				Model:          modelID,
+			},
+		},
+		names:       []string{"grendel", "vidar"},
+		defaultName: "grendel",
+	}, func(_ context.Context, provider, _ string) bool {
+		mu.Lock()
+		probeCount++
+		mu.Unlock()
+		return provider != "grendel"
+	})
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: modelID})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	if dec.Provider != "vidar" {
+		t.Fatalf("decision=%#v, want vidar after grendel refresh failure", dec)
+	}
+	mu.Lock()
+	gotProbeCount := probeCount
+	mu.Unlock()
+	if gotProbeCount != 2 {
+		t.Fatalf("probe count = %d, want 2 route-time refresh probes", gotProbeCount)
+	}
+	var sawGrendel bool
+	for _, candidate := range dec.Candidates {
+		if candidate.Provider != "grendel" {
+			continue
+		}
+		sawGrendel = true
+		if candidate.Eligible {
+			t.Fatalf("grendel candidate=%#v, want rejected after failed route-time probe", candidate)
+		}
+		if candidate.FilterReason != FilterReasonEndpointUnreachable {
+			t.Fatalf("grendel FilterReason=%q, want %q", candidate.FilterReason, FilterReasonEndpointUnreachable)
+		}
+		if candidate.LastProbeAt.IsZero() || candidate.LastProbeSuccess {
+			t.Fatalf("grendel probe evidence=%#v, want recorded failed probe evidence", candidate)
+		}
+	}
+	if !sawGrendel {
+		t.Fatalf("missing grendel candidate in %#v", dec.Candidates)
+	}
+}
+
+func TestResolveRoute_DoesNotProbeFreshHealthOnEveryRun(t *testing.T) {
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	modelID := "mlx-community/Qwen3.6-27B-8bit"
+	baseURL := "http://grendel:8000/v1"
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("grendel", "grendel", baseURL, ""), time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC), []string{modelID})
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  mlx-community/Qwen3.6-27B-8bit:
+    family: qwen
+    status: active
+    power: 7
+    context_window: 32768
+    surfaces:
+      embedded-openai: mlx-community/Qwen3.6-27B-8bit
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	var mu sync.Mutex
+	probeCount := 0
+	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"grendel": {
+				Type:           "rapid-mlx",
+				BaseURL:        baseURL,
+				ServerInstance: "grendel",
+				Model:          modelID,
+			},
+		},
+		names:       []string{"grendel"},
+		defaultName: "grendel",
+	}, func(_ context.Context, _, _ string) bool {
+		mu.Lock()
+		probeCount++
+		mu.Unlock()
+		return true
+	})
+
+	first, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: modelID})
+	if err != nil {
+		t.Fatalf("first ResolveRoute: %v", err)
+	}
+	second, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: modelID})
+	if err != nil {
+		t.Fatalf("second ResolveRoute: %v", err)
+	}
+	if first == nil || second == nil {
+		t.Fatalf("decisions=%#v %#v, want non-nil decisions", first, second)
+	}
+	mu.Lock()
+	gotProbeCount := probeCount
+	mu.Unlock()
+	if gotProbeCount != 1 {
+		t.Fatalf("probe count = %d, want 1 route-time probe across two fresh resolves", gotProbeCount)
+	}
+}
+
+func newResolveRouteProbeTestService(t *testing.T, sc *fakeServiceConfig, prober ProviderAlivenessProber) *service {
+	t.Helper()
+	svc := newTestService(t, ServiceOptions{
+		ServiceConfig:       sc,
+		AlivenessProber:     prober,
+		HealthProbeInterval: time.Hour,
+	})
+	svc.providerProbe = routehealth.NewProbeStore()
+	return svc
+}
+
 func TestExtractHostPort(t *testing.T) {
 	cases := []struct {
 		baseURL string

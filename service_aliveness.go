@@ -17,6 +17,9 @@ const (
 	// defaultHealthSignalTTL is the maximum age of a probe result used to
 	// populate routing.Inputs.ProbeUnreachable when HealthSignalTTL is zero.
 	defaultHealthSignalTTL = 10 * time.Minute
+	// routeTimeProbeTimeout bounds one synchronous route-time aliveness probe
+	// before the provider is treated as unreachable for that route decision.
+	routeTimeProbeTimeout = 2 * time.Second
 	// startupProbeTotalTimeout bounds the total wall-clock time spent on
 	// startup aliveness probes, regardless of provider count.
 	startupProbeTotalTimeout = 5 * time.Second
@@ -140,6 +143,89 @@ func (s *service) persistProbeStore() {
 		return
 	}
 	_ = s.providerProbe.Save(s.opts.PersistRouteHealth)
+}
+
+// refreshLocalHealthForRouting synchronously refreshes stale or missing local
+// provider aliveness evidence before ResolveRoute scores candidates. Providers
+// that cannot be probed within the route-time budget are recorded as failed so
+// automatic routing does not treat unknown local health as implicitly healthy.
+func (s *service) refreshLocalHealthForRouting(ctx context.Context) {
+	if s == nil || s.providerProbe == nil {
+		return
+	}
+	endpoints := s.routeTimeAlivenessEndpoints(time.Now().UTC())
+	if len(endpoints) == 0 {
+		return
+	}
+	prober := s.opts.AlivenessProber
+	if prober == nil {
+		prober = tcpAlivenessProber
+	}
+	runRouteTimeAlivenessProbes(ctx, endpoints, s.providerProbe, prober, routeTimeProbeTimeout)
+	s.persistProbeStore()
+}
+
+func (s *service) routeTimeAlivenessEndpoints(now time.Time) []alivenessEndpoint {
+	if s == nil || s.providerProbe == nil {
+		return nil
+	}
+	endpoints := s.alivenessEndpoints()
+	if len(endpoints) == 0 {
+		return nil
+	}
+	interval := s.healthProbeInterval()
+	out := make([]alivenessEndpoint, 0, len(endpoints))
+	for _, ep := range endpoints {
+		if s.providerProbe.ProbeNeeded(ep.provider, "", now, interval) {
+			out = append(out, ep)
+		}
+	}
+	return out
+}
+
+func runRouteTimeAlivenessProbes(
+	ctx context.Context,
+	endpoints []alivenessEndpoint,
+	store *routehealth.ProbeStore,
+	prober ProviderAlivenessProber,
+	perProbeTimeout time.Duration,
+) {
+	if len(endpoints) == 0 || store == nil || prober == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if perProbeTimeout <= 0 {
+		perProbeTimeout = routeTimeProbeTimeout
+	}
+	for i, ep := range endpoints {
+		if ctx.Err() != nil {
+			recordRouteTimeProbeFailures(store, endpoints[i:], time.Now().UTC())
+			return
+		}
+		probeAt := time.Now().UTC()
+		probeCtx, cancel := context.WithTimeout(ctx, perProbeTimeout)
+		success := prober(probeCtx, ep.provider, ep.baseURL)
+		if probeCtx.Err() != nil {
+			success = false
+		}
+		cancel()
+		store.RecordProbe(ep.provider, "", success, probeAt)
+		if ctx.Err() != nil {
+			recordRouteTimeProbeFailures(store, endpoints[i+1:], probeAt)
+			return
+		}
+	}
+}
+
+func recordRouteTimeProbeFailures(store *routehealth.ProbeStore, endpoints []alivenessEndpoint, probeAt time.Time) {
+	if store == nil || len(endpoints) == 0 {
+		return
+	}
+	for _, ep := range endpoints {
+		store.RecordProbe(ep.provider, "", false, probeAt)
+	}
 }
 
 // startAlivenessProbeLoop spawns the goroutine that periodically re-probes
