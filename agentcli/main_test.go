@@ -26,6 +26,9 @@ func runAgentCLI(t *testing.T, args ...string) ([]byte, error) {
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME="+filepath.Join(home, ".local", "share"),
+		"FIZEAU_CACHE_DIR="+filepath.Join(home, ".cache", "fizeau"),
 	)
 	out, err := cmd.CombinedOutput()
 	return out, err
@@ -44,6 +47,9 @@ func runAgentCLIWithHome(t *testing.T, home string, args ...string) ([]byte, err
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
+		"XDG_DATA_HOME="+filepath.Join(home, ".local", "share"),
+		"FIZEAU_CACHE_DIR="+filepath.Join(home, ".cache", "fizeau"),
 	)
 	out, err := cmd.CombinedOutput()
 	return out, err
