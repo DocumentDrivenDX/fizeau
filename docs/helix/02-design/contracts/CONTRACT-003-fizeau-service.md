@@ -211,10 +211,16 @@ only; they do not affect candidate eligibility or scoring.
 single public reasoning control; provider-specific names remain adapter
 terminology.
 
-Before scoring an unpinned or partially pinned automatic route, `Execute`
-ensures routing-relevant snapshot fields are fresh enough for the request. This
-uses the same synchronous refresh coordinator and locks as `RefreshModels`; it
-does not perform direct provider probes outside the snapshot path.
+`ResolveRoute` and `Execute` are cache-first on the route hot path. Before
+scoring an unpinned or partially pinned automatic route, they read the freshest
+cached routing-relevant facts available and may request a coordinated
+background refresh for stale health, quota, discovery, context, reasoning,
+tool-support, cost, or utilization fields. They must not synchronously contact
+local model providers, block on stale `/v1/models` discovery, or fail the
+process solely because one configured local provider is unreachable. Known
+fresh failed health evidence can still make that provider ineligible with a
+typed dispatchability reason; unknown local health is a score penalty, not a
+hard gate when alternatives exist.
 
 ## Routing Types
 
@@ -262,6 +268,21 @@ type RouteDecision struct {
     Power int
     Candidates []RouteCandidate
 }
+
+type RouteCandidate struct {
+    Harness string
+    Provider string
+    Endpoint string
+    ServerInstance string
+    Model string
+    Score float64
+    Eligible bool
+    Reason string
+    FilterReason string
+    Components RouteCandidateComponents
+    ScoreComponents map[string]float64
+    Utilization RouteUtilizationState
+}
 ```
 
 Raw `Model` constraints are normalized against provider-discovered model IDs
@@ -291,6 +312,11 @@ excluded from unpinned automatic routing but remain visible in inventory and
 usable through exact pins when the selected harness/provider can serve them.
 Cost, quality, health risk, latency, utilization, and power fit are scoring
 inputs. They do not become hard gates unless they make dispatch impossible.
+`RouteCandidate.Components` is the stable operator-facing aggregate evidence;
+`RouteCandidate.ScoreComponents` preserves the raw routing score component map
+used by the engine, including keys such as `base`, `power`, `cost`,
+`quota_health`, `deployment_locality`, `utilization`, `context_headroom`, and
+`performance` when present.
 
 `fiz models` is the snapshot-first inspection path. It is expected to be quick,
 return stale output by default when freshness is pending, and use
