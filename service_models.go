@@ -103,6 +103,17 @@ func subprocessHarnessModelIDs(name string, cfg harnesses.HarnessConfig) []strin
 	return models
 }
 
+func subprocessHarnessAutoRoutingModels(name string, cfg harnesses.HarnessConfig) []string {
+	models := make([]string, 0)
+	if cfg.DefaultModel != "" {
+		models = appendUniqueModelIDs(models, resolveSubprocessModelAlias(name, cfg.DefaultModel))
+	}
+	for _, id := range subprocessHarnessModelIDs(name, cfg) {
+		models = appendUniqueModelIDs(models, resolveSubprocessModelAlias(name, id))
+	}
+	return models
+}
+
 func resolveSubprocessModelAlias(harness, model string) string {
 	switch harness {
 	case "claude":

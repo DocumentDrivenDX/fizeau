@@ -231,6 +231,59 @@ func TestCheckPowerEligibilityKnownModelSnapshotHardPinBypassesCatalogOnlyGate(t
 	}
 }
 
+func TestHarnessPolicyPinnedHarnessChoosesSupportedEligibleModel(t *testing.T) {
+	in := Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "codex",
+			Surface:             "codex",
+			CostClass:           "medium",
+			IsSubscription:      true,
+			AutoRoutingEligible: true,
+			Available:           true,
+			ExactPinSupport:     true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			SupportsTools:       true,
+			DefaultModel:        "gpt-5.5",
+			SupportedModels:     []string{"gpt-5.5", "gpt-5.4", "gpt-5.4-mini"},
+			AutoRoutingModels:   []string{"gpt-5.5", "gpt-5.4", "gpt-5.4-mini"},
+		}},
+		ModelEligibility: func(model string) (ModelEligibility, bool) {
+			switch model {
+			case "gpt-5.5":
+				return ModelEligibility{Power: 9, ExactPinOnly: true}, true
+			case "gpt-5.4":
+				return ModelEligibility{Power: 8, AutoRoutable: true}, true
+			case "gpt-5.4-mini":
+				return ModelEligibility{Power: 6, AutoRoutable: true}, true
+			default:
+				return ModelEligibility{}, false
+			}
+		},
+	}
+
+	dec, err := Resolve(Request{Harness: "codex", Policy: "default"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Model != "gpt-5.4" {
+		t.Fatalf("Model=%q, want gpt-5.4", dec.Model)
+	}
+	for _, candidate := range dec.Candidates {
+		if candidate.Model != "gpt-5.5" {
+			continue
+		}
+		if candidate.Eligible {
+			t.Fatalf("exact-pin-only model must be ineligible: %#v", candidate)
+		}
+		if candidate.FilterReason != FilterReasonExactPinOnly {
+			t.Fatalf("FilterReason=%q, want %q", candidate.FilterReason, FilterReasonExactPinOnly)
+		}
+		return
+	}
+	t.Fatal("gpt-5.5 candidate not found")
+}
+
 func TestPinPinConflictHarnessIncompatibleWithModel(t *testing.T) {
 	in := Inputs{Harnesses: []HarnessEntry{{
 		Name:                "claude",

@@ -94,10 +94,15 @@ type HarnessEntry struct {
 	ExactPinSupport     bool
 	DefaultModel        string
 	SupportedModels     []string
-	SupportedReasoning  []string
-	MaxReasoningTokens  int
-	SupportedPerms      []string
-	SupportsTools       bool
+	// AutoRoutingModels enumerates the concrete model IDs the engine may rank
+	// when a caller pins Harness but leaves Model empty. This lets harness-local
+	// policy routing choose within the harness instead of being forced onto a
+	// single DefaultModel. Nil falls back to DefaultModel resolution.
+	AutoRoutingModels  []string
+	SupportedReasoning []string
+	MaxReasoningTokens int
+	SupportedPerms     []string
+	SupportsTools      bool
 
 	// Available reflects the harness's discovered availability.
 	Available bool
@@ -142,6 +147,7 @@ type ProviderEntry struct {
 	ContextWindow        int
 	ContextWindowSource  string
 	SupportsTools        bool
+	SupportsToolsByModel map[string]bool
 
 	// CostUSDPer1kTokens is the estimated blended USD cost per 1,000 tokens.
 	// A zero value with CostSourceUnknown means the provider cost is unknown.
@@ -1030,309 +1036,335 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 		stickyServerInstance, _ = in.StickyServerInstanceResolver(req.CorrelationID)
 	}
 	for _, p := range providers {
-		model, reason := resolveModel(h, p, req, in)
-		ctxWin := 0
-		ctxSrc := ContextSourceUnknown
-		if p.ContextWindows != nil {
-			if v, ok := p.ContextWindows[model]; ok {
-				ctxWin = v
-			}
+		models, reason := routingModelsForProvider(h, p, req, in)
+		if len(models) == 0 {
+			models = []string{""}
 		}
-		if ctxWin > 0 && p.ContextWindowSources != nil {
-			if src, ok := p.ContextWindowSources[model]; ok && src != "" {
-				ctxSrc = src
-			}
-		}
-		if ctxWin == 0 && p.ContextWindow > 0 {
-			ctxWin = p.ContextWindow
-			if p.ContextWindowSource != "" {
-				ctxSrc = p.ContextWindowSource
-			}
-		}
-		if ctxWin == 0 && model != "" {
-			ctxWin = 131072
-			ctxSrc = ContextSourceDefault
-		}
-		if model == "" {
-			ctxSrc = ContextSourceUnknown
-		}
-		entryCaps := caps
-		entryCaps.ContextWindow = ctxWin
-		entryCaps.SupportsTools = caps.SupportsTools || p.SupportsTools
-		if len(p.DiscoveredIDs) > 0 {
-			entryCaps.SupportedModels = nil
-		}
-
-		key := ProviderModelKey(p.Name, p.EndpointName, model)
-		obs := in.ObservedSpeedTPS[key]
-		if obs == 0 && p.EndpointName != "" {
-			obs = in.ObservedSpeedTPS[ProviderModelKey(p.Name, "", model)]
-		}
-		providerSuccessRate := -1.0
-		if rate, ok := in.ProviderSuccessRate[key]; ok {
-			providerSuccessRate = rate
-		} else if p.EndpointName != "" {
-			if rate, ok := in.ProviderSuccessRate[ProviderModelKey(p.Name, "", model)]; ok {
-				providerSuccessRate = rate
-			}
-		}
-		latencyMS := in.ObservedLatencyMS[key]
-		if latencyMS == 0 && p.EndpointName != "" {
-			latencyMS = in.ObservedLatencyMS[ProviderModelKey(p.Name, "", model)]
-		}
-		power := candidatePower(in.ModelEligibility, model)
-		endpointLoad := EndpointLoad{}
-		if in.EndpointLoadResolver != nil {
-			loadProvider, loadEndpoint := candidateLoadIdentity(h, p)
-			if resolved, ok := in.EndpointLoadResolver(loadProvider, loadEndpoint, model); ok {
-				endpointLoad = resolved
-			}
-		} else if load, ok := in.EndpointLoads[key]; ok {
-			endpointLoad = load
-		}
-
-		gateReq := resolveRequestReasoning(req, h.Surface, in.ReasoningResolver)
-		billingKind := candidateBillingKind(h, p)
-
-		eligible := true
-		var filterReason FilterReason
-		if reason == "" {
-			// Subscription quota is a hard availability gate and must be
-			// reported before catalog metadata gates. An exhausted Claude/Codex/
-			// Gemini account is never a viable candidate, regardless of whether
-			// the resolved model has complete power metadata.
-			if h.IsSubscription && !h.SubscriptionOK {
-				eligible = false
-				reason = h.QuotaReason
-				if reason == "" {
-					if h.QuotaStale {
-						reason = "subscription quota unavailable"
-					} else {
-						reason = "subscription quota exhausted"
-					}
+		for _, model := range models {
+			candidateReason := reason
+			ctxWin := 0
+			ctxSrc := ContextSourceUnknown
+			if p.ContextWindows != nil {
+				if v, ok := p.ContextWindows[model]; ok {
+					ctxWin = v
 				}
-				filterReason = FilterReasonUnhealthy
-			} else if g, fr := CheckPowerEligibility(in.ModelEligibility, model, gateReq); g != "" {
-				eligible = false
-				reason = g
-				filterReason = fr
-			} else if g, fr := CheckGating(entryCaps, gateReq); g != "" {
-				eligible = false
-				reason = g
-				filterReason = fr
 			}
-		} else {
-			eligible = false
-			// resolveModel rejection — model resolution is a capability
-			// mismatch with no specific public category, so fall through
-			// to the catch-all.
-			filterReason = FilterReasonScoredBelowTop
-		}
+			if ctxWin > 0 && p.ContextWindowSources != nil {
+				if src, ok := p.ContextWindowSources[model]; ok && src != "" {
+					ctxSrc = src
+				}
+			}
+			if ctxWin == 0 && p.ContextWindow > 0 {
+				ctxWin = p.ContextWindow
+				if p.ContextWindowSource != "" {
+					ctxSrc = p.ContextWindowSource
+				}
+			}
+			if ctxWin == 0 && model != "" {
+				ctxWin = 131072
+				ctxSrc = ContextSourceDefault
+			}
+			if model == "" {
+				ctxSrc = ContextSourceUnknown
+			}
+			entryCaps := caps
+			entryCaps.ContextWindow = ctxWin
+			entryCaps.SupportsTools = caps.SupportsTools || p.SupportsTools
+			if p.SupportsToolsByModel != nil {
+				if supported, ok := p.SupportsToolsByModel[model]; ok {
+					entryCaps.SupportsTools = supported
+				}
+			}
+			if len(p.DiscoveredIDs) > 0 {
+				entryCaps.SupportedModels = nil
+			}
 
-		// Hard preference filtering.
-		if eligible {
-			if !requestAllowsLocal(req) && candidateIsLocal(h, p) {
+			key := ProviderModelKey(p.Name, p.EndpointName, model)
+			obs := in.ObservedSpeedTPS[key]
+			if obs == 0 && p.EndpointName != "" {
+				obs = in.ObservedSpeedTPS[ProviderModelKey(p.Name, "", model)]
+			}
+			providerSuccessRate := -1.0
+			if rate, ok := in.ProviderSuccessRate[key]; ok {
+				providerSuccessRate = rate
+			} else if p.EndpointName != "" {
+				if rate, ok := in.ProviderSuccessRate[ProviderModelKey(p.Name, "", model)]; ok {
+					providerSuccessRate = rate
+				}
+			}
+			latencyMS := in.ObservedLatencyMS[key]
+			if latencyMS == 0 && p.EndpointName != "" {
+				latencyMS = in.ObservedLatencyMS[ProviderModelKey(p.Name, "", model)]
+			}
+			power := candidatePower(in.ModelEligibility, model)
+			endpointLoad := EndpointLoad{}
+			if in.EndpointLoadResolver != nil {
+				loadProvider, loadEndpoint := candidateLoadIdentity(h, p)
+				if resolved, ok := in.EndpointLoadResolver(loadProvider, loadEndpoint, model); ok {
+					endpointLoad = resolved
+				}
+			} else if load, ok := in.EndpointLoads[key]; ok {
+				endpointLoad = load
+			}
+
+			gateReq := resolveRequestReasoning(req, h.Surface, in.ReasoningResolver)
+			billingKind := candidateBillingKind(h, p)
+
+			eligible := true
+			var filterReason FilterReason
+			if candidateReason == "" {
+				// Subscription quota is a hard availability gate and must be
+				// reported before catalog metadata gates. An exhausted Claude/Codex/
+				// Gemini account is never a viable candidate, regardless of whether
+				// the resolved model has complete power metadata.
+				if h.IsSubscription && !h.SubscriptionOK {
+					eligible = false
+					candidateReason = h.QuotaReason
+					if candidateReason == "" {
+						if h.QuotaStale {
+							candidateReason = "subscription quota unavailable"
+						} else {
+							candidateReason = "subscription quota exhausted"
+						}
+					}
+					filterReason = FilterReasonUnhealthy
+				} else if model != "" && len(entryCaps.SupportedModels) > 0 && !entryCaps.HasModel(model) {
+					eligible = false
+					candidateReason = "model not in harness allow-list"
+					filterReason = FilterReasonScoredBelowTop
+				} else if g, fr := CheckPowerEligibility(in.ModelEligibility, model, gateReq); g != "" {
+					eligible = false
+					candidateReason = g
+					filterReason = fr
+				} else if g, fr := CheckGating(entryCaps, gateReq); g != "" {
+					eligible = false
+					candidateReason = g
+					filterReason = fr
+				}
+			} else {
 				eligible = false
-				reason = "policy disallows local candidates"
+				// resolveModel rejection — model resolution is a capability
+				// mismatch with no specific public category, so fall through
+				// to the catch-all.
+				filterReason = FilterReasonScoredBelowTop
+			}
+
+			// Hard preference filtering.
+			if eligible {
+				if !requestAllowsLocal(req) && candidateIsLocal(h, p) {
+					eligible = false
+					candidateReason = "policy disallows local candidates"
+					filterReason = FilterReasonPolicyFiltered
+				}
+			}
+			if eligible && requiresNoRemote(req) && !candidateIsLocal(h, p) {
+				eligible = false
+				candidateReason = "policy requires no_remote"
 				filterReason = FilterReasonPolicyFiltered
 			}
-		}
-		if eligible && requiresNoRemote(req) && !candidateIsLocal(h, p) {
-			eligible = false
-			reason = "policy requires no_remote"
-			filterReason = FilterReasonPolicyFiltered
-		}
 
-		if eligible {
-			switch req.ProviderPreference {
-			case ProviderPreferenceLocalOnly:
-				if !h.IsLocal {
-					eligible = false
-					reason = "preference is local-only"
-					filterReason = FilterReasonUnhealthy
-				}
-			case ProviderPreferenceSubscriptionOnly:
-				if !h.IsSubscription {
-					eligible = false
-					reason = "preference is subscription-only"
-					filterReason = FilterReasonUnhealthy
-				}
-			}
-		}
-
-		if eligible {
-			if g, fr := CheckProviderDefaultEligibility(candidateProviderIdentity(h, p), p.ActualCashSpend, billingKind, p.ExcludeFromDefaultRouting, req); g != "" {
-				eligible = false
-				reason = g
-				filterReason = fr
-			}
-		}
-
-		if eligible && req.Provider != "" && req.Provider != candidateProviderIdentity(h, p) {
-			// Hard provider pin: reject every other provider identity, even
-			// when a non-pinned candidate would otherwise score higher.
-			eligible = false
-			reason = fmt.Sprintf("provider override requires %s", req.Provider)
-			filterReason = FilterReasonPinMismatch
-		}
-
-		// Caller-supplied exclusion list: skip candidates matching a caller
-		// health hint. Records FilterReasonCallerExcluded so routing-quality
-		// observability can distinguish caller-driven re-routes from internal
-		// health signals.
-		if eligible && len(req.ExcludedRoutes) > 0 {
-			providerID := candidateProviderIdentity(h, p)
-			for _, ex := range req.ExcludedRoutes {
-				if ex.Provider != providerID {
-					continue
-				}
-				if ex.Model != "" && ex.Model != model {
-					continue
-				}
-				if ex.Endpoint != "" && ex.Endpoint != p.EndpointName {
-					continue
-				}
-				eligible = false
-				reason = fmt.Sprintf("excluded by caller hint (provider=%s)", ex.Provider)
-				filterReason = FilterReasonCallerExcluded
-				break
-			}
-		}
-
-		inCooldown := false
-		if p.Name != "" && p.InCooldown {
-			inCooldown = true
-		} else if p.Name != "" && in.CooldownDuration > 0 {
-			if failedAt, ok := in.ProviderCooldowns[p.Name]; ok {
-				if in.Now.Sub(failedAt) < in.CooldownDuration {
-					inCooldown = true
-				}
-			}
-		}
-
-		// FEAT-004 AC-28: known-down endpoints (provider snapshot says
-		// unreachable) are dispatchability failures — hard-gate them so the
-		// router doesn't burn ~30s per cell dialing a host that's already
-		// known to be off. Route-attempt cooldowns remain demotions (handled
-		// via inCooldown below) so a single transient failure doesn't break
-		// sticky-lease continuity; only proactive discovery failure flips
-		// this hard gate.
-		//
-		// An explicit provider pin bypasses the gate so the operator can
-		// still reach the provider intentionally.
-		if eligible && p.Name != "" && in.CooldownDuration > 0 && req.Provider != candidateProviderIdentity(h, p) {
-			if failedAt, ok := in.ProviderUnreachable[p.Name]; ok && in.Now.Sub(failedAt) < in.CooldownDuration {
-				eligible = false
-				reason = fmt.Sprintf("provider %s known unreachable (last dial failure %s ago)", candidateProviderIdentity(h, p), in.Now.Sub(failedAt).Truncate(time.Second))
-				filterReason = FilterReasonUnhealthy
-			}
-		}
-
-		// Proactive probe gate: endpoints known unreachable from background/startup
-		// probing are hard-gated. An explicit provider pin bypasses the gate so
-		// operators can still force a dead-endpoint route.
-		if eligible && p.Name != "" && req.Provider != candidateProviderIdentity(h, p) {
-			if _, ok := in.ProbeUnreachable[p.Name]; ok {
-				eligible = false
-				reason = fmt.Sprintf("provider %s endpoint unreachable (aliveness probe failed)", candidateProviderIdentity(h, p))
-				filterReason = FilterReasonEndpointUnreachable
-			}
-		}
-
-		// Provider quota-exhausted gate. The state machine lives in the
-		// service layer; the engine consumes the projected map of
-		// provider-name → retry_after. Apply only when the candidate would
-		// otherwise have been eligible — disqualifying an already-rejected
-		// candidate with a different reason would lose the original signal.
-		var quotaExhaustedRetryAfter time.Time
-		if eligible {
-			providerKey := candidateProviderIdentity(h, p)
-			if providerKey != "" && len(in.ProviderQuotaExhaustedUntil) > 0 {
-				if retryAfter, ok := in.ProviderQuotaExhaustedUntil[providerKey]; ok && retryAfter.After(in.Now) {
-					eligible = false
-					reason = fmt.Sprintf("provider %s quota exhausted until %s", providerKey, retryAfter.Format(time.RFC3339))
-					filterReason = FilterReasonQuotaExhausted
-					quotaExhaustedRetryAfter = retryAfter
-				}
-			}
-		}
-
-		stickyMatch := stickyServerInstance != "" && serverInstanceMatches(stickyServerInstance, p.ServerInstance, p.EndpointName)
-		ci := candidateInternal{
-			Harness:               h.Name,
-			Provider:              p.Name,
-			Billing:               billingKind,
-			EndpointName:          p.EndpointName,
-			ServerInstance:        p.ServerInstance,
-			Model:                 model,
-			CostClass:             candidateCostClass(h, p),
-			CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
-			CostSource:            normalizeCostSource(p.CostSource),
-			ActualCashSpend:       p.ActualCashSpend,
-			Power:                 power,
-			ContextLength:         ctxWin,
-			ContextSource:         ctxSrc,
-			IsSubscription:        h.IsSubscription,
-			QuotaOK:               h.QuotaOK,
-			QuotaPercentUsed:      h.QuotaPercentUsed,
-			QuotaStale:            h.QuotaStale,
-			QuotaTrend:            h.QuotaTrend,
-			SubscriptionOK:        h.SubscriptionOK,
-			HistoricalSuccessRate: histRate,
-			ProviderSuccessRate:   providerSuccessRate,
-			ObservedTokensPerSec:  obs,
-			ObservedLatencyMS:     latencyMS,
-			InCooldown:            inCooldown || h.InCooldown,
-			ProviderAffinityMatch: req.Provider != "" && req.Provider == candidateProviderIdentity(h, p),
-			ProviderPreference:    req.ProviderPreference,
-			EndpointLoad:          endpointLoad.NormalizedLoad,
-			EndpointLoadFresh:     endpointLoad.UtilizationFresh,
-			EndpointSaturated:     endpointLoad.UtilizationSaturated,
-			StickyMatch:           stickyMatch,
-			MinPower:              req.MinPower,
-			MaxPower:              req.MaxPower,
-		}
-		if eligible && ctxWin > 0 && minCtx > 0 {
-			ci.ContextHeadroom = ctxWin - minCtx
-		}
-		out = append(out, rankedCandidate{
-			out: Candidate{
-				Harness:            h.Name,
-				Provider:           p.Name,
-				Billing:            billingKind,
-				Endpoint:           p.EndpointName,
-				ServerInstance:     p.ServerInstance,
-				Model:              model,
-				CostUSDPer1kTokens: p.CostUSDPer1kTokens,
-				CostSource:         normalizeCostSource(p.CostSource),
-				ActualCashSpend:    p.ActualCashSpend,
-				Power:              power,
-				ContextLength:      ctxWin,
-				ContextSource:      ctxSrc,
-				Eligible:           eligible,
-				Reason:             reason,
-				FilterReason:       filterReason,
-				LatencyMS:          latencyMS,
-				SuccessRate:        providerSuccessRate,
-				CostClass:          candidateCostClass(h, p),
-				SpeedTPS:           obs,
-				Utilization:        endpointLoad.NormalizedLoad,
-				ContextHeadroom:    ci.ContextHeadroom,
-				QuotaOK:            h.QuotaOK,
-				QuotaPercentUsed:   h.QuotaPercentUsed,
-				QuotaTrend:         h.QuotaTrend,
-				StickyAffinity: func() float64 {
-					if stickyMatch {
-						return StickyAffinityBonus
+			if eligible {
+				switch req.ProviderPreference {
+				case ProviderPreferenceLocalOnly:
+					if !h.IsLocal {
+						eligible = false
+						candidateReason = "preference is local-only"
+						filterReason = FilterReasonUnhealthy
 					}
-					return 0
-				}(),
-			},
-			internal:                 ci,
-			quotaExhaustedRetryAfter: quotaExhaustedRetryAfter,
-		})
+				case ProviderPreferenceSubscriptionOnly:
+					if !h.IsSubscription {
+						eligible = false
+						candidateReason = "preference is subscription-only"
+						filterReason = FilterReasonUnhealthy
+					}
+				}
+			}
+
+			if eligible {
+				if g, fr := CheckProviderDefaultEligibility(candidateProviderIdentity(h, p), p.ActualCashSpend, billingKind, p.ExcludeFromDefaultRouting, req); g != "" {
+					eligible = false
+					candidateReason = g
+					filterReason = fr
+				}
+			}
+
+			if eligible && req.Provider != "" && req.Provider != candidateProviderIdentity(h, p) {
+				// Hard provider pin: reject every other provider identity, even
+				// when a non-pinned candidate would otherwise score higher.
+				eligible = false
+				candidateReason = fmt.Sprintf("provider override requires %s", req.Provider)
+				filterReason = FilterReasonPinMismatch
+			}
+
+			// Caller-supplied exclusion list: skip candidates matching a caller
+			// health hint. Records FilterReasonCallerExcluded so routing-quality
+			// observability can distinguish caller-driven re-routes from internal
+			// health signals.
+			if eligible && len(req.ExcludedRoutes) > 0 {
+				providerID := candidateProviderIdentity(h, p)
+				for _, ex := range req.ExcludedRoutes {
+					if ex.Provider != providerID {
+						continue
+					}
+					if ex.Model != "" && ex.Model != model {
+						continue
+					}
+					if ex.Endpoint != "" && ex.Endpoint != p.EndpointName {
+						continue
+					}
+					eligible = false
+					candidateReason = fmt.Sprintf("excluded by caller hint (provider=%s)", ex.Provider)
+					filterReason = FilterReasonCallerExcluded
+					break
+				}
+			}
+
+			inCooldown := false
+			if p.Name != "" && p.InCooldown {
+				inCooldown = true
+			} else if p.Name != "" && in.CooldownDuration > 0 {
+				if failedAt, ok := in.ProviderCooldowns[p.Name]; ok {
+					if in.Now.Sub(failedAt) < in.CooldownDuration {
+						inCooldown = true
+					}
+				}
+			}
+
+			// FEAT-004 AC-28: known-down endpoints (provider snapshot says
+			// unreachable) are dispatchability failures — hard-gate them so the
+			// router doesn't burn ~30s per cell dialing a host that's already
+			// known to be off. Route-attempt cooldowns remain demotions (handled
+			// via inCooldown below) so a single transient failure doesn't break
+			// sticky-lease continuity; only proactive discovery failure flips
+			// this hard gate.
+			//
+			// An explicit provider pin bypasses the gate so the operator can
+			// still reach the provider intentionally.
+			if eligible && p.Name != "" && in.CooldownDuration > 0 && req.Provider != candidateProviderIdentity(h, p) {
+				if failedAt, ok := in.ProviderUnreachable[p.Name]; ok && in.Now.Sub(failedAt) < in.CooldownDuration {
+					eligible = false
+					candidateReason = fmt.Sprintf("provider %s known unreachable (last dial failure %s ago)", candidateProviderIdentity(h, p), in.Now.Sub(failedAt).Truncate(time.Second))
+					filterReason = FilterReasonUnhealthy
+				}
+			}
+
+			// Proactive probe gate: endpoints known unreachable from background/startup
+			// probing are hard-gated. An explicit provider pin bypasses the gate so
+			// operators can still force a dead-endpoint route.
+			if eligible && p.Name != "" && req.Provider != candidateProviderIdentity(h, p) {
+				if _, ok := in.ProbeUnreachable[p.Name]; ok {
+					eligible = false
+					candidateReason = fmt.Sprintf("provider %s endpoint unreachable (aliveness probe failed)", candidateProviderIdentity(h, p))
+					filterReason = FilterReasonEndpointUnreachable
+				}
+			}
+
+			// Provider quota-exhausted gate. The state machine lives in the
+			// service layer; the engine consumes the projected map of
+			// provider-name → retry_after. Apply only when the candidate would
+			// otherwise have been eligible — disqualifying an already-rejected
+			// candidate with a different reason would lose the original signal.
+			var quotaExhaustedRetryAfter time.Time
+			if eligible {
+				providerKey := candidateProviderIdentity(h, p)
+				if providerKey != "" && len(in.ProviderQuotaExhaustedUntil) > 0 {
+					if retryAfter, ok := in.ProviderQuotaExhaustedUntil[providerKey]; ok && retryAfter.After(in.Now) {
+						eligible = false
+						candidateReason = fmt.Sprintf("provider %s quota exhausted until %s", providerKey, retryAfter.Format(time.RFC3339))
+						filterReason = FilterReasonQuotaExhausted
+						quotaExhaustedRetryAfter = retryAfter
+					}
+				}
+			}
+
+			stickyMatch := stickyServerInstance != "" && serverInstanceMatches(stickyServerInstance, p.ServerInstance, p.EndpointName)
+			ci := candidateInternal{
+				Harness:               h.Name,
+				Provider:              p.Name,
+				Billing:               billingKind,
+				EndpointName:          p.EndpointName,
+				ServerInstance:        p.ServerInstance,
+				Model:                 model,
+				CostClass:             candidateCostClass(h, p),
+				CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
+				CostSource:            normalizeCostSource(p.CostSource),
+				ActualCashSpend:       p.ActualCashSpend,
+				Power:                 power,
+				ContextLength:         ctxWin,
+				ContextSource:         ctxSrc,
+				IsSubscription:        h.IsSubscription,
+				QuotaOK:               h.QuotaOK,
+				QuotaPercentUsed:      h.QuotaPercentUsed,
+				QuotaStale:            h.QuotaStale,
+				QuotaTrend:            h.QuotaTrend,
+				SubscriptionOK:        h.SubscriptionOK,
+				HistoricalSuccessRate: histRate,
+				ProviderSuccessRate:   providerSuccessRate,
+				ObservedTokensPerSec:  obs,
+				ObservedLatencyMS:     latencyMS,
+				InCooldown:            inCooldown || h.InCooldown,
+				ProviderAffinityMatch: req.Provider != "" && req.Provider == candidateProviderIdentity(h, p),
+				ProviderPreference:    req.ProviderPreference,
+				EndpointLoad:          endpointLoad.NormalizedLoad,
+				EndpointLoadFresh:     endpointLoad.UtilizationFresh,
+				EndpointSaturated:     endpointLoad.UtilizationSaturated,
+				StickyMatch:           stickyMatch,
+				MinPower:              req.MinPower,
+				MaxPower:              req.MaxPower,
+			}
+			if eligible && ctxWin > 0 && minCtx > 0 {
+				ci.ContextHeadroom = ctxWin - minCtx
+			}
+			out = append(out, rankedCandidate{
+				out: Candidate{
+					Harness:            h.Name,
+					Provider:           p.Name,
+					Billing:            billingKind,
+					Endpoint:           p.EndpointName,
+					ServerInstance:     p.ServerInstance,
+					Model:              model,
+					CostUSDPer1kTokens: p.CostUSDPer1kTokens,
+					CostSource:         normalizeCostSource(p.CostSource),
+					ActualCashSpend:    p.ActualCashSpend,
+					Power:              power,
+					ContextLength:      ctxWin,
+					ContextSource:      ctxSrc,
+					Eligible:           eligible,
+					Reason:             candidateReason,
+					FilterReason:       filterReason,
+					LatencyMS:          latencyMS,
+					SuccessRate:        providerSuccessRate,
+					CostClass:          candidateCostClass(h, p),
+					SpeedTPS:           obs,
+					Utilization:        endpointLoad.NormalizedLoad,
+					ContextHeadroom:    ci.ContextHeadroom,
+					QuotaOK:            h.QuotaOK,
+					QuotaPercentUsed:   h.QuotaPercentUsed,
+					QuotaTrend:         h.QuotaTrend,
+					StickyAffinity: func() float64 {
+						if stickyMatch {
+							return StickyAffinityBonus
+						}
+						return 0
+					}(),
+				},
+				internal:                 ci,
+				quotaExhaustedRetryAfter: quotaExhaustedRetryAfter,
+			})
+		}
 	}
 	return out
+}
+
+func routingModelsForProvider(h HarnessEntry, p ProviderEntry, req Request, in Inputs) ([]string, string) {
+	if req.Model == "" && req.Provider == "" && req.Harness != "" && len(h.AutoRoutingModels) > 0 {
+		return append([]string(nil), h.AutoRoutingModels...), ""
+	}
+	model, reason := resolveModel(h, p, req, in)
+	if reason != "" {
+		return nil, reason
+	}
+	return []string{model}, ""
 }
 
 func candidatePower(lookup func(string) (ModelEligibility, bool), model string) int {

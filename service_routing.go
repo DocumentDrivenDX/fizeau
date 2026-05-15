@@ -1540,6 +1540,28 @@ func providerSupportsTools(cat *modelcatalog.Catalog, defaultModel string, disco
 	return false
 }
 
+func modelSupportsToolsByID(cat *modelcatalog.Catalog, modelIDs []string) map[string]bool {
+	if len(modelIDs) == 0 {
+		return nil
+	}
+	support := make(map[string]bool, len(modelIDs))
+	for _, id := range modelIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if cat == nil {
+			support[id] = true
+			continue
+		}
+		support[id] = cat.SupportsToolsForModel(id)
+	}
+	if len(support) == 0 {
+		return nil
+	}
+	return support
+}
+
 func anyProviderSupportsTools(providers []routing.ProviderEntry) bool {
 	for _, p := range providers {
 		if p.SupportsTools {
@@ -1596,11 +1618,18 @@ func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat 
 		}
 	}
 	cost := baseCost
+	ctxWindows, ctxSources := buildProviderContextWindows(context.Background(), ServiceProviderEntry{}, cat, entry.AutoRoutingModels)
+	modelTools := modelSupportsToolsByID(cat, entry.AutoRoutingModels)
+	supportsTools := providerSupportsTools(cat, entry.DefaultModel, entry.AutoRoutingModels)
 	entry.Providers = []routing.ProviderEntry{{
-		Billing:            modelcatalog.BillingModelSubscription,
-		CostUSDPer1kTokens: cost,
-		CostSource:         routing.CostSourceSubscription,
-		ActualCashSpend:    false,
+		Billing:              modelcatalog.BillingModelSubscription,
+		CostUSDPer1kTokens:   cost,
+		CostSource:           routing.CostSourceSubscription,
+		ActualCashSpend:      false,
+		ContextWindows:       ctxWindows,
+		ContextWindowSources: ctxSources,
+		SupportsTools:        supportsTools,
+		SupportsToolsByModel: modelTools,
 	}}
 }
 
@@ -1731,17 +1760,19 @@ func subscriptionEffectiveCostUSDPer1kTokens(baseCost float64, quotaPercentUsed 
 // is already specific enough that the legacy resolveExecuteRoute path applies.
 func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*RouteDecision, error) {
 	rr := RouteRequest{
-		Policy:        req.Policy,
-		Model:         req.Model,
-		Provider:      req.Provider,
-		Harness:       req.Harness,
-		Reasoning:     req.Reasoning,
-		Permissions:   req.Permissions,
-		CachePolicy:   req.CachePolicy,
-		MinPower:      req.MinPower,
-		MaxPower:      req.MaxPower,
-		Role:          req.Role,
-		CorrelationID: req.CorrelationID,
+		Policy:                req.Policy,
+		Model:                 req.Model,
+		Provider:              req.Provider,
+		Harness:               req.Harness,
+		Reasoning:             req.Reasoning,
+		Permissions:           req.Permissions,
+		CachePolicy:           req.CachePolicy,
+		MinPower:              req.MinPower,
+		MaxPower:              req.MaxPower,
+		EstimatedPromptTokens: req.EstimatedPromptTokens,
+		RequiresTools:         req.RequiresTools,
+		Role:                  req.Role,
+		CorrelationID:         req.CorrelationID,
 	}
 	dec, err := s.ResolveRoute(context.Background(), rr)
 	if err != nil {
@@ -1749,6 +1780,9 @@ func (s *service) resolveExecuteRouteWithEngine(req ServiceExecuteRequest) (*Rou
 			return nil, err
 		}
 		return nil, fmt.Errorf("ResolveRoute: %w", err)
+	}
+	if err := s.validateEngineResolvedExecuteDecision(req, dec); err != nil {
+		return nil, err
 	}
 	return dec, nil
 }

@@ -66,6 +66,41 @@ func TestRun_PassesHarnessPinIntoServiceRequest(t *testing.T) {
 	}
 }
 
+func TestBuildServiceExecuteRequest_HarnessPolicyLeavesModelAndProviderUnsetUnlessExplicit(t *testing.T) {
+	req := buildServiceExecuteRequest(serviceExecuteRequestParams{
+		Prompt:           "hello",
+		Harness:          "codex",
+		Policy:           "default",
+		SelectedProvider: "local",
+		RequestedModel:   "qwen3.6-27b",
+		ResolvedModel:    "Qwen3.6-27B-MLX-8bit",
+	})
+	if req.Harness != "codex" {
+		t.Fatalf("Harness=%q, want codex", req.Harness)
+	}
+	if req.Model != "" {
+		t.Fatalf("Model=%q, want empty so the service can resolve within codex", req.Model)
+	}
+	if req.Provider != "" {
+		t.Fatalf("Provider=%q, want empty so the service does not inherit the default local provider", req.Provider)
+	}
+
+	explicit := buildServiceExecuteRequest(serviceExecuteRequestParams{
+		Prompt:           "hello",
+		Harness:          "codex",
+		SelectedProvider: "openrouter",
+		ResolvedModel:    "gpt-5.4",
+		ExplicitProvider: true,
+		ExplicitModel:    true,
+	})
+	if explicit.Model != "gpt-5.4" {
+		t.Fatalf("explicit Model=%q, want gpt-5.4", explicit.Model)
+	}
+	if explicit.Provider != "openrouter" {
+		t.Fatalf("explicit Provider=%q, want openrouter", explicit.Provider)
+	}
+}
+
 func TestRunRejectsLegacyModelFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd := MountCLI(WithStdout(&stdout), WithStderr(&stderr))
