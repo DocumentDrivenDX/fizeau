@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -241,7 +242,9 @@ func collectLocalSignal(ctx context.Context, baseURL string, sig *Signal) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, aliveCheckTimeout)
 	defer cancel()
 
-	checkURL := baseURL + "/v1/models"
+	root := strings.TrimRight(baseURL, "/")
+	root = strings.TrimSuffix(root, "/v1")
+	checkURL := root + "/v1/models"
 	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, checkURL, nil) // #nosec G107
 	if err != nil {
 		return // StatusUnknown; bad URL

@@ -69,3 +69,24 @@ func TestWarmupCoalescesConcurrentRefreshes(t *testing.T) {
 	expected := filepath.Join(cache.Root, "runtime", "studio.json")
 	require.FileExists(t, expected)
 }
+
+func TestWarmupNormalizesOpenAICompatibleBaseURL(t *testing.T) {
+	cache := &discoverycache.Cache{Root: t.TempDir()}
+	var requests int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		atomic.AddInt32(&requests, 1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"warmup-model"}]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := runtimesignals.CollectInput{Type: "lmstudio", BaseURL: server.URL + "/v1"}
+	_, err := runtimesignals.Warmup(context.Background(), cache, "studio", cfg)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), atomic.LoadInt32(&requests), "warmup should request /v1/models, not /v1/v1/models")
+}

@@ -133,10 +133,8 @@ func discoverOpenAICompatibleProvider(ctx context.Context, providerName string, 
 func discoverOpenAICompatibleEndpoint(ctx context.Context, providerName, providerType string, endpoint modelDiscoveryEndpoint, apiKey string, ttl time.Duration, cache *discoverycache.Cache, opts AssembleOptions) providerDiscoveryResult {
 	src := discoverySource(endpointSourceName(providerName, endpoint.Name, endpoint.BaseURL, endpoint.ServerInstance), ttl, discoveryRefreshDeadlineHTTP)
 	refresher := func(refreshCtx context.Context) ([]byte, error) {
-		requestCtx := ctx
-		if requestCtx == nil {
-			requestCtx = refreshCtx
-		}
+		requestCtx, cancel := discoveryRequestContext(ctx, refreshCtx, opts.Refresh)
+		defer cancel()
 		ids, err := openaiadapter.DiscoverModels(requestCtx, strings.TrimRight(endpoint.BaseURL, "/"), apiKey)
 		if err != nil {
 			return nil, err
@@ -172,10 +170,8 @@ func discoverPropsProvider(ctx context.Context, providerName string, pc Provider
 	}
 	src := discoverySource(providerName+"-props", discoveryTTLHTTPLocal, discoveryRefreshDeadlineHTTP)
 	refresher := func(refreshCtx context.Context) ([]byte, error) {
-		requestCtx := ctx
-		if requestCtx == nil {
-			requestCtx = refreshCtx
-		}
+		requestCtx, cancel := discoveryRequestContext(ctx, refreshCtx, opts.Refresh)
+		defer cancel()
 		return fetchPropsDiscoveryPayload(requestCtx, firstBaseURL(pc))
 	}
 	switch opts.Refresh {
@@ -232,6 +228,19 @@ func fetchPropsDiscoveryPayload(ctx context.Context, baseURL string) ([]byte, er
 		ReasoningLevels: reasoningLevels,
 		Source:          "props:/props",
 	})
+}
+
+func discoveryRequestContext(parent, refreshCtx context.Context, mode RefreshMode) (context.Context, context.CancelFunc) {
+	if refreshCtx == nil {
+		refreshCtx = context.Background()
+	}
+	if mode == RefreshBackground || parent == nil {
+		return refreshCtx, func() {}
+	}
+	if deadline, ok := refreshCtx.Deadline(); ok {
+		return context.WithDeadline(parent, deadline)
+	}
+	return parent, func() {}
 }
 
 func parsePropsDiscovery(body []byte) ([]string, []string) {
