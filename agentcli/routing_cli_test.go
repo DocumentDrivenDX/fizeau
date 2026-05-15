@@ -231,9 +231,12 @@ func TestCLI_Run_ModelByModelName(t *testing.T) {
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
 	home := t.TempDir()
+	cacheDir := t.TempDir()
 
 	bragi := newCountedOpenAIServer(t, http.StatusOK, "bragi-runtime-model", "bragi ok")
 	bragi.setModels("qwen3.5-27b")
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("bragi", "bragi", bragi.baseURL(), ""), time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC), []string{"qwen3.5-27b"})
 
 	writeTempConfig(t, workDir, `
 providers:
@@ -256,7 +259,9 @@ default: bragi
 		ResolvedModel    string `json:"resolved_model"`
 	}
 
-	first := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "first request")
+	env := testEnvWithHome(home, map[string]string{"FIZEAU_CACHE_DIR": cacheDir})
+
+	first := runBuiltCLI(t, exe, workDir, env, "--json", "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "first request")
 	require.Equal(t, 0, first.exitCode, "stderr=%s", first.stderr)
 	var firstResult routingResult
 	require.NoError(t, json.Unmarshal([]byte(first.stdout), &firstResult), "stdout=%s", first.stdout)
@@ -277,7 +282,7 @@ default: bragi
 	assert.Equal(t, "qwen3.5-27b", firstEnd["requested_model"])
 	assert.Equal(t, "bragi", firstEnd["selected_provider"])
 
-	second := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "run", "second request")
+	second := runBuiltCLI(t, exe, workDir, env, "--json", "--work-dir", workDir, "run", "second request")
 	require.Equal(t, 0, second.exitCode, "stderr=%s", second.stderr)
 	var secondResult routingResult
 	require.NoError(t, json.Unmarshal([]byte(second.stdout), &secondResult), "stdout=%s", second.stdout)
@@ -371,7 +376,7 @@ providers:
     api_key: test
 `)
 
-	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "run", "--model", "qwen3.5-27b", "no failover")
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "run", "--provider", "bragi", "--model", "qwen3.5-27b", "no failover")
 	require.Equal(t, 1, res.exitCode, "stdout=%s stderr=%s", res.stdout, res.stderr)
 	assert.Contains(t, res.stderr, "agent: provider error")
 	assert.Equal(t, 1, badRequest.chatCallCount(), "400 is non-transient: runtime should fail immediately without retry")

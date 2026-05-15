@@ -263,7 +263,7 @@ func runWithOptions(opts Options) int {
 		Model:           *model,
 		AllowDeprecated: *allowDeprecatedModel,
 	}
-	delegateProviderSelection := shouldDelegateRunProviderSelection(cfg, *providerFlag, *harnessFlag, overrides)
+	delegateProviderSelection := shouldDelegateRunProviderSelection(cfg, runSubcommand, *providerFlag, *harnessFlag, overrides)
 	selection := delegatedRunProviderSelection(cfg, overrides)
 	var pc agentConfig.ProviderConfig
 	if !delegateProviderSelection {
@@ -891,6 +891,42 @@ func lookupReasoningMaxTokens(cfg *agentConfig.Config, model string) int {
 		return entry.ReasoningMaxTokens
 	}
 	return 0
+}
+
+func shouldDelegateRunProviderSelection(cfg *agentConfig.Config, runSubcommand bool, providerName, harnessName string, overrides agentConfig.ProviderOverrides) bool {
+	if strings.TrimSpace(providerName) != "" {
+		return false
+	}
+	if strings.TrimSpace(harnessName) != "" {
+		return true
+	}
+	if !runSubcommand {
+		return false
+	}
+	if strings.TrimSpace(overrides.Model) != "" {
+		return true
+	}
+	if cfg != nil {
+		if strings.TrimSpace(cfg.Routing.DefaultModel) != "" {
+			return true
+		}
+		if strings.TrimSpace(cfg.DefaultBackend) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func delegatedRunProviderSelection(cfg *agentConfig.Config, overrides agentConfig.ProviderOverrides) providerSelection {
+	routeKey := strings.TrimSpace(overrides.Model)
+	if routeKey == "" && cfg != nil {
+		routeKey = strings.TrimSpace(cfg.Routing.DefaultModel)
+	}
+	return providerSelection{
+		Route:          routeKey,
+		RequestedModel: routeKey,
+		ResolvedModel:  routeKey,
+	}
 }
 
 func resolveProviderForRun(cfg *agentConfig.Config, workDir, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, any, agentConfig.ProviderConfig, error) {

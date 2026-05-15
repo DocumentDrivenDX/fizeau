@@ -362,7 +362,7 @@ session_log_dir: sessions
 		return cmd.CombinedOutput()
 	}
 
-	out, err := run("--work-dir", workDir, "-p", "hello")
+	out, err := run("--work-dir", workDir, "--provider", "local", "-p", "hello")
 	require.NoError(t, err, string(out))
 	assert.Contains(t, string(out), "[success]")
 
@@ -424,12 +424,12 @@ providers:
 default: local
 `)
 
-	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model", "qwen-smart", "--reasoning", "8192")
+	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--provider", "local", "--model", "qwen-smart", "--reasoning", "8192")
 	require.NoError(t, err, string(out))
 	assert.Equal(t, "qwen-smart", fake.lastModel())
 	assert.Equal(t, 8192, fake.lastReasoningBudget())
 
-	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model", "qwen-smart", "--reasoning", "max")
+	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--provider", "local", "--model", "qwen-smart", "--reasoning", "max")
 	require.NoError(t, err, string(out))
 	assert.Equal(t, 32768, fake.lastReasoningBudget())
 }
@@ -458,7 +458,7 @@ providers:
 default: local
 `)
 
-			out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--model", "qwen-smart", "--reasoning", value)
+			out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--provider", "local", "--model", "qwen-smart", "--reasoning", value)
 			require.NoError(t, err, string(out))
 			assert.Equal(t, 0, fake.lastReasoningBudget())
 		})

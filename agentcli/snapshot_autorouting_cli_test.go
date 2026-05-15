@@ -96,7 +96,7 @@ func TestSnapshotAutoroutingCLI(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(out.stdout), &parsed), "stdout=%s", out.stdout)
 	require.NotNil(t, parsed.Winner)
-	require.Equal(t, "local-stale", parsed.Winner.Provider)
+	require.Equal(t, "local-stale", parsed.Winner.Provider, "stdout=%s", out.stdout)
 	require.Equal(t, "gpt-5.4-mini", parsed.Winner.Model)
 	require.False(t, parsed.Winner.ActualCashSpend)
 	require.Equal(t, "local-stale-1", parsed.SelectedServerInstance)

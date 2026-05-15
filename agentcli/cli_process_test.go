@@ -173,7 +173,7 @@ default: local
 `)
 
 	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil),
-		"--work-dir", workDir, "--max-iter", "1", "-p", "do something")
+		"--work-dir", workDir, "--provider", "local", "--max-iter", "1", "-p", "do something")
 	assert.Equal(t, 0, res.exitCode, "iteration_limit should exit 0; stderr=%s", res.stderr)
 	assert.Contains(t, res.stderr, "[iteration_limit]")
 }
@@ -194,7 +194,7 @@ providers:
 default: local
 `)
 
-	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "-p", "hello")
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "--provider", "local", "-p", "hello")
 	require.Equal(t, 0, res.exitCode, "stderr=%s", res.stderr)
 	assert.NotContains(t, res.stdout, "[success] tokens:")
 	assert.Contains(t, res.stderr, "[success] tokens:")
@@ -217,7 +217,7 @@ providers:
 default: local
 `)
 
-	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "-p", "hello")
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "--provider", "local", "-p", "hello")
 	require.Equal(t, 0, res.exitCode, "stderr=%s", res.stderr)
 	assert.Contains(t, res.stderr, "[success] tokens:")
 
@@ -253,7 +253,7 @@ providers:
 default: local
 `)
 
-	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "-p", "hello")
+	res := runBuiltCLI(t, exe, workDir, testEnvWithHome(home, nil), "--json", "--work-dir", workDir, "--provider", "local", "-p", "hello")
 	require.Equal(t, 0, res.exitCode, "stderr=%s", res.stderr)
 	assert.Contains(t, res.stderr, "[success] tokens:")
 
@@ -320,13 +320,13 @@ default: local
 		"FIZEAU_MODEL":    "env-model",
 	})
 
-	first := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "-p", "first")
+	first := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "--provider", "local", "-p", "first")
 	require.Equal(t, 0, first.exitCode, "stderr=%s", first.stderr)
 	assert.Equal(t, "env-model", envFake.lastModel())
 	assert.Equal(t, "", projectFake.lastModel())
 	assert.Equal(t, "", globalFake.lastModel())
 
-	second := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "--model", "cli-model", "-p", "second")
+	second := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "--provider", "local", "--model", "cli-model", "-p", "second")
 	require.Equal(t, 0, second.exitCode, "stderr=%s", second.stderr)
 	assert.Equal(t, "cli-model", envFake.lastModel(), "CLI --model should override env/config model")
 }
@@ -423,7 +423,7 @@ default: local
 session_log_dir: .fizeau/sessions
 `)
 
-	cmd, _, stderr := runBuiltCLIAsync(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "-p", "slow request")
+	cmd, _, stderr := runBuiltCLIAsync(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "--provider", "local", "-p", "slow request")
 	time.Sleep(200 * time.Millisecond)
 	require.NoError(t, cmd.Process.Signal(os.Interrupt))
 	err := cmd.Wait()

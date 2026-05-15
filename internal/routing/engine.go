@@ -1558,14 +1558,12 @@ func resolveModel(h HarnessEntry, p ProviderEntry, req Request, in Inputs) (stri
 	// 1. Exact pin.
 	if req.Model != "" {
 		// If the provider has discovery data, try fuzzy matching to map the
-		// canonical/short ref to the provider-native ID. Treat misses as
-		// advisory rather than a hard gate: cached discovery can be stale or
-		// incomplete, while dispatchability failures are recorded separately.
+		// canonical/short ref to the provider-native ID.
 		if len(p.DiscoveredIDs) > 0 {
 			if matched := FuzzyMatch(req.Model, p.DiscoveredIDs); matched != "" {
 				return matched, ""
 			}
-			return req.Model, ""
+			return "", fmt.Sprintf("model %q not on provider %q", req.Model, p.Name)
 		}
 		if p.DiscoveryAttempted {
 			return "", fmt.Sprintf("provider %q has no live discovered models", p.Name)

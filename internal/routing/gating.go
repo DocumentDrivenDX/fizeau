@@ -139,6 +139,9 @@ func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model s
 	}
 	eligibility, ok := lookup(model)
 	if !ok {
+		if req.MinPower > 0 || req.MaxPower > 0 {
+			return fmt.Sprintf("model %q has no catalog power metadata", model), FilterReasonPowerMissing
+		}
 		return "", FilterReasonEligible
 	}
 	if eligibility.ExactPinOnly {
@@ -146,7 +149,7 @@ func CheckPowerEligibility(lookup func(string) (ModelEligibility, bool), model s
 	}
 	if !eligibility.AutoRoutable {
 		if eligibility.Power <= 0 {
-			return "", FilterReasonEligible
+			return fmt.Sprintf("model %q has no catalog power metadata", model), FilterReasonPowerMissing
 		}
 		return fmt.Sprintf("model %q is not auto-routable", model), FilterReasonNotAutoRoutable
 	}
