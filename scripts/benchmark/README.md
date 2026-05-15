@@ -54,6 +54,21 @@ Provider keys are required only for selected lanes:
 
 Local provider lanes default to non-empty placeholder keys for local endpoints.
 
+## Benchmark Workbench Browser Smoke
+
+Use the checked-in browser regression command when changing the benchmark
+workbench page, its data artifacts, or the static Hugo wiring:
+
+```bash
+make benchmark-workbench-smoke
+```
+
+The command builds the website, opens `/benchmarks/explorer/` in headless
+Chromium, waits for DuckDB/Perspective to initialize, and asserts the row
+count, filters, pairwise comparison table, task links, and default hidden
+`terminalbench_task_url` column. `hugo` must be on `PATH`; Playwright Chromium
+is installed automatically on first run.
+
 ## Subsets, Recipes, and Phases (deprecated)
 
 The sweep plan (`scripts/benchmark/terminalbench-2-1-sweep.yaml`) declares two
