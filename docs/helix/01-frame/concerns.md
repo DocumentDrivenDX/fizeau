@@ -7,11 +7,15 @@
 | `all` | Every bead |
 | `lib` | Core library packages (agent loop, tools, providers, logging) |
 | `cli` | Standalone CLI binary |
+| `ui` | Hugo microsite, benchmark workbench browser assets, and workbench smoke coverage |
+| `data` | Benchmark data builder scripts, emitted static data artifacts, and schema/evidence plumbing |
 
 ## Active Concerns
 
 - **go-std** — Go + Standard Toolchain (areas: all)
 - **testing** — Multi-layer testing with property-based, fuzz, and E2E coverage (areas: all)
+- **hugo-hextra** — Hugo + Hextra microsite surface (areas: ui)
+- **python-uv** — Python benchmark-data pipeline execution discipline (areas: data)
 
 ## Project Overrides
 
@@ -122,3 +126,57 @@
   types.
 - **Performance ratchets**: Track agent loop overhead (<1ms per iteration
   excluding model inference) and tool execution overhead via benchmarks.
+- **Benchmark workbench verification**: When a change touches both the
+  browser workbench (`website/`) and the benchmark data builder
+  (`scripts/website/`), run the local gates from both `hugo-hextra` and
+  `python-uv` in the same pass so the generated data, bundled assets, and
+  rendered Hugo page stay aligned.
+
+### hugo-hextra
+
+- **Theme version**: Hextra v0.12.1 pinned in `website/go.mod`.
+- **Hugo version**: Hugo extended 0.160.0 pinned in
+  `.github/workflows/ci.yml` and `.github/workflows/website.yml`.
+- **Workbench shell**: `website/content/benchmarks/explorer/_index.md`
+  owns the benchmark workbench page inside the Hugo/Hextra docs shell;
+  keep Hextra for navigation, docs structure, and global styling
+  primitives.
+- **Custom analytical UI allowance**: The benchmark workbench may use
+  custom CSS and JS under `website/assets/` when Hextra utilities alone
+  cannot express dense analytical controls, Perspective grid wiring, or
+  pairwise comparison tables. Preserve the scientific-instrument rules in
+  `website/DESIGN.md`; do not fork the broader docs shell.
+- **Bundle entry point**: The browser module source lives at
+  `website/assets/js/benchmark-workbench.js` and is bundled via the
+  repo-root `npm run build:benchmark-workbench` script into
+  `website/static/js/benchmark-workbench.js`.
+- **Expected local quality gates**: UI-facing benchmark workbench changes
+  should run `npm run build:benchmark-workbench`, `hugo --source website`,
+  and `make benchmark-workbench-smoke`.
+
+### python-uv
+
+- **Execution model override**: Activate the concern for benchmark data
+  work, but override the library default package layout. This repo does
+  not maintain a `pyproject.toml`/`uv sync` Python application for the
+  workbench pipeline. The active builder is the standalone script
+  `scripts/website/build-benchmark-data.py`, with dependencies listed in
+  `scripts/website/requirements.txt`.
+- **uv usage**: Preferred ephemeral execution is
+  `uv run --with PyYAML --with pyarrow --with duckdb python scripts/website/build-benchmark-data.py`.
+  `make benchmark-data` is also valid when the local environment already
+  provides `.venv-report/bin/python` or an equivalent Python with those
+  packages installed.
+- **Test framework override**: Builder regression coverage is the checked-in
+  stdlib `unittest` module at `scripts/website/test_build_benchmark_data.py`,
+  not a repo-wide `pytest` package layout.
+- **Published artifacts**: Benchmark data changes are responsible for the
+  normalized outputs under `website/static/data/`, especially
+  `cells.parquet`, `task-combinations.parquet`, and
+  `benchmark-data-manifest.json`.
+- **Expected local quality gates**: Data-pipeline changes should run
+  `python3 -m unittest scripts.website.test_build_benchmark_data`,
+  `python3 -m compileall -q scripts/website/build-benchmark-data.py`, and
+  regenerate or verify the data feed with
+  `uv run --with PyYAML --with pyarrow --with duckdb python scripts/website/build-benchmark-data.py`
+  or `make benchmark-data`.
