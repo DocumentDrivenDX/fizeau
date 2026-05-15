@@ -14,6 +14,7 @@ import (
 	"github.com/easel/fizeau/internal/modeleligibility"
 	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/provider/utilization"
+	"github.com/easel/fizeau/internal/routehealth"
 	"github.com/easel/fizeau/internal/routing"
 	"github.com/easel/fizeau/internal/serverinstance"
 )
@@ -501,10 +502,7 @@ func routeUtilizationStateFromSample(sample utilization.EndpointUtilization) Rou
 // constants are defined to share string values with the public surface, so
 // this is a one-line passthrough — there is no string parsing.
 func publicFilterReason(c routing.Candidate) string {
-	if c.Eligible {
-		return ""
-	}
-	return string(c.FilterReason)
+	return routehealth.FilterReason(c)
 }
 
 // capabilityScoreForCostClass maps the harness cost class to a coarse
@@ -534,42 +532,7 @@ func capabilityScoreForCostClass(class string) float64 {
 // the entire remaining ladder is also empty. Returns (false, _, _) when
 // escalation does not apply (hard pin error, policy not in ladder, etc.).
 func escalatePolicyLadder(req routing.Request, in routing.Inputs, origErr error, displayPolicy string) (bool, *routing.Decision, error) {
-	if origErr == nil || req.Policy == "" {
-		return false, nil, nil
-	}
-	if !shouldEscalateOnError(origErr) {
-		return false, nil, nil
-	}
-	startIdx := -1
-	for i, p := range routing.PolicyEscalationLadder {
-		if p == req.Policy {
-			startIdx = i
-			break
-		}
-	}
-	if startIdx < 0 {
-		return false, nil, nil
-	}
-	for i := startIdx + 1; i < len(routing.PolicyEscalationLadder); i++ {
-		probe := req
-		probe.Policy = routing.PolicyEscalationLadder[i]
-		dec, err := routing.Resolve(probe, in)
-		if err == nil && dec != nil && dec.Harness != "" {
-			return true, dec, nil
-		}
-	}
-	starting := displayPolicy
-	if starting == "" {
-		starting = req.Policy
-	}
-	return true, nil, &routing.ErrNoLiveProvider{
-		PromptTokens:   req.EstimatedPromptTokens,
-		RequiresTools:  req.RequiresTools,
-		StartingPolicy: starting,
-		MinPower:       req.MinPower,
-		MaxPower:       req.MaxPower,
-		AllowLocal:     req.AllowLocal,
-	}
+	return routehealth.EscalatePolicyLadder(req, in, origErr, displayPolicy, shouldEscalateOnError)
 }
 
 // shouldEscalateOnError gates ladder escalation to "no eligible candidate"
@@ -597,7 +560,7 @@ func shouldEscalateOnError(err error) bool {
 	if errors.As(err, &policyErr) {
 		return false
 	}
-	return true
+	return routehealth.ShouldEscalateOnError(err)
 }
 
 func publicRoutingError(err error, candidates []RouteCandidate, requestedPolicy ...string) error {
@@ -671,58 +634,16 @@ func (s *service) applyRouteAttemptCooldowns(in *routing.Inputs) {
 	}
 	ttl := s.routeAttemptTTL()
 	records := s.activeRouteAttempts(time.Now(), ttl)
-	if len(records) == 0 {
-		return
-	}
-	if in.ProviderCooldowns == nil {
-		in.ProviderCooldowns = make(map[string]time.Time)
-	}
-	if in.CooldownDuration <= 0 {
-		in.CooldownDuration = ttl
-	}
-	for _, record := range records {
-		if record.Key.Provider != "" {
-			existing, ok := in.ProviderCooldowns[record.Key.Provider]
-			if !ok || record.RecordedAt.After(existing) {
-				in.ProviderCooldowns[record.Key.Provider] = record.RecordedAt
-			}
-			// FEAT-004 AC-28: route-attempt failures with dial-class errors
-			// (host unreachable, not a stream-level glitch) are dispatchability
-			// failures, not just non-fatal health risk. Promote them to
-			// ProviderUnreachable so the engine hard-gates on the next call
-			// without waiting for the snapshot's background refresh to catch
-			// up. Non-dial failures (5xx mid-stream, 4xx, context canceled)
-			// stay as soft demotion to preserve sticky-lease across single
-			// transient hiccups.
-			if isDispatchabilityFailure(record.Error) {
-				if in.ProviderUnreachable == nil {
-					in.ProviderUnreachable = make(map[string]time.Time)
-				}
-				existing, ok := in.ProviderUnreachable[record.Key.Provider]
-				if !ok || record.RecordedAt.After(existing) {
-					in.ProviderUnreachable[record.Key.Provider] = record.RecordedAt
-				}
-			}
-		}
-		if record.Key.Provider == "" && record.Key.Harness != "" {
-			for i := range in.Harnesses {
-				if in.Harnesses[i].Name == record.Key.Harness {
-					in.Harnesses[i].InCooldown = true
-				}
-			}
-		}
-	}
+	routehealth.ApplyAttemptCooldowns(in, records, ttl)
 }
 
 func (s *service) routeAttemptTTL() time.Duration {
+	var ttl time.Duration
 	if s.opts.ServiceConfig == nil {
-		return defaultRouteAttemptCooldown
+		return routehealth.CooldownTTL(ttl)
 	}
-	ttl := s.opts.ServiceConfig.HealthCooldown()
-	if ttl <= 0 {
-		return defaultRouteAttemptCooldown
-	}
-	return ttl
+	ttl = s.opts.ServiceConfig.HealthCooldown()
+	return routehealth.CooldownTTL(ttl)
 }
 
 // buildRoutingInputs assembles routing.Inputs from the service's registry
@@ -836,48 +757,12 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	}, snapshot
 }
 
-// dispatchabilityFailureSubstrings matches errors that indicate the upstream
-// host is unreachable or the provider is currently unusable: TCP-level dial
-// failures, unrouted DNS, and HTTP 5xx gateway statuses (502/503/504/Bad
-// Gateway). Treated as dispatchability failures per FEAT-004 AC-28. Both
-// snapshot discovery errors and route-attempt record errors are classified
-// through this same predicate.
-//
-// Excluded on purpose:
-//   - 429 / rate-limit (different state machine, ProviderQuotaExhaustedUntil)
-//   - "context canceled" (operator interrupt; not a provider signal)
-//   - "provider request timeout: wall-clock" (could mean slow but live host)
-//   - generic 4xx (auth, validation — surfaces via FilterReasonAuth elsewhere)
-var dispatchabilityFailureSubstrings = []string{
-	"dial tcp",
-	"connection refused",
-	"no route to host",
-	"network is unreachable",
-	"i/o timeout",
-	"no such host",
-	"502 bad gateway",
-	"503 service unavailable",
-	"504 gateway timeout",
-	" 502 ", // bare status code form (e.g. `: 502 Bad Gateway`)
-	" 503 ",
-	" 504 ",
-}
-
 // isSnapshotDialFailure preserved as a back-compat alias for the v0.13.0
 // snapshot-side caller. Both now share the same broader predicate.
-func isSnapshotDialFailure(errMsg string) bool { return isDispatchabilityFailure(errMsg) }
+func isSnapshotDialFailure(errMsg string) bool { return routehealth.IsDispatchabilityFailure(errMsg) }
 
 func isDispatchabilityFailure(errMsg string) bool {
-	if errMsg == "" {
-		return false
-	}
-	lower := strings.ToLower(errMsg)
-	for _, pat := range dispatchabilityFailureSubstrings {
-		if strings.Contains(lower, pat) {
-			return true
-		}
-	}
-	return false
+	return routehealth.IsDispatchabilityFailure(errMsg)
 }
 
 // providerCooldownsFromSnapshotErrors walks snapshot.Sources and returns a map
@@ -902,40 +787,15 @@ func providerCooldownsFromSnapshotErrors(snapshot modelsnapshot.ModelSnapshot, c
 	if len(providerNames) == 0 {
 		return nil
 	}
-	// Sort longest first so "rg-bragi-club-3090" wins over a hypothetical
-	// "rg-bragi" prefix when both are configured.
-	sort.SliceStable(providerNames, func(i, j int) bool {
-		return len(providerNames[i]) > len(providerNames[j])
-	})
-
-	cooldowns := make(map[string]time.Time)
-	for srcName, meta := range snapshot.Sources {
-		if !isSnapshotDialFailure(meta.Error) {
-			continue
-		}
-		// Use LastRefreshedAt when present (when the cache holds the failure
-		// record itself); otherwise treat as "fresh enough" — the discovery
-		// only emits an error when it tried recently.
-		failedAt := meta.LastRefreshedAt
-		if failedAt.IsZero() {
-			failedAt = now
-		}
-		if ttl > 0 && now.Sub(failedAt) >= ttl {
-			continue
-		}
-		for _, name := range providerNames {
-			if name == srcName || strings.HasPrefix(srcName, name+"-") {
-				if existing, ok := cooldowns[name]; !ok || failedAt.After(existing) {
-					cooldowns[name] = failedAt
-				}
-				break
-			}
-		}
+	sources := make([]routehealth.SnapshotSource, 0, len(snapshot.Sources))
+	for name, meta := range snapshot.Sources {
+		sources = append(sources, routehealth.SnapshotSource{
+			Name:            name,
+			Error:           meta.Error,
+			LastRefreshedAt: meta.LastRefreshedAt,
+		})
 	}
-	if len(cooldowns) == 0 {
-		return nil
-	}
-	return cooldowns
+	return routehealth.ProviderCooldownsFromSnapshotErrors(sources, providerNames, now, ttl)
 }
 
 // ServiceConfigSource is the minimal interface providerCooldownsFromSnapshotErrors
@@ -1817,38 +1677,41 @@ func providerPreferenceForPolicy(cat *modelcatalog.Catalog, policy string) (stri
 }
 
 func routePowerPolicyForRequest(cat *modelcatalog.Catalog, req RouteRequest) RoutePowerPolicy {
-	policy := RoutePowerPolicy{
-		PolicyName: req.Policy,
-		MinPower:   req.MinPower,
-		MaxPower:   req.MaxPower,
-	}
-	if req.Policy == "" || cat == nil {
-		return policy
-	}
-	policyEntry, policyName, ok := policyForName(cat, req.Policy)
-	if !ok {
-		return policy
-	}
-	policy.PolicyName = policyName
-	if policyEntry.MinPower > 0 {
-		if policy.MinPower == 0 || policyEntry.MinPower > policy.MinPower {
-			policy.MinPower = policyEntry.MinPower
+	internal := routehealth.EffectivePowerPolicy(routehealth.PowerRequest{
+		Policy:   req.Policy,
+		Model:    req.Model,
+		MinPower: req.MinPower,
+		MaxPower: req.MaxPower,
+	}, func(name string) (routehealth.PolicySpec, bool) {
+		if cat == nil {
+			return routehealth.PolicySpec{}, false
 		}
-	}
-	if policyEntry.MaxPower > 0 {
-		if policy.MaxPower == 0 || policyEntry.MaxPower < policy.MaxPower {
-			policy.MaxPower = policyEntry.MaxPower
+		policy, policyName, ok := policyForName(cat, name)
+		if !ok {
+			return routehealth.PolicySpec{}, false
 		}
+		return routehealth.PolicySpec{
+			Name:     policyName,
+			MinPower: policy.MinPower,
+			MaxPower: policy.MaxPower,
+		}, true
+	})
+	return RoutePowerPolicy{
+		PolicyName: internal.PolicyName,
+		MinPower:   internal.MinPower,
+		MaxPower:   internal.MaxPower,
 	}
-	return policy
 }
 
 func routePowerBoundsForRequest(req RouteRequest, policy RoutePowerPolicy) (int, int) {
-	// Exact model pins remain exact model identity pins. The policy still
-	// reports its effective power policy for evidence, but it does not widen
-	// or override the caller's model.
-	if req.Model != "" {
-		return req.MinPower, req.MaxPower
-	}
-	return policy.MinPower, policy.MaxPower
+	return routehealth.PowerBoundsForRequest(routehealth.PowerRequest{
+		Policy:   req.Policy,
+		Model:    req.Model,
+		MinPower: req.MinPower,
+		MaxPower: req.MaxPower,
+	}, routehealth.PowerPolicy{
+		PolicyName: policy.PolicyName,
+		MinPower:   policy.MinPower,
+		MaxPower:   policy.MaxPower,
+	})
 }
