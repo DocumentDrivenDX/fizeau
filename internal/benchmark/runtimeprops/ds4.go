@@ -6,16 +6,14 @@ package runtimeprops
 // is vidar:1236. Tested endpoints at time of writing:
 //
 //   GET /v1/models  — OpenAI-compatible models list (confirmed returns model id)
-//   GET /props      — llama.cpp-compatible props (TODO: confirm on live ds4 server)
+//   GET /props      — confirmed on live vidar:1236; exposes model.mtp,
+//                     model.mtp_draft_tokens, runtime.ctx_size, and sampling
 //   GET /health     — health check (TODO: confirm response shape)
 //   GET /v1/system_info — (TODO: unverified; may not exist on ds4)
 //
 // The extractor tries /props first (richest if supported), then falls back to
-// /v1/models. MTP is detected from /props if the server exposes it.
-//
-// TODO(fizeau-c12e6241): Verify /props and /health endpoint shapes against the
-// live vidar:1236 ds4 server. If /props is not supported, remove that branch.
-// Also verify whether ds4 exposes MTP status in its API response.
+// /v1/models. MTP is detected from /props model.mtp; there is no separate
+// Fizeau env/request toggle for the ds4 benchmark lane.
 
 import (
 	"context"
@@ -40,36 +38,90 @@ func extractDS4(ctx context.Context, lane LaneInfo) (evidence.RuntimeProps, erro
 	rawData := map[string]any{}
 
 	// Try /props first (llama.cpp-compatible; may be present on ds4).
-	// TODO: confirm this endpoint exists on the live ds4 server at vidar:1236.
 	propsURL := baseNoV1 + "/props"
 	if raw, err := fetchJSON(ctx, propsURL); err == nil {
 		rawData["props"] = raw
-		// Parse sampling defaults and context if present.
 		var props struct {
+			Server struct {
+				Name string `json:"name"`
+			} `json:"server"`
+			Model struct {
+				ID             string `json:"id"`
+				MTP            *bool  `json:"mtp,omitempty"`
+				MTPDraftTokens *int   `json:"mtp_draft_tokens,omitempty"`
+			} `json:"model"`
+			Runtime struct {
+				CtxSize *int `json:"ctx_size,omitempty"`
+			} `json:"runtime"`
+			Sampling struct {
+				Defaults struct {
+					Temperature *float64 `json:"temperature,omitempty"`
+					TopP        *float64 `json:"top_p,omitempty"`
+					TopK        *int     `json:"top_k,omitempty"`
+				} `json:"defaults"`
+			} `json:"sampling"`
 			DefaultGenerationSettings struct {
-				NCtx        int     `json:"n_ctx"`
-				Temperature float64 `json:"temperature"`
-				TopP        float64 `json:"top_p"`
-				TopK        int     `json:"top_k"`
+				NCtx        *int     `json:"n_ctx,omitempty"`
+				Temperature *float64 `json:"temperature,omitempty"`
+				TopP        *float64 `json:"top_p,omitempty"`
+				TopK        *int     `json:"top_k,omitempty"`
 			} `json:"default_generation_settings"`
-			BuildInfo string `json:"build_info"`
-			// DS4 may expose MTP state here — TODO: verify field name.
-			MTPEnabled *bool `json:"mtp_enabled,omitempty"`
+			BuildInfo  string `json:"build_info"`
+			MTPEnabled *bool  `json:"mtp_enabled,omitempty"`
 		}
 		if b, _ := json.Marshal(raw); b != nil {
 			_ = json.Unmarshal(b, &props)
 		}
+		if props.Model.ID != "" {
+			p.BaseModel = props.Model.ID
+		}
 		if props.BuildInfo != "" {
 			p.BuildInfo = props.BuildInfo
 		}
-		if props.DefaultGenerationSettings.NCtx > 0 {
-			p.MaxContext = ptrInt(props.DefaultGenerationSettings.NCtx)
+		switch {
+		case props.Runtime.CtxSize != nil && *props.Runtime.CtxSize > 0:
+			p.MaxContext = props.Runtime.CtxSize
+		case props.DefaultGenerationSettings.NCtx != nil && *props.DefaultGenerationSettings.NCtx > 0:
+			p.MaxContext = props.DefaultGenerationSettings.NCtx
 		}
-		if props.MTPEnabled != nil {
+		switch {
+		case props.Model.MTP != nil:
+			p.MTPEnabled = props.Model.MTP
+		case props.MTPEnabled != nil:
 			p.MTPEnabled = props.MTPEnabled
-			if *props.MTPEnabled {
-				p.DraftMode = "mtp"
-			}
+		}
+		if props.Model.MTPDraftTokens != nil && *props.Model.MTPDraftTokens > 0 {
+			p.SpeculativeN = props.Model.MTPDraftTokens
+		}
+		if p.MTPEnabled != nil && *p.MTPEnabled {
+			p.DraftMode = "mtp"
+		}
+
+		samplingDefaults := evidence.SamplingDefaults{}
+		hasSamplingDefaults := false
+		if props.Sampling.Defaults.Temperature != nil {
+			samplingDefaults.Temperature = props.Sampling.Defaults.Temperature
+			hasSamplingDefaults = true
+		} else if props.DefaultGenerationSettings.Temperature != nil {
+			samplingDefaults.Temperature = props.DefaultGenerationSettings.Temperature
+			hasSamplingDefaults = true
+		}
+		if props.Sampling.Defaults.TopP != nil {
+			samplingDefaults.TopP = props.Sampling.Defaults.TopP
+			hasSamplingDefaults = true
+		} else if props.DefaultGenerationSettings.TopP != nil {
+			samplingDefaults.TopP = props.DefaultGenerationSettings.TopP
+			hasSamplingDefaults = true
+		}
+		if props.Sampling.Defaults.TopK != nil {
+			samplingDefaults.TopK = props.Sampling.Defaults.TopK
+			hasSamplingDefaults = true
+		} else if props.DefaultGenerationSettings.TopK != nil {
+			samplingDefaults.TopK = props.DefaultGenerationSettings.TopK
+			hasSamplingDefaults = true
+		}
+		if hasSamplingDefaults {
+			p.SamplingDefaults = &samplingDefaults
 		}
 	}
 

@@ -273,6 +273,45 @@ func TestLoadSweepPlanHasAllLanes(t *testing.T) {
 	}
 }
 
+func TestLoadSweepPlanDS4MTPLaneWiring(t *testing.T) {
+	plan, err := loadSweepPlan(sweepPlanPath(t))
+	if err != nil {
+		t.Fatalf("loadSweepPlan: %v", err)
+	}
+
+	lane := sweepLaneMap(plan)["fiz-vidar-ds4-mtp"]
+	if lane == nil {
+		t.Fatal("lane fiz-vidar-ds4-mtp not found in sweep plan")
+	}
+	if _, ok := lane.FizeauEnv["FIZEAU_DS4_MTP"]; ok {
+		t.Fatal("fiz-vidar-ds4-mtp still exposes placeholder FIZEAU_DS4_MTP env wiring")
+	}
+
+	for _, alias := range []string{"vidar-ds4-mtp", "ds4-mtp"} {
+		if got := plan.LaneAliases[alias]; got != "fiz-vidar-ds4-mtp" {
+			t.Errorf("lane alias %s = %q, want fiz-vidar-ds4-mtp", alias, got)
+		}
+	}
+
+	for _, recipeID := range []string{"timing-baseline", "or-passing", "tb21-all"} {
+		found := false
+		for _, recipe := range plan.Recipes {
+			if recipe.ID != recipeID {
+				continue
+			}
+			for _, laneID := range recipe.Lanes {
+				if laneID == "fiz-vidar-ds4-mtp" {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Errorf("recipe %s does not include fiz-vidar-ds4-mtp", recipeID)
+		}
+	}
+}
+
 // TestLoadSweepPlanResourceGroupsAllPresent verifies all resource groups parse
 // with sensible max_concurrency values.
 func TestLoadSweepPlanResourceGroupsAllPresent(t *testing.T) {

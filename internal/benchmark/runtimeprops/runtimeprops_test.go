@@ -174,11 +174,21 @@ func TestExtractVLLM_NoServerInfo(t *testing.T) {
 
 func TestExtractDS4(t *testing.T) {
 	propsResp := map[string]any{
-		"default_generation_settings": map[string]any{
-			"n_ctx": 65536,
+		"model": map[string]any{
+			"id":               "deepseek-v4-flash",
+			"mtp":              true,
+			"mtp_draft_tokens": 2,
 		},
-		"build_info":  "ds4-v1.0",
-		"mtp_enabled": true,
+		"runtime": map[string]any{
+			"ctx_size": 393216,
+		},
+		"sampling": map[string]any{
+			"defaults": map[string]any{
+				"temperature": 1.0,
+				"top_p":       1.0,
+				"top_k":       0,
+			},
+		},
 	}
 	modelsResp := map[string]any{
 		"data": []any{
@@ -213,14 +223,29 @@ func TestExtractDS4(t *testing.T) {
 	if props.BaseModel != "deepseek-v4-flash" {
 		t.Errorf("base_model = %q, want deepseek-v4-flash", props.BaseModel)
 	}
-	if props.MaxContext == nil || *props.MaxContext != 65536 {
-		t.Errorf("max_context = %v, want 65536", props.MaxContext)
+	if props.MaxContext == nil || *props.MaxContext != 393216 {
+		t.Errorf("max_context = %v, want 393216", props.MaxContext)
 	}
 	if props.MTPEnabled == nil || !*props.MTPEnabled {
 		t.Error("mtp_enabled should be true")
 	}
 	if props.DraftMode != "mtp" {
 		t.Errorf("draft_mode = %q, want mtp", props.DraftMode)
+	}
+	if props.SpeculativeN == nil || *props.SpeculativeN != 2 {
+		t.Errorf("speculative_n = %v, want 2", props.SpeculativeN)
+	}
+	if props.SamplingDefaults == nil {
+		t.Fatal("sampling_defaults is nil, want ds4 defaults from /props")
+	}
+	if props.SamplingDefaults.Temperature == nil || *props.SamplingDefaults.Temperature != 1.0 {
+		t.Errorf("temperature = %v, want 1.0", props.SamplingDefaults.Temperature)
+	}
+	if props.SamplingDefaults.TopP == nil || *props.SamplingDefaults.TopP != 1.0 {
+		t.Errorf("top_p = %v, want 1.0", props.SamplingDefaults.TopP)
+	}
+	if props.SamplingDefaults.TopK == nil || *props.SamplingDefaults.TopK != 0 {
+		t.Errorf("top_k = %v, want 0", props.SamplingDefaults.TopK)
 	}
 }
 

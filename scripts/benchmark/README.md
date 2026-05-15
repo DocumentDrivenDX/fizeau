@@ -32,6 +32,7 @@ Short lane aliases are data-driven from `lane_aliases:` in
 - `sindri-vllm` -> `fiz-sindri-vllm-qwen3-6-27b`
 - `vidar` -> `fiz-vidar-omlx-qwen3-6-27b`
 - `vidar-ds4` -> `fiz-vidar-ds4`
+- `ds4-mtp` -> `fiz-vidar-ds4-mtp`
 - `vidar-ds4-mtp` -> `fiz-vidar-ds4-mtp`
 
 ## Authoring Lanes
@@ -52,7 +53,6 @@ go run ./cmd/bench lanes clone \
   --recipes timing-baseline,or-passing,tb21-all \
   --aliases vidar-ds4-mtp,ds4-mtp \
   --quant-label ds4-native-bf16-mtp \
-  --env FIZEAU_DS4_MTP=true \
   --metadata mtp=enabled \
   --resolved-at 2026-05-15 \
   --snapshot-suffix " | mtp=enabled" \
@@ -61,6 +61,10 @@ go run ./cmd/bench lanes clone \
 
 Drop `--dry-run` to write the files. If you already built the helper, replace
 `go run ./cmd/bench` with `fiz-bench`.
+
+For ds4 specifically, MTP is a server/model property, not a Fizeau env knob:
+the live `GET /props` capture reports `model.mtp=true`, and the benchmark
+runtime-props extractor carries that into each cell's evidence.
 
 ## Prerequisites
 
