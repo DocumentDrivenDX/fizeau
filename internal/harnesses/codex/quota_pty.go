@@ -47,17 +47,17 @@ func WithQuotaPTYCassetteDir(dir string) QuotaPTYOption {
 	}
 }
 
-func ReadCodexQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) ([]harnesses.QuotaWindow, error) {
+func readCodexQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) ([]harnesses.QuotaWindow, error) {
 	windows, _, err := captureCodexQuotaViaPTY(context.Background(), timeout, opts...)
 	return windows, err
 }
 
-func RefreshCodexQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) (CodexQuotaSnapshot, error) {
+func refreshCodexQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) (codexQuotaSnapshot, error) {
 	windows, _, err := captureCodexQuotaViaPTY(context.Background(), timeout, opts...)
 	if err != nil {
-		return CodexQuotaSnapshot{}, err
+		return codexQuotaSnapshot{}, err
 	}
-	return CodexQuotaSnapshot{
+	return codexQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Windows:    windows,
 		Source:     "pty",
@@ -65,7 +65,7 @@ func RefreshCodexQuotaViaPTY(timeout time.Duration, opts ...QuotaPTYOption) (Cod
 	}, nil
 }
 
-func ReadCodexQuotaFromCassette(dir string) ([]harnesses.QuotaWindow, error) {
+func readCodexQuotaFromCassette(dir string) ([]harnesses.QuotaWindow, error) {
 	reader, err := cassette.Open(dir)
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ func captureCodexQuotaViaPTY(ctx context.Context, timeout time.Duration, opts ..
 }
 
 func readCodexAccountOrNil() *harnesses.AccountInfo {
-	account, _ := ReadCodexAccount()
+	account, _ := readCodexAccount()
 	return account
 }
 
@@ -149,7 +149,7 @@ func quotaRecord(windows []harnesses.QuotaWindow) cassette.QuotaRecord {
 	}
 	metadata := map[string]any{}
 	var accountClass string
-	if account, ok := ReadCodexAccount(); ok {
+	if account, ok := readCodexAccount(); ok {
 		metadata["plan_type"] = account.PlanType
 		metadata["org_name"] = account.OrgName
 		accountClass = account.PlanType
@@ -158,7 +158,7 @@ func quotaRecord(windows []harnesses.QuotaWindow) cassette.QuotaRecord {
 		Source:            "pty",
 		Status:            string(ptyquota.StatusOK),
 		CapturedAt:        time.Now().UTC().Format(time.RFC3339),
-		FreshnessWindow:   DefaultCodexQuotaStaleAfter.String(),
+		FreshnessWindow:   defaultCodexQuotaStaleAfter.String(),
 		StalenessBehavior: "stale quota evidence keeps Codex out of automatic routing and is treated as limited",
 		AccountClass:      accountClass,
 		Windows:           records,

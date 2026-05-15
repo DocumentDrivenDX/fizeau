@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
-	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
 	"github.com/easel/fizeau/internal/routing"
 )
 
@@ -295,16 +294,12 @@ func TestResolveRoute_CodexUsesDurableQuotaCache(t *testing.T) {
 	codexQuotaPath := filepath.Join(dir, "codex-quota.json")
 	t.Setenv("FIZEAU_CODEX_QUOTA_CACHE", codexQuotaPath)
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", filepath.Join(dir, "missing-claude-quota.json"))
-	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
-		CapturedAt: time.Now().UTC(),
-		Source:     "pty",
-		Account:    &harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
-		Windows: []harnesses.QuotaWindow{
+	writeCodexQuotaCacheFile(t, codexQuotaPath, time.Now().UTC(), "pty",
+		&harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
+		[]harnesses.QuotaWindow{
 			{Name: "5h", WindowMinutes: 300, UsedPercent: 25, State: "ok"},
 		},
-	}); err != nil {
-		t.Fatalf("WriteCodexQuota: %v", err)
-	}
+	)
 
 	registry := harnesses.NewRegistry()
 	registry.LookPath = func(file string) (string, error) {
@@ -327,25 +322,19 @@ func TestBuildRoutingInputs_CodexQuotaStaleOrBlockedIsIneligible(t *testing.T) {
 	registry := harnesses.NewRegistry()
 	svc := &service{opts: ServiceOptions{}, registry: registry}
 
-	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
-		CapturedAt: time.Now().UTC().Add(-20 * time.Minute),
-		Source:     "pty",
-		Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 25, State: "ok"}},
-	}); err != nil {
-		t.Fatalf("WriteCodexQuota stale: %v", err)
-	}
+	writeCodexQuotaCacheFile(t, codexQuotaPath, time.Now().UTC().Add(-20*time.Minute), "pty",
+		nil,
+		[]harnesses.QuotaWindow{{Name: "5h", UsedPercent: 25, State: "ok"}},
+	)
 	codex := routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "codex")
 	if codex.SubscriptionOK || !codex.QuotaStale {
 		t.Fatalf("stale codex quota: SubscriptionOK=%v QuotaStale=%v", codex.SubscriptionOK, codex.QuotaStale)
 	}
 
-	if err := codexharness.WriteCodexQuota(codexQuotaPath, codexharness.CodexQuotaSnapshot{
-		CapturedAt: time.Now().UTC(),
-		Source:     "pty",
-		Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 96, State: "blocked"}},
-	}); err != nil {
-		t.Fatalf("WriteCodexQuota blocked: %v", err)
-	}
+	writeCodexQuotaCacheFile(t, codexQuotaPath, time.Now().UTC(), "pty",
+		nil,
+		[]harnesses.QuotaWindow{{Name: "5h", UsedPercent: 96, State: "blocked"}},
+	)
 	codex = routingHarnessEntry(t, svc.buildRoutingInputs(context.Background()).Harnesses, "codex")
 	if codex.SubscriptionOK || codex.QuotaTrend != "exhausting" {
 		t.Fatalf("blocked codex quota: SubscriptionOK=%v QuotaTrend=%q", codex.SubscriptionOK, codex.QuotaTrend)
@@ -529,6 +518,31 @@ type geminiTestQuotaSnapshot struct {
 	Windows    []harnesses.QuotaWindow `json:"windows"`
 	Source     string                  `json:"source"`
 	Account    *harnesses.AccountInfo  `json:"account,omitempty"`
+}
+
+func writeCodexQuotaCacheFile(t *testing.T, path string, capturedAt time.Time, source string, account *harnesses.AccountInfo, windows []harnesses.QuotaWindow) {
+	t.Helper()
+	type codexCache struct {
+		CapturedAt time.Time               `json:"captured_at"`
+		Windows    []harnesses.QuotaWindow `json:"windows"`
+		Source     string                  `json:"source"`
+		Account    *harnesses.AccountInfo  `json:"account,omitempty"`
+	}
+	data, err := json.MarshalIndent(codexCache{CapturedAt: capturedAt, Windows: windows, Source: source, Account: account}, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal codex quota cache: %v", err)
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatalf("mkdir codex quota cache dir: %v", err)
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		t.Fatalf("write codex quota cache: %v", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		t.Fatalf("rename codex quota cache: %v", err)
+	}
 }
 
 func writeGeminiTestQuota(t *testing.T, path string, snap geminiTestQuotaSnapshot) {

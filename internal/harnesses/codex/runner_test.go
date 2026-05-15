@@ -357,7 +357,7 @@ EOF
 	for range ch {
 	}
 
-	snap, ok := ReadCodexQuota()
+	snap, ok := readCodexQuota()
 	if !ok {
 		t.Fatal("expected token_count rate_limits to update quota cache")
 	}

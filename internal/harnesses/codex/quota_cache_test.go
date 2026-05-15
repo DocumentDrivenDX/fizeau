@@ -13,7 +13,7 @@ import (
 func TestCodexQuotaSnapshotRoundTrip(t *testing.T) {
 	t.Setenv(codexAuthPathEnv, filepath.Join(t.TempDir(), "missing-auth.json"))
 	path := filepath.Join(t.TempDir(), "codex-quota.json")
-	original := CodexQuotaSnapshot{
+	original := codexQuotaSnapshot{
 		CapturedAt: time.Now().UTC().Add(-time.Minute).Truncate(time.Second),
 		Source:     "pty",
 		Account:    &harnesses.AccountInfo{Email: "dev@example.com", PlanType: "ChatGPT Pro", OrgName: "agent"},
@@ -21,12 +21,12 @@ func TestCodexQuotaSnapshotRoundTrip(t *testing.T) {
 			{Name: "5h", LimitID: "codex", WindowMinutes: 300, UsedPercent: 25, State: "ok"},
 		},
 	}
-	if err := WriteCodexQuota(path, original); err != nil {
-		t.Fatalf("WriteCodexQuota: %v", err)
+	if err := writeCodexQuota(path, original); err != nil {
+		t.Fatalf("writeCodexQuota: %v", err)
 	}
-	loaded, ok := ReadCodexQuotaFrom(path)
+	loaded, ok := readCodexQuotaFrom(path)
 	if !ok {
-		t.Fatal("ReadCodexQuotaFrom returned ok=false")
+		t.Fatal("readCodexQuotaFrom returned ok=false")
 	}
 	if !loaded.CapturedAt.Equal(original.CapturedAt) {
 		t.Fatalf("CapturedAt: got %v, want %v", loaded.CapturedAt, original.CapturedAt)
@@ -46,31 +46,31 @@ func TestReadCodexQuotaUsesDefaultPath(t *testing.T) {
 	t.Setenv(codexAuthPathEnv, filepath.Join(t.TempDir(), "missing-auth.json"))
 	path := filepath.Join(t.TempDir(), "codex-quota.json")
 	t.Setenv(codexQuotaCacheEnv, path)
-	if err := WriteCodexQuota(path, CodexQuotaSnapshot{
+	if err := writeCodexQuota(path, codexQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Source:     "pty",
 		Account:    &harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
 		Windows:    []harnesses.QuotaWindow{{Name: "5h", State: "ok"}},
 	}); err != nil {
-		t.Fatalf("WriteCodexQuota: %v", err)
+		t.Fatalf("writeCodexQuota: %v", err)
 	}
-	if _, ok := ReadCodexQuota(); !ok {
-		t.Fatal("ReadCodexQuota returned ok=false")
+	if _, ok := readCodexQuota(); !ok {
+		t.Fatal("readCodexQuota returned ok=false")
 	}
 }
 
 func TestIsCodexQuotaFresh(t *testing.T) {
 	t.Setenv(codexAuthPathEnv, filepath.Join(t.TempDir(), "missing-auth.json"))
 	now := time.Now().UTC()
-	if IsCodexQuotaFresh(nil, now, time.Minute) {
+	if isCodexQuotaFresh(nil, now, time.Minute) {
 		t.Fatal("nil snapshot should not be fresh")
 	}
-	fresh := &CodexQuotaSnapshot{CapturedAt: now.Add(-30 * time.Second)}
-	if !IsCodexQuotaFresh(fresh, now, time.Minute) {
+	fresh := &codexQuotaSnapshot{CapturedAt: now.Add(-30 * time.Second)}
+	if !isCodexQuotaFresh(fresh, now, time.Minute) {
 		t.Fatal("fresh snapshot should be fresh")
 	}
-	stale := &CodexQuotaSnapshot{CapturedAt: now.Add(-2 * time.Minute)}
-	if IsCodexQuotaFresh(stale, now, time.Minute) {
+	stale := &codexQuotaSnapshot{CapturedAt: now.Add(-2 * time.Minute)}
+	if isCodexQuotaFresh(stale, now, time.Minute) {
 		t.Fatal("stale snapshot should not be fresh")
 	}
 }
@@ -95,15 +95,15 @@ func TestWriteCodexQuotaFillsAccountFromAuth(t *testing.T) {
 	}
 
 	path := filepath.Join(dir, "codex-quota.json")
-	if err := WriteCodexQuota(path, CodexQuotaSnapshot{
+	if err := writeCodexQuota(path, codexQuotaSnapshot{
 		CapturedAt: time.Now().UTC(),
 		Windows:    []harnesses.QuotaWindow{{Name: "5h", State: "ok"}},
 	}); err != nil {
-		t.Fatalf("WriteCodexQuota: %v", err)
+		t.Fatalf("writeCodexQuota: %v", err)
 	}
-	loaded, ok := ReadCodexQuotaFrom(path)
+	loaded, ok := readCodexQuotaFrom(path)
 	if !ok {
-		t.Fatal("ReadCodexQuotaFrom returned ok=false")
+		t.Fatal("readCodexQuotaFrom returned ok=false")
 	}
 	if loaded.Account == nil || loaded.Account.PlanType != "ChatGPT Plus" || loaded.Account.OrgName != "agent" {
 		t.Fatalf("Account: got %#v", loaded.Account)
@@ -112,14 +112,14 @@ func TestWriteCodexQuotaFillsAccountFromAuth(t *testing.T) {
 
 func TestReadCodexQuotaMissingAndCorruptReturnFalse(t *testing.T) {
 	dir := t.TempDir()
-	if snap, ok := ReadCodexQuotaFrom(filepath.Join(dir, "missing.json")); ok || snap != nil {
+	if snap, ok := readCodexQuotaFrom(filepath.Join(dir, "missing.json")); ok || snap != nil {
 		t.Fatalf("missing cache: got snap=%#v ok=%v", snap, ok)
 	}
 	corrupt := filepath.Join(dir, "corrupt.json")
 	if err := os.WriteFile(corrupt, []byte(`{not-json`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if snap, ok := ReadCodexQuotaFrom(corrupt); ok || snap != nil {
+	if snap, ok := readCodexQuotaFrom(corrupt); ok || snap != nil {
 		t.Fatalf("corrupt cache: got snap=%#v ok=%v", snap, ok)
 	}
 }
@@ -129,26 +129,26 @@ func TestDecideCodexQuotaRouting(t *testing.T) {
 	now := time.Now().UTC()
 	cases := []struct {
 		name   string
-		snap   *CodexQuotaSnapshot
+		snap   *codexQuotaSnapshot
 		prefer bool
 		fresh  bool
 	}{
 		{name: "missing", snap: nil},
 		{
 			name: "stale",
-			snap: &CodexQuotaSnapshot{
+			snap: &codexQuotaSnapshot{
 				CapturedAt: now.Add(-20 * time.Minute),
 				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 10, State: "ok"}},
 			},
 		},
 		{
 			name:  "empty windows",
-			snap:  &CodexQuotaSnapshot{CapturedAt: now},
+			snap:  &codexQuotaSnapshot{CapturedAt: now},
 			fresh: true,
 		},
 		{
 			name: "blocked",
-			snap: &CodexQuotaSnapshot{
+			snap: &codexQuotaSnapshot{
 				CapturedAt: now,
 				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 95, State: "blocked"}},
 				Account:    &harnesses.AccountInfo{PlanType: "ChatGPT Pro"},
@@ -157,7 +157,7 @@ func TestDecideCodexQuotaRouting(t *testing.T) {
 		},
 		{
 			name: "missing account",
-			snap: &CodexQuotaSnapshot{
+			snap: &codexQuotaSnapshot{
 				CapturedAt: now,
 				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 25, State: "ok"}},
 			},
@@ -165,7 +165,7 @@ func TestDecideCodexQuotaRouting(t *testing.T) {
 		},
 		{
 			name: "api key account",
-			snap: &CodexQuotaSnapshot{
+			snap: &codexQuotaSnapshot{
 				CapturedAt: now,
 				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 25, State: "ok"}},
 				Account:    &harnesses.AccountInfo{PlanType: "OpenAI API key"},
@@ -174,7 +174,7 @@ func TestDecideCodexQuotaRouting(t *testing.T) {
 		},
 		{
 			name: "fresh headroom",
-			snap: &CodexQuotaSnapshot{
+			snap: &codexQuotaSnapshot{
 				CapturedAt: now,
 				Source:     "pty",
 				Windows:    []harnesses.QuotaWindow{{Name: "5h", UsedPercent: 25, State: "ok"}},
@@ -186,7 +186,7 @@ func TestDecideCodexQuotaRouting(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dec := DecideCodexQuotaRouting(tc.snap, now, DefaultCodexQuotaStaleAfter)
+			dec := decideCodexQuotaRouting(tc.snap, now, defaultCodexQuotaStaleAfter)
 			if dec.PreferCodex != tc.prefer {
 				t.Fatalf("PreferCodex: got %v, want %v (%s)", dec.PreferCodex, tc.prefer, dec.Reason)
 			}

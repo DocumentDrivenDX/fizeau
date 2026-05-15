@@ -168,10 +168,10 @@ func (a *streamAggregate) writeTokenCountQuotaCache() {
 	if a == nil || len(a.TokenCountRateLimits) == 0 {
 		return
 	}
-	var newest *CodexQuotaSnapshot
+	var newest *codexQuotaSnapshot
 	for _, evidence := range a.TokenCountRateLimits {
 		fallback := time.Now().UTC()
-		snapshot, ok := CodexQuotaSnapshotFromTokenCountRateLimits(evidence.CapturedAt, fallback, evidence.RateLimits)
+		snapshot, ok := codexQuotaSnapshotFromTokenCountRateLimits(evidence.CapturedAt, fallback, evidence.RateLimits)
 		if !ok {
 			continue
 		}
@@ -183,11 +183,11 @@ func (a *streamAggregate) writeTokenCountQuotaCache() {
 	if newest == nil {
 		return
 	}
-	path, err := CodexQuotaCachePath()
+	path, err := codexQuotaCachePath()
 	if err != nil {
 		return
 	}
-	_ = WriteCodexQuota(path, *newest)
+	_ = writeCodexQuota(path, *newest)
 }
 
 func (r *Runner) runStreaming(ctx context.Context, binary string, req harnesses.ExecuteRequest, out chan<- harnesses.Event, seq *int64) (agg *streamAggregate, exitCode int, stderr string, runErr error, status string) {

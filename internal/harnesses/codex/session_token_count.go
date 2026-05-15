@@ -51,9 +51,9 @@ func WithCodexSessionTokenCountLimits(maxFiles int, maxBytesPerFile int64, maxLi
 	}
 }
 
-// CodexSessionsRoot returns the Codex session JSONL root. Tests may override
+// codexSessionsRoot returns the Codex session JSONL root. Tests may override
 // this with FIZEAU_CODEX_SESSIONS_DIR; normal operation follows CODEX_HOME.
-func CodexSessionsRoot() (string, error) {
+func codexSessionsRoot() (string, error) {
 	if root := strings.TrimSpace(os.Getenv(codexSessionsRootEnv)); root != "" {
 		return root, nil
 	}
@@ -67,17 +67,17 @@ func CodexSessionsRoot() (string, error) {
 	return filepath.Join(home, ".codex", "sessions"), nil
 }
 
-// ReadCodexQuotaFromSessionTokenCounts returns the newest fresh quota snapshot
+// readCodexQuotaFromSessionTokenCounts returns the newest fresh quota snapshot
 // found in Codex token_count events. It never reads session content for
 // historical analytics and returns false for missing, stale, or malformed
 // evidence so callers can fall back to the live PTY probe.
-func ReadCodexQuotaFromSessionTokenCounts(opts ...CodexSessionTokenCountOption) (*CodexQuotaSnapshot, bool) {
+func readCodexQuotaFromSessionTokenCounts(opts ...CodexSessionTokenCountOption) (*codexQuotaSnapshot, bool) {
 	cfg := defaultCodexSessionTokenCountConfig()
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	if cfg.root == "" {
-		root, err := CodexSessionsRoot()
+		root, err := codexSessionsRoot()
 		if err != nil {
 			return nil, false
 		}
@@ -89,7 +89,7 @@ func ReadCodexQuotaFromSessionTokenCounts(opts ...CodexSessionTokenCountOption) 
 		if !ok {
 			continue
 		}
-		if IsCodexQuotaFresh(snapshot, cfg.now, cfg.staleAfter) {
+		if isCodexQuotaFresh(snapshot, cfg.now, cfg.staleAfter) {
 			return snapshot, true
 		}
 	}
@@ -99,7 +99,7 @@ func ReadCodexQuotaFromSessionTokenCounts(opts ...CodexSessionTokenCountOption) 
 func defaultCodexSessionTokenCountConfig() codexSessionTokenCountConfig {
 	return codexSessionTokenCountConfig{
 		now:             time.Now().UTC(),
-		staleAfter:      DefaultCodexQuotaStaleAfter,
+		staleAfter:      defaultCodexQuotaStaleAfter,
 		maxFiles:        defaultCodexSessionMaxFiles,
 		maxBytesPerFile: defaultCodexSessionMaxBytesPerFile,
 		maxLineBytes:    defaultCodexSessionMaxLineBytes,
@@ -156,7 +156,7 @@ func sortCodexSessionFiles(files []codexSessionFile) {
 	})
 }
 
-func readCodexTokenCountQuotaFromFile(path string, modTime time.Time, cfg codexSessionTokenCountConfig) (*CodexQuotaSnapshot, bool) {
+func readCodexTokenCountQuotaFromFile(path string, modTime time.Time, cfg codexSessionTokenCountConfig) (*codexQuotaSnapshot, bool) {
 	info, err := os.Lstat(path)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return nil, false
@@ -181,7 +181,7 @@ func readCodexTokenCountQuotaFromFile(path string, modTime time.Time, cfg codexS
 
 	scanner := bufio.NewScanner(io.LimitReader(f, cfg.maxBytesPerFile))
 	scanner.Buffer(make([]byte, 0, min(cfg.maxLineBytes, 64*1024)), cfg.maxLineBytes)
-	var newest *CodexQuotaSnapshot
+	var newest *codexQuotaSnapshot
 	for scanner.Scan() {
 		snapshot, ok := parseCodexTokenCountQuotaLine(scanner.Bytes(), modTime)
 		if !ok {
@@ -209,7 +209,7 @@ type codexTokenCountLine struct {
 	} `json:"payload"`
 }
 
-func parseCodexTokenCountQuotaLine(raw []byte, fileModTime time.Time) (*CodexQuotaSnapshot, bool) {
+func parseCodexTokenCountQuotaLine(raw []byte, fileModTime time.Time) (*codexQuotaSnapshot, bool) {
 	var ev codexTokenCountLine
 	if err := json.Unmarshal(raw, &ev); err != nil {
 		return nil, false
@@ -221,23 +221,23 @@ func parseCodexTokenCountQuotaLine(raw []byte, fileModTime time.Time) (*CodexQuo
 	if len(rateLimits) == 0 {
 		return nil, false
 	}
-	snapshot, ok := CodexQuotaSnapshotFromTokenCountRateLimits(ev.Timestamp, fileModTime, rateLimits)
+	snapshot, ok := codexQuotaSnapshotFromTokenCountRateLimits(ev.Timestamp, fileModTime, rateLimits)
 	if ok {
 		snapshot.Source = "codex_session_token_count"
 	}
 	return snapshot, ok
 }
 
-// CodexQuotaSnapshotFromTokenCountRateLimits builds a quota snapshot from a
+// codexQuotaSnapshotFromTokenCountRateLimits builds a quota snapshot from a
 // token_count.rate_limits payload. fallbackCapturedAt must be evidence time:
 // session readers pass file mtime, while live DDx-owned streams may pass now.
-func CodexQuotaSnapshotFromTokenCountRateLimits(timestamp string, fallbackCapturedAt time.Time, rateLimits json.RawMessage) (*CodexQuotaSnapshot, bool) {
+func codexQuotaSnapshotFromTokenCountRateLimits(timestamp string, fallbackCapturedAt time.Time, rateLimits json.RawMessage) (*codexQuotaSnapshot, bool) {
 	capturedAt := codexTokenCountCapturedAt(timestamp, fallbackCapturedAt)
-	windows, account, ok := codexQuotaSnapshotFromTokenCountRateLimits(rateLimits)
+	windows, account, ok := codexQuotaWindowsFromTokenCountRateLimits(rateLimits)
 	if !ok {
 		return nil, false
 	}
-	return &CodexQuotaSnapshot{
+	return &codexQuotaSnapshot{
 		CapturedAt: capturedAt,
 		Windows:    windows,
 		Source:     "codex_token_count",
@@ -255,7 +255,7 @@ func codexTokenCountCapturedAt(timestamp string, fileModTime time.Time) time.Tim
 	return fileModTime.UTC()
 }
 
-func codexQuotaSnapshotFromTokenCountRateLimits(raw json.RawMessage) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, bool) {
+func codexQuotaWindowsFromTokenCountRateLimits(raw json.RawMessage) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, bool) {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &obj); err != nil {
 		return nil, nil, false

@@ -12,9 +12,9 @@ import (
 )
 
 // codexQuotaFreshness is the constant freshness window for codex quota
-// evidence. Mirrors DefaultCodexQuotaStaleAfter (kept as a separate name
+// evidence. Mirrors defaultCodexQuotaStaleAfter (kept as a separate name
 // so the CONTRACT-004 method has a stable, contract-named constant).
-const codexQuotaFreshness = DefaultCodexQuotaStaleAfter
+const codexQuotaFreshness = defaultCodexQuotaStaleAfter
 
 // codexAccountFreshness is the constant freshness window for codex
 // account evidence. Codex reads account metadata from auth.json which
@@ -48,7 +48,7 @@ func (r *Runner) QuotaStatus(ctx context.Context, now time.Time) (harnesses.Quot
 	if err := ctx.Err(); err != nil {
 		return harnesses.QuotaStatus{}, err
 	}
-	snap, ok := ReadCodexQuota()
+	snap, ok := readCodexQuota()
 	if !ok || snap == nil {
 		return harnesses.QuotaStatus{
 			Source:            "cache",
@@ -100,23 +100,23 @@ func (r *Runner) refreshQuotaLocked(ctx context.Context) harnesses.QuotaStatus {
 	}
 	windows, _, ptyErr := captureCodexQuotaViaPTY(ctx, timeout, opts...)
 	if ptyErr == nil && len(windows) > 0 {
-		snap := CodexQuotaSnapshot{
+		snap := codexQuotaSnapshot{
 			CapturedAt: now.UTC(),
 			Windows:    windows,
 			Source:     "pty",
 			Account:    readCodexAccountOrNil(),
 		}
-		if path, pathErr := CodexQuotaCachePath(); pathErr == nil {
-			_ = WriteCodexQuota(path, snap)
+		if path, pathErr := codexQuotaCachePath(); pathErr == nil {
+			_ = writeCodexQuota(path, snap)
 		}
 		return codexQuotaStatusFromSnapshot(&snap, now)
 	}
-	if snap, ok := ReadCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now)); ok && snap != nil {
+	if snap, ok := readCodexQuotaFromSessionTokenCounts(WithCodexSessionTokenCountNow(now)); ok && snap != nil {
 		if snap.Account == nil {
 			snap.Account = readCodexAccountOrNil()
 		}
-		if path, pathErr := CodexQuotaCachePath(); pathErr == nil {
-			_ = WriteCodexQuota(path, *snap)
+		if path, pathErr := codexQuotaCachePath(); pathErr == nil {
+			_ = writeCodexQuota(path, *snap)
 		}
 		return codexQuotaStatusFromSnapshot(snap, now)
 	}
@@ -149,8 +149,8 @@ func (r *Runner) SupportedLimitIDs() []string {
 }
 
 // AccountStatus implements harnesses.AccountHarness. Codex reads
-// non-secret account metadata from auth.json via CodexAuthPath /
-// ReadCodexAccount; this method projects that onto AccountSnapshot.
+// non-secret account metadata from auth.json via codexAuthPath /
+// readCodexAccount; this method projects that onto AccountSnapshot.
 func (r *Runner) AccountStatus(ctx context.Context, now time.Time) (harnesses.AccountSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return harnesses.AccountSnapshot{}, err
@@ -185,14 +185,14 @@ func (r *Runner) AccountFreshness() time.Duration {
 // Unauthenticated on a valid snapshot value, not as an error.
 func readCodexAccountSnapshot(now time.Time) harnesses.AccountSnapshot {
 	snap := harnesses.AccountSnapshot{Source: "cache"}
-	if path, err := CodexAuthPath(); err == nil && path != "" {
+	if path, err := codexAuthPath(); err == nil && path != "" {
 		snap.Source = path
 		if st, statErr := os.Stat(path); statErr == nil {
 			snap.CapturedAt = st.ModTime().UTC()
 			snap.Fresh = now.UTC().Sub(snap.CapturedAt) <= codexAccountFreshness
 		}
 	}
-	account, ok := ReadCodexAccount()
+	account, ok := readCodexAccount()
 	if !ok || account == nil {
 		snap.Unauthenticated = true
 		return snap
@@ -210,7 +210,7 @@ func readCodexAccountSnapshot(now time.Time) harnesses.AccountSnapshot {
 
 // DefaultModelSnapshot implements harnesses.ModelDiscoveryHarness.
 func (r *Runner) DefaultModelSnapshot() harnesses.ModelDiscoverySnapshot {
-	return DefaultCodexModelDiscovery()
+	return defaultCodexModelDiscovery()
 }
 
 // ResolveModelAlias implements harnesses.ModelDiscoveryHarness. Returns
@@ -222,7 +222,7 @@ func (r *Runner) ResolveModelAlias(family string, snapshot harnesses.ModelDiscov
 	if !isSupportedCodexAlias(normalized) {
 		return "", harnesses.ErrAliasNotResolvable
 	}
-	resolved := ResolveCodexModelAlias(normalized, snapshot)
+	resolved := resolveCodexModelAlias(normalized, snapshot)
 	if resolved == "" || resolved == normalized {
 		// existing helper returns the input string when no concrete
 		// model matches; treat that as unresolvable per CONTRACT-004.
@@ -247,11 +247,11 @@ func isSupportedCodexAlias(family string) bool {
 
 // codexQuotaStatusFromSnapshot projects the per-harness snapshot onto
 // harnesses.QuotaStatus, deriving State and RoutingPreference via the
-// existing DecideCodexQuotaRouting helper so today's "PreferCodex +
+// existing decideCodexQuotaRouting helper so today's "PreferCodex +
 // freshness" semantics map cleanly onto CONTRACT-004's RoutingPreference
 // enum.
-func codexQuotaStatusFromSnapshot(snap *CodexQuotaSnapshot, now time.Time) harnesses.QuotaStatus {
-	decision := DecideCodexQuotaRouting(snap, now, codexQuotaFreshness)
+func codexQuotaStatusFromSnapshot(snap *codexQuotaSnapshot, now time.Time) harnesses.QuotaStatus {
+	decision := decideCodexQuotaRouting(snap, now, codexQuotaFreshness)
 	pref, state := mapCodexRoutingPreference(decision)
 	status := harnesses.QuotaStatus{
 		Source:            snap.Source,
@@ -275,7 +275,7 @@ func codexQuotaStatusFromSnapshot(snap *CodexQuotaSnapshot, now time.Time) harne
 // pair. Legacy semantics: missing snapshot ⇒ Unavailable/Unknown;
 // stale ⇒ Stale/Blocked ("assume limited"); fresh+PreferCodex ⇒
 // OK/Available; fresh+!PreferCodex ⇒ Blocked/Blocked.
-func mapCodexRoutingPreference(d CodexQuotaRoutingDecision) (harnesses.RoutingPreference, harnesses.QuotaStateValue) {
+func mapCodexRoutingPreference(d codexQuotaRoutingDecision) (harnesses.RoutingPreference, harnesses.QuotaStateValue) {
 	if !d.SnapshotPresent {
 		return harnesses.RoutingPreferenceUnknown, harnesses.QuotaUnavailable
 	}
@@ -292,11 +292,11 @@ func mapCodexRoutingPreference(d CodexQuotaRoutingDecision) (harnesses.RoutingPr
 // the quota cache's embedded Account field. An empty plan-type is
 // reported as unauthenticated evidence rather than positive
 // authentication.
-func codexAccountSnapshotFromQuotaSnapshot(snap *CodexQuotaSnapshot, now time.Time) harnesses.AccountSnapshot {
+func codexAccountSnapshotFromQuotaSnapshot(snap *codexQuotaSnapshot, now time.Time) harnesses.AccountSnapshot {
 	out := harnesses.AccountSnapshot{
 		Source:     "cache",
 		CapturedAt: snap.CapturedAt,
-		Fresh:      IsCodexQuotaFresh(snap, now, codexAccountFreshness),
+		Fresh:      isCodexQuotaFresh(snap, now, codexAccountFreshness),
 	}
 	if snap.Account == nil {
 		return out

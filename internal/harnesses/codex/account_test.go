@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestReadCodexAccountFromIDToken(t *testing.T) {
+func TestReadCodexAccountFrom_IDToken(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	idToken := testJWT(map[string]any{
 		"email": "dev@example.com",
@@ -28,18 +28,18 @@ func TestReadCodexAccountFromIDToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, raw, 0o600))
 
-	account, ok := ReadCodexAccountFrom(path)
+	account, ok := readCodexAccountFrom(path)
 	require.True(t, ok)
 	require.Equal(t, "dev@example.com", account.Email)
 	require.Equal(t, "ChatGPT Pro", account.PlanType)
 	require.Equal(t, "primary", account.OrgName)
 }
 
-func TestReadCodexAccountFromAPIKeyOnly(t *testing.T) {
+func TestReadCodexAccountFrom_APIKeyOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"OPENAI_API_KEY":"redacted"}`), 0o600))
 
-	account, ok := ReadCodexAccountFrom(path)
+	account, ok := readCodexAccountFrom(path)
 	require.True(t, ok)
 	require.Equal(t, "OpenAI API key", account.PlanType)
 }
@@ -52,11 +52,11 @@ func TestCodexAccountSupportsAutoRouting(t *testing.T) {
 	require.False(t, codexAccountSupportsAutoRouting(nil))
 }
 
-func TestReadCodexAccountFromMalformedAuth(t *testing.T) {
+func TestReadCodexAccountFrom_MalformedAuth(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"tokens":{"id_token":"not-a-jwt"}}`), 0o600))
 
-	account, ok := ReadCodexAccountFrom(path)
+	account, ok := readCodexAccountFrom(path)
 	require.False(t, ok)
 	require.Nil(t, account)
 }

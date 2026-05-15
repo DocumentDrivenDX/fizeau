@@ -17,7 +17,7 @@ const CodexModelDiscoveryFreshnessWindow = 24 * time.Hour
 
 var codexModelPattern = regexp.MustCompile(`\bgpt-[A-Za-z0-9][A-Za-z0-9._-]*\b`)
 
-func DefaultCodexModelDiscovery() harnesses.ModelDiscoverySnapshot {
+func defaultCodexModelDiscovery() harnesses.ModelDiscoverySnapshot {
 	return harnesses.ModelDiscoverySnapshot{
 		CapturedAt:      time.Now().UTC(),
 		Models:          []string{"gpt", "gpt-5", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"},
@@ -93,7 +93,7 @@ func codexModelDiscoveryComplete(text string) bool {
 }
 
 func codexDiscoveryFromText(text, source string) harnesses.ModelDiscoverySnapshot {
-	snapshot := DefaultCodexModelDiscovery()
+	snapshot := defaultCodexModelDiscovery()
 	if source != "" {
 		snapshot.Source = source
 	}
@@ -108,7 +108,7 @@ func parseCodexModels(text string) []string {
 	return uniqueMatches(codexModelPattern.FindAllString(text, -1))
 }
 
-func ResolveCodexModelAlias(model string, snapshot harnesses.ModelDiscoverySnapshot) string {
+func resolveCodexModelAlias(model string, snapshot harnesses.ModelDiscoverySnapshot) string {
 	model = strings.ToLower(strings.TrimSpace(model))
 	if model == "" {
 		return model
