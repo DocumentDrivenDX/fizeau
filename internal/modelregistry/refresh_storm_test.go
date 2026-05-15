@@ -18,7 +18,9 @@ import (
 
 func TestRefreshStorm(t *testing.T) {
 	t.Setenv("PATH", "")
-	cache := &discoverycache.Cache{Root: t.TempDir()}
+	cacheRoot := t.TempDir()
+	leaderCache := &discoverycache.Cache{Root: cacheRoot}
+	waiterCache := &discoverycache.Cache{Root: cacheRoot}
 	capturedAt := time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)
 
 	var requests int32
@@ -38,8 +40,14 @@ func TestRefreshStorm(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	source := endpointSourceName("studio", "alpha", server.URL+"/v1", "")
-	writeDiscoveryFixture(t, cache, source, capturedAt, []string{"stale-model"})
-	stalePath := filepath.Join(cache.Root, "discovery", source+".json")
+	waiterJoined := make(chan struct{})
+	waiterCache.SetWaitForRefreshHookForTesting(func(s discoverycache.Source) {
+		if s.Tier == "discovery" && s.Name == source {
+			close(waiterJoined)
+		}
+	})
+	writeDiscoveryFixture(t, leaderCache, source, capturedAt, []string{"stale-model"})
+	stalePath := filepath.Join(leaderCache.Root, "discovery", source+".json")
 	past := time.Now().Add(-2 * time.Hour)
 	require.NoError(t, os.Chtimes(stalePath, past, past))
 
@@ -57,11 +65,7 @@ func TestRefreshStorm(t *testing.T) {
 
 	started := make(chan error, 2)
 	go func() {
-		_, err := Warmup(context.Background(), cfg, cat, cache)
-		started <- err
-	}()
-	go func() {
-		_, err := Warmup(context.Background(), cfg, cat, cache)
+		_, err := Warmup(context.Background(), cfg, cat, leaderCache)
 		started <- err
 	}()
 
@@ -69,6 +73,20 @@ func TestRefreshStorm(t *testing.T) {
 	case <-refreshStarted:
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected one refresh request to start")
+	}
+
+	// Use a second Cache handle on the same root so the second warmup must join
+	// the active marker-owned refresh. Once waiterJoined fires, releasing the
+	// server can only produce one live /v1/models request for the burst.
+	go func() {
+		_, err := Warmup(context.Background(), cfg, cat, waiterCache)
+		started <- err
+	}()
+
+	select {
+	case <-waiterJoined:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected second warmup to join the in-flight refresh")
 	}
 
 	close(releaseRefresh)

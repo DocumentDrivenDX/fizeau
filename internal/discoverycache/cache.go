@@ -33,6 +33,8 @@ const (
 type Cache struct {
 	Root string
 	sf   singleflight.Group
+
+	waitForRefreshHook func(Source)
 }
 
 // Source describes one cacheable data stream (one file under Root/Tier/Name.json).
@@ -185,6 +187,12 @@ func (c *Cache) RefreshState(s Source) (RefreshState, error) {
 	}, nil
 }
 
+// SetWaitForRefreshHookForTesting lets tests observe when Refresh joins an
+// already active marker-owned refresh and begins waiting for it to finish.
+func (c *Cache) SetWaitForRefreshHookForTesting(h func(Source)) {
+	c.waitForRefreshHook = h
+}
+
 // ---- internal ---------------------------------------------------------------
 
 type claimResult struct {
@@ -232,6 +240,9 @@ func (c *Cache) refreshAndCommit(s Source, fn Refresher) error {
 		return err
 	}
 	if !claim.claimed {
+		if c.waitForRefreshHook != nil {
+			c.waitForRefreshHook(s)
+		}
 		// Another process is refreshing; wait for it.
 		return c.waitForRefresh(s, claim.marker)
 	}
