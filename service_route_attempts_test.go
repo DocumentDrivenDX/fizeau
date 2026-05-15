@@ -2,6 +2,7 @@ package fizeau
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/easel/fizeau/internal/harnesses"
 	codexharness "github.com/easel/fizeau/internal/harnesses/codex"
-	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
 	"github.com/easel/fizeau/internal/routing"
 )
 

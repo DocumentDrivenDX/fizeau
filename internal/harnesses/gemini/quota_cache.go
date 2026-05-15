@@ -13,14 +13,14 @@ import (
 	"github.com/easel/fizeau/internal/safefs"
 )
 
-// GeminiQuotaSnapshot captures parsed Gemini CLI /model manage quota evidence
+// geminiQuotaSnapshot captures parsed Gemini CLI /model manage quota evidence
 // in a durable cache so foreground routing consumers do not invoke PTY
 // capture inline.
 //
 // Auth/account freshness on its own is NOT quota evidence. Only a parsed
-// GeminiQuotaSnapshot with one or more tier windows promotes Gemini beyond
+// geminiQuotaSnapshot with one or more tier windows promotes Gemini beyond
 // the "quota unknown" state.
-type GeminiQuotaSnapshot struct {
+type geminiQuotaSnapshot struct {
 	CapturedAt time.Time               `json:"captured_at"`
 	Windows    []harnesses.QuotaWindow `json:"windows"`
 	Source     string                  `json:"source"` // e.g. "pty", "cassette"
@@ -28,12 +28,11 @@ type GeminiQuotaSnapshot struct {
 	Detail     string                  `json:"detail,omitempty"`
 }
 
-const DefaultGeminiQuotaStaleAfter = 15 * time.Minute
+const defaultGeminiQuotaStaleAfter = 15 * time.Minute
 
 const geminiQuotaCacheEnv = "FIZEAU_GEMINI_QUOTA_CACHE"
 
-// GeminiQuotaCachePath returns the durable Gemini quota cache path.
-func GeminiQuotaCachePath() (string, error) {
+func geminiQuotaCachePath() (string, error) {
 	if path := os.Getenv(geminiQuotaCacheEnv); path != "" {
 		return path, nil
 	}
@@ -47,8 +46,7 @@ func GeminiQuotaCachePath() (string, error) {
 	return filepath.Join(home, ".local", "state", productinfo.ConfigDir, "gemini-quota.json"), nil
 }
 
-// WriteGeminiQuota atomically persists a GeminiQuotaSnapshot to path.
-func WriteGeminiQuota(path string, snapshot GeminiQuotaSnapshot) error {
+func writeGeminiQuota(path string, snapshot geminiQuotaSnapshot) error {
 	if path == "" {
 		return fmt.Errorf("gemini quota cache path is empty")
 	}
@@ -82,30 +80,27 @@ func WriteGeminiQuota(path string, snapshot GeminiQuotaSnapshot) error {
 	return nil
 }
 
-// ReadGeminiQuotaFrom reads a Gemini quota snapshot from a specific path.
-func ReadGeminiQuotaFrom(path string) (*GeminiQuotaSnapshot, bool) {
+func readGeminiQuotaFrom(path string) (*geminiQuotaSnapshot, bool) {
 	data, err := safefs.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
-	var snap GeminiQuotaSnapshot
+	var snap geminiQuotaSnapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
 		return nil, false
 	}
 	return &snap, true
 }
 
-// ReadGeminiQuota reads the default Gemini quota cache.
-func ReadGeminiQuota() (*GeminiQuotaSnapshot, bool) {
-	path, err := GeminiQuotaCachePath()
+func readGeminiQuota() (*geminiQuotaSnapshot, bool) {
+	path, err := geminiQuotaCachePath()
 	if err != nil {
 		return nil, false
 	}
-	return ReadGeminiQuotaFrom(path)
+	return readGeminiQuotaFrom(path)
 }
 
-// GeminiQuotaSnapshotAge reports snapshot age relative to now.
-func GeminiQuotaSnapshotAge(snapshot *GeminiQuotaSnapshot, now time.Time) time.Duration {
+func geminiQuotaSnapshotAge(snapshot *geminiQuotaSnapshot, now time.Time) time.Duration {
 	if snapshot == nil || snapshot.CapturedAt.IsZero() {
 		return 0
 	}
@@ -116,98 +111,69 @@ func GeminiQuotaSnapshotAge(snapshot *GeminiQuotaSnapshot, now time.Time) time.D
 	return age
 }
 
-// IsGeminiQuotaFresh reports whether a snapshot is present and not stale.
-func IsGeminiQuotaFresh(snapshot *GeminiQuotaSnapshot, now time.Time, staleAfter time.Duration) bool {
+func isGeminiQuotaFresh(snapshot *geminiQuotaSnapshot, now time.Time, staleAfter time.Duration) bool {
 	if snapshot == nil || snapshot.CapturedAt.IsZero() {
 		return false
 	}
 	if staleAfter <= 0 {
-		staleAfter = DefaultGeminiQuotaStaleAfter
+		staleAfter = defaultGeminiQuotaStaleAfter
 	}
-	return GeminiQuotaSnapshotAge(snapshot, now) <= staleAfter
+	return geminiQuotaSnapshotAge(snapshot, now) <= staleAfter
 }
 
-// GeminiQuotaRoutingDecision summarises whether foreground routing may
-// select Gemini without probing the CLI inline. The decision is made per
-// tier: a tier is "available" only when it has a fresh, non-exhausted
-// quota window.
-type GeminiQuotaRoutingDecision struct {
-	// PreferGemini is true when the snapshot is fresh and at least one
-	// non-exhausted tier is present.
-	PreferGemini bool
-	// SnapshotPresent is true when a snapshot was found (even if stale).
-	SnapshotPresent bool
-	// Fresh is true when the snapshot is present and newer than staleAfter.
-	Fresh bool
-	// Age is the snapshot age (zero when absent).
-	Age time.Duration
-	// Snapshot is the cached snapshot when present.
-	Snapshot *GeminiQuotaSnapshot
-	// AvailableTiers lists tier limit_ids (e.g. "gemini-flash") that are
-	// fresh and below the exhaustion threshold.
-	AvailableTiers []string
-	// ExhaustedTiers lists tier limit_ids currently blocked (e.g. "gemini-pro"
-	// at 100% used).
-	ExhaustedTiers []string
-	// Reason describes the diagnostic outcome.
-	Reason string
+type geminiQuotaRoutingDecision struct {
+	preferGemini    bool
+	snapshotPresent bool
+	fresh           bool
+	age             time.Duration
+	snapshot        *geminiQuotaSnapshot
+	availableTiers  []string
+	exhaustedTiers  []string
+	reason          string
 }
 
-// DecideGeminiQuotaRouting turns a durable quota snapshot into a foreground
-// routing decision. Missing, stale, or empty quota evidence keeps Gemini out
-// of automatic routing.
-func DecideGeminiQuotaRouting(snapshot *GeminiQuotaSnapshot, now time.Time, staleAfter time.Duration) GeminiQuotaRoutingDecision {
-	decision := GeminiQuotaRoutingDecision{Snapshot: snapshot}
+func decideGeminiQuotaRouting(snapshot *geminiQuotaSnapshot, now time.Time, staleAfter time.Duration) geminiQuotaRoutingDecision {
+	decision := geminiQuotaRoutingDecision{snapshot: snapshot}
 	if snapshot == nil {
-		decision.Reason = "no cached gemini quota snapshot; assume limited"
+		decision.reason = "no cached gemini quota snapshot; assume limited"
 		return decision
 	}
-	decision.SnapshotPresent = true
-	decision.Age = GeminiQuotaSnapshotAge(snapshot, now)
-	if !IsGeminiQuotaFresh(snapshot, now, staleAfter) {
-		decision.Reason = "cached gemini quota snapshot is stale; assume limited"
+	decision.snapshotPresent = true
+	decision.age = geminiQuotaSnapshotAge(snapshot, now)
+	if !isGeminiQuotaFresh(snapshot, now, staleAfter) {
+		decision.reason = "cached gemini quota snapshot is stale; assume limited"
 		return decision
 	}
-	decision.Fresh = true
+	decision.fresh = true
 	if len(snapshot.Windows) == 0 {
-		decision.Reason = "fresh gemini quota snapshot has no tier windows; assume limited"
+		decision.reason = "fresh gemini quota snapshot has no tier windows; assume limited"
 		return decision
 	}
 	for _, w := range snapshot.Windows {
 		if isExhaustedWindow(w) {
-			decision.ExhaustedTiers = append(decision.ExhaustedTiers, w.LimitID)
+			decision.exhaustedTiers = append(decision.exhaustedTiers, w.LimitID)
 			continue
 		}
-		decision.AvailableTiers = append(decision.AvailableTiers, w.LimitID)
+		decision.availableTiers = append(decision.availableTiers, w.LimitID)
 	}
-	if len(decision.AvailableTiers) == 0 {
-		decision.Reason = "fresh gemini quota snapshot reports all tiers exhausted; assume limited"
+	if len(decision.availableTiers) == 0 {
+		decision.reason = "fresh gemini quota snapshot reports all tiers exhausted; assume limited"
 		return decision
 	}
-	decision.PreferGemini = true
-	decision.Reason = "fresh gemini quota snapshot has at least one tier with headroom"
+	decision.preferGemini = true
+	decision.reason = "fresh gemini quota snapshot has at least one tier with headroom"
 	return decision
 }
 
-// ReadGeminiQuotaRoutingDecision reads the default cache and produces a
-// routing decision in one call.
-func ReadGeminiQuotaRoutingDecision(now time.Time, staleAfter time.Duration) GeminiQuotaRoutingDecision {
-	snap, _ := ReadGeminiQuota()
-	return DecideGeminiQuotaRouting(snap, now, staleAfter)
-}
-
-// IsGeminiTierAvailable reports whether the tier for a concrete Gemini model
-// is currently selectable according to the decision. An unknown model returns
-// false so routing never silently picks a model outside the parsed tier set.
-func (d GeminiQuotaRoutingDecision) IsGeminiTierAvailable(model string) bool {
-	if !d.PreferGemini {
+func (d geminiQuotaRoutingDecision) isGeminiTierAvailable(model string) bool {
+	if !d.preferGemini {
 		return false
 	}
 	limitID, ok := TierLimitIDForModel(model)
 	if !ok {
 		return false
 	}
-	for _, tier := range d.AvailableTiers {
+	for _, tier := range d.availableTiers {
 		if tier == limitID {
 			return true
 		}
@@ -215,9 +181,7 @@ func (d GeminiQuotaRoutingDecision) IsGeminiTierAvailable(model string) bool {
 	return false
 }
 
-// MaxUsedPercent returns the largest used-percent across all tier windows in
-// the snapshot. Returns 0 for nil/empty snapshots.
-func (s *GeminiQuotaSnapshot) MaxUsedPercent() float64 {
+func (s *geminiQuotaSnapshot) maxUsedPercent() float64 {
 	if s == nil {
 		return 0
 	}

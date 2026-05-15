@@ -69,7 +69,7 @@ sleep 2
 	if quota.CapturedAt == "" {
 		t.Fatal("cassette quota must record captured_at")
 	}
-	if quota.FreshnessWindow != DefaultGeminiQuotaStaleAfter.String() {
+	if quota.FreshnessWindow != defaultGeminiQuotaStaleAfter.String() {
 		t.Fatalf("cassette freshness window: %q", quota.FreshnessWindow)
 	}
 	if len(quota.Windows) != 3 {

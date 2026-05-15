@@ -11,7 +11,7 @@ import (
 	"github.com/easel/fizeau/internal/safefs"
 )
 
-const GeminiAuthFreshnessWindow = 7 * 24 * time.Hour
+const geminiAuthFreshnessWindow = 7 * 24 * time.Hour
 
 const (
 	authTypeGeminiAPIKey = "gemini-api-key"
@@ -21,9 +21,9 @@ const (
 	authTypeGateway      = "gateway"
 )
 
-// AuthSnapshot captures non-secret Gemini CLI auth/account evidence. It never
+// authSnapshot captures non-secret Gemini CLI auth/account evidence. It never
 // stores API keys, OAuth tokens, refresh tokens, or raw credential payloads.
-type AuthSnapshot struct {
+type authSnapshot struct {
 	Authenticated bool
 	AuthType      string
 	Account       *harnesses.AccountInfo
@@ -33,16 +33,16 @@ type AuthSnapshot struct {
 	Detail        string
 }
 
-// ReadAuthEvidence reads Gemini CLI auth evidence from the user's configured
+// readAuthEvidence reads Gemini CLI auth evidence from the user's configured
 // environment and ~/.gemini directory. It is best-effort because Gemini CLI has
 // no stable non-interactive quota command; routing uses this as auth/account
 // freshness evidence and exposes quota as unknown.
-func ReadAuthEvidence(now time.Time) AuthSnapshot {
+func readAuthEvidence(now time.Time) authSnapshot {
 	if now.IsZero() {
 		now = time.Now()
 	}
 	if authType := authTypeFromEnv(); authType != "" {
-		return AuthSnapshot{
+		return authSnapshot{
 			Authenticated: true,
 			AuthType:      authType,
 			Account:       accountForAuthType(authType),
@@ -54,21 +54,21 @@ func ReadAuthEvidence(now time.Time) AuthSnapshot {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return AuthSnapshot{Source: "~/.gemini", Detail: "home directory unavailable"}
+		return authSnapshot{Source: "~/.gemini", Detail: "home directory unavailable"}
 	}
-	return ReadAuthEvidenceFromDir(filepath.Join(home, ".gemini"), now)
+	return readAuthEvidenceFromDir(filepath.Join(home, ".gemini"), now)
 }
 
-// ReadAuthEvidenceFromDir reads non-secret Gemini CLI auth evidence from a
+// readAuthEvidenceFromDir reads non-secret Gemini CLI auth evidence from a
 // caller-provided .gemini directory. Tests use this for credential-free replay.
-func ReadAuthEvidenceFromDir(dir string, now time.Time) AuthSnapshot {
+func readAuthEvidenceFromDir(dir string, now time.Time) authSnapshot {
 	if now.IsZero() {
 		now = time.Now()
 	}
 	settingsPath := filepath.Join(dir, "settings.json")
 	authType, settingsTime, settingsOK := readSelectedAuthType(settingsPath)
 	if authType == "" {
-		return AuthSnapshot{
+		return authSnapshot{
 			Source:     settingsPath,
 			CapturedAt: settingsTime,
 			Fresh:      settingsOK && isFresh(settingsTime, now),
@@ -80,7 +80,7 @@ func ReadAuthEvidenceFromDir(dir string, now time.Time) AuthSnapshot {
 	case authTypeOAuth:
 		return readOAuthEvidence(dir, authType, settingsTime, now)
 	case authTypeGeminiAPIKey, authTypeVertexAI, authTypeGateway, authTypeComputeADC:
-		return AuthSnapshot{
+		return authSnapshot{
 			Authenticated: true,
 			AuthType:      authType,
 			Account:       accountForAuthType(authType),
@@ -90,7 +90,7 @@ func ReadAuthEvidenceFromDir(dir string, now time.Time) AuthSnapshot {
 			Detail:        "Gemini CLI auth method configured; secret material is external to DDx",
 		}
 	default:
-		return AuthSnapshot{
+		return authSnapshot{
 			AuthType:   authType,
 			Source:     settingsPath,
 			CapturedAt: settingsTime,
@@ -122,11 +122,11 @@ func readSelectedAuthType(path string) (string, time.Time, bool) {
 	return strings.TrimSpace(settings.Security.Auth.SelectedType), st.ModTime().UTC(), true
 }
 
-func readOAuthEvidence(dir, authType string, settingsTime, now time.Time) AuthSnapshot {
+func readOAuthEvidence(dir, authType string, settingsTime, now time.Time) authSnapshot {
 	oauthPath := filepath.Join(dir, "oauth_creds.json")
 	st, err := os.Stat(oauthPath)
 	if err != nil || st.IsDir() {
-		return AuthSnapshot{
+		return authSnapshot{
 			AuthType:   authType,
 			Source:     oauthPath,
 			CapturedAt: settingsTime,
@@ -136,7 +136,7 @@ func readOAuthEvidence(dir, authType string, settingsTime, now time.Time) AuthSn
 	}
 	data, err := safefs.ReadFile(oauthPath)
 	if err != nil {
-		return AuthSnapshot{
+		return authSnapshot{
 			AuthType:   authType,
 			Source:     oauthPath,
 			CapturedAt: st.ModTime().UTC(),
@@ -150,7 +150,7 @@ func readOAuthEvidence(dir, authType string, settingsTime, now time.Time) AuthSn
 		ExpiryDate   int64  `json:"expiry_date"`
 	}
 	if err := json.Unmarshal(data, &creds); err != nil {
-		return AuthSnapshot{
+		return authSnapshot{
 			AuthType:   authType,
 			Source:     oauthPath,
 			CapturedAt: st.ModTime().UTC(),
@@ -164,7 +164,7 @@ func readOAuthEvidence(dir, authType string, settingsTime, now time.Time) AuthSn
 		authenticated = authenticated && expires.After(now)
 	}
 	capturedAt := maxTime(settingsTime, st.ModTime().UTC())
-	return AuthSnapshot{
+	return authSnapshot{
 		Authenticated: authenticated,
 		AuthType:      authType,
 		Account:       readGoogleAccount(dir),
@@ -235,7 +235,7 @@ func isFresh(capturedAt, now time.Time) bool {
 	if capturedAt.IsZero() {
 		return false
 	}
-	return now.Sub(capturedAt) <= GeminiAuthFreshnessWindow
+	return now.Sub(capturedAt) <= geminiAuthFreshnessWindow
 }
 
 func maxTime(a, b time.Time) time.Time {

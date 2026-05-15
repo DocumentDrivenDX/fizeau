@@ -11,15 +11,15 @@ import (
 )
 
 // geminiQuotaFreshness is the constant freshness window for gemini quota
-// evidence. Mirrors DefaultGeminiQuotaStaleAfter; kept as a separate name
+// evidence. Mirrors defaultGeminiQuotaStaleAfter; kept as a separate name
 // so the CONTRACT-004 method has a stable, contract-named constant.
-const geminiQuotaFreshness = DefaultGeminiQuotaStaleAfter
+const geminiQuotaFreshness = defaultGeminiQuotaStaleAfter
 
 // geminiAccountFreshness is the constant freshness window for gemini
 // account/auth evidence. Gemini auth (~/.gemini OAuth and friends) rotates
 // on a much slower cadence than quota; the scheduler runs it on its own
 // 7-day ticker.
-const geminiAccountFreshness = GeminiAuthFreshnessWindow
+const geminiAccountFreshness = geminiAuthFreshnessWindow
 
 // supportedLimitIDs is the stable public set of Windows[].LimitID values
 // gemini's /model manage probe emits. One per tier surfaced by the
@@ -56,7 +56,7 @@ func (r *Runner) QuotaStatus(ctx context.Context, now time.Time) (harnesses.Quot
 	if err := ctx.Err(); err != nil {
 		return harnesses.QuotaStatus{}, err
 	}
-	snap, ok := ReadGeminiQuota()
+	snap, ok := readGeminiQuota()
 	if !ok || snap == nil {
 		return harnesses.QuotaStatus{
 			Source:            "cache",
@@ -122,15 +122,15 @@ func (r *Runner) refreshQuotaLocked(ctx context.Context) harnesses.QuotaStatus {
 			Reason:            reason,
 		}
 	}
-	account := ReadAuthEvidence(now).Account
-	snap := GeminiQuotaSnapshot{
+	account := readAuthEvidence(now).Account
+	snap := geminiQuotaSnapshot{
 		CapturedAt: now.UTC(),
 		Windows:    windows,
 		Source:     "pty",
 		Account:    account,
 	}
-	if path, pathErr := GeminiQuotaCachePath(); pathErr == nil {
-		_ = WriteGeminiQuota(path, snap)
+	if path, pathErr := geminiQuotaCachePath(); pathErr == nil {
+		_ = writeGeminiQuota(path, snap)
 	}
 	return geminiQuotaStatusFromSnapshot(&snap, now)
 }
@@ -146,16 +146,16 @@ func (r *Runner) SupportedLimitIDs() []string {
 }
 
 // AccountStatus implements harnesses.AccountHarness. Gemini's account
-// state is sourced from AuthSnapshot (read from ~/.gemini and env).
+// state is sourced from authSnapshot (read from ~/.gemini and env).
 func (r *Runner) AccountStatus(ctx context.Context, now time.Time) (harnesses.AccountSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return harnesses.AccountSnapshot{}, err
 	}
-	auth := ReadAuthEvidence(now)
+	auth := readAuthEvidence(now)
 	return geminiAccountSnapshotFromAuth(auth), nil
 }
 
-// RefreshAccount implements harnesses.AccountHarness. ReadAuthEvidence
+// RefreshAccount implements harnesses.AccountHarness. readAuthEvidence
 // is filesystem-only (no network probe), so refresh is the same call as
 // status. Single-flight on the package's refresh group keeps concurrent
 // callers consistent with the QuotaHarness contract shape.
@@ -164,7 +164,7 @@ func (r *Runner) RefreshAccount(ctx context.Context) (harnesses.AccountSnapshot,
 		return harnesses.AccountSnapshot{}, err
 	}
 	v, err, _ := refreshGroup.Do("gemini:refresh-account", func() (any, error) {
-		auth := ReadAuthEvidence(time.Now())
+		auth := readAuthEvidence(time.Now())
 		return geminiAccountSnapshotFromAuth(auth), nil
 	})
 	if err != nil {
@@ -182,7 +182,7 @@ func (r *Runner) AccountFreshness() time.Duration {
 
 // DefaultModelSnapshot implements harnesses.ModelDiscoveryHarness.
 func (r *Runner) DefaultModelSnapshot() harnesses.ModelDiscoverySnapshot {
-	return DefaultGeminiModelDiscovery()
+	return defaultGeminiModelDiscovery()
 }
 
 // ResolveModelAlias implements harnesses.ModelDiscoveryHarness. Returns
@@ -194,9 +194,9 @@ func (r *Runner) ResolveModelAlias(family string, snapshot harnesses.ModelDiscov
 	if !isSupportedGeminiAlias(normalized) {
 		return "", harnesses.ErrAliasNotResolvable
 	}
-	resolved := ResolveGeminiModelAlias(normalized, snapshot)
+	resolved := resolveGeminiModelAlias(normalized, snapshot)
 	if resolved == "" || resolved == normalized {
-		// ResolveGeminiModelAlias returns the input unchanged when no
+		// resolveGeminiModelAlias returns the input unchanged when no
 		// concrete model matches. Treat that as not-resolvable so the
 		// CONTRACT-004 negative-path semantics are preserved.
 		return "", harnesses.ErrAliasNotResolvable
@@ -220,27 +220,27 @@ func isSupportedGeminiAlias(family string) bool {
 
 // geminiQuotaStatusFromSnapshot projects the per-harness snapshot onto
 // harnesses.QuotaStatus, deriving State and RoutingPreference via the
-// existing DecideGeminiQuotaRouting helper. Tier facts (Flash / Flash
+// existing decideGeminiQuotaRouting helper. Tier facts (Flash / Flash
 // Lite / Pro) live in Windows with their distinguishing LimitID; no tier
 // names appear in Detail.
-func geminiQuotaStatusFromSnapshot(snap *GeminiQuotaSnapshot, now time.Time) harnesses.QuotaStatus {
-	decision := DecideGeminiQuotaRouting(snap, now, geminiQuotaFreshness)
+func geminiQuotaStatusFromSnapshot(snap *geminiQuotaSnapshot, now time.Time) harnesses.QuotaStatus {
+	decision := decideGeminiQuotaRouting(snap, now, geminiQuotaFreshness)
 	pref, state := mapGeminiRoutingPreference(decision)
 	status := harnesses.QuotaStatus{
 		Source:            snap.Source,
 		CapturedAt:        snap.CapturedAt,
-		Fresh:             decision.Fresh,
-		Age:               decision.Age,
+		Fresh:             decision.fresh,
+		Age:               decision.age,
 		State:             state,
 		Windows:           append([]harnesses.QuotaWindow(nil), snap.Windows...),
 		RoutingPreference: pref,
-		Reason:            decision.Reason,
+		Reason:            decision.reason,
 	}
 	if snap.Account != nil {
 		acct := harnesses.AccountSnapshot{
 			Source:     "cache",
 			CapturedAt: snap.CapturedAt,
-			Fresh:      IsGeminiQuotaFresh(snap, now, geminiAccountFreshness),
+			Fresh:      isGeminiQuotaFresh(snap, now, geminiAccountFreshness),
 			PlanType:   snap.Account.PlanType,
 			Email:      snap.Account.Email,
 			OrgName:    snap.Account.OrgName,
@@ -253,30 +253,30 @@ func geminiQuotaStatusFromSnapshot(snap *GeminiQuotaSnapshot, now time.Time) har
 	return status
 }
 
-// mapGeminiRoutingPreference translates today's PreferGemini+freshness
+// mapGeminiRoutingPreference translates today's preferGemini+freshness
 // decision into the CONTRACT-004 (RoutingPreference, QuotaStateValue)
 // pair. Legacy semantics: missing snapshot ⇒ Unavailable/Unknown;
-// stale ⇒ Stale/Blocked ("assume limited"); fresh+PreferGemini ⇒
-// OK/Available; fresh+!PreferGemini ⇒ Blocked/Blocked.
-func mapGeminiRoutingPreference(d GeminiQuotaRoutingDecision) (harnesses.RoutingPreference, harnesses.QuotaStateValue) {
-	if !d.SnapshotPresent {
+// stale ⇒ Stale/Blocked ("assume limited"); fresh+preferGemini ⇒
+// OK/Available; fresh+!preferGemini ⇒ Blocked/Blocked.
+func mapGeminiRoutingPreference(d geminiQuotaRoutingDecision) (harnesses.RoutingPreference, harnesses.QuotaStateValue) {
+	if !d.snapshotPresent {
 		return harnesses.RoutingPreferenceUnknown, harnesses.QuotaUnavailable
 	}
-	if !d.Fresh {
+	if !d.fresh {
 		return harnesses.RoutingPreferenceBlocked, harnesses.QuotaStale
 	}
-	if d.PreferGemini {
+	if d.preferGemini {
 		return harnesses.RoutingPreferenceAvailable, harnesses.QuotaOK
 	}
 	return harnesses.RoutingPreferenceBlocked, harnesses.QuotaBlocked
 }
 
-// geminiAccountSnapshotFromAuth projects an AuthSnapshot onto the
+// geminiAccountSnapshotFromAuth projects an authSnapshot onto the
 // universal AccountSnapshot type. Authenticated is true iff the
 // underlying auth evidence reports an authenticated session;
 // Unauthenticated is the explicit negative signal so the projection
 // distinguishes "no evidence" from "evidence says signed out".
-func geminiAccountSnapshotFromAuth(auth AuthSnapshot) harnesses.AccountSnapshot {
+func geminiAccountSnapshotFromAuth(auth authSnapshot) harnesses.AccountSnapshot {
 	out := harnesses.AccountSnapshot{
 		Source:     auth.Source,
 		CapturedAt: auth.CapturedAt,

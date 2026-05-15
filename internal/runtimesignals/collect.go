@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/discoverycache"
+	"github.com/easel/fizeau/internal/harnesses"
 	claudecache "github.com/easel/fizeau/internal/harnesses/claude"
 	codexcache "github.com/easel/fizeau/internal/harnesses/codex"
-	geminicache "github.com/easel/fizeau/internal/harnesses/gemini"
+	geminiharness "github.com/easel/fizeau/internal/harnesses/gemini"
 	"github.com/easel/fizeau/internal/provider/quotaheaders"
 )
 
@@ -208,20 +209,19 @@ func collectCodexSignal(sig *Signal) {
 }
 
 func collectGeminiSignal(sig *Signal) {
-	snap, ok := geminicache.ReadGeminiQuota()
-	if !ok || snap == nil {
-		return // StatusUnknown
+	r := &geminiharness.Runner{}
+	status, err := r.QuotaStatus(context.Background(), time.Now())
+	if err != nil {
+		return
 	}
-	if geminicache.GeminiQuotaSnapshotAge(snap, time.Now()) > geminicache.DefaultGeminiQuotaStaleAfter {
-		return // StatusUnknown; snapshot is stale
-	}
-	decision := geminicache.DecideGeminiQuotaRouting(snap, time.Now(), 0)
-	if decision.PreferGemini {
+	switch status.State {
+	case harnesses.QuotaOK:
 		sig.Status = StatusAvailable
-	} else {
+	case harnesses.QuotaBlocked:
 		sig.Status = StatusExhausted
 		zero := 0
 		sig.QuotaRemaining = &zero
+		// QuotaUnavailable and QuotaStale both leave Status as StatusUnknown
 	}
 }
 

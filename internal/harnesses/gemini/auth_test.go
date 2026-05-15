@@ -14,7 +14,7 @@ func TestReadAuthEvidenceFromDir_OAuthFresh(t *testing.T) {
 	writeGeminiTestFile(t, dir, "oauth_creds.json", `{"access_token":"redacted","refresh_token":"redacted","expiry_date":1770000000000}`, now.Add(-time.Hour))
 	writeGeminiTestFile(t, dir, "google_accounts.json", `{"active":"dev@example.com"}`, now.Add(-time.Hour))
 
-	snap := ReadAuthEvidenceFromDir(dir, now)
+	snap := readAuthEvidenceFromDir(dir, now)
 	if !snap.Authenticated || !snap.Fresh {
 		t.Fatalf("auth snapshot: %#v", snap)
 	}
@@ -29,11 +29,11 @@ func TestReadAuthEvidenceFromDir_OAuthFresh(t *testing.T) {
 func TestReadAuthEvidenceFromDir_StaleOAuth(t *testing.T) {
 	now := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
 	dir := t.TempDir()
-	stale := now.Add(-(GeminiAuthFreshnessWindow + time.Hour))
+	stale := now.Add(-(geminiAuthFreshnessWindow + time.Hour))
 	writeGeminiTestFile(t, dir, "settings.json", `{"security":{"auth":{"selectedType":"oauth-personal"}}}`, stale)
 	writeGeminiTestFile(t, dir, "oauth_creds.json", `{"access_token":"redacted","refresh_token":"redacted"}`, stale)
 
-	snap := ReadAuthEvidenceFromDir(dir, now)
+	snap := readAuthEvidenceFromDir(dir, now)
 	if !snap.Authenticated {
 		t.Fatalf("expected stale-but-authenticated evidence, got %#v", snap)
 	}
@@ -47,7 +47,7 @@ func TestReadAuthEvidenceFromDir_MissingCredentials(t *testing.T) {
 	dir := t.TempDir()
 	writeGeminiTestFile(t, dir, "settings.json", `{"security":{"auth":{"selectedType":"oauth-personal"}}}`, now)
 
-	snap := ReadAuthEvidenceFromDir(dir, now)
+	snap := readAuthEvidenceFromDir(dir, now)
 	if snap.Authenticated {
 		t.Fatalf("missing credentials should be unauthenticated: %#v", snap)
 	}
@@ -61,7 +61,7 @@ func TestReadAuthEvidenceFromDir_APIKeyMode(t *testing.T) {
 	dir := t.TempDir()
 	writeGeminiTestFile(t, dir, "settings.json", `{"security":{"auth":{"selectedType":"gemini-api-key"}}}`, now)
 
-	snap := ReadAuthEvidenceFromDir(dir, now)
+	snap := readAuthEvidenceFromDir(dir, now)
 	if !snap.Authenticated || !snap.Fresh {
 		t.Fatalf("auth snapshot: %#v", snap)
 	}
