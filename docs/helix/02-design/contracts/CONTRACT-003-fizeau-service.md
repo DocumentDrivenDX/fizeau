@@ -417,6 +417,12 @@ type ModelInfo struct {
 }
 ```
 
+`HarnessInfo.Quota` and `HarnessInfo.Account` are populated by projecting the
+internal harness contract defined in
+[`CONTRACT-004`](./CONTRACT-004-harness-implementation.md). `ProviderInfo.Quota`
+and `ProviderInfo.Auth` use the same projection rules for subscription-backed
+providers.
+
 `BillingModel` has four values: unknown (`""`), `fixed`, `per_token`, and
 `subscription`. Billing feeds routing cost and default inclusion, but it is
 also surfaced on harness, provider, and model inventory rows so operators can

@@ -201,7 +201,7 @@ session logs, or measurement as first-class outputs.
 3. **Streaming callbacks** — caller can receive tool call events and partial
    responses in real time
 4. **Timeout management** — per-invocation and per-tool-call timeouts
-5. **Harness adapter** — implement the harness interface (CONTRACT-003) so Fizeau
+5. **Harness adapter** — implement the harness interface (CONTRACT-004) so Fizeau
    appears as a native harness alongside claude/codex/pi
 6. **Usage reporting** — `fiz usage` command:
    per-provider/model token and cost summaries with time-window filtering
