@@ -3,6 +3,7 @@ package fizeau
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/easel/fizeau/internal/discoverycache"
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 )
 
 // fakeServiceConfig implements ServiceConfig for tests.
@@ -42,11 +42,216 @@ func (f *fakeServiceConfig) SessionLogDir() string {
 	return filepath.Join(f.workDir, ".fizeau", "sessions")
 }
 
-// fakeCodexQuotaHarness is a minimal harnesses.QuotaHarness for tests that
-// need to observe or control codex quota refresh calls without invoking the
-// real codex CLI. QuotaStatus always returns QuotaUnavailable so that
-// primaryQuotaCacheStatus sees the cache as missing and requests a refresh;
-// RefreshQuota invokes refreshFn (if set) or returns a fresh-available status.
+// fakeClaudeQuotaHarness is a cache-backed harnesses.QuotaHarness /
+// AccountHarness used by service tests. It reads and writes the same JSON
+// fixture cache files the real Claude runner owns, but keeps the tests at the
+// interface boundary instead of reaching into claude package exports.
+type fakeClaudeQuotaHarness struct {
+	refreshFn    func(ctx context.Context) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error)
+	refreshCalls atomic.Int32
+}
+
+func newFakeClaudeQuotaHarness() *fakeClaudeQuotaHarness {
+	return &fakeClaudeQuotaHarness{}
+}
+
+func (f *fakeClaudeQuotaHarness) Info() harnesses.HarnessInfo {
+	return harnesses.HarnessInfo{Name: "claude", Type: "subprocess"}
+}
+
+func (f *fakeClaudeQuotaHarness) HealthCheck(_ context.Context) error { return nil }
+
+func (f *fakeClaudeQuotaHarness) Execute(_ context.Context, _ harnesses.ExecuteRequest) (<-chan harnesses.Event, error) {
+	panic("fakeClaudeQuotaHarness: Execute not supported")
+}
+
+func (f *fakeClaudeQuotaHarness) QuotaStatus(ctx context.Context, now time.Time) (harnesses.QuotaStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return harnesses.QuotaStatus{}, err
+	}
+	path := os.Getenv("FIZEAU_CLAUDE_QUOTA_CACHE")
+	if path == "" {
+		return harnesses.QuotaStatus{
+			Source:            "cache",
+			State:             harnesses.QuotaUnavailable,
+			RoutingPreference: harnesses.RoutingPreferenceUnknown,
+			Reason:            "no cached snapshot",
+		}, nil
+	}
+	snap, ok := readClaudeQuotaCacheFileRaw(path)
+	if !ok || snap == nil {
+		return harnesses.QuotaStatus{
+			Source:            "cache",
+			State:             harnesses.QuotaUnavailable,
+			RoutingPreference: harnesses.RoutingPreferenceUnknown,
+			Reason:            "no cached snapshot",
+		}, nil
+	}
+
+	fresh := !snap.CapturedAt.IsZero() && now.Sub(snap.CapturedAt) < defaultQuotaRefreshDebounce
+	state := harnesses.QuotaOK
+	routingPreference := harnesses.RoutingPreferenceAvailable
+	if snap.FiveHourRemaining <= 0 || snap.WeeklyRemaining <= 0 {
+		state = harnesses.QuotaBlocked
+		routingPreference = harnesses.RoutingPreferenceBlocked
+	} else if !fresh {
+		state = harnesses.QuotaStale
+		routingPreference = harnesses.RoutingPreferenceBlocked
+	}
+
+	status := harnesses.QuotaStatus{
+		Source:            snap.Source,
+		CapturedAt:        snap.CapturedAt,
+		Fresh:             fresh,
+		State:             state,
+		Windows:           append([]harnesses.QuotaWindow(nil), snap.Windows...),
+		RoutingPreference: routingPreference,
+	}
+	if snap.Account != nil {
+		status.Account = &harnesses.AccountSnapshot{
+			Authenticated: true,
+			PlanType:      snap.Account.PlanType,
+			Email:         snap.Account.Email,
+			OrgName:       snap.Account.OrgName,
+			Source:        snap.Source,
+			CapturedAt:    snap.CapturedAt,
+			Fresh:         fresh,
+		}
+	}
+	return status, nil
+}
+
+func (f *fakeClaudeQuotaHarness) RefreshQuota(ctx context.Context) (harnesses.QuotaStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return harnesses.QuotaStatus{}, err
+	}
+	f.refreshCalls.Add(1)
+
+	windows := []harnesses.QuotaWindow{
+		{LimitID: "session", UsedPercent: 20, State: "ok"},
+		{LimitID: "weekly-all", UsedPercent: 10, State: "ok"},
+	}
+	account := &harnesses.AccountInfo{PlanType: "Claude Max"}
+	if f.refreshFn != nil {
+		var err error
+		windows, account, err = f.refreshFn(ctx)
+		if err != nil {
+			return harnesses.QuotaStatus{
+				Source:            "fixture",
+				CapturedAt:        time.Now().UTC(),
+				State:             harnesses.QuotaUnavailable,
+				RoutingPreference: harnesses.RoutingPreferenceUnknown,
+				Reason:            err.Error(),
+			}, nil
+		}
+	}
+
+	path := os.Getenv("FIZEAU_CLAUDE_QUOTA_CACHE")
+	if path != "" {
+		if err := writeClaudeQuotaCacheFileRaw(path, fakeClaudeQuotaSnapshotFromWindows(windows, account)); err != nil {
+			return harnesses.QuotaStatus{}, err
+		}
+	}
+	return f.QuotaStatus(ctx, time.Now())
+}
+
+func (f *fakeClaudeQuotaHarness) QuotaFreshness() time.Duration { return defaultQuotaRefreshDebounce }
+
+func (f *fakeClaudeQuotaHarness) SupportedLimitIDs() []string {
+	return []string{"session", "weekly-all", "weekly-sonnet", "extra"}
+}
+
+func (f *fakeClaudeQuotaHarness) AccountStatus(ctx context.Context, now time.Time) (harnesses.AccountSnapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return harnesses.AccountSnapshot{}, err
+	}
+	status, err := f.QuotaStatus(ctx, now)
+	if err != nil {
+		return harnesses.AccountSnapshot{}, err
+	}
+	if status.Account == nil {
+		return harnesses.AccountSnapshot{Source: status.Source}, nil
+	}
+	return *status.Account, nil
+}
+
+func (f *fakeClaudeQuotaHarness) RefreshAccount(ctx context.Context) (harnesses.AccountSnapshot, error) {
+	if _, err := f.RefreshQuota(ctx); err != nil {
+		return harnesses.AccountSnapshot{}, err
+	}
+	return f.AccountStatus(ctx, time.Now())
+}
+
+func (f *fakeClaudeQuotaHarness) AccountFreshness() time.Duration { return defaultQuotaRefreshDebounce }
+
+func fakeClaudeQuotaSnapshotFromWindows(windows []harnesses.QuotaWindow, account *harnesses.AccountInfo) claudeTestQuotaSnapshot {
+	weeklyUsed := usedPercentForLimitID(windows, "weekly-all")
+	if weeklyUsed < 0 {
+		weeklyUsed = usedPercentForLimitID(windows, "weekly-sonnet")
+	}
+	return claudeTestQuotaSnapshot{
+		CapturedAt:        time.Now().UTC(),
+		FiveHourRemaining: remainingPercentFromUsed(usedPercentForLimitID(windows, "session")),
+		FiveHourLimit:     100,
+		WeeklyRemaining:   remainingPercentFromUsed(weeklyUsed),
+		WeeklyLimit:       100,
+		Windows:           append([]harnesses.QuotaWindow(nil), windows...),
+		Source:            "fixture",
+		Account:           account,
+	}
+}
+
+func usedPercentForLimitID(windows []harnesses.QuotaWindow, limitID string) float64 {
+	for _, window := range windows {
+		if window.LimitID == limitID {
+			return window.UsedPercent
+		}
+	}
+	return -1
+}
+
+func remainingPercentFromUsed(used float64) int {
+	if used < 0 {
+		return 0
+	}
+	remaining := int(math.Round(100 - used))
+	if remaining < 0 {
+		return 0
+	}
+	if remaining > 100 {
+		return 100
+	}
+	return remaining
+}
+
+func readClaudeQuotaCacheFileRaw(path string) (*claudeTestQuotaSnapshot, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	var snap claudeTestQuotaSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return nil, false
+	}
+	return &snap, true
+}
+
+func writeClaudeQuotaCacheFileRaw(path string, snap claudeTestQuotaSnapshot) error {
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
 type fakeCodexQuotaHarness struct {
 	refreshFn    func(ctx context.Context) (harnesses.QuotaStatus, error)
 	refreshCalls atomic.Int32
@@ -87,7 +292,23 @@ func setFakeCodexHarness(t *testing.T, h *fakeCodexQuotaHarness) {
 	t.Helper()
 	prev := harnessInstanceHook
 	harnessInstanceHook = func(instances map[string]harnesses.Harness) map[string]harnesses.Harness {
+		if prev != nil {
+			instances = prev(instances)
+		}
 		instances["codex"] = h
+		return instances
+	}
+	t.Cleanup(func() { harnessInstanceHook = prev })
+}
+
+func setFakeClaudeHarness(t *testing.T, h *fakeClaudeQuotaHarness) {
+	t.Helper()
+	prev := harnessInstanceHook
+	harnessInstanceHook = func(instances map[string]harnesses.Harness) map[string]harnesses.Harness {
+		if prev != nil {
+			instances = prev(instances)
+		}
+		instances["claude"] = h
 		return instances
 	}
 	t.Cleanup(func() { harnessInstanceHook = prev })
@@ -534,14 +755,14 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 	writeClaudeQuotaCacheFile(t, cachePath, staleSnap)
 
 	// Inject a fake refresher so no real PTY probe is invoked.
-	refreshCalled := false
-	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
-		refreshCalled = true
+	fakeClaude := newFakeClaudeQuotaHarness()
+	fakeClaude.refreshFn = func(_ context.Context) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, nil, nil
-	})
+	}
+	setFakeClaudeHarness(t, fakeClaude)
 
 	svc := newTestService(t, ServiceOptions{})
 	// HealthCheck for "claude" requires the binary to be discoverable.
@@ -550,8 +771,8 @@ func TestHealthCheck_ClaudeRefreshesQuotaWhenStale(t *testing.T) {
 	// directly rather than going through HealthCheck's availability gate.
 	svc.healthCheckRefreshClaudeQuota(context.Background())
 
-	if !refreshCalled {
-		t.Error("expected healthCheckClaudeQuotaRefresher to be called for stale cache")
+	if got := fakeClaude.refreshCalls.Load(); got != 1 {
+		t.Fatalf("expected one Claude quota refresh, got %d", got)
 	}
 
 	// Verify the cache was rewritten with a newer timestamp.
@@ -586,17 +807,17 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 	writeClaudeQuotaCacheFile(t, cachePath, freshSnap)
 
 	// Inject a fake refresher that must NOT be called.
-	refreshCalled := false
-	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
-		refreshCalled = true
+	fakeClaude := newFakeClaudeQuotaHarness()
+	fakeClaude.refreshFn = func(_ context.Context) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		return nil, nil, nil
-	})
+	}
+	setFakeClaudeHarness(t, fakeClaude)
 
 	svc := newTestService(t, ServiceOptions{})
 	svc.healthCheckRefreshClaudeQuota(context.Background())
 
-	if refreshCalled {
-		t.Error("expected healthCheckClaudeQuotaRefresher NOT to be called for fresh cache")
+	if got := fakeClaude.refreshCalls.Load(); got != 0 {
+		t.Fatalf("expected no Claude quota refreshes for fresh cache, got %d", got)
 	}
 
 	// Verify the cache timestamp is unchanged (still matches freshSnap).
@@ -615,19 +836,16 @@ func TestHealthCheck_ClaudeSkipsRefreshWhenFresh(t *testing.T) {
 // is auth/account-gated until the CLI exposes a stable numeric quota counter.
 func TestHealthCheck_GeminiDoesNotInvokeQuotaProbe(t *testing.T) {
 	// Inject a counter to detect unexpected calls.
-	probeCalled := false
-	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
-		probeCalled = true
-		return nil, nil, nil
-	})
+	fakeClaude := newFakeClaudeQuotaHarness()
+	setFakeClaudeHarness(t, fakeClaude)
 
 	svc := newTestService(t, ServiceOptions{})
 	// "gemini" is registered but unavailable in CI (binary not found).
 	// HealthCheck returns an error but must not invoke the quota refresher.
 	_ = svc.HealthCheck(context.Background(), HealthTarget{Type: "harness", Name: "gemini"})
 
-	if probeCalled {
-		t.Error("healthCheckClaudeQuotaRefresher must not be called for gemini harness")
+	if got := fakeClaude.refreshCalls.Load(); got != 0 {
+		t.Fatalf("healthCheck must not refresh Claude quota for gemini; got %d calls", got)
 	}
 }
 
@@ -676,14 +894,16 @@ func TestPrimaryQuotaRefresh_AutomaticAndThrottled(t *testing.T) {
 	var codexCalls atomic.Int32
 	done := make(chan string, 2)
 
-	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	fakeClaude := newFakeClaudeQuotaHarness()
+	fakeClaude.refreshFn = func(_ context.Context) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		claudeCalls.Add(1)
 		done <- "claude"
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	})
+	}
+	setFakeClaudeHarness(t, fakeClaude)
 
 	fake := newFakeCodexQuotaHarness()
 	fake.refreshFn = func(_ context.Context) (harnesses.QuotaStatus, error) {
@@ -718,12 +938,14 @@ func TestNewWaitsBrieflyForInvalidQuotaRefresh(t *testing.T) {
 	t.Setenv("FIZEAU_CLAUDE_QUOTA_CACHE", claudePath)
 	resetPrimaryQuotaRefreshForTest(t)
 
-	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	fakeClaude := newFakeClaudeQuotaHarness()
+	fakeClaude.refreshFn = func(_ context.Context) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	})
+	}
+	setFakeClaudeHarness(t, fakeClaude)
 
 	fake := newFakeCodexQuotaHarness()
 	setFakeCodexHarness(t, fake)
@@ -755,13 +977,19 @@ func TestNewStartupQuotaRefreshContinuesAfterTimeout(t *testing.T) {
 		}
 	})
 
-	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
-		<-release
+	fakeClaude := newFakeClaudeQuotaHarness()
+	fakeClaude.refreshFn = func(ctx context.Context) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		}
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	})
+	}
+	setFakeClaudeHarness(t, fakeClaude)
 
 	fake := newFakeCodexQuotaHarness()
 	fake.refreshFn = func(_ context.Context) (harnesses.QuotaStatus, error) {
@@ -801,13 +1029,15 @@ func TestPrimaryQuotaRefreshWorkerRefreshesOnTimer(t *testing.T) {
 
 	var claudeCalls atomic.Int32
 	var codexCalls atomic.Int32
-	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	fakeClaude := newFakeClaudeQuotaHarness()
+	fakeClaude.refreshFn = func(_ context.Context) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		claudeCalls.Add(1)
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	})
+	}
+	setFakeClaudeHarness(t, fakeClaude)
 
 	fake := newFakeCodexQuotaHarness()
 	fake.refreshFn = func(_ context.Context) (harnesses.QuotaStatus, error) {
@@ -858,13 +1088,15 @@ func TestResolveRouteDoesNotTriggerAsyncQuotaRefresh(t *testing.T) {
 
 	var claudeCalls atomic.Int32
 
-	setClaudeQuotaRefresherForTest(t, func(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
+	fakeClaude := newFakeClaudeQuotaHarness()
+	fakeClaude.refreshFn = func(_ context.Context) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
 		claudeCalls.Add(1)
 		return []harnesses.QuotaWindow{
 			{LimitID: "session", UsedPercent: 20},
 			{LimitID: "weekly-all", UsedPercent: 10},
 		}, &harnesses.AccountInfo{PlanType: "Claude Max"}, nil
-	})
+	}
+	setFakeClaudeHarness(t, fakeClaude)
 
 	fake := newFakeCodexQuotaHarness()
 	setFakeCodexHarness(t, fake)
@@ -908,14 +1140,6 @@ func resetPrimaryQuotaRefreshForTest(t *testing.T) {
 		primaryQuotaRefresh.inFlight = oldInFlight
 		primaryQuotaRefresh.mu.Unlock()
 	})
-}
-
-func setClaudeQuotaRefresherForTest(t *testing.T, fn func(time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error)) {
-	t.Helper()
-	restore := claudeharness.SetCaptureForTest(func(_ context.Context, timeout time.Duration, _ ...claudeharness.QuotaPTYOption) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error) {
-		return fn(timeout)
-	})
-	t.Cleanup(restore)
 }
 
 func waitForQuotaRefreshes(t *testing.T, done <-chan string, want ...string) {

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
-	claudeharness "github.com/easel/fizeau/internal/harnesses/claude"
 	"github.com/easel/fizeau/internal/pty/cassette"
 )
 

@@ -1,10 +1,9 @@
-package claude_test
+package claude
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/easel/fizeau/internal/harnesses/claude"
 	"github.com/easel/fizeau/internal/harnesses/harnesstest"
 )
 
@@ -13,7 +12,7 @@ import (
 // so neither a stale snapshot nor a real claude binary can sneak in.
 func TestClaudeRunnerHarnessConformance(t *testing.T) {
 	isolateClaudeRunnerEnv(t)
-	harnesstest.RunHarnessConformance(t, &claude.Runner{})
+	harnesstest.RunHarnessConformance(t, &Runner{})
 }
 
 // TestClaudeRunnerQuotaHarnessConformance asserts QuotaHarness contract:
@@ -22,14 +21,14 @@ func TestClaudeRunnerHarnessConformance(t *testing.T) {
 // valid status value, not as an error.
 func TestClaudeRunnerQuotaHarnessConformance(t *testing.T) {
 	isolateClaudeRunnerEnv(t)
-	harnesstest.RunQuotaHarnessConformance(t, &claude.Runner{})
+	harnesstest.RunQuotaHarnessConformance(t, &Runner{})
 }
 
 // TestClaudeRunnerAccountHarnessConformance asserts the AccountHarness
 // contract against the cold-cache path (no embedded account evidence).
 func TestClaudeRunnerAccountHarnessConformance(t *testing.T) {
 	isolateClaudeRunnerEnv(t)
-	harnesstest.RunAccountHarnessConformance(t, &claude.Runner{})
+	harnesstest.RunAccountHarnessConformance(t, &Runner{})
 }
 
 // TestClaudeRunnerModelDiscoveryHarnessConformance asserts ResolveModelAlias
@@ -37,7 +36,7 @@ func TestClaudeRunnerAccountHarnessConformance(t *testing.T) {
 // ErrAliasNotResolvable.
 func TestClaudeRunnerModelDiscoveryHarnessConformance(t *testing.T) {
 	isolateClaudeRunnerEnv(t)
-	harnesstest.RunModelDiscoveryHarnessConformance(t, &claude.Runner{})
+	harnesstest.RunModelDiscoveryHarnessConformance(t, &Runner{})
 }
 
 // isolateClaudeRunnerEnv points the quota cache at a temp file that
