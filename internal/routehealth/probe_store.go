@@ -5,6 +5,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/easel/fizeau/internal/safefs"
 )
 
 // ProbeRecord records the most recent aliveness probe result for a provider endpoint.
@@ -128,7 +130,7 @@ func (ps *ProbeStore) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return safefs.WriteFile(path, data, 0o600)
 }
 
 // Load reads probe records from a JSON file at path. Non-existent files are silently ignored.
@@ -136,7 +138,7 @@ func (ps *ProbeStore) Load(path string) error {
 	if ps == nil || path == "" {
 		return nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := safefs.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
