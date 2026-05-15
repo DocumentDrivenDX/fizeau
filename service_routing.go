@@ -739,6 +739,9 @@ func (s *service) buildRoutingInputs(ctx context.Context) routing.Inputs {
 }
 
 func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelcatalog.Catalog, refresh modelsnapshot.RefreshMode) (routing.Inputs, modelsnapshot.ModelSnapshot) {
+	if refresh == modelsnapshot.RefreshIfStale {
+		s.refreshLocalHealthForRouting(ctx)
+	}
 	statuses := s.registry.Discover()
 	statusByName := make(map[string]harnesses.HarnessStatus, len(statuses))
 	for _, st := range statuses {
