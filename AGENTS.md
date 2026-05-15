@@ -55,6 +55,24 @@ if sp, ok := req.Provider.(StreamingProvider); ok && !req.NoStream {
 
 Do not add streaming logic to `Provider`. Do not change `ChatStream` signatures without updating both providers and `consumeStream`.
 
+## Harness implementation pattern
+
+Harness packages implement `harnesses.Harness` plus only the CONTRACT-004
+sub-interfaces they actually support (`QuotaHarness`, `AccountHarness`,
+`ModelDiscoveryHarness`). Service-side code consumes those interfaces; it
+must not reach back into harness-specific exported helpers once an interface
+surface exists.
+
+Per-harness durable snapshot/cache structs stay package-private. Cross-package
+consumers use the interface return types from `internal/harnesses/types.go`
+instead of reading harness-owned snapshot fields directly.
+
+Harness packages must not import each other. Shared helpers belong in neutral
+packages under `internal/harnesses/` or another shared internal package. The
+stable contract surface for human and programmatic consumers is
+`SupportedLimitIDs()` and `SupportedAliases()`: package docs must mirror those
+returns, and drift should fail tests.
+
 ## Event emission
 
 Fizeau owns public `ServiceEvent` construction, progress text, transcript
