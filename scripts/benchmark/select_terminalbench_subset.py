@@ -503,7 +503,7 @@ def build_manifest(tasks: dict[str, TaskStats], selected_by_bucket: dict[str, li
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tasks-dir", default="scripts/benchmark/external/terminal-bench-2")
-    parser.add_argument("--cache", default="benchmark-results/cache/terminalbench-leaderboard-rewards.json")
+    parser.add_argument("--cache", default="bench/results/cache/terminalbench-leaderboard-rewards.json")
     parser.add_argument("--out", default="scripts/beadbench/external/termbench-subset-external-bootstrap.json")
     parser.add_argument("--catalog", default=str(DEFAULT_CATALOG))
     parser.add_argument("--power-map", default=str(DEFAULT_POWER_MAP))

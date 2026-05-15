@@ -179,7 +179,7 @@ recipes:
     description: >-
       Real full TB-2.1 catalog run over all 89 tasks. This recipe is intended
       for targeted lane-filtered runs, for example:
-      ./benchmark --recipe tb21-all --lanes fiz-sindri-llamacpp-qwen3-6-27b.
+      ./bench/run --phase tb21-all --lanes fiz-sindri-llamacpp-qwen3-6-27b.
     subset: terminalbench-2-1-all
     lanes:
       - fiz-openai-gpt-5-5

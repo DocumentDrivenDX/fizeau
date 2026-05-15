@@ -68,7 +68,7 @@ type profileProviderInfo struct {
 func cmdMatrixIndex(args []string) int {
 	fs := flagSet("matrix-index")
 	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")
-	root := fs.String("root", "benchmark-results", "Root to scan for report.json files")
+	root := fs.String("root", "bench/results", "Root to scan for report.json files")
 	out := fs.String("out", "", "Directory for indexes (default: <canonical-out>/indexes or <root>/indexes)")
 	canonicalOut := fs.String("canonical-out", "", "Optional canonical output root; indexes go under <canonical-out>/indexes by default")
 	copyCells := fs.Bool("copy", false, "Copy each source cell directory into canonical cells/")
@@ -194,7 +194,7 @@ func collectMatrixIndexRows(root, canonicalRoot string, copyCells bool, fallback
 		if strings.Contains(filepath.ToSlash(path), "/indexes/") {
 			return nil
 		}
-		raw, err := os.ReadFile(path) // #nosec G304 G122 -- path discovered under operator-supplied benchmark-results root; WalkDir TOCTOU acceptable for index build
+		raw, err := os.ReadFile(path) // #nosec G304 G122 -- path discovered under operator-supplied bench/results root; WalkDir TOCTOU acceptable for index build
 		if err != nil {
 			return err
 		}
@@ -483,7 +483,7 @@ func copyDirContents(src, dst string) error {
 }
 
 func copyFile(src, dst string, perm os.FileMode) error {
-	in, err := os.Open(src) // #nosec G304 -- source discovered under operator-supplied benchmark-results root
+	in, err := os.Open(src) // #nosec G304 -- source discovered under operator-supplied bench/results root
 	if err != nil {
 		return err
 	}

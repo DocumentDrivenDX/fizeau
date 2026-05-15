@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Re-classify the invalid_class field on every report.json under
-benchmark-results/fiz-tools-v1/cells/ using the current Go classifier
+bench/results/fiz-tools-v1/cells/ using the current Go classifier
 logic in cmd/bench/matrix_invalid.go.
 
 Idempotent. Mirrors classifyMatrixInvalid 1:1; if the Go logic changes,
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-CELLS = REPO / "benchmark-results/fiz-tools-v1/cells"
+CELLS = REPO / "bench/results/fiz-tools-v1/cells"
 
 # Mirror cmd/bench/matrix_invalid.go regex patterns.
 QUOTA = re.compile(r"(?i)(api_error_status:\s*429|insufficient[_\s-]*quota|out_of_credits|credits?\s+exhausted|usage\s+exhausted|rate\s*limit|too many requests|quota\s+exhausted|quota\s+exceeded)")

@@ -77,7 +77,7 @@ python3 scripts/beadbench/run_beadbench.py --dry-run \
   --category rust-auth --arm-tier frontier
 ```
 
-Results are written to `benchmark-results/beadbench/run-<timestamp>-<pid>/report.json`.
+Results are written to `bench/results/beadbench/run-<timestamp>-<pid>/report.json`.
 
 ## Timeout evidence
 
@@ -127,7 +127,7 @@ python3 scripts/beadbench/probe_reasoning_controls.py \
 The probe records whether each provider accepts the control field, separates
 `reasoning_content`, and visibly suppresses thinking when reasoning is turned
 off. Results are written to
-`benchmark-results/beadbench/reasoning-probe-*.json`.
+`bench/results/beadbench/reasoning-probe-*.json`.
 
 Each probe emits one progress line as soon as it returns, flushed
 immediately, so a slow local arm can be distinguished from a stuck run
@@ -180,7 +180,7 @@ filled the response with visible thinking text.
 The same probe run found that Vidar OMLX `gpt-oss-20b-MXFP4-Q8` emits
 `reasoning_content` by default but has no known budget/off control in this
 matrix. A 2026-04-23 live probe of the no-control arm
-(`benchmark-results/beadbench/reasoning-probe-20260423T034159Z.json`) returned
+(`bench/results/beadbench/reasoning-probe-20260423T034159Z.json`) returned
 HTTP 200 with `content_chars=0, reasoning_chars=88` at `max_tokens=48` and
 `recommended_wire_format=unknown`: the assistant message carried only
 `reasoning_content`, all completion tokens were consumed by reasoning, and no
@@ -292,7 +292,7 @@ Currently marked invalid:
   two views disagree (`hx-in-progress-build` vs `hx-ready-epic`) regardless of
   what the agent edits, so both Codex and Sonnet execute-success runs fail the
   verifier identically (see
-  `benchmark-results/beadbench/run-20260423T054306Z-3937255/report.json`). The
+  `bench/results/beadbench/run-20260423T054306Z-3937255/report.json`). The
   task can be re-enabled once helix reconciles the CLI and validator views of
   the execution-ready surface.
 

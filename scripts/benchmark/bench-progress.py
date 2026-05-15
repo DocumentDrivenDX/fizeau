@@ -48,7 +48,7 @@ def canonical_root(repo: Path) -> Path:
     if env:
         p = Path(env)
         return p if p.is_absolute() else repo / env
-    return repo / "benchmark-results" / f"fiz-tools-v{fiz_tools_version(repo)}"
+    return repo / "bench/results" / f"fiz-tools-v{fiz_tools_version(repo)}"
 
 
 def docker_ps_task_containers() -> list[tuple[str, dt.datetime]]:

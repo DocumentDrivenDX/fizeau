@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/easel/fizeau/benchscore"
+	benchscore "github.com/easel/fizeau/bench/scorer"
 	"github.com/easel/fizeau/internal/productinfo"
 )
 

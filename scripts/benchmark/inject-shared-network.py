@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 DEFAULT_NETWORK = "harbor-tasks"
-DEFAULT_PREFLIGHT = "benchmark-results/external/terminal-bench-2-1-arm64-preflight"
+DEFAULT_PREFLIGHT = "bench/results/external/terminal-bench-2-1-arm64-preflight"
 COMPOSE_FILENAME = "docker-compose.yaml"
 
 COMPOSE_TEMPLATE = """\

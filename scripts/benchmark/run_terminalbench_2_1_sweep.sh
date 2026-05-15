@@ -2,12 +2,12 @@
 # One-shot TerminalBench 2.1 sweep runner.
 #
 # Default:
-#   scripts/benchmark/run_terminalbench_2_1_sweep.sh
+#   ./bench/run
 #
 # Common overrides:
-#   scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase canary
-#   scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase all
-#   scripts/benchmark/run_terminalbench_2_1_sweep.sh --dry-run
+#   ./bench/run --phase canary
+#   ./bench/run --phase all
+#   ./bench/run --dry-run
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,7 +18,7 @@ PHASE="all"
 LANES=""
 FOUR_FULL_LANES="fiz-openai-gpt-5-5,fiz-openrouter-qwen3-6-27b,fiz-sindri-llamacpp-qwen3-6-27b,fiz-vidar-omlx-qwen3-6-27b"
 OUT=""
-TASKS_DIR="${REPO_ROOT}/benchmark-results/external/terminal-bench-2-1"
+TASKS_DIR="${REPO_ROOT}/bench/results/external/terminal-bench-2-1"
 SWEEP_PLAN="${REPO_ROOT}/scripts/benchmark/terminalbench-2-1-sweep.yaml"
 DRY_RUN=0
 PREPARE_ONLY=0
@@ -134,7 +134,7 @@ trap cleanup EXIT
 
 usage() {
   cat <<'EOF'
-Usage: ./benchmark [flags]
+Usage: ./bench/run [flags]
 
 Flags:
   --phase canary|openai-cheap|preferred|full|qwen36-gpt55-full|local-qwen|sonnet-comparison|gpt-comparison|medium-model-canary|medium-model|tb21-all|all
@@ -326,7 +326,7 @@ if [[ -z "${OUT}" ]]; then
   # resolveCanonicalFizRoot. Bumping FizToolsVersion in Go routes new sweeps
   # into a fresh canonical root automatically.
   FIZ_TOOLS_VERSION="$(grep -oE 'const Version = [0-9]+' "${REPO_ROOT}/internal/fiztools/version.go" 2>/dev/null | grep -oE '[0-9]+$' || echo 1)"
-  OUT="${REPO_ROOT}/benchmark-results/fiz-tools-v${FIZ_TOOLS_VERSION}"
+  OUT="${REPO_ROOT}/bench/results/fiz-tools-v${FIZ_TOOLS_VERSION}"
 else
   OUT="$(abs_path "${OUT}")"
 fi
@@ -642,7 +642,7 @@ prepare_local_task_images() {
   # Dockerfile) is deterministic on task content, so it's safe to reuse
   # across runs of the same fiz_tools_version. Set
   # BENCHMARK_FORCE_TASK_IMAGE_BUILD=1 to force a rebuild from scratch.
-  overlay="${REPO_ROOT}/benchmark-results/external/terminal-bench-2-1-${CONTAINER_GOARCH}-preflight"
+  overlay="${REPO_ROOT}/bench/results/external/terminal-bench-2-1-${CONTAINER_GOARCH}-preflight"
   unique_file="$(mktemp)"
   awk -F '\t' '!seen[$2]++ {print $2 "\t" $3}' "${TARGET_TASKS_FILE}" > "${unique_file}"
 
@@ -1199,9 +1199,9 @@ print_summary_header() {
   echo "  Docker arch:        ${CONTAINER_GOARCH}"
   echo "  managed jobs:       ${MATRIX_JOBS_MANAGED}"
   if [[ -n "${LANES}" ]]; then
-    echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --lanes ${LANES} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
+    echo "  resume command:     ./bench/run --phase ${PHASE} --lanes ${LANES} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
   else
-    echo "  resume command:     scripts/benchmark/run_terminalbench_2_1_sweep.sh --phase ${PHASE} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
+    echo "  resume command:     ./bench/run --phase ${PHASE} --out ${OUT} --matrix-jobs-managed ${MATRIX_JOBS_MANAGED}"
   fi
   echo
   echo "Resolved tasks:"

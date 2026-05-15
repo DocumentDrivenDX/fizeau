@@ -46,7 +46,7 @@ func TestBenchmarkEvidenceFixturesValidate(t *testing.T) {
 	assertString(t, local, "provenance.fizeau_version", "0.1.0")
 	assertString(t, local, "provenance.fizeau_git_commit", "fa48595c7262b1522ab41897c3f60e128014f598")
 	assertString(t, local, "provenance.provider_version", "0.8.10")
-	assertString(t, local, "provenance.session_log_path", "benchmark-results/evidence/local-omlx-qwen/session.log.jsonl")
+	assertString(t, local, "provenance.session_log_path", "bench/results/evidence/local-omlx-qwen/session.log.jsonl")
 	assertString(t, local, "provenance.session_log_sha256", "3333333333333333333333333333333333333333333333333333333333333333")
 	assertString(t, local, "benchmark.subset_id", "tb2-wide")
 	assertString(t, local, "benchmark.subset_version", "v2")

@@ -5,29 +5,23 @@ profiles, adapters, and task subsets for evaluating `fiz`.
 
 ## Active Entry Point
 
-Use the repo-root `./benchmark` wrapper. It delegates to
+Use the repo-root `./bench/run` wrapper. It delegates to
 `scripts/benchmark/run_terminalbench_2_1_sweep.sh` and is the only supported
 benchmark script entry point.
 
 ```bash
-./benchmark --recipe canary
-./benchmark --recipe openai-cheap
-./benchmark --recipe tb21-all --lanes openai-gpt55
-./benchmark --recipe tb21-all --lanes openrouter-qwen36
-./benchmark --recipe tb21-all --lanes sindri-llamacpp,vidar
-./benchmark --recipe tb21-all --lanes openrouter-qwen36,sindri-llamacpp,vidar
-./benchmark --recipe qwen36-gpt55-full
-# Ad-hoc subset × lane (no recipe required):
-./benchmark --subset terminalbench-2-1-all --lanes sindri-llamacpp
-# Iterate every recipe in YAML order, lane-filtered:
-./benchmark --all-recipes --lanes sindri-llamacpp
-# Iterate the staged gating sequence (canary → local-qwen → … → medium-model):
-./benchmark --staged-recipes
+./bench/run --phase canary
+./bench/run --phase openai-cheap
+./bench/run --phase tb21-all --lanes openai-gpt55
+./bench/run --phase tb21-all --lanes openrouter-qwen36
+./bench/run --phase tb21-all --lanes sindri-llamacpp,vidar
+./bench/run --phase tb21-all --lanes openrouter-qwen36,sindri-llamacpp,vidar
+./bench/run --phase qwen36-gpt55-full
+./bench/run --phase all
 ```
 
-`--phase X` and `--phase all` remain as deprecated aliases of `--recipe X` and
-`--staged-recipes` respectively (stderr deprecation notice on use). The
-historical phase ids are preserved verbatim as recipe ids.
+The wrapper keeps the historical `--phase` surface and maps those phase ids to
+the underlying recipe-based sweep plan.
 
 Short lane aliases:
 
@@ -45,7 +39,7 @@ docker info
 
 The runner installs Harbor with `uv tool install harbor` when Harbor is not
 already available. The selected TerminalBench 2.1 tasks are downloaded under
-`benchmark-results/external/terminal-bench-2-1` by default.
+`bench/results/external/terminal-bench-2-1` by default.
 
 Benchmark helper binaries and runtime payloads are not benchmark results. By
 default the wrapper writes the host `fiz-bench` helper to `.local/bin/` and
@@ -93,7 +87,7 @@ Benchmark cells live in the version-rooted canonical tree, keyed on the
 dimensions that vary per run:
 
 ```text
-benchmark-results/fiz-<version>/
+bench/results/fiz-tools-v<version>/
   cells/<dataset>/<task>/<profile_id>/rep-NNN/
     report.json         # carries fiz_tools_version + profile_id (small set of stamped fields)
     fiz-<task>-rep<N>/  # Harbor job artifacts, work/, etc.
@@ -130,14 +124,14 @@ Only `profiles/` and `indexes/` are intended to be checked in. The raw
 
 ## Consolidating Existing Results
 
-Use `fiz-bench matrix-index` to scan historical `benchmark-results/**/report.json`
+Use `fiz-bench matrix-index` to scan historical `bench/results/**/report.json`
 files, snapshot the profile catalog, and emit a phase-independent index.
 
 ```bash
 go run ./cmd/bench matrix-index \
   --copy \
-  --root benchmark-results \
-  --canonical-out benchmark-results/fiz-tools-v1 \
+  --root bench/results \
+  --canonical-out bench/results/fiz-tools-v1 \
   --fiz-tools-version 1
 ```
 
