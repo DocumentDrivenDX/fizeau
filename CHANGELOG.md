@@ -5,6 +5,20 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.14.1] — 2026-05-15
+
+### Fixed
+
+- **Routing policy preference now applies under power bounds.** When a caller
+  set `--min-power` or `--max-power`, `internal/routing/score.go` was skipping
+  the entire policy-aware scoring block (`cheap` / `default` / `smart` cost,
+  locality, and provider preference). The router fell through to raw base
+  scoring, which systematically preferred metered higher-power candidates
+  over equally-eligible subscription/local routes. With this fix, in-bounds
+  candidates still receive the policy bonus (e.g. a free subscription
+  candidate at the floor power outscores a metered candidate at higher
+  power). Below-`MinPower` and above-`MaxPower` penalties are unchanged.
+
 ### Added
 
 - **Proactive endpoint aliveness probing** for configured non-cloud (local)
