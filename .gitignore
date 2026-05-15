@@ -78,3 +78,13 @@ website/public/
 /public/
 .ddx/worker-logs/
 website/static/catalog/
+
+# Build artifacts (added 2026-05-15 cleanup)
+/fiz
+/fiz-linux-amd64
+/fiz-new
+/bench-fixed
+/ddx-agent-bench-bin
+
+# Benchmark output (4.4GB; only narrow evidence files tracked explicitly)
+/benchmark-results/
