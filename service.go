@@ -919,7 +919,7 @@ type service struct {
 	// the consultation seam.
 	harnessInstances map[string]harnesses.Harness
 	refreshScheduler *refreshScheduler
-	hub              *sessionHub
+	hub              *serviceimpl.SessionHub
 
 	// lastDecisionMu guards lastDecisionCache.
 	lastDecisionMu sync.RWMutex

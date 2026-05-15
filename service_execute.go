@@ -65,7 +65,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	// callers can subscribe before or during execution.
 	sessionID := generateSessionID()
 	fanout := s.executeEventFanout()
-	fanout.openSession(sessionID)
+	fanout.OpenSession(sessionID)
 
 	outer := make(chan ServiceEvent, 64)
 
@@ -92,7 +92,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 		// typed error reaches errors.As without log scraping.
 		var quotaErr *NoViableProviderForNow
 		if errors.As(err, &quotaErr) {
-			fanout.closeSession(sessionID, ServiceEvent{})
+			fanout.CloseSession(sessionID, ServiceEvent{})
 			return nil, err
 		}
 		if isExplicitPinError(err) {
@@ -104,7 +104,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 			pinErr := err
 			if overrideCtx != nil {
 				if rejectedEv, payload, ok := makeRejectedOverrideEvent(overrideCtx, sessionID, pinErr, req.Metadata); ok {
-					fanout.broadcastEvent(sessionID, rejectedEv)
+					fanout.BroadcastEvent(sessionID, rejectedEv)
 					// Persist the rejected_override to the session log so
 					// UsageReport's windowed scan (which sources from
 					// session logs, not the in-memory ring) sees this
@@ -116,7 +116,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 					pinErr = &ErrRejectedOverride{Inner: err, Event: payload}
 				}
 			}
-			fanout.closeSession(sessionID, ServiceEvent{})
+			fanout.CloseSession(sessionID, ServiceEvent{})
 			return nil, pinErr
 		}
 		// Still return a channel that yields a single failed final event so
@@ -133,7 +133,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 		go func() {
 			// Wait briefly for emitFatalFinal to write.
 			time.Sleep(10 * time.Millisecond)
-			fanout.closeSession(sessionID, ServiceEvent{})
+			fanout.CloseSession(sessionID, ServiceEvent{})
 		}()
 		return outer, nil
 	}
@@ -145,7 +145,7 @@ func (s *service) Execute(ctx context.Context, req ServiceExecuteRequest) (<-cha
 	// TailSessionLog subscribers. The fan-out goroutine owns outer's close
 	// and is responsible for inserting the override event (if any) immediately
 	// before the final event per ADR-006 §7.
-	inner := fanout.wrapExecuteWithHub(sessionID, outer, overrideCtx, meta)
+	inner := wrapExecuteWithHub(fanout, sessionID, outer, overrideCtx, meta)
 
 	// Emit start-of-execution routing_decision so consumers know the picked
 	// chain before any real work fires. The actual chain (post-fallback) is

@@ -18,10 +18,9 @@ type executeSessionLogOpener interface {
 }
 
 type executeEventFanout interface {
-	openSession(string)
-	broadcastEvent(string, ServiceEvent)
-	closeSession(string, ServiceEvent)
-	wrapExecuteWithHub(string, chan ServiceEvent, *overrideContext, map[string]string) chan ServiceEvent
+	OpenSession(string)
+	BroadcastEvent(string, ServiceEvent)
+	CloseSession(string, ServiceEvent)
 }
 
 type executeRunnerInvoker interface {
