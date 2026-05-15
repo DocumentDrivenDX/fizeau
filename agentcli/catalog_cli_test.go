@@ -358,7 +358,7 @@ session_log_dir: sessions
 		cmd := exec.Command(exe, args...)
 		cmd.Dir = callerDir
 		home := t.TempDir()
-		cmd.Env = isolatedAgentCLIEnv(home)
+		cmd.Env = isolatedAgentCLIEnv(t, home)
 		return cmd.CombinedOutput()
 	}
 

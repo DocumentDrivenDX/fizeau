@@ -1,11 +1,13 @@
 package agentcli_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +25,7 @@ func runAgentCLI(t *testing.T, args ...string) ([]byte, error) {
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = filepath.Clean(filepath.Join(wd, ".."))
 	home := t.TempDir()
-	cmd.Env = isolatedAgentCLIEnv(home)
+	cmd.Env = isolatedAgentCLIEnv(t, home)
 	out, err := cmd.CombinedOutput()
 	return out, err
 }
@@ -38,23 +40,92 @@ func runAgentCLIWithHome(t *testing.T, home string, args ...string) ([]byte, err
 	exe := buildAgentCLI(t)
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = filepath.Clean(filepath.Join(wd, ".."))
-	cmd.Env = isolatedAgentCLIEnv(home)
+	cmd.Env = isolatedAgentCLIEnv(t, home)
 	out, err := cmd.CombinedOutput()
 	return out, err
 }
 
-func isolatedAgentCLIEnv(home string) []string {
+func isolatedAgentCLIEnv(t *testing.T, home string) []string {
+	t.Helper()
+
 	cacheRoot := filepath.Join(home, ".cache", "fizeau")
+	stateRoot := filepath.Join(home, ".local", "state")
+	tmpRoot := filepath.Join(home, "tmp")
+	claudeQuota := filepath.Join(stateRoot, "claude-quota.json")
+	codexQuota := filepath.Join(stateRoot, "codex-quota.json")
+	geminiQuota := filepath.Join(stateRoot, "gemini-quota.json")
+
+	require.NoError(t, os.MkdirAll(cacheRoot, 0o755))
+	require.NoError(t, os.MkdirAll(stateRoot, 0o755))
+	require.NoError(t, os.MkdirAll(tmpRoot, 0o755))
+	writeFreshAgentCLIQuotaFixtures(t, claudeQuota, codexQuota, geminiQuota)
+
 	return append(os.Environ(),
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
 		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
 		"XDG_DATA_HOME="+filepath.Join(home, ".local", "share"),
+		"XDG_STATE_HOME="+stateRoot,
 		"FIZEAU_CACHE_DIR="+cacheRoot,
-		"FIZEAU_CLAUDE_QUOTA_CACHE="+filepath.Join(cacheRoot, "claude-quota.json"),
-		"DDX_CLAUDE_QUOTA_CACHE="+filepath.Join(cacheRoot, "ddx-claude-quota.json"),
+		"FIZEAU_CLAUDE_QUOTA_CACHE="+claudeQuota,
+		"DDX_CLAUDE_QUOTA_CACHE="+claudeQuota,
+		"FIZEAU_CODEX_QUOTA_CACHE="+codexQuota,
+		"FIZEAU_GEMINI_QUOTA_CACHE="+geminiQuota,
+		"CODEX_HOME="+filepath.Join(home, ".codex"),
+		"TMPDIR="+tmpRoot,
 		"PATH=/usr/bin:/bin",
 	)
+}
+
+func writeFreshAgentCLIQuotaFixtures(t *testing.T, claudePath, codexPath, geminiPath string) {
+	t.Helper()
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	window := map[string]any{
+		"name":           "test",
+		"limit_id":       "test",
+		"window_minutes": 300,
+		"used_percent":   10,
+		"state":          "ok",
+	}
+	geminiWindow := map[string]any{
+		"name":           "Flash",
+		"limit_id":       "gemini-flash",
+		"window_minutes": 1440,
+		"used_percent":   10,
+		"state":          "ok",
+	}
+	writeAgentCLIJSON(t, claudePath, map[string]any{
+		"captured_at":         now,
+		"five_hour_remaining": 90,
+		"five_hour_limit":     100,
+		"weekly_remaining":    900,
+		"weekly_limit":        1000,
+		"windows":             []map[string]any{window},
+		"source":              "test",
+		"account":             map[string]any{"plan_type": "Claude Max"},
+	})
+	writeAgentCLIJSON(t, codexPath, map[string]any{
+		"captured_at": now,
+		"windows":     []map[string]any{window},
+		"source":      "test",
+		"account":     map[string]any{"plan_type": "ChatGPT Pro"},
+	})
+	writeAgentCLIJSON(t, geminiPath, map[string]any{
+		"captured_at": now,
+		"windows":     []map[string]any{geminiWindow},
+		"source":      "test",
+		"account":     map[string]any{"plan_type": "Gemini OAuth"},
+	})
+}
+
+func writeAgentCLIJSON(t *testing.T, path string, payload any) {
+	t.Helper()
+
+	data, err := json.MarshalIndent(payload, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, append(data, '\n'), 0o600))
 }
 
 func writePiFixture(t *testing.T, home string, modelsJSON string) {

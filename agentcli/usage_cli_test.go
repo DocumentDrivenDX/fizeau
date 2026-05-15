@@ -185,7 +185,7 @@ func TestCLI_Usage_MutuallyExclusiveJSONAndCSV(t *testing.T) {
 	workDir := t.TempDir()
 	cmd := exec.Command(exe, "--work-dir", workDir, "usage", "--json", "--csv")
 	home := t.TempDir()
-	cmd.Env = isolatedAgentCLIEnv(home)
+	cmd.Env = isolatedAgentCLIEnv(t, home)
 	out, err := cmd.CombinedOutput()
 	require.Error(t, err, string(out))
 
@@ -200,7 +200,7 @@ func TestCLI_Usage_InvalidSince_ExitCode(t *testing.T) {
 	workDir := t.TempDir()
 	cmd := exec.Command(exe, "--work-dir", workDir, "usage", "--since=bad-window")
 	home := t.TempDir()
-	cmd.Env = isolatedAgentCLIEnv(home)
+	cmd.Env = isolatedAgentCLIEnv(t, home)
 	out, err := cmd.CombinedOutput()
 	require.Error(t, err, string(out))
 
