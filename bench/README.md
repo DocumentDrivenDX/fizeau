@@ -1,17 +1,20 @@
 # bench
 
-This directory contains the benchmark corpus and (gitignored) results for
-`bench`.
+This directory is the canonical home for repository benchmark assets.
 
 ## Layout
 
-```
+```text
 bench/
-  corpus/          # versioned task definitions (YAML/JSON)
-  results/         # gitignored; populated by `bench run`
+  corpus/          versioned benchmark tasks
+  scorer/          scorer package used by cmd/benchscore
+  results/         benchmark outputs; mostly gitignored
+  run              repo-root benchmark runner wrapper
 ```
 
-## Corpus format
+`bench/run` delegates to `scripts/benchmark/run_terminalbench_2_1_sweep.sh`.
+Benchmark outputs land under `bench/results/`; only the version marker and
+indexes are tracked.
 
 Each file in `bench/corpus/` is a YAML (or JSON) task:
 
@@ -20,30 +23,11 @@ id: unique-task-id
 description: "Human-readable description"
 prompt: |
   The prompt sent to the agent.
-expected_tools:        # optional; informational only
+expected_tools:
   - read
   - find
-permissions: safe      # safe | supervised | unrestricted
-reasoning: low         # off | low | medium | high | xhigh | max | numeric tokens
+permissions: safe
+reasoning: low
 tags:
   - tool-use
 ```
-
-## Usage
-
-```sh
-# List discovered candidates
-bench discover
-
-# Run corpus against all candidates
-bench run
-
-# Run against a specific harness only
-bench run --harness=claude
-
-# Render the most recent result
-bench report
-bench report --format=markdown
-```
-
-Results are written to `bench/results/` and are **not tracked by git**.

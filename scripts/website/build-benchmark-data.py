@@ -26,7 +26,7 @@ import yaml
 
 
 REPO = Path(__file__).resolve().parents[2]
-DEFAULT_CELLS_ROOT = REPO / "benchmark-results/fiz-tools-v1/cells"
+DEFAULT_CELLS_ROOT = REPO / "bench/results/fiz-tools-v1/cells"
 DEFAULT_PROFILES_DIR = REPO / "scripts/benchmark/profiles"
 DEFAULT_MACHINES_FILE = REPO / "scripts/benchmark/machines.yaml"
 DEFAULT_SUBSET_GLOB = "scripts/benchmark/task-subset-tb21-*.yaml"

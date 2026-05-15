@@ -5,6 +5,12 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidated repository benchmark assets under `bench/`: the runner now
+  lives at `bench/run`, the scorer package moved to `bench/scorer`, and the
+  canonical results root is `bench/results/`.
+
 ## [v0.14.1] — 2026-05-15
 
 ### Fixed
@@ -295,7 +301,7 @@ against the public scoreboard.
   easy smoke tasks).
 - `cmd/bench --external=termbench` flag plus
   `cmd/bench/external_termbench.go` runner. Writes results to
-  `benchmark-results/termbench/<run-id>/results.json`.
+  `bench/results/termbench/<run-id>/results.json`.
 - `docs/helix/02-design/external-benchmarks.md` — pattern doc for
   adding more external benchmark adapters (SWE-bench, AgentBench,
   etc.) following the TerminalBench shape.

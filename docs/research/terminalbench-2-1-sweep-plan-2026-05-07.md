@@ -340,7 +340,7 @@ Invalid cells are never counted in `n_valid` or `mean_reward` denominators. `eff
 
 The runner implementation agent should read `scripts/benchmark/terminalbench-2-1-sweep.yaml` as its primary input. Key behaviors required:
 
-0. **Agent runtime bundle.** The repo-root `./benchmark` entrypoint builds a cached
+0. **Agent runtime bundle.** The repo-root `./bench/run` entrypoint builds a cached
    agent-runtime Docker image, exports `/installed-agent` as a tarball, and
    passes that tarball to Harbor. Harbor must still run every task in the
    official TerminalBench task image; the runtime bundle is only extracted into

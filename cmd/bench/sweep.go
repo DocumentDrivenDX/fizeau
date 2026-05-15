@@ -217,7 +217,7 @@ func cmdSweep(args []string) int {
 	reps := fs.Int("reps", 0, "Repetition count override (default: recipe.reps, falling back to subset.default_reps).")
 	dryRun := fs.Bool("dry-run", false, "Print plan without launching Harbor or any matrix run")
 	workDir := fs.String("work-dir", "", "Repository root (default: cwd)")
-	out := fs.String("out", "", "Output directory (default: benchmark-results/sweep-<timestamp> under work-dir)")
+	out := fs.String("out", "", "Output directory (default: bench/results/sweep-<timestamp> under work-dir)")
 	resume := fs.Bool("resume", true, "Skip terminal cells (default: true per sweep plan defaults)")
 	forceRerun := fs.Bool("force-rerun", false, "Rerun even terminal cells")
 	retryInvalid := fs.Bool("retry-invalid", false, "Rerun cells with non-empty invalid_class while resuming")
@@ -279,7 +279,7 @@ func cmdSweep(args []string) int {
 
 	outDir := *out
 	if outDir == "" {
-		outDir = filepath.Join(wd, "benchmark-results", "sweep-"+time.Now().UTC().Format("20060102T150405Z"))
+		outDir = filepath.Join(wd, "bench/results", "sweep-"+time.Now().UTC().Format("20060102T150405Z"))
 	} else if !filepath.IsAbs(outDir) {
 		outDir = filepath.Join(wd, outDir)
 	}

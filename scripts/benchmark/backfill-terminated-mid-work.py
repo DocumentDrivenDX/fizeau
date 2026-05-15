@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Backfill the `terminated_mid_work` field on every report.json under
-benchmark-results/fiz-tools-v1/cells/ by inspecting the trial's
+bench/results/fiz-tools-v1/cells/ by inspecting the trial's
 session jsonl and reading the LAST llm.response event's finish_reason.
 
 A trial was "terminated mid-work" if its final llm.response had
@@ -25,7 +25,7 @@ from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-CELLS = REPO / "benchmark-results/fiz-tools-v1/cells"
+CELLS = REPO / "bench/results/fiz-tools-v1/cells"
 
 # finish_reason values that mean the model was actively producing output
 # when the conversation ended (i.e. it didn't choose to stop).

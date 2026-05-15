@@ -196,7 +196,7 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 	harnessesCSV := fs.String("harnesses", "fiz,pi,opencode", "Comma-separated harness adapter names")
 	reps := fs.Int("reps", 3, "Repetitions per harness/profile/task")
 	budgetUSD := fs.Float64("budget-usd", 0, "Matrix budget in USD (0 = no cap)")
-	out := fs.String("out", "", "Output directory (default: benchmark-results/matrix-<timestamp> under work-dir)")
+	out := fs.String("out", "", "Output directory (default: bench/results/matrix-<timestamp> under work-dir)")
 	cellsRoot := fs.String("cells-root", "", "Optional canonical cell root for report/log artifacts; matrix summaries still go under --out")
 	resume := fs.Bool("resume", false, "Skip terminal reports already present under --out")
 	forceRerun := fs.Bool("force-rerun", false, "Rerun every tuple even when a terminal report exists")
@@ -243,7 +243,7 @@ func cmdMatrixWithContext(parentCtx context.Context, args []string) int {
 	// (typically a t.TempDir()) opt out via --cells-root staying empty,
 	// which falls through to the legacy in-place fallback (matrixTupleDir
 	// under outDir/cells/...). That preserves test isolation without
-	// leaving a stale "benchmark-results/matrix-<timestamp>/" side path
+	// leaving a stale "bench/results/matrix-<timestamp>/" side path
 	// in production runs.
 	outDir := *out
 	if outDir == "" {
@@ -1434,7 +1434,7 @@ func matrixTupleDir(outDir, harness, profileID string, rep int, taskID string) s
 //
 // Order of precedence:
 //  1. FIZ_BENCHMARK_ROOT env override (operator escape hatch)
-//  2. benchmark-results/fiz-tools-v<FizToolsVersion>/
+//  2. bench/results/fiz-tools-v<FizToolsVersion>/
 func resolveCanonicalFizRoot(workDir string) string {
 	if env := strings.TrimSpace(os.Getenv("FIZ_BENCHMARK_ROOT")); env != "" {
 		if filepath.IsAbs(env) {
@@ -1442,7 +1442,7 @@ func resolveCanonicalFizRoot(workDir string) string {
 		}
 		return filepath.Join(workDir, env)
 	}
-	return filepath.Join(workDir, "benchmark-results", fmt.Sprintf("fiz-tools-v%d", fiztools.Version))
+	return filepath.Join(workDir, "bench/results", fmt.Sprintf("fiz-tools-v%d", fiztools.Version))
 }
 
 func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, rep int, taskID, dataset string) string {

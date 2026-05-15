@@ -145,7 +145,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--results-dir",
-        default="benchmark-results/beadbench",
+        default="bench/results/beadbench",
         help="Directory for run artifacts",
     )
     parser.add_argument("--arm", action="append", help="Arm id to run; repeatable")

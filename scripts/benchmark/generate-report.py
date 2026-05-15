@@ -14,12 +14,12 @@ from on-disk inputs. Editing a section markdown file and re-running updates
 just that prose without recomputing the data.
 
 Inputs (all paths absolute, all read-only to this script):
-  benchmark-results/fiz-tools-v1/cells/**/report.json   per-trial summaries
-  benchmark-results/fiz-tools-v1/cells/**/sessions/*.jsonl  per-turn timings
+  bench/results/fiz-tools-v1/cells/**/report.json   per-trial summaries
+  bench/results/fiz-tools-v1/cells/**/sessions/*.jsonl  per-turn timings
   scripts/benchmark/profiles/*.yaml                     lane definitions
   scripts/benchmark/task-subset-tb21-*.yaml             subset definitions
   scripts/benchmark/terminalbench_model_power.json      model-power scale
-  benchmark-results/cache/terminalbench-leaderboard-rewards.json  external
+  bench/results/cache/terminalbench-leaderboard-rewards.json  external
 
 Outputs:
   docs/benchmarks/data/aggregates.json     per (profile, subset) rollups
@@ -56,12 +56,12 @@ from typing import Any
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
-CELLS = REPO / "benchmark-results/fiz-tools-v1/cells/terminal-bench-2-1"
+CELLS = REPO / "bench/results/fiz-tools-v1/cells/terminal-bench-2-1"
 PROFILES_DIR = REPO / "scripts/benchmark/profiles"
 SUBSET_GLOB = str(REPO / "scripts/benchmark/task-subset-tb21-*.yaml")
 POWER_JSON = REPO / "scripts/benchmark/terminalbench_model_power.json"
 MACHINES_YAML = REPO / "scripts/benchmark/machines.yaml"
-LEADERBOARD_CACHE = REPO / "benchmark-results/cache/terminalbench-leaderboard-rewards.json"
+LEADERBOARD_CACHE = REPO / "bench/results/cache/terminalbench-leaderboard-rewards.json"
 
 OUT_ROOT = REPO / "docs/benchmarks"
 DATA_DIR = OUT_ROOT / "data"

@@ -36,7 +36,7 @@ type termbenchSubset struct {
 	Tasks         []termbenchSubsetEntry `json:"tasks"          yaml:"tasks"`
 }
 
-// termbenchTaskRunSummary is one row in benchmark-results/termbench/<run>/results.json.
+// termbenchTaskRunSummary is one row in bench/results/termbench/<run>/results.json.
 // Fields chosen to be reporter-friendly (jq, simple table renderers).
 type termbenchTaskRunSummary struct {
 	TaskID       string  `json:"task_id"`
@@ -77,7 +77,7 @@ type termbenchRunReport struct {
 //     scripts/benchmark/external/terminal-bench(-2)/tasks/<id>/.
 //  3. Builds an ExecutionPlan and feeds it to fizeau.Service.Execute.
 //  4. Captures harness events into ATIF v1.4 trajectory and writes
-//     them to benchmark-results/termbench/<run-id>/<task>/logs/agent/.
+//     them to bench/results/termbench/<run-id>/<task>/logs/agent/.
 //  5. Reads any verifier output (reward.txt) the upstream grader has
 //     placed in the same directory and folds the verdict into the
 //     report. We do NOT run the grader ourselves — running pytest in
@@ -129,7 +129,7 @@ func runExternalTermbench(opts externalRunOptions) int {
 	}
 
 	runID := fmt.Sprintf("termbench-%d", time.Now().Unix())
-	outBase := filepath.Join(opts.workDir, "benchmark-results", "termbench", runID)
+	outBase := filepath.Join(opts.workDir, "bench/results", "termbench", runID)
 	if err := os.MkdirAll(outBase, 0o750); err != nil {
 		fmt.Fprintf(os.Stderr, "%s run --external=termbench: mkdir: %v\n", benchCommandName(), err)
 		return 1
@@ -255,7 +255,7 @@ func runExternalTermbench(opts externalRunOptions) int {
 	if len(report.Notes) == 0 {
 		report.Notes = []string{
 			"Reward fields are populated only when an upstream Harbor verifier has written /logs/verifier/reward.txt into the per-task output directory.",
-			"For current TerminalBench 2.1 grading, use the benchmark sweep entrypoint: ./benchmark --phase canary|full.",
+			"For current TerminalBench 2.1 grading, use the benchmark sweep entrypoint: ./bench/run --phase canary|full.",
 		}
 	}
 

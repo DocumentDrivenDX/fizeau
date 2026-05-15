@@ -70,7 +70,7 @@
         "effort": "medium"
       },
       "repetition": 1,
-      "artifact_dir": "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1",
+      "artifact_dir": "bench/results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1",
       "status": "success",
       "exit_code": 0,
       "duration_ms": 421000,
@@ -84,17 +84,17 @@
         "output_tokens": 1874,
         "cached_input_tokens": 0,
         "cost_usd": 0.0425,
-        "session_log_path": "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/session.log.jsonl",
+        "session_log_path": "bench/results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/session.log.jsonl",
         "session_log_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-        "trajectory_path": "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/trajectory.json",
+        "trajectory_path": "bench/results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/trajectory.json",
         "trajectory_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
       },
       "verify": {
         "status": "pass",
         "exit_code": 0,
         "duration_ms": 9300,
-        "stdout_path": "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/verify-stdout.txt",
-        "stderr_path": "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/verify-stderr.txt"
+        "stdout_path": "bench/results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/verify-stdout.txt",
+        "stderr_path": "bench/results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/verify-stderr.txt"
       },
       "phases": {
         "execute": {
@@ -127,7 +127,7 @@
         "effort": "medium"
       },
       "repetition": 1,
-      "artifact_dir": "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-nav-tools__codex-gpt54__r1",
+      "artifact_dir": "bench/results/beadbench/run-20260506T210000Z-1234/agent-nav-tools__codex-gpt54__r1",
       "status": "auth_fail",
       "exit_code": 1,
       "duration_ms": 1200,
@@ -172,7 +172,7 @@
         "effort": "medium"
       },
       "repetition": 1,
-      "artifact_dir": "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-benchmark-preset__agent-vidar-omlx-qwen36-27b__r1",
+      "artifact_dir": "bench/results/beadbench/run-20260506T210000Z-1234/agent-benchmark-preset__agent-vidar-omlx-qwen36-27b__r1",
       "status": "harness_crash",
       "exit_code": 2,
       "duration_ms": 640,
@@ -217,7 +217,7 @@
         "effort": "medium"
       },
       "repetition": 1,
-      "artifact_dir": "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-benchmark-automation__agent-bragi-lmstudio-qwen36-35b__r1",
+      "artifact_dir": "bench/results/beadbench/run-20260506T210000Z-1234/agent-benchmark-automation__agent-bragi-lmstudio-qwen36-35b__r1",
       "status": "install_fail_permanent",
       "exit_code": 1,
       "duration_ms": 1800,

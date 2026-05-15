@@ -53,8 +53,8 @@ func TestBeadBenchReportImport(t *testing.T) {
 	assertString(t, success, "scope.denominator_rule", "count_valid_runs_only")
 	assertString(t, success, "components.review_outcome", "pass")
 	assertString(t, success, "runtime.outcome", "success")
-	assertString(t, success, "provenance.session_log_path", "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/session.log.jsonl")
-	assertString(t, success, "provenance.trajectory_path", "benchmark-results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/trajectory.json")
+	assertString(t, success, "provenance.session_log_path", "bench/results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/session.log.jsonl")
+	assertString(t, success, "provenance.trajectory_path", "bench/results/beadbench/run-20260506T210000Z-1234/agent-beadbench-preflight__agent-openrouter-gpt54__r1/trajectory.json")
 	assertFloat(t, success, "runtime.tool_calls", 11)
 	assertFloat(t, success, "cost.usd", 0.0425)
 

@@ -4,7 +4,6 @@
 
 # Build artifacts
 /dist/
-/benchscore/
 /.cache/
 /.gocache/
 /.tmp/
@@ -56,18 +55,21 @@ coverage.out
 coverage.html
 
 # Benchmark artifacts: only the version-rooted indexes and version marker
-# are committed; cells/, profiles/, and lane-output dirs stay local.
-# Pattern matches fiz-tools-v* (canonical) and the legacy fiz-v* variant.
-/benchmark-results/
-!/benchmark-results/
-/benchmark-results/*
-!/benchmark-results/fiz-tools-v*/
-/benchmark-results/fiz-tools-v*/**
-!/benchmark-results/fiz-tools-v*/.fiz-benchmark-version.json
-!/benchmark-results/fiz-tools-v*/indexes/
-!/benchmark-results/fiz-tools-v*/indexes/**
-/jobs/
+# under bench/results are committed; cells/, profiles/, and lane-output dirs
+# stay local. Pattern matches fiz-tools-v* (canonical) and the legacy fiz-v*
+# variant.
 /bench/results/
+!/bench/results/
+/bench/results/*
+!/bench/results/fiz-tools-v*/
+/bench/results/fiz-tools-v*/**
+!/bench/results/fiz-tools-v*/.fiz-benchmark-version.json
+!/bench/results/fiz-tools-v*/indexes/
+!/bench/results/fiz-tools-v*/indexes/**
+# Legacy pre-consolidation output root; keep ignored if it exists in an older
+# worktree.
+/benchmark-results/
+/jobs/
 
 # Local root build artifacts
 /fiz
@@ -87,5 +89,5 @@ website/static/catalog/
 /bench-fixed
 /ddx-agent-bench-bin
 
-# Benchmark output (4.4GB; only narrow evidence files tracked explicitly)
+# Legacy benchmark output root (pre bench/ consolidation)
 /benchmark-results/

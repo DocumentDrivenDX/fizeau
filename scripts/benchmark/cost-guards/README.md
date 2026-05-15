@@ -14,7 +14,7 @@ caps from observation rather than from a formula guessed before a run.
      --harnesses=fiz \
      --profiles=gpt-5-mini \
      --reps=3 \
-     --out=benchmark-results/cost-observation-$(date -u +%Y%m%dT%H%M%SZ)
+     --out=bench/results/cost-observation-$(date -u +%Y%m%dT%H%M%SZ)
    ```
 
 2. Keep only the `git-leak-recovery` cell reports. For each report, record all
@@ -54,9 +54,9 @@ caps from observation rather than from a formula guessed before a run.
      --reps=3 \
      --per-run-budget-usd=<derived per-run cap> \
      --budget-usd=<derived matrix cap> \
-     --out=benchmark-results/matrix-$(date -u +%Y%m%dT%H%M%SZ)
+     --out=bench/results/matrix-$(date -u +%Y%m%dT%H%M%SZ)
 
-   fiz-bench matrix-aggregate benchmark-results/matrix-...
+   fiz-bench matrix-aggregate bench/results/matrix-...
    ```
 
    `costs.json` records the caps and every cell's token/cost totals.

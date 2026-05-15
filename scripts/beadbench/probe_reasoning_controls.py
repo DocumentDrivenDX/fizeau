@@ -175,7 +175,7 @@ def main() -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Probe reasoning controls for beadbench arms")
     parser.add_argument("--manifest", default="scripts/beadbench/manifest-v1.json")
-    parser.add_argument("--results-dir", default="benchmark-results/beadbench")
+    parser.add_argument("--results-dir", default="bench/results/beadbench")
     parser.add_argument("--arm", action="append", help="Arm id to probe; repeatable")
     parser.add_argument(
         "--probe",
