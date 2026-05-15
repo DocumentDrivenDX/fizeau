@@ -24,8 +24,7 @@ func (s *service) RouteStatus(ctx context.Context) (*RouteStatusReport, error) {
 	// catalog is configured — the metric reflects Execute traffic, not
 	// configured routes.
 	if s != nil && s.routingQuality != nil {
-		recent := s.routingQuality.snapshotRecent(RouteStatusRoutingQualityWindow, time.Time{})
-		report.RoutingQuality = computeRoutingQualityMetricsFromRecords(recent)
+		report.RoutingQuality = fromRoutingQualityMetrics(s.routingQuality.MetricsRecent(RouteStatusRoutingQualityWindow, time.Time{}))
 	}
 	if s == nil || s.opts.ServiceConfig == nil {
 		return report, nil

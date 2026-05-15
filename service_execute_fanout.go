@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/routingquality"
 )
 
 // wrapExecuteWithHub wraps the inner out channel so that every event emitted
@@ -17,7 +18,9 @@ func wrapExecuteWithHub(fanout executeEventFanout, sessionID string, outer chan 
 			if ev.Type == harnesses.EventTypeFinal && ovr != nil && !ovr.emitted.Load() {
 				if overrideEv, payload, ok := makeOverrideEvent(ovr, sessionID, ev, meta); ok {
 					ovr.emitted.Store(true)
-					stampOutcomeOnRecord(ovr.record, payload.Outcome)
+					if payload.Outcome != nil {
+						routingquality.StampOutcome(ovr.record, &routingquality.Outcome{Status: payload.Outcome.Status})
+					}
 					select {
 					case outer <- overrideEv:
 					case <-time.After(5 * time.Second):

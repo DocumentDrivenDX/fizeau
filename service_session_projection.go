@@ -176,7 +176,7 @@ func (s *service) routingQualityFromSessionLogs(logDir string, window *UsageRepo
 		return RoutingQualityMetrics{}, err
 	}
 	overrides := decodeRoutingQualityOverrides(scan.OverrideEvents)
-	return computeRoutingQualityMetrics(scan.TotalRequests, overrides), nil
+	return routingQualityMetricsFromOverrides(scan.TotalRequests, overrides), nil
 }
 
 // routingQualityFromRing is the fallback path used when no session-log
@@ -191,8 +191,7 @@ func (s *service) routingQualityFromRing(window *UsageReportWindow) RoutingQuali
 		start = window.Start
 		end = window.End
 	}
-	records := s.routingQuality.snapshotWindow(start, end)
-	return computeRoutingQualityMetricsFromRecords(records)
+	return fromRoutingQualityMetrics(s.routingQuality.MetricsWindow(start, end))
 }
 
 // decodeRoutingQualityOverrides converts persisted override / rejected_override

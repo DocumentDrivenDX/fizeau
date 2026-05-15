@@ -3,14 +3,47 @@ package fizeau
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	agentcore "github.com/easel/fizeau/internal/core"
+	"github.com/easel/fizeau/internal/routingquality"
 	"github.com/easel/fizeau/internal/session"
 )
+
+func routingQualityFloatEq(a, b float64) bool {
+	return math.Abs(a-b) < 1e-9
+}
+
+func makeRoutingQualityOverride(axes []string, matches []string, estimatedTokens int, requiresTools bool, reasoning string, outcomeStatus string) ServiceOverrideData {
+	matchPerAxis := make(map[string]bool, len(axes))
+	for _, axis := range axes {
+		matchPerAxis[axis] = false
+	}
+	for _, axis := range matches {
+		matchPerAxis[axis] = true
+	}
+	promptFeatures := ServiceOverridePromptFeatures{
+		RequiresTools: requiresTools,
+		Reasoning:     reasoning,
+	}
+	if estimatedTokens > 0 {
+		tokens := estimatedTokens
+		promptFeatures.EstimatedTokens = &tokens
+	}
+	override := ServiceOverrideData{
+		AxesOverridden: append([]string(nil), axes...),
+		MatchPerAxis:   matchPerAxis,
+		PromptFeatures: promptFeatures,
+	}
+	if outcomeStatus != "" {
+		override.Outcome = &ServiceOverrideOutcome{Status: outcomeStatus}
+	}
+	return override
+}
 
 // TestUsageReportRoutingQualityFromSessionLogs proves the architectural fix
 // from the bead-2 review: UsageReport must aggregate routing-quality from
@@ -47,11 +80,11 @@ func TestUsageReportRoutingQualityFromSessionLogs(t *testing.T) {
 	}
 
 	overrides := decodeRoutingQualityOverrides(scan.OverrideEvents)
-	m := computeRoutingQualityMetrics(scan.TotalRequests, overrides)
-	if !floatEq(m.AutoAcceptanceRate, 2.0/5.0) {
+	m := routingQualityMetricsFromOverrides(scan.TotalRequests, overrides)
+	if !routingQualityFloatEq(m.AutoAcceptanceRate, 2.0/5.0) {
 		t.Errorf("AutoAcceptanceRate = %v, want %v", m.AutoAcceptanceRate, 2.0/5.0)
 	}
-	if !floatEq(m.OverrideDisagreementRate, 2.0/3.0) {
+	if !routingQualityFloatEq(m.OverrideDisagreementRate, 2.0/3.0) {
 		t.Errorf("OverrideDisagreementRate = %v, want %v", m.OverrideDisagreementRate, 2.0/3.0)
 	}
 
@@ -83,12 +116,12 @@ func TestUsageReportRoutingQualityFromSessionLogs(t *testing.T) {
 // still populate RoutingQuality from the in-memory ring instead of
 // silently returning an empty struct.
 func TestUsageReportRoutingQualityNoLogDir(t *testing.T) {
-	svc := &service{routingQuality: newRoutingQualityStore()}
+	svc := &service{routingQuality: routingquality.NewStore(routingquality.DefaultStoreCap)}
 	// Pre-load the ring with one no-override and one override request so
 	// the metric is computable.
-	svc.routingQuality.recordRequest(time.Now().UTC(), nil)
-	ov := makeOverride([]string{"model"}, nil, 0, false, "", "")
-	svc.routingQuality.recordRequest(time.Now().UTC(), &ov)
+	svc.routingQuality.RecordRequest(time.Now().UTC(), nil)
+	ov := makeRoutingQualityOverride([]string{"model"}, nil, 0, false, "", "")
+	svc.routingQuality.RecordRequest(time.Now().UTC(), toRoutingQualityOverride(ov))
 
 	rep, err := svc.UsageReport(context.Background(), UsageReportOptions{})
 	if err != nil {
@@ -107,28 +140,19 @@ func TestUsageReportRoutingQualityNoLogDir(t *testing.T) {
 // post-execution outcome, otherwise RouteStatus's outcome aggregates are
 // permanently zero.
 func TestRoutingQualityRingOutcomeBackWrite(t *testing.T) {
-	st := newRoutingQualityStore()
-	ov := makeOverride([]string{"model"}, nil, 0, false, "", "")
-	rec := st.recordRequest(time.Now().UTC(), &ov)
+	st := routingquality.NewStore(routingquality.DefaultStoreCap)
+	ov := makeRoutingQualityOverride([]string{"model"}, nil, 0, false, "", "")
+	rec := st.RecordRequest(time.Now().UTC(), toRoutingQualityOverride(ov))
 
 	if rec == nil {
 		t.Fatal("recordRequest returned nil — back-write handle missing")
 	}
 
 	// Simulate the fan-out goroutine stamping outcome after the final event.
-	stampOutcomeOnRecord(rec, &ServiceOverrideOutcome{Status: "success", DurationMS: 42})
-
-	recs := st.snapshotRecent(0, time.Time{})
-	if len(recs) != 1 {
-		t.Fatalf("snapshot len = %d, want 1", len(recs))
-	}
-	got := recs[0]
-	if got == nil {
-		t.Fatal("snapshot returned nil record")
-	}
+	routingquality.StampOutcome(rec, &routingquality.Outcome{Status: "success"})
 
 	// Aggregator must surface the outcome in the per-bucket counts.
-	m := computeRoutingQualityMetricsFromRecords(recs)
+	m := fromRoutingQualityMetrics(st.MetricsRecent(0, time.Time{}))
 	if len(m.OverrideClassBreakdown) != 1 {
 		t.Fatalf("breakdown len = %d, want 1", len(m.OverrideClassBreakdown))
 	}
@@ -144,7 +168,7 @@ func writeSessionLogWithOverride(t *testing.T, dir, sessionID string, startedAt 
 	if coincide {
 		matches = []string{"model"}
 	}
-	ov := makeOverride(axes, matches, 0, false, "", outcomeStatus)
+	ov := makeRoutingQualityOverride(axes, matches, 0, false, "", outcomeStatus)
 	overrideRaw, err := json.Marshal(ov)
 	if err != nil {
 		t.Fatalf("marshal override: %v", err)

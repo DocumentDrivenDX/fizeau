@@ -10,6 +10,7 @@ import (
 
 	"github.com/easel/fizeau/internal/harnesses"
 	"github.com/easel/fizeau/internal/routehealth"
+	"github.com/easel/fizeau/internal/routingquality"
 	"github.com/easel/fizeau/internal/serviceimpl"
 	sessionusage "github.com/easel/fizeau/internal/session"
 )
@@ -933,7 +934,7 @@ type service struct {
 	// routingQuality records routing-quality observations (ADR-006 §5).
 	// Populated by Execute on every request and read by RouteStatus and
 	// UsageReport.
-	routingQuality *routingQualityStore
+	routingQuality *routingquality.Store
 
 	// providerQuota is the per-provider quota state machine. Routing reads
 	// the projected exhausted set on every Resolve so quota_exhausted
@@ -1018,7 +1019,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		routeHealth:      routehealth.NewStore(),
 		routeStatusCache: routehealth.NewDecisionStore[*RouteDecision](),
 		routeSticky:      routehealth.NewStickyState(),
-		routingQuality:   newRoutingQualityStore(),
+		routingQuality:   routingquality.NewStore(routingquality.DefaultStoreCap),
 		providerQuota:    NewProviderQuotaStateStore(),
 		providerBurnRate: NewProviderBurnRateTracker(),
 	}

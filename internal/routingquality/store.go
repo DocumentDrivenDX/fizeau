@@ -64,6 +64,9 @@ type Store struct {
 	cap     int
 }
 
+// DefaultStoreCap is the service-default bounded ring size.
+const DefaultStoreCap = 1024
+
 // NewStore returns an empty store with the given record cap.
 func NewStore(cap int) *Store {
 	return &Store{cap: cap}
@@ -131,6 +134,18 @@ func (s *Store) SnapshotWindow(start, end time.Time) []*Record {
 		out = append(out, r)
 	}
 	return out
+}
+
+// MetricsRecent aggregates metrics over up to maxN of the most recent records,
+// optionally filtered by since.
+func (s *Store) MetricsRecent(maxN int, since time.Time) Metrics {
+	return ComputeMetricsFromRecords(s.SnapshotRecent(maxN, since))
+}
+
+// MetricsWindow aggregates metrics for records whose timestamps fall within
+// [start, end).
+func (s *Store) MetricsWindow(start, end time.Time) Metrics {
+	return ComputeMetricsFromRecords(s.SnapshotWindow(start, end))
 }
 
 // StampOutcome copies outcome into rec's override payload.

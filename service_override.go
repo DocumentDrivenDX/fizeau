@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
+	"github.com/easel/fizeau/internal/routingquality"
 )
 
 // overrideAxis* enumerates the three independently-tracked override axes.
@@ -28,7 +29,7 @@ const (
 type overrideContext struct {
 	payload ServiceOverrideData
 	emitted atomic.Bool
-	record  *routingQualityRecord
+	record  *routingquality.Record
 }
 
 // axesOverridden returns the canonical, ordered list of axes the caller

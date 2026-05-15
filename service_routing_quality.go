@@ -64,72 +64,7 @@ type OverrideClassBucket struct {
 	UnknownOutcomes   int `json:"unknown_outcomes"`
 }
 
-type routingQualityRecord struct {
-	inner *routingquality.Record
-}
-
-type routingQualityStore struct {
-	inner *routingquality.Store
-}
-
-const routingQualityStoreCap = 1024
-
-func newRoutingQualityStore() *routingQualityStore {
-	return &routingQualityStore{inner: routingquality.NewStore(routingQualityStoreCap)}
-}
-
-// recordRequest appends a request to the store and returns the freshly
-// allocated record. override may be nil for the no-override case. The
-// returned pointer remains valid even after the bounded ring rotates,
-// allowing callers (the override fan-out goroutine) to back-write the
-// post-execution outcome without racing the ring's eviction.
-func (s *routingQualityStore) recordRequest(at time.Time, override *ServiceOverrideData) *routingQualityRecord {
-	if s == nil || s.inner == nil {
-		return nil
-	}
-	var internal *routingquality.OverrideData
-	if override != nil {
-		internal = toRoutingQualityOverride(*override)
-	}
-	rec := s.inner.RecordRequest(at, internal)
-	return &routingQualityRecord{inner: rec}
-}
-
-// snapshotRecent returns up to maxN of the most recent records, optionally
-// filtered by since (zero means no time filter). Records are returned in
-// insertion order (oldest first within the slice).
-func (s *routingQualityStore) snapshotRecent(maxN int, since time.Time) []*routingQualityRecord {
-	if s == nil || s.inner == nil {
-		return nil
-	}
-	records := s.inner.SnapshotRecent(maxN, since)
-	out := make([]*routingQualityRecord, 0, len(records))
-	for _, rec := range records {
-		out = append(out, &routingQualityRecord{inner: rec})
-	}
-	return out
-}
-
-// snapshotWindow returns records whose timestamps fall within [start, end).
-// Either bound may be zero to mean "unbounded".
-func (s *routingQualityStore) snapshotWindow(start, end time.Time) []*routingQualityRecord {
-	if s == nil || s.inner == nil {
-		return nil
-	}
-	records := s.inner.SnapshotWindow(start, end)
-	out := make([]*routingQualityRecord, 0, len(records))
-	for _, rec := range records {
-		out = append(out, &routingQualityRecord{inner: rec})
-	}
-	return out
-}
-
-// computeRoutingQualityMetrics is the pure aggregator. Test entry point.
-// totalRequests is the headline denominator (the count of Execute calls
-// over the window — overridden and non-overridden alike). overrides is the
-// list of override events recorded over the same window. The function does
-// not interact with the store, so tests can feed synthetic data directly.
-func computeRoutingQualityMetrics(totalRequests int, overrides []ServiceOverrideData) RoutingQualityMetrics {
+func routingQualityMetricsFromOverrides(totalRequests int, overrides []ServiceOverrideData) RoutingQualityMetrics {
 	internal := make([]routingquality.OverrideData, 0, len(overrides))
 	for _, ov := range overrides {
 		internal = append(internal, *toRoutingQualityOverride(ov))
@@ -137,52 +72,23 @@ func computeRoutingQualityMetrics(totalRequests int, overrides []ServiceOverride
 	return fromRoutingQualityMetrics(routingquality.ComputeMetrics(totalRequests, internal))
 }
 
-// computeRoutingQualityMetricsFromRecords aggregates the store-side record
-// shape directly. Used by RouteStatus once it has selected its window.
-// UsageReport sources from session logs instead — see
-// aggregateRoutingQualityFromSessionLogs.
-func computeRoutingQualityMetricsFromRecords(records []*routingQualityRecord) RoutingQualityMetrics {
-	internal := make([]*routingquality.Record, 0, len(records))
-	for _, r := range records {
-		if r == nil || r.inner == nil {
-			continue
-		}
-		internal = append(internal, r.inner)
-	}
-	return fromRoutingQualityMetrics(routingquality.ComputeMetricsFromRecords(internal))
-}
-
 // recordRoutingQualityForRequest records one Execute call into the
 // service's routing-quality store. ovr may be nil for non-overridden
 // requests; when non-nil, the recorded record pointer is stashed onto the
 // override context so the fan-out goroutine can back-write the
 // post-execution outcome (success / stalled / failed / cancelled) once the
-// final event arrives. The back-write is what makes the in-memory ring's
-// outcome aggregates real rather than always-zero (ADR-006 §5).
+// final event arrives.
 func (s *service) recordRoutingQualityForRequest(ovr *overrideContext) {
 	if s == nil || s.routingQuality == nil {
 		return
 	}
 	now := time.Now().UTC()
 	if ovr == nil {
-		s.routingQuality.recordRequest(now, nil)
+		s.routingQuality.RecordRequest(now, nil)
 		return
 	}
-	payload := ovr.payload
-	rec := s.routingQuality.recordRequest(now, &payload)
+	rec := s.routingQuality.RecordRequest(now, toRoutingQualityOverride(ovr.payload))
 	ovr.record = rec
-}
-
-// stampOutcomeOnRecord copies the post-execution outcome into the ring
-// record stored on ovr. Safe to call once after the override event is
-// emitted (the channel send-receive between runExecute and the fan-out
-// goroutine establishes happens-before, so plain field writes are race-free
-// here).
-func stampOutcomeOnRecord(rec *routingQualityRecord, outcome *ServiceOverrideOutcome) {
-	if rec == nil || rec.inner == nil || outcome == nil {
-		return
-	}
-	routingquality.StampOutcome(rec.inner, &routingquality.Outcome{Status: outcome.Status})
 }
 
 func toRoutingQualityOverride(ov ServiceOverrideData) *routingquality.OverrideData {

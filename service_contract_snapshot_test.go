@@ -16,6 +16,7 @@ import (
 	"github.com/easel/fizeau/internal/modelsnapshot"
 	"github.com/easel/fizeau/internal/provider/utilization"
 	"github.com/easel/fizeau/internal/routehealth"
+	"github.com/easel/fizeau/internal/routingquality"
 	"github.com/easel/fizeau/internal/runtimesignals"
 	"github.com/stretchr/testify/require"
 )
@@ -219,7 +220,7 @@ models:
 		hub:              newSessionHub(),
 		routeHealth:      routehealth.NewStore(),
 		routeSticky:      routehealth.NewStickyState(),
-		routingQuality:   newRoutingQualityStore(),
+		routingQuality:   routingquality.NewStore(routingquality.DefaultStoreCap),
 		providerQuota:    NewProviderQuotaStateStore(),
 		providerBurnRate: NewProviderBurnRateTracker(),
 	}
