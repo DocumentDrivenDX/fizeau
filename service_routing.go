@@ -754,7 +754,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	var probeUnreachable map[string]time.Time
 	var probeUnknown map[string]time.Time
 	if s.providerProbe != nil {
-		probeUnreachable = s.providerProbe.UnreachableProviders(now, s.healthSignalTTL())
+		probeUnreachable = s.probeUnreachableProviders(now)
 		probeUnknown = s.probeUnknownProviders(now)
 	}
 

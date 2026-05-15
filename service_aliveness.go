@@ -33,6 +33,7 @@ type ProviderAlivenessProber func(ctx context.Context, provider, baseURL string)
 // alivenessEndpoint describes one provider endpoint to probe.
 type alivenessEndpoint struct {
 	provider string
+	endpoint string
 	baseURL  string
 }
 
@@ -67,21 +68,18 @@ func (s *service) alivenessEndpoints() []alivenessEndpoint {
 		if !providerTypeUsesFixedBilling(entry.Type) {
 			continue
 		}
-		if entry.BaseURL != "" {
-			key := name + "|" + entry.BaseURL
-			if _, dup := seen[key]; !dup {
-				seen[key] = struct{}{}
-				endpoints = append(endpoints, alivenessEndpoint{provider: name, baseURL: entry.BaseURL})
-			}
-		}
-		for _, ep := range entry.Endpoints {
-			if ep.BaseURL == "" {
+		for _, endpoint := range modelDiscoveryEndpoints(entry) {
+			if endpoint.BaseURL == "" {
 				continue
 			}
-			key := name + "|" + ep.BaseURL
+			key := name + "|" + endpoint.Name + "|" + endpoint.BaseURL
 			if _, dup := seen[key]; !dup {
 				seen[key] = struct{}{}
-				endpoints = append(endpoints, alivenessEndpoint{provider: name, baseURL: ep.BaseURL})
+				endpoints = append(endpoints, alivenessEndpoint{
+					provider: name,
+					endpoint: endpoint.Name,
+					baseURL:  endpoint.BaseURL,
+				})
 			}
 		}
 	}
@@ -134,7 +132,7 @@ func runStartupAlivenessProbes(
 		if probeCtx.Err() != nil {
 			success = false
 		}
-		store.RecordProbe(ep.provider, "", success, now)
+		store.RecordProbe(ep.provider, ep.endpoint, success, now)
 	}
 }
 
@@ -182,13 +180,17 @@ func (s *service) probeUnknownProviders(now time.Time) map[string]time.Time {
 	ttl := s.healthSignalTTL()
 	out := make(map[string]time.Time)
 	for _, ep := range endpoints {
-		record, ok := s.providerProbe.LastProbe(ep.provider, "")
+		record, ok := s.lastProbeForAlivenessEndpoint(ep)
 		if !ok {
-			out[ep.provider] = time.Time{}
+			for _, key := range alivenessRouteKeys(ep) {
+				out[key] = time.Time{}
+			}
 			continue
 		}
 		if ttl > 0 && now.Sub(record.LastProbeAt) > ttl {
-			out[ep.provider] = record.LastProbeAt
+			for _, key := range alivenessRouteKeys(ep) {
+				out[key] = record.LastProbeAt
+			}
 		}
 	}
 	if len(out) == 0 {
@@ -208,11 +210,89 @@ func (s *service) routeTimeAlivenessEndpoints(now time.Time) []alivenessEndpoint
 	interval := s.healthProbeInterval()
 	out := make([]alivenessEndpoint, 0, len(endpoints))
 	for _, ep := range endpoints {
-		if s.providerProbe.ProbeNeeded(ep.provider, "", now, interval) {
+		if s.probeNeededForAlivenessEndpoint(ep, now, interval) {
 			out = append(out, ep)
 		}
 	}
 	return out
+}
+
+func (s *service) probeNeededForAlivenessEndpoint(ep alivenessEndpoint, now time.Time, interval time.Duration) bool {
+	if s == nil || s.providerProbe == nil {
+		return false
+	}
+	if !s.providerProbe.ProbeNeeded(ep.provider, ep.endpoint, now, interval) {
+		return false
+	}
+	if ep.endpoint == "" {
+		return true
+	}
+	if r, ok := s.providerProbe.LastProbe(ep.provider, ""); ok {
+		return now.Sub(r.LastProbeAt) >= interval
+	}
+	return true
+}
+
+func (s *service) probeUnreachableProviders(now time.Time) map[string]time.Time {
+	if s == nil || s.providerProbe == nil {
+		return nil
+	}
+	endpoints := s.alivenessEndpoints()
+	if len(endpoints) == 0 {
+		return nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	ttl := s.healthSignalTTL()
+	out := make(map[string]time.Time)
+	for _, ep := range endpoints {
+		record, ok := s.lastProbeForAlivenessEndpoint(ep)
+		if !ok || record.LastProbeSuccess {
+			continue
+		}
+		if ttl > 0 && now.Sub(record.LastProbeAt) > ttl {
+			continue
+		}
+		for _, key := range alivenessRouteKeys(ep) {
+			if existing, ok := out[key]; !ok || record.LastProbeAt.After(existing) {
+				out[key] = record.LastProbeAt
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (s *service) lastProbeForAlivenessEndpoint(ep alivenessEndpoint) (routehealth.ProbeRecord, bool) {
+	if s == nil || s.providerProbe == nil {
+		return routehealth.ProbeRecord{}, false
+	}
+	if r, ok := s.providerProbe.LastProbe(ep.provider, ep.endpoint); ok {
+		return r, true
+	}
+	if ep.endpoint != "" {
+		return s.providerProbe.LastProbe(ep.provider, "")
+	}
+	return routehealth.ProbeRecord{}, false
+}
+
+func alivenessRouteKeys(ep alivenessEndpoint) []string {
+	provider := strings.TrimSpace(ep.provider)
+	if provider == "" {
+		return nil
+	}
+	endpoint := strings.TrimSpace(ep.endpoint)
+	if endpoint == "" {
+		return []string{provider}
+	}
+	ref := endpointProviderRef(provider, endpoint)
+	if ref == provider {
+		return []string{provider}
+	}
+	return []string{provider, ref}
 }
 
 func runRouteTimeAlivenessProbes(
@@ -243,7 +323,7 @@ func runRouteTimeAlivenessProbes(
 			success = false
 		}
 		cancel()
-		store.RecordProbe(ep.provider, "", success, probeAt)
+		store.RecordProbe(ep.provider, ep.endpoint, success, probeAt)
 		if ctx.Err() != nil {
 			recordRouteTimeProbeFailures(store, endpoints[i+1:], probeAt)
 			return
@@ -256,7 +336,7 @@ func recordRouteTimeProbeFailures(store *routehealth.ProbeStore, endpoints []ali
 		return
 	}
 	for _, ep := range endpoints {
-		store.RecordProbe(ep.provider, "", false, probeAt)
+		store.RecordProbe(ep.provider, ep.endpoint, false, probeAt)
 	}
 }
 
@@ -313,13 +393,13 @@ func runAlivenessProbeLoop(
 			if ctx.Err() != nil {
 				return
 			}
-			if !store.ProbeNeeded(ep.provider, "", t, interval) {
+			if !store.ProbeNeeded(ep.provider, ep.endpoint, t, interval) {
 				continue
 			}
 			probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			success := prober(probeCtx, ep.provider, ep.baseURL)
 			cancel()
-			store.RecordProbe(ep.provider, "", success, t)
+			store.RecordProbe(ep.provider, ep.endpoint, success, t)
 		}
 		if persistPath != "" {
 			_ = store.Save(persistPath)

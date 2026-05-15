@@ -67,7 +67,7 @@ func TestServiceStartup_ProbesConfiguredProviders(t *testing.T) {
 	}
 
 	// Verify the result is recorded in the probe store.
-	r, ok := svc.providerProbe.LastProbe("bragi", "")
+	r, ok := svc.providerProbe.LastProbe("bragi", "default")
 	if !ok {
 		t.Fatal("no probe record for bragi in store")
 	}
@@ -841,6 +841,92 @@ models:
 	}
 	if !sawGrendel {
 		t.Fatalf("missing grendel candidate in %#v", dec.Candidates)
+	}
+}
+
+func TestResolveRoute_FailedProbeGatesOnlyMatchingEndpoint(t *testing.T) {
+	cacheRoot := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheRoot)
+	cache := &discoverycache.Cache{Root: cacheRoot}
+	modelID := "mlx-community/Qwen3.6-27B-8bit"
+	deskAURL := "http://127.0.0.1:18001/v1"
+	deskBURL := "http://127.0.0.1:18002/v1"
+	capturedAt := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("local", "desk-a", deskAURL, "desk-a"), capturedAt, []string{modelID})
+	writeSnapshotDiscoveryFixture(t, cache, testDiscoverySourceName("local", "desk-b", deskBURL, "desk-b"), capturedAt, []string{modelID})
+
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-15T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  mlx-community/Qwen3.6-27B-8bit:
+    family: qwen
+    status: active
+    power: 7
+    context_window: 32768
+    surfaces:
+      embedded-openai: mlx-community/Qwen3.6-27B-8bit
+`)
+	t.Cleanup(replaceRoutingCatalogForTest(t, catalog))
+
+	svc := newResolveRouteProbeTestService(t, &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"local": {
+				Type: "lmstudio",
+				Endpoints: []ServiceProviderEndpoint{
+					{Name: "desk-a", BaseURL: deskAURL, ServerInstance: "desk-a"},
+					{Name: "desk-b", BaseURL: deskBURL, ServerInstance: "desk-b"},
+				},
+				Model:               modelID,
+				Billing:             BillingModelFixed,
+				IncludeByDefault:    true,
+				IncludeByDefaultSet: true,
+			},
+		},
+		names:       []string{"local"},
+		defaultName: "local",
+	}, func(_ context.Context, provider, _ string) bool {
+		t.Fatalf("route hot path invoked aliveness prober for %s", provider)
+		return false
+	})
+	now := time.Now().UTC()
+	svc.providerProbe.RecordProbe("local", "desk-a", false, now)
+	svc.providerProbe.RecordProbe("local", "desk-b", true, now)
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{Model: modelID})
+	if err != nil {
+		t.Fatalf("ResolveRoute: %v", err)
+	}
+	if dec == nil || dec.Provider != "local@desk-b" {
+		t.Fatalf("decision=%#v, want healthy endpoint local@desk-b", dec)
+	}
+
+	var sawDead, sawLive bool
+	for _, candidate := range dec.Candidates {
+		switch candidate.Provider {
+		case "local@desk-a":
+			sawDead = true
+			if candidate.Eligible {
+				t.Fatalf("dead endpoint candidate=%#v, want rejected", candidate)
+			}
+			if candidate.FilterReason != FilterReasonEndpointUnreachable {
+				t.Fatalf("dead endpoint FilterReason=%q, want %q", candidate.FilterReason, FilterReasonEndpointUnreachable)
+			}
+		case "local@desk-b":
+			sawLive = true
+			if !candidate.Eligible {
+				t.Fatalf("live endpoint candidate=%#v, want eligible", candidate)
+			}
+		}
+	}
+	if !sawDead || !sawLive {
+		t.Fatalf("endpoint candidates missing: sawDead=%v sawLive=%v candidates=%#v", sawDead, sawLive, dec.Candidates)
 	}
 }
 
