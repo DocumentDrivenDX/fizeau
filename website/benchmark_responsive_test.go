@@ -104,17 +104,29 @@ func ensureChromium(t *testing.T) string {
 }
 
 func findChromiumBinary() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
+	var chromiumPatterns []string
+	var shellPatterns []string
+	for _, root := range playwrightBrowserRoots() {
+		chromiumPatterns = append(chromiumPatterns, filepath.Join(root, "chromium-*", "chrome-linux*", "chrome"))
+		shellPatterns = append(shellPatterns, filepath.Join(root, "chromium_headless_shell-*", "chrome-linux*", "headless_shell"))
+	}
+
+	if path, err := firstGlobMatch(chromiumPatterns); err != nil {
 		return "", err
+	} else if path != "" {
+		return path, nil
+	}
+	if path, err := firstGlobMatch(shellPatterns); err != nil {
+		return "", err
+	} else if path != "" {
+		return path, nil
 	}
 
-	patterns := []string{
-		filepath.Join(home, ".cache", "ms-playwright", "chromium-*", "chrome-linux", "chrome"),
-		filepath.Join(home, ".cache", "ms-playwright", "chromium_headless_shell-*", "chrome-linux", "headless_shell"),
-	}
+	return "", errors.New("no Playwright Chromium binary found")
+}
 
-	for i, pattern := range patterns {
+func firstGlobMatch(patterns []string) (string, error) {
+	for _, pattern := range patterns {
 		matches, err := filepath.Glob(pattern)
 		if err != nil {
 			return "", err
@@ -124,14 +136,27 @@ func findChromiumBinary() (string, error) {
 		}
 
 		sort.Strings(matches)
-		if i == 0 {
-			return matches[len(matches)-1], nil
-		}
-		// Fall back to headless_shell only if no standard Chromium binary exists.
 		return matches[len(matches)-1], nil
 	}
+	return "", nil
+}
 
-	return "", errors.New("no Playwright Chromium binary found")
+func playwrightBrowserRoots() []string {
+	seen := map[string]bool{}
+	var roots []string
+	add := func(root string) {
+		if root == "" || root == "0" || seen[root] {
+			return
+		}
+		seen[root] = true
+		roots = append(roots, root)
+	}
+
+	add(os.Getenv("PLAYWRIGHT_BROWSERS_PATH"))
+	if home, err := os.UserHomeDir(); err == nil {
+		add(filepath.Join(home, ".cache", "ms-playwright"))
+	}
+	return roots
 }
 
 func probePage(t *testing.T, buildDir, chromePath, rel string) responsiveProbeResult {
