@@ -1,6 +1,7 @@
 package fizeau
 
 import (
+	"context"
 	"time"
 
 	"github.com/easel/fizeau/internal/harnesses"
@@ -23,18 +24,22 @@ type subscriptionQuotaView struct {
 func subscriptionQuotaForHarness(name string, now time.Time) (subscriptionQuotaView, bool) {
 	switch name {
 	case "claude":
-		dec := claudeharness.ReadClaudeQuotaRoutingDecision(now, 0)
+		status, err := (&claudeharness.Runner{}).QuotaStatus(context.Background(), now)
+		if err != nil {
+			return subscriptionQuotaView{}, false
+		}
+		present := status.State != harnesses.QuotaUnavailable
 		view := subscriptionQuotaView{
-			OK:      dec.PreferClaude,
-			Present: dec.SnapshotPresent,
-			Fresh:   dec.Fresh,
-			Reason:  dec.Reason,
+			OK:      status.RoutingPreference == harnesses.RoutingPreferenceAvailable,
+			Present: present,
+			Fresh:   status.Fresh,
+			Reason:  status.Reason,
 			Trend:   routing.QuotaTrendUnknown,
 		}
-		if dec.Snapshot != nil {
-			view.Windows = append([]harnesses.QuotaWindow(nil), dec.Snapshot.Windows...)
-			view.PercentUsed = int(claudeQuotaMaxUsedPercent(dec.Snapshot))
-			view.Trend = quotaTrend(view.PercentUsed, dec.Fresh)
+		if present {
+			view.Windows = append([]harnesses.QuotaWindow(nil), status.Windows...)
+			view.PercentUsed = int(maxQuotaWindowUsedPercent(status.Windows))
+			view.Trend = quotaTrend(view.PercentUsed, status.Fresh)
 		}
 		return view, true
 	case "codex":
@@ -74,26 +79,6 @@ func subscriptionQuotaForHarness(name string, now time.Time) (subscriptionQuotaV
 	default:
 		return subscriptionQuotaView{}, false
 	}
-}
-
-func claudeQuotaMaxUsedPercent(snap *claudeharness.ClaudeQuotaSnapshot) float64 {
-	if snap == nil {
-		return 0
-	}
-	maxUsed := 0.0
-	if snap.FiveHourLimit > 0 {
-		maxUsed = float64(snap.FiveHourLimit-snap.FiveHourRemaining) / float64(snap.FiveHourLimit) * 100
-	}
-	if snap.WeeklyLimit > 0 {
-		weeklyUsed := float64(snap.WeeklyLimit-snap.WeeklyRemaining) / float64(snap.WeeklyLimit) * 100
-		if weeklyUsed > maxUsed {
-			maxUsed = weeklyUsed
-		}
-	}
-	if windowMax := maxQuotaWindowUsedPercent(snap.Windows); windowMax > maxUsed {
-		maxUsed = windowMax
-	}
-	return maxUsed
 }
 
 func maxQuotaWindowUsedPercent(windows []harnesses.QuotaWindow) float64 {
