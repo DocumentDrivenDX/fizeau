@@ -1,10 +1,9 @@
-package codex_test
+package codex
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/easel/fizeau/internal/harnesses/codex"
 	"github.com/easel/fizeau/internal/harnesses/harnesstest"
 )
 
@@ -14,7 +13,7 @@ import (
 // binary can sneak in.
 func TestCodexRunnerHarnessConformance(t *testing.T) {
 	isolateCodexRunnerEnv(t)
-	harnesstest.RunHarnessConformance(t, &codex.Runner{})
+	harnesstest.RunHarnessConformance(t, &Runner{})
 }
 
 // TestCodexRunnerQuotaHarnessConformance asserts QuotaHarness contract:
@@ -23,14 +22,14 @@ func TestCodexRunnerHarnessConformance(t *testing.T) {
 // valid status value, not as an error.
 func TestCodexRunnerQuotaHarnessConformance(t *testing.T) {
 	isolateCodexRunnerEnv(t)
-	harnesstest.RunQuotaHarnessConformance(t, &codex.Runner{})
+	harnesstest.RunQuotaHarnessConformance(t, &Runner{})
 }
 
 // TestCodexRunnerAccountHarnessConformance asserts the AccountHarness
 // contract against the cold-cache path (no auth.json).
 func TestCodexRunnerAccountHarnessConformance(t *testing.T) {
 	isolateCodexRunnerEnv(t)
-	harnesstest.RunAccountHarnessConformance(t, &codex.Runner{})
+	harnesstest.RunAccountHarnessConformance(t, &Runner{})
 }
 
 // TestCodexRunnerModelDiscoveryHarnessConformance asserts ResolveModelAlias
@@ -38,7 +37,7 @@ func TestCodexRunnerAccountHarnessConformance(t *testing.T) {
 // ErrAliasNotResolvable.
 func TestCodexRunnerModelDiscoveryHarnessConformance(t *testing.T) {
 	isolateCodexRunnerEnv(t)
-	harnesstest.RunModelDiscoveryHarnessConformance(t, &codex.Runner{})
+	harnesstest.RunModelDiscoveryHarnessConformance(t, &Runner{})
 }
 
 // isolateCodexRunnerEnv points every codex evidence source at a temp
