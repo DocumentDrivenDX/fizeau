@@ -23,13 +23,7 @@ func runAgentCLI(t *testing.T, args ...string) ([]byte, error) {
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = filepath.Clean(filepath.Join(wd, ".."))
 	home := t.TempDir()
-	cmd.Env = append(os.Environ(),
-		"HOME="+home,
-		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
-		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
-		"XDG_DATA_HOME="+filepath.Join(home, ".local", "share"),
-		"FIZEAU_CACHE_DIR="+filepath.Join(home, ".cache", "fizeau"),
-	)
+	cmd.Env = isolatedAgentCLIEnv(home)
 	out, err := cmd.CombinedOutput()
 	return out, err
 }
@@ -44,15 +38,23 @@ func runAgentCLIWithHome(t *testing.T, home string, args ...string) ([]byte, err
 	exe := buildAgentCLI(t)
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = filepath.Clean(filepath.Join(wd, ".."))
-	cmd.Env = append(os.Environ(),
+	cmd.Env = isolatedAgentCLIEnv(home)
+	out, err := cmd.CombinedOutput()
+	return out, err
+}
+
+func isolatedAgentCLIEnv(home string) []string {
+	cacheRoot := filepath.Join(home, ".cache", "fizeau")
+	return append(os.Environ(),
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
 		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
 		"XDG_DATA_HOME="+filepath.Join(home, ".local", "share"),
-		"FIZEAU_CACHE_DIR="+filepath.Join(home, ".cache", "fizeau"),
+		"FIZEAU_CACHE_DIR="+cacheRoot,
+		"FIZEAU_CLAUDE_QUOTA_CACHE="+filepath.Join(cacheRoot, "claude-quota.json"),
+		"DDX_CLAUDE_QUOTA_CACHE="+filepath.Join(cacheRoot, "ddx-claude-quota.json"),
+		"PATH=/usr/bin:/bin",
 	)
-	out, err := cmd.CombinedOutput()
-	return out, err
 }
 
 func writePiFixture(t *testing.T, home string, modelsJSON string) {

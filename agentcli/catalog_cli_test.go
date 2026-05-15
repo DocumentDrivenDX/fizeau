@@ -358,10 +358,7 @@ session_log_dir: sessions
 		cmd := exec.Command(exe, args...)
 		cmd.Dir = callerDir
 		home := t.TempDir()
-		cmd.Env = append(os.Environ(),
-			"HOME="+home,
-			"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
-		)
+		cmd.Env = isolatedAgentCLIEnv(home)
 		return cmd.CombinedOutput()
 	}
 
