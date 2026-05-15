@@ -593,6 +593,7 @@ const (
 	FilterReasonNoToolSupport               = "no_tool_support"
 	FilterReasonReasoningUnsupported        = "reasoning_unsupported"
 	FilterReasonScoredBelowTop              = "scored_below_top"
+	FilterReasonAboveMaxPower               = "above_max_power"
 	FilterReasonProviderExcludedFromDefault = "provider_excluded_from_default_routing"
 	FilterReasonMeteredOptInRequired        = "metered_opt_in_required"
 	// FilterReasonEndpointUnreachable is set when a proactive aliveness probe

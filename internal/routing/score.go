@@ -14,6 +14,7 @@ const StickyAffinityBonus = 250.0
 const unknownUtilizationPenalty = 5.0
 const unknownPerformancePenalty = 5.0
 const belowMinPowerPenalty = 12.0
+const aboveMaxPowerExclusionPenalty = 1000.0
 
 // scorePolicy returns a score for a candidate under the named policy.
 // Higher is better.

@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -258,8 +259,17 @@ func TestSoftPowerScoring_HealthySubscriptionBonusStopsBelowEffectiveMax(t *test
 	if codex.Harness != "codex" {
 		t.Fatalf("codex candidate not found: %+v", dec.Candidates)
 	}
-	if got := codex.ScoreComponents["power"]; got != -2 {
-		t.Fatalf("codex power component=%v, want -2 with max_power=8 (bonus suppressed)", got)
+	if codex.Eligible {
+		t.Fatalf("codex candidate must be excluded once an in-bounds route exists: %#v", codex)
+	}
+	if codex.FilterReason != FilterReasonAboveMaxPower {
+		t.Fatalf("codex filter reason=%q, want %q", codex.FilterReason, FilterReasonAboveMaxPower)
+	}
+	if got := codex.ScoreComponents["power"]; got != -2-aboveMaxPowerExclusionPenalty {
+		t.Fatalf("codex power component=%v, want %v with exclusion-strength max_power penalty", got, -2-aboveMaxPowerExclusionPenalty)
+	}
+	if !strings.Contains(codex.Reason, "max_power=8") {
+		t.Fatalf("codex reason=%q, want max_power evidence", codex.Reason)
 	}
 }
 
@@ -326,6 +336,68 @@ func TestScorePowerMinPowerIsSoftAndPinsRemainConstraints(t *testing.T) {
 	for _, c := range dec.Candidates {
 		if c.Provider == "local" && !c.Eligible {
 			t.Fatalf("pinned provider must remain eligible under MinPower: %#v", c)
+		}
+	}
+}
+
+func TestScorePolicy_MaxPowerExcludesOverpoweredCandidates(t *testing.T) {
+	in := maxPowerExclusionInputs()
+
+	dec, err := Resolve(Request{Policy: "default", MaxPower: 8}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Provider != "routine" || dec.Model != "routine-8" {
+		t.Fatalf("winner=%s/%s, want routine/routine-8", dec.Provider, dec.Model)
+	}
+
+	var routine, frontier Candidate
+	for _, c := range dec.Candidates {
+		switch c.Provider {
+		case "routine":
+			routine = c
+		case "frontier":
+			frontier = c
+		}
+	}
+	if !routine.Eligible || routine.Power != 8 {
+		t.Fatalf("routine candidate=%#v, want eligible power-8 route", routine)
+	}
+	if frontier.Eligible {
+		t.Fatalf("frontier candidate must be excluded when an in-bounds route exists: %#v", frontier)
+	}
+	if frontier.FilterReason != FilterReasonAboveMaxPower {
+		t.Fatalf("frontier filter reason=%q, want %q", frontier.FilterReason, FilterReasonAboveMaxPower)
+	}
+	if got := frontier.ScoreComponents["power"]; got != -2-aboveMaxPowerExclusionPenalty {
+		t.Fatalf("frontier power component=%v, want %v", got, -2-aboveMaxPowerExclusionPenalty)
+	}
+	if !strings.Contains(frontier.Reason, "max_power=8") {
+		t.Fatalf("frontier reason=%q, want max_power evidence", frontier.Reason)
+	}
+}
+
+func TestScorePolicy_MaxPowerPinsRemainConstraints(t *testing.T) {
+	in := maxPowerExclusionInputs()
+
+	dec, err := Resolve(Request{Provider: "frontier", MaxPower: 8}, in)
+	if err != nil {
+		t.Fatalf("Resolve provider pin: %v", err)
+	}
+	if dec.Provider != "frontier" || dec.Model != "frontier-10" {
+		t.Fatalf("provider-pin winner=%s/%s, want frontier/frontier-10", dec.Provider, dec.Model)
+	}
+
+	dec, err = Resolve(Request{Model: "frontier-10", MaxPower: 8}, in)
+	if err != nil {
+		t.Fatalf("Resolve model pin: %v", err)
+	}
+	if dec.Provider != "frontier" || dec.Model != "frontier-10" {
+		t.Fatalf("model-pin winner=%s/%s, want frontier/frontier-10", dec.Provider, dec.Model)
+	}
+	for _, c := range dec.Candidates {
+		if c.Provider == "frontier" && !c.Eligible {
+			t.Fatalf("frontier exact model pin must remain eligible under MaxPower: %#v", c)
 		}
 	}
 }
@@ -542,6 +614,62 @@ func scorePowerInputs() Inputs {
 			"frontier":    10,
 		}),
 		Now: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC),
+	}
+}
+
+func maxPowerExclusionInputs() Inputs {
+	return Inputs{
+		Harnesses: []HarnessEntry{
+			{
+				Name:                "routine",
+				Surface:             "embedded-openai",
+				CostClass:           "medium",
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				SubscriptionOK:      true,
+				SupportsTools:       true,
+				Providers: []ProviderEntry{{
+					Name:               "routine",
+					DefaultModel:       "routine-8",
+					DiscoveredIDs:      []string{"routine-8"},
+					DiscoveryAttempted: true,
+					CostUSDPer1kTokens: 0.04,
+					CostSource:         CostSourceCatalog,
+					SupportsTools:      true,
+				}},
+			},
+			{
+				Name:                "frontier",
+				Surface:             "codex",
+				CostClass:           "medium",
+				IsSubscription:      true,
+				AutoRoutingEligible: true,
+				ExactPinSupport:     true,
+				Available:           true,
+				QuotaOK:             true,
+				QuotaPercentUsed:    10,
+				QuotaTrend:          QuotaTrendHealthy,
+				SubscriptionOK:      true,
+				DefaultModel:        "frontier-10",
+				SupportedModels:     []string{"frontier-10"},
+				SupportsTools:       true,
+				Providers: []ProviderEntry{{
+					Name:               "frontier",
+					DefaultModel:       "frontier-10",
+					DiscoveredIDs:      []string{"frontier-10"},
+					DiscoveryAttempted: true,
+					CostSource:         CostSourceSubscription,
+					SupportsTools:      true,
+				}},
+			},
+		},
+		ModelEligibility: testPowerLookup(map[string]int{
+			"routine-8":   8,
+			"frontier-10": 10,
+		}),
+		Now: time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC),
 	}
 }
 

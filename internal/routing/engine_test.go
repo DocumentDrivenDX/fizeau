@@ -538,8 +538,13 @@ func TestAutomaticRoutingFiltersMinMaxPower(t *testing.T) {
 		t.Fatalf("MaxPower selected provider=%q, want small", dec.Provider)
 	}
 	for _, c := range dec.Candidates {
-		if c.Provider == "large" && !c.Eligible {
-			t.Fatalf("large candidate must remain eligible under soft max_power: %#v", c)
+		if c.Provider == "large" {
+			if c.Eligible {
+				t.Fatalf("large candidate must be excluded when an in-bounds max_power route exists: %#v", c)
+			}
+			if c.FilterReason != FilterReasonAboveMaxPower {
+				t.Fatalf("large candidate filter reason=%q, want %q", c.FilterReason, FilterReasonAboveMaxPower)
+			}
 		}
 	}
 

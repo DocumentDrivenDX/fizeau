@@ -191,6 +191,7 @@ func TestRouteCandidateFilterReasonClassification(t *testing.T) {
 		{"reasoning unsupported", routing.FilterReasonReasoningUnsupported, FilterReasonReasoningUnsupported, "thinking high not advertised"},
 		{"unhealthy", routing.FilterReasonUnhealthy, FilterReasonUnhealthy, "harness offline"},
 		{"scored below top", routing.FilterReasonScoredBelowTop, FilterReasonScoredBelowTop, ""},
+		{"above max power", routing.FilterReasonAboveMaxPower, FilterReasonAboveMaxPower, "power 10 exceeds max_power=8"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

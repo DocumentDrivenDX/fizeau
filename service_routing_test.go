@@ -121,6 +121,32 @@ func TestRouteCandidateFromInternalMapsFields(t *testing.T) {
 	}
 }
 
+func TestRouteCandidateFromInternalUsesExclusionStrengthForAboveMaxPower(t *testing.T) {
+	candidate := routing.Candidate{
+		Harness:      "codex",
+		Provider:     "frontier",
+		Model:        "frontier-10",
+		Power:        10,
+		Eligible:     false,
+		Reason:       "model power 10 exceeds max_power=8 while an in-bounds candidate exists",
+		FilterReason: routing.FilterReasonAboveMaxPower,
+		ScoreComponents: map[string]float64{
+			"power": -1002,
+		},
+	}
+
+	got := routeCandidateFromInternal(candidate, RoutePowerPolicy{MaxPower: 8})
+	if got.FilterReason != FilterReasonAboveMaxPower {
+		t.Fatalf("filter reason=%q, want %q", got.FilterReason, FilterReasonAboveMaxPower)
+	}
+	if got.Components.PowerHintFit != -1002 {
+		t.Fatalf("power_hint_fit=%v, want exclusion-strength power evidence", got.Components.PowerHintFit)
+	}
+	if got.Components.PowerWeightedCapability != 0 {
+		t.Fatalf("power_weighted_capability=%v, want 0 once max-power exclusion consumes the power signal", got.Components.PowerWeightedCapability)
+	}
+}
+
 func TestResolveRouteSuccessIncludesCandidates(t *testing.T) {
 	svc := publicRouteTraceService(&fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
@@ -759,11 +785,11 @@ models:
 				t.Fatalf("power-7 candidate should remain eligible under default: %#v", candidate)
 			}
 		case "power-9":
-			if !candidate.Eligible {
-				t.Fatalf("power-9 candidate should remain eligible under soft power scoring: %#v", candidate)
+			if candidate.Eligible {
+				t.Fatalf("power-9 candidate should be excluded once an in-bounds max_power route exists: %#v", candidate)
 			}
-			if candidate.FilterReason != "" {
-				t.Fatalf("power-9 FilterReason=%q, want empty under soft power scoring", candidate.FilterReason)
+			if candidate.FilterReason != FilterReasonAboveMaxPower {
+				t.Fatalf("power-9 FilterReason=%q, want %q", candidate.FilterReason, FilterReasonAboveMaxPower)
 			}
 			sawAboveTarget = true
 		}

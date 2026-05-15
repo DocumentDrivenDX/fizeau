@@ -59,11 +59,15 @@ func TestRoutingPolicyInvariants(t *testing.T) {
 			},
 		},
 		{
-			policyStatement: "soft min/max power demotes undershoot without filtering candidates",
+			policyStatement: "max power excludes overpowered candidates while min power remains soft",
 			req:             Request{MinPower: 8, MaxPower: 8},
 			inputs:          policyInputsWithDiscoveredLocalDefault(),
-			wantHarness:     "codex",
-			wantModel:       "cloud-frontier",
+			wantHarness:     "fiz",
+			wantProvider:    "local",
+			wantModel:       "local-good",
+			wantRejected: map[string]FilterReason{
+				"codex/": FilterReasonAboveMaxPower,
+			},
 		},
 		{
 			policyStatement: "an exact model pin overrides local preference",

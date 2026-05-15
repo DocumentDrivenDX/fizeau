@@ -558,9 +558,10 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		ranked = append(ranked, entries...)
 	}
 
-	// Compute scores only after eligibility is final. Rejected candidates keep
-	// a zero score because cost/utilization/performance/sticky ranking should
-	// never influence the eligibility boundary.
+	// Compute scores for candidates that survived the primary gates. A later
+	// max-power exclusion pass may turn some of these scored candidates
+	// ineligible so the trace can retain power evidence without letting an
+	// overpowered route win automatic selection.
 	for i := range ranked {
 		if !ranked[i].out.Eligible {
 			continue
@@ -569,6 +570,7 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		ranked[i].out.ScoreComponents = scoreComponents(req.Policy, ranked[i].internal)
 		ranked[i].out.Reason = fmt.Sprintf("policy=%s; score=%.1f", req.Policy, ranked[i].out.Score)
 	}
+	applyMaxPowerExclusion(ranked, req)
 	neutralCost, hasKnownCost := neutralKnownCost(ranked)
 
 	// Sort: eligible first, then descending score, then cost, then locality,
@@ -648,6 +650,43 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 func hasAnyEligible(ranked []rankedCandidate) bool {
 	for _, rc := range ranked {
 		if rc.out.Eligible {
+			return true
+		}
+	}
+	return false
+}
+
+func applyMaxPowerExclusion(ranked []rankedCandidate, req Request) {
+	if req.MaxPower <= 0 || req.Model != "" || req.Provider != "" {
+		return
+	}
+	if !hasEligibleInBoundsCandidate(ranked) {
+		return
+	}
+	for i := range ranked {
+		if !ranked[i].out.Eligible {
+			continue
+		}
+		if ranked[i].internal.Power <= req.MaxPower || ranked[i].internal.Power <= 0 {
+			continue
+		}
+		ranked[i].out.Eligible = false
+		ranked[i].out.FilterReason = FilterReasonAboveMaxPower
+		ranked[i].out.Reason = fmt.Sprintf("model power %d exceeds max_power=%d while an in-bounds candidate exists", ranked[i].internal.Power, req.MaxPower)
+		if ranked[i].out.ScoreComponents == nil {
+			ranked[i].out.ScoreComponents = scoreComponents(req.Policy, ranked[i].internal)
+		}
+		ranked[i].out.ScoreComponents["power"] -= aboveMaxPowerExclusionPenalty
+		ranked[i].out.Score -= aboveMaxPowerExclusionPenalty
+	}
+}
+
+func hasEligibleInBoundsCandidate(ranked []rankedCandidate) bool {
+	for _, candidate := range ranked {
+		if !candidate.out.Eligible {
+			continue
+		}
+		if candidateWithinPowerBounds(candidate.internal) {
 			return true
 		}
 	}

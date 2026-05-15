@@ -179,7 +179,7 @@ func routeCandidateFromInternal(candidate routing.Candidate, powerPolicy RoutePo
 		ContextHeadroom:  candidate.ContextHeadroom,
 		StickyAffinity:   candidate.StickyAffinity,
 	}
-	powerHintFit := scorePowerHintFit(candidate.Power, powerPolicy)
+	powerHintFit := scorePowerHintFit(candidate, powerPolicy)
 	scorePower := candidate.ScoreComponents["power"]
 	scoreCost := candidate.ScoreComponents["cost"]
 	scorePerformance := candidate.ScoreComponents["performance"]
@@ -216,9 +216,13 @@ func routeCandidateFromInternal(candidate routing.Candidate, powerPolicy RoutePo
 	}
 }
 
-func scorePowerHintFit(power int, policy RoutePowerPolicy) float64 {
+func scorePowerHintFit(candidate routing.Candidate, policy RoutePowerPolicy) float64 {
+	power := candidate.Power
 	if power <= 0 {
 		return 0
+	}
+	if policy.MaxPower > 0 && candidate.FilterReason == routing.FilterReasonAboveMaxPower && candidate.ScoreComponents != nil {
+		return candidate.ScoreComponents["power"]
 	}
 	if policy.MinPower > 0 && power < policy.MinPower {
 		// Mirror the engine scorer: materially underpowered routes should not
