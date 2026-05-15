@@ -71,7 +71,7 @@ type FizeauService interface {
     ListProviders(ctx context.Context) ([]ProviderInfo, error)
     ListModels(ctx context.Context, filter ModelFilter) ([]ModelInfo, error)
     ListPolicies(ctx context.Context) ([]PolicyInfo, error)
-    HealthCheck(ctx context.Context, target HealthTarget) error
+    HealthCheck(ctx context.Context, health HealthTarget) error
     ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDecision, error)
     RecordRouteAttempt(ctx context.Context, attempt RouteAttempt) error
     RouteStatus(ctx context.Context) (*RouteStatusReport, error)
@@ -142,6 +142,19 @@ type ServiceOptions struct {
     // StaleHarnessReaperGrace is the minimum age before a startup reaper may
     // terminate an owned subprocess record. Zero uses the default grace window.
     StaleHarnessReaperGrace time.Duration
+
+    // HealthProbeInterval is the interval between background aliveness probes
+    // for configured non-cloud providers. Zero uses the default (60s).
+    HealthProbeInterval time.Duration
+    // HealthSignalTTL is the maximum age of a probe result before it expires
+    // for routing purposes. Zero uses the default (10 min).
+    HealthSignalTTL time.Duration
+    // PersistRouteHealth, when non-empty, is the file path where probe results
+    // are persisted across processes so a fresh process skips redundant probing.
+    PersistRouteHealth string
+    // AlivenessProber, when non-nil, overrides the default TCP-connect prober
+    // used during startup and periodic aliveness probing. Nil uses the default.
+    AlivenessProber ProviderAlivenessProber
 }
 ```
 
@@ -325,26 +338,37 @@ ModelInfo describes a model with full metadata per CONTRACT-003.
 
 ```go
 type ModelInfo struct {
-    ID              string
-    Provider        string
-    ProviderType    string
-    Harness         string
-    EndpointName    string
-    EndpointBaseURL string
-    ServerInstance  string
-    ContextLength   int
-    ContextSource   string
-    Utilization     RouteUtilizationState
-    Capabilities    []string
-    Cost            CostInfo
-    PerfSignal      PerfSignal
-    Power           int
-    AutoRoutable    bool
-    ExactPinOnly    bool
-    Billing         BillingModel
-    Available       bool
-    IsDefault       bool // matches the configured default model
-    RankPosition    int  // ordinal in latest discovery rank; -1 if unranked
+    ID                            string
+    Provider                      string
+    ProviderType                  string
+    Harness                       string
+    EndpointName                  string
+    EndpointBaseURL               string
+    ServerInstance                string
+    ContextLength                 int
+    ContextSource                 string
+    Utilization                   RouteUtilizationState
+    Capabilities                  []string
+    Cost                          CostInfo
+    PerfSignal                    PerfSignal
+    Power                         int
+    AutoRoutable                  bool
+    ExactPinOnly                  bool
+    Billing                       BillingModel
+    ActualCashSpend               bool
+    EffectiveCost                 float64
+    EffectiveCostSource           string
+    SupportsTools                 bool
+    DeploymentClass               string
+    HealthFreshnessAt             time.Time
+    HealthFreshnessSource         string
+    QuotaFreshnessAt              time.Time
+    QuotaFreshnessSource          string
+    ModelDiscoveryFreshnessAt     time.Time
+    ModelDiscoveryFreshnessSource string
+    Available                     bool
+    IsDefault                     bool // matches the configured default model
+    RankPosition                  int  // ordinal in latest discovery rank; -1 if unranked
 }
 ```
 
@@ -445,6 +469,16 @@ type RouteRequest struct {
     // "bead_123:attempt_4"). Observational only — it does NOT enter the
     // routing precedence chain. Mirrors ServiceExecuteRequest.CorrelationID.
     CorrelationID string
+
+    // ExcludedRoutes lists (Provider, Model, Endpoint) combinations the caller
+    // has determined are currently unavailable. The router skips any candidate
+    // matching an entry. Provider is required; Model and Endpoint are optional
+    // (empty matches any value for that field).
+    //
+    // Use this to communicate caller-side health signals across calls without
+    // redesigning provider config. The routing engine records excluded
+    // candidates with FilterReasonCallerExcluded for observability.
+    ExcludedRoutes []ExcludedRoute
 }
 ```
 
@@ -457,6 +491,9 @@ RouteDecision is the result of ResolveRoute.
 type RouteDecision struct {
     // RequestedPolicy is the caller-supplied policy, when any.
     RequestedPolicy string
+    // SnapshotCapturedAt records when the model snapshot used for scoring
+    // was assembled.
+    SnapshotCapturedAt time.Time
     // PowerPolicy records the effective policy inputs used for this
     // resolution. It stays separate from the chosen model so operator
     // surfaces can explain policy without re-deriving it.
@@ -564,8 +601,12 @@ parameter types, and field-level documentation, follow the
 | `ErrUnsatisfiablePin` | type (struct) | ErrUnsatisfiablePin reports explicit caller pins that cannot all be true at |
 | `EventSessionEnd` | const |  |
 | `EventSessionStart` | const |  |
+| `ExcludedRoute` | type (struct) | ExcludedRoute identifies a (Provider, Model, optional Endpoint) combination |
 | `FilterReasonContextTooSmall` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
+| `FilterReasonEndpointUnreachable` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
+| `FilterReasonMeteredOptInRequired` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
 | `FilterReasonNoToolSupport` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
+| `FilterReasonProviderExcludedFromDefault` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
 | `FilterReasonReasoningUnsupported` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
 | `FilterReasonScoredBelowTop` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
 | `FilterReasonUnhealthy` | const | FilterReason* enumerate the canonical disqualification reasons surfaced |
@@ -587,6 +628,7 @@ parameter types, and field-level documentation, follow the
 | `OverrideClassBucket` | type (struct) | OverrideClassBucket is one cell in the override-class pivot |
 | `PerfSignal` | type (struct) | PerfSignal holds observed performance data for a model |
 | `PolicyInfo` | type (struct) |  |
+| `ProviderAlivenessProber` | type (func) | ProviderAlivenessProber reports whether a provider endpoint is reachable |
 | `ProviderBurnRateTracker` | type (struct) | ProviderBurnRateTracker maintains a per-provider rolling window of token |
 | `ProviderInfo` | type (struct) | ProviderInfo describes a provider with live status per CONTRACT-003 |
 | `ProviderQuotaState` | type | ProviderQuotaState is the state of one provider in the quota state machine |
@@ -624,6 +666,7 @@ parameter types, and field-level documentation, follow the
 | `ScoredModel` | type (alias) |  |
 | `ServiceCompactionData` | type (struct) |  |
 | `ServiceConfig` | type (interface) | ServiceConfig provides provider and routing data to the service without |
+| `ServiceConfigSource` | type (interface) | ServiceConfigSource is the minimal interface providerCooldownsFromSnapshotErrors |
 | `ServiceDecodedEvent` | type (struct) | ServiceDecodedEvent is a typed view of one ServiceEvent |
 | `ServiceEvent` | type (alias) | ServiceEvent is a contract-level event (mirrors harnesses |
 | `ServiceEventTypeCompaction` | const |  |
@@ -685,15 +728,17 @@ parameter types, and field-level documentation, follow the
 | `ValidatePowerBounds` | func (func ValidatePowerBounds(minPower, maxPower int) error) | ValidatePowerBounds returns nil when the optional numeric routing power |
 | `ValidateRole` | func (func ValidateRole(role string) error) | ValidateRole returns nil when role is empty (unset) or already |
 | `ValidateUsageSince` | func (func ValidateUsageSince(spec string) error) | ValidateUsageSince returns nil when spec is a usage window value accepted by |
+| `alivenessEndpoint` | type (struct) | alivenessEndpoint describes one provider endpoint to probe |
+| `alivenessLoopSleep` | func (func alivenessLoopSleep(ctx context.Context, d time.Duration) bool) |  |
 | `anyProviderSupportsTools` | func (func anyProviderSupportsTools(providers []routing.ProviderEntry) bool) |  |
-| `appendRecentTool` | func (func appendRecentTool(tools []string, name string) []string) |  |
 | `appendUniqueModelIDs` | func (func appendUniqueModelIDs(values []string, additions ...string) []string) |  |
+| `applyRouteSnapshotEvidence` | func (func applyRouteSnapshotEvidence(candidate *RouteCandidate, row modelsnapshot.KnownModel)) |  |
+| `applyRouteSnapshotEvidenceToStatus` | func (func applyRouteSnapshotEvidenceToStatus(candidate *RouteCandidateStatus, row modelsnapshot.KnownModel)) |  |
+| `assembleModelSnapshotFromServiceConfig` | func (func assembleModelSnapshotFromServiceConfig(ctx context.Context, sc ServiceConfig, cat *modelcatalog.Catalog, cacheRoot string) (modelsnapshot.ModelSnapshot, error)) |  |
+| `assembleModelSnapshotFromServiceConfigWithOptions` | func (func assembleModelSnapshotFromServiceConfigWithOptions(ctx context.Context, sc ServiceConfig, cat *modelcatalog.Catalog, cacheRoot string, opts modelsnapshot.AssembleOptions) (modelsnapshot.ModelSnapshot, error)) |  |
 | `axesOverridden` | func (func axesOverridden(req ServiceExecuteRequest) []string) | axesOverridden returns the canonical, ordered list of axes the caller |
 | `boundedProgressText` | func (func boundedProgressText(s string, maxRunes int) string) |  |
 | `buildProviderContextWindows` | func (func buildProviderContextWindows(ctx context.Context, pcfg ServiceProviderEntry, cat *modelcatalog.Catalog, discoveredIDs []string) (map[string]int, map[string]string)) | buildProviderContextWindows assembles the ContextWindows map for a |
-| `callHealthCheckClaudeQuotaRefresher` | func (func callHealthCheckClaudeQuotaRefresher(timeout time.Duration) ([]harnesses.QuotaWindow, *harnesses.AccountInfo, error)) |  |
-| `callHealthCheckCodexQuotaRefresher` | func (func callHealthCheckCodexQuotaRefresher(timeout time.Duration) ([]harnesses.QuotaWindow, error)) |  |
-| `callHealthCheckCodexSessionQuotaReader` | func (func callHealthCheckCodexSessionQuotaReader() (*codexharness.CodexQuotaSnapshot, bool)) |  |
 | `candidateProviderIdentity` | func (func candidateProviderIdentity(h routing.HarnessEntry, p routing.ProviderEntry) string) |  |
 | `canonicalHarnessPin` | func (func canonicalHarnessPin(harness string) string) |  |
 | `capabilityScoreForCostClass` | func (func capabilityScoreForCostClass(class string) float64) | capabilityScoreForCostClass maps the harness cost class to a coarse |
@@ -703,21 +748,15 @@ parameter types, and field-level documentation, follow the
 | `catalogCostAndPerf` | func (func catalogCostAndPerf(cat *modelcatalog.Catalog, modelID string) (CostInfo, PerfSignal)) | catalogCostAndPerf extracts CostInfo and PerfSignal for a model from the catalog |
 | `catalogCostUSDPer1kTokens` | func (func catalogCostUSDPer1kTokens(cat *modelcatalog.Catalog, modelID string) (float64, bool)) |  |
 | `catalogEntry` | type (struct) | catalogEntry is the per-key cached state |
-| `catalogEntryInputCost` | func (func catalogEntryInputCost(entry modelcatalog.ModelEntry) float64) |  |
-| `catalogEntryOutputCost` | func (func catalogEntryOutputCost(entry modelcatalog.ModelEntry) float64) |  |
 | `catalogPowerEligibility` | func (func catalogPowerEligibility(cat *modelcatalog.Catalog, modelID string) (int, bool, bool)) |  |
 | `catalogPowerForModel` | func (func catalogPowerForModel(cat *modelcatalog.Catalog, modelID string) int) | catalogPowerForModel returns the catalog-projected power for a model |
 | `claudeCLIExecutableModel` | func (func claudeCLIExecutableModel(model string) string) |  |
-| `claudeQuotaMaxUsedPercent` | func (func claudeQuotaMaxUsedPercent(snap *claudeharness.ClaudeQuotaSnapshot) float64) |  |
-| `codexQuotaCacheComplete` | func (func codexQuotaCacheComplete(snap *codexharness.CodexQuotaSnapshot) bool) |  |
-| `codexSessionQuotaUsable` | func (func codexSessionQuotaUsable(snap *codexharness.CodexQuotaSnapshot, debounce time.Duration) bool) |  |
+| `cloneStringMap` | func (func cloneStringMap(src map[string]string) map[string]string) |  |
 | `collectConcreteModelCandidates` | func (func collectConcreteModelCandidates(reqHarness, reqProvider, reqModel string, in routing.Inputs, cat *modelcatalog.Catalog) []string) |  |
 | `collectDefaultModelCandidates` | func (func collectDefaultModelCandidates(reqHarness, reqProvider string, in routing.Inputs) []string) |  |
 | `compactProgressIdentity` | func (func compactProgressIdentity(taskID string, round int) string) |  |
-| `compactProgressParts` | func (func compactProgressParts(parts []string) []string) |  |
 | `compactProgressTaskID` | func (func compactProgressTaskID(taskID string) string) |  |
 | `compactionAssertionHookFn` | type (func) |  |
-| `compactionMessage` | func (func compactionMessage(payload nativeCompactionPayload) string) |  |
 | `contextWindowSourceForProviderConfig` | func (func contextWindowSourceForProviderConfig(pcfg ServiceProviderEntry) string) |  |
 | `convertUsageWindow` | func (func convertUsageWindow(w *UsageReportWindow) *session.UsageWindow) |  |
 | `correlationIDMaxLen` | const | CorrelationID normalization bounds (CONTRACT-003) |
@@ -730,17 +769,16 @@ parameter types, and field-level documentation, follow the
 | `defaultCatalogStaleTTL` | const | Default cache timings |
 | `defaultCatalogUnreachableCooldown` | const | Default cache timings |
 | `defaultCatalogUnreachableJitter` | const | Default cache timings |
+| `defaultHarnessInstances` | func (func defaultHarnessInstances() map[string]harnesses.Harness) | defaultHarnessInstances returns the production map of registered |
+| `defaultHealthProbeInterval` | const |  |
+| `defaultHealthSignalTTL` | const |  |
 | `defaultQuotaRecoveryFallbackInterval` | const |  |
 | `defaultQuotaRefreshDebounce` | const |  |
 | `defaultQuotaRefreshProbeTimeout` | const |  |
 | `defaultQuotaRefreshStartupWait` | const |  |
-| `defaultRouteAttemptCooldown` | const |  |
+| `defaultRouteHealthPath` | func (func defaultRouteHealthPath(sc ServiceConfig) string) |  |
 | `defaultStaleHarnessReaperGrace` | const |  |
 | `derefHarnessInt` | func (func derefHarnessInt(v *int) int) |  |
-| `derefServiceInt` | func (func derefServiceInt(v *int) int) |  |
-| `discoverModelsInline` | func (func discoverModelsInline(ctx context.Context, baseURL, apiKey string) ([]string, error)) | discoverModelsInline queries /v1/models and returns model IDs |
-| `discoverOpenAIModels` | func (func discoverOpenAIModels(ctx context.Context, baseURL, apiKey string) (int, error)) | discoverOpenAIModels queries the /v1/models endpoint and returns the model count |
-| `discoveredModelSet` | type (struct) |  |
 | `discoveryUnsupportedError` | type (struct) |  |
 | `earliestQuotaResetAfter` | func (func earliestQuotaResetAfter(windows []harnesses.QuotaWindow, now time.Time) time.Time) |  |
 | `effectiveReasoningString` | func (func effectiveReasoningString(value Reasoning) string) |  |
@@ -764,8 +802,6 @@ parameter types, and field-level documentation, follow the
 | `errUnknownProvider` | var |  |
 | `errUnsatisfiablePin` | var |  |
 | `escalatePolicyLadder` | func (func escalatePolicyLadder(req routing.Request, in routing.Inputs, origErr error, displayPolicy string) (bool, *routing.Decision, error)) | escalatePolicyLadder walks routing |
-| `estimateMessagesTokens` | func (func estimateMessagesTokens(messages []agentcore.Message) int) |  |
-| `estimateProgressTextTokens` | func (func estimateProgressTextTokens(s string) int) |  |
 | `executeEventFanout` | type (interface) |  |
 | `executeRouteResolver` | type (interface) |  |
 | `executeRunContext` | type (struct) |  |
@@ -774,37 +810,30 @@ parameter types, and field-level documentation, follow the
 | `executeSessionLogOpener` | type (interface) |  |
 | `explicitPolicyConstraint` | func (func explicitPolicyConstraint(policy string) (string, bool)) |  |
 | `explicitQuotaUnavailable` | func (func explicitQuotaUnavailable(name string, windows []harnesses.QuotaWindow, now time.Time) error) |  |
-| `extractBashCommand` | func (func extractBashCommand(raw any) string) |  |
+| `extractHostPort` | func (func extractHostPort(baseURL string) string) | extractHostPort extracts host:port from a base URL, adding the scheme's |
 | `extractStatusCode` | func (func extractStatusCode(msg string) int) | extractStatusCode pulls the status code out of the "HTTP NNN:" prefix |
 | `fillProgressIdentity` | func (func fillProgressIdentity(payload *ServiceProgressData, sessionID string, meta map[string]string)) |  |
 | `finalUsageToCoreTokens` | func (func finalUsageToCoreTokens(usage *harnesses.FinalUsage) agentcore.TokenUsage) | finalUsageToCoreTokens converts the public FinalUsage pointer form into |
-| `finalUsageTokenPtr` | func (func finalUsageTokenPtr(usage *harnesses.FinalUsage, pick func(*harnesses.FinalUsage) *int) *int) |  |
 | `finalizeAndEmit` | func (func finalizeAndEmit(out chan<- ServiceEvent, seq *atomic.Int64, meta map[string]string, req ServiceExecuteRequest, sl *serviceSessionLog, final harnesses.FinalData)) | finalizeAndEmit stamps the service-owned session-log path onto final, |
 | `formatByteCount` | func (func formatByteCount(n int) string) |  |
-| `formatProgressFloat` | func (func formatProgressFloat(v float64) string) |  |
 | `generateSessionID` | func (func generateSessionID() string) | generateSessionID returns a unique session identifier for a new Execute |
+| `harnessInstanceHook` | var | harnessInstanceHook, when non-nil, is applied to the default harness map |
 | `harnessRunsInProcessOrHTTP` | func (func harnessRunsInProcessOrHTTP(cfg harnesses.HarnessConfig) bool) |  |
 | `harnessSource` | func (func harnessSource(req ServiceExecuteRequest) string) |  |
 | `harnessStatusToCoreStatus` | func (func harnessStatusToCoreStatus(status string) agentcore.Status) | harnessStatusToCoreStatus maps a public harnesses |
 | `harnessType` | func (func harnessType(cfg harnesses.HarnessConfig) string) | harnessType returns "native" for HTTP/embedded harnesses, "subprocess" for CLI-invoked ones |
 | `hashHeaders` | func (func hashHeaders(headers map[string]string) [sha256.Size]byte) | hashHeaders fingerprints a headers map in a deterministic way so ordering |
-| `healthCheckClaudeQuotaRefresher` | var | healthCheckClaudeQuotaRefresher is the function used to probe Claude's direct |
-| `healthCheckCodexQuotaRefresher` | var |  |
-| `healthCheckCodexSessionQuotaReader` | var |  |
 | `healthCheckQuotaProbeMu` | var |  |
-| `healthCheckRefreshClaudeQuota` | func (func healthCheckRefreshClaudeQuota(ctx context.Context)) | healthCheckRefreshClaudeQuota refreshes the Claude direct PTY quota cache when |
-| `healthCheckRefreshCodexQuota` | func (func healthCheckRefreshCodexQuota(ctx context.Context)) |  |
 | `hexDigit` | func (func hexDigit(b byte) byte) |  |
-| `hubSession` | type (struct) |  |
-| `intPtrIfPositive` | func (func intPtrIfPositive(v int) *int) |  |
 | `isDiscoveryUnsupported` | func (func isDiscoveryUnsupported(err error) bool) |  |
+| `isDispatchabilityFailure` | func (func isDispatchabilityFailure(errMsg string) bool) |  |
 | `isExplicitPinError` | func (func isExplicitPinError(err error) bool) |  |
 | `isNetworkFailure` | func (func isNetworkFailure(err error) bool) | isNetworkFailure returns true when err looks like a transport-level |
 | `isReachabilityErr` | func (func isReachabilityErr(err error) bool) | isReachabilityErr reports whether err carries the openai |
 | `isSensitiveSummaryKey` | func (func isSensitiveSummaryKey(key string) bool) |  |
 | `isServerError` | func (func isServerError(msg string) bool) | isServerError returns true when the error message indicates a 5xx |
-| `joinProgressParts` | func (func joinProgressParts(parts ...string) string) |  |
-| `lastDecisionEntry` | type (struct) | lastDecisionEntry caches the most recent RouteDecision for a route key |
+| `isSnapshotDialFailure` | func (func isSnapshotDialFailure(errMsg string) bool) | isSnapshotDialFailure preserved as a back-compat alias for the v0 |
+| `lastDecisionEntry` | type (struct) |  |
 | `loadRoutingCatalog` | var |  |
 | `loadServiceConfig` | var | loadServiceConfig, when non-nil, is called by New to load a ServiceConfig |
 | `makeOverrideEvent` | func (func makeOverrideEvent(ovr *overrideContext, sessionID string, finalEv ServiceEvent, meta map[string]string) (ServiceEvent, ServiceOverrideData, bool)) | makeOverrideEvent constructs the wire-level override event, stamping |
@@ -814,18 +843,21 @@ parameter types, and field-level documentation, follow the
 | `metadataKeyCollisionMessage` | func (func metadataKeyCollisionMessage(keys []string) string) | metadataKeyCollisionMessage formats a human-readable message for the |
 | `metadataReservedKeyCollisions` | func (func metadataReservedKeyCollisions(meta map[string]string, role, correlationID string) []string) | metadataReservedKeyCollisions returns the reserved metadata keys whose |
 | `modelDiscoveryEndpoint` | type (struct) |  |
+| `modelSnapshotProviderConfig` | func (func modelSnapshotProviderConfig(entry ServiceProviderEntry) modelsnapshot.ProviderConfig) |  |
 | `modelSupportedForHarness` | func (func modelSupportedForHarness(name string, cfg harnesses.HarnessConfig, model, provider string) bool) |  |
-| `nativeCompactionPayload` | type (struct) |  |
+| `modelSupportsToolsByID` | func (func modelSupportsToolsByID(cat *modelcatalog.Catalog, modelIDs []string) map[string]bool) |  |
+| `nativeCompactionPayload` | type (alias) |  |
 | `nativeDecision` | func (func nativeDecision(decision RouteDecision) serviceimpl.NativeDecision) |  |
-| `nativeLLMRequestPayload` | type (struct) |  |
-| `nativeLLMResponsePayload` | type (struct) |  |
+| `nativeLLMRequestPayload` | type (alias) |  |
+| `nativeLLMResponsePayload` | type (alias) |  |
 | `nativeModelReasoningWireMap` | func (func nativeModelReasoningWireMap() map[string]string) | nativeModelReasoningWireMap returns the catalog reasoning_wire map for use |
 | `nativeProgressState` | type (struct) |  |
 | `nativeProviderResolution` | type (struct) |  |
 | `nativeRouteCandidates` | func (func nativeRouteCandidates(in []RouteCandidate) []serviceimpl.NativeRouteCandidate) |  |
-| `nativeToolCallPayload` | type (struct) |  |
+| `nativeToolCallPayload` | type (alias) |  |
 | `nativeToolsForRequest` | func (func nativeToolsForRequest(req ServiceExecuteRequest) []agentcore.Tool) |  |
 | `newServiceCompactor` | func (func newServiceCompactor(req ServiceExecuteRequest, model string) agentcore.Compactor) |  |
+| `newSessionHub` | func (func newSessionHub() *serviceimpl.SessionHub) |  |
 | `nextQuotaRecoveryBackoff` | func (func nextQuotaRecoveryBackoff(prev time.Duration) time.Duration) | nextQuotaRecoveryBackoff returns the next bounded backoff value: doubles the |
 | `normalizeServiceProviderType` | func (func normalizeServiceProviderType(t string) string) |  |
 | `normalizeShellCommand` | func (func normalizeShellCommand(command string) string) |  |
@@ -834,11 +866,10 @@ parameter types, and field-level documentation, follow the
 | `overrideAxisProvider` | const | overrideAxis* enumerates the three independently-tracked override axes |
 | `overrideContext` | type (struct) | overrideContext carries the per-Execute override-event payload from the |
 | `overrideReasonHint` | func (func overrideReasonHint(req ServiceExecuteRequest) string) | overrideReasonHint returns the caller-supplied free-form reason from |
-| `policyCompatibilityAliases` | func (func policyCompatibilityAliases() map[string]string) |  |
 | `policyForName` | func (func policyForName(cat *modelcatalog.Catalog, name string) (modelcatalog.Policy, string, bool)) |  |
+| `positiveScorePart` | func (func positiveScorePart(v float64) float64) |  |
 | `primaryQuotaRefresh` | var |  |
 | `probeOpenAIModels` | func (func probeOpenAIModels(ctx context.Context, baseURL, apiKey string) ([]string, error)) | probeOpenAIModels calls GET /v1/models against baseURL and classifies |
-| `probeOpenAIModelsForDiscovery` | var |  |
 | `probeServiceProvider` | func (func probeServiceProvider(ctx context.Context, entry ServiceProviderEntry) (status string, modelCount int, caps []string)) | probeServiceProvider pings a provider and returns (status, modelCount, capabilities) |
 | `processGroupAlive` | func (func processGroupAlive(pgid int) bool) |  |
 | `processOutcomeForFinal` | func (func processOutcomeForFinal(status string) string) | processOutcomeForFinal returns the FEAT-005 §27 process_outcome label for |
@@ -848,10 +879,9 @@ parameter types, and field-level documentation, follow the
 | `progressStatusLine` | func (func progressStatusLine(payload ServiceProgressData) string) |  |
 | `progressTaskID` | func (func progressTaskID(sessionID string, meta map[string]string) string) |  |
 | `progressTokenThroughput` | func (func progressTokenThroughput(outputTokens int, durationMS int64) *float64) |  |
-| `progressTracker` | type (struct) |  |
 | `promptAssertionHookFn` | type (func) | promptAssertionHookFn / compactionAssertionHookFn / toolWiringHookFn |
-| `providerAPIContextEvidence` | func (func providerAPIContextEvidence(ctx context.Context, entry ServiceProviderEntry, modelID string) (int, string)) |  |
 | `providerCapabilities` | func (func providerCapabilities(entry ServiceProviderEntry) []string) | providerCapabilities returns the capability set for a provider entry |
+| `providerCooldownsFromSnapshotErrors` | func (func providerCooldownsFromSnapshotErrors(snapshot modelsnapshot.ModelSnapshot, cfg ServiceConfigSource, now time.Time, ttl time.Duration) map[string]time.Time) | providerCooldownsFromSnapshotErrors walks snapshot |
 | `providerPreferenceForPolicy` | func (func providerPreferenceForPolicy(cat *modelcatalog.Catalog, policy string) (string, error)) |  |
 | `providerPreferenceForPolicyName` | func (func providerPreferenceForPolicyName(name string) string) |  |
 | `providerProbePriority` | func (func providerProbePriority(status string) int) |  |
@@ -862,6 +892,7 @@ parameter types, and field-level documentation, follow the
 | `providerUsesLiveDiscovery` | func (func providerUsesLiveDiscovery(providerType string) bool) |  |
 | `publicFilterReason` | func (func publicFilterReason(c routing.Candidate) string) | publicFilterReason maps the typed FilterReason emitted by the internal |
 | `publicRoutingError` | func (func publicRoutingError(err error, candidates []RouteCandidate, requestedPolicy ...string) error) |  |
+| `publicToRoutingExcludedRoutes` | func (func publicToRoutingExcludedRoutes(in []ExcludedRoute) []routing.ExcludedRoute) |  |
 | `quotaCacheStatus` | type (struct) |  |
 | `quotaRecoveryBackoffInitial` | const |  |
 | `quotaRecoveryBackoffMax` | const |  |
@@ -872,69 +903,83 @@ parameter types, and field-level documentation, follow the
 | `quotaStatus` | func (func quotaStatus(fresh bool, windows []harnesses.QuotaWindow) string) |  |
 | `quotaTrend` | func (func quotaTrend(percentUsed int, fresh bool) string) |  |
 | `reapStaleHarnessRecords` | func (func reapStaleHarnessRecords(dir string, grace time.Duration, now time.Time) error) |  |
-| `refreshClaudeQuotaCache` | func (func refreshClaudeQuotaCache(_ context.Context, debounce, timeout time.Duration)) |  |
-| `refreshCodexQuotaCache` | func (func refreshCodexQuotaCache(_ context.Context, debounce, timeout time.Duration)) |  |
-| `requestPrimaryQuotaRefresh` | func (func requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy quotaRefreshPolicy) <-chan struct{}) |  |
+| `recordRouteTimeProbeFailures` | func (func recordRouteTimeProbeFailures(store *routehealth.ProbeStore, endpoints []alivenessEndpoint, probeAt time.Time)) |  |
+| `requestPrimaryQuotaRefresh` | func (func requestPrimaryQuotaRefresh(ctx context.Context, harnessName string, policy quotaRefreshPolicy, harnessByName func(string) harnesses.Harness) <-chan struct{}) |  |
 | `requestedNativeProviderType` | func (func requestedNativeProviderType(req ServiceExecuteRequest) string) |  |
 | `resolveCatalogCostModel` | func (func resolveCatalogCostModel(cat *modelcatalog.Catalog, ref string) string) |  |
 | `resolveContextEvidence` | func (func resolveContextEvidence(ctx context.Context, entry ServiceProviderEntry, modelID string, cat *modelcatalog.Catalog) (int, string)) | resolveContextEvidence resolves the context window for a model using the |
 | `resolveSingleModelMatch` | func (func resolveSingleModelMatch(reqModel string, candidates []string) (string, error)) |  |
 | `resolveSubprocessModelAlias` | func (func resolveSubprocessModelAlias(harness, model string) string) |  |
 | `roleMaxLen` | const | Role normalization bounds (CONTRACT-003) |
-| `roundedDuration` | func (func roundedDuration(ms int64) string) |  |
 | `routeDecisionError` | type (struct) |  |
 | `routePowerBoundsForRequest` | func (func routePowerBoundsForRequest(req RouteRequest, policy RoutePowerPolicy) (int, int)) |  |
+| `routeSnapshotCandidateIndex` | func (func routeSnapshotCandidateIndex(snapshot modelsnapshot.ModelSnapshot) map[routeSnapshotCandidateKey]modelsnapshot.KnownModel) |  |
+| `routeSnapshotCandidateKey` | type (struct) |  |
+| `routeSnapshotEvidenceForCandidate` | func (func routeSnapshotEvidenceForCandidate(candidate RouteCandidate, snapshot modelsnapshot.ModelSnapshot) (modelsnapshot.KnownModel, bool)) |  |
+| `routeStatusMetricKey` | func (func routeStatusMetricKey(provider, endpoint, model string) string) |  |
+| `routeStatusMetricValue` | func (func routeStatusMetricValue(values map[string]float64, provider, endpoint, model string) float64) |  |
+| `routeTimeProbeTimeout` | const |  |
 | `routingHarnessEntryFromMetadata` | func (func routingHarnessEntryFromMetadata(name string, cfg harnesses.HarnessConfig, st harnesses.HarnessStatus) routing.HarnessEntry) |  |
 | `routingHarnessUsesAccountBilling` | func (func routingHarnessUsesAccountBilling(entry *routing.HarnessEntry) bool) |  |
 | `routingPolicyForName` | func (func routingPolicyForName(cat *modelcatalog.Catalog, name string) string) |  |
-| `routingQualityRecord` | type (struct) |  |
-| `routingQualityStore` | type (struct) |  |
-| `routingQualityStoreCap` | const |  |
+| `runAlivenessProbeLoop` | func (func runAlivenessProbeLoop( ctx context.Context, endpoints []alivenessEndpoint, store *routehealth.ProbeStore, prober ProviderAlivenessProber, interval time.Duration, now func() time.Time, sleep func(ctx context.Context, d time.Duration) bool, persistPath string, )) | runAlivenessProbeLoop periodically re-probes each endpoint whose last probe |
 | `runQuotaRecoveryProbeLoop` | func (func runQuotaRecoveryProbeLoop( ctx context.Context, store *ProviderQuotaStateStore, probe QuotaRecoveryProber, fallback time.Duration, now func() time.Time, sleep func(ctx context.Context, d time.Duration) bool, )) | runQuotaRecoveryProbeLoop periodically probes providers that the store |
 | `runQuotaRecoveryProbePass` | func (func runQuotaRecoveryProbePass( ctx context.Context, store *ProviderQuotaStateStore, probe QuotaRecoveryProber, fallback time.Duration, now func() time.Time, backoffs map[string]time.Duration, ) time.Duration) | runQuotaRecoveryProbePass executes a single sweep over the quota_exhausted |
-| `scoredModel` | type (struct) | scoredModel mirrors provider/openai |
+| `runRouteTimeAlivenessProbes` | func (func runRouteTimeAlivenessProbes( ctx context.Context, endpoints []alivenessEndpoint, store *routehealth.ProbeStore, prober ProviderAlivenessProber, perProbeTimeout time.Duration, )) |  |
+| `runStartupAlivenessProbes` | func (func runStartupAlivenessProbes( ctx context.Context, endpoints []alivenessEndpoint, store *routehealth.ProbeStore, prober ProviderAlivenessProber, totalTimeout time.Duration, )) | runStartupAlivenessProbes probes each endpoint sequentially within totalTimeout |
+| `scorePowerHintFit` | func (func scorePowerHintFit(power int, policy RoutePowerPolicy) float64) |  |
 | `seamOptions` | type (struct) | seamOptions is empty in production builds |
 | `service` | type (struct) | service is the concrete FizeauService implementation |
+| `serviceConfigToModelSnapshotConfig` | func (func serviceConfigToModelSnapshotConfig(sc ServiceConfig) *modelsnapshot.Config) |  |
 | `serviceExecuteWired` | func (func serviceExecuteWired(name string, cfg harnesses.HarnessConfig) bool) |  |
+| `serviceImplProviderEntry` | func (func serviceImplProviderEntry(entry ServiceProviderEntry) serviceimpl.ProviderEntry) |  |
 | `serviceIsUnreachable` | func (func serviceIsUnreachable(msg string) bool) |  |
 | `serviceProviderDefaultInclusion` | func (func serviceProviderDefaultInclusion(entry ServiceProviderEntry) bool) |  |
 | `serviceRoutingCatalog` | func (func serviceRoutingCatalog() *modelcatalog.Catalog) |  |
 | `serviceRoutingCatalogCandidatesResolver` | func (func serviceRoutingCatalogCandidatesResolver(cat *modelcatalog.Catalog) func(ref, surface string) ([]string, bool)) |  |
 | `serviceRoutingCatalogResolver` | func (func serviceRoutingCatalogResolver(cat *modelcatalog.Catalog) func(ref, surface string) (string, bool)) |  |
 | `serviceRoutingCatalogSurface` | func (func serviceRoutingCatalogSurface(surface string) (modelcatalog.Surface, bool)) |  |
-| `serviceRoutingModelEligibility` | func (func serviceRoutingModelEligibility(cat *modelcatalog.Catalog) func(model string) (routing.ModelEligibility, bool)) |  |
+| `serviceRoutingModelEligibility` | func (func serviceRoutingModelEligibility(entries []routing.HarnessEntry, cat *modelcatalog.Catalog) func(model string) (routing.ModelEligibility, bool)) |  |
 | `serviceRoutingReasoningResolver` | func (func serviceRoutingReasoningResolver(cat *modelcatalog.Catalog) func(policy, surface string) (string, bool)) | serviceRoutingReasoningResolver returns the catalog's surface_policy |
-| `serviceSessionLog` | type (struct) | serviceSessionLog is the service-owned writer that persists the session |
+| `serviceSessionLog` | type (struct) | serviceSessionLog is the root-facade adapter over the internal session-log |
+| `serviceSnapshotCacheRoot` | func (func serviceSnapshotCacheRoot() (string, error)) |  |
 | `serviceTrimError` | func (func serviceTrimError(msg string) string) |  |
-| `sessionHub` | type (struct) | sessionHub is a concurrent-safe broadcast store for in-flight and completed |
 | `sessionLogPath` | func (func sessionLogPath(sl *serviceSessionLog) string) |  |
 | `shortProgressText` | func (func shortProgressText(s string) string) |  |
 | `shouldAutoLoadServiceConfig` | func (func shouldAutoLoadServiceConfig(ServiceOptions) bool) |  |
 | `shouldEscalateOnError` | func (func shouldEscalateOnError(err error) bool) | shouldEscalateOnError gates ladder escalation to "no eligible candidate" |
 | `shouldPreferProviderProbe` | func (func shouldPreferProviderProbe(candidate, current providerProbeResult) bool) |  |
+| `snapshotContextWindow` | func (func snapshotContextWindow(pcfg ServiceProviderEntry, cat *modelcatalog.Catalog, modelID string, snapshotWindow int) (int, string)) |  |
+| `snapshotEndpointName` | func (func snapshotEndpointName(pcfg ServiceProviderEntry, key snapshotProviderGroupKey) string) |  |
+| `snapshotModelIDs` | func (func snapshotModelIDs(rows []modelsnapshot.KnownModel) []string) |  |
+| `snapshotProviderContextWindows` | func (func snapshotProviderContextWindows(ctx context.Context, pcfg ServiceProviderEntry, cat *modelcatalog.Catalog, rows []modelsnapshot.KnownModel, discoveredIDs []string) (map[string]int, map[string]string)) |  |
+| `snapshotProviderGroupKey` | type (struct) |  |
 | `splitEndpointProviderRef` | func (func splitEndpointProviderRef(ref string) (string, string, bool)) |  |
 | `staleHarnessRecord` | type (struct) |  |
-| `stampOutcomeOnRecord` | func (func stampOutcomeOnRecord(rec *routingQualityRecord, outcome *ServiceOverrideOutcome)) | stampOutcomeOnRecord copies the post-execution outcome into the ring |
+| `startupProbeTotalTimeout` | const |  |
 | `statusErrorType` | func (func statusErrorType(status string) string) |  |
+| `statusViewProvider` | func (func statusViewProvider(entry ServiceProviderEntry) statusview.ServiceProvider) |  |
 | `stickyRouteAffinityBonus` | const |  |
 | `stickyRouteLeaseTTL` | const |  |
 | `stringIn` | func (func stringIn(xs []string, v string) bool) |  |
+| `subprocessHarnessAutoRoutingModels` | func (func subprocessHarnessAutoRoutingModels(name string, cfg harnesses.HarnessConfig) []string) |  |
 | `subprocessHarnessModelIDs` | func (func subprocessHarnessModelIDs(name string, cfg harnesses.HarnessConfig) []string) |  |
 | `subprocessProgressState` | type (struct) |  |
 | `subscriptionEffectiveCostUSDPer1kTokens` | func (func subscriptionEffectiveCostUSDPer1kTokens(baseCost float64, quotaPercentUsed int, curve SubscriptionCostCurve) float64) |  |
 | `subscriptionFallbackPolicy` | func (func subscriptionFallbackPolicy(harnessName string) string) |  |
-| `subscriptionQuotaView` | type (struct) |  |
+| `subscriptionQuotaView` | type (alias) |  |
 | `summarizeJSONValue` | func (func summarizeJSONValue(raw json.RawMessage) string) |  |
 | `summarizeToolInput` | func (func summarizeToolInput(toolName string, input json.RawMessage) string) |  |
 | `summarizeToolOutput` | func (func summarizeToolOutput(output string) string) |  |
 | `supportedPermissions` | func (func supportedPermissions(cfg harnesses.HarnessConfig) []string) | supportedPermissions extracts the permission levels from PermissionArgs keys, |
 | `supportedReasoning` | func (func supportedReasoning(cfg harnesses.HarnessConfig) []string) |  |
+| `tcpAlivenessProber` | func (func tcpAlivenessProber(ctx context.Context, _, baseURL string) bool) | tcpAlivenessProber tests endpoint reachability via a TCP connect probe |
 | `terminateOwnedProcessGroup` | func (func terminateOwnedProcessGroup(pgid int)) |  |
 | `toRoutingQualityOverride` | func (func toRoutingQualityOverride(ov ServiceOverrideData) *routingquality.OverrideData) |  |
-| `toolCompleteMessage` | func (func toolCompleteMessage(details string, durationMS int64, errMsg string) string) |  |
-| `toolOutputDetail` | type (struct) |  |
-| `toolStartMessage` | func (func toolStartMessage(toolName, command string) string) |  |
-| `toolTaskSummary` | type (struct) |  |
+| `toTranscriptProgress` | func (func toTranscriptProgress(payload ServiceProgressData) transcript.ProgressPayload) |  |
+| `toTranscriptRouteDecision` | func (func toTranscriptRouteDecision(decision RouteDecision) transcript.RouteProgressDecision) |  |
+| `toolOutputDetail` | type (alias) |  |
+| `toolTaskSummary` | type (alias) |  |
 | `toolWiringHookFn` | type (func) |  |
 | `validateExplicitHarnessModel` | func (func validateExplicitHarnessModel(name string, cfg harnesses.HarnessConfig, model, provider string) error) |  |
 | `validateExplicitHarnessPolicy` | func (func validateExplicitHarnessPolicy(name string, cfg harnesses.HarnessConfig, policy string) error) |  |
@@ -943,18 +988,19 @@ parameter types, and field-level documentation, follow the
 | `validateExplicitProvider` | func (func validateExplicitProvider(sc ServiceConfig, cfg harnesses.HarnessConfig, provider string) error) | validateExplicitProvider rejects pre-dispatch when the caller pinned a |
 | `waitForPrimaryQuotaRefreshes` | func (func waitForPrimaryQuotaRefreshes(waits []<-chan struct{}, timeout time.Duration)) |  |
 | `withRouteCandidates` | func (func withRouteCandidates(err error, candidates []RouteCandidate) error) |  |
+| `wrapExecuteWithHub` | func (func wrapExecuteWithHub(fanout executeEventFanout, sessionID string, outer chan ServiceEvent, ovr *overrideContext, meta map[string]string) chan ServiceEvent) | wrapExecuteWithHub wraps the inner out channel so that every event emitted |
 | `writeStaleHarnessRecord` | func (func writeStaleHarnessRecord(path string, record staleHarnessRecord) error) |  |
 
 
 ## Where to look next
 
-- `service.go` — the `FizeauService` interface, request and event types,
-  and the `New` constructor.
-- `public_api.go` — type aliases (`Tool`, `Reasoning`, `BillingModel`)
-  re-exported from internal packages so callers don't reach into `internal/`.
-- `public_cli_api.go` — the minimal helper surface the `cmd/fiz` CLI uses
-  (`SkillCatalog`, `ScanSkillsDir`, `BuiltinToolsForPreset`, the read/edit
-  tool constructors, `SessionLogger`).
+- `github.com/easel/fizeau` — the root facade: `FizeauService`, request and
+  event types, public errors, and compatibility wrappers that keep embedders
+  off `internal/`.
+- `internal/serviceimpl/`, `internal/transcript/`, `internal/routehealth/`,
+  `internal/quota/`, and `internal/routingquality/` — the concrete runtime
+  owners behind the facade. These are useful for repo orientation but remain
+  intentionally non-importable.
 - `AGENTS.md` — package layout and the rules about what's public vs
   `internal/`; read this before adding new exports.
 - `agentcli/` — mountable command tree backed by the public service

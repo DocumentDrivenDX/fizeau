@@ -55,9 +55,8 @@ expose computed accessors so callers don't re-derive them:
 - `InputTokensPerSecond()` / `OutputTokensPerSecond()` — throughput
 - `CacheHitRate()` — cached-input / total-input fraction
 
-The report also carries a
-[`RoutingQuality`](https://github.com/easel/fizeau/blob/master/service_routing_quality.go#L19)
-block (auto-acceptance rate, override-class breakdown), so a single
+The report also carries a `RoutingQualityMetrics` block
+(auto-acceptance rate, override-class breakdown), so a single
 `UsageReport` covers both *what happened* and *how the routing
 performed* over the same window.
 
@@ -87,10 +86,9 @@ span tagged with stable semantic-convention keys:
 
 ### Feedback into routing
 
-Token counts also flow through
-[`observeTokenUsage`](https://github.com/easel/fizeau/blob/master/provider_burn_rate.go#L94)
-into the
-[`ProviderBurnRateTracker`](https://github.com/easel/fizeau/blob/master/provider_burn_rate.go#L28).
+Token counts also flow through the service-owned
+[`ProviderBurnRateTracker`](https://github.com/easel/fizeau/blob/master/provider_burn_rate.go#L28),
+which wraps the internal quota burn-rate implementation used by routing.
 When projected end-of-day usage exceeds the configured
 `daily_token_budget`, the tracker pre-emptively transitions the
 provider to `quota_exhausted` — without waiting for the upstream 429.

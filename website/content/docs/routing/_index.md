@@ -26,14 +26,10 @@ axis. See [ADR-006](../architecture/adr/ADR-006/) for the rationale.
 
 ### Resolve one request
 
-The single public entry point is
-[`FizeauService.ResolveRoute`](https://github.com/easel/fizeau/blob/master/service_routing.go#L24-L130),
-returning a
-[`RouteDecision`](https://github.com/easel/fizeau/blob/master/service.go#L415-L451)
-with the chosen `Harness`, `Provider`, `Endpoint`, `ServerInstance`,
-`Model`, plus the full ranked
-[`Candidates`](https://github.com/easel/fizeau/blob/master/service.go#L450)
-trace (including rejected candidates and their typed
+The single public entry point is `FizeauService.ResolveRoute`, returning a
+`RouteDecision` with the chosen `Harness`, `Provider`, `Endpoint`,
+`ServerInstance`, and `Model`, plus the full ranked `Candidates` trace
+(including rejected candidates and their typed
 [`FilterReason`](https://github.com/easel/fizeau/blob/master/internal/routing/engine.go#L204)).
 
 Internally it delegates to
@@ -81,9 +77,8 @@ into routing pressure.
 
 ### Per-attempt feedback
 
-After every dispatch, the service records the outcome via
-[`RecordRouteAttempt`](https://github.com/easel/fizeau/blob/master/service_route_attempts.go#L12),
-which feeds
+After every dispatch, the public `RecordRouteAttempt` method records the
+outcome into
 [`internal/routehealth.Store`](https://github.com/easel/fizeau/blob/master/internal/routehealth/store.go).
 Failed attempts cool down the (provider, model, endpoint) tuple for
 `routing.health_cooldown` (default 60s) so the next ResolveRoute skips
@@ -94,9 +89,8 @@ configuration-driven.
 
 [`internal/routingquality.Store`](https://github.com/easel/fizeau/blob/master/internal/routingquality/store.go)
 is a 1024-entry in-memory ring of recent Execute calls and their
-overrides. The aggregator
-[`computeRoutingQualityMetrics`](https://github.com/easel/fizeau/blob/master/service_routing_quality.go#L132)
-produces three first-class numbers (ADR-006 §5):
+overrides. The root facade projects that store onto `RoutingQualityMetrics`,
+which exposes three first-class numbers (ADR-006 §5):
 
 - **AutoAcceptanceRate** — fraction of requests with no override. The
   headline routing-health number.
