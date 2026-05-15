@@ -103,15 +103,6 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	if snapshot.ProviderOptionCount < 2 || len(snapshot.ProviderOptions) == 0 {
 		t.Fatalf("expected provider enum filter options to populate, got %d (%v)", snapshot.ProviderOptionCount, snapshot.ProviderOptions)
 	}
-	if len(snapshot.VisibleColumns) == 0 {
-		t.Fatal("expected perspective viewer to expose visible columns")
-	}
-	if !contains(snapshot.VisibleColumns, "task") {
-		t.Fatalf("expected task to remain visible by default, got %v", snapshot.VisibleColumns)
-	}
-	if contains(snapshot.VisibleColumns, "terminalbench_task_url") {
-		t.Fatalf("terminalbench_task_url must stay hidden by default, got %v", snapshot.VisibleColumns)
-	}
 	if snapshot.ComparisonRowCount == 0 {
 		t.Fatal("expected pairwise comparison rows to render")
 	}
@@ -130,8 +121,18 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 
 	click(t, browserCtx, "[data-bw-route=\"data\"]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CurrentRoute == "data" && current.LocationHash == "#data"
+		return current.CurrentRoute == "data" && current.LocationHash == "#data" && len(current.VisibleColumns) > 0
 	})
+	snapshot = captureWorkbenchSnapshot(t, browserCtx)
+	if len(snapshot.VisibleColumns) == 0 {
+		t.Fatal("expected perspective viewer to expose visible columns")
+	}
+	if !contains(snapshot.VisibleColumns, "task") {
+		t.Fatalf("expected task to remain visible by default, got %v", snapshot.VisibleColumns)
+	}
+	if contains(snapshot.VisibleColumns, "terminalbench_task_url") {
+		t.Fatalf("terminalbench_task_url must stay hidden by default, got %v", snapshot.VisibleColumns)
+	}
 
 	setSelectValue(t, browserCtx, "[data-bw-compare-dimension]", "task")
 	click(t, browserCtx, "[data-bw-route=\"compare\"]")
@@ -419,7 +420,13 @@ const workbenchSnapshotJS = `(async () => {
   const options = (selector) => [...(root?.querySelector(selector)?.options ?? [])];
   const values = (selector) => options(selector).map((option) => option.value).filter(Boolean);
   const viewer = root?.querySelector('[data-bw-viewer]');
-  const config = viewer ? await viewer.save() : { columns: [] };
+  const currentRoute = root?.querySelector('[data-bw-route][aria-current="page"]')?.dataset.bwRoute ?? '';
+  const config = currentRoute === 'data' && viewer
+    ? await Promise.race([
+        viewer.save(),
+        new Promise((resolve) => setTimeout(() => resolve({ columns: [] }), 1200)),
+      ])
+    : { columns: [] };
   const comparisonTaskLink = root?.querySelector('[data-bw-comparison] tbody tr td:first-child a');
   const combinationTaskLink = root?.querySelector('[data-bw-combinations] tbody a');
 
@@ -434,7 +441,7 @@ const workbenchSnapshotJS = `(async () => {
     comparisonGapSort: root?.querySelector('[data-bw-comparison] th:nth-child(4)')?.getAttribute('aria-sort') ?? '',
     comparisonRowCount: root?.querySelectorAll('[data-bw-comparison] tbody tr').length ?? 0,
     comparisonTaskLinkHref: comparisonTaskLink?.href ?? '',
-    currentRoute: root?.querySelector('[data-bw-route][aria-current="page"]')?.dataset.bwRoute ?? '',
+    currentRoute,
     locationHash: window.location.hash,
     modelOptionCount: options('[data-bw-model]').length,
     modelOptions: values('[data-bw-model]'),
