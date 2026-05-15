@@ -50,7 +50,7 @@ func TestResolveRouteStickyLeaseReusesEndpoint(t *testing.T) {
 		hub:         newSessionHub(),
 		catalog:     newCatalogCache(catalogCacheOptions{}),
 		routeHealth: routehealth.NewStore(),
-		routeLeases: routehealth.NewLeaseStore(),
+		routeSticky: routehealth.NewStickyState(),
 	}
 
 	now := time.Now().UTC()
@@ -153,7 +153,7 @@ func TestResolveRouteStickyLeasePrefersSameServerAcrossModels(t *testing.T) {
 		hub:         newSessionHub(),
 		catalog:     newCatalogCache(catalogCacheOptions{}),
 		routeHealth: routehealth.NewStore(),
-		routeLeases: routehealth.NewLeaseStore(),
+		routeSticky: routehealth.NewStickyState(),
 	}
 	svc.routeUtilizationStore().Record("local", "desk-a", "model-a", utilization.EndpointUtilization{
 		ActiveRequests: utilization.Int(0),
@@ -317,7 +317,7 @@ func TestResolveRouteStickyLeaseDistributesNewKeysByLoad(t *testing.T) {
 		hub:         newSessionHub(),
 		catalog:     newCatalogCache(catalogCacheOptions{}),
 		routeHealth: routehealth.NewStore(),
-		routeLeases: routehealth.NewLeaseStore(),
+		routeSticky: routehealth.NewStickyState(),
 	}
 	svc.routeUtilizationStore().Record("local", "desk-a", "qwen/qwen3.6", utilization.EndpointUtilization{
 		ActiveRequests: utilization.Int(1),
@@ -393,7 +393,7 @@ func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
 		hub:         newSessionHub(),
 		catalog:     newCatalogCache(catalogCacheOptions{}),
 		routeHealth: routehealth.NewStore(),
-		routeLeases: routehealth.NewLeaseStore(),
+		routeSticky: routehealth.NewStickyState(),
 	}
 	svc.routeUtilizationStore().Record("local", "desk-a", "qwen/qwen3.6", utilization.EndpointUtilization{
 		ActiveRequests: utilization.Int(1),
@@ -401,7 +401,7 @@ func TestResolveRouteStickyLeaseAvoidsSaturatedEndpointForNewKey(t *testing.T) {
 		Source:         utilization.SourceLlamaSlots,
 		Freshness:      utilization.FreshnessFresh,
 	})
-	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b"), "local", "desk-b", "qwen/qwen3.6")
+	svc.routeLeaseStore().Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b"), "local", "desk-b", "qwen/qwen3.6")
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
 		Harness:       "fiz",
@@ -443,7 +443,7 @@ func TestResolveRouteStickyLeaseIgnoresStaleUtilizationFallback(t *testing.T) {
 		hub:         newSessionHub(),
 		catalog:     newCatalogCache(catalogCacheOptions{}),
 		routeHealth: routehealth.NewStore(),
-		routeLeases: routehealth.NewLeaseStore(),
+		routeSticky: routehealth.NewStickyState(),
 	}
 	// Stale utilization should be ignored in favor of the in-process lease
 	// counts. Make desk-a look idle in stale telemetry but keep more leases
@@ -454,9 +454,9 @@ func TestResolveRouteStickyLeaseIgnoresStaleUtilizationFallback(t *testing.T) {
 		Source:         utilization.SourceLlamaSlots,
 		Freshness:      utilization.FreshnessStale,
 	})
-	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-a"), "local", "desk-a", "qwen/qwen3.6")
-	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b"), "local", "desk-a", "qwen/qwen3.6")
-	svc.routeLeases.Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-c"), "local", "desk-b", "qwen/qwen3.6")
+	svc.routeLeaseStore().Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-a"), "local", "desk-a", "qwen/qwen3.6")
+	svc.routeLeaseStore().Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-b"), "local", "desk-a", "qwen/qwen3.6")
+	svc.routeLeaseStore().Acquire(time.Now().UTC(), stickyRouteLeaseTTL, routehealth.NormalizeLeaseKey("seed-c"), "local", "desk-b", "qwen/qwen3.6")
 
 	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{
 		Harness:       "fiz",

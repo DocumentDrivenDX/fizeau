@@ -439,7 +439,11 @@ func (s *service) annotateProbeEvidence(c *RouteCandidate) {
 }
 
 func (s *service) routeUtilizationEvidence(provider, serverInstance, endpoint, model string) RouteUtilizationState {
-	if s == nil || s.routeUtilization == nil {
+	if s == nil {
+		return RouteUtilizationState{}
+	}
+	store := s.routeUtilizationStore()
+	if store == nil {
 		return RouteUtilizationState{}
 	}
 	keyProvider := strings.TrimSpace(provider)
@@ -454,9 +458,9 @@ func (s *service) routeUtilizationEvidence(provider, serverInstance, endpoint, m
 	if keyServerInstance == "" {
 		keyServerInstance = keyEndpoint
 	}
-	sample, ok := s.routeUtilization.Sample(keyProvider, keyServerInstance, model)
+	sample, ok := store.Sample(keyProvider, keyServerInstance, model)
 	if !ok && keyEndpoint != "" && keyEndpoint != keyServerInstance {
-		sample, ok = s.routeUtilization.Sample(keyProvider, keyEndpoint, model)
+		sample, ok = store.Sample(keyProvider, keyEndpoint, model)
 	}
 	if !ok {
 		return RouteUtilizationState{}

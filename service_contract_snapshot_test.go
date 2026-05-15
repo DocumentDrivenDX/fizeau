@@ -218,7 +218,7 @@ models:
 		registry:         harnesses.NewRegistry(),
 		hub:              newSessionHub(),
 		routeHealth:      routehealth.NewStore(),
-		routeUtilization: routehealth.NewUtilizationStore(),
+		routeSticky:      routehealth.NewStickyState(),
 		routingQuality:   newRoutingQualityStore(),
 		providerQuota:    NewProviderQuotaStateStore(),
 		providerBurnRate: NewProviderBurnRateTracker(),
@@ -242,7 +242,7 @@ models:
 		Duration:  240 * time.Millisecond,
 		Timestamp: capturedAt,
 	}))
-	svc.routeUtilization.Record("alpha", "primary", "qwen3.5-27b", utilization.EndpointUtilization{
+	svc.routeUtilizationStore().Record("alpha", "primary", "qwen3.5-27b", utilization.EndpointUtilization{
 		ActiveRequests: utilInt(1),
 		QueuedRequests: utilInt(0),
 		MaxConcurrency: utilInt(4),
@@ -250,7 +250,7 @@ models:
 		Freshness:      utilization.FreshnessFresh,
 		ObservedAt:     capturedAt,
 	})
-	svc.routeUtilization.Record("beta", "secondary", "qwen3.5-27b", utilization.EndpointUtilization{
+	svc.routeUtilizationStore().Record("beta", "secondary", "qwen3.5-27b", utilization.EndpointUtilization{
 		ActiveRequests: utilInt(3),
 		QueuedRequests: utilInt(1),
 		MaxConcurrency: utilInt(4),
