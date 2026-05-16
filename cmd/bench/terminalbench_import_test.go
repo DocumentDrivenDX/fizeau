@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,6 +88,98 @@ func TestTerminalBenchMatrixImport(t *testing.T) {
 	assertString(t, invalidProvider, "subject.harness", "opencode")
 	assertString(t, invalidProvider, "invalid_class", "invalid_provider")
 	assertContainsString(t, invalidProvider, "denominator.excluded_classes", "invalid_provider")
+}
+
+// TestTerminalBenchMatrixImportEmbeddedProfile exercises the ADR-016 path
+// where the cell record carries its own resolved profile snapshot under
+// `runs[].profile`. The importer must read versioning.snapshot and provider
+// info from that embedded block instead of loading the on-disk YAML — this
+// fixture deliberately omits the profile YAML file so any fallback to
+// `profile.Load(profilePath)` fails the test.
+func TestTerminalBenchMatrixImportEmbeddedProfile(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	fixtureDir := t.TempDir()
+
+	matrix := map[string]any{
+		"generated_at": "2026-05-16T10:30:00Z",
+		"subset_path":  "scripts/beadbench/external/termbench-subset-canary.json",
+		"profiles":     []string{"vidar-qwen-embedded"},
+		"harnesses":    []string{"fiz"},
+		"reps":         1,
+		"runs": []map[string]any{
+			{
+				"harness": "fiz",
+				"profile": map[string]any{
+					"id": "vidar-qwen-embedded",
+					"provider": map[string]any{
+						"type":        "openai-compat",
+						"model":       "Qwen3.6-27B-MLX-8bit",
+						"base_url":    "http://vidar:1235/v1",
+						"api_key_env": "OMLX_API_KEY",
+					},
+					"limits": map[string]any{
+						"max_output_tokens": 4096,
+						"context_tokens":    8192,
+					},
+					"sampling": map[string]any{
+						"temperature": 0.2,
+					},
+					"versioning": map[string]any{
+						"resolved_at": "2026-05-16T10:00:00Z",
+						"snapshot":    "qwen3.6-27b-mlx-8bit@embedded-only",
+					},
+				},
+				"profile_id":       "vidar-qwen-embedded",
+				"profile_path":     "profiles/does-not-exist.yaml",
+				"profile_snapshot": "ignored-legacy-string",
+				"rep":              1,
+				"task_id":          "fix-git",
+				"output_dir":       "cells/fiz/vidar-qwen-embedded/rep-001/fix-git",
+				"process_outcome":  "completed",
+				"grading_outcome":  "graded",
+				"reward":           1,
+				"final_status":     "graded_pass",
+				"started_at":       "2026-05-16T10:30:00Z",
+				"finished_at":      "2026-05-16T10:30:12Z",
+			},
+		},
+		"cells": []any{},
+	}
+	raw, err := json.Marshal(matrix)
+	if err != nil {
+		t.Fatalf("marshal matrix: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fixtureDir, "matrix.json"), raw, 0o600); err != nil {
+		t.Fatalf("write matrix.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fixtureDir, "matrix.metadata.json"), []byte(`{"benchmark":{"version":"2026.05.16","dataset":"terminal-bench@2.0","subset_id":"tb2-canary","subset_version":"v1"}}`), 0o600); err != nil {
+		t.Fatalf("write matrix.metadata.json: %v", err)
+	}
+	subsetDir := filepath.Join(fixtureDir, "scripts", "beadbench", "external")
+	if err := os.MkdirAll(subsetDir, 0o750); err != nil {
+		t.Fatalf("mkdir subsetDir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subsetDir, "termbench-subset-canary.json"), []byte(`{"dataset":"terminal-bench@2.0","dataset_commit":"deadbeef","version":"v1","tasks":[{"id":"fix-git"}]}`), 0o600); err != nil {
+		t.Fatalf("write subset: %v", err)
+	}
+
+	outPath := filepath.Join(t.TempDir(), "evidence.jsonl")
+	if code, out := runBenchCLI(t, repoRoot, "evidence", "import-terminalbench", "--work-dir", repoRoot, "--matrix", fixtureDir, "--out", outPath); code != 0 {
+		t.Fatalf("import-terminalbench exit=%d output=%s", code, out)
+	}
+
+	body, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	lines := bytes.Split(bytes.TrimSpace(body), []byte("\n"))
+	if got, want := len(lines), 1; got != want {
+		t.Fatalf("record count = %d, want %d\n%s", got, want, string(body))
+	}
+	doc := decodeJSONMap(t, lines[0])
+	assertString(t, doc, "provenance.model_snapshot", "qwen3.6-27b-mlx-8bit@embedded-only")
+	assertString(t, doc, "subject.model_raw", "Qwen3.6-27B-MLX-8bit")
+	assertString(t, doc, "provenance.provider_endpoint", "http://vidar:1235/v1")
 }
 
 func assertContainsString(t *testing.T, doc map[string]any, path, want string) {

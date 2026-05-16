@@ -5,8 +5,9 @@ Walks ``benchmark-results/<canonical>/cells/`` for every ``report.json`` written
 before PR 1c (self-describing cells, ADR-016) and:
 
 1. Resolves the cell's ``profile_id`` to a current
-   ``scripts/benchmark/profiles/<id>.yaml`` (applying ``PROFILE_ALIASES`` from
-   ``scripts/website/build-benchmark-data.py``).
+   ``scripts/benchmark/profiles/<id>.yaml`` (applying the local
+   ``_PROFILE_RENAMES`` table — historically the analytics ``rescue``
+   table before PR 3 switched analytics to embedded reads).
 2. For four profiles deleted from ``profiles/`` (``sindri-club-3090``,
    ``vidar-qwen3-6-27b-openai-compat``, ``sindri-club-3090-llamacpp``,
    ``gpt-5-3-mini``), the YAML is recovered from git history at the commit
@@ -63,9 +64,10 @@ PROFILES_DIR = REPO_ROOT / "scripts" / "benchmark" / "profiles"
 DEFAULT_BENCHMARK_RESULTS = REPO_ROOT / "benchmark-results"
 DEFAULT_LOG_PATH = DEFAULT_BENCHMARK_RESULTS / "backfill-2026-05-16.log"
 
-# Mirrors scripts/website/build-benchmark-data.py:PROFILE_ALIASES at HEAD.
-# Renamed profiles whose cells still reference the old id.
-PROFILE_ALIASES: dict[str, str] = {
+# Renamed profiles whose cells still reference the old id. Inlined here for
+# the one-shot backfill; the analytics rescue table that this once mirrored
+# was removed in PR 3 when readers switched to embedded cell.profile.
+_PROFILE_RENAMES: dict[str, str] = {
     "sindri-club-3090": "sindri-vllm",
     "sindri-club-3090-llamacpp": "sindri-llamacpp",
 }
@@ -189,9 +191,9 @@ def resolve_profile(
 ) -> tuple[dict[str, Any] | None, str]:
     """Return (profile_yaml_dict, resolved_id) or (None, raw_id) if unresolved.
 
-    Resolution order: PROFILE_ALIASES → current profiles → recovered orphans.
+    Resolution order: _PROFILE_RENAMES → current profiles → recovered orphans.
     """
-    aliased = PROFILE_ALIASES.get(raw_id, raw_id)
+    aliased = _PROFILE_RENAMES.get(raw_id, raw_id)
     if aliased in current:
         return current[aliased], aliased
     if raw_id in current:
