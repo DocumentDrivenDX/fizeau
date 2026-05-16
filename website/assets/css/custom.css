@@ -1165,9 +1165,12 @@ body.bench-table-lock {
   min-height: 0;
   width: 100%;
   overflow: hidden;
+  color-scheme: light dark;
   --psp--font-family: var(--font-mono);
   --psp--background-color: var(--surface-panel);
   --psp--color: var(--ink-primary);
+  --psp-inactive--color: var(--ink-secondary);
+  --psp-inactive--border-color: var(--rule);
   --psp--border-color: var(--rule);
   --psp--border-color-2: var(--rule-strong);
   --psp--plugin--background: var(--surface-panel);
@@ -1178,6 +1181,9 @@ body.bench-table-lock {
   --psp--error--color: var(--accent-red);
   --psp--positive--color: var(--accent-green);
   --psp--negative--color: var(--accent-red);
+  --psp-datagrid--pos-cell--color: var(--accent-green);
+  --psp-datagrid--neg-cell--color: var(--accent-red);
+  --psp-label--null--color: var(--ink-tertiary);
 }
 
 .bench-workbench__comparison-table,

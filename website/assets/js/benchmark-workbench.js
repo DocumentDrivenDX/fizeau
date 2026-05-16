@@ -12,7 +12,7 @@ const DEFAULT_COLUMNS = [
   "effective_gpu_model",
   "effective_gpu_ram_gb",
   "profile_prefill_tps_est",
-  "profile_decode_tps_p50",
+  "decode_tps_est",
   "turns",
   "input_tokens",
   "output_tokens",
@@ -485,6 +485,7 @@ class BenchmarkWorkbench {
     this.gridSortUnsubscribe = null;
     this.gridSortTable = null;
     this.lastGridHeaderSort = null;
+    this.gridConfigSaveTimer = null;
     this.gridConfig = null;
     this.gridConfigReady = false;
     this.gridSchema = null;
@@ -593,11 +594,20 @@ class BenchmarkWorkbench {
         COALESCE(pt_profile.profile_ttft_p50_s, pt_report.profile_ttft_p50_s) AS profile_ttft_p50_s,
         COALESCE(pt_profile.profile_decode_tps_p50, pt_report.profile_decode_tps_p50) AS profile_decode_tps_p50,
         CASE
+          WHEN input_tokens IS NULL THEN NULL
           WHEN COALESCE(pt_profile.profile_ttft_p50_s, pt_report.profile_ttft_p50_s) > 0
-            AND input_tokens IS NOT NULL
           THEN CAST(input_tokens AS DOUBLE) / COALESCE(pt_profile.profile_ttft_p50_s, pt_report.profile_ttft_p50_s)
+          WHEN wall_seconds > 0
+          THEN CAST(input_tokens AS DOUBLE) / wall_seconds
           ELSE NULL
         END AS profile_prefill_tps_est,
+        CASE
+          WHEN COALESCE(pt_profile.profile_decode_tps_p50, pt_report.profile_decode_tps_p50) IS NOT NULL
+          THEN COALESCE(pt_profile.profile_decode_tps_p50, pt_report.profile_decode_tps_p50)
+          WHEN output_tokens IS NOT NULL AND wall_seconds > 0
+          THEN CAST(output_tokens AS DOUBLE) / wall_seconds
+          ELSE NULL
+        END AS decode_tps_est,
         COALESCE(pt_profile.profile_timing_turns, pt_report.profile_timing_turns) AS profile_timing_turns,
         COALESCE(NULLIF(gpu_model, ''), NULLIF(hardware_chip, ''), NULLIF(hardware_profile, ''), NULLIF(machine, ''), 'unknown') AS effective_gpu_model,
         COALESCE(gpu_ram_gb, hardware_vram_gb, hardware_memory_gb) AS effective_gpu_ram_gb,
@@ -836,7 +846,7 @@ class BenchmarkWorkbench {
     });
     this.viewer?.addEventListener("perspective-config-update", () => {
       if (!this.restoringRouteState) this.syncRouteState({ replace: true });
-      this.saveGridConfig().catch((error) => this.fail(error));
+      this.scheduleGridConfigSave();
     });
 
     this.clearFilters?.addEventListener("click", () => {
@@ -1378,6 +1388,10 @@ class BenchmarkWorkbench {
   }
 
   async loadGrid() {
+    if (this.gridConfigSaveTimer) {
+      window.clearTimeout(this.gridConfigSaveTimer);
+      this.gridConfigSaveTimer = null;
+    }
     await this.saveGridConfig();
     const tableNames = await this.perspectiveClient.get_hosted_table_names();
     const tableName = tableNames.find((name) => name.endsWith(".workbench_cells")) || "memory.workbench_cells";
@@ -1422,10 +1436,19 @@ class BenchmarkWorkbench {
   async saveGridConfig() {
     if (!this.gridConfigReady || !this.viewer?.save) return;
     try {
+      await this.viewer.flush?.();
       this.gridConfig = this.sanitizeGridConfig(await this.viewer.save(), { clearFilters: true });
     } catch {
       // Keep the last known-good config; Perspective can reject save() while reloading.
     }
+  }
+
+  scheduleGridConfigSave() {
+    if (this.gridConfigSaveTimer) window.clearTimeout(this.gridConfigSaveTimer);
+    this.gridConfigSaveTimer = window.setTimeout(() => {
+      this.gridConfigSaveTimer = null;
+      this.saveGridConfig().catch((error) => this.fail(error));
+    }, 0);
   }
 
   sanitizeGridConfig(config, options = {}) {
@@ -1436,12 +1459,14 @@ class BenchmarkWorkbench {
     if (!Array.isArray(next.filter)) next.filter = [];
 
     if (options.schema) {
+      const hadColumnConfig = Array.isArray(next.columns);
+      const requestedEmptyColumns = hadColumnConfig && next.columns.length === 0;
       next.columns = sanitizeSchemaColumnList(next.columns, options.schema);
       next.sort = sanitizeSchemaColumnTuples(next.sort, options.schema);
       next.group_by = sanitizeSchemaColumnList(next.group_by, options.schema);
       next.split_by = sanitizeSchemaColumnList(next.split_by, options.schema);
       next.filter = sanitizeSchemaColumnTuples(next.filter, options.schema);
-      if (!next.columns.length) return this.defaultGridConfig(options.schema);
+      if (!next.columns.length && !requestedEmptyColumns) return this.defaultGridConfig(options.schema);
     }
 
     return next;
