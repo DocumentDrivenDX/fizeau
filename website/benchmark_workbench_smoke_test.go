@@ -170,6 +170,14 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 		t.Fatal("raw database filter UI must use profile terminology, not lane terminology")
 	}
 
+	poisonLegacyViewerConfig(t, browserCtx)
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "data" &&
+			contains(current.VisibleColumns, "result_state") &&
+			!contains(current.VisibleColumns, "result-state") &&
+			strings.Contains(current.Status, "rows loaded")
+	})
+
 	click(t, browserCtx, "[data-bw-open-config]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return current.SettingsOpen && current.SettingsColumnCount > 0
@@ -512,6 +520,43 @@ func setViewerColumns(t *testing.T, ctx context.Context, columns []string) {
 	}
 	if !sameStrings(applied, columns) {
 		t.Fatalf("set viewer columns to %v, got %v", columns, applied)
+	}
+}
+
+func poisonLegacyViewerConfig(t *testing.T, ctx context.Context) {
+	t.Helper()
+
+	script := `(async () => {
+		const root = document.querySelector('[data-benchmark-workbench]');
+		const workbench = root?.benchmarkWorkbench;
+		if (!workbench) throw new Error('missing benchmark workbench instance');
+		workbench.gridConfigReady = true;
+		workbench.gridConfig = {
+			plugin: 'Datagrid',
+			columns: ['task', 'result-state'],
+			sort: [['result-state', 'desc']],
+			group_by: [],
+			split_by: [],
+			filter: [],
+			settings: false,
+		};
+		await workbench.reloadRaw();
+		const config = await workbench.viewer.save();
+		return {...config, configJson: JSON.stringify(config)};
+	})()`
+
+	var config struct {
+		Columns    []string `json:"columns"`
+		ConfigJSON string   `json:"configJson"`
+	}
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, &config, awaitPromise)); err != nil {
+		t.Fatalf("reload workbench with legacy viewer config: %v", err)
+	}
+	if !contains(config.Columns, "result_state") {
+		t.Fatalf("expected legacy result-state column to normalize to result_state, got %v (config=%s)", config.Columns, config.ConfigJSON)
+	}
+	if contains(config.Columns, "result-state") {
+		t.Fatalf("legacy result-state column leaked into saved viewer config: %v", config.Columns)
 	}
 }
 

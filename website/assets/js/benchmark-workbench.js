@@ -138,6 +138,9 @@ const USD_FORMAT = new Intl.NumberFormat(undefined, {
 });
 const TERMINAL_BENCH_TASK_BASE = "https://www.tbench.ai/registry/terminal-bench-core/head/";
 const RESULT_STATE_PASSED = "passed";
+const LEGACY_COLUMN_ALIASES = {
+  "result-state": "result_state",
+};
 
 const RAW_STATE_KEYS = {
   preset: "preset",
@@ -210,6 +213,34 @@ function sqlInteger(value) {
 function normalizeRow(row) {
   const raw = row && typeof row.toJSON === "function" ? row.toJSON() : row;
   return Object.fromEntries(Object.entries(raw || {}).map(([key, value]) => [key, normalizeScalar(value)]));
+}
+
+function hasSchemaColumn(schema, column) {
+  return Boolean(schema && typeof column === "string" && Object.prototype.hasOwnProperty.call(schema, column));
+}
+
+function schemaColumnName(schema, column) {
+  if (hasSchemaColumn(schema, column)) return column;
+  const alias = LEGACY_COLUMN_ALIASES[column];
+  if (hasSchemaColumn(schema, alias)) return alias;
+  const underscored = typeof column === "string" ? column.replace(/-/g, "_") : "";
+  return hasSchemaColumn(schema, underscored) ? underscored : null;
+}
+
+function sanitizeSchemaColumnList(values, schema) {
+  if (!Array.isArray(values)) return [];
+  return values.map((column) => schemaColumnName(schema, column)).filter(Boolean);
+}
+
+function sanitizeSchemaColumnTuples(values, schema) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((entry) => {
+      if (!Array.isArray(entry) || entry.length === 0) return null;
+      const column = schemaColumnName(schema, entry[0]);
+      return column ? [column, ...entry.slice(1)] : null;
+    })
+    .filter(Boolean);
 }
 
 async function queryRows(conn, sql) {
@@ -1334,7 +1365,18 @@ class BenchmarkWorkbench {
       : this.defaultGridConfig(schema);
 
     await this.viewer.load(table);
-    await this.viewer.restore(config);
+    try {
+      await this.viewer.restore(config);
+    } catch (error) {
+      console.warn("Perspective rejected saved benchmark grid config; restoring defaults.", error);
+      const fallback = this.defaultGridConfig(schema);
+      await this.viewer.restore(fallback);
+      this.gridConfig = fallback;
+      this.gridConfigReady = true;
+      await this.viewer.flush?.();
+      await this.installTaskLinks();
+      return;
+    }
     this.gridConfig = config;
     this.gridConfigReady = true;
     await this.viewer.flush?.();
@@ -1370,11 +1412,11 @@ class BenchmarkWorkbench {
     if (!Array.isArray(next.filter)) next.filter = [];
 
     if (options.schema) {
-      const hasColumn = (column) => Object.prototype.hasOwnProperty.call(options.schema, column);
-      next.columns = Array.isArray(next.columns) ? next.columns.filter(hasColumn) : [];
-      next.sort = Array.isArray(next.sort) ? next.sort.filter(([column]) => hasColumn(column)) : [];
-      next.group_by = Array.isArray(next.group_by) ? next.group_by.filter(hasColumn) : [];
-      next.split_by = Array.isArray(next.split_by) ? next.split_by.filter(hasColumn) : [];
+      next.columns = sanitizeSchemaColumnList(next.columns, options.schema);
+      next.sort = sanitizeSchemaColumnTuples(next.sort, options.schema);
+      next.group_by = sanitizeSchemaColumnList(next.group_by, options.schema);
+      next.split_by = sanitizeSchemaColumnList(next.split_by, options.schema);
+      next.filter = sanitizeSchemaColumnTuples(next.filter, options.schema);
       if (!next.columns.length) return this.defaultGridConfig(options.schema);
     }
 
@@ -1787,6 +1829,7 @@ function escapeHtml(value) {
 ready(() => {
   document.querySelectorAll("[data-benchmark-workbench]").forEach((root) => {
     const workbench = new BenchmarkWorkbench(root);
+    root.benchmarkWorkbench = workbench;
     workbench.init().catch((error) => workbench.fail(error));
   });
 });
