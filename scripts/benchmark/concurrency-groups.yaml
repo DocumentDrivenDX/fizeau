@@ -1,0 +1,73 @@
+# Concurrency groups for the benchmark runner
+#
+# Translates the historical `resource_groups:` block from
+# scripts/benchmark/terminalbench-2-1-sweep.yaml into a flat
+# {id, max_concurrency} mapping. The `rg-` prefix is dropped; profiles
+# reference these groups by the unprefixed id.
+#
+# Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
+
+groups:
+  vidar-ds4:
+    max_concurrency: 1
+    description: >-
+      DwarfStar 4 (antirez/ds4) on vidar (http://192.168.2.106:1236/v1).
+      Single graph worker — strictly serialized. Mutually exclusive with
+      vidar-omlx on the same hardware.
+
+  vidar-omlx:
+    max_concurrency: 1
+    description: >-
+      oMLX server on vidar (http://vidar:1235/v1). Single-model server;
+      serialize all cells.
+
+  bragi-club-3090:
+    max_concurrency: 1
+    description: >-
+      vLLM with autoround quantization on bragi RTX 3090
+      (http://bragi:8020/v1). Single-cell serialization.
+
+  sindri-lucebox-dflash:
+    max_concurrency: 1
+    description: >-
+      lucebox-hub DFlash speculative decoder on sindri
+      (http://sindri:8080/v1, alias luce-dflash). Single-cell serialization.
+
+  grendel-rapid-mlx:
+    max_concurrency: 1
+    description: >-
+      Rapid-MLX server on grendel (http://grendel:8000/v1). Single-cell
+      serialization.
+
+  sindri-club-3090:
+    max_concurrency: 1
+    description: >-
+      vLLM with autoround quantization on sindri RTX 3090
+      (http://sindri:8020/v1). Mutually exclusive with
+      sindri-club-3090-llamacpp (same machine + port).
+
+  sindri-club-3090-llamacpp:
+    max_concurrency: 1
+    description: >-
+      llama.cpp's llama-server on sindri (http://sindri:8020/v1) hosting
+      Unsloth Qwen3.6-27B-UD-Q3_K_XL GGUF. Mutually exclusive with
+      sindri-club-3090.
+
+  openrouter:
+    max_concurrency: 10
+    description: >-
+      Managed OpenRouter lane (https://openrouter.ai/api/v1). RPM 500,
+      TPM 200000. Per-run cap $5; per-phase cap $50; per-sweep cap $150.
+
+  openrouter-qwen36-27b:
+    max_concurrency: 10
+    description: >-
+      Managed OpenRouter Qwen3.6-27B lane. Separated from openrouter so
+      full Qwen runs do not share a limiter with Claude/GPT harness
+      comparison lanes. RPM 500, TPM 1000000.
+
+  openai-gpt55:
+    max_concurrency: 16
+    description: >-
+      Native OpenAI GPT-5.5 lane (https://api.openai.com/v1). RPM 500,
+      TPM 500000. Per-run cap $8; per-phase cap $300.

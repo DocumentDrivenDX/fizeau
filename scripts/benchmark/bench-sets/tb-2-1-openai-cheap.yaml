@@ -1,0 +1,47 @@
+# TerminalBench 2.1 OpenAI cheap bench-set
+# Source: scripts/benchmark/task-subset-tb21-openai-cheap.yaml (35 tasks)
+# Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
+id: tb-2-1-openai-cheap
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 5
+description: >-
+  Cheap native OpenAI GPT-5.5 slice selected from observed GPT-5.5 costs
+  and Qwen3.6 token-count proxies. For affordable validation and trend
+  checks, not full-suite claims.
+tasks:
+  - prove-plus-comm
+  - cancel-async-tasks
+  - count-dataset-tokens
+  - log-summary-date-ranges
+  - qemu-startup
+  - git-leak-recovery
+  - fix-git
+  - multi-source-data-merger
+  - pypi-server
+  - modernize-scientific-stack
+  - distribution-search
+  - bn-fit-modify
+  - pytorch-model-recovery
+  - hf-model-inference
+  - merge-diff-arc-agi-task
+  - headless-terminal
+  - constraints-scheduling
+  - sqlite-with-gcov
+  - extract-elf
+  - configure-git-webserver
+  - kv-store-grpc
+  - nginx-request-logging
+  - git-multibranch
+  - reshard-c4-data
+  - dna-assembly
+  - regex-chess
+  - raman-fitting
+  - qemu-alpine-ssh
+  - break-filter-js-from-html
+  - torch-tensor-parallelism
+  - vulnerable-secret
+  - polyglot-c-py
+  - sqlite-db-truncate
+  - code-from-image
+  - financial-document-processor

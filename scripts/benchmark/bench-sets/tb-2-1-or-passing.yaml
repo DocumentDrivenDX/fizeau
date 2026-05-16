@@ -1,0 +1,64 @@
+# TerminalBench 2.1 OR-passing bench-set
+# Source: scripts/benchmark/task-subset-tb21-or-passing.yaml (52 tasks)
+# Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
+id: tb-2-1-or-passing
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 3
+description: >-
+  Curated 52-task subset where fiz-openrouter-qwen3-6-27b has been
+  observed to pass at least one rep. Focus local-Qwen experiments on
+  tasks the cloud baseline can solve.
+tasks:
+  - bn-fit-modify
+  - build-cython-ext
+  - build-pmars
+  - build-pov-ray
+  - caffe-cifar-10
+  - cancel-async-tasks
+  - cobol-modernization
+  - code-from-image
+  - compile-compcert
+  - configure-git-webserver
+  - constraints-scheduling
+  - count-dataset-tokens
+  - crack-7z-hash
+  - custom-memory-heap-crash
+  - distribution-search
+  - extract-elf
+  - filter-js-from-html
+  - financial-document-processor
+  - fix-code-vulnerability
+  - fix-git
+  - fix-ocaml-gc
+  - git-leak-recovery
+  - git-multibranch
+  - headless-terminal
+  - hf-model-inference
+  - kv-store-grpc
+  - large-scale-text-editing
+  - log-summary-date-ranges
+  - mailman
+  - mcmc-sampling-stan
+  - merge-diff-arc-agi-task
+  - modernize-scientific-stack
+  - multi-source-data-merger
+  - nginx-request-logging
+  - openssl-selfsigned-cert
+  - overfull-hbox
+  - polyglot-c-py
+  - portfolio-optimization
+  - prove-plus-comm
+  - pypi-server
+  - pytorch-model-cli
+  - pytorch-model-recovery
+  - qemu-startup
+  - regex-log
+  - reshard-c4-data
+  - rstan-to-pystan
+  - sam-cell-seg
+  - sanitize-git-repo
+  - sparql-university
+  - sqlite-db-truncate
+  - sqlite-with-gcov
+  - vulnerable-secret

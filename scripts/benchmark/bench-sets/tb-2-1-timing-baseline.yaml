@@ -1,0 +1,21 @@
+# TerminalBench 2.1 timing-baseline bench-set
+# Source: scripts/benchmark/task-subset-tb21-timing-baseline.yaml (8 tasks)
+# Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
+id: tb-2-1-timing-baseline
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 3
+description: >-
+  8-task limited-scope subset hand-picked from OR-passing to span the
+  OR-Qwen pass-wall difficulty distribution (2 quick / 2 medium-low /
+  2 medium-high / 2 long). Used to verify post-wire-fix reasoning
+  control across benchmark lanes before committing to a full sweep.
+tasks:
+  - fix-git
+  - openssl-selfsigned-cert
+  - prove-plus-comm
+  - fix-code-vulnerability
+  - polyglot-c-py
+  - financial-document-processor
+  - reshard-c4-data
+  - fix-ocaml-gc
