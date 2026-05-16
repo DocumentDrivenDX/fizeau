@@ -4,38 +4,15 @@ import "@perspective-dev/viewer-datagrid/dist/esm/perspective-viewer-datagrid.js
 import { DuckDBHandler } from "@perspective-dev/client/dist/esm/virtual_servers/duckdb.js";
 
 const DEFAULT_COLUMNS = [
-  "suite",
   "task",
-  "task_subsets",
-  "task_category",
-  "task_difficulty",
   "result_state",
-  "passed",
-  "grader_passed",
-  "final_status",
-  "invalid_class",
-  "harness",
-  "harness_label",
-  "provider_type",
-  "provider_surface",
   "model_display_name",
-  "model",
-  "model_quant",
   "quant_display",
-  "weight_bits",
-  "kv_cache_quant",
-  "k_quant",
-  "v_quant",
-  "runtime_mtp_enabled",
   "engine",
-  "engine_version",
-  "gpu_model",
   "effective_gpu_model",
-  "gpu_ram_gb",
-  "hardware_vram_gb",
   "effective_gpu_ram_gb",
-  "machine",
-  "rep",
+  "profile_prefill_tps_est",
+  "profile_decode_tps_p50",
   "turns",
   "input_tokens",
   "output_tokens",
@@ -43,9 +20,12 @@ const DEFAULT_COLUMNS = [
   "total_tokens",
   "cost_usd",
   "wall_seconds",
-  "profile_ttft_p50_s",
-  "profile_decode_tps_p50",
-  "profile_timing_turns",
+  "provider_type",
+  "provider_surface",
+  "model",
+  "model_quant",
+  "machine",
+  "rep",
   "started_at",
   "finished_at",
 ];
@@ -504,6 +484,7 @@ class BenchmarkWorkbench {
     this.taskLinkTable = null;
     this.gridSortUnsubscribe = null;
     this.gridSortTable = null;
+    this.lastGridHeaderSort = null;
     this.gridConfig = null;
     this.gridConfigReady = false;
     this.gridSchema = null;
@@ -611,6 +592,12 @@ class BenchmarkWorkbench {
         c.*,
         COALESCE(pt_profile.profile_ttft_p50_s, pt_report.profile_ttft_p50_s) AS profile_ttft_p50_s,
         COALESCE(pt_profile.profile_decode_tps_p50, pt_report.profile_decode_tps_p50) AS profile_decode_tps_p50,
+        CASE
+          WHEN COALESCE(pt_profile.profile_ttft_p50_s, pt_report.profile_ttft_p50_s) > 0
+            AND input_tokens IS NOT NULL
+          THEN CAST(input_tokens AS DOUBLE) / COALESCE(pt_profile.profile_ttft_p50_s, pt_report.profile_ttft_p50_s)
+          ELSE NULL
+        END AS profile_prefill_tps_est,
         COALESCE(pt_profile.profile_timing_turns, pt_report.profile_timing_turns) AS profile_timing_turns,
         COALESCE(NULLIF(gpu_model, ''), NULLIF(hardware_chip, ''), NULLIF(hardware_profile, ''), NULLIF(machine, ''), 'unknown') AS effective_gpu_model,
         COALESCE(gpu_ram_gb, hardware_vram_gb, hardware_memory_gb) AS effective_gpu_ram_gb,
@@ -1488,8 +1475,9 @@ class BenchmarkWorkbench {
     if (this.gridSortTable === regularTable) return;
     this.gridSortUnsubscribe?.();
     this.gridSortTable = regularTable;
+    this.lastGridHeaderSort = null;
 
-    const onClick = async (event) => {
+    const onHeaderSort = async (event) => {
       const header = event.target instanceof Element ? event.target.closest("th.psp-sort-enabled") : null;
       if (!header || !regularTable.contains(header)) return;
 
@@ -1501,6 +1489,10 @@ class BenchmarkWorkbench {
 
       event.preventDefault();
       event.stopImmediatePropagation();
+      const now = event.timeStamp || performance.now();
+      const previous = this.lastGridHeaderSort;
+      if (previous?.header === header && previous?.column === column && now - previous.time < 500) return;
+      this.lastGridHeaderSort = { header, column, time: now };
       const config = await this.viewer.save();
 
       await this.viewer.restore({
@@ -1512,8 +1504,11 @@ class BenchmarkWorkbench {
       await this.viewer.flush?.();
     };
 
-    regularTable.addEventListener("click", onClick, true);
-    this.gridSortUnsubscribe = () => regularTable.removeEventListener("click", onClick, true);
+    const events = ["pointerdown", "mousedown", "click"];
+    events.forEach((eventName) => regularTable.addEventListener(eventName, onHeaderSort, true));
+    this.gridSortUnsubscribe = () => {
+      events.forEach((eventName) => regularTable.removeEventListener(eventName, onHeaderSort, true));
+    };
   }
 
   async findDatagridPlugin() {

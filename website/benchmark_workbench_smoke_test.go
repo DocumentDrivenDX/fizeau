@@ -131,38 +131,15 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 		t.Fatal("expected perspective viewer to expose visible columns")
 	}
 	expectedDefaultColumns := []string{
-		"suite",
 		"task",
-		"task_subsets",
-		"task_category",
-		"task_difficulty",
 		"result_state",
-		"passed",
-		"grader_passed",
-		"final_status",
-		"invalid_class",
-		"harness",
-		"harness_label",
-		"provider_type",
-		"provider_surface",
 		"model_display_name",
-		"model",
-		"model_quant",
 		"quant_display",
-		"weight_bits",
-		"kv_cache_quant",
-		"k_quant",
-		"v_quant",
-		"runtime_mtp_enabled",
 		"engine",
-		"engine_version",
-		"gpu_model",
 		"effective_gpu_model",
-		"gpu_ram_gb",
-		"hardware_vram_gb",
 		"effective_gpu_ram_gb",
-		"machine",
-		"rep",
+		"profile_prefill_tps_est",
+		"profile_decode_tps_p50",
 		"turns",
 		"input_tokens",
 		"output_tokens",
@@ -170,9 +147,12 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 		"total_tokens",
 		"cost_usd",
 		"wall_seconds",
-		"profile_ttft_p50_s",
-		"profile_decode_tps_p50",
-		"profile_timing_turns",
+		"provider_type",
+		"provider_surface",
+		"model",
+		"model_quant",
+		"machine",
+		"rep",
 		"started_at",
 		"finished_at",
 	}
@@ -181,13 +161,27 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 			t.Fatalf("expected %s to be visible by default, got %v", column, snapshot.VisibleColumns)
 		}
 	}
+	if !sameStrings(snapshot.VisibleColumns, expectedDefaultColumns) {
+		t.Fatalf("expected default column order %v, got %v", expectedDefaultColumns, snapshot.VisibleColumns)
+	}
 	if len(snapshot.VisibleColumns) > len(expectedDefaultColumns) {
 		t.Fatalf("expected focused default columns, got %d columns: %v", len(snapshot.VisibleColumns), snapshot.VisibleColumns)
 	}
 	if contains(snapshot.VisibleColumns, "terminalbench_task_url") {
 		t.Fatalf("terminalbench_task_url must stay hidden by default, got %v", snapshot.VisibleColumns)
 	}
-	for _, column := range []string{"terminalbench_task_url", "raw_report_json", "search_text"} {
+	for _, column := range []string{
+		"terminalbench_task_url",
+		"raw_report_json",
+		"search_text",
+		"task_subsets",
+		"passed",
+		"grader_passed",
+		"final_status",
+		"invalid_class",
+		"harness",
+		"harness_label",
+	} {
 		if contains(snapshot.VisibleColumns, column) {
 			t.Fatalf("%s must stay hidden by default, got %v", column, snapshot.VisibleColumns)
 		}
@@ -217,12 +211,13 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 		return !current.SettingsOpen
 	})
 
-	customColumns := []string{"task", "result_state"}
+	customColumns := []string{"task", "result_state", "profile_prefill_tps_est"}
 	setViewerColumns(t, browserCtx, customColumns)
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return sameStrings(current.VisibleColumns, customColumns)
 	})
 	clickRawGridHeaderSort(t, browserCtx, "result_state")
+	clickRawGridHeaderSort(t, browserCtx, "profile_prefill_tps_est")
 
 	setSelectValue(t, browserCtx, "[data-bw-model]", snapshot.ModelOptions[0])
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
@@ -231,7 +226,7 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 
 	click(t, browserCtx, "[data-bw-reset-view]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return contains(current.VisibleColumns, "profile_ttft_p50_s") && len(current.VisibleColumns) == len(expectedDefaultColumns)
+		return contains(current.VisibleColumns, "profile_prefill_tps_est") && len(current.VisibleColumns) == len(expectedDefaultColumns)
 	})
 	click(t, browserCtx, "[data-bw-clear-filters]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
@@ -685,6 +680,8 @@ func clickRawGridHeaderSort(t *testing.T, ctx context.Context, column string) {
 			const seen = [...table.querySelectorAll('thead th')].map((cell) => table.getMeta(cell)?.column_header?.join('/')).filter(Boolean);
 			throw new Error('missing sortable header for %q; saw ' + seen.join(', '));
 		}
+		const PointerCtor = window.PointerEvent || MouseEvent;
+		header.dispatchEvent(new PointerCtor('pointerdown', { bubbles: true, cancelable: true, view: window }));
 		header.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
 		header.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
 		header.click();
