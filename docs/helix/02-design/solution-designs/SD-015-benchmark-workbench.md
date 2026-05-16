@@ -13,6 +13,15 @@ ddx:
 **Status:** Accepted
 **Owner:** Fizeau Team
 
+> **Update 2026-05-16**: ADR-016 changes the cell schema — each
+> `report.json` now embeds the full resolved profile snapshot. The
+> workbench data pipeline (`scripts/website/build-benchmark-data.py`)
+> reads embedded metadata; the `PROFILE_ALIASES` / `EXCLUDED_PROFILES`
+> tables and profile-YAML joins are retired. Existing Parquet artifacts
+> remain compatible; backfill ensures historical cells expose embedded
+> metadata identical to the current join output. See
+> `docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md`.
+
 ## Summary
 
 SD-015 implements FEAT-008 as `/benchmarks/explorer/`: a static,

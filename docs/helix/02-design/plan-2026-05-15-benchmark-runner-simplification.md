@@ -1,392 +1,526 @@
 # Plan: Benchmark Runner Simplification
 
-Date: 2026-05-15
+**Date**: 2026-05-15 (filed) / 2026-05-16 (rewritten)
+**Status**: ACTIVE
+**Governs**: [ADR-016](./adr/ADR-016-cells-are-self-describing-evidence.md)
+**Related**: [ADR-015](./adr/ADR-015-browser-analytical-benchmark-workbench.md), [SD-009](./solution-designs/SD-009-benchmark-mode.md), [SD-010](./solution-designs/SD-010-harness-matrix-benchmark.md), [SD-012](./solution-designs/SD-012-benchmark-evidence-ledger.md)
+**Rough size**: 8 PRs, ~3–5 days serialized
+
+> The original 2026-05-15 version of this plan proposed moving execution
+> to a shell driver while keeping recipes and lanes as orthogonal data.
+> ADR-016 (2026-05-16) supersedes that with a deeper simplification:
+> cells are self-describing evidence, profiles are the only authoring
+> unit, recipes/lanes/comparison-groups/resource-groups are deleted.
+> The shell-execution direction is preserved; the data model collapses.
 
 ## Problem
 
-The TerminalBench runner has too many overlapping control surfaces. Starting a
-run can create empty output directories, build binaries, build Docker images,
-download or mutate task trees, normalize shell aliases, run endpoint preflight,
-and only then reach the actual sweep planner. That makes a failed or skipped
-run look like "nothing ran" even when the system spent time preparing hidden
-state.
+The TerminalBench runner has too many overlapping control surfaces, and
+the data model itself forces multi-place duplication. See ADR-016 for
+the full case. The user-facing symptoms:
 
-The desired model is simpler:
-
-- A benchmark script is the only operator entrypoint.
-- A recipe is only a task set plus run defaults.
-- A lane is only a model/provider/harness target plus resource constraints.
-- The runner executes the Cartesian product of selected recipes and selected
-  lanes by invoking the regular `fiz` binary for each cell.
-
-Everything else is validation or reporting. Those steps should be explicit
-commands, not surprising side effects of starting a run.
-
-## Current Friction
-
-Observed sources of complexity:
-
-- `scripts/benchmark/run_terminalbench_2_1_sweep.sh` mixes setup, aliasing,
-  task download, Docker image prebuilds, endpoint preflight, plan display,
-  confirmation, and execution.
-- `cmd/bench sweep` already has the better conceptual model, but it still
-  exposes legacy `--phase`, `--subset`, `--all-recipes`, and
-  `--staged-recipes` paths.
-- `cmd/bench` has become a second execution product parallel to `fiz`.
-  Benchmark execution should not require understanding a separate Go binary
+- Adding a model requires edits in 3–4 places (profile YAML, lane block,
+  recipe enrollment, shell alias case arm).
+- A simple URL change requires updating 6 places that the validator
+  (`cmd/bench/sweep.go:910-919`) keeps in lockstep.
+- Historical cells reference profiles that no longer exist (663 orphan
+  cell directories across 4 deleted profile IDs); a `PROFILE_ALIASES`
+  rescue table at `build-benchmark-data.py:150` maintains the joins.
+- `comparison_groups:` is referenced by zero analytics code.
+- `cmd/bench` has become a second execution product parallel to `fiz`,
   with its own routing/configuration model.
-- Recipes contain lane enrollment, so a lane can exist but still not run for a
-  selected recipe.
-- Lane definitions and profile YAML are separate sources of truth; missing
-  profiles are only discovered late.
-- Short aliases live in shell code instead of the lane catalog.
-- `--dry-run` at the shell layer can still perform expensive preparation before
-  printing the runnable plan.
+- `--dry-run` at the shell layer can still perform expensive preparation
+  before printing the runnable plan.
 - Output directories can be created before any real cell starts, leaving
   confusing empty structures after failed setup.
 
-## Target Contract
+## Target Architecture
 
-The public operator contract should be:
+### Data model
+
+```
+scripts/benchmark/
+  profiles/<id>.yaml          # provider config + metadata + harness/surface/concurrency
+  bench-sets/<id>.yaml        # framework, dataset, task list, default reps
+  concurrency-groups.yaml     # rate-limit shard caps
+  machines.yaml               # hardware reference (unchanged)
+```
+
+A **profile** is everything needed to invoke `fiz` once: provider
+(type/model/base_url/api_key_env), sampling, limits, pricing,
+`agent_timeout_multiplier`, `harness` (anthropic/codex/pi/opencode/none),
+`surface` (`fiz_provider_native`/`fiz_harness_anthropic`/`native_cli`/…),
+`concurrency_group` (rate-limit shard key), metadata (model_family,
+model_id, quant_label, runtime, server, backend, …), versioning
+(resolved_at, snapshot, snapshot_notes).
+
+A **bench-set** declares what to run: framework, dataset, task list,
+default reps, optional per-task timeouts. Bench-sets are *admin metadata
+only* — they do not appear in cell records or output paths. The same
+cell can be produced by any bench-set that enumerates the same task.
+
+**Concurrency groups** are keyed by rate-limit shard (e.g.
+`openrouter`, `sindri-gpu`, `bragi-gpu`), not by host. Each entry has
+`max_concurrency`. Profiles join via `concurrency_group:`.
+
+### Cell layout
+
+```
+benchmark-results/<canonical>/cells/
+  <framework>-<dataset>/
+    <task>/
+      <cell-id>/                  # 20260516T103045Z-a4c1
+        report.json               # embeds full resolved profile
+        fiz.txt                   # raw fiz log
+        session/                  # trajectory artifacts
+```
+
+Cell IDs are ISO-timestamp + short random suffix. Monotonic, unique,
+race-free, no counter to track. Chronological sort gives history.
+
+Cells embed the full resolved `profile:` block. Profile is the cell's
+sole identity-of-record; the path's profile component is gone.
+
+### Operator contract
 
 ```bash
-./benchmark --lanes <lane[,lane...]> --recipes <recipe[,recipe...]>
-./benchmark --lanes <lane[,lane...]> --recipes <recipe[,recipe...]> --plan
+./benchmark --profile P --bench-set B
+./benchmark --profile P --bench-set B --plan
 ./benchmark validate
+./benchmark preflight --profile P
+./benchmark profiles                    # list available profiles
+./benchmark bench-sets                  # list available bench-sets
 ```
 
 Rules:
 
-1. `--plan` is pure. It validates configuration and prints the exact matrix. It
-   does not build, download, preflight endpoints, or create output directories.
-2. `run` creates output directories only immediately before launching a cell.
-   The default output root is the existing `benchmark-results/` directory.
-3. Recipes and lanes are orthogonal. A recipe does not enroll lanes. Recipe
-   selection picks tasks/defaults; lane selection picks execution targets.
-4. If an operator omits `--lanes`, the script errors and prints available lane
-   ids. No hidden "all lanes" default for paid or local-heavy runs.
-5. If an operator omits `--recipes`, the script errors and prints available
-   recipe ids. No legacy `phase=all` default.
-6. Aliases are data, not shell code. Every alias resolves through the lane
-   catalog and is visible in `./benchmark lanes`.
-7. Benchmark execution uses `fiz`, not `fiz-bench`. Go benchmark helpers may
-   validate, summarize, import evidence, or convert reports, but they do not
-   own the cell execution loop.
-8. The manifest is declarative and directly readable by the runner. There is no
-   separate preparation state machine.
+1. `--plan` is pure. It validates configuration and prints the matrix.
+   No file writes, no Docker pulls, no preflight probes, no
+   `benchmark-results/` directory creation.
+2. The runner creates `benchmark-results/<canonical>/cells/<framework>-<dataset>/<task>/<cell-id>/`
+   *only* when the cell is about to start.
+3. `--profile` and `--bench-set` are both required (no implicit defaults
+   for paid or local-heavy runs). Comma-separated lists allowed.
+4. `validate` is fast and offline. Schema checks, file existence,
+   profile-vs-concurrency-group cross-reference, bench-set task file
+   existence. No network calls.
+5. `preflight` is the *only* command that probes endpoints. Operators
+   run it explicitly before sweeps.
+6. Benchmark execution uses `fiz`, not `fiz-bench`. The
+   `fiz-bench` binary survives only as analytics tooling:
+   `fiz-bench aggregate`, `fiz-bench import-evidence`,
+   `fiz-bench validate`. It does not own the cell execution loop.
+7. The benchmark manifest the shell reads is the union of
+   `profiles/*.yaml` and `bench-sets/*.yaml`. Manifest parsing happens
+   in one place: a small Go helper (`fiz-bench plan --json`) emits
+   JSON, the shell consumes JSON, never YAML.
+8. Output goes under `benchmark-results/` unless `--out` overrides.
 
-## Data Model
-
-Replace the sweep plan with a benchmark manifest around orthogonal top-level
-collections. The runner reads this manifest directly; there is no generated
-intermediate plan file required for execution.
-
-```yaml
-dataset:
-  id: terminal-bench-2-1
-  type: harbor
-  source: terminal-bench/terminal-bench-2-1
-
-output:
-  root: benchmark-results
-
-recipes:
-  - id: timing-baseline
-    tasks: scripts/benchmark/task-subset-tb21-timing-baseline.yaml
-    reps: 3
-
-lanes:
-  - id: vidar-ds4
-    aliases: [ds4, vidar-ds4]
-    profile: vidar-ds4
-    resource_group: vidar-ds4
-    env:
-      FIZEAU_PROVIDER: ds4
-      FIZEAU_MODEL: deepseek-v4-flash
-      FIZEAU_BASE_URL: http://192.168.2.106:1236/v1
-      FIZEAU_API_KEY_ENV: DS4_API_KEY
-
-resource_groups:
-  - id: vidar-ds4
-    max_concurrency: 1
-```
-
-Recipe task files are plain declarative lists of task ids or task files. For
-TerminalBench, the task id is passed to Harbor. For simple prompt/file
-benchmarks, the task entry names the prompt/input path and optional grader.
-
-Remove recipe lane lists. If a named operational bundle truly needs a curated
-lane set, model it as a saved invocation preset, not as the recipe itself:
+### Cell schema
 
 ```yaml
-presets:
-  - id: timing-ds4
-    recipes: [timing-baseline]
-    lanes: [vidar-ds4, vidar-ds4-mtp]
+# report.json (illustrative — actual format is JSON)
+task_id:        patch-build-script
+framework:      terminal-bench
+dataset:        terminal-bench-2-1
+cell_id:        20260516T103045Z-a4c1
+started_at:     2026-05-16T10:30:45Z
+finished_at:    2026-05-16T10:38:22Z
+fiz_tools_version: …
+
+profile:                              # embedded resolved snapshot
+  id:              vidar-qwen3-6-27b
+  provider:        {type, model, base_url, api_key_env}
+  harness:         none
+  surface:         fiz_provider_native
+  concurrency_group: vidar-gpu
+  sampling:        {temperature, reasoning, top_p, top_k}
+  limits:          {max_output_tokens, context_tokens}
+  pricing:         {input_usd_per_mtok, output_usd_per_mtok, cached_input_usd_per_mtok}
+  agent_timeout_multiplier: 8.0
+  metadata:        {model_family, model_id, quant_label, runtime, server, backend, …}
+  versioning:      {resolved_at, snapshot, snapshot_notes}
+
+# existing metrics
+turns:           …
+input_tokens:    …
+output_tokens:   …
+cost_usd:        …
+wall_seconds:    …
+grading_outcome: pass
+final_status:    completed
+# …
 ```
 
-Presets are optional operator conveniences. The executable model remains
-recipes × lanes.
+No `bench_set_id`, no `lane_id`, no `recipe_id`, no `profile_id`-as-only-reference.
 
-## Command Shape
+## Functionality Inventory
 
-Keep one script, but make it thin:
+### Preserve
 
-```bash
-./benchmark --recipes timing-baseline --lanes ds4
-./benchmark --recipes timing-baseline,or-passing --lanes ds4,ds4-mtp
-./benchmark --preset timing-ds4
-./benchmark --plan --recipes timing-baseline --lanes ds4-mtp
-./benchmark lanes
-./benchmark recipes
-./benchmark validate
-```
+- TerminalBench task selection from bench-set task lists.
+- Repetition count per bench-set (overridable via `--reps`).
+- Resume / force-rerun / retry-invalid behavior (re-implemented in
+  shell driver as "cell exists with `final_status` in {pass, fail,
+  timeout} → skip" or "cell `final_status == invalid` → optionally
+  rerun" depending on flag).
+- Per-concurrency-group concurrency limits (replaces per-resource-group
+  caps).
+- Harbor task execution and grading. Harbor invokes FizeauAgent →
+  FizeauAgent invokes `fiz` with profile-derived env.
+- FizeauAgent forwarding of profile env into `fiz`.
+- Per-cell `report.json`, `fiz.txt`/session logs, trajectory artifacts,
+  runtime props.
+- Invalid setup/provider/quota/auth classification.
+- Consecutive identical failure abort (re-implemented as per-(profile,
+  task) circuit breaker in shell driver, or as a post-processing
+  audit).
+- Preflight endpoint probe as an explicit command.
+- Report aggregation and evidence import compatibility.
+- Stale Harbor container cleanup, if still needed after the shell
+  process model is simplified.
+- Atomic cell writes (`writeJSONAtomic` semantics).
+- Process-tree reaping on SIGTERM.
 
-Implementation detail:
+### Replace
 
-- `./benchmark` resolves the selected recipes and lanes into a concrete cell
-  list from the manifest, then invokes `fiz` with explicit CLI flags and
-  environment for each cell.
-- Building `fiz` as a local prerequisite is acceptable. Docker image pulls or
-  task environment builds happen as part of the cell execution path that needs
-  them, with visible output in that cell's log. They are not a separate
-  `prepare` phase.
-- Manifest parsing has one implementation path: the benchmark script invokes a
-  small in-repo parser helper that reads YAML and emits JSON. Shell logic
-  consumes that JSON; it does not scrape YAML with ad hoc text processing.
-- The shell script owns matrix expansion, output path creation, resume checks,
-  process supervision, and the `fiz` invocation.
+- Per-resource-group concurrency → per-concurrency-group concurrency
+  (same caps, smaller config).
+- `--phase`, `--subset`, `--all-recipes`, `--staged-recipes` flags →
+  `--bench-set` flag.
+- `fiz-bench sweep` / `fiz-bench matrix` execution commands →
+  `./benchmark` shell driver.
+- `fiz-bench lanes clone` → `cp scripts/benchmark/profiles/<src>.yaml
+  scripts/benchmark/profiles/<dst>.yaml && $EDITOR
+  scripts/benchmark/profiles/<dst>.yaml`. Profile is the unit.
+- Lane aliases → drop. Profile filenames are stable identifiers.
+- `PROFILE_ALIASES` / `EXCLUDED_PROFILES` in
+  `scripts/website/build-benchmark-data.py` → cell-embedded metadata.
+- Profile-ID join in analytics → embedded `cell.profile.*` reads.
 
-For simple prompt/file benchmarks, a cell is:
+### Retire
 
-```bash
-env "${lane_env[@]}" \
-  fiz --json --work-dir "$REPO_ROOT" "${lane_fiz_args[@]}" \
-  -p "@$task_prompt" \
-  > "$cell_dir/fiz.jsonl"
-```
+- `recipes:` block (replaced by `bench-sets/`).
+- `lanes:` block (absorbed into profiles).
+- `comparison_groups:` block (operators recover equivalence at query
+  time via `profile.metadata.{model_family, surface, harness}`).
+- `resource_groups:` block (replaced by `concurrency-groups.yaml`).
+- `lane_aliases:` block (no aliases; profile filenames win).
+- `profile_inventory:` block (one file per profile, glob the dir).
+- `validateSweepLaneEnvMatch` and all lane-cross-validation in
+  `cmd/bench/sweep.go:910-919`.
+- `cmd/bench/lanes*.go` (entire subcommand family).
+- Sweep YAML (`scripts/benchmark/terminalbench-2-1-sweep.yaml`)
+  deleted entirely; its data redistributed across `profiles/` and
+  `bench-sets/`.
+- Budget-cap machinery in `cmd/bench/sweep.go:701-705` (yesterday's
+  decision; preserved). The simplified runner is not responsible for
+  spend caps.
+- The `.lane_aborted/` marker convention (replaced by abort state
+  scoped to (profile, task) or per-run state file).
 
-For TerminalBench, a cell is still a Harbor task run, because Harbor owns the
-task container and grader. The installed Harbor agent should invoke `fiz`; the
-benchmark script should pass lane env and task id explicitly:
+## PR Sequence
 
-```bash
-env "${lane_env[@]}" \
-  harbor run "$task_id" \
-  --agent fizeau \
-  --output-dir "$cell_dir" \
-  --env FIZEAU_PROVIDER=... \
-  --env FIZEAU_MODEL=...
-```
+PRs are sized to land independently; each leaves master runnable.
 
-That is still the same principle: the benchmark runner expands the matrix;
-`fiz` performs agent execution; Harbor only supplies the benchmark harness.
+### PR 1a — Profile schema additions
 
-All output goes under `benchmark-results/` unless the operator passes an
-explicit `--out`. The canonical cell path should be stable enough for resume
-and reporting, for example:
+- Add `harness`, `surface`, `concurrency_group` fields to
+  `internal/benchmark/profile/profile.go` `Profile` struct (optional,
+  `yaml:",omitempty"`).
+- Populate values in every existing profile YAML based on current lane
+  `lane_type` (→ `surface`) and current resource_group assignment (→
+  `concurrency_group`). For the 6 wrapper-harness lanes
+  (`fiz-harness-claude-sonnet-4-6`, etc.), the matching profile YAML
+  already exists; populate `harness:` explicitly.
+- No runner changes. Schema additions are silent at execution time.
+- Tests: extend `internal/benchmark/profile/profile_test.go` for the
+  new fields.
 
-```text
-benchmark-results/runs/<run-id>/<recipe>/<lane>/<task-id>/rep-NNN/
-```
+**Acceptance**: `go test ./internal/benchmark/profile/...` passes.
+Every profile YAML loads with the new fields populated.
 
-Each terminal cell writes `report.json` plus the raw `fiz`/Harbor logs needed
-by existing report generation and evidence import.
+### PR 1b — bench-sets/ and concurrency-groups.yaml
 
-## Startup Behavior
+- Add `scripts/benchmark/bench-sets/<id>.yaml` files, one per current
+  recipe (`tb-2-1-canary`, `tb-2-1-full`, `tb-2-1-or-passing`,
+  `tb-2-1-openai-cheap`, `tb-2-1-timing-baseline`, `tb-2-1-all`,
+  `medium-comparison`). Each carries framework, dataset, task list
+  (sourced from current `subsets:` block), default reps.
+- Add `scripts/benchmark/concurrency-groups.yaml` translating each
+  current `resource_groups:` entry to a `{id, max_concurrency}` pair.
+- No code references yet. Pure data files.
 
-The first visible output for any run should be the resolved plan:
+**Acceptance**: Files load via a small validator (one-off, not
+committed) that parses YAML and confirms task IDs exist in the harness
+dataset.
 
-```text
-Benchmark plan
-  recipes: timing-baseline
-  lanes:   vidar-ds4-mtp
-  cells:   8 tasks × 1 lane × 3 reps = 24
-  output:  benchmark-results/runs/20260515T010203Z
-```
+### PR 1c — Runner writes self-describing cells
 
-The run should not create the run directory until after the plan prints and
-argument/config validation succeeds. It creates each cell directory only when
-that cell is about to start.
+- Modify `cmd/bench/matrix.go` (around cell-write boundary at line
+  ~751) to embed the full resolved profile snapshot into `report.json`
+  instead of just `profile_id` + free-form `profile_snapshot` string.
+- Add `framework`, `dataset`, `cell_id` fields to the cell record.
+- `cell_id` generation: `time.Now().UTC().Format("20060102T150405Z") +
+  "-" + shortRandom(4)`.
+- Old `fiz-bench sweep` continues to work for the moment, but its
+  cell writes embed metadata.
+- Verify with smoke set: re-run a known cell, inspect the JSON, confirm
+  embedded profile matches the source YAML.
 
-## Validation
+**Acceptance**: Cells written by post-PR runner contain
+`cell.profile.*` block with all profile fields. Old cells remain
+loadable (analytics handles both shapes in PR 3).
 
-`./benchmark validate` must fail on the class of issues that caused the
-`fiz-vidar-ds4-mtp` confusion:
+### PR 1d — `./benchmark` shell driver
 
-- lane profile is missing
-- profile id does not match lane profile
-- lane env and profile provider fields disagree
-- alias maps to no lane or multiple lanes
-- recipe task file is missing
-- resource group is missing
-- comparison group references unknown lanes
-- selected lane has placeholder env documented as operational
+- Add `scripts/benchmark/benchmark` (or `scripts/benchmark/run`) shell
+  script implementing the operator contract above.
+- Add `fiz-bench plan --json` Go helper that emits the resolved cell
+  list (profile × bench-set × tasks × reps) as JSON for the shell to
+  consume. No execution responsibility; pure manifest reader +
+  validator.
+- Add `fiz-bench validate` and `fiz-bench preflight --profile P` as
+  Go helpers if the shell needs them; otherwise shell does the checks
+  directly.
+- Shell owns: matrix expansion (from `plan --json` output), output
+  path creation per cell, resume check (does `report.json` already
+  exist with terminal `final_status`?), `fiz` / Harbor invocation,
+  signal handling, process-tree reaping.
+- The existing `cmd/bench/sweep` execution path continues to work in
+  parallel until PR 4.
 
-Validation should be fast and offline. Live endpoint checks belong to
-`./benchmark preflight --lanes ...`, not to `validate` or `--plan`.
+**Acceptance**: `./benchmark --plan --profile P --bench-set B` prints
+the matrix and creates no files. `./benchmark --profile P --bench-set
+B` runs cells against a smoke set and produces self-describing cell
+records.
+
+### PR 2 — Backfill existing cells
+
+- One-shot script (`scripts/benchmark/backfill-cell-metadata.py` or
+  similar). Walks `benchmark-results/**/cells/`.
+- For each cell:
+  - Read `profile_id` (and `profile_snapshot`).
+  - Resolve to a current profile YAML, applying `PROFILE_ALIASES`
+    rules from `build-benchmark-data.py:150`.
+  - For the 4 deleted profiles, recover the YAML from git history
+    (the commit that deleted it):
+    - `sindri-club-3090`
+    - `vidar-qwen3-6-27b-openai-compat`
+    - `sindri-club-3090-llamacpp`
+    - `gpt-5-3-mini`
+  - Embed the resolved profile into the cell's `report.json`.
+  - Add `framework`, `dataset` (from path), `cell_id` (mint a synthetic
+    one with the cell's `started_at` timestamp).
+  - Move the cell to the new path (`framework/task/cell-id/`).
+  - If profile is irrecoverable: delete the cell directory.
+- Idempotent re-run safe: already-backfilled cells (with embedded
+  `cell.profile.*`) are skipped.
+- Delete the 4 `.lane_aborted/` marker directories at
+  `benchmark-results/fiz-tools-v1/cells/.lane_aborted/`.
+- Delete recipe-named operational subdirs (`tb21-all/`, `or-passing/`,
+  `local-qwen/`, `timing-baseline/`) under
+  `benchmark-results/fiz-tools-v1/` — they contain per-lane index
+  files now superseded by self-describing cells.
+
+**Acceptance**: Post-backfill, every cell under
+`benchmark-results/**/cells/` carries an embedded `profile:` block.
+Zero cells reference a profile via `profile_id` only.
+`scripts/website/build-benchmark-data.py` runs successfully against
+the backfilled cells using *only* embedded metadata (verified by
+temporarily commenting out `PROFILE_ALIASES`).
+
+### PR 3 — Analytics read embedded metadata
+
+- `scripts/website/build-benchmark-data.py`: replace profile-YAML
+  joins with embedded `cell.profile.*` reads. Delete
+  `PROFILE_ALIASES` (~line 150) and `EXCLUDED_PROFILES`.
+- `scripts/benchmark/generate-report.py`: same switch. Delete
+  lane-block reads from sweep YAML.
+- `cmd/bench/terminalbench_import.go`: read embedded
+  `cell.profile.versioning.snapshot` instead of looking up the
+  profile YAML separately.
+- Comparison classes computed at query time: `GROUP BY
+  cell.profile.metadata.model_family, cell.profile.surface,
+  cell.profile.harness`. No standalone comparison-groups file.
+
+**Acceptance**: `python scripts/website/build-benchmark-data.py`
+produces byte-identical output (modulo embedded metadata being the
+source) compared to a pre-PR baseline run on the same cells. All
+existing benchmark-page tests pass.
+
+### PR 4 — Delete lane scaffolding
+
+Strict prerequisite: PRs 1c, 1d, 2, 3 all landed and verified.
+
+- Delete entire files:
+  - `scripts/benchmark/terminalbench-2-1-sweep.yaml`
+  - `cmd/bench/lanes.go`
+  - `cmd/bench/lanes_clone.go` and tests
+  - Any `cmd/bench/testdata/` fixtures referencing lanes
+- Delete code within surviving files:
+  - `cmd/bench/sweep.go`: `validateSweepLaneEnvMatch` and callers;
+    `Lane` struct's metadata duplicates (`FizeauEnv`, `ModelFamily`,
+    `ModelID`, `QuantLabel`, `ProviderSurface`, `Runtime`,
+    `HardwareLabel`, `Endpoint`); resource-group concurrency wiring
+    (replaced by concurrency-group lookup); recipe-block reading;
+    comparison-group reading; lane-alias parsing
+  - `cmd/bench/matrix.go`: lane-id handling at the cell-write
+    boundary
+  - `cmd/bench/sweep_test.go`: all lane-validation and lane-env-match
+    test cases
+- Rewrite `fiz-bench sweep` (if kept at all) as a profile × bench-set
+  cross-product loop wrapping the shell driver. Process-tree reaping
+  and resume logic that lived in `sweep.go` migrate to the shell
+  driver.
+- Drop CLI flags: `--phase`, `--subset`, `--all-recipes`,
+  `--staged-recipes`, `--snapshot`, `--snapshot-suffix`.
+
+**Acceptance**: `go test ./...` passes. `go build ./cmd/bench` works.
+`./benchmark --profile P --bench-set B` runs cells equivalent to
+the pre-PR sweep invocation.
+
+### PR 4b — Zero-reference verification
+
+- `rg -n 'lane_id|validateSweepLaneEnvMatch|FizeauEnv|PROFILE_ALIASES|EXCLUDED_PROFILES|resource_groups|comparison_groups|lane_aliases|recipes:'`
+  across non-archival paths.
+- Expected zero hits outside `.ddx/`, `docs/research/archive/`, and
+  frozen `benchmark-results/` snapshots.
+- Any hit is a deletion bug; fix in PR 4b or follow-up.
+
+**Acceptance**: documented grep produces zero non-archival hits.
+
+### PR 5 — Docs + shell cleanup
+
+- Rewrite `scripts/benchmark/README.md` for new operator workflow.
+- Delete `fiz-bench lanes clone` documentation references.
+- Delete or rewrite `scripts/benchmark/run_terminalbench_2_1_sweep.sh`
+  (its alias case arms, phase logic, Python YAML-scraping snippets).
+  Replace with thin `./benchmark` driver.
+- Update `scripts/benchmark/run_medium_model_terminalbench_comparison.sh`
+  similarly.
+- Update `docs/benchmarks/sections/{02,03,05}-*.md`,
+  `docs/benchmarks/runtime-props.md`, and other public-facing
+  benchmark docs for any stale lane/recipe vocabulary.
+- Update ADR-015 if its workbench joins assumed profile-YAML lookups.
+- Audit `docs/helix/02-design/solution-designs/SD-{009,010,012}` for
+  benchmark-mode/matrix/evidence-ledger references to lane/recipe
+  concepts; file follow-up amendments if needed.
+
+**Acceptance**: `rg -i 'lane|recipe|comparison.group|resource.group|lane.alias'`
+in `docs/` returns only intentional historical references (e.g.
+ADR-016 itself explaining what was removed).
 
 ## Regression Guardrails
 
-This cleanup must not silently drop behavior that current benchmark runs depend
-on. Before deleting any `cmd/bench sweep` or `cmd/bench matrix` execution path,
-capture the current behavior as parity fixtures:
+Before any deletion (PR 4), capture golden fixtures:
 
-- **Plan parity:** for representative invocations, old and new planners produce
-  the same selected task ids, lane ids, reps, resource groups, and output cell
-  keys.
-- **Command parity:** for one local lane, one managed provider lane, and one
-  harness lane, the new runner emits the same effective `fiz`/Harbor command
-  inputs as the old runner.
-- **Resume parity:** existing completed `report.json` cells are skipped; invalid
-  cells rerun only with the retry-invalid option; force-rerun ignores terminal
-  reports.
-- **Concurrency parity:** resource-group caps still serialize local endpoints
-  and allow independent resource groups to run concurrently.
-- **Failure parity:** lane abort after repeated identical failures is either
-  preserved in the shell runner or deliberately moved to a documented
-  post-processing/preflight check before old code is removed.
-- **Telemetry parity:** generated cell directories still contain the artifacts
-  required by existing report generation and evidence import.
-- **Signal parity:** interrupting the script terminates active child processes
-  and leaves resumable cell state.
+- **Plan parity**: `scripts/benchmark/testdata/plans/` directory with
+  golden expected `--plan --json` outputs for representative
+  invocations:
+  - `--profile vidar-ds4 --bench-set tb-2-1-timing-baseline`
+  - `--profile sindri-llamacpp,vidar-ds4 --bench-set tb-2-1-or-passing`
+  - `--profile openai-gpt-5-5 --bench-set tb-2-1-all`
+- **Command parity**: capture the effective `fiz` / Harbor command
+  inputs for one local provider lane, one managed provider lane, one
+  harness lane. Old runner and new runner must emit the same env +
+  args for the same (profile, task).
+- **Resume parity**: existing completed cells skip on rerun; invalid
+  cells rerun only with `--retry-invalid`; `--force-rerun` ignores
+  terminal reports.
+- **Concurrency parity**: concurrency-group caps serialize endpoints
+  the way resource-group caps did. Sanity: enumerate every current
+  `resource_groups[]` entry, confirm the new `concurrency_group`
+  equivalent has the same `max_concurrency`.
+- **Telemetry parity**: cell directories still contain artifacts
+  required by report generation and evidence import (`report.json`,
+  `fiz.txt`, `session/`).
+- **Signal parity**: SIGTERM to `./benchmark` reaps active child
+  processes and leaves resumable cell state.
 
-Add a checked-in `scripts/benchmark/testdata/plans/` directory with golden
-expected plans for at least:
+Golden fixtures live in `scripts/benchmark/testdata/plans/` and are
+tested via `go test ./cmd/bench/...` after PR 1d.
 
-- `recipes=timing-baseline lanes=vidar-ds4`
-- `recipes=or-passing lanes=sindri-llamacpp,vidar-ds4`
-- `recipes=tb21-all lanes=openai-gpt55`
-- `preset=<current staged equivalent>` if presets survive
+## Migration Open Questions
 
-The new script's `--plan --json` output should be compared to those fixtures in
-tests. If a fixture changes, the diff must show an intentional benchmark
-contract change, not incidental refactor churn.
+These need answers before specific PRs start:
 
-## Current Functionality Inventory
+1. **Recipe → bench-set name mapping.** Current recipes:
+   `canary`, `local-qwen`, `timing-baseline`, `or-passing`, `tb21-all`,
+   `openai-cheap`, `sonnet-comparison`, `gpt-comparison`,
+   `medium-model-canary`, `medium-model`. Bench-set IDs should keep the
+   recipe ID where possible (`tb-2-1-canary`, `tb-2-1-or-passing`,
+   etc.). Confirm any exceptions.
 
-These features must be preserved, explicitly replaced, or explicitly retired
-with a commit that names the removal:
+2. **Orphan profile recovery.** Pull from git log:
+   - `sindri-club-3090` — last present at which commit?
+   - `vidar-qwen3-6-27b-openai-compat` — same.
+   - `sindri-club-3090-llamacpp` — same.
+   - `gpt-5-3-mini` — same.
+   PR 2 needs operator confirmation on the recovered YAML for each
+   before backfill writes them into ~660 cells.
 
-- TerminalBench task selection from recipe task-list files.
-- Repetition count per recipe.
-- Resume, force-rerun, and retry-invalid behavior.
-- Per-resource-group concurrency limits.
-- Local/managed lane distinction for default concurrency and key handling.
-- Harbor task execution and grading.
-- FizeauAgent forwarding of lane env into `fiz`.
-- Per-cell `report.json`, `fiz.txt`/session logs, trajectory artifacts, and
-  runtime props where available.
-- Invalid setup/provider/quota/auth classification.
-- Consecutive identical failure lane abort.
-- Preflight endpoint probe as an explicit command.
-- Report aggregation and evidence import compatibility.
-- Stale Harbor container cleanup, if still needed after the shell process model
-  is simplified.
+3. **Wrapper-harness profile naming.** Six lanes today carry
+   `FIZEAU_HARNESS=<claude|codex|pi|opencode>` on top of a base
+   profile. The matching profile YAMLs already exist
+   (`fiz-harness-claude-sonnet-4-6.yaml`, etc.) but they don't
+   currently declare `harness:` because the harness was a lane-env
+   override. PR 1a explicitly adds `harness:` to those profiles.
+   Confirm none are missing — `grep -l 'FIZEAU_HARNESS' terminalbench-2-1-sweep.yaml`
+   should match an existing profile for every lane.
 
-Do not remove the old Go execution path until this inventory has an owner and a
-parity or retirement decision for each line.
-
-## Migration Steps
-
-1. **Add pure manifest reader, planner, and validator.**
-   - Add `./benchmark --plan`, `./benchmark validate`, `./benchmark lanes`, and
-     `./benchmark recipes`.
-   - The runner reads the benchmark manifest directly and emits a
-     shell-consumable JSON cell list for `--plan --json`.
-   - Move lane alias resolution into YAML.
-   - Add profile/lane/resource/task validation.
-   - Acceptance: `./benchmark --plan --recipes timing-baseline --lanes ds4-mtp`
-     prints a plan or fails with a precise config error and creates no files.
-
-2. **Add parity fixtures before changing execution.**
-   - Capture golden plan JSON for representative current invocations.
-   - Capture effective command inputs for one local provider lane, one managed
-     provider lane, and one harness lane.
-   - Acceptance: old runner and new planner agree on task ids, lane ids, reps,
-     resource groups, and cell output keys for the fixture set.
-
-3. **Make the shell wrapper the runner.**
-   - Replace phase logic, Python YAML snippets, alias case arms, and implicit
-     preflight with a small matrix loop over planner JSON.
-   - Invoke `fiz` directly for simple cells and Harbor's FizeauAgent for
-     TerminalBench cells.
-   - Keep binary bootstrap, default paths, output path creation, resume checks,
-     and signal handling in shell.
-   - Acceptance: `bash -n scripts/benchmark/run_terminalbench_2_1_sweep.sh`
-     passes and a plan-only run has no side effects.
-
-4. **Make recipes/lane selection orthogonal.**
-   - Remove `recipes[].lanes`.
-   - Add optional `presets[]` for named lane+recipe bundles.
-   - Update the shell runner so `--recipes` and `--lanes` are both required
-     unless `--preset` is provided.
-   - Acceptance: any lane can run with any recipe unless validation marks the
-     combination incompatible for a concrete reason.
-
-5. **Port or retire reporting behavior.**
-   - Keep report aggregation and evidence import as support tooling if useful.
-   - Move execution-only responsibilities out of `cmd/bench`.
-   - Acceptance: existing report-generation/import tests pass against output
-     from the shell runner, or the plan records the replacement command and
-     test.
-
-6. **Clean up legacy vocabulary.**
-   - Remove `--phase`, `--subset`, `--all-recipes`, `--staged-recipes`,
-     `preferred`, `full`, and `qwen36-gpt55-full` from the public script.
-   - Keep compatibility only in internal helpers if needed for one release,
-     with deprecation tests and a dated removal bead.
-   - Acceptance: `./benchmark --help` shows only recipes, lanes, presets,
-     validate, plan, and run concepts.
-
-7. **Wire DS4 MTP as a normal lane.**
-   - Add `vidar-ds4-mtp` profile and lane alias data.
-   - Confirm whether MTP is a request parameter, provider option, or server
-     startup mode; remove placeholder env if it is not real.
-   - Acceptance: `./benchmark --plan --recipes timing-baseline --lanes ds4-mtp`
-     works from a clean checkout, and `validate` proves profile/lane consistency.
-
-8. **Delete or demote the old Go runner.**
-   - Once parity fixtures pass and the functionality inventory has decisions,
-     remove `cmd/bench sweep/matrix` execution commands or mark them as
-     deprecated support tools that cannot launch benchmark cells.
-   - Acceptance: no documentation tells operators to start a benchmark through
-     `fiz-bench`; `rg -n "fiz-bench (sweep|matrix)|cmd/bench.*execution"`
-     finds only historical notes or tests for removed behavior.
-
-## Implementation Order
-
-Recommended bead sequence:
-
-1. Manifest reader, validator, and pure planner.
-2. Parity fixture capture.
-3. Shell matrix runner that calls `fiz`.
-4. Orthogonal recipes and lanes schema change.
-5. Reporting/evidence compatibility pass.
-6. Legacy CLI cleanup.
-7. DS4 MTP lane repair on the simplified schema.
-8. Old Go runner deletion/demotion.
-
-The first three steps can land before the schema break. They immediately fix
-the "empty directories and nothing runs" experience. The schema break should
-come after plan/validate coverage is strong enough to catch regressions.
+4. **DS4 MTP wiring.** Per the original 2026-05-15 plan, `vidar-ds4-mtp`
+   is the test case for "is MTP a profile attribute, a request
+   parameter, or a server startup mode?". Today the profile exists with
+   `mtp: enabled` in its metadata block and a corresponding lane sets
+   `FIZEAU_DS4_MTP=true`. PR 1a should confirm whether `mtp:` belongs
+   in profile metadata, profile-level config, or something else.
 
 ## Non-Goals
 
-- Do not change matrix report format.
-- Do not change evidence import.
+- Do not change matrix report format beyond adding embedded `profile:`,
+  `framework`, `dataset`, `cell_id`.
+- Do not change evidence import contract.
 - Do not run full TerminalBench as part of this cleanup.
-- Do not add another lane-authoring layer before the runner contract is made
+- Do not add another lane-authoring layer before the runner contract is
   simple.
-- Do not retain or add budget-cap machinery. The simplified runner is not
-  responsible for spend caps.
-- Do not leave two blessed benchmark execution paths. During migration there
-  may be a dual-run period, but it must have parity tests and a deletion bead.
+- Do not retain or add budget-cap machinery. The simplified runner is
+  not responsible for spend caps.
+- Do not leave two blessed benchmark execution paths after PR 4. During
+  PRs 1c–3 there is a dual-run period; PR 4 ends it.
+- Do not introduce presets, recipes, or comparison-groups as data files
+  pending operator demand. Cell-embedded metadata + bash one-liners
+  cover the use cases today.
 
-## Open Decisions
+## Implementation Order Summary
 
-- Whether endpoint preflight is automatic on `run` or explicit via
-  `--preflight`. Default should be explicit until the command is fast and
-  reliably scoped.
-- Whether `presets[]` are needed at all after operators get comfortable with
-  `--recipes` and `--lanes`.
+1. **PR 1a** — profile schema additions
+2. **PR 1b** — bench-sets/ and concurrency-groups.yaml
+3. **PR 1c** — runner writes self-describing cells
+4. **PR 1d** — `./benchmark` shell driver
+5. **PR 2** — backfill existing cells
+6. **PR 3** — analytics read embedded metadata
+7. **PR 4** — delete lane scaffolding (+ 4b zero-reference verification)
+8. **PR 5** — docs + shell cleanup
+
+PRs 1a, 1b are pure additions. PRs 1c, 1d, 2, 3 are reversible (old
+path still works). PR 4 is the cliff edge — by then parity fixtures
+guard the new path.
+
+## Bead Breakdown Plan
+
+This plan should be filed as one EPIC bead with eight child beads, one
+per PR. Suggested IDs (assigned at filing):
+
+- `EPIC: bench — cells are self-describing evidence` (this plan)
+  - `bench: add harness/surface/concurrency_group to profile schema` (PR 1a)
+  - `bench: add bench-sets/ and concurrency-groups.yaml` (PR 1b)
+  - `bench: runner embeds full profile snapshot in cells` (PR 1c)
+  - `bench: ./benchmark shell driver` (PR 1d)
+  - `bench: backfill existing cells with embedded metadata` (PR 2)
+  - `bench: analytics read embedded cell metadata` (PR 3)
+  - `bench: delete lane scaffolding` (PR 4 + 4b)
+  - `bench: docs and shell cleanup` (PR 5)
+
+Each child bead's acceptance criteria match the PR's "Acceptance"
+section above. Parity fixtures land as part of PR 1d.
