@@ -7,11 +7,11 @@ produced before this feature was introduced (pre-`fizeau-c12e6241`).
 
 ## Why it exists
 
-Many cell-cell deltas are **not** in the lane definition — they live in the
+Many cell-cell deltas are **not** in the profile definition — they live in the
 running server config: MTP on/off, speculative decoder configs, KV quant
 variants, context window, etc. Capturing server-reported props per cell makes
 the comparison grid self-describing and enables parameter-sweep experiments
-where the same lane id is reused with different server configs.
+where the same profile is reused with different server configs.
 
 ## Field reference
 
@@ -65,7 +65,7 @@ proceeds. The grid renders `—` for `runtime_props` fields in this case.
 | `omlx` | `GET /v1/models` | Confirmed at vidar:1235 |
 | `lucebox` / `lucebox-dflash` | `GET /props`, `GET /v1/models` | `/v1/models` confirmed; `/props` TODO — verify on live sindri:1236 |
 | `rapid-mlx` | `GET /v1/models` | Confirmed at grendel:8000 |
-| `openrouter` / `openai` / cloud | _(none)_ | Cloud lanes get `extractor: "cloud"` with `base_model` from profile |
+| `openrouter` / `openai` / cloud | _(none)_ | Cloud profiles get `extractor: "cloud"` with `base_model` from profile |
 
 ## Adding a new platform extractor
 

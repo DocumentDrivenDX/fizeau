@@ -119,7 +119,7 @@ account for 98% of failures:
 These are minimum thresholds. If a batch of changes does not lift pass
 rate, the changes must be investigated before filing the next batch.
 
-## Rerun recipe
+## Rerun procedure
 
 ```bash
 cd /home/erik/Projects/agent
