@@ -137,7 +137,7 @@ AGGREGATE_DIMENSIONS = [
     "task_difficulty",
     "harness",
     "harness_label",
-    "lane_label",
+    "profile_label",
     "descriptor",
     "deployment_class",
     "provider_type",
@@ -243,7 +243,7 @@ def merge_task_metadata(metadata: dict[str, dict[str, Any]], tasks: list[Any]) -
 
 def iter_report_paths(cells_root: Path, suite: str) -> list[Path]:
     suite_root = cells_root / suite
-    return sorted(suite_root.glob("*/*/rep-*/report.json"))
+    return sorted(suite_root.glob("*/*/report.json"))
 
 
 def public_profile_label(profile_id: str) -> str:
@@ -554,12 +554,12 @@ def build_cell_row(
         report = json.load(f)
 
     rel = report_path.relative_to(cells_root)
-    suite, task, lane_id, rep_dir = rel.parts[:4]
-    # ADR-016: read the resolved profile snapshot embedded in the cell. The
-    # legacy profile_id field is kept on the row for join keys, but every
-    # metadata field comes from cell.profile.* now.
+    # ADR-016 layout: cells/<suite>/<task>/<cell-id>/report.json. The cell
+    # directory name is opaque evidence — every metadata field comes from
+    # cell.profile.* embedded in the report.
+    suite, task, cell_id = rel.parts[:3]
     profile = report.get("profile") or {}
-    profile_id = str(report.get("profile_id") or profile.get("id") or lane_id)
+    profile_id = str(report.get("profile_id") or profile.get("id") or "")
     metadata = profile.get("metadata") or {}
     provider = profile.get("provider") or {}
     limits = profile.get("limits") or {}
@@ -606,11 +606,11 @@ def build_cell_row(
         "task_subsets": sorted(name for name, tasks in subsets.items() if task in tasks),
         "harness": report.get("harness"),
         "harness_label": harness_label(profile_id, profile, report.get("harness")),
-        "internal_lane_id": lane_id,
+        "cell_id": cell_id,
         "profile_id": profile_id,
         "profile_exists": bool(profile),
         "profile_path": report.get("profile_path"),
-        "lane_label": public_profile_label(profile_id),
+        "profile_label": public_profile_label(profile_id),
         "descriptor": "",
         "deployment_class": "managed-cloud" if provider_type in CLOUD_PROVIDERS else ("self-hosted" if provider_type else None),
         "provider_type": provider_type,
@@ -656,7 +656,7 @@ def build_cell_row(
         "hardware_tdp_watts_spec": number((hardware_profile or {}).get("tdp_watts_spec")),
         "cpu_model": coalesce(hardware.get("cpu_model"), (machine or {}).get("cpu")),
         "os": coalesce(((machine or {}).get("snapshot") or {}).get("os_release"), (machine or {}).get("os")),
-        "rep": integer(report.get("rep")) or integer(rep_dir.replace("rep-", "")) or 0,
+        "rep": integer(report.get("rep")) or 0,
         "adapter_module": report.get("adapter_module"),
         "adapter_translation_notes": json_text(report.get("adapter_translation_notes")),
         "adapter_translation_notes_count": len(report.get("adapter_translation_notes") or []),
@@ -803,7 +803,7 @@ def build_cell_dataset(
             diagnostics["result_state_counts"][result_state] += 1
             rows.append(row)
     normalize_columns(rows)
-    rows.sort(key=lambda r: (r["suite"], r["task"], r["internal_lane_id"], r["rep"], r["source_report"]))
+    rows.sort(key=lambda r: (r["suite"], r["task"], r["profile_id"], r["rep"], r["source_report"]))
     diagnostics["n_rows"] = len(rows)
     return rows, finalize_diagnostics(diagnostics)
 
@@ -868,7 +868,7 @@ def build_task_combinations(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "aggregate_id": hashlib.sha256(json.dumps(base, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:24],
             "schema_version": 1,
             "profile_ids": sorted({row["profile_id"] for row in cells if row.get("profile_id")}),
-            "internal_lane_ids": sorted({row["internal_lane_id"] for row in cells if row.get("internal_lane_id")}),
+            "cell_ids": sorted({row["cell_id"] for row in cells if row.get("cell_id")}),
             "n_attempts": n_attempts,
             "n_graded": n_graded,
             "n_pass": n_pass,
@@ -908,7 +908,7 @@ def build_task_combinations(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "last_finished_at": max([row["finished_at"] for row in cells if row.get("finished_at")] or [None]),
         })
         out.append(base)
-    out.sort(key=lambda r: (r["suite"], r["task"], r["lane_label"], r["aggregate_id"]))
+    out.sort(key=lambda r: (r["suite"], r["task"], r["profile_label"] or "", r["aggregate_id"]))
     return out
 
 

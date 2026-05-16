@@ -601,7 +601,7 @@ const workbenchSnapshotJS = `(async () => {
     comparisonTaskLinkHref: comparisonTaskLink?.href ?? '',
     currentRoute,
     locationHash: window.location.hash,
-    legacyLaneFilterPresent: Boolean(root?.querySelector('[data-bw-filter-field="lane_label"]')),
+    legacyLaneFilterPresent: Boolean(root?.querySelector('[data-bw-filter-field="lane_label"], [data-bw-filter-field="internal_lane_id"]')),
     modelOptionCount: options('[data-bw-model]').length,
     modelOptions: values('[data-bw-model]'),
     providerOptionCount: options('[data-bw-filter-field="provider_type"]').length,

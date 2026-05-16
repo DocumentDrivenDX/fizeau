@@ -25,9 +25,7 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             cells = root / "cells"
-            profiles = root / "profiles"
             cells.mkdir()
-            profiles.mkdir()
 
             machines = root / "machines.yaml"
             machines.write_text(
@@ -61,26 +59,21 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (profiles / "sindri-llamacpp.yaml").write_text(
-                yaml.safe_dump(
-                    {
-                        "id": "sindri-llamacpp",
-                        "metadata": {
-                            "model_family": "qwen3-6-27b",
-                            "model_id": "Qwen3.6-27B-UD-Q3_K_XL.gguf",
-                            "quant_label": "gguf-q3-k-xl-unsloth",
-                            "provider_surface": "sindri-llamacpp",
-                            "runtime": "llama-server",
-                            "server": "sindri",
-                        },
-                        "provider": {"type": "llama-server", "model": "Qwen3.6-27B-UD-Q3_K_XL.gguf"},
-                        "limits": {"max_output_tokens": 65536, "context_tokens": 180000},
-                        "sampling": {"temperature": 0.6, "top_p": 0.95, "top_k": 20, "reasoning": "low"},
-                    }
-                ),
-                encoding="utf-8",
-            )
-            report_dir = cells / "terminal-bench-2-1" / "bench-0" / "sindri-llamacpp" / "rep-001"
+            profile = {
+                "id": "sindri-llamacpp",
+                "metadata": {
+                    "model_family": "qwen3-6-27b",
+                    "model_id": "Qwen3.6-27B-UD-Q3_K_XL.gguf",
+                    "quant_label": "gguf-q3-k-xl-unsloth",
+                    "provider_surface": "sindri-llamacpp",
+                    "runtime": "llama-server",
+                    "server": "sindri",
+                },
+                "provider": {"type": "llama-server", "model": "Qwen3.6-27B-UD-Q3_K_XL.gguf"},
+                "limits": {"max_output_tokens": 65536, "context_tokens": 180000},
+                "sampling": {"temperature": 0.6, "top_p": 0.95, "top_k": 20, "reasoning": "low"},
+            }
+            report_dir = cells / "terminal-bench-2-1" / "bench-0" / "20260513T000000Z-abcd"
             report_dir.mkdir(parents=True)
             (report_dir / "report.json").write_text(
                 json.dumps(
@@ -89,6 +82,7 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
                         "dataset_version": "2.1",
                         "harness": "fiz",
                         "profile_id": "sindri-llamacpp",
+                        "profile": profile,
                         "rep": 1,
                         "task_id": "bench-0",
                         "category": "software-engineering",
@@ -130,7 +124,7 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rows = build_benchmark_data.build_cells(cells, ["terminal-bench-2-1"], profiles, machines, "no-subsets-*.yaml")
+            rows = build_benchmark_data.build_cells(cells, ["terminal-bench-2-1"], machines, "no-subsets-*.yaml")
 
         self.assertEqual(1, len(rows))
         row = rows[0]
@@ -170,9 +164,7 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             cells = root / "cells"
-            profiles = root / "profiles"
             cells.mkdir()
-            profiles.mkdir()
             machines = root / "machines.yaml"
             machines.write_text("machines: {}\nhardware_profiles: {}\n", encoding="utf-8")
 
@@ -231,14 +223,13 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
                 ),
             ]
             for task, report in reports:
-                report_dir = cells / "terminal-bench-2-1" / task / "lane" / "rep-001"
+                report_dir = cells / "terminal-bench-2-1" / task / "20260513T000000Z-abcd"
                 report_dir.mkdir(parents=True)
                 (report_dir / "report.json").write_text(json.dumps(report), encoding="utf-8")
 
             rows, diagnostics = build_benchmark_data.build_cell_dataset(
                 cells,
                 ["terminal-bench-2-1"],
-                profiles,
                 machines,
                 "no-subsets-*.yaml",
             )
@@ -267,9 +258,9 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
                 {
                     "suite": "terminal-bench-2-1",
                     "task": "bench-0",
-                    "internal_lane_id": "sindri-llamacpp",
+                    "cell_id": "20260513T000000Z-abcd",
                     "profile_id": "sindri-llamacpp",
-                    "lane_label": "sindri-llamacpp",
+                    "profile_label": "sindri-llamacpp",
                     "model_display_name": "Qwen3.6 27B",
                     "model_quant": "Q3_K_XL",
                     "engine": "llama-server",
@@ -316,8 +307,8 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
                     "task_category": "software-engineering",
                     "task_difficulty": "hard",
                     "profile_id": "sindri-vllm",
-                    "internal_lane_id": "sindri-vllm",
-                    "lane_label": "sindri-vllm",
+                    "cell_id": "20260513T000000Z-abcd",
+                    "profile_label": "sindri-vllm",
                     "model_display_name": "Qwen3.6 27B",
                     "model_quant": "int4",
                     "engine": "vllm",
