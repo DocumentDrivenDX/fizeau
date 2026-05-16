@@ -299,7 +299,7 @@ models:
 	projectFake := newFakeOpenAIServer(t)
 	envFake := newFakeOpenAIServer(t)
 
-writeGlobalConfig(t, home, `
+	writeGlobalConfig(t, home, `
 model_catalog:
   manifest: `+manifestPath+`
 providers:
@@ -311,7 +311,7 @@ providers:
 default: local
 `)
 
-writeTempConfig(t, workDir, `
+	writeTempConfig(t, workDir, `
 model_catalog:
   manifest: `+manifestPath+`
 providers:

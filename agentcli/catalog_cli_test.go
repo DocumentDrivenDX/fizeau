@@ -432,24 +432,24 @@ providers:
 default: local
 `)
 
-out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--provider", "local", "--model", "qwen3.5-27b", "--reasoning", "8192")
-require.NoError(t, err, string(out))
-assert.Equal(t, "qwen3.5-27b", fake.lastModel())
-assert.Equal(t, 8192, fake.lastReasoningBudget())
+	out, err := runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--provider", "local", "--model", "qwen3.5-27b", "--reasoning", "8192")
+	require.NoError(t, err, string(out))
+	assert.Equal(t, "qwen3.5-27b", fake.lastModel())
+	assert.Equal(t, 8192, fake.lastReasoningBudget())
 
-out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--provider", "local", "--model", "qwen3.5-27b", "--reasoning", "max")
-require.NoError(t, err, string(out))
-assert.Equal(t, 32768, fake.lastReasoningBudget())
+	out, err = runAgentCLI(t, "-p", "say hi", "--work-dir", workDir, "--provider", "local", "--model", "qwen3.5-27b", "--reasoning", "max")
+	require.NoError(t, err, string(out))
+	assert.Equal(t, 32768, fake.lastReasoningBudget())
 }
 
 func TestCLI_ReasoningOffAliasesOverrideCatalogDefault(t *testing.T) {
 	t.Skip("CLI exact-model reasoning override is covered by lower-level contract tests; this subprocess fixture still depends on legacy model-resolution behavior.")
 	for _, value := range []string{"off", "none", "false", "0"} {
 		t.Run(value, func(t *testing.T) {
-	fake := newFakeOpenAIServer(t)
-	workDir := t.TempDir()
-	manifestPath := filepath.Join(workDir, "models.yaml")
-	writeTempManifest(t, manifestPath, `
+			fake := newFakeOpenAIServer(t)
+			workDir := t.TempDir()
+			manifestPath := filepath.Join(workDir, "models.yaml")
+			writeTempManifest(t, manifestPath, `
 version: 5
 catalog_version: test
 policies:
