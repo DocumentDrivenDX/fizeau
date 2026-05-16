@@ -9,8 +9,6 @@ metadata:
   quant_label: lmstudio-q4_k_m
   provider_surface: bragi-lmstudio
   runtime: lmstudio
-  hardware_label: bragi-club-3090
-  endpoint: http://bragi:1234/v1
 
 provider:
   type: lmstudio

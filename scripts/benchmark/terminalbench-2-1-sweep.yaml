@@ -352,9 +352,7 @@ comparison_groups:
       - model_id          # exact model string served (from /v1/models)
       - quant_label
       - provider_surface
-      - endpoint
       - runtime           # omlx / lmstudio / vllm
-      - hardware_label    # vidar-apple-m / bragi-5090 / bragi-club-3090
 
   - id: cg-sonnet-harness-fiz
     type: harness_delta
@@ -458,9 +456,9 @@ resource_groups:
 
   - id: rg-sindri-lucebox-dflash
     server: sindri
-    base_url: "http://sindri.azgaard.home:1236/v1"
+    base_url: "http://sindri:8080/v1"
     provider_type: lucebox
-    hardware: "RTX 3090 Ti (sindri, port 1236)"
+    hardware: "RTX 3090 Ti (sindri, port 8080)"
     max_concurrency: 1
     notes: >-
       lucebox-hub DFlash speculative decoder serving alias luce-dflash. Target
@@ -911,7 +909,7 @@ lanes:
     fizeau_env:
       FIZEAU_PROVIDER: lucebox
       FIZEAU_MODEL: "luce-dflash"
-      FIZEAU_BASE_URL: "http://sindri.azgaard.home:1236/v1"
+      FIZEAU_BASE_URL: "http://sindri:8080/v1"
       FIZEAU_API_KEY_ENV: LUCEBOX_API_KEY
     model_family: qwen3-6-27b
     model_id: "luce-dflash"
@@ -919,7 +917,7 @@ lanes:
     provider_surface: sindri-lucebox
     runtime: lucebox-dflash
     hardware_label: sindri-3090-ti
-    endpoint: "http://sindri:1236/v1"
+    endpoint: "http://sindri:8080/v1"
     sampling:
       temperature: 0.6
       top_p: 0.95

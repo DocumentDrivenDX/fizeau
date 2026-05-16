@@ -8,8 +8,6 @@ metadata:
   quant_label: mlx-8bit
   provider_surface: vidar-omlx
   runtime: omlx
-  hardware_label: vidar-apple-m
-  endpoint: http://vidar:1235/v1
   server: vidar
 
 provider:

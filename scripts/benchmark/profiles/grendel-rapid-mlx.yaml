@@ -7,8 +7,6 @@ metadata:
   quant_label: mlx-8bit
   provider_surface: grendel-rapid-mlx
   runtime: rapid-mlx
-  hardware_label: grendel-apple-m
-  endpoint: http://grendel:8000/v1
   server: grendel
 
 provider:

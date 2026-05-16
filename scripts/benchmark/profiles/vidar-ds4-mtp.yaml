@@ -20,8 +20,6 @@ metadata:
   backend: metal
   kv_disk_dir: /Volumes/Samsung/ds4-kv
   kv_disk_space_mb: 131072
-  hardware_label: vidar-m2-ultra-192gb
-  endpoint: http://192.168.2.106:1236/v1
   server: vidar
   mtp: enabled
 

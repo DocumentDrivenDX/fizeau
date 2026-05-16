@@ -7,8 +7,6 @@ metadata:
   quant_label: vllm-autoround
   provider_surface: bragi-club-vllm
   runtime: vllm
-  hardware_label: bragi-club-3090
-  endpoint: http://bragi:8020/v1
   server: bragi
 
 provider:

@@ -7,8 +7,6 @@ metadata:
   quant_label: vllm-autoround
   provider_surface: sindri-vllm
   runtime: vllm
-  hardware_label: sindri-club-3090
-  endpoint: http://sindri:8020/v1
   server: sindri
 
 provider:

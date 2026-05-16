@@ -12,8 +12,6 @@ metadata:
   quant_label: gguf-q3-k-xl-unsloth
   provider_surface: sindri-llamacpp
   runtime: llama-server
-  hardware_label: sindri-club-3090
-  endpoint: http://sindri:8020/v1
   server: sindri
 
 provider:
