@@ -139,6 +139,37 @@ const USD_FORMAT = new Intl.NumberFormat(undefined, {
 const TERMINAL_BENCH_TASK_BASE = "https://www.tbench.ai/registry/terminal-bench-core/head/";
 const RESULT_STATE_PASSED = "passed";
 
+const RAW_STATE_KEYS = {
+  preset: "preset",
+  search: "q",
+  resultState: "outcome",
+  task: "task",
+  model: "model",
+  engine: "engine",
+  gpu: "gpu",
+  maxRam: "max_ram",
+  passedOnly: "passed",
+};
+
+const COMPARE_STATE_KEYS = {
+  a: "a",
+  b: "b",
+  dimension: "dim",
+  maxRam: "max_ram",
+  sort: "sort",
+};
+
+const COMBINATION_STATE_KEYS = {
+  task: "task",
+  model: "model",
+  gpu: "gpu",
+  passedOnly: "passed",
+  sort: "sort",
+};
+
+const RAW_FILTER_PREFIX = "f.";
+const COMPARE_FILTER_PREFIX = "cf.";
+
 function ready(fn) {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", fn, { once: true });
@@ -239,6 +270,28 @@ function sortRows(rows, sort, sortDefs) {
 function nextSort(current, key) {
   if (current.key !== key) return { key, direction: "asc" };
   return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+}
+
+function parseSort(value, sortDefs, fallback) {
+  const [key, direction] = String(value || "").split(":");
+  if (!Object.prototype.hasOwnProperty.call(sortDefs, key)) return { ...fallback };
+  return { key, direction: direction === "asc" ? "asc" : "desc" };
+}
+
+function encodeSort(sort) {
+  return `${sort.key}:${sort.direction === "asc" ? "asc" : "desc"}`;
+}
+
+function setControlValue(control, value) {
+  if (!control || value === null || value === undefined) return;
+  const next = String(value);
+  if (control.tagName === "SELECT" && ![...control.options].some((option) => option.value === next)) return;
+  control.value = next;
+}
+
+function setCheckboxValue(control, value) {
+  if (!control) return;
+  control.checked = value === "1" || value === "true";
 }
 
 function sortHeader(label, key, state) {
@@ -386,6 +439,7 @@ class BenchmarkWorkbench {
     this.taskLinkTable = null;
     this.gridConfig = null;
     this.gridConfigReady = false;
+    this.restoringRouteState = false;
   }
 
   async init() {
@@ -409,7 +463,7 @@ class BenchmarkWorkbench {
     this.setStatus("Preparing controls...");
     await this.populateControls();
     this.bindEvents();
-    this.activateRoute(this.routeFromHash(), { replace: true });
+    this.applyRouteFromLocation({ replace: true });
 
     this.setStatus("Loading analytical grid...");
     await this.reload();
@@ -669,21 +723,24 @@ class BenchmarkWorkbench {
   }
 
   bindEvents() {
-    const scheduleRaw = () => {
+    const scheduleRaw = (options = {}) => {
+      if (!this.restoringRouteState) this.syncRouteState({ replace: true });
       clearTimeout(this.reloadTimer);
-      this.reloadTimer = window.setTimeout(() => this.reloadRaw().catch((error) => this.fail(error)), 180);
+      this.reloadTimer = window.setTimeout(() => this.reloadRaw(options).catch((error) => this.fail(error)), 180);
     };
     const scheduleComparison = () => {
+      if (!this.restoringRouteState) this.syncRouteState({ replace: true });
       clearTimeout(this.compareReloadTimer);
       this.compareReloadTimer = window.setTimeout(() => this.loadComparison().catch((error) => this.fail(error)), 180);
     };
     const scheduleCombinations = () => {
+      if (!this.restoringRouteState) this.syncRouteState({ replace: true });
       clearTimeout(this.comboReloadTimer);
       this.comboReloadTimer = window.setTimeout(() => this.loadCombinationAggregates().catch((error) => this.fail(error)), 180);
     };
 
-    window.addEventListener("hashchange", () => this.activateRoute(this.routeFromHash()));
-    window.addEventListener("popstate", () => this.activateRoute(this.routeFromHash()));
+    window.addEventListener("hashchange", () => this.applyRouteFromLocation());
+    window.addEventListener("popstate", () => this.applyRouteFromLocation());
     this.routes.forEach((link, route) => {
       link.addEventListener("click", (event) => {
         event.preventDefault();
@@ -724,11 +781,13 @@ class BenchmarkWorkbench {
       this.viewer.toggleConfig();
     });
     this.viewer?.addEventListener("perspective-config-update", () => {
+      if (!this.restoringRouteState) this.syncRouteState({ replace: true });
       this.saveGridConfig().catch((error) => this.fail(error));
     });
 
     this.clearFilters?.addEventListener("click", () => {
       this.resetFilters();
+      this.syncRouteState({ replace: true });
       this.reloadRaw().catch((error) => this.fail(error));
     });
 
@@ -742,6 +801,7 @@ class BenchmarkWorkbench {
       const button = event.target instanceof Element ? event.target.closest("button[data-bw-sort]") : null;
       if (!button) return;
       this.comparisonSort = nextSort(this.comparisonSort, button.dataset.bwSort);
+      this.syncRouteState({ replace: true });
       this.loadComparison().catch((error) => this.fail(error));
     });
 
@@ -749,12 +809,23 @@ class BenchmarkWorkbench {
       const button = event.target instanceof Element ? event.target.closest("button[data-bw-sort]") : null;
       if (!button) return;
       this.combinationSort = nextSort(this.combinationSort, button.dataset.bwSort);
+      this.syncRouteState({ replace: true });
       this.loadCombinationAggregates().catch((error) => this.fail(error));
     });
   }
 
+  routeStateFromHash() {
+    const raw = window.location.hash.replace(/^#/, "");
+    const [routePart, query = ""] = raw.split("?");
+    const route = decodeURIComponent(routePart || "");
+    return {
+      route: Object.prototype.hasOwnProperty.call(ROUTES, route) ? route : "summary",
+      params: new URLSearchParams(query),
+    };
+  }
+
   routeFromHash() {
-    const route = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+    const route = this.routeStateFromHash().route;
     return Object.prototype.hasOwnProperty.call(ROUTES, route) ? route : "summary";
   }
 
@@ -771,8 +842,7 @@ class BenchmarkWorkbench {
         link.removeAttribute("aria-current");
       }
     });
-
-    const targetHash = `#${nextRoute}`;
+    const targetHash = options.hash || this.hashForRoute(nextRoute);
     if (options.push && window.location.hash !== targetHash) {
       window.history.pushState(null, "", targetHash);
     } else if (options.replace && window.location.hash !== targetHash) {
@@ -791,6 +861,59 @@ class BenchmarkWorkbench {
     }
   }
 
+  applyRouteFromLocation(options = {}) {
+    const { route, params } = this.routeStateFromHash();
+    this.restoringRouteState = true;
+    try {
+      this.applyStateParams(route, params);
+      this.activateRoute(route, { ...options, hash: this.hashForRoute(route) });
+    } finally {
+      this.restoringRouteState = false;
+    }
+
+    if (!this.conn) return;
+    if (route === "data") {
+      this.reloadRaw().catch((error) => this.fail(error));
+    } else if (route === "compare") {
+      this.loadComparison().catch((error) => this.fail(error));
+    } else if (route === "combinations") {
+      this.loadCombinationAggregates().catch((error) => this.fail(error));
+    }
+  }
+
+  applyStateParams(route, params) {
+    if (route === "data") {
+      this.applyRawState(params);
+    } else if (route === "compare") {
+      this.applyComparisonState(params);
+    } else if (route === "combinations") {
+      this.applyCombinationState(params);
+    }
+  }
+
+  syncRouteState(options = {}) {
+    const targetHash = this.hashForRoute(this.activePane);
+    if (options.push && window.location.hash !== targetHash) {
+      window.history.pushState(null, "", targetHash);
+    } else if (window.location.hash !== targetHash) {
+      window.history.replaceState(null, "", targetHash);
+    }
+  }
+
+  hashForRoute(route) {
+    const nextRoute = Object.prototype.hasOwnProperty.call(ROUTES, route) ? route : "summary";
+    const params = this.paramsForRoute(nextRoute);
+    const query = params.toString();
+    return `#${encodeURIComponent(nextRoute)}${query ? `?${query}` : ""}`;
+  }
+
+  paramsForRoute(route) {
+    if (route === "data") return this.rawStateParams();
+    if (route === "compare") return this.comparisonStateParams();
+    if (route === "combinations") return this.combinationStateParams();
+    return new URLSearchParams();
+  }
+
   applyPreset(preset) {
     this.activePreset = preset;
     this.root.querySelectorAll("[data-bw-preset]").forEach((button) => {
@@ -805,6 +928,7 @@ class BenchmarkWorkbench {
       this.resultState.value = RESULT_STATE_PASSED;
     }
 
+    this.syncRouteState({ replace: true });
     this.reloadRaw().catch((error) => this.fail(error));
   }
 
@@ -842,6 +966,100 @@ class BenchmarkWorkbench {
     if (this.gridConfig) {
       this.gridConfig = this.sanitizeGridConfig(this.gridConfig, { clearFilters: true });
     }
+  }
+
+  applyRawState(params) {
+    const preset = params.get(RAW_STATE_KEYS.preset) || "all";
+    const presetExists = [...this.root.querySelectorAll("[data-bw-preset]")].some((button) => button.dataset.bwPreset === preset);
+    this.activePreset = presetExists ? preset : "all";
+    this.root.querySelectorAll("[data-bw-preset]").forEach((button) => {
+      button.setAttribute("aria-pressed", button.dataset.bwPreset === this.activePreset ? "true" : "false");
+    });
+    setControlValue(this.search, params.get(RAW_STATE_KEYS.search) || "");
+    setControlValue(this.resultState, params.get(RAW_STATE_KEYS.resultState) || "");
+    setControlValue(this.task, params.get(RAW_STATE_KEYS.task) || "");
+    setControlValue(this.model, params.get(RAW_STATE_KEYS.model) || "");
+    setControlValue(this.engine, params.get(RAW_STATE_KEYS.engine) || "");
+    setControlValue(this.gpu, params.get(RAW_STATE_KEYS.gpu) || "");
+    setControlValue(this.maxRam, params.get(RAW_STATE_KEYS.maxRam) || "");
+    setCheckboxValue(this.passedOnly, params.get(RAW_STATE_KEYS.passedOnly) || "");
+    this.enumFilters.forEach((select, key) => {
+      setControlValue(select, params.get(`${RAW_FILTER_PREFIX}${key}`) || "");
+    });
+    if (this.gridConfig) {
+      this.gridConfig = this.sanitizeGridConfig(this.gridConfig, { clearFilters: true });
+    }
+  }
+
+  rawStateParams() {
+    const params = new URLSearchParams();
+    if (this.activePreset !== "all") params.set(RAW_STATE_KEYS.preset, this.activePreset);
+    if (this.search.value.trim()) params.set(RAW_STATE_KEYS.search, this.search.value.trim());
+    if (this.resultState.value) params.set(RAW_STATE_KEYS.resultState, this.resultState.value);
+    if (this.task.value) params.set(RAW_STATE_KEYS.task, this.task.value);
+    if (this.model.value) params.set(RAW_STATE_KEYS.model, this.model.value);
+    if (this.engine.value) params.set(RAW_STATE_KEYS.engine, this.engine.value);
+    if (this.gpu.value) params.set(RAW_STATE_KEYS.gpu, this.gpu.value);
+    if (this.maxRam.value !== "") params.set(RAW_STATE_KEYS.maxRam, this.maxRam.value);
+    if (this.passedOnly.checked) params.set(RAW_STATE_KEYS.passedOnly, "1");
+    this.enumFilters.forEach((select, key) => {
+      if (select.value) params.set(`${RAW_FILTER_PREFIX}${key}`, select.value);
+    });
+    return params;
+  }
+
+  applyComparisonState(params) {
+    setControlValue(this.compareA, params.get(COMPARE_STATE_KEYS.a));
+    setControlValue(this.compareB, params.get(COMPARE_STATE_KEYS.b));
+    setControlValue(this.compareDimension, params.get(COMPARE_STATE_KEYS.dimension) || "task_category");
+    setControlValue(this.compareMaxRam, params.get(COMPARE_STATE_KEYS.maxRam) || "");
+    this.comparisonSort = parseSort(params.get(COMPARE_STATE_KEYS.sort), COMPARISON_SORTS, {
+      key: "gap_pp",
+      direction: "desc",
+    });
+    this.compareFilters.forEach((select, key) => {
+      setControlValue(select, params.get(`${COMPARE_FILTER_PREFIX}${key}`) || "");
+    });
+  }
+
+  comparisonStateParams() {
+    const params = new URLSearchParams();
+    if (this.compareA.value) params.set(COMPARE_STATE_KEYS.a, this.compareA.value);
+    if (this.compareB.value) params.set(COMPARE_STATE_KEYS.b, this.compareB.value);
+    if (this.compareDimension.value && this.compareDimension.value !== "task_category") {
+      params.set(COMPARE_STATE_KEYS.dimension, this.compareDimension.value);
+    }
+    if (this.compareMaxRam && this.compareMaxRam.value !== "") params.set(COMPARE_STATE_KEYS.maxRam, this.compareMaxRam.value);
+    if (this.comparisonSort.key !== "gap_pp" || this.comparisonSort.direction !== "desc") {
+      params.set(COMPARE_STATE_KEYS.sort, encodeSort(this.comparisonSort));
+    }
+    this.compareFilters.forEach((select, key) => {
+      if (select.value) params.set(`${COMPARE_FILTER_PREFIX}${key}`, select.value);
+    });
+    return params;
+  }
+
+  applyCombinationState(params) {
+    setControlValue(this.comboTask, params.get(COMBINATION_STATE_KEYS.task) || "");
+    setControlValue(this.comboModel, params.get(COMBINATION_STATE_KEYS.model) || "");
+    setControlValue(this.comboGpu, params.get(COMBINATION_STATE_KEYS.gpu) || "");
+    setCheckboxValue(this.comboPassedOnly, params.get(COMBINATION_STATE_KEYS.passedOnly) || "");
+    this.combinationSort = parseSort(params.get(COMBINATION_STATE_KEYS.sort), COMBINATION_SORTS, {
+      key: "n_pass",
+      direction: "desc",
+    });
+  }
+
+  combinationStateParams() {
+    const params = new URLSearchParams();
+    if (this.comboTask?.value) params.set(COMBINATION_STATE_KEYS.task, this.comboTask.value);
+    if (this.comboModel?.value) params.set(COMBINATION_STATE_KEYS.model, this.comboModel.value);
+    if (this.comboGpu?.value) params.set(COMBINATION_STATE_KEYS.gpu, this.comboGpu.value);
+    if (this.comboPassedOnly?.checked) params.set(COMBINATION_STATE_KEYS.passedOnly, "1");
+    if (this.combinationSort.key !== "n_pass" || this.combinationSort.direction !== "desc") {
+      params.set(COMBINATION_STATE_KEYS.sort, encodeSort(this.combinationSort));
+    }
+    return params;
   }
 
   filterClauses(options = {}) {

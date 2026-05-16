@@ -122,7 +122,7 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 
 	click(t, browserCtx, "[data-bw-route=\"data\"]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CurrentRoute == "data" && current.LocationHash == "#data" && len(current.VisibleColumns) > 0
+		return current.CurrentRoute == "data" && strings.HasPrefix(current.LocationHash, "#data") && len(current.VisibleColumns) > 0
 	})
 	snapshot = captureWorkbenchSnapshot(t, browserCtx)
 	if len(snapshot.VisibleColumns) == 0 {
@@ -191,7 +191,9 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	setSelectValue(t, browserCtx, "[data-bw-compare-dimension]", "task")
 	click(t, browserCtx, "[data-bw-route=\"compare\"]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CurrentRoute == "compare" && current.LocationHash == "#compare"
+		return current.CurrentRoute == "compare" &&
+			strings.HasPrefix(current.LocationHash, "#compare") &&
+			strings.Contains(current.LocationHash, "dim=task")
 	})
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return current.ComparisonTaskLinkHref != ""
@@ -202,16 +204,19 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	}
 	click(t, browserCtx, "[data-bw-comparison] th:nth-child(4) button")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.ComparisonGapSort == "ascending"
+		return current.ComparisonGapSort == "ascending" &&
+			strings.Contains(current.LocationHash, "sort=gap_pp%3Aasc")
 	})
+	comparisonBookmark := captureWorkbenchSnapshot(t, browserCtx).LocationHash
 
 	click(t, browserCtx, "[data-bw-route=\"combinations\"]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CurrentRoute == "combinations" && current.LocationHash == "#combinations"
+		return current.CurrentRoute == "combinations" && strings.HasPrefix(current.LocationHash, "#combinations")
 	})
 	click(t, browserCtx, "[data-bw-combinations] th:first-child button")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CombinationTaskSort == "ascending"
+		return current.CombinationTaskSort == "ascending" &&
+			strings.Contains(current.LocationHash, "sort=task%3Aasc")
 	})
 
 	click(t, browserCtx, "[data-bw-route=\"data\"]")
@@ -230,7 +235,25 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 
 	setSelectValue(t, browserCtx, "[data-bw-filter-field=\"provider_type\"]", snapshot.ProviderOptions[0])
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return parseCount(t, current.Rows) < expectedRows && hasFilterPrefix(current.ActiveFilters, "Provider:")
+		return parseCount(t, current.Rows) < expectedRows &&
+			hasFilterPrefix(current.ActiveFilters, "Provider:") &&
+			strings.Contains(current.LocationHash, "f.provider_type=")
+	})
+	rawBookmark := captureWorkbenchSnapshot(t, browserCtx).LocationHash
+
+	waitForWorkbenchReady(t, browserCtx, workbenchURL+comparisonBookmark)
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "compare" &&
+			current.ComparisonGapSort == "ascending" &&
+			current.ComparisonTaskLinkHref != "" &&
+			strings.Contains(current.LocationHash, "dim=task")
+	})
+
+	waitForWorkbenchReady(t, browserCtx, workbenchURL+rawBookmark)
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "data" &&
+			parseCount(t, current.Rows) < expectedRows &&
+			hasFilterPrefix(current.ActiveFilters, "Provider:")
 	})
 }
 
