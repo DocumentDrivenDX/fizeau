@@ -110,16 +110,233 @@ func TestMatrixTupleDirForCanonicalCellsRoot(t *testing.T) {
 			Model: "qwen/qwen3.6-27b",
 		},
 	}
-	got := matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 2, "break-filter-js-from-html", "terminal-bench/terminal-bench-2-1")
-	want := filepath.Join(cellsRoot, "terminal-bench-2-1", "break-filter-js-from-html", "fiz-openrouter-qwen3-6-27b", "rep-002")
+	cellID := "20260516T103045Z-a4c1"
+
+	// ADR-016: canonical layout drops profile_id + rep-NNN from the path
+	// and identifies the cell by its random ULID-style cell_id instead.
+	got := matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 2, "break-filter-js-from-html", "terminal-bench", "terminal-bench/terminal-bench-2-1", cellID)
+	want := filepath.Join(cellsRoot, "terminal-bench-2-1", "break-filter-js-from-html", cellID)
 	if got != want {
 		t.Fatalf("canonical cell dir = %q, want %q", got, want)
 	}
 
-	got = matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 1, "legacy-task", "terminal-bench@2.0")
-	want = filepath.Join(cellsRoot, "terminal-bench-2-0", "legacy-task", "fiz-openrouter-qwen3-6-27b", "rep-001")
+	got = matrixTupleDirFor("/unused/out", cellsRoot, "fiz", prof, 1, "legacy-task", "terminal-bench", "terminal-bench@2.0", cellID)
+	want = filepath.Join(cellsRoot, "terminal-bench-2-0", "legacy-task", cellID)
 	if got != want {
 		t.Fatalf("canonical legacy cell dir = %q, want %q", got, want)
+	}
+}
+
+func TestGenerateCellIDFormat(t *testing.T) {
+	id := generateCellID()
+	// 20060102T150405Z is 16 chars; "-" + 4 hex = 5 chars → total 21.
+	if len(id) != 21 {
+		t.Fatalf("cell_id length = %d, want 21 (got %q)", len(id), id)
+	}
+	if id[16] != '-' {
+		t.Fatalf("cell_id missing separator at index 16: %q", id)
+	}
+	if _, err := time.Parse("20060102T150405Z", id[:16]); err != nil {
+		t.Fatalf("cell_id timestamp prefix %q does not parse: %v", id[:16], err)
+	}
+	for _, c := range id[17:] {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Fatalf("cell_id suffix %q contains non-hex character %q", id[17:], c)
+		}
+	}
+
+	// Two consecutive generations must differ in the random suffix even
+	// when they fall in the same second.
+	second := generateCellID()
+	if id == second {
+		t.Fatalf("two generateCellID() calls produced identical id %q (random suffix collided)", id)
+	}
+}
+
+func TestMatrixFrameworkFromDataset(t *testing.T) {
+	cases := map[string]string{
+		"terminal-bench/terminal-bench-2-1": "terminal-bench",
+		"terminal-bench@2.0":                "terminal-bench",
+		"terminal-bench-2-1":                "terminal-bench",
+		"":                                  "terminal-bench",
+		"swe-bench/lite":                    "swe-bench",
+		"swe-bench@verified":                "swe-bench",
+	}
+	for in, want := range cases {
+		if got := matrixFrameworkFromDataset(in); got != want {
+			t.Fatalf("matrixFrameworkFromDataset(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestMatrixFrameworkDatasetSegment(t *testing.T) {
+	cases := []struct {
+		framework string
+		dataset   string
+		want      string
+	}{
+		{"terminal-bench", "terminal-bench/terminal-bench-2-1", "terminal-bench-2-1"},
+		{"terminal-bench", "terminal-bench@2.0", "terminal-bench-2-0"},
+		{"swe-bench", "swe-bench/lite", "swe-bench-lite"},
+		{"", "terminal-bench/terminal-bench-2-1", "terminal-bench-2-1"},
+		// dataset "" → "terminal-bench-unknown" via matrixDatasetSegment;
+		// the framework prefix is already present so no double-prefix.
+		{"terminal-bench", "", "terminal-bench-unknown"},
+	}
+	for _, tc := range cases {
+		if got := matrixFrameworkDatasetSegment(tc.framework, tc.dataset); got != tc.want {
+			t.Fatalf("matrixFrameworkDatasetSegment(%q,%q) = %q, want %q", tc.framework, tc.dataset, got, tc.want)
+		}
+	}
+}
+
+func TestMatrixCellEmbedsResolvedProfileSnapshot(t *testing.T) {
+	repoRoot := benchRepoRoot(t)
+	outDir := t.TempDir()
+	cellsRoot := t.TempDir()
+
+	code := cmdMatrix([]string{
+		"--work-dir", repoRoot,
+		"--harnesses", "noop",
+		"--profiles", "noop",
+		"--reps", "1",
+		"--out", outDir,
+		"--cells-root", cellsRoot,
+	})
+	if code != 0 {
+		t.Fatalf("cmdMatrix exit = %d, want 0", code)
+	}
+
+	// Walk the canonical cells tree and read the single produced report.
+	var reportPath string
+	if err := filepath.WalkDir(cellsRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && d.Name() == matrixReportName {
+			reportPath = path
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk cells: %v", err)
+	}
+	if reportPath == "" {
+		t.Fatal("no report.json written under canonical cells root")
+	}
+
+	// Path must match cells/<framework-dataset>/<task>/<cell-id>/.
+	rel, err := filepath.Rel(cellsRoot, reportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) != 4 || parts[3] != matrixReportName {
+		t.Fatalf("cell path %q does not match <framework-dataset>/<task>/<cell-id>/report.json", rel)
+	}
+	if parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		t.Fatalf("cell path segments empty: %q", rel)
+	}
+
+	report := readMatrixRunReport(t, reportPath)
+	if report.CellID == "" {
+		t.Fatal("report.cell_id is empty")
+	}
+	if report.CellID != parts[2] {
+		t.Fatalf("report.cell_id = %q, path segment = %q", report.CellID, parts[2])
+	}
+	if report.Framework == "" {
+		t.Fatal("report.framework is empty")
+	}
+	if report.Dataset == "" {
+		t.Fatal("report.dataset is empty")
+	}
+	if report.Profile == nil {
+		t.Fatal("report.profile is nil — full snapshot was not embedded")
+	}
+	if report.Profile.ID == "" {
+		t.Fatal("report.profile.id is empty")
+	}
+	if report.Profile.Provider.Type == "" {
+		t.Fatal("report.profile.provider.type is empty — provider sub-block not embedded")
+	}
+	// Backward-compatibility fields preserved through PR 3 (analytics
+	// switch) per the plan-2026-05-15 PR 1c contract.
+	if report.ProfileID == "" {
+		t.Fatal("report.profile_id (legacy) is empty")
+	}
+
+	// Cross-check the on-disk JSON shape: cell record must expose
+	// snake_case keys so jq queries from the bead AC return non-null.
+	raw, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("parse report JSON: %v", err)
+	}
+	for _, key := range []string{"cell_id", "framework", "dataset", "profile"} {
+		v, ok := parsed[key]
+		if !ok || v == nil {
+			t.Fatalf("report.json missing or null %q: %v", key, parsed[key])
+		}
+	}
+	prof, ok := parsed["profile"].(map[string]any)
+	if !ok {
+		t.Fatalf("report.json profile is not an object: %T", parsed["profile"])
+	}
+	for _, key := range []string{"id", "provider", "sampling", "limits", "versioning"} {
+		if _, ok := prof[key]; !ok {
+			t.Fatalf("report.json profile.%s missing", key)
+		}
+	}
+}
+
+func TestFindExistingCanonicalMatrixCellMatchesByIdentity(t *testing.T) {
+	cellsRoot := t.TempDir()
+	framework := "terminal-bench"
+	dataset := "terminal-bench/terminal-bench-2-1"
+	task := "fix-git"
+	dir := filepath.Join(cellsRoot, "terminal-bench-2-1", task, "20260516T100000Z-aaaa")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	reward := 1
+	report := matrixRunReport{
+		CellID:      "20260516T100000Z-aaaa",
+		Framework:   framework,
+		Dataset:     dataset,
+		Harness:     "fiz",
+		ProfileID:   "noop",
+		Rep:         1,
+		TaskID:      task,
+		FinalStatus: "graded_pass",
+		Reward:      &reward,
+		FinishedAt:  time.Date(2026, 5, 16, 10, 0, 5, 0, time.UTC),
+	}
+	raw, _ := json.MarshalIndent(report, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, matrixReportName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, ok, err := findExistingCanonicalMatrixCell(cellsRoot, framework, dataset, "fiz", "noop", task, 1)
+	if err != nil {
+		t.Fatalf("findExistingCanonicalMatrixCell: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected to find existing cell")
+	}
+	if got.CellID != report.CellID || got.FinalStatus != report.FinalStatus {
+		t.Fatalf("matched report = %+v, want CellID/FinalStatus from fixture", got)
+	}
+
+	// Mismatched rep returns no match.
+	if _, _, ok, err := findExistingCanonicalMatrixCell(cellsRoot, framework, dataset, "fiz", "noop", task, 2); err != nil || ok {
+		t.Fatalf("expected no match for rep=2, got ok=%v err=%v", ok, err)
+	}
+	// Missing directory returns no match without error.
+	if _, _, ok, err := findExistingCanonicalMatrixCell(cellsRoot, framework, dataset, "fiz", "noop", "no-such-task", 1); err != nil || ok {
+		t.Fatalf("expected no match for missing task, got ok=%v err=%v", ok, err)
 	}
 }
 

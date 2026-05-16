@@ -4,6 +4,7 @@
 package profile
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,27 +46,27 @@ func (p ProviderType) valid() bool {
 
 // Provider describes how the harness adapter should reach the model API.
 type Provider struct {
-	Type      ProviderType `yaml:"type"`
-	Model     string       `yaml:"model"`
-	BaseURL   string       `yaml:"base_url"`
-	APIKeyEnv string       `yaml:"api_key_env"`
+	Type      ProviderType `yaml:"type"         json:"type"`
+	Model     string       `yaml:"model"        json:"model"`
+	BaseURL   string       `yaml:"base_url"     json:"base_url"`
+	APIKeyEnv string       `yaml:"api_key_env"  json:"api_key_env"`
 }
 
 // Pricing is the single source of truth for cost reconciliation. Units are
 // USD per million tokens.
 type Pricing struct {
-	InputUSDPerMTok       float64 `yaml:"input_usd_per_mtok"`
-	OutputUSDPerMTok      float64 `yaml:"output_usd_per_mtok"`
-	CachedInputUSDPerMTok float64 `yaml:"cached_input_usd_per_mtok"`
+	InputUSDPerMTok       float64 `yaml:"input_usd_per_mtok"        json:"input_usd_per_mtok"`
+	OutputUSDPerMTok      float64 `yaml:"output_usd_per_mtok"       json:"output_usd_per_mtok"`
+	CachedInputUSDPerMTok float64 `yaml:"cached_input_usd_per_mtok" json:"cached_input_usd_per_mtok"`
 }
 
 // Limits captures provider-side ceilings. rate_limit_* are informational in
 // v1 (D6 forbids concurrency > 1) and reserved for the follow-up scheduler.
 type Limits struct {
-	MaxOutputTokens int `yaml:"max_output_tokens"`
-	ContextTokens   int `yaml:"context_tokens"`
-	RateLimitRPM    int `yaml:"rate_limit_rpm"`
-	RateLimitTPM    int `yaml:"rate_limit_tpm"`
+	MaxOutputTokens int `yaml:"max_output_tokens" json:"max_output_tokens"`
+	ContextTokens   int `yaml:"context_tokens"    json:"context_tokens"`
+	RateLimitRPM    int `yaml:"rate_limit_rpm"    json:"rate_limit_rpm,omitempty"`
+	RateLimitTPM    int `yaml:"rate_limit_tpm"    json:"rate_limit_tpm,omitempty"`
 }
 
 // Sampling is opaque to the runner; passed verbatim to the adapter's
@@ -73,11 +74,11 @@ type Limits struct {
 // "high" | "" depending on the family). Pointer fields are omitted when
 // nil so server defaults apply.
 type Sampling struct {
-	Temperature float64  `yaml:"temperature"`
-	Reasoning   string   `yaml:"reasoning,omitempty"`
-	TopP        *float64 `yaml:"top_p,omitempty"`
-	TopK        *int     `yaml:"top_k,omitempty"`
-	MinP        *float64 `yaml:"min_p,omitempty"`
+	Temperature float64  `yaml:"temperature"        json:"temperature"`
+	Reasoning   string   `yaml:"reasoning,omitempty" json:"reasoning,omitempty"`
+	TopP        *float64 `yaml:"top_p,omitempty"     json:"top_p,omitempty"`
+	TopK        *int     `yaml:"top_k,omitempty"     json:"top_k,omitempty"`
+	MinP        *float64 `yaml:"min_p,omitempty"     json:"min_p,omitempty"`
 }
 
 // ModelServerInfo is populated at run time by querying the local model server
@@ -93,8 +94,8 @@ type ModelServerInfo struct {
 // Versioning records when the profile was authored and which provider
 // snapshot the adapter resolved at apply_profile time.
 type Versioning struct {
-	ResolvedAt string `yaml:"resolved_at"`
-	Snapshot   string `yaml:"snapshot"`
+	ResolvedAt string `yaml:"resolved_at" json:"resolved_at"`
+	Snapshot   string `yaml:"snapshot"    json:"snapshot,omitempty"`
 }
 
 // Metadata captures the orthogonal benchmark dimensions a profile occupies in
@@ -109,30 +110,56 @@ type Versioning struct {
 // catalog snapshot at <canonical>/profiles/. Reporting tools join on
 // profile_id and read whatever keys exist.
 type Metadata struct {
-	Server          string `yaml:"server,omitempty"`
-	ModelFamily     string `yaml:"model_family,omitempty"`
-	ModelID         string `yaml:"model_id,omitempty"`
-	QuantLabel      string `yaml:"quant_label,omitempty"`
-	ProviderSurface string `yaml:"provider_surface,omitempty"`
-	Runtime         string `yaml:"runtime,omitempty"`
-	HardwareLabel   string `yaml:"hardware_label,omitempty"`
-	Endpoint        string `yaml:"endpoint,omitempty"`
+	Server          string `yaml:"server,omitempty"           json:"server,omitempty"`
+	ModelFamily     string `yaml:"model_family,omitempty"     json:"model_family,omitempty"`
+	ModelID         string `yaml:"model_id,omitempty"         json:"model_id,omitempty"`
+	QuantLabel      string `yaml:"quant_label,omitempty"      json:"quant_label,omitempty"`
+	ProviderSurface string `yaml:"provider_surface,omitempty" json:"provider_surface,omitempty"`
+	Runtime         string `yaml:"runtime,omitempty"          json:"runtime,omitempty"`
+	HardwareLabel   string `yaml:"hardware_label,omitempty"   json:"hardware_label,omitempty"`
+	Endpoint        string `yaml:"endpoint,omitempty"         json:"endpoint,omitempty"`
 	// Extra absorbs any metadata keys not in the typed fields above. Use it
 	// for ad-hoc experiment dimensions; promote a key to a typed field once
 	// it stabilizes. yaml v3 ",inline" merges these into the same map at the
-	// metadata block's level rather than a nested map.
-	Extra map[string]string `yaml:",inline"`
+	// metadata block's level rather than a nested map. JSON serialization
+	// flattens Extra into the parent object via MarshalJSON below so cells
+	// match the YAML shape.
+	Extra map[string]string `yaml:",inline" json:"-"`
+}
+
+// MarshalJSON flattens Metadata.Extra into the JSON object so cell records
+// preserve the YAML "metadata: {...}" shape (ADR-016).
+func (m Metadata) MarshalJSON() ([]byte, error) {
+	type metaAlias Metadata
+	base, err := json.Marshal(metaAlias(m))
+	if err != nil {
+		return nil, err
+	}
+	if len(m.Extra) == 0 {
+		return base, nil
+	}
+	merged := map[string]any{}
+	if err := json.Unmarshal(base, &merged); err != nil {
+		return nil, err
+	}
+	for k, v := range m.Extra {
+		if _, exists := merged[k]; exists {
+			continue
+		}
+		merged[k] = v
+	}
+	return json.Marshal(merged)
 }
 
 // Profile is the in-memory shape of a frozen v1 profile YAML.
 type Profile struct {
-	ID         string     `yaml:"id"`
-	Metadata   Metadata   `yaml:"metadata,omitempty"`
-	Provider   Provider   `yaml:"provider"`
-	Pricing    Pricing    `yaml:"pricing"`
-	Limits     Limits     `yaml:"limits"`
-	Sampling   Sampling   `yaml:"sampling"`
-	Versioning Versioning `yaml:"versioning"`
+	ID         string     `yaml:"id"                 json:"id"`
+	Metadata   Metadata   `yaml:"metadata,omitempty" json:"metadata,omitempty"`
+	Provider   Provider   `yaml:"provider"           json:"provider"`
+	Pricing    Pricing    `yaml:"pricing"            json:"pricing"`
+	Limits     Limits     `yaml:"limits"             json:"limits"`
+	Sampling   Sampling   `yaml:"sampling"           json:"sampling"`
+	Versioning Versioning `yaml:"versioning"         json:"versioning"`
 
 	// AgentTimeoutMultiplier scales harbor's per-task agent timeout to
 	// account for slow inference engines. Without this, low-throughput
@@ -142,30 +169,31 @@ type Profile struct {
 	// directly to harbor's --agent-timeout-multiplier flag. 0 = use
 	// harbor default (effectively 1.0). The HARBOR_AGENT_TIMEOUT_MULTIPLIER
 	// env var overrides this per-invocation.
-	AgentTimeoutMultiplier float64 `yaml:"agent_timeout_multiplier,omitempty"`
+	AgentTimeoutMultiplier float64 `yaml:"agent_timeout_multiplier,omitempty" json:"agent_timeout_multiplier,omitempty"`
 
 	// Harness names the wrapper harness fiz delegates to when invoking
 	// this profile. "none" (default) means fiz speaks the provider directly;
 	// other values name a wrapper subprocess. Authored per-profile so the
 	// cell embeds its harness identity without joining to a lane block
 	// (ADR-016).
-	Harness HarnessType `yaml:"harness,omitempty"`
+	Harness HarnessType `yaml:"harness,omitempty" json:"harness,omitempty"`
 
 	// Surface describes the execution surface that produced the cell.
 	// Replaces the lane_type field from the soon-to-be-deleted
 	// scripts/benchmark/terminalbench-2-1-sweep.yaml lanes block (ADR-016).
-	Surface SurfaceType `yaml:"surface,omitempty"`
+	Surface SurfaceType `yaml:"surface,omitempty" json:"surface,omitempty"`
 
 	// ConcurrencyGroup is the rate-limit shard key (e.g. "openrouter",
 	// "sindri-gpu") this profile contends on. The runner enforces
 	// max_concurrency from concurrency-groups.yaml against this key
 	// (ADR-016, plan PR 1b).
-	ConcurrencyGroup string `yaml:"concurrency_group,omitempty"`
+	ConcurrencyGroup string `yaml:"concurrency_group,omitempty" json:"concurrency_group,omitempty"`
 
 	// Path is the filesystem path the profile was loaded from. Not part of
 	// the YAML; populated by Load / LoadDir for diagnostics and `profiles
-	// list` output.
-	Path string `yaml:"-"`
+	// list` output. Excluded from cell snapshots so embedded evidence is
+	// machine-independent (ADR-016).
+	Path string `yaml:"-" json:"-"`
 }
 
 // HarnessType enumerates the wrapper harness fiz may delegate to.
