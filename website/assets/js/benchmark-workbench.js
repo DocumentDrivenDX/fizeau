@@ -269,6 +269,14 @@ function sanitizeSchemaColumnTuples(values, schema) {
     .filter(Boolean);
 }
 
+function nextGridSort(sort, column, append = false) {
+  const current = Array.isArray(sort) ? sort : [];
+  const existing = current.find((entry) => Array.isArray(entry) && entry[0] === column);
+  const direction = existing?.[1] === "asc" ? "desc" : "asc";
+  const rest = append ? current.filter((entry) => !Array.isArray(entry) || entry[0] !== column) : [];
+  return [...rest, [column, direction]];
+}
+
 async function queryRows(conn, sql) {
   const table = await conn.query(sql);
   return table.toArray().map(normalizeRow);
@@ -494,8 +502,11 @@ class BenchmarkWorkbench {
     this.comboReloadTimer = null;
     this.taskLinkUnsubscribe = null;
     this.taskLinkTable = null;
+    this.gridSortUnsubscribe = null;
+    this.gridSortTable = null;
     this.gridConfig = null;
     this.gridConfigReady = false;
+    this.gridSchema = null;
     this.restoringRouteState = false;
   }
 
@@ -1385,6 +1396,7 @@ class BenchmarkWorkbench {
     const tableName = tableNames.find((name) => name.endsWith(".workbench_cells")) || "memory.workbench_cells";
     const table = await this.perspectiveClient.open_table(tableName);
     const schema = await table.schema();
+    this.gridSchema = schema;
     const config = this.gridConfigReady
       ? this.sanitizeGridConfig(this.gridConfig, { schema })
       : this.defaultGridConfig(schema);
@@ -1468,7 +1480,40 @@ class BenchmarkWorkbench {
       );
     }
 
+    this.installGridHeaderSorts(regularTable);
     this.linkVisibleTaskCells(regularTable);
+  }
+
+  installGridHeaderSorts(regularTable) {
+    if (this.gridSortTable === regularTable) return;
+    this.gridSortUnsubscribe?.();
+    this.gridSortTable = regularTable;
+
+    const onClick = async (event) => {
+      const header = event.target instanceof Element ? event.target.closest("th.psp-sort-enabled") : null;
+      if (!header || !regularTable.contains(header)) return;
+
+      const metadata = regularTable.getMeta(header);
+      const splitDepth = Array.isArray(this.gridConfig?.split_by) ? this.gridConfig.split_by.length : 0;
+      const displayColumn = metadata?.column_header?.[splitDepth] || metadata?.column_header?.at(-1);
+      const column = schemaColumnName(this.gridSchema, displayColumn);
+      if (!column) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const config = await this.viewer.save();
+
+      await this.viewer.restore({
+        ...config,
+        sort: nextGridSort(config.sort, column, event.shiftKey),
+      });
+      this.gridConfig = this.sanitizeGridConfig(await this.viewer.save(), { clearFilters: true });
+      this.viewer.dispatchEvent(new CustomEvent("perspective-config-update", { bubbles: true }));
+      await this.viewer.flush?.();
+    };
+
+    regularTable.addEventListener("click", onClick, true);
+    this.gridSortUnsubscribe = () => regularTable.removeEventListener("click", onClick, true);
   }
 
   async findDatagridPlugin() {

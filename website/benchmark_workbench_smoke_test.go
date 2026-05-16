@@ -222,6 +222,7 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return sameStrings(current.VisibleColumns, customColumns)
 	})
+	clickRawGridHeaderSort(t, browserCtx, "result_state")
 
 	setSelectValue(t, browserCtx, "[data-bw-model]", snapshot.ModelOptions[0])
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
@@ -650,6 +651,60 @@ func setViewerColumns(t *testing.T, ctx context.Context, columns []string) {
 	if !sameStrings(applied, columns) {
 		t.Fatalf("set viewer columns to %v, got %v", columns, applied)
 	}
+}
+
+func clickRawGridHeaderSort(t *testing.T, ctx context.Context, column string) {
+	t.Helper()
+
+	script := fmt.Sprintf(`(async () => {
+		const root = document.querySelector('[data-benchmark-workbench]');
+		const workbench = root?.benchmarkWorkbench;
+		const viewer = root?.querySelector('[data-bw-viewer]');
+		if (!workbench || !viewer) throw new Error('missing workbench or viewer');
+		const datagrid = await workbench.findDatagridPlugin();
+		const table = datagrid?.regular_table;
+		if (!table) throw new Error('missing Perspective regular-table');
+		await viewer.restore({
+			...(await viewer.save()),
+			sort: [],
+			group_by: [],
+			split_by: [],
+			filter: [],
+			settings: false,
+		});
+		await viewer.flush?.();
+		await table.draw?.();
+		const displayColumn = %q.replaceAll('_', '-');
+		const header = [...table.querySelectorAll('thead th.psp-sort-enabled, thead th')]
+			.find((cell) => {
+				const meta = table.getMeta(cell);
+				const seen = meta?.column_header?.at(-1);
+				return meta?.type === 'column_header' && (seen === %q || seen === displayColumn);
+			});
+		if (!header) {
+			const seen = [...table.querySelectorAll('thead th')].map((cell) => table.getMeta(cell)?.column_header?.join('/')).filter(Boolean);
+			throw new Error('missing sortable header for %q; saw ' + seen.join(', '));
+		}
+		header.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+		header.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+		header.click();
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		await viewer.flush?.();
+		return await viewer.save();
+	})()`, column, column, column)
+
+	var config struct {
+		Sort [][]string `json:"sort"`
+	}
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, &config, awaitPromise)); err != nil {
+		t.Fatalf("click raw grid header %q: %v", column, err)
+	}
+	for _, sort := range config.Sort {
+		if len(sort) >= 2 && sort[0] == column {
+			return
+		}
+	}
+	t.Fatalf("clicking raw grid header %q did not update Perspective sort, got %v", column, config.Sort)
 }
 
 func poisonLegacyViewerConfig(t *testing.T, ctx context.Context) {
