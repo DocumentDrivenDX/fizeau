@@ -1800,6 +1800,9 @@ class BenchmarkWorkbench {
   }
 
   setStatus(message) {
+    if (!String(message).startsWith("Workbench failed:")) {
+      this.root.classList.remove("bench-workbench--error");
+    }
     this.status.textContent = message;
   }
 
