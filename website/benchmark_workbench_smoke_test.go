@@ -131,23 +131,49 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 		t.Fatal("expected perspective viewer to expose visible columns")
 	}
 	expectedDefaultColumns := []string{
+		"suite",
 		"task",
+		"task_subsets",
 		"task_category",
 		"task_difficulty",
 		"result_state",
-		"model_display_name",
-		"provider_type",
+		"passed",
+		"grader_passed",
+		"final_status",
+		"invalid_class",
+		"harness",
 		"harness_label",
+		"provider_type",
+		"provider_surface",
+		"model_display_name",
+		"model",
+		"model_quant",
 		"quant_display",
+		"weight_bits",
+		"kv_cache_quant",
+		"k_quant",
+		"v_quant",
+		"runtime_mtp_enabled",
 		"engine",
+		"engine_version",
+		"gpu_model",
 		"effective_gpu_model",
+		"gpu_ram_gb",
+		"hardware_vram_gb",
+		"effective_gpu_ram_gb",
+		"machine",
+		"rep",
 		"turns",
+		"input_tokens",
+		"output_tokens",
+		"reasoning_tokens",
 		"total_tokens",
 		"cost_usd",
 		"wall_seconds",
 		"profile_ttft_p50_s",
 		"profile_decode_tps_p50",
 		"profile_timing_turns",
+		"started_at",
 		"finished_at",
 	}
 	for _, column := range expectedDefaultColumns {
@@ -161,7 +187,7 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	if contains(snapshot.VisibleColumns, "terminalbench_task_url") {
 		t.Fatalf("terminalbench_task_url must stay hidden by default, got %v", snapshot.VisibleColumns)
 	}
-	for _, column := range []string{"suite", "final_status", "invalid_class", "k_quant", "v_quant"} {
+	for _, column := range []string{"terminalbench_task_url", "raw_report_json", "search_text"} {
 		if contains(snapshot.VisibleColumns, column) {
 			t.Fatalf("%s must stay hidden by default, got %v", column, snapshot.VisibleColumns)
 		}
@@ -278,6 +304,109 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 			parseCount(t, current.Rows) < expectedRows &&
 			hasFilterPrefix(current.ActiveFilters, "Provider:")
 	})
+}
+
+func TestBenchmarkWorkbenchInteractionCoverage(t *testing.T) {
+	buildDir := t.TempDir()
+	listener, baseURL := reserveListener(t)
+	buildWebsiteWithBaseURL(t, buildDir, baseURL)
+	serveStaticDir(t, buildDir, listener)
+
+	chromePath := ensureChromium(t)
+	browserCtx := newBrowserContext(t, chromePath)
+
+	workbenchURL := baseURL + "benchmarks/explorer/"
+	waitForWorkbenchReady(t, browserCtx, workbenchURL)
+
+	var report struct {
+		RawControls       []string `json:"rawControls"`
+		RawEnumFilters    []string `json:"rawEnumFilters"`
+		Presets           []string `json:"presets"`
+		CompareControls   []string `json:"compareControls"`
+		CompareDimensions []string `json:"compareDimensions"`
+		CompareFilters    []string `json:"compareFilters"`
+		CompareSorts      []string `json:"compareSorts"`
+		Combination       []string `json:"combination"`
+		CombinationSorts  []string `json:"combinationSorts"`
+		GridConfig        []string `json:"gridConfig"`
+	}
+	if err := chromedp.Run(browserCtx, chromedp.Evaluate(workbenchInteractionCoverageJS, &report, awaitPromise)); err != nil {
+		t.Fatalf("exercise benchmark workbench interactions: %v", err)
+	}
+
+	requiredRawControls := []string{"search", "result-state", "task", "model", "engine", "gpu", "max-ram", "passed-only", "clear-filters"}
+	for _, control := range requiredRawControls {
+		if !contains(report.RawControls, control) {
+			t.Fatalf("raw control %q was not exercised; report=%+v", control, report)
+		}
+	}
+	requiredPresets := []string{"all", "passing-test", "passing-test-gpu", "passing-test-ram", "recent-failures"}
+	for _, preset := range requiredPresets {
+		if !contains(report.Presets, preset) {
+			t.Fatalf("preset %q was not exercised; report=%+v", preset, report)
+		}
+	}
+	for _, control := range []string{"baseline", "compare", "max-ram"} {
+		if !contains(report.CompareControls, control) {
+			t.Fatalf("comparison control %q was not exercised; report=%+v", control, report)
+		}
+	}
+	for _, control := range []string{"task", "model", "gpu", "passed-only"} {
+		if !contains(report.Combination, control) {
+			t.Fatalf("combination control %q was not exercised; report=%+v", control, report)
+		}
+	}
+	if len(report.RawEnumFilters) < 10 {
+		t.Fatalf("expected broad raw enum filter coverage, got %d: %+v", len(report.RawEnumFilters), report)
+	}
+	if len(report.CompareDimensions) < 10 {
+		t.Fatalf("expected broad comparison dimension coverage, got %d: %+v", len(report.CompareDimensions), report)
+	}
+	if len(report.CompareFilters) < 6 {
+		t.Fatalf("expected broad comparison filter coverage, got %d: %+v", len(report.CompareFilters), report)
+	}
+	if len(report.CompareSorts) < 10 {
+		t.Fatalf("expected comparison sort header coverage, got %d: %+v", len(report.CompareSorts), report)
+	}
+	if len(report.CombinationSorts) < 10 {
+		t.Fatalf("expected combination sort header coverage, got %d: %+v", len(report.CombinationSorts), report)
+	}
+	for _, item := range []string{"sort", "group_by", "filter"} {
+		if !contains(report.GridConfig, item) {
+			t.Fatalf("Perspective grid config %q was not exercised; report=%+v", item, report)
+		}
+	}
+	var workbenchEnhanced bool
+	if err := chromedp.Run(browserCtx, chromedp.Evaluate(`Boolean(document.querySelector('[data-benchmark-workbench] .bench-table-shell'))`, &workbenchEnhanced)); err != nil {
+		t.Fatalf("check workbench table enhancer scope: %v", err)
+	}
+	if workbenchEnhanced {
+		t.Fatal("legacy benchmark table enhancer wrapped a workbench table")
+	}
+
+	benchmarksURL := baseURL + "benchmarks/"
+	var explorerHref string
+	if err := chromedp.Run(browserCtx,
+		chromedp.Navigate(benchmarksURL),
+		chromedp.Evaluate(`document.querySelector('a[href$="explorer/"], a[href*="/benchmarks/explorer/"]')?.href ?? ""`, &explorerHref),
+	); err != nil {
+		t.Fatalf("open benchmark index: %v", err)
+	}
+	if !strings.Contains(explorerHref, "/benchmarks/explorer/") {
+		t.Fatalf("expected /benchmarks/ to link to explorer, got %q", explorerHref)
+	}
+
+	var reportTableEnhanced bool
+	if err := chromedp.Run(browserCtx,
+		chromedp.Navigate(baseURL+"benchmarks/terminal-bench-2-1/"),
+		chromedp.WaitVisible(`.bench-table-shell`, chromedp.ByQuery),
+		chromedp.Evaluate(`Boolean(document.querySelector('.bench-table-shell'))`, &reportTableEnhanced),
+	); err != nil {
+		t.Fatalf("open benchmark report page: %v", err)
+	}
+	if !reportTableEnhanced {
+		t.Fatal("expected legacy benchmark report tables to remain enhanced")
+	}
 }
 
 func reserveListener(t *testing.T) (net.Listener, string) {
@@ -604,6 +733,252 @@ func hasFilterPrefix(values []string, prefix string) bool {
 func awaitPromise(params *runtime.EvaluateParams) *runtime.EvaluateParams {
 	return params.WithAwaitPromise(true)
 }
+
+const workbenchInteractionCoverageJS = `(async () => {
+  const root = document.querySelector('[data-benchmark-workbench]');
+  const workbench = root?.benchmarkWorkbench;
+  if (!root || !workbench) throw new Error('missing benchmark workbench instance');
+
+  const report = {
+    rawControls: [],
+    rawEnumFilters: [],
+    presets: [],
+    compareControls: [],
+    compareDimensions: [],
+    compareFilters: [],
+    compareSorts: [],
+    combination: [],
+    combinationSorts: [],
+    gridConfig: [],
+  };
+  const sleep = (ms = 260) => new Promise((resolve) => setTimeout(resolve, ms));
+  const assert = (condition, message) => {
+    if (!condition) throw new Error(message);
+  };
+  const parseCount = (value) => Number(String(value || '').replace(/,/g, ''));
+  const metricRows = () => parseCount(root.querySelector('[data-bw-metric="rows"]')?.textContent?.trim());
+  const optionValues = (selector) => [...(root.querySelector(selector)?.options ?? [])].map((option) => option.value).filter(Boolean);
+  const firstOptionValue = (selector) => optionValues(selector)[0] || '';
+  const activeLabels = () => [...root.querySelectorAll('[data-bw-active-filters] span')].map((el) => el.textContent.trim());
+  const activeRoute = () => root.querySelector('[data-bw-route][aria-current="page"]')?.dataset.bwRoute || '';
+  const eventFor = (element) => element?.tagName === 'INPUT' && element.type !== 'checkbox' ? 'input' : 'change';
+
+  async function waitLoaded(label) {
+    for (let i = 0; i < 80; i++) {
+      const status = root.querySelector('[data-bw-status]')?.textContent?.trim() || '';
+      if (root.classList.contains('bench-workbench--error') || status.startsWith('Workbench failed:')) {
+        throw new Error(label + ' failed: ' + status);
+      }
+      if (status.includes('rows loaded') && Number.isFinite(metricRows())) return;
+      await sleep(100);
+    }
+    throw new Error(label + ' did not settle');
+  }
+
+  async function activate(route) {
+    root.querySelector('[data-bw-route="' + route + '"]')?.click();
+    await sleep();
+    assert(activeRoute() === route, 'route did not activate: ' + route);
+  }
+
+  async function applyControl(selector, value, label, options = {}) {
+    const element = root.querySelector(selector);
+    assert(element, 'missing control: ' + selector);
+    if (element.type === 'checkbox') {
+      element.checked = Boolean(value);
+    } else {
+      element.value = String(value);
+    }
+    element.dispatchEvent(new Event(options.event || eventFor(element), { bubbles: true }));
+    await sleep();
+    if (options.reload === 'compare') {
+      await workbench.loadComparison();
+    } else if (options.reload === 'combination') {
+      await workbench.loadCombinationAggregates();
+    } else if (options.reload !== false) {
+      await workbench.reloadRaw();
+      await waitLoaded(label);
+    }
+  }
+
+  async function clearRaw() {
+    root.querySelector('[data-bw-clear-filters]')?.click();
+    report.rawControls.push('clear-filters');
+    await sleep();
+    await workbench.reloadRaw();
+    await waitLoaded('clear raw filters');
+  }
+
+  await activate('summary');
+  assert(window.location.hash === '#summary', 'summary route hash missing');
+  assert(root.querySelectorAll('.bench-workbench__pie, .bench-workbench__bar-row').length > 0, 'summary charts missing');
+
+  await activate('data');
+  await waitLoaded('raw route');
+  const unfilteredRows = metricRows();
+  assert(unfilteredRows > 0, 'raw route has no rows');
+
+  const searchTerm = firstOptionValue('[data-bw-model]') || 'qwen';
+  await applyControl('[data-bw-search]', searchTerm, 'raw search');
+  assert(window.location.hash.includes('q='), 'search did not update hash');
+  assert(activeLabels().some((label) => label.startsWith('Search:')), 'search did not render active filter');
+  report.rawControls.push('search');
+  await clearRaw();
+
+  const rawSelects = [
+    ['[data-bw-result-state]', 'result-state', 'outcome='],
+    ['[data-bw-task]', 'task', 'task='],
+    ['[data-bw-model]', 'model', 'model='],
+    ['[data-bw-engine]', 'engine', 'engine='],
+    ['[data-bw-gpu]', 'gpu', 'gpu='],
+  ];
+  for (const [selector, label, hashPart] of rawSelects) {
+    const value = firstOptionValue(selector);
+    assert(value, 'missing option for raw control: ' + label);
+    await applyControl(selector, value, label);
+    assert(window.location.hash.includes(hashPart), label + ' did not update hash');
+    assert(activeLabels().length > 0, label + ' did not render active filter');
+    report.rawControls.push(label);
+    await clearRaw();
+  }
+
+  await applyControl('[data-bw-max-ram]', '24', 'raw max ram');
+  assert(window.location.hash.includes('max_ram='), 'max RAM did not update hash');
+  assert(activeLabels().some((label) => label.startsWith('Max GPU RAM:')), 'max RAM active filter missing');
+  report.rawControls.push('max-ram');
+  await clearRaw();
+
+  await applyControl('[data-bw-passed-only]', true, 'raw passed only');
+  assert(window.location.hash.includes('passed=1'), 'passed-only did not update hash');
+  assert(activeLabels().includes('Passed only'), 'passed-only active filter missing');
+  report.rawControls.push('passed-only');
+  await clearRaw();
+
+  for (const select of root.querySelectorAll('[data-bw-filter-field]')) {
+    const key = select.dataset.bwFilterField;
+    const value = [...select.options].map((option) => option.value).find(Boolean);
+    if (!value) continue;
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await sleep();
+    await workbench.reloadRaw();
+    await waitLoaded('raw enum filter ' + key);
+    assert(window.location.hash.includes('f.' + encodeURIComponent(key) + '='), 'enum filter did not update hash: ' + key);
+    report.rawEnumFilters.push(key);
+    await clearRaw();
+  }
+
+  await applyControl('[data-bw-task]', firstOptionValue('[data-bw-task]'), 'preset task');
+  await applyControl('[data-bw-gpu]', firstOptionValue('[data-bw-gpu]'), 'preset gpu');
+  await applyControl('[data-bw-max-ram]', '24', 'preset max ram');
+  for (const preset of ['all', 'passing-test', 'passing-test-gpu', 'passing-test-ram', 'recent-failures']) {
+    root.querySelector('[data-bw-preset="' + preset + '"]')?.click();
+    await sleep();
+    await workbench.reloadRaw();
+    await waitLoaded('preset ' + preset);
+    assert(root.querySelector('[data-bw-preset="' + preset + '"]')?.getAttribute('aria-pressed') === 'true', 'preset not pressed: ' + preset);
+    if (preset.startsWith('passing')) assert(root.querySelector('[data-bw-passed-only]')?.checked, 'passing preset did not enable pass-only');
+    report.presets.push(preset);
+  }
+  await clearRaw();
+
+  await activate('compare');
+  const familyOptions = optionValues('[data-bw-compare-a]');
+  assert(familyOptions.length >= 2, 'comparison needs at least two model families');
+  await applyControl('[data-bw-compare-a]', familyOptions[0], 'compare baseline', { reload: 'compare' });
+  await applyControl('[data-bw-compare-b]', familyOptions[1], 'compare candidate', { reload: 'compare' });
+  assert(root.querySelector('[data-bw-compare-a]')?.value !== root.querySelector('[data-bw-compare-b]')?.value, 'comparison families match');
+  report.compareControls.push('baseline', 'compare');
+  await applyControl('[data-bw-compare-max-ram]', '9999', 'compare max ram', { reload: 'compare' });
+  assert(window.location.hash.includes('max_ram='), 'comparison max RAM did not update hash');
+  report.compareControls.push('max-ram');
+  await applyControl('[data-bw-compare-max-ram]', '', 'clear compare max ram', { reload: 'compare' });
+
+  for (const value of optionValues('[data-bw-compare-dimension]')) {
+    await applyControl('[data-bw-compare-dimension]', value, 'comparison dimension ' + value, { reload: 'compare' });
+    assert(root.querySelector('[data-bw-comparison]')?.textContent.trim(), 'comparison output missing for dimension ' + value);
+    report.compareDimensions.push(value);
+  }
+  await applyControl('[data-bw-compare-dimension]', 'task_category', 'reset comparison dimension', { reload: 'compare' });
+
+  for (const select of root.querySelectorAll('[data-bw-compare-filter-field]')) {
+    const key = select.dataset.bwCompareFilterField;
+    const value = [...select.options].map((option) => option.value).find(Boolean);
+    if (!value) continue;
+    await applyControl('[data-bw-compare-filter-field="' + key + '"]', value, 'compare filter ' + key, { reload: 'compare' });
+    assert(window.location.hash.includes('cf.' + encodeURIComponent(key) + '='), 'compare filter did not update hash: ' + key);
+    assert(root.querySelector('[data-bw-comparison]')?.textContent.trim(), 'compare filter output missing: ' + key);
+    report.compareFilters.push(key);
+    await applyControl('[data-bw-compare-filter-field="' + key + '"]', '', 'clear compare filter ' + key, { reload: 'compare' });
+  }
+
+  workbench.comparisonSort = { key: 'gap_pp', direction: 'desc' };
+  await workbench.loadComparison();
+  const compareSortKeys = [...root.querySelectorAll('[data-bw-comparison] button[data-bw-sort]')].map((button) => button.dataset.bwSort);
+  assert(compareSortKeys.length > 0, 'comparison sort headers missing');
+  for (const key of compareSortKeys) {
+    root.querySelector('[data-bw-comparison] button[data-bw-sort="' + key + '"]')?.click();
+    await sleep();
+    const sortState = root.querySelector('[data-bw-comparison] button[data-bw-sort="' + key + '"]')?.closest('th')?.getAttribute('aria-sort');
+    assert(sortState && sortState !== 'none', 'comparison sort did not activate: ' + key);
+    report.compareSorts.push(key);
+  }
+
+  await activate('combinations');
+  const comboControls = [
+    ['[data-bw-combo-task]', 'task', 'task='],
+    ['[data-bw-combo-model]', 'model', 'model='],
+    ['[data-bw-combo-gpu]', 'gpu', 'gpu='],
+  ];
+  for (const [selector, label, hashPart] of comboControls) {
+    const value = firstOptionValue(selector);
+    assert(value, 'missing combination option: ' + label);
+    await applyControl(selector, value, 'combination ' + label, { reload: 'combination' });
+    assert(window.location.hash.includes(hashPart), 'combination ' + label + ' did not update hash');
+    assert(root.querySelector('[data-bw-combinations]')?.textContent.trim(), 'combination output missing after ' + label);
+    report.combination.push(label);
+    await applyControl(selector, '', 'clear combination ' + label, { reload: 'combination' });
+  }
+  await applyControl('[data-bw-combo-passed-only]', true, 'combination passed only', { reload: 'combination' });
+  assert(window.location.hash.includes('passed=1'), 'combination pass-only did not update hash');
+  report.combination.push('passed-only');
+  await applyControl('[data-bw-combo-passed-only]', false, 'clear combination passed only', { reload: 'combination' });
+
+  const comboSortKeys = [...root.querySelectorAll('[data-bw-combinations] button[data-bw-sort]')].map((button) => button.dataset.bwSort);
+  assert(comboSortKeys.length > 0, 'combination sort headers missing');
+  for (const key of comboSortKeys) {
+    root.querySelector('[data-bw-combinations] button[data-bw-sort="' + key + '"]')?.click();
+    await sleep();
+    const sortState = root.querySelector('[data-bw-combinations] button[data-bw-sort="' + key + '"]')?.closest('th')?.getAttribute('aria-sort');
+    assert(sortState && sortState !== 'none', 'combination sort did not activate: ' + key);
+    report.combinationSorts.push(key);
+  }
+
+  await activate('data');
+  await workbench.loadGrid();
+  const viewer = root.querySelector('[data-bw-viewer]');
+  const config = await viewer.save();
+  await viewer.restore({
+    ...config,
+    columns: ['task', 'result_state', 'model_display_name'],
+    sort: [['result_state', 'desc']],
+    group_by: ['model_display_name'],
+    filter: [['result_state', '==', 'passed']],
+    settings: false,
+  });
+  await viewer.flush?.();
+  const saved = await viewer.save();
+  assert(saved.sort?.some((entry) => entry[0] === 'result_state'), 'Perspective sort config missing');
+  assert(saved.group_by?.includes('model_display_name'), 'Perspective group_by config missing');
+  assert(saved.filter?.some((entry) => entry[0] === 'result_state'), 'Perspective filter config missing');
+  report.gridConfig.push('sort', 'group_by', 'filter');
+  root.querySelector('[data-bw-reset-view]')?.click();
+  await sleep();
+  await workbench.reloadRaw();
+  await waitLoaded('reset after grid config');
+
+  return report;
+})()`
 
 const workbenchReadyJS = `(() => {
   const root = document.querySelector('[data-benchmark-workbench]');
