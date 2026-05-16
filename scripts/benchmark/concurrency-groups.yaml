@@ -1,9 +1,7 @@
 # Concurrency groups for the benchmark runner
 #
-# Translates the historical `resource_groups:` block from
-# scripts/benchmark/terminalbench-2-1-sweep.yaml into a flat
-# {id, max_concurrency} mapping. The `rg-` prefix is dropped; profiles
-# reference these groups by the unprefixed id.
+# Flat {id, max_concurrency} mapping. Profiles reference these groups by id
+# via their `concurrency_group:` field.
 #
 # Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
 

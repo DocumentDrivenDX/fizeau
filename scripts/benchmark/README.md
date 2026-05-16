@@ -23,8 +23,8 @@ benchmark script entry point.
 The wrapper keeps the historical `--phase` surface and maps those phase ids to
 the underlying recipe-based sweep plan.
 
-Short lane aliases are data-driven from `lane_aliases:` in
-`scripts/benchmark/terminalbench-2-1-sweep.yaml`. Current defaults include:
+Short lane aliases are data-driven from the historical alias block in the
+deleted TB-2.1 sweep plan. Current defaults include:
 
 - `openai-gpt55` -> `fiz-openai-gpt-5-5`
 - `openrouter-qwen36` -> `fiz-openrouter-qwen3-6-27b`

@@ -39,10 +39,6 @@ func run(args []string) int {
 		return cmdMatrixAggregate(args[1:])
 	case "matrix-index":
 		return cmdMatrixIndex(args[1:])
-	case "sweep":
-		return cmdSweep(args[1:])
-	case "lanes":
-		return cmdLanes(args[1:])
 	case "plan":
 		return cmdPlan(args[1:])
 	case "bench-sets":
@@ -76,8 +72,6 @@ Commands:
              Aggregate matrix cell reports into matrix.json, matrix.md, costs.json
   matrix-index
              Consolidate report.json files into phase-independent indexes
-  sweep      Run the TB-2.1 staged sweep with phase and resource-group scheduling
-  lanes      Clone benchmark lanes/profiles into the TB-2.1 sweep plan
   plan       Emit the resolved profile×bench-set execution matrix (used by ./benchmark)
   bench-sets List bench-sets under scripts/benchmark/bench-sets/
 
