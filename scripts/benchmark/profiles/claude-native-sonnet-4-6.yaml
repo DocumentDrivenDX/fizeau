@@ -2,6 +2,9 @@
 # represents the model selected by Claude Code, not a model-controlled
 # OpenAI-compatible row.
 id: claude-native-sonnet-4-6
+harness: none
+surface: frontier_harness
+concurrency_group: claude-code-native
 metadata:
   server: anthropic
   model_family: claude-sonnet-4

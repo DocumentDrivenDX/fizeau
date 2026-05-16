@@ -1,0 +1,313 @@
+{
+  "bench_set": {
+    "id": "tb-2-1-timing-baseline",
+    "framework": "terminal-bench",
+    "dataset": "terminal-bench-2-1",
+    "default_reps": 3,
+    "description": "8-task limited-scope subset hand-picked from OR-passing to span the OR-Qwen pass-wall difficulty distribution (2 quick / 2 medium-low / 2 medium-high / 2 long). Used to verify post-wire-fix reasoning control across benchmark lanes before committing to a full sweep.",
+    "tasks": [
+      "fix-git",
+      "openssl-selfsigned-cert",
+      "prove-plus-comm",
+      "fix-code-vulnerability",
+      "polyglot-c-py",
+      "financial-document-processor",
+      "reshard-c4-data",
+      "fix-ocaml-gc"
+    ]
+  },
+  "profiles": [
+    {
+      "id": "vidar-ds4",
+      "metadata": {
+        "backend": "metal",
+        "gguf_filename": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf",
+        "kv_disk_dir": "/Volumes/Samsung/ds4-kv",
+        "kv_disk_space_mb": "131072",
+        "model_family": "deepseek-v4-flash",
+        "model_id": "deepseek-v4-flash",
+        "provider_surface": "vidar-ds4",
+        "quant_label": "gguf-iq2xxs-mixed-q2k-q8",
+        "runtime": "ds4",
+        "server": "vidar"
+      },
+      "provider": {
+        "type": "ds4",
+        "model": "deepseek-v4-flash",
+        "base_url": "http://192.168.2.106:1236/v1",
+        "api_key_env": "DS4_API_KEY"
+      },
+      "pricing": {
+        "input_usd_per_mtok": 0,
+        "output_usd_per_mtok": 0,
+        "cached_input_usd_per_mtok": 0
+      },
+      "limits": {
+        "max_output_tokens": 32768,
+        "context_tokens": 393216,
+        "rate_limit_rpm": 60,
+        "rate_limit_tpm": 100000
+      },
+      "sampling": {
+        "temperature": 0.6,
+        "reasoning": "low",
+        "top_p": 0.95,
+        "top_k": 20
+      },
+      "versioning": {
+        "resolved_at": "2026-05-11",
+        "snapshot": "deepseek-v4-flash via ds4-server antirez/ds4@ae302c2f | gguf=DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf | hw=apple-m2-ultra-192gb | backend=metal | kv_disk=/Volumes/Samsung/ds4-kv@131072MB | ctx=393216"
+      },
+      "agent_timeout_multiplier": 5,
+      "harness": "none",
+      "surface": "fiz_provider_native",
+      "concurrency_group": "vidar-ds4"
+    }
+  ],
+  "concurrency_groups": {
+    "bragi-club-3090": {
+      "id": "bragi-club-3090",
+      "max_concurrency": 1,
+      "description": "vLLM with autoround quantization on bragi RTX 3090 (http://bragi:8020/v1). Single-cell serialization."
+    },
+    "grendel-rapid-mlx": {
+      "id": "grendel-rapid-mlx",
+      "max_concurrency": 1,
+      "description": "Rapid-MLX server on grendel (http://grendel:8000/v1). Single-cell serialization."
+    },
+    "openai-gpt55": {
+      "id": "openai-gpt55",
+      "max_concurrency": 16,
+      "description": "Native OpenAI GPT-5.5 lane (https://api.openai.com/v1). RPM 500, TPM 500000. Per-run cap $8; per-phase cap $300."
+    },
+    "openrouter": {
+      "id": "openrouter",
+      "max_concurrency": 10,
+      "description": "Managed OpenRouter lane (https://openrouter.ai/api/v1). RPM 500, TPM 200000. Per-run cap $5; per-phase cap $50; per-sweep cap $150."
+    },
+    "openrouter-qwen36-27b": {
+      "id": "openrouter-qwen36-27b",
+      "max_concurrency": 10,
+      "description": "Managed OpenRouter Qwen3.6-27B lane. Separated from openrouter so full Qwen runs do not share a limiter with Claude/GPT harness comparison lanes. RPM 500, TPM 1000000."
+    },
+    "sindri-club-3090": {
+      "id": "sindri-club-3090",
+      "max_concurrency": 1,
+      "description": "vLLM with autoround quantization on sindri RTX 3090 (http://sindri:8020/v1). Mutually exclusive with sindri-club-3090-llamacpp (same machine + port)."
+    },
+    "sindri-club-3090-llamacpp": {
+      "id": "sindri-club-3090-llamacpp",
+      "max_concurrency": 1,
+      "description": "llama.cpp's llama-server on sindri (http://sindri:8020/v1) hosting Unsloth Qwen3.6-27B-UD-Q3_K_XL GGUF. Mutually exclusive with sindri-club-3090."
+    },
+    "sindri-lucebox-dflash": {
+      "id": "sindri-lucebox-dflash",
+      "max_concurrency": 1,
+      "description": "lucebox-hub DFlash speculative decoder on sindri (http://sindri:8080/v1, alias luce-dflash). Single-cell serialization."
+    },
+    "vidar-ds4": {
+      "id": "vidar-ds4",
+      "max_concurrency": 1,
+      "description": "DwarfStar 4 (antirez/ds4) on vidar (http://192.168.2.106:1236/v1). Single graph worker — strictly serialized. Mutually exclusive with vidar-omlx on the same hardware."
+    },
+    "vidar-omlx": {
+      "id": "vidar-omlx",
+      "max_concurrency": 1,
+      "description": "oMLX server on vidar (http://vidar:1235/v1). Single-model server; serialize all cells."
+    }
+  },
+  "cells": [
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    }
+  ]
+}

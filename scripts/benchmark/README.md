@@ -1,70 +1,79 @@
 # Fizeau Benchmark Scripts
 
-This directory contains the active TerminalBench 2.1 benchmark runner,
-profiles, adapters, and task subsets for evaluating `fiz`.
+This directory contains the TerminalBench 2.1 benchmark driver, profiles,
+bench-sets, adapters, and task subsets for evaluating `fiz`.
+
+The execution path is `./benchmark` (shell driver), governed by
+[ADR-016](../../docs/helix/02-design/adr/ADR-016-cells-are-self-describing-evidence.md).
+`cmd/bench` survives only as analytics tooling (`aggregate`,
+`import-evidence`, `validate`, `plan --json`); it no longer owns cell
+execution.
 
 ## Active Entry Point
 
-Use the repo-root `./bench/run` wrapper. It delegates to
-`scripts/benchmark/run_terminalbench_2_1_sweep.sh` and is the only supported
-benchmark script entry point.
-
 ```bash
-./bench/run --phase canary
-./bench/run --phase openai-cheap
-./bench/run --phase tb21-all --lanes openai-gpt55
-./bench/run --phase tb21-all --lanes openrouter-qwen36
-./bench/run --phase tb21-all --lanes sindri-llamacpp,vidar
-./bench/run --phase tb21-all --lanes openrouter-qwen36,sindri-llamacpp,vidar
-./bench/run --phase qwen36-gpt55-full
-./bench/run --phase all
+./benchmark --profile P --bench-set B
 ```
 
-The wrapper keeps the historical `--phase` surface and maps those phase ids to
-the underlying recipe-based sweep plan.
-
-Short lane aliases are data-driven from `lane_aliases:` in
-`scripts/benchmark/terminalbench-2-1-sweep.yaml`. Current defaults include:
-
-- `openai-gpt55` -> `fiz-openai-gpt-5-5`
-- `openrouter-qwen36` -> `fiz-openrouter-qwen3-6-27b`
-- `sindri-llamacpp` -> `fiz-sindri-llamacpp-qwen3-6-27b`
-- `sindri-vllm` -> `fiz-sindri-vllm-qwen3-6-27b`
-- `vidar` -> `fiz-vidar-omlx-qwen3-6-27b`
-- `vidar-ds4` -> `fiz-vidar-ds4`
-- `ds4-mtp` -> `fiz-vidar-ds4-mtp`
-- `vidar-ds4-mtp` -> `fiz-vidar-ds4-mtp`
-
-## Authoring Lanes
-
-Use `lanes clone` to create a new sweep lane/profile pair from an existing one
-without hand-editing YAML. The command updates the sweep plan, writes the new
-profile YAML, enrolls recipes, and adds short aliases in one pass.
-
-This reproduces the intended `fiz-vidar-ds4-mtp` lane/profile in a scratch
-checkout without manual edits:
+Both flags are required (no implicit defaults for paid or local-heavy
+runs). Comma-separated profile lists are supported:
 
 ```bash
-go run ./cmd/bench lanes clone \
-  --work-dir /tmp/fizeau-lane-scratch \
-  --from-lane fiz-vidar-ds4 \
-  --lane-id fiz-vidar-ds4-mtp \
-  --profile-id vidar-ds4-mtp \
-  --recipes timing-baseline,or-passing,tb21-all \
-  --aliases vidar-ds4-mtp,ds4-mtp \
-  --quant-label ds4-native-bf16-mtp \
-  --metadata mtp=enabled \
-  --resolved-at 2026-05-15 \
-  --snapshot-suffix " | mtp=enabled" \
-  --dry-run
+./benchmark --profile vidar-ds4 --bench-set tb-2-1-timing-baseline
+./benchmark --profile sindri-llamacpp,vidar-ds4 --bench-set tb-2-1-or-passing
+./benchmark --profile openai-gpt-5-5 --bench-set tb-2-1-all
 ```
 
-Drop `--dry-run` to write the files. If you already built the helper, replace
-`go run ./cmd/bench` with `fiz-bench`.
+Supporting subcommands:
 
-For ds4 specifically, MTP is a server/model property, not a Fizeau env knob:
-the live `GET /props` capture reports `model.mtp=true`, and the benchmark
-runtime-props extractor carries that into each cell's evidence.
+```bash
+./benchmark --profile P --bench-set B --plan   # validate + print matrix; pure
+./benchmark validate                           # schema + cross-reference, offline
+./benchmark preflight --profile P              # probe endpoints (the only command that does)
+./benchmark profiles                           # list available profile IDs
+./benchmark bench-sets                         # list available bench-set IDs
+```
+
+Rules (per ADR-016):
+
+1. `--plan` is pure: no file writes, no Docker pulls, no preflight, no
+   `benchmark-results/` directory creation.
+2. The cell directory is created only when the cell is about to start.
+3. `validate` is fast and offline (schema + cross-reference only).
+4. `preflight` is the only command that probes endpoints.
+5. Manifest reading happens in one place: `fiz-bench plan --json` emits
+   JSON, the shell consumes JSON, never YAML.
+
+## Authoring a Profile
+
+A profile is the single authoring unit. To add or vary one, copy an
+existing file under `profiles/` and edit:
+
+```bash
+cp scripts/benchmark/profiles/<existing>.yaml scripts/benchmark/profiles/<new>.yaml
+$EDITOR scripts/benchmark/profiles/<new>.yaml
+./benchmark validate
+```
+
+Each profile carries the full configuration needed to invoke `fiz` once:
+provider (type/model/base_url/api_key_env), sampling, limits, pricing,
+`agent_timeout_multiplier`, `harness` (anthropic / codex / pi / opencode /
+none), `surface` (`fiz_provider_native` / `fiz_harness_anthropic` / …),
+`concurrency_group` (rate-limit shard key), metadata
+(model_family, model_id, quant_label, runtime, server, backend, …), and
+versioning (resolved_at, snapshot, snapshot_notes).
+
+For DS4 specifically, MTP is a server/model property, not a Fizeau env
+knob: the live `GET /props` capture reports `model.mtp=true`, and the
+benchmark runtime-props extractor carries that into each cell's evidence.
+
+## Bench-sets and Concurrency Groups
+
+- `bench-sets/<id>.yaml` declares *what* to run: framework, dataset, task
+  list, default reps. Bench-sets are admin metadata only — they do not
+  appear in cell records or output paths.
+- `concurrency-groups.yaml` declares rate-limit shard caps. Profiles join
+  via `concurrency_group:`.
 
 ## Prerequisites
 
@@ -73,21 +82,15 @@ docker info
 ```
 
 The runner installs Harbor with `uv tool install harbor` when Harbor is not
-already available. The selected TerminalBench 2.1 tasks are downloaded under
-`bench/results/external/terminal-bench-2-1` by default.
+already available. The selected TerminalBench 2.1 tasks are downloaded
+under `bench/results/external/terminal-bench-2-1` by default.
 
-Benchmark helper binaries and runtime payloads are not benchmark results. By
-default the wrapper writes the host `fiz-bench` helper to `.local/bin/` and
-container/runtime payloads to `.local/share/fizeau/benchmark-runtime/`. Override
-those locations with `BENCHMARK_BIN_DIR` and `BENCHMARK_RUNTIME_DIR` when tests
-or one-off runs need isolated scratch space.
+Provider keys are required only for selected profiles:
 
-Provider keys are required only for selected lanes:
+- `OPENAI_API_KEY` for OpenAI profiles
+- `OPENROUTER_API_KEY` for OpenRouter profiles
 
-- `OPENAI_API_KEY` for `openai-gpt55`
-- `OPENROUTER_API_KEY` for `openrouter-qwen36` and other OpenRouter lanes
-
-Local provider lanes default to non-empty placeholder keys for local endpoints.
+Local profiles default to non-empty placeholder keys for local endpoints.
 
 ## Benchmark Workbench Browser Smoke
 
@@ -101,109 +104,51 @@ make benchmark-workbench-smoke
 The command builds the website, opens `/benchmarks/explorer/` in headless
 Chromium, waits for DuckDB/Perspective to initialize, and asserts the row
 count, filters, pairwise comparison table, task links, and default hidden
-`terminalbench_task_url` column. `hugo` must be on `PATH`; Playwright Chromium
-is installed automatically on first run.
-
-## Subsets, Recipes, and Phases (deprecated)
-
-The sweep plan (`scripts/benchmark/terminalbench-2-1-sweep.yaml`) declares two
-orthogonal blocks since the v2 schema (2026-05-14, fizeau-596ff006):
-
-- **`subsets:`** — pure task lists. Each entry has `id`, `path`, `default_reps`.
-  Subsets carry no lane info.
-- **`recipes:`** — curated CLI bundles. Each pairs one `subset:` with a `lanes:`
-  list and optional overrides (`reps`, `max_concurrency_override`,
-  `parallel_policy`, `preflight`, `staged`). Recipes are pure sugar at runtime
-  — the executable matrix is `(subset, lane)`. Recipes with `staged: true`
-  participate in `--staged-recipes` (the historical `--phase all` gate).
-
-Main recipes in YAML order:
-
-- `canary`: 3 small tasks to prove selected lanes start and write artifacts.
-- `local-qwen`: full Qwen3.6-27B local providers vs. fiz native lane.
-- `timing-baseline`, `or-passing`, `tb21-all`: targeted/full subsets,
-  non-staged.
-- `openai-cheap`: 35 lower-cost GPT-5.5 tasks at `k=5`.
-- `sonnet-comparison`, `gpt-comparison`: harness-vs-provider comparisons.
-- `medium-model-canary`, `medium-model`: official medium-model fiz-wrapper
-  comparison sweeps.
-
-`--phase X` and `--phase all` remain as deprecated aliases for `--recipe X` and
-`--staged-recipes` respectively.
+`terminalbench_task_url` column. `hugo` must be on `PATH`; Playwright
+Chromium is installed automatically on first run.
 
 ## Output And Resume
 
-Benchmark cells live in the version-rooted canonical tree, keyed on the
-dimensions that vary per run:
+Benchmark cells are self-describing evidence (ADR-016). Each cell embeds
+its full resolved profile snapshot at write time; analytics never needs to
+join back to the source YAML.
 
 ```text
-bench/results/fiz-tools-v<version>/
-  cells/<dataset>/<task>/<profile_id>/rep-NNN/
-    report.json         # carries fiz_tools_version + profile_id (small set of stamped fields)
-    fiz-<task>-rep<N>/  # Harbor job artifacts, work/, etc.
-  profiles/<profile_id>.yaml   # snapshotted profile catalog (server, model_family, quant, runtime)
-  indexes/runs.jsonl           # one row per cell, joinable to profiles/ on profile_id
-  indexes/summary.{csv,md}
-  <phase>/<lane>/matrix.json   # per-invocation summary; cells live in the shared cells/ tree
+benchmark-results/<canonical>/cells/
+  <framework>-<dataset>/
+    <task>/
+      <cell-id>/                    # 20260516T103045Z-a4c1
+        report.json                 # embeds full resolved profile
+        fiz.txt                     # raw fiz log
+        session/                    # trajectory artifacts
 ```
 
-Reasoning:
+Cell IDs are ISO-timestamp + short random suffix. They are monotonic,
+unique, and race-free — chronological sort gives history.
 
-- `profile_id` is the natural primary key — it uniquely encodes
-  (server, runtime, model, quant, sampling) by construction. Two profiles
-  with the same provider+model but different physical servers (sindri vs
-  bragi) get separate cells, which the previous `<provider>/<model>` layout
-  collapsed.
-- Profile metadata (server / model_family / quant_label / provider_surface /
-  runtime / hardware_label / endpoint) lives in the per-version snapshot at
-  `profiles/`, joined on `profile_id` at index time. Editing
-  `scripts/benchmark/profiles/*.yaml` does NOT retroactively rewrite
-  historical cells.
-- `fiz_tools_version` (constant in `internal/fiztools`) tracks agent
-  behavior separately from fiz semver. Bump only when prompts / tool
-  schemas / agent loop logic change, not for routing/test/CI work.
-
-Re-running the same phase/lane resumes from existing graded `report.json`
-files automatically. Cells classified as `invalid_*` are skipped on
-resume by default; pass `--retry-invalid` to opt in to re-running them
-(typical use case: infrastructure failure has been fixed and cells
-should be re-attempted).
-
-Only `profiles/` and `indexes/` are intended to be checked in. The raw
-`cells/` tree stays gitignored — large and contains Harbor job artifacts.
+Re-running the same `(profile, bench-set)` resumes from existing cells
+whose `final_status` is terminal (`pass` / `fail` / `timeout`).
+`--retry-invalid` re-runs cells classified `invalid` (typical use case:
+infrastructure failure has been fixed). `--force-rerun` ignores terminal
+state.
 
 ## Consolidating Existing Results
 
-Use `fiz-bench matrix-index` to scan historical `bench/results/**/report.json`
-files, snapshot the profile catalog, and emit a phase-independent index.
-
-```bash
-go run ./cmd/bench matrix-index \
-  --copy \
-  --root bench/results \
-  --canonical-out bench/results/fiz-tools-v1 \
-  --fiz-tools-version 1
-```
-
-`--copy` migrates each source cell directory into the canonical layout
-(at `<canonical>/cells/<dataset>/<task>/<profile_id>/rep-NNN/`) and stamps
-`fiz_tools_version=1` on historical reports. The index row preserves each
-row's original `source_path` for traceability. Cells filed under unknown
-profile_ids land in an "unknown" projection bucket — fix by adding a
-`metadata:` block to the corresponding profile YAML.
+Use `fiz-bench aggregate` and `fiz-bench import-evidence` to scan historical
+`benchmark-results/**/report.json` files and emit indexes / aggregate
+summaries. These commands read embedded `cell.profile.*` metadata directly
+— there is no separate profile-YAML join step.
 
 ## Active Config Files
 
-- `terminalbench-2-1-sweep.yaml`
+- `profiles/*.yaml`
+- `bench-sets/*.yaml`
+- `concurrency-groups.yaml`
 - `task-subset-tb21-canary.yaml`
 - `task-subset-tb21-full.yaml`
 - `task-subset-tb21-all.yaml`
 - `task-subset-tb21-openai-cheap.yaml`
-- `profiles/*.yaml`
 - `Dockerfile.agent-runtime`
 - `harbor_agent.py`
 - `harness_adapters/`
 - `harbor_adapters/`
-
-Older TB-2.0 wrappers and one-off lane scripts were removed. Git history keeps
-their implementation details if an old experiment needs to be reconstructed.

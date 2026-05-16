@@ -6,14 +6,15 @@
 # at sindri-vllm.yaml is kept alongside for historical comparison
 # but should not run concurrently — both share the same hardware/port.
 id: sindri-llamacpp
+harness: none
+surface: fiz_provider_native
+concurrency_group: sindri-club-3090-llamacpp
 metadata:
   model_family: qwen3-6-27b
   model_id: Qwen3.6-27B-UD-Q3_K_XL.gguf
   quant_label: gguf-q3-k-xl-unsloth
   provider_surface: sindri-llamacpp
   runtime: llama-server
-  hardware_label: sindri-club-3090
-  endpoint: http://sindri:8020/v1
   server: sindri
 
 provider:

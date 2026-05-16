@@ -16,6 +16,17 @@ ddx:
 **Status:** Accepted
 **Owner:** Fizeau Team
 
+> **Update 2026-05-16**: ADR-016 ("Cells Are Self-Describing Evidence")
+> supersedes the lane-identity / lane-join model used below. Cells now
+> embed the full resolved profile snapshot; the site reads characteristic
+> descriptors directly from `cell.profile.*` instead of joining to a
+> separate lane catalog at build time. "Lane" wording below remains as a
+> historical reference to the public benchmark-row identity concept that
+> the §3 descriptor rules formalize; the underlying data path is now
+> cell-embedded, not catalog-joined. See
+> [ADR-016](../adr/ADR-016-cells-are-self-describing-evidence.md) and
+> [`plan-2026-05-15-benchmark-runner-simplification.md`](../plan-2026-05-15-benchmark-runner-simplification.md).
+
 ## Summary
 
 This spec defines the information architecture, data layer, and validity

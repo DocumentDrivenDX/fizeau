@@ -1,0 +1,2703 @@
+{
+  "bench_set": {
+    "id": "tb-2-1-or-passing",
+    "framework": "terminal-bench",
+    "dataset": "terminal-bench-2-1",
+    "default_reps": 3,
+    "description": "Curated 52-task subset where fiz-openrouter-qwen3-6-27b has been observed to pass at least one rep. Focus local-Qwen experiments on tasks the cloud baseline can solve.",
+    "tasks": [
+      "bn-fit-modify",
+      "build-cython-ext",
+      "build-pmars",
+      "build-pov-ray",
+      "caffe-cifar-10",
+      "cancel-async-tasks",
+      "cobol-modernization",
+      "code-from-image",
+      "compile-compcert",
+      "configure-git-webserver",
+      "constraints-scheduling",
+      "count-dataset-tokens",
+      "crack-7z-hash",
+      "custom-memory-heap-crash",
+      "distribution-search",
+      "extract-elf",
+      "filter-js-from-html",
+      "financial-document-processor",
+      "fix-code-vulnerability",
+      "fix-git",
+      "fix-ocaml-gc",
+      "git-leak-recovery",
+      "git-multibranch",
+      "headless-terminal",
+      "hf-model-inference",
+      "kv-store-grpc",
+      "large-scale-text-editing",
+      "log-summary-date-ranges",
+      "mailman",
+      "mcmc-sampling-stan",
+      "merge-diff-arc-agi-task",
+      "modernize-scientific-stack",
+      "multi-source-data-merger",
+      "nginx-request-logging",
+      "openssl-selfsigned-cert",
+      "overfull-hbox",
+      "polyglot-c-py",
+      "portfolio-optimization",
+      "prove-plus-comm",
+      "pypi-server",
+      "pytorch-model-cli",
+      "pytorch-model-recovery",
+      "qemu-startup",
+      "regex-log",
+      "reshard-c4-data",
+      "rstan-to-pystan",
+      "sam-cell-seg",
+      "sanitize-git-repo",
+      "sparql-university",
+      "sqlite-db-truncate",
+      "sqlite-with-gcov",
+      "vulnerable-secret"
+    ]
+  },
+  "profiles": [
+    {
+      "id": "sindri-llamacpp",
+      "metadata": {
+        "server": "sindri",
+        "model_family": "qwen3-6-27b",
+        "model_id": "Qwen3.6-27B-UD-Q3_K_XL.gguf",
+        "quant_label": "gguf-q3-k-xl-unsloth",
+        "provider_surface": "sindri-llamacpp",
+        "runtime": "llama-server"
+      },
+      "provider": {
+        "type": "llama-server",
+        "model": "Qwen3.6-27B-UD-Q3_K_XL.gguf",
+        "base_url": "http://sindri:8020/v1",
+        "api_key_env": "LLAMACPP_API_KEY"
+      },
+      "pricing": {
+        "input_usd_per_mtok": 0,
+        "output_usd_per_mtok": 0,
+        "cached_input_usd_per_mtok": 0
+      },
+      "limits": {
+        "max_output_tokens": 65536,
+        "context_tokens": 180000,
+        "rate_limit_rpm": 60,
+        "rate_limit_tpm": 100000
+      },
+      "sampling": {
+        "temperature": 0.6,
+        "reasoning": "low",
+        "top_p": 0.95,
+        "top_k": 20
+      },
+      "versioning": {
+        "resolved_at": "2026-05-10",
+        "snapshot": "Qwen3.6-27B-UD-Q3_K_XL.gguf"
+      },
+      "agent_timeout_multiplier": 5,
+      "harness": "none",
+      "surface": "fiz_provider_native",
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "id": "vidar-ds4",
+      "metadata": {
+        "backend": "metal",
+        "gguf_filename": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf",
+        "kv_disk_dir": "/Volumes/Samsung/ds4-kv",
+        "kv_disk_space_mb": "131072",
+        "model_family": "deepseek-v4-flash",
+        "model_id": "deepseek-v4-flash",
+        "provider_surface": "vidar-ds4",
+        "quant_label": "gguf-iq2xxs-mixed-q2k-q8",
+        "runtime": "ds4",
+        "server": "vidar"
+      },
+      "provider": {
+        "type": "ds4",
+        "model": "deepseek-v4-flash",
+        "base_url": "http://192.168.2.106:1236/v1",
+        "api_key_env": "DS4_API_KEY"
+      },
+      "pricing": {
+        "input_usd_per_mtok": 0,
+        "output_usd_per_mtok": 0,
+        "cached_input_usd_per_mtok": 0
+      },
+      "limits": {
+        "max_output_tokens": 32768,
+        "context_tokens": 393216,
+        "rate_limit_rpm": 60,
+        "rate_limit_tpm": 100000
+      },
+      "sampling": {
+        "temperature": 0.6,
+        "reasoning": "low",
+        "top_p": 0.95,
+        "top_k": 20
+      },
+      "versioning": {
+        "resolved_at": "2026-05-11",
+        "snapshot": "deepseek-v4-flash via ds4-server antirez/ds4@ae302c2f | gguf=DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2.gguf | hw=apple-m2-ultra-192gb | backend=metal | kv_disk=/Volumes/Samsung/ds4-kv@131072MB | ctx=393216"
+      },
+      "agent_timeout_multiplier": 5,
+      "harness": "none",
+      "surface": "fiz_provider_native",
+      "concurrency_group": "vidar-ds4"
+    }
+  ],
+  "concurrency_groups": {
+    "bragi-club-3090": {
+      "id": "bragi-club-3090",
+      "max_concurrency": 1,
+      "description": "vLLM with autoround quantization on bragi RTX 3090 (http://bragi:8020/v1). Single-cell serialization."
+    },
+    "grendel-rapid-mlx": {
+      "id": "grendel-rapid-mlx",
+      "max_concurrency": 1,
+      "description": "Rapid-MLX server on grendel (http://grendel:8000/v1). Single-cell serialization."
+    },
+    "openai-gpt55": {
+      "id": "openai-gpt55",
+      "max_concurrency": 16,
+      "description": "Native OpenAI GPT-5.5 lane (https://api.openai.com/v1). RPM 500, TPM 500000. Per-run cap $8; per-phase cap $300."
+    },
+    "openrouter": {
+      "id": "openrouter",
+      "max_concurrency": 10,
+      "description": "Managed OpenRouter lane (https://openrouter.ai/api/v1). RPM 500, TPM 200000. Per-run cap $5; per-phase cap $50; per-sweep cap $150."
+    },
+    "openrouter-qwen36-27b": {
+      "id": "openrouter-qwen36-27b",
+      "max_concurrency": 10,
+      "description": "Managed OpenRouter Qwen3.6-27B lane. Separated from openrouter so full Qwen runs do not share a limiter with Claude/GPT harness comparison lanes. RPM 500, TPM 1000000."
+    },
+    "sindri-club-3090": {
+      "id": "sindri-club-3090",
+      "max_concurrency": 1,
+      "description": "vLLM with autoround quantization on sindri RTX 3090 (http://sindri:8020/v1). Mutually exclusive with sindri-club-3090-llamacpp (same machine + port)."
+    },
+    "sindri-club-3090-llamacpp": {
+      "id": "sindri-club-3090-llamacpp",
+      "max_concurrency": 1,
+      "description": "llama.cpp's llama-server on sindri (http://sindri:8020/v1) hosting Unsloth Qwen3.6-27B-UD-Q3_K_XL GGUF. Mutually exclusive with sindri-club-3090."
+    },
+    "sindri-lucebox-dflash": {
+      "id": "sindri-lucebox-dflash",
+      "max_concurrency": 1,
+      "description": "lucebox-hub DFlash speculative decoder on sindri (http://sindri:8080/v1, alias luce-dflash). Single-cell serialization."
+    },
+    "vidar-ds4": {
+      "id": "vidar-ds4",
+      "max_concurrency": 1,
+      "description": "DwarfStar 4 (antirez/ds4) on vidar (http://192.168.2.106:1236/v1). Single graph worker — strictly serialized. Mutually exclusive with vidar-omlx on the same hardware."
+    },
+    "vidar-omlx": {
+      "id": "vidar-omlx",
+      "max_concurrency": 1,
+      "description": "oMLX server on vidar (http://vidar:1235/v1). Single-model server; serialize all cells."
+    }
+  },
+  "cells": [
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "bn-fit-modify",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "bn-fit-modify",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "bn-fit-modify",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-cython-ext",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-cython-ext",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-cython-ext",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pmars",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pmars",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pmars",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pov-ray",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pov-ray",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pov-ray",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "caffe-cifar-10",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "caffe-cifar-10",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "caffe-cifar-10",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cancel-async-tasks",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cancel-async-tasks",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cancel-async-tasks",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cobol-modernization",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cobol-modernization",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cobol-modernization",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "code-from-image",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "code-from-image",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "code-from-image",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "compile-compcert",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "compile-compcert",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "compile-compcert",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "configure-git-webserver",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "configure-git-webserver",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "configure-git-webserver",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "constraints-scheduling",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "constraints-scheduling",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "constraints-scheduling",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "count-dataset-tokens",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "count-dataset-tokens",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "count-dataset-tokens",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "crack-7z-hash",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "crack-7z-hash",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "crack-7z-hash",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "custom-memory-heap-crash",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "custom-memory-heap-crash",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "custom-memory-heap-crash",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "distribution-search",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "distribution-search",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "distribution-search",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "extract-elf",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "extract-elf",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "extract-elf",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "filter-js-from-html",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "filter-js-from-html",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "filter-js-from-html",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-leak-recovery",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-leak-recovery",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-leak-recovery",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-multibranch",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-multibranch",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-multibranch",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "headless-terminal",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "headless-terminal",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "headless-terminal",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "hf-model-inference",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "hf-model-inference",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "hf-model-inference",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "kv-store-grpc",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "kv-store-grpc",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "kv-store-grpc",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "large-scale-text-editing",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "large-scale-text-editing",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "large-scale-text-editing",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "log-summary-date-ranges",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "log-summary-date-ranges",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "log-summary-date-ranges",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mailman",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mailman",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mailman",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mcmc-sampling-stan",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mcmc-sampling-stan",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mcmc-sampling-stan",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "merge-diff-arc-agi-task",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "merge-diff-arc-agi-task",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "merge-diff-arc-agi-task",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "modernize-scientific-stack",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "modernize-scientific-stack",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "modernize-scientific-stack",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "multi-source-data-merger",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "multi-source-data-merger",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "multi-source-data-merger",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "nginx-request-logging",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "nginx-request-logging",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "nginx-request-logging",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "overfull-hbox",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "overfull-hbox",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "overfull-hbox",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "portfolio-optimization",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "portfolio-optimization",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "portfolio-optimization",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pypi-server",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pypi-server",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pypi-server",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-cli",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-cli",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-cli",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-recovery",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-recovery",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-recovery",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "qemu-startup",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "qemu-startup",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "qemu-startup",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "regex-log",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "regex-log",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "regex-log",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "rstan-to-pystan",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "rstan-to-pystan",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "rstan-to-pystan",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sam-cell-seg",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sam-cell-seg",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sam-cell-seg",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sanitize-git-repo",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sanitize-git-repo",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sanitize-git-repo",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sparql-university",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sparql-university",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sparql-university",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-db-truncate",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-db-truncate",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-db-truncate",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-with-gcov",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-with-gcov",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-with-gcov",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "vulnerable-secret",
+      "rep": 1,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "vulnerable-secret",
+      "rep": 2,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "sindri-llamacpp",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "vulnerable-secret",
+      "rep": 3,
+      "concurrency_group": "sindri-club-3090-llamacpp"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "bn-fit-modify",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "bn-fit-modify",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "bn-fit-modify",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-cython-ext",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-cython-ext",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-cython-ext",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pmars",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pmars",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pmars",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pov-ray",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pov-ray",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "build-pov-ray",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "caffe-cifar-10",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "caffe-cifar-10",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "caffe-cifar-10",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cancel-async-tasks",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cancel-async-tasks",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cancel-async-tasks",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cobol-modernization",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cobol-modernization",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "cobol-modernization",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "code-from-image",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "code-from-image",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "code-from-image",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "compile-compcert",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "compile-compcert",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "compile-compcert",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "configure-git-webserver",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "configure-git-webserver",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "configure-git-webserver",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "constraints-scheduling",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "constraints-scheduling",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "constraints-scheduling",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "count-dataset-tokens",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "count-dataset-tokens",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "count-dataset-tokens",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "crack-7z-hash",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "crack-7z-hash",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "crack-7z-hash",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "custom-memory-heap-crash",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "custom-memory-heap-crash",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "custom-memory-heap-crash",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "distribution-search",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "distribution-search",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "distribution-search",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "extract-elf",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "extract-elf",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "extract-elf",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "filter-js-from-html",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "filter-js-from-html",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "filter-js-from-html",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "financial-document-processor",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-code-vulnerability",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-git",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "fix-ocaml-gc",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-leak-recovery",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-leak-recovery",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-leak-recovery",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-multibranch",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-multibranch",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "git-multibranch",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "headless-terminal",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "headless-terminal",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "headless-terminal",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "hf-model-inference",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "hf-model-inference",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "hf-model-inference",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "kv-store-grpc",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "kv-store-grpc",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "kv-store-grpc",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "large-scale-text-editing",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "large-scale-text-editing",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "large-scale-text-editing",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "log-summary-date-ranges",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "log-summary-date-ranges",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "log-summary-date-ranges",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mailman",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mailman",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mailman",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mcmc-sampling-stan",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mcmc-sampling-stan",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "mcmc-sampling-stan",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "merge-diff-arc-agi-task",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "merge-diff-arc-agi-task",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "merge-diff-arc-agi-task",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "modernize-scientific-stack",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "modernize-scientific-stack",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "modernize-scientific-stack",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "multi-source-data-merger",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "multi-source-data-merger",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "multi-source-data-merger",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "nginx-request-logging",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "nginx-request-logging",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "nginx-request-logging",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "openssl-selfsigned-cert",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "overfull-hbox",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "overfull-hbox",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "overfull-hbox",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "polyglot-c-py",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "portfolio-optimization",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "portfolio-optimization",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "portfolio-optimization",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "prove-plus-comm",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pypi-server",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pypi-server",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pypi-server",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-cli",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-cli",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-cli",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-recovery",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-recovery",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "pytorch-model-recovery",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "qemu-startup",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "qemu-startup",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "qemu-startup",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "regex-log",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "regex-log",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "regex-log",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "reshard-c4-data",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "rstan-to-pystan",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "rstan-to-pystan",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "rstan-to-pystan",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sam-cell-seg",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sam-cell-seg",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sam-cell-seg",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sanitize-git-repo",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sanitize-git-repo",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sanitize-git-repo",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sparql-university",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sparql-university",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sparql-university",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-db-truncate",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-db-truncate",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-db-truncate",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-with-gcov",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-with-gcov",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "sqlite-with-gcov",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "vulnerable-secret",
+      "rep": 1,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "vulnerable-secret",
+      "rep": 2,
+      "concurrency_group": "vidar-ds4"
+    },
+    {
+      "profile_id": "vidar-ds4",
+      "framework": "terminal-bench",
+      "dataset": "terminal-bench-2-1",
+      "task": "vulnerable-secret",
+      "rep": 3,
+      "concurrency_group": "vidar-ds4"
+    }
+  ]
+}

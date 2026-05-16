@@ -1,5 +1,8 @@
 # fiz provider lane through OpenRouter to GPT-5.5.
 id: fiz-openrouter-gpt-5-5
+harness: none
+surface: fiz_provider_native
+concurrency_group: openrouter
 metadata:
   server: openrouter
   model_family: gpt-5

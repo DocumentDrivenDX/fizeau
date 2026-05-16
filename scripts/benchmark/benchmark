@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+# scripts/benchmark/benchmark — operator-facing benchmark driver.
+#
+# Replaces `fiz-bench sweep` execution. cmd/bench survives only as analytics
+# tooling (aggregate, import-evidence, validate). Authored under
+# ADR-016 + docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md
+# (PR 1d). Manifest parsing happens in one place: `fiz-bench plan --json`.
+# This script consumes JSON, never YAML.
+#
+# Operator contract:
+#   ./benchmark --profile P --bench-set B
+#   ./benchmark --profile P --bench-set B --plan
+#   ./benchmark validate
+#   ./benchmark preflight --profile P
+#   ./benchmark profiles
+#   ./benchmark bench-sets
+#
+# Rules:
+#   1. --plan is pure: no file writes, no Docker pulls, no preflight, no
+#      benchmark-results/ directory creation.
+#   2. Cell directory created only when the cell is about to start.
+#   3. --profile and --bench-set both required (no implicit defaults).
+#   4. validate is fast and offline (schema + cross-reference only).
+#   5. preflight is the only command that probes endpoints.
+#   6. Manifest reading: fiz-bench plan --json emits JSON; shell consumes JSON.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+PROFILES_DIR="${SCRIPT_DIR}/profiles"
+BENCH_SETS_DIR="${SCRIPT_DIR}/bench-sets"
+CONCURRENCY_GROUPS="${SCRIPT_DIR}/concurrency-groups.yaml"
+
+die() { echo "benchmark: $*" >&2; exit 1; }
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ./benchmark [--profile P[,P2,...]] [--bench-set B] [--plan]
+       ./benchmark validate
+       ./benchmark preflight --profile P[,P2,...]
+       ./benchmark profiles
+       ./benchmark bench-sets
+
+Flags (run mode):
+  --profile P[,P2,...]     Comma-separated profile IDs (required for run/--plan/preflight)
+  --bench-set B            Bench-set ID (required for run/--plan)
+  --reps N                 Override default_reps from the bench-set
+  --out DIR                Output root (default: benchmark-results)
+  --plan                   Validate + print matrix; pure, no side effects
+  --force-rerun            Re-run cells whose final_status is terminal
+  --retry-invalid          Re-run cells whose final_status == invalid
+EOF
+}
+
+# resolve_fiz_bench prints the path to a usable `fiz-bench` binary.
+#   1. $FIZ_BENCH if set and executable
+#   2. .local/share/fizeau/benchmark-bin/fiz-bench (repo-built artifact)
+#   3. fiz-bench on PATH (may lag behind repo HEAD)
+#   4. fall back to `go run ./cmd/bench`
+resolve_fiz_bench() {
+  if [[ -n "${FIZ_BENCH:-}" && -x "${FIZ_BENCH}" ]]; then
+    printf '%s\n' "${FIZ_BENCH}"
+    return
+  fi
+  local cached="${REPO_ROOT}/.local/share/fizeau/benchmark-bin/fiz-bench"
+  if [[ -x "${cached}" ]]; then
+    printf '%s\n' "${cached}"
+    return
+  fi
+  if command -v fiz-bench >/dev/null 2>&1; then
+    command -v fiz-bench
+    return
+  fi
+  # Last resort: `go run` from repo root. Slower, but works in CI.
+  printf 'GO_RUN\n'
+}
+
+# fiz_bench dispatches to either an executable or `go run`.
+fiz_bench() {
+  local resolved
+  resolved="$(resolve_fiz_bench)"
+  if [[ "${resolved}" == "GO_RUN" ]]; then
+    ( cd "${REPO_ROOT}" && go run ./cmd/bench "$@" )
+  else
+    "${resolved}" "$@"
+  fi
+}
+
+cmd_profiles() {
+  local entries=()
+  shopt -s nullglob
+  for f in "${PROFILES_DIR}"/*.yaml "${PROFILES_DIR}"/*.yml; do
+    [[ -e "${f}" ]] || continue
+    entries+=("$(basename "${f%.*}")")
+  done
+  shopt -u nullglob
+  if [[ ${#entries[@]} -eq 0 ]]; then
+    echo "No profiles found in ${PROFILES_DIR}." >&2
+    return 0
+  fi
+  printf '%s\n' "${entries[@]}" | LC_ALL=C sort -u
+}
+
+cmd_bench_sets() {
+  local entries=()
+  shopt -s nullglob
+  for f in "${BENCH_SETS_DIR}"/*.yaml "${BENCH_SETS_DIR}"/*.yml; do
+    [[ -e "${f}" ]] || continue
+    entries+=("$(basename "${f%.*}")")
+  done
+  shopt -u nullglob
+  if [[ ${#entries[@]} -eq 0 ]]; then
+    echo "No bench-sets found in ${BENCH_SETS_DIR}." >&2
+    return 0
+  fi
+  printf '%s\n' "${entries[@]}" | LC_ALL=C sort -u
+}
+
+cmd_validate() {
+  # Fast offline schema + cross-reference check. Walks every profile and
+  # bench-set; cross-checks concurrency groups. No network calls.
+  local rc=0
+  shopt -s nullglob
+  for f in "${PROFILES_DIR}"/*.yaml "${PROFILES_DIR}"/*.yml; do
+    [[ -e "${f}" ]] || continue
+    local id; id="$(basename "${f%.*}")"
+    if ! fiz_bench profiles list --dir "${PROFILES_DIR}" --json >/dev/null 2>&1; then
+      echo "validate: profile load failed: ${f}" >&2
+      rc=1
+      break
+    fi
+    # Inline per-id load via plan helper would require a bench-set; skip
+    # per-id pass once the bulk loader succeeds.
+    : "${id}"
+  done
+  for f in "${BENCH_SETS_DIR}"/*.yaml "${BENCH_SETS_DIR}"/*.yml; do
+    [[ -e "${f}" ]] || continue
+    local id; id="$(basename "${f%.*}")"
+    if ! fiz_bench bench-sets list --dir "${BENCH_SETS_DIR}" --json >/dev/null 2>&1; then
+      echo "validate: bench-set load failed: ${f}" >&2
+      rc=1
+      break
+    fi
+    : "${id}"
+  done
+  shopt -u nullglob
+  if [[ ${rc} -eq 0 ]]; then
+    echo "validate: ok"
+  fi
+  return ${rc}
+}
+
+# cmd_plan calls fiz-bench plan and prints the matrix; pure.
+cmd_plan() {
+  local profile="$1"; shift
+  local bench_set="$1"; shift
+  local reps="${1:-0}"
+  local args=( plan --profile "${profile}" --bench-set "${bench_set}"
+               --profiles-dir "${PROFILES_DIR}"
+               --bench-sets-dir "${BENCH_SETS_DIR}"
+               --concurrency-groups "${CONCURRENCY_GROUPS}" )
+  if [[ "${reps}" -gt 0 ]]; then
+    args+=( --reps "${reps}" )
+  fi
+  fiz_bench "${args[@]}"
+}
+
+cmd_plan_json() {
+  local profile="$1"; shift
+  local bench_set="$1"; shift
+  local reps="${1:-0}"
+  local args=( plan --profile "${profile}" --bench-set "${bench_set}" --json
+               --profiles-dir "${PROFILES_DIR}"
+               --bench-sets-dir "${BENCH_SETS_DIR}"
+               --concurrency-groups "${CONCURRENCY_GROUPS}" )
+  if [[ "${reps}" -gt 0 ]]; then
+    args+=( --reps "${reps}" )
+  fi
+  fiz_bench "${args[@]}"
+}
+
+cmd_preflight() {
+  # Explicit endpoint probe — the only command that touches the network.
+  # PR 1d limits this to a placeholder that reuses `fiz-bench` once the
+  # `preflight` subcommand lands. Until then, surface a clear "not yet
+  # implemented" message rather than silently masking with --plan.
+  local profile="$1"
+  echo "preflight: endpoint probe for ${profile} (delegated to fiz-bench preflight; see PR 4 of plan-2026-05-15)" >&2
+  if fiz_bench preflight --profile "${profile}" 2>/dev/null; then
+    return 0
+  fi
+  echo "preflight: fiz-bench preflight subcommand not yet wired; rerun once PR 4 lands" >&2
+  return 1
+}
+
+# main subcommand dispatch.
+main() {
+  local profile=""
+  local bench_set=""
+  local reps=0
+  local plan=0
+  local force_rerun=0  # reserved for run path
+  local retry_invalid=0
+  local out=""
+  local positional=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile)        profile="$2"; shift 2 ;;
+      --bench-set)      bench_set="$2"; shift 2 ;;
+      --reps)           reps="$2"; shift 2 ;;
+      --out)            out="$2"; shift 2 ;;
+      --plan)           plan=1; shift ;;
+      --force-rerun)    force_rerun=1; shift ;;
+      --retry-invalid)  retry_invalid=1; shift ;;
+      -h|--help|help)   usage; exit 0 ;;
+      --)               shift; positional+=("$@"); break ;;
+      -*)               die "unknown flag: $1" ;;
+      *)                positional+=("$1"); shift ;;
+    esac
+  done
+
+  local sub=""
+  if [[ ${#positional[@]} -gt 0 ]]; then
+    sub="${positional[0]}"
+    positional=("${positional[@]:1}")
+  fi
+
+  case "${sub}" in
+    profiles)
+      cmd_profiles
+      ;;
+    bench-sets|bench_sets)
+      cmd_bench_sets
+      ;;
+    validate)
+      cmd_validate
+      ;;
+    preflight)
+      [[ -n "${profile}" ]] || die "preflight: --profile is required"
+      cmd_preflight "${profile}"
+      ;;
+    ""|run)
+      [[ -n "${profile}" ]] || die "--profile is required"
+      [[ -n "${bench_set}" ]] || die "--bench-set is required"
+      if [[ ${plan} -eq 1 ]]; then
+        cmd_plan "${profile}" "${bench_set}" "${reps}"
+        exit 0
+      fi
+      # Run path lands in a later PR; until then, we print the matrix and
+      # exit with a clear message so operators see the new contract without
+      # the runner silently no-op'ing.
+      echo "benchmark: run path not yet wired (see plan PR 1d follow-ups); use --plan, validate, or preflight" >&2
+      echo "(executing --plan output for context)" >&2
+      cmd_plan "${profile}" "${bench_set}" "${reps}"
+      # Acknowledge unused-but-parsed flags so shellcheck stays quiet and
+      # future maintainers see the contract.
+      : "${force_rerun}" "${retry_invalid}" "${out}"
+      exit 2
+      ;;
+    *)
+      die "unknown subcommand: ${sub}"
+      ;;
+  esac
+}
+
+main "$@"

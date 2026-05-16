@@ -22,6 +22,17 @@ ddx:
 **Type**: Design spec
 **Status**: Complete — grounded in SD-008 (interface audit) and the 2026-04-08 baseline
 
+> **Update 2026-05-16**: ADR-016 ("Cells Are Self-Describing Evidence")
+> supersedes the benchmark-mode execution model below. The `lane:`,
+> `recipe:`, `resource_groups:`, `comparison_groups:`, `lane_aliases:`,
+> and `profile_inventory:` blocks are gone; profiles are the sole
+> authoring unit, bench-sets declare task lists, and cells embed the full
+> resolved profile snapshot at write time. The runtime/preset and
+> Harbor-integration substance below remains accurate. See
+> [ADR-016](../adr/ADR-016-cells-are-self-describing-evidence.md) and
+> [`plan-2026-05-15-benchmark-runner-simplification.md`](../plan-2026-05-15-benchmark-runner-simplification.md)
+> for the migration plan.
+
 ---
 
 ## Summary

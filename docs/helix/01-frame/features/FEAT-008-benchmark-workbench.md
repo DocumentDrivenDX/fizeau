@@ -14,6 +14,15 @@ ddx:
 **Priority**: P0
 **Owner**: Fizeau Team
 
+> **Update 2026-05-16**: ADR-016 ("Cells Are Self-Describing Evidence")
+> replaces the historical `lane:`/`recipe:` data-model blocks with profiles
+> as the sole authoring unit. Cells embed the full resolved profile
+> snapshot at write time, so the workbench reads profile metadata directly
+> from each cell's `report.json` instead of joining back to a separate
+> catalog. Surviving `lane*` field references below refer to back-compat
+> labels carried in legacy cells (filterable / hideable), not to any live
+> lane block.
+
 ## Overview
 
 The benchmark microsite needs a raw analytical surface, not another

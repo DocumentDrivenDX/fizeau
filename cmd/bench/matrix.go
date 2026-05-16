@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -39,34 +40,45 @@ const (
 )
 
 type matrixRunReport struct {
-	Dataset            string   `json:"dataset,omitempty"`
-	DatasetVersion     string   `json:"dataset_version,omitempty"`
-	Harness            string   `json:"harness"`
-	ProfileID          string   `json:"profile_id"`
-	ProfilePath        string   `json:"profile_path"`
-	ProfileSnapshot    string   `json:"profile_snapshot,omitempty"`
-	FizToolsVersion    int      `json:"fiz_tools_version"`
-	AdapterModule      string   `json:"adapter_module"`
-	HarborAgent        string   `json:"harbor_agent"`
-	Rep                int      `json:"rep"`
-	TaskID             string   `json:"task_id"`
-	Category           string   `json:"category,omitempty"`
-	Difficulty         string   `json:"difficulty,omitempty"`
-	OutputDir          string   `json:"output_dir"`
-	ProcessOutcome     string   `json:"process_outcome"`
-	GradingOutcome     string   `json:"grading_outcome"`
-	Reward             *int     `json:"reward"`
-	FinalStatus        string   `json:"final_status"`
-	InvalidClass       string   `json:"invalid_class,omitempty"`
-	Retriable          bool     `json:"retriable,omitempty"`
-	Turns              *int     `json:"turns"`
-	ToolCalls          *int     `json:"tool_calls"`
-	ToolCallErrors     *int     `json:"tool_call_errors"`
-	InputTokens        *int     `json:"input_tokens"`
-	OutputTokens       *int     `json:"output_tokens"`
-	CachedInputTokens  *int     `json:"cached_input_tokens"`
-	RetriedInputTokens *int     `json:"retried_input_tokens"`
-	WallSeconds        *float64 `json:"wall_seconds"`
+	// CellID is the per-cell ULID-style identifier per ADR-016 (ISO-Z +
+	// random hex). Replaces (profile_id, rep) as the primary key for new
+	// cells; old cells keep using profile_id+rep until backfill (PR 2).
+	CellID    string `json:"cell_id,omitempty"`
+	Framework string `json:"framework,omitempty"`
+
+	Dataset        string `json:"dataset,omitempty"`
+	DatasetVersion string `json:"dataset_version,omitempty"`
+	Harness        string `json:"harness"`
+	// Profile is the full resolved profile snapshot embedded so cells are
+	// self-describing (ADR-016). ProfileID + ProfilePath + ProfileSnapshot
+	// stay for backward-compatibility with old analytics; PR 4 deletes
+	// them after PR 3 switches readers to Profile.
+	Profile            *profile.Profile `json:"profile,omitempty"`
+	ProfileID          string           `json:"profile_id"`
+	ProfilePath        string           `json:"profile_path"`
+	ProfileSnapshot    string           `json:"profile_snapshot,omitempty"`
+	FizToolsVersion    int              `json:"fiz_tools_version"`
+	AdapterModule      string           `json:"adapter_module"`
+	HarborAgent        string           `json:"harbor_agent"`
+	Rep                int              `json:"rep"`
+	TaskID             string           `json:"task_id"`
+	Category           string           `json:"category,omitempty"`
+	Difficulty         string           `json:"difficulty,omitempty"`
+	OutputDir          string           `json:"output_dir"`
+	ProcessOutcome     string           `json:"process_outcome"`
+	GradingOutcome     string           `json:"grading_outcome"`
+	Reward             *int             `json:"reward"`
+	FinalStatus        string           `json:"final_status"`
+	InvalidClass       string           `json:"invalid_class,omitempty"`
+	Retriable          bool             `json:"retriable,omitempty"`
+	Turns              *int             `json:"turns"`
+	ToolCalls          *int             `json:"tool_calls"`
+	ToolCallErrors     *int             `json:"tool_call_errors"`
+	InputTokens        *int             `json:"input_tokens"`
+	OutputTokens       *int             `json:"output_tokens"`
+	CachedInputTokens  *int             `json:"cached_input_tokens"`
+	RetriedInputTokens *int             `json:"retried_input_tokens"`
+	WallSeconds        *float64         `json:"wall_seconds"`
 	// TerminatedMidWork is true when the trial's last llm.response had
 	// finish_reason in (tool_calls, length) — i.e. the model was actively
 	// emitting output when wall budget cut it off, rather than declaring
@@ -692,7 +704,12 @@ func writeMatrixLaneAbortReport(outDir, cellsRoot, laneID string, last matrixRun
 		hashPreview = hashPreview[:16]
 	}
 	report := matrixRunReport{
+		CellID:             last.CellID,
+		Framework:          last.Framework,
+		Dataset:            last.Dataset,
+		DatasetVersion:     last.DatasetVersion,
 		Harness:            last.Harness,
+		Profile:            last.Profile,
 		ProfileID:          last.ProfileID,
 		ProfilePath:        last.ProfilePath,
 		ProfileSnapshot:    last.ProfileSnapshot,
@@ -725,15 +742,34 @@ func writeMatrixLaneAbortReport(outDir, cellsRoot, laneID string, last matrixRun
 }
 
 func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
-	cellDir := matrixTupleDirFor(opts.outDir, opts.cellsRoot, opts.harness, opts.profile, opts.rep, opts.task.ID, opts.dataset)
-	reportPath := filepath.Join(cellDir, matrixReportName)
+	framework := matrixFrameworkFromDataset(opts.dataset)
+
+	// Resume: find an existing matching cell.
+	// - Legacy mode (cellsRoot == ""): deterministic path; check directly.
+	// - Canonical mode: cell IDs are random (ADR-016) so walk
+	//   <cellsRoot>/<framework-dataset>/<task>/*/report.json for a report
+	//   with matching (harness, profile_id, rep).
 	if !opts.forceRerun {
-		if existing, ok, err := loadExistingMatrixReport(reportPath); err != nil {
+		var existing matrixRunReport
+		var ok bool
+		var err error
+		if opts.cellsRoot == "" {
+			legacyPath := filepath.Join(matrixTupleDir(opts.outDir, opts.harness, opts.profile.ID, opts.rep, opts.task.ID), matrixReportName)
+			existing, ok, err = loadExistingMatrixReport(legacyPath)
+		} else {
+			existing, _, ok, err = findExistingCanonicalMatrixCell(opts.cellsRoot, framework, opts.dataset, opts.harness, opts.profile.ID, opts.task.ID, opts.rep)
+		}
+		if err != nil {
 			return matrixRunReport{}, false, err
-		} else if ok && shouldSkipMatrixReport(existing, opts.resume, opts.retryBudgetHalted, opts.retryInvalid) {
+		}
+		if ok && shouldSkipMatrixReport(existing, opts.resume, opts.retryBudgetHalted, opts.retryInvalid) {
 			return existing, true, nil
 		}
 	}
+
+	cellID := generateCellID()
+	cellDir := matrixTupleDirFor(opts.outDir, opts.cellsRoot, opts.harness, opts.profile, opts.rep, opts.task.ID, framework, opts.dataset, cellID)
+	reportPath := filepath.Join(cellDir, matrixReportName)
 
 	release, err := acquireMatrixLock(filepath.Join(cellDir, matrixLockName))
 	if err != nil {
@@ -743,9 +779,12 @@ func runMatrixTuple(opts matrixTupleOptions) (matrixRunReport, bool, error) {
 
 	started := time.Now().UTC()
 	report := matrixRunReport{
+		CellID:          cellID,
+		Framework:       framework,
 		Dataset:         opts.dataset,
 		DatasetVersion:  opts.datasetVersion,
 		Harness:         opts.harness,
+		Profile:         opts.profile,
 		ProfileID:       opts.profile.ID,
 		ProfilePath:     opts.profile.Path,
 		ProfileSnapshot: opts.profile.Versioning.Snapshot,
@@ -1445,22 +1484,127 @@ func resolveCanonicalFizRoot(workDir string) string {
 	return filepath.Join(workDir, "bench/results", fmt.Sprintf("fiz-tools-v%d", fiztools.Version))
 }
 
-func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, rep int, taskID, dataset string) string {
+func matrixTupleDirFor(outDir, cellsRoot, harness string, p *profile.Profile, rep int, taskID, framework, dataset, cellID string) string {
 	if cellsRoot == "" {
 		return matrixTupleDir(outDir, harness, p.ID, rep, taskID)
 	}
-	// Canonical layout: <cells>/<dataset>/<task>/<profile_id>/rep-NNN/
-	// profile_id uniquely encodes (server, runtime, model, quant, sampling)
-	// by construction, so it's the natural primary key. Per-cell projection
-	// dimensions (server, model_family, quant_label, runtime, harness_class,
-	// fiz_tools_version) are stamped on report.json for index-time grouping.
+	// Canonical layout (ADR-016): <cells>/<framework>-<dataset>/<task>/<cell-id>/
+	// cell-id is a random ISO-Z + hex suffix, so paths are race-free and
+	// profile renames/deletions don't strand cells. Identity-of-record
+	// lives entirely inside report.json (the embedded profile snapshot).
 	return filepath.Join(
 		cellsRoot,
-		matrixDatasetSegment(dataset),
+		matrixFrameworkDatasetSegment(framework, dataset),
 		safeMatrixSegment(taskID),
-		safeMatrixSegment(p.ID),
-		fmt.Sprintf("rep-%03d", rep),
+		safeMatrixSegment(cellID),
 	)
+}
+
+// matrixFrameworkDatasetSegment composes the "<framework>-<dataset>" path
+// segment used in canonical cell paths. Handles the common case where the
+// dataset segment already starts with the framework (e.g. framework
+// "terminal-bench" + dataset segment "terminal-bench-2-1") to avoid the
+// "terminal-bench-terminal-bench-2-1" double-prefix.
+func matrixFrameworkDatasetSegment(framework, dataset string) string {
+	ds := matrixDatasetSegment(dataset)
+	fw := strings.TrimSpace(framework)
+	if fw == "" {
+		return ds
+	}
+	if ds == fw || strings.HasPrefix(ds, fw+"-") {
+		return ds
+	}
+	return fw + "-" + ds
+}
+
+// matrixFrameworkFromDataset derives the benchmark framework name from a
+// subset's dataset string. Subsets use "<framework>/<dataset>" (e.g.
+// "terminal-bench/terminal-bench-2-1") or "<framework>@<version>" (e.g.
+// "terminal-bench@2.0"). When the dataset has neither separator we fall
+// back to the only framework currently supported: "terminal-bench".
+func matrixFrameworkFromDataset(dataset string) string {
+	dataset = strings.TrimSpace(dataset)
+	if dataset == "" {
+		return "terminal-bench"
+	}
+	for i, r := range dataset {
+		if r == '/' || r == '@' {
+			fw := strings.TrimSpace(dataset[:i])
+			if fw == "" {
+				return "terminal-bench"
+			}
+			return fw
+		}
+	}
+	return "terminal-bench"
+}
+
+// generateCellID returns the ULID-style identifier per ADR-016: an ISO-Z
+// timestamp followed by a short random hex suffix. Monotonic by second,
+// race-free across concurrent writers, sortable chronologically.
+func generateCellID() string {
+	return time.Now().UTC().Format("20060102T150405Z") + "-" + shortHex(4)
+}
+
+// shortHex returns n hex characters from crypto/rand. If the entropy source
+// fails (extremely rare on Unix), falls back to a deterministic zero suffix
+// so the caller still gets a parseable cell_id.
+func shortHex(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	buf := make([]byte, (n+1)/2)
+	if _, err := cryptorand.Read(buf); err != nil {
+		return strings.Repeat("0", n)
+	}
+	return hex.EncodeToString(buf)[:n]
+}
+
+// findExistingCanonicalMatrixCell scans
+// <cellsRoot>/<framework-dataset>/<task>/*/report.json for a cell whose
+// (harness, profile_id, rep) matches the requested tuple. When multiple
+// reports match (e.g. two completed reps written by different sweep
+// invocations), the newest by FinishedAt wins. Returns the report and its
+// on-disk path.
+func findExistingCanonicalMatrixCell(cellsRoot, framework, dataset, harness, profileID, taskID string, rep int) (matrixRunReport, string, bool, error) {
+	if cellsRoot == "" {
+		return matrixRunReport{}, "", false, nil
+	}
+	dir := filepath.Join(cellsRoot, matrixFrameworkDatasetSegment(framework, dataset), safeMatrixSegment(taskID))
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return matrixRunReport{}, "", false, nil
+	}
+	if err != nil {
+		return matrixRunReport{}, "", false, fmt.Errorf("scan cells dir %s: %w", dir, err)
+	}
+	var (
+		newest     matrixRunReport
+		newestPath string
+		found      bool
+	)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name(), matrixReportName)
+		candidate, ok, err := loadExistingMatrixReport(path)
+		if err != nil {
+			return matrixRunReport{}, "", false, err
+		}
+		if !ok {
+			continue
+		}
+		if candidate.Harness != harness || candidate.ProfileID != profileID || candidate.Rep != rep {
+			continue
+		}
+		if !found || candidate.FinishedAt.After(newest.FinishedAt) {
+			newest = candidate
+			newestPath = path
+			found = true
+		}
+	}
+	return newest, newestPath, found, nil
 }
 
 func matrixDatasetSegment(dataset string) string {

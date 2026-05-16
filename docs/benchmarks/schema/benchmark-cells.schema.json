@@ -16,13 +16,12 @@
     },
     "source": {
       "type": "object",
-      "required": ["cells_root", "profiles_dir", "machines_file", "suites", "n_reports", "n_rows", "n_excluded"],
+      "required": ["cells_root", "machines_file", "suites", "n_reports", "n_rows", "n_excluded"],
       "additionalProperties": {
         "type": ["string", "number", "integer", "boolean", "null", "array", "object"]
       },
       "properties": {
         "cells_root": { "type": "string" },
-        "profiles_dir": { "type": "string" },
         "machines_file": { "type": "string" },
         "suites": {
           "type": "array",
@@ -83,10 +82,10 @@
         "source_report",
         "suite",
         "task",
-        "internal_lane_id",
+        "cell_id",
         "profile_id",
         "profile_exists",
-        "lane_label",
+        "profile_label",
         "descriptor",
         "rep",
         "result_state",
@@ -108,12 +107,11 @@
         },
         "harness": { "$ref": "#/$defs/nullableString" },
         "harness_label": { "$ref": "#/$defs/nullableString" },
-        "internal_lane_id": { "type": "string" },
+        "cell_id": { "type": "string" },
         "profile_id": { "type": "string" },
-        "profile_resolved_id": { "$ref": "#/$defs/nullableString" },
         "profile_exists": { "type": "boolean" },
         "profile_path": { "$ref": "#/$defs/nullableString" },
-        "lane_label": { "type": "string" },
+        "profile_label": { "type": "string" },
         "descriptor": { "type": "string" },
         "deployment_class": { "$ref": "#/$defs/nullableString" },
 

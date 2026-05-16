@@ -2,6 +2,9 @@
 # plumbing before spending real budget. Pricing reflects gpt-5-nano list
 # pricing as of resolved_at (provider may change without notice).
 id: smoke
+harness: none
+surface: fiz_provider_native
+concurrency_group: openai
 provider:
   type: openai-compat
   model: gpt-5-nano

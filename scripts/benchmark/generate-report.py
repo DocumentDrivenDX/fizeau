@@ -57,7 +57,6 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CELLS = REPO / "bench/results/fiz-tools-v1/cells/terminal-bench-2-1"
-PROFILES_DIR = REPO / "scripts/benchmark/profiles"
 SUBSET_GLOB = str(REPO / "scripts/benchmark/task-subset-tb21-*.yaml")
 POWER_JSON = REPO / "scripts/benchmark/terminalbench_model_power.json"
 MACHINES_YAML = REPO / "scripts/benchmark/machines.yaml"
@@ -98,9 +97,6 @@ CONTEXT_BUCKETS: list[tuple[int, int, str, int]] = [
     (60_000,   120_000,   "60–120k",  90_000),
     (120_000,  10_000_000,"120k+",    150_000),
 ]
-
-# Lanes excluded from "active" headlines (kept in raw data).
-EXCLUDED_PROFILES = {"noop", "smoke"}
 
 # Public benchmark labels. Raw profile IDs are storage keys and sometimes
 # include hostnames, ports, or retired aliases; website pages should render the
@@ -223,21 +219,29 @@ def load_per_turn_timings(profile: str) -> list[dict[str, Any]]:
     return out
 
 
-def load_profiles() -> dict[str, dict[str, Any]]:
-    out = {}
-    for p in sorted(PROFILES_DIR.glob("*.yaml")):
-        try:
-            with open(p) as f:
-                doc = yaml.safe_load(f)
-            if not doc:
-                continue
-            with open(p) as f:
-                first = f.readline().strip()
-            doc["_header_comment"] = first.lstrip("# ").strip() if first.startswith("#") else ""
-            doc["_path"] = str(p.relative_to(REPO))
-            out[doc.get("id") or p.stem] = doc
-        except Exception:
+def load_profiles(reports: list[dict[str, Any]] | None = None) -> dict[str, dict[str, Any]]:
+    """Derive the profile catalog from cell-embedded snapshots (ADR-016).
+
+    Each cell carries its full resolved profile under ``report["profile"]``.
+    We group by profile id and keep the most recent snapshot per id so that
+    a later run that refined sampling/limits/metadata overrides earlier
+    cells. Reports without an embedded profile contribute nothing — the
+    profile id will simply not appear in the returned catalog.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    latest_started: dict[str, str] = {}
+    for r in reports or []:
+        prof = r.get("profile")
+        if not isinstance(prof, dict):
             continue
+        pid = prof.get("id") or r.get("profile_id") or r.get("_profile")
+        if not pid:
+            continue
+        started = r.get("started_at") or ""
+        if pid in out and started <= latest_started.get(pid, ""):
+            continue
+        out[pid] = prof
+        latest_started[pid] = started
     return out
 
 
@@ -588,7 +592,6 @@ def chart_pass_rate_by_subset(per_subset: dict[str, dict[str, dict[str, Any]]],
     # Internal first (all profiles with any 'all' attempts), then external (≥30 tasks attempted in 'all')
     internal_pids = sorted(per_subset.keys())
     for pid in internal_pids:
-        if pid in EXCLUDED_PROFILES: continue
         d = per_subset[pid].get("all", {})
         if not d.get("tasks_attempted"): continue
         rows.append({
@@ -658,7 +661,6 @@ def chart_model_power_scatter(per_profile: dict[str, dict[str, Any]],
 
     pts = []
     for pid, a in per_profile.items():
-        if pid in EXCLUDED_PROFILES: continue
         passed, attempted = subset_pass_counts(per_subset, pid, "all")
         if not attempted or attempted < 5: continue
         meta = profiles.get(pid)
@@ -715,7 +717,6 @@ def chart_lines_over_context(timing: dict[str, dict[str, Any]],
     fig, ax = plt.subplots(figsize=(9, 4.5))
     plotted = False
     for pid in sorted(timing.keys()):
-        if pid in EXCLUDED_PROFILES: continue
         buckets = timing[pid]["buckets"]
         xs = [b["midpoint"] for b in buckets if b[metric] is not None]
         ys = [b[metric] for b in buckets if b[metric] is not None]
@@ -816,7 +817,6 @@ def _filter_models_lanes(per_profile, profiles):
     (those live on the providers page)."""
     out = []
     for pid, _ in per_profile.items():
-        if pid in EXCLUDED_PROFILES: continue
         prof = profiles.get(pid) or {}
         meta = prof.get("metadata") or {}
         family = (meta.get("model_family") or "").lower()
@@ -835,7 +835,6 @@ def _filter_harness_lanes(per_profile, profiles):
     side-by-side reads are possible."""
     out = []
     for pid in per_profile.keys():
-        if pid in EXCLUDED_PROFILES: continue
         prof = profiles.get(pid) or {}
         meta = prof.get("metadata") or {}
         family = (meta.get("model_family") or "").lower()
@@ -856,7 +855,6 @@ def _filter_provider_lanes(per_profile, profiles):
     """Qwen3.6-27B lanes only — same model, different provider/runtime."""
     out = []
     for pid in per_profile.keys():
-        if pid in EXCLUDED_PROFILES: continue
         prof = profiles.get(pid) or {}
         meta = prof.get("metadata") or {}
         family = (meta.get("model_family") or "").lower()
@@ -917,7 +915,7 @@ def render_body(*,
     below: render_overview_body, render_models_body, render_harnesses_body,
     render_providers_body."""
 
-    pid_active = sorted(p for p in per_profile if p not in EXCLUDED_PROFILES)
+    pid_active = sorted(per_profile)
     ext_visible = sorted(
         [s for s in ext_per_subset if ext_per_subset[s].get("all", {}).get("tasks_attempted", 0) >= 30],
         key=lambda s: -ext_per_subset[s].get("all", {}).get("tasks_passed", 0),
@@ -1161,7 +1159,7 @@ def _render_detailed_table(pids: list[str], per_profile, per_subset, profiles, t
 def render_overview_body(*, snapshot_ts, n_reports, profiles, subsets,
                          per_profile, per_subset, ext_per_subset, timing,
                          chart_emitter) -> str:
-    pid_active = sorted(p for p in per_profile if p not in EXCLUDED_PROFILES)
+    pid_active = sorted(per_profile)
     parts = [
         f'<div class="meta">Snapshot: {html.escape(snapshot_ts)} · {n_reports:,} trial reports · {len(pid_active)} active lanes</div>',
         '<h2>How we run it</h2>',
@@ -1312,8 +1310,8 @@ def main():
     print(f"[1/5] loading reports from {CELLS} …", file=sys.stderr)
     reports = load_reports()
     print(f"      {len(reports)} reports", file=sys.stderr)
-    profiles = load_profiles()
-    print(f"      {len(profiles)} profile YAMLs", file=sys.stderr)
+    profiles = load_profiles(reports)
+    print(f"      {len(profiles)} embedded profile snapshots", file=sys.stderr)
     subsets = load_subsets()
     print(f"      {len(subsets)} subsets: {sorted(subsets.keys())}", file=sys.stderr)
     raw_report_count = len(reports)
@@ -1337,7 +1335,7 @@ def main():
     ext_per_subset = aggregate_external_per_subset(leaderboard, subsets)
 
     print("[3/5] computing per-turn timing …", file=sys.stderr)
-    profiles_to_scan = [p for p in per_profile if p not in EXCLUDED_PROFILES]
+    profiles_to_scan = sorted(per_profile)
     timing = compute_per_profile_timing(profiles_to_scan)
 
     snapshot_ts = dt.datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -1474,7 +1472,7 @@ def main():
     bench_overview = {
         "snapshot_ts": snapshot_ts,
         "n_reports_total": len(reports),
-        "n_profiles_active": len([p for p in per_profile if p not in EXCLUDED_PROFILES]),
+        "n_profiles_active": len(per_profile),
         "n_external_comparators": len(ext_per_subset),
         "n_external_trials": sum(1 for _ in leaderboard),
         "subset_size_all": len(subsets.get("all", {}).get("tasks", [])),

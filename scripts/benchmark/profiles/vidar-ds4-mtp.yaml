@@ -10,6 +10,9 @@
 # `model.mtp=true`, and runtime_props stamps that onto each cell as the proof
 # that the server was actually running with MTP active.
 id: vidar-ds4-mtp
+harness: none
+surface: fiz_provider_native
+concurrency_group: vidar-ds4
 metadata:
   model_family: deepseek-v4-flash
   model_id: deepseek-v4-flash
@@ -20,8 +23,6 @@ metadata:
   backend: metal
   kv_disk_dir: /Volumes/Samsung/ds4-kv
   kv_disk_space_mb: 131072
-  hardware_label: vidar-m2-ultra-192gb
-  endpoint: http://192.168.2.106:1236/v1
   server: vidar
   mtp: enabled
 

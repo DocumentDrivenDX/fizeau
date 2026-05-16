@@ -1,0 +1,28 @@
+# TerminalBench 2.1 full comparison bench-set
+# Source: scripts/benchmark/task-subset-tb21-full.yaml
+# Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
+id: tb-2-1-full
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 3
+description: >-
+  15-task TB-2.1 comparison subset used by staged comparison phases
+  (sonnet-comparison, gpt-comparison, medium-model). Covers a mix of
+  software-engineering, system-administration, data-processing, and
+  scientific-computing categories.
+tasks:
+  - cancel-async-tasks
+  - build-pmars
+  - code-from-image
+  - git-leak-recovery
+  - headless-terminal
+  - fix-code-vulnerability
+  - password-recovery
+  - break-filter-js-from-html
+  - db-wal-recovery
+  - extract-elf
+  - configure-git-webserver
+  - git-multibranch
+  - log-summary-date-ranges
+  - multi-source-data-merger
+  - qemu-startup

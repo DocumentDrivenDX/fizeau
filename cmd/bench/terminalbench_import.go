@@ -143,10 +143,19 @@ func loadTerminalBenchMatrixMetadata(matrixRoot string) (map[string]any, error) 
 }
 
 func buildTerminalBenchRecord(workDir, matrixRoot string, matrix *matrixOutput, subset *termbenchSubset, metadata map[string]any, run matrixRunReport) (map[string]any, error) {
-	profilePath := resolveBenchmarkPath(workDir, matrixRoot, run.ProfilePath)
-	prof, err := profile.Load(profilePath)
-	if err != nil {
-		return nil, fmt.Errorf("load profile %s: %w", profilePath, err)
+	// ADR-016: prefer the cell-embedded profile snapshot. Only fall back to
+	// loading profile YAML separately for legacy cells written before PR 1c
+	// (no run.Profile field).
+	var prof *profile.Profile
+	if run.Profile != nil {
+		prof = run.Profile
+	} else {
+		profilePath := resolveBenchmarkPath(workDir, matrixRoot, run.ProfilePath)
+		loaded, err := profile.Load(profilePath)
+		if err != nil {
+			return nil, fmt.Errorf("load profile %s: %w", profilePath, err)
+		}
+		prof = loaded
 	}
 
 	record := terminalBenchBaseRecord(matrixRoot, matrix, subset, metadata, run, prof)

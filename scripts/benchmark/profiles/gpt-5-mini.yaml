@@ -3,6 +3,9 @@
 # with recency ≥ 2025-11-01. Pricing from OpenRouter list price 2026-04-30.
 # SD-010 §6.3: cost reconciliation hashes this YAML per cell run.
 id: gpt-5-mini
+harness: none
+surface: fiz_provider_native
+concurrency_group: openrouter
 metadata:
   server: openrouter
   model_family: gpt-5-mini

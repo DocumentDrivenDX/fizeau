@@ -1,0 +1,12 @@
+# TerminalBench 2.1 full catalog bench-set
+# Source: scripts/benchmark/task-subset-tb21-all.yaml (89 tasks)
+# Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
+id: tb-2-1-all
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 3
+description: >-
+  Full TB-2.1 catalog (all 89 tasks). Intended for targeted lane-filtered
+  runs, not blanket sweeps. Use `tasks: all` to defer the canonical list
+  to the harness dataset rather than duplicating it here.
+tasks: all

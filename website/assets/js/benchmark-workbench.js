@@ -571,10 +571,10 @@ class BenchmarkWorkbench {
     await this.conn.query(`
       CREATE OR REPLACE VIEW cells_enriched AS
       SELECT
-        c.* EXCLUDE (internal_lane_id, lane_label),
-        COALESCE(pt_profile.profile_ttft_p50_s, pt_internal.profile_ttft_p50_s, pt_report.profile_ttft_p50_s) AS profile_ttft_p50_s,
-        COALESCE(pt_profile.profile_decode_tps_p50, pt_internal.profile_decode_tps_p50, pt_report.profile_decode_tps_p50) AS profile_decode_tps_p50,
-        COALESCE(pt_profile.profile_timing_turns, pt_internal.profile_timing_turns, pt_report.profile_timing_turns) AS profile_timing_turns,
+        c.*,
+        COALESCE(pt_profile.profile_ttft_p50_s, pt_report.profile_ttft_p50_s) AS profile_ttft_p50_s,
+        COALESCE(pt_profile.profile_decode_tps_p50, pt_report.profile_decode_tps_p50) AS profile_decode_tps_p50,
+        COALESCE(pt_profile.profile_timing_turns, pt_report.profile_timing_turns) AS profile_timing_turns,
         COALESCE(NULLIF(gpu_model, ''), NULLIF(hardware_chip, ''), NULLIF(hardware_profile, ''), NULLIF(machine, ''), 'unknown') AS effective_gpu_model,
         COALESCE(gpu_ram_gb, hardware_vram_gb, hardware_memory_gb) AS effective_gpu_ram_gb,
         CASE
@@ -626,7 +626,6 @@ class BenchmarkWorkbench {
         )) AS search_text
       FROM cells_raw AS c
       LEFT JOIN profile_timing AS pt_profile ON c.profile_id = pt_profile.profile_id
-      LEFT JOIN profile_timing AS pt_internal ON c.internal_lane_id = pt_internal.profile_id
       LEFT JOIN profile_timing AS pt_report ON c.report_profile_id = pt_report.profile_id
     `);
 

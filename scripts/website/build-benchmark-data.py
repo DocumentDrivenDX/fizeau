@@ -2,10 +2,10 @@
 """Build normalized benchmark data feeds for the microsite.
 
 The generator walks per-trial benchmark report.json files, joins each trial to
-profile YAML and machine metadata, and writes denormalized rows for analytical
-querying. Parquet is the primary static artifact for DuckDB-WASM. JSON feeds are
-kept for existing summary pages while the microsite migrates away from treating
-the browser DOM as the data engine.
+the cell-embedded profile snapshot (ADR-016) and machine metadata, and writes
+denormalized rows for analytical querying. Parquet is the primary static
+artifact for DuckDB-WASM. JSON feeds are kept for existing summary pages while
+the microsite migrates away from treating the browser DOM as the data engine.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_CELLS_ROOT = REPO / "bench/results/fiz-tools-v1/cells"
-DEFAULT_PROFILES_DIR = REPO / "scripts/benchmark/profiles"
 DEFAULT_MACHINES_FILE = REPO / "scripts/benchmark/machines.yaml"
 DEFAULT_SUBSET_GLOB = "scripts/benchmark/task-subset-tb21-*.yaml"
 DEFAULT_TIMING_FILE = REPO / "docs/benchmarks/data/timing.json"
@@ -124,11 +123,6 @@ PUBLIC_PROFILE_LABELS = {
     "vidar-qwen3-6-27b-openai-compat": "local-omlx-qwen3-6-27b-openai-compat",
 }
 
-PROFILE_ALIASES = {
-    "sindri-club-3090": "sindri-vllm",
-    "sindri-club-3090-llamacpp": "sindri-llamacpp",
-}
-
 CLOUD_PROVIDERS = {"anthropic", "google", "openai", "openrouter"}
 RESULT_STATE_PASSED = "passed"
 RESULT_STATE_FAILED = "failed"
@@ -143,7 +137,7 @@ AGGREGATE_DIMENSIONS = [
     "task_difficulty",
     "harness",
     "harness_label",
-    "lane_label",
+    "profile_label",
     "descriptor",
     "deployment_class",
     "provider_type",
@@ -201,18 +195,6 @@ def load_yaml(path: Path) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def load_profiles(profiles_dir: Path) -> dict[str, dict[str, Any]]:
-    profiles: dict[str, dict[str, Any]] = {}
-    for path in sorted(profiles_dir.glob("*.yaml")):
-        doc = load_yaml(path)
-        if not doc:
-            continue
-        profile_id = str(doc.get("id") or path.stem)
-        doc["_path"] = relpath(path)
-        profiles[profile_id] = doc
-    return profiles
-
-
 def load_machine_registry(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     doc = load_yaml(path)
     return doc.get("machines") or {}, doc.get("hardware_profiles") or {}
@@ -261,7 +243,7 @@ def merge_task_metadata(metadata: dict[str, dict[str, Any]], tasks: list[Any]) -
 
 def iter_report_paths(cells_root: Path, suite: str) -> list[Path]:
     suite_root = cells_root / suite
-    return sorted(suite_root.glob("*/*/rep-*/report.json"))
+    return sorted(suite_root.glob("*/*/report.json"))
 
 
 def public_profile_label(profile_id: str) -> str:
@@ -563,7 +545,6 @@ def apply_result_state(row: dict[str, Any], result_state: str) -> None:
 def build_cell_row(
     report_path: Path,
     cells_root: Path,
-    profiles: dict[str, dict[str, Any]],
     machines: dict[str, dict[str, Any]],
     hardware_profiles: dict[str, dict[str, Any]],
     subsets: dict[str, set[str]],
@@ -573,17 +554,16 @@ def build_cell_row(
         report = json.load(f)
 
     rel = report_path.relative_to(cells_root)
-    suite, task, lane_id, rep_dir = rel.parts[:4]
-    profile_id = str(report.get("profile_id") or lane_id)
-    profile_resolved_id = profile_id
-    profile = profiles.get(profile_id) or profiles.get(lane_id)
-    if profile is None:
-        profile_resolved_id = PROFILE_ALIASES.get(profile_id) or PROFILE_ALIASES.get(lane_id) or profile_id
-        profile = profiles.get(profile_resolved_id)
-    metadata = (profile or {}).get("metadata") or {}
-    provider = (profile or {}).get("provider") or {}
-    limits = (profile or {}).get("limits") or {}
-    sampling = report.get("sampling_used") or (profile or {}).get("sampling") or {}
+    # ADR-016 layout: cells/<suite>/<task>/<cell-id>/report.json. The cell
+    # directory name is opaque evidence — every metadata field comes from
+    # cell.profile.* embedded in the report.
+    suite, task, cell_id = rel.parts[:3]
+    profile = report.get("profile") or {}
+    profile_id = str(report.get("profile_id") or profile.get("id") or "")
+    metadata = profile.get("metadata") or {}
+    provider = profile.get("provider") or {}
+    limits = profile.get("limits") or {}
+    sampling = report.get("sampling_used") or profile.get("sampling") or {}
     runtime_props = runtime_props_from(report)
     machine_id, machine = machine_for_profile(profile, machines)
     hardware_profile_id = machine.get("hardware_profile") if machine else None
@@ -626,12 +606,11 @@ def build_cell_row(
         "task_subsets": sorted(name for name, tasks in subsets.items() if task in tasks),
         "harness": report.get("harness"),
         "harness_label": harness_label(profile_id, profile, report.get("harness")),
-        "internal_lane_id": lane_id,
+        "cell_id": cell_id,
         "profile_id": profile_id,
-        "profile_resolved_id": profile_resolved_id if profile_resolved_id != profile_id else None,
-        "profile_exists": profile is not None,
-        "profile_path": (profile or {}).get("_path"),
-        "lane_label": public_profile_label(profile_id),
+        "profile_exists": bool(profile),
+        "profile_path": report.get("profile_path"),
+        "profile_label": public_profile_label(profile_id),
         "descriptor": "",
         "deployment_class": "managed-cloud" if provider_type in CLOUD_PROVIDERS else ("self-hosted" if provider_type else None),
         "provider_type": provider_type,
@@ -641,7 +620,7 @@ def build_cell_row(
         "model_id": model_id,
         "model_display_name": coalesce(metadata.get("model_display_name"), model_display_name(metadata.get("model_family"), model_id)),
         "model_family": metadata.get("model_family"),
-        "profile_snapshot": public_text(report.get("profile_snapshot") or ((profile or {}).get("versioning") or {}).get("snapshot")),
+        "profile_snapshot": public_text((profile.get("versioning") or {}).get("snapshot") or report.get("profile_snapshot")),
         "quant_display": quant_display,
         "model_quant": coalesce(runtime_props.get("model_quant"), metadata.get("quant_label")),
         "weight_bits": extract_weight_bits(runtime_props.get("model_quant"), metadata.get("weight_bits"), quant_display),
@@ -677,7 +656,7 @@ def build_cell_row(
         "hardware_tdp_watts_spec": number((hardware_profile or {}).get("tdp_watts_spec")),
         "cpu_model": coalesce(hardware.get("cpu_model"), (machine or {}).get("cpu")),
         "os": coalesce(((machine or {}).get("snapshot") or {}).get("os_release"), (machine or {}).get("os")),
-        "rep": integer(report.get("rep")) or integer(rep_dir.replace("rep-", "")) or 0,
+        "rep": integer(report.get("rep")) or 0,
         "adapter_module": report.get("adapter_module"),
         "adapter_translation_notes": json_text(report.get("adapter_translation_notes")),
         "adapter_translation_notes_count": len(report.get("adapter_translation_notes") or []),
@@ -794,11 +773,9 @@ def finalize_diagnostics(diagnostics: dict[str, Any]) -> dict[str, Any]:
 def build_cell_dataset(
     cells_root: Path,
     suites: list[str],
-    profiles_dir: Path,
     machines_file: Path,
     subset_glob: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    profiles = load_profiles(profiles_dir)
     machines, hardware_profiles = load_machine_registry(machines_file)
     subsets = load_subsets(subset_glob)
     task_metadata = load_task_metadata(subset_glob)
@@ -817,7 +794,7 @@ def build_cell_dataset(
     for suite in suites:
         for report_path in iter_report_paths(cells_root, suite):
             diagnostics["n_reports"] += 1
-            row = build_cell_row(report_path, cells_root, profiles, machines, hardware_profiles, subsets, task_metadata)
+            row = build_cell_row(report_path, cells_root, machines, hardware_profiles, subsets, task_metadata)
             result_state = result_state_for_row(row)
             if result_state is None:
                 summarize_excluded_row(diagnostics, row)
@@ -826,7 +803,7 @@ def build_cell_dataset(
             diagnostics["result_state_counts"][result_state] += 1
             rows.append(row)
     normalize_columns(rows)
-    rows.sort(key=lambda r: (r["suite"], r["task"], r["internal_lane_id"], r["rep"], r["source_report"]))
+    rows.sort(key=lambda r: (r["suite"], r["task"], r["profile_id"], r["rep"], r["source_report"]))
     diagnostics["n_rows"] = len(rows)
     return rows, finalize_diagnostics(diagnostics)
 
@@ -834,11 +811,10 @@ def build_cell_dataset(
 def build_cells(
     cells_root: Path,
     suites: list[str],
-    profiles_dir: Path,
     machines_file: Path,
     subset_glob: str,
 ) -> list[dict[str, Any]]:
-    rows, _ = build_cell_dataset(cells_root, suites, profiles_dir, machines_file, subset_glob)
+    rows, _ = build_cell_dataset(cells_root, suites, machines_file, subset_glob)
     return rows
 
 
@@ -892,8 +868,7 @@ def build_task_combinations(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "aggregate_id": hashlib.sha256(json.dumps(base, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:24],
             "schema_version": 1,
             "profile_ids": sorted({row["profile_id"] for row in cells if row.get("profile_id")}),
-            "profile_resolved_ids": sorted({row.get("profile_resolved_id") or row["profile_id"] for row in cells if row.get("profile_id")}),
-            "internal_lane_ids": sorted({row["internal_lane_id"] for row in cells if row.get("internal_lane_id")}),
+            "cell_ids": sorted({row["cell_id"] for row in cells if row.get("cell_id")}),
             "n_attempts": n_attempts,
             "n_graded": n_graded,
             "n_pass": n_pass,
@@ -933,7 +908,7 @@ def build_task_combinations(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "last_finished_at": max([row["finished_at"] for row in cells if row.get("finished_at")] or [None]),
         })
         out.append(base)
-    out.sort(key=lambda r: (r["suite"], r["task"], r["lane_label"], r["aggregate_id"]))
+    out.sort(key=lambda r: (r["suite"], r["task"], r["profile_label"] or "", r["aggregate_id"]))
     return out
 
 
@@ -1069,7 +1044,6 @@ def build_profile_timing_rows(timing_file: Path) -> list[dict[str, Any]]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cells-root", type=Path, default=DEFAULT_CELLS_ROOT)
-    parser.add_argument("--profiles-dir", type=Path, default=DEFAULT_PROFILES_DIR)
     parser.add_argument("--machines-file", type=Path, default=DEFAULT_MACHINES_FILE)
     parser.add_argument("--subset-glob", default=DEFAULT_SUBSET_GLOB)
     parser.add_argument("--timing-file", type=Path, default=DEFAULT_TIMING_FILE)
@@ -1090,10 +1064,9 @@ def main() -> int:
     args = parse_args()
     suites = args.suites or [DEFAULT_SUITE]
     generated_at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    rows, diagnostics = build_cell_dataset(args.cells_root, suites, args.profiles_dir, args.machines_file, args.subset_glob)
+    rows, diagnostics = build_cell_dataset(args.cells_root, suites, args.machines_file, args.subset_glob)
     source = {
         "cells_root": relpath(args.cells_root),
-        "profiles_dir": relpath(args.profiles_dir),
         "machines_file": relpath(args.machines_file),
         "suites": suites,
         "n_reports": diagnostics["n_reports"],

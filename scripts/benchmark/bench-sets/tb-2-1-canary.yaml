@@ -1,0 +1,16 @@
+# TerminalBench 2.1 canary bench-set
+# Source: scripts/benchmark/task-subset-tb21-canary.yaml
+# Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
+id: tb-2-1-canary
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 3
+description: >-
+  3-task canary covering software-engineering, data-processing, and
+  system-administration. Proves every lane can start, reach its provider,
+  write artifacts, and classify invalid cells before committing to the
+  full sweep.
+tasks:
+  - cancel-async-tasks
+  - log-summary-date-ranges
+  - configure-git-webserver

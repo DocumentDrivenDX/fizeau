@@ -23,6 +23,9 @@
 # utilization probe is liveness-only via GET /v1/models. The server
 # ignores API keys — any non-empty value is accepted.
 id: vidar-ds4
+harness: none
+surface: fiz_provider_native
+concurrency_group: vidar-ds4
 metadata:
   model_family: deepseek-v4-flash
   model_id: deepseek-v4-flash               # API id (sent in request); maps to the GGUF below at server side
@@ -33,13 +36,9 @@ metadata:
   backend: metal                             # ds4-server --metal (Apple Silicon GPU)
   kv_disk_dir: /Volumes/Samsung/ds4-kv
   kv_disk_space_mb: 131072                   # 128 GB on-disk KV cache budget
-  hardware_label: vidar-m2-ultra-192gb
   # Hardware specs live in scripts/benchmark/machines.yaml under
   # machines.vidar.hardware_profile=apple-m2-ultra-192gb (CPU/GPU cores,
-  # memory, backends). The hardware_label here is a stable lane-side
-  # identifier; the snapshot string below carries the hw label for
-  # per-cell denormalized lookup.
-  endpoint: http://192.168.2.106:1236/v1
+  # memory, backends).
   server: vidar
 
 provider:

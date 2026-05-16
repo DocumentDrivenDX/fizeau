@@ -1,6 +1,9 @@
 # fiz wrapper lane for pi GPT 5.4 mini. The runner keeps the Harbor agent
 # fixed at fiz; this label identifies the wrapper lane.
 id: fiz-harness-pi-gpt-5-4-mini
+harness: pi
+surface: fiz_harness_pi
+concurrency_group: openrouter
 provider:
   type: openrouter
   model: openai/gpt-5.4-mini

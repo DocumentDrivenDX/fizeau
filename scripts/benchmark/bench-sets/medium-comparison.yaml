@@ -1,0 +1,33 @@
+# Medium-model fiz-wrapper comparison bench-set
+# Source task list: scripts/benchmark/task-subset-tb21-full.yaml (15 tasks)
+# Spec: docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md (PR 1b)
+#
+# This bench-set is the curated 15-task slice used by the medium-model
+# comparison recipe (Claude Sonnet 4.6, Codex GPT-5.4-mini, pi, opencode,
+# and the matching OpenRouter provider lanes). The task list is sourced
+# from the TB-2.1 'full' subset and the comparison is documented in
+# terminalbench-fiz-wrapper-comparison-2026-05-06.
+id: medium-comparison
+framework: terminal-bench
+dataset: terminal-bench-2-1
+default_reps: 1
+description: >-
+  Full medium-model fiz-wrapper comparison across Claude, Codex, pi,
+  opencode, and the matching OpenRouter provider lanes on the 15-task
+  TB-2.1 comparison subset.
+tasks:
+  - cancel-async-tasks
+  - build-pmars
+  - code-from-image
+  - git-leak-recovery
+  - headless-terminal
+  - fix-code-vulnerability
+  - password-recovery
+  - break-filter-js-from-html
+  - db-wal-recovery
+  - extract-elf
+  - configure-git-webserver
+  - git-multibranch
+  - log-summary-date-ranges
+  - multi-source-data-merger
+  - qemu-startup

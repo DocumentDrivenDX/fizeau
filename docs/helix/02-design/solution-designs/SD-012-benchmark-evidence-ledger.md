@@ -8,6 +8,13 @@ updated: 2026-05-06
 
 # Solution Design: SD-012 — Benchmark Evidence Ledger and Derived Model Power
 
+> **Update 2026-05-16**: ADR-016 ("Cells Are Self-Describing Evidence")
+> realizes the evidence-ledger principle below at the storage layer.
+> Every cell embeds the full resolved profile snapshot at write time;
+> ledger joins no longer require live profile YAML lookups. See
+> `docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md`
+> for the migration plan.
+
 ## Summary
 
 Fizeau should treat benchmark observations as raw evidence, not as direct
