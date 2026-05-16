@@ -27,6 +27,12 @@ func TestLoadDir_AllShippedProfilesValidate(t *testing.T) {
 	ids := map[string]*Profile{}
 	for _, p := range profiles {
 		require.NoError(t, p.Validate(), "profile %s failed validation", p.ID)
+		// ADR-016 / plan PR 1a: every shipped profile must populate the
+		// three new self-describing fields so cells can render evidence
+		// without joining to the deleted lanes/resource-groups blocks.
+		require.NotEmpty(t, p.Harness, "profile %s missing harness", p.ID)
+		require.NotEmpty(t, p.Surface, "profile %s missing surface", p.ID)
+		require.NotEmpty(t, p.ConcurrencyGroup, "profile %s missing concurrency_group", p.ID)
 		ids[p.ID] = p
 	}
 
@@ -86,6 +92,45 @@ func TestLoad_NoopProfileFields(t *testing.T) {
 	require.Equal(t, "noop-fixture", p.Versioning.Snapshot)
 }
 
+// Spot-check that the new self-describing fields decode end-to-end on the
+// representative wrapper-harness and native profiles. Coverage for all
+// profiles is in TestLoadDir_AllShippedProfilesValidate.
+func TestLoad_HarnessAndSurfaceFields(t *testing.T) {
+	t.Run("anthropic wrapper", func(t *testing.T) {
+		p, err := Load(filepath.Join(repoProfilesDir(t), "fiz-harness-claude-sonnet-4-6.yaml"))
+		require.NoError(t, err)
+		require.Equal(t, HarnessAnthropic, p.Harness)
+		require.Equal(t, SurfaceFizHarnessAnthropic, p.Surface)
+		require.Equal(t, "openrouter", p.ConcurrencyGroup)
+	})
+	t.Run("codex wrapper", func(t *testing.T) {
+		p, err := Load(filepath.Join(repoProfilesDir(t), "fiz-harness-codex-gpt-5-4-mini.yaml"))
+		require.NoError(t, err)
+		require.Equal(t, HarnessCodex, p.Harness)
+		require.Equal(t, SurfaceFizHarnessCodex, p.Surface)
+		require.Equal(t, "openrouter", p.ConcurrencyGroup)
+	})
+	t.Run("pi wrapper", func(t *testing.T) {
+		p, err := Load(filepath.Join(repoProfilesDir(t), "fiz-harness-pi-gpt-5-4-mini.yaml"))
+		require.NoError(t, err)
+		require.Equal(t, HarnessPi, p.Harness)
+		require.Equal(t, SurfaceFizHarnessPi, p.Surface)
+	})
+	t.Run("opencode wrapper", func(t *testing.T) {
+		p, err := Load(filepath.Join(repoProfilesDir(t), "fiz-harness-opencode-gpt-5-4-mini.yaml"))
+		require.NoError(t, err)
+		require.Equal(t, HarnessOpencode, p.Harness)
+		require.Equal(t, SurfaceFizHarnessOpencode, p.Surface)
+	})
+	t.Run("native provider", func(t *testing.T) {
+		p, err := Load(filepath.Join(repoProfilesDir(t), "vidar-qwen3-6-27b.yaml"))
+		require.NoError(t, err)
+		require.Equal(t, HarnessNone, p.Harness)
+		require.Equal(t, SurfaceFizProviderNative, p.Surface)
+		require.Equal(t, "vidar-omlx", p.ConcurrencyGroup)
+	})
+}
+
 func TestValidate_RejectsMissingFields(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -101,6 +146,8 @@ func TestValidate_RejectsMissingFields(t *testing.T) {
 		{"zero max_output", func(p *Profile) { p.Limits.MaxOutputTokens = 0 }, "max_output_tokens"},
 		{"zero context", func(p *Profile) { p.Limits.ContextTokens = 0 }, "context_tokens"},
 		{"missing resolved_at", func(p *Profile) { p.Versioning.ResolvedAt = "" }, "resolved_at"},
+		{"bad harness", func(p *Profile) { p.Harness = "claude" }, "harness"},
+		{"bad surface", func(p *Profile) { p.Surface = "fiz_lane" }, "surface"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

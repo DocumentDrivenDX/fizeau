@@ -2,6 +2,9 @@
 # No API key required — omlx serves OpenAI-compat without auth.
 # Qwen3 thinking-mode recommended sampling: T=0.6, top_p=0.95, top_k=20.
 id: vidar-qwen3-6-27b
+harness: none
+surface: fiz_provider_native
+concurrency_group: vidar-omlx
 metadata:
   model_family: qwen3-6-27b
   model_id: Qwen3.6-27B-MLX-8bit

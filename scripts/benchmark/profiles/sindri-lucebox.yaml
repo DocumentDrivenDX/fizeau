@@ -5,6 +5,9 @@
 # draft weights are recorded below for provenance.
 # The endpoint should be re-verified before long sweeps.
 id: sindri-lucebox
+harness: none
+surface: fiz_provider_native
+concurrency_group: sindri-lucebox-dflash
 metadata:
   model_family: qwen3-6-27b
   model_id: luce-dflash

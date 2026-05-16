@@ -1,6 +1,9 @@
 # Qwen3.6-27B MLX via Rapid-MLX on grendel (port 8000).
 # Verified /v1/models on 2026-05-07: mlx-community/Qwen3.6-27B-8bit.
 id: grendel-rapid-mlx
+harness: none
+surface: fiz_provider_native
+concurrency_group: grendel-rapid-mlx
 metadata:
   model_family: qwen3-6-27b
   model_id: mlx-community/Qwen3.6-27B-8bit

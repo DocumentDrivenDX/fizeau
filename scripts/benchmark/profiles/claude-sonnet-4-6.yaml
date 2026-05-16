@@ -1,6 +1,9 @@
 # Claude Sonnet 4.6 via OpenRouter. Leaderboard comparison baseline for fizeau.
 # Pricing from OpenRouter 2026-04-30.
 id: claude-sonnet-4-6
+harness: none
+surface: fiz_provider_native
+concurrency_group: openrouter
 metadata:
   server: openrouter
   model_family: claude-sonnet-4

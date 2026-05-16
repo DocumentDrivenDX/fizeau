@@ -23,6 +23,9 @@
 # utilization probe is liveness-only via GET /v1/models. The server
 # ignores API keys — any non-empty value is accepted.
 id: vidar-ds4
+harness: none
+surface: fiz_provider_native
+concurrency_group: vidar-ds4
 metadata:
   model_family: deepseek-v4-flash
   model_id: deepseek-v4-flash               # API id (sent in request); maps to the GGUF below at server side

@@ -10,6 +10,9 @@
 # `model.mtp=true`, and runtime_props stamps that onto each cell as the proof
 # that the server was actually running with MTP active.
 id: vidar-ds4-mtp
+harness: none
+surface: fiz_provider_native
+concurrency_group: vidar-ds4
 metadata:
   model_family: deepseek-v4-flash
   model_id: deepseek-v4-flash

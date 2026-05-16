@@ -2,6 +2,9 @@
 # base_url so accidental network use fails loudly. Never pick this profile
 # for a real matrix run.
 id: noop
+harness: none
+surface: fiz_provider_native
+concurrency_group: noop
 provider:
   type: openai-compat
   model: noop-model

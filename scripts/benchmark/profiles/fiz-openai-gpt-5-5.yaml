@@ -1,5 +1,8 @@
 # fiz provider lane through the native OpenAI API to GPT-5.5.
 id: fiz-openai-gpt-5-5
+harness: none
+surface: fiz_provider_native
+concurrency_group: openai-gpt55
 metadata:
   model_family: gpt-5
   model_id: gpt-5.5

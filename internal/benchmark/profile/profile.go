@@ -144,10 +144,78 @@ type Profile struct {
 	// env var overrides this per-invocation.
 	AgentTimeoutMultiplier float64 `yaml:"agent_timeout_multiplier,omitempty"`
 
+	// Harness names the wrapper harness fiz delegates to when invoking
+	// this profile. "none" (default) means fiz speaks the provider directly;
+	// other values name a wrapper subprocess. Authored per-profile so the
+	// cell embeds its harness identity without joining to a lane block
+	// (ADR-016).
+	Harness HarnessType `yaml:"harness,omitempty"`
+
+	// Surface describes the execution surface that produced the cell.
+	// Replaces the lane_type field from the soon-to-be-deleted
+	// scripts/benchmark/terminalbench-2-1-sweep.yaml lanes block (ADR-016).
+	Surface SurfaceType `yaml:"surface,omitempty"`
+
+	// ConcurrencyGroup is the rate-limit shard key (e.g. "openrouter",
+	// "sindri-gpu") this profile contends on. The runner enforces
+	// max_concurrency from concurrency-groups.yaml against this key
+	// (ADR-016, plan PR 1b).
+	ConcurrencyGroup string `yaml:"concurrency_group,omitempty"`
+
 	// Path is the filesystem path the profile was loaded from. Not part of
 	// the YAML; populated by Load / LoadDir for diagnostics and `profiles
 	// list` output.
 	Path string `yaml:"-"`
+}
+
+// HarnessType enumerates the wrapper harness fiz may delegate to.
+// "none" means no wrapper — fiz uses its native provider path.
+type HarnessType string
+
+const (
+	HarnessNone      HarnessType = "none"
+	HarnessAnthropic HarnessType = "anthropic"
+	HarnessCodex     HarnessType = "codex"
+	HarnessPi        HarnessType = "pi"
+	HarnessOpencode  HarnessType = "opencode"
+)
+
+func (h HarnessType) valid() bool {
+	switch h {
+	case "", HarnessNone, HarnessAnthropic, HarnessCodex, HarnessPi, HarnessOpencode:
+		return true
+	}
+	return false
+}
+
+// SurfaceType enumerates the execution surfaces a profile can describe.
+type SurfaceType string
+
+const (
+	SurfaceFizProviderNative   SurfaceType = "fiz_provider_native"
+	SurfaceFizHarnessAnthropic SurfaceType = "fiz_harness_anthropic"
+	SurfaceFizHarnessCodex     SurfaceType = "fiz_harness_codex"
+	SurfaceFizHarnessPi        SurfaceType = "fiz_harness_pi"
+	SurfaceFizHarnessOpencode  SurfaceType = "fiz_harness_opencode"
+	SurfaceNativeCLI           SurfaceType = "native_cli"
+	SurfaceFrontierNative      SurfaceType = "frontier_native"
+	SurfaceFrontierHarness     SurfaceType = "frontier_harness"
+)
+
+func (s SurfaceType) valid() bool {
+	switch s {
+	case "",
+		SurfaceFizProviderNative,
+		SurfaceFizHarnessAnthropic,
+		SurfaceFizHarnessCodex,
+		SurfaceFizHarnessPi,
+		SurfaceFizHarnessOpencode,
+		SurfaceNativeCLI,
+		SurfaceFrontierNative,
+		SurfaceFrontierHarness:
+		return true
+	}
+	return false
 }
 
 // Load reads and validates a single profile YAML file at path.
@@ -224,6 +292,12 @@ func (p *Profile) Validate() error {
 	}
 	if strings.TrimSpace(p.Versioning.ResolvedAt) == "" {
 		return fmt.Errorf("versioning.resolved_at is required")
+	}
+	if !p.Harness.valid() {
+		return fmt.Errorf("harness %q is not one of none|anthropic|codex|pi|opencode", p.Harness)
+	}
+	if !p.Surface.valid() {
+		return fmt.Errorf("surface %q is not one of fiz_provider_native|fiz_harness_anthropic|fiz_harness_codex|fiz_harness_pi|fiz_harness_opencode|native_cli|frontier_native|frontier_harness", p.Surface)
 	}
 	return nil
 }
