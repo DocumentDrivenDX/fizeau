@@ -272,6 +272,12 @@ func runWithOptions(opts Options) int {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
 	}
+	if providerName != "" && requestedModel != "" {
+		if providerCfg, ok := cfg.Providers[providerName]; ok {
+			providerCfg.Model = requestedModel
+			cfg.Providers[providerName] = providerCfg
+		}
+	}
 	resolvedModel := requestedModel
 	if selection.ResolvedModel != "" {
 		resolvedModel = selection.ResolvedModel
