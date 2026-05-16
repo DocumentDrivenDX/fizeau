@@ -58,6 +58,8 @@ type workbenchSnapshot struct {
 	Rows                    string   `json:"rows"`
 	SummaryChartCount       int      `json:"summaryChartCount"`
 	SummaryRows             string   `json:"summaryRows"`
+	SettingsColumnCount     int      `json:"settingsColumnCount"`
+	SettingsOpen            bool     `json:"settingsOpen"`
 	Status                  string   `json:"status"`
 	TaskOptionCount         int      `json:"taskOptionCount"`
 	VisibleColumns          []string `json:"visibleColumns"`
@@ -167,6 +169,19 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	if snapshot.LegacyLaneFilterPresent {
 		t.Fatal("raw database filter UI must use profile terminology, not lane terminology")
 	}
+
+	click(t, browserCtx, "[data-bw-open-config]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.SettingsOpen && current.SettingsColumnCount > 0
+	})
+	clickViewerShadow(t, browserCtx, "#active-columns .column-selector-column span.is_column_active")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.SettingsOpen && len(current.VisibleColumns) == len(expectedDefaultColumns)-1
+	})
+	click(t, browserCtx, "[data-bw-open-config]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return !current.SettingsOpen
+	})
 
 	customColumns := []string{"task", "result_state"}
 	setViewerColumns(t, browserCtx, customColumns)
@@ -446,6 +461,26 @@ func click(t *testing.T, ctx context.Context, selector string) {
 	}
 }
 
+func clickViewerShadow(t *testing.T, ctx context.Context, selector string) {
+	t.Helper()
+
+	script := fmt.Sprintf(`(() => {
+		const viewer = document.querySelector('[data-bw-viewer]');
+		const el = viewer?.shadowRoot?.querySelector(%q);
+		if (!el) {
+			throw new Error("missing viewer shadow element: " + %q);
+		}
+		el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+		el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+		el.click();
+		return true;
+	})()`, selector, selector)
+
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, nil)); err != nil {
+		t.Fatalf("click viewer shadow %s: %v", selector, err)
+	}
+}
+
 func setViewerColumns(t *testing.T, ctx context.Context, columns []string) {
 	t.Helper()
 
@@ -575,6 +610,8 @@ const workbenchSnapshotJS = `(async () => {
     rows: text('[data-bw-metric="rows"]'),
     summaryChartCount: root?.querySelectorAll('.bench-workbench__pie, .bench-workbench__bar-row').length ?? 0,
     summaryRows: text('[data-bw-summary-metric="rows"]'),
+    settingsColumnCount: viewer?.shadowRoot?.querySelectorAll('#active-columns .column-selector-column, #sub-columns .column-selector-column').length ?? 0,
+    settingsOpen: Boolean(viewer?.hasAttribute('settings')),
     status: text('[data-bw-status]'),
     taskOptionCount: options('[data-bw-task]').length,
     visibleColumns: config?.columns ?? [],
