@@ -139,7 +139,7 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 		"effective_gpu_model",
 		"effective_gpu_ram_gb",
 		"profile_prefill_tps_est",
-		"profile_decode_tps_p50",
+		"decode_tps_est",
 		"turns",
 		"input_tokens",
 		"output_tokens",
@@ -202,22 +202,33 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return current.SettingsOpen && current.SettingsColumnCount > 0
 	})
-	clickViewerShadow(t, browserCtx, "#active-columns .column-selector-column span.is_column_active")
+	removeViewerColumn(t, browserCtx, "model_display_name")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.SettingsOpen && len(current.VisibleColumns) == len(expectedDefaultColumns)-1
+		return current.SettingsOpen &&
+			!contains(current.VisibleColumns, "model_display_name") &&
+			len(current.VisibleColumns) == len(expectedDefaultColumns)-1
 	})
 	click(t, browserCtx, "[data-bw-open-config]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return !current.SettingsOpen
 	})
+	setSelectValue(t, browserCtx, "[data-bw-model]", snapshot.ModelOptions[0])
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return parseCount(t, current.Rows) < expectedRows && !contains(current.VisibleColumns, "model_display_name")
+	})
+	setSelectValue(t, browserCtx, "[data-bw-model]", "")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return parseCount(t, current.Rows) == expectedRows && !contains(current.VisibleColumns, "model_display_name")
+	})
 
-	customColumns := []string{"task", "result_state", "profile_prefill_tps_est"}
+	customColumns := []string{"task", "result_state", "profile_prefill_tps_est", "decode_tps_est"}
 	setViewerColumns(t, browserCtx, customColumns)
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return sameStrings(current.VisibleColumns, customColumns)
 	})
 	clickRawGridHeaderSort(t, browserCtx, "result_state")
 	clickRawGridHeaderSort(t, browserCtx, "profile_prefill_tps_est")
+	clickRawGridHeaderSort(t, browserCtx, "decode_tps_est")
 
 	setSelectValue(t, browserCtx, "[data-bw-model]", snapshot.ModelOptions[0])
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
@@ -611,6 +622,29 @@ func clickViewerShadow(t *testing.T, ctx context.Context, selector string) {
 
 	if err := chromedp.Run(ctx, chromedp.Evaluate(script, nil)); err != nil {
 		t.Fatalf("click viewer shadow %s: %v", selector, err)
+	}
+}
+
+func removeViewerColumn(t *testing.T, ctx context.Context, column string) {
+	t.Helper()
+
+	script := fmt.Sprintf(`(() => {
+		const viewer = document.querySelector('[data-bw-viewer]');
+		const columns = [...(viewer?.shadowRoot?.querySelectorAll('#active-columns .column-selector-column') ?? [])];
+		const target = columns.find((el) => el.textContent.includes(%q));
+		const active = target?.querySelector('span.is_column_active');
+		if (!active) {
+			const seen = columns.map((el) => el.textContent.trim()).join(', ');
+			throw new Error("missing active viewer column " + %q + "; saw " + seen);
+		}
+		active.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+		active.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+		active.click();
+		return true;
+	})()`, column, column)
+
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, nil)); err != nil {
+		t.Fatalf("remove viewer column %s: %v", column, err)
 	}
 }
 
