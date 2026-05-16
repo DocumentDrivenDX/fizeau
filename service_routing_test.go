@@ -1164,6 +1164,63 @@ func TestBuildRoutingInputsHonorsLocalCostOption(t *testing.T) {
 	assertProviderCost(t, set, "local", 0.0042, routing.CostSourceUserConfig)
 }
 
+// TestSubscriptionRoutingCostPopulatesPerTierCatalogCost asserts that
+// applySubscriptionRoutingCost projects per-model catalog cost onto the
+// provider entry so the routing engine can attach the correct cost to each
+// per-tier candidate emitted under one subscription auth (fizeau-8ebac59d).
+func TestSubscriptionRoutingCostPopulatesPerTierCatalogCost(t *testing.T) {
+	catalog := loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-16T00:00:00Z
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  sonnet-4.6:
+    family: claude-sonnet
+    status: active
+    power: 8
+    cost_input_per_m: 3.0
+    cost_output_per_m: 15.0
+    surfaces:
+      claude-code: sonnet-4.6
+  claude-opus-4.7:
+    family: claude-opus
+    status: active
+    power: 10
+    cost_input_per_m: 15.0
+    cost_output_per_m: 75.0
+    surfaces:
+      claude-code: opus-4.7
+`)
+	svc := &service{}
+	entry := routing.HarnessEntry{
+		Name:              "claude",
+		Surface:           "claude",
+		IsSubscription:    true,
+		DefaultModel:      "opus-4.7",
+		AutoRoutingModels: []string{"opus-4.7", "sonnet-4.6"},
+	}
+	svc.applySubscriptionRoutingCost(&entry, catalog)
+	if len(entry.Providers) != 1 {
+		t.Fatalf("providers=%d, want 1 subscription provider", len(entry.Providers))
+	}
+	costByModel := entry.Providers[0].CostUSDPer1kTokensByModel
+	if costByModel == nil {
+		t.Fatal("CostUSDPer1kTokensByModel is nil; want catalog-derived per-tier costs")
+	}
+	// opus-4.7: (15 + 75) / 2 / 1000 = 0.045
+	if got := costByModel["opus-4.7"]; got != 0.045 {
+		t.Errorf("opus-4.7 cost=%v, want 0.045 (catalog blended)", got)
+	}
+	// sonnet-4.6: (3 + 15) / 2 / 1000 = 0.009
+	if got := costByModel["sonnet-4.6"]; got != 0.009 {
+		t.Errorf("sonnet-4.6 cost=%v, want 0.009 (catalog blended)", got)
+	}
+}
+
 func TestResolveRouteNearQuotaClaudeDemotesBelowOpenRouter(t *testing.T) {
 	catalog := loadRoutingFixtureCatalog(t, `
 version: 5

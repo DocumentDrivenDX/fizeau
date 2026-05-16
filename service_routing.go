@@ -736,6 +736,17 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 				entry.Available = false
 			}
 		}
+		// Subscription harnesses (claude/codex/gemini) expose multiple tiers
+		// under one auth. Use the catalog surface to enumerate the active
+		// concrete tier IDs so the engine emits one candidate per tier and
+		// the cost-aware scorer can pick the cheapest viable tier instead of
+		// silently collapsing to DefaultModel.
+		if entry.IsSubscription {
+			if tiers := catalogTierModelsForHarnessSurface(cat, entry.Surface); len(tiers) > 0 {
+				entry.AutoRoutingModels = tiers
+				entry.SupportedModels = appendUniqueModelIDs(entry.SupportedModels, tiers...)
+			}
+		}
 		s.applySubscriptionRoutingCost(&entry, cat)
 		entries = append(entries, entry)
 	}
@@ -1334,6 +1345,37 @@ func serviceRoutingReasoningResolver(cat *modelcatalog.Catalog) func(policy, sur
 	}
 }
 
+// catalogTierModelsForHarnessSurface enumerates the active concrete tier IDs
+// the catalog publishes for a harness surface, sorted deterministically by
+// power (descending) then by ID. Returns nil when the surface is unknown to
+// the catalog or the catalog has no active models on that surface.
+func catalogTierModelsForHarnessSurface(cat *modelcatalog.Catalog, harnessSurface string) []string {
+	if cat == nil {
+		return nil
+	}
+	catalogSurface, ok := serviceRoutingCatalogSurface(harnessSurface)
+	if !ok {
+		return nil
+	}
+	concrete := cat.AllConcreteModels(catalogSurface)
+	if len(concrete) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(concrete))
+	for id := range concrete {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		pi, _, _ := catalogPowerEligibility(cat, ids[i])
+		pj, _, _ := catalogPowerEligibility(cat, ids[j])
+		if pi != pj {
+			return pi > pj
+		}
+		return ids[i] < ids[j]
+	})
+	return ids
+}
+
 func serviceRoutingCatalogSurface(surface string) (modelcatalog.Surface, bool) {
 	switch surface {
 	case "embedded-openai":
@@ -1501,16 +1543,42 @@ func (s *service) applySubscriptionRoutingCost(entry *routing.HarnessEntry, cat 
 	ctxWindows, ctxSources := buildProviderContextWindows(context.Background(), ServiceProviderEntry{}, cat, entry.AutoRoutingModels)
 	modelTools := modelSupportsToolsByID(cat, entry.AutoRoutingModels)
 	supportsTools := providerSupportsTools(cat, entry.DefaultModel, entry.AutoRoutingModels)
+	costByModel := subscriptionCostByModel(cat, entry.AutoRoutingModels)
 	entry.Providers = []routing.ProviderEntry{{
-		Billing:              modelcatalog.BillingModelSubscription,
-		CostUSDPer1kTokens:   cost,
-		CostSource:           routing.CostSourceSubscription,
-		ActualCashSpend:      false,
-		ContextWindows:       ctxWindows,
-		ContextWindowSources: ctxSources,
-		SupportsTools:        supportsTools,
-		SupportsToolsByModel: modelTools,
+		Billing:                   modelcatalog.BillingModelSubscription,
+		CostUSDPer1kTokens:        cost,
+		CostUSDPer1kTokensByModel: costByModel,
+		CostSource:                routing.CostSourceSubscription,
+		ActualCashSpend:           false,
+		ContextWindows:            ctxWindows,
+		ContextWindowSources:      ctxSources,
+		SupportsTools:             supportsTools,
+		SupportsToolsByModel:      modelTools,
 	}}
+}
+
+// subscriptionCostByModel resolves the catalog cost per modelID so the engine
+// can attach a per-tier cost to each candidate emitted under the same
+// subscription provider. Returns nil when the catalog has no cost evidence
+// for any of the listed models.
+func subscriptionCostByModel(cat *modelcatalog.Catalog, modelIDs []string) map[string]float64 {
+	if cat == nil || len(modelIDs) == 0 {
+		return nil
+	}
+	out := make(map[string]float64, len(modelIDs))
+	for _, id := range modelIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if cost, ok := catalogCostUSDPer1kTokens(cat, id); ok {
+			out[id] = cost
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func providerRoutingCostClass(providerType string) string {

@@ -152,6 +152,11 @@ type ProviderEntry struct {
 	// CostUSDPer1kTokens is the estimated blended USD cost per 1,000 tokens.
 	// A zero value with CostSourceUnknown means the provider cost is unknown.
 	CostUSDPer1kTokens float64
+	// CostUSDPer1kTokensByModel maps concrete model ID → blended cost. Used by
+	// multi-tier harnesses so each per-tier candidate emitted under the same
+	// provider can carry its own catalog cost. When a model ID has an entry
+	// here, it overrides CostUSDPer1kTokens for that candidate.
+	CostUSDPer1kTokensByModel map[string]float64
 	// CostSource describes where CostUSDPer1kTokens came from: catalog,
 	// subscription, user-config, or unknown.
 	CostSource string
@@ -1328,6 +1333,10 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 			}
 
 			stickyMatch := stickyServerInstance != "" && serverInstanceMatches(stickyServerInstance, p.ServerInstance, p.EndpointName)
+			candidateCost := p.CostUSDPer1kTokens
+			if perModel, ok := p.CostUSDPer1kTokensByModel[model]; ok {
+				candidateCost = perModel
+			}
 			ci := candidateInternal{
 				Harness:               h.Name,
 				Provider:              p.Name,
@@ -1336,7 +1345,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				ServerInstance:        p.ServerInstance,
 				Model:                 model,
 				CostClass:             candidateCostClass(h, p),
-				CostUSDPer1kTokens:    p.CostUSDPer1kTokens,
+				CostUSDPer1kTokens:    candidateCost,
 				CostSource:            normalizeCostSource(p.CostSource),
 				ActualCashSpend:       p.ActualCashSpend,
 				Power:                 power,
@@ -1374,7 +1383,7 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 					Endpoint:           p.EndpointName,
 					ServerInstance:     p.ServerInstance,
 					Model:              model,
-					CostUSDPer1kTokens: p.CostUSDPer1kTokens,
+					CostUSDPer1kTokens: candidateCost,
 					CostSource:         normalizeCostSource(p.CostSource),
 					ActualCashSpend:    p.ActualCashSpend,
 					Power:              power,
@@ -1408,7 +1417,11 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 }
 
 func routingModelsForProvider(h HarnessEntry, p ProviderEntry, req Request, in Inputs) ([]string, string) {
-	if req.Model == "" && req.Provider == "" && req.Harness != "" && len(h.AutoRoutingModels) > 0 {
+	// Enumerate every tier the harness lists for unpinned automatic routing so
+	// sibling tiers under one auth (e.g. claude opus-4.7 + sonnet-4.6) survive
+	// into the candidate pool instead of collapsing to DefaultModel. Pinned
+	// Model/Provider still constrain to a single resolution.
+	if req.Model == "" && req.Provider == "" && len(h.AutoRoutingModels) > 0 {
 		return append([]string(nil), h.AutoRoutingModels...), ""
 	}
 	model, reason := resolveModel(h, p, req, in)

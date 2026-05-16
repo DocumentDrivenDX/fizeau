@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/easel/fizeau/internal/modelcatalog"
 )
 
 // newTestRoutingEngine returns a baseline Inputs with local and subscription
@@ -1745,6 +1747,142 @@ func TestLocalAliasResolvesToFiz(t *testing.T) {
 // Eligible reports whether the Decision picked a viable candidate.
 func (d *Decision) Eligible() bool {
 	return d != nil && d.Harness != ""
+}
+
+// multiTierSubscriptionHarness fixture: claude subscription harness exposing
+// both opus-4.7 and sonnet-4.6 under one auth. Mirrors the fizeau-8ebac59d
+// regression: under policy=default a subscription harness must emit one
+// candidate per tier in AutoRoutingModels instead of collapsing to
+// DefaultModel.
+func multiTierSubscriptionInputs() Inputs {
+	return Inputs{
+		Harnesses: []HarnessEntry{{
+			Name:                "claude",
+			Surface:             "claude",
+			CostClass:           "medium",
+			IsSubscription:      true,
+			AutoRoutingEligible: true,
+			ExactPinSupport:     true,
+			Available:           true,
+			QuotaOK:             true,
+			SubscriptionOK:      true,
+			SupportsTools:       true,
+			DefaultModel:        "opus-4.7",
+			SupportedModels:     []string{"opus-4.7", "sonnet-4.6"},
+			AutoRoutingModels:   []string{"opus-4.7", "sonnet-4.6"},
+			Providers: []ProviderEntry{{
+				Billing:            modelcatalog.BillingModelSubscription,
+				CostUSDPer1kTokens: 0.045,
+				CostSource:         CostSourceSubscription,
+				CostUSDPer1kTokensByModel: map[string]float64{
+					"opus-4.7":   0.045,
+					"sonnet-4.6": 0.009,
+				},
+				SupportsTools: true,
+			}},
+		}},
+		ModelEligibility: func(model string) (ModelEligibility, bool) {
+			switch model {
+			case "opus-4.7":
+				return ModelEligibility{Power: 10, AutoRoutable: true}, true
+			case "sonnet-4.6":
+				return ModelEligibility{Power: 8, AutoRoutable: true}, true
+			default:
+				return ModelEligibility{}, false
+			}
+		},
+		Now: time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+	}
+}
+
+// TestAutoRouteEnumeratesPerTierForMultiTierHarness asserts that a
+// policy=default dispatch with no harness/provider/model pin emits one
+// candidate per tier the subscription harness lists, not just the
+// DefaultModel. Sibling tiers under one auth must survive into the candidate
+// pool so the cost-aware scorer can see them.
+func TestAutoRouteEnumeratesPerTierForMultiTierHarness(t *testing.T) {
+	in := multiTierSubscriptionInputs()
+	dec, err := Resolve(Request{Policy: "default"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	models := map[string]bool{}
+	for _, c := range dec.Candidates {
+		if c.Harness == "claude" {
+			models[c.Model] = true
+		}
+	}
+	if !models["opus-4.7"] {
+		t.Errorf("missing claude/opus-4.7 candidate; got models=%v", models)
+	}
+	if !models["sonnet-4.6"] {
+		t.Errorf("missing claude/sonnet-4.6 candidate; got models=%v", models)
+	}
+}
+
+// TestPerTierCandidateCarriesCatalogPowerAndCost asserts each per-tier
+// candidate carries Power from the model-eligibility resolver and
+// CostUSDPer1kTokens from the per-model cost map (which the service layer
+// projects from the catalog). Sonnet must score with sonnet's catalog values,
+// not opus's.
+func TestPerTierCandidateCarriesCatalogPowerAndCost(t *testing.T) {
+	in := multiTierSubscriptionInputs()
+	dec, err := Resolve(Request{Policy: "default"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	want := map[string]struct {
+		power int
+		cost  float64
+	}{
+		"opus-4.7":   {power: 10, cost: 0.045},
+		"sonnet-4.6": {power: 8, cost: 0.009},
+	}
+	seen := map[string]bool{}
+	for _, c := range dec.Candidates {
+		if c.Harness != "claude" {
+			continue
+		}
+		expect, ok := want[c.Model]
+		if !ok {
+			continue
+		}
+		seen[c.Model] = true
+		if c.Power != expect.power {
+			t.Errorf("claude/%s Power=%d, want %d", c.Model, c.Power, expect.power)
+		}
+		if c.CostUSDPer1kTokens != expect.cost {
+			t.Errorf("claude/%s CostUSDPer1kTokens=%v, want %v", c.Model, c.CostUSDPer1kTokens, expect.cost)
+		}
+		if c.CostSource != CostSourceSubscription {
+			t.Errorf("claude/%s CostSource=%q, want %q", c.Model, c.CostSource, CostSourceSubscription)
+		}
+	}
+	for model := range want {
+		if !seen[model] {
+			t.Errorf("missing per-tier candidate for claude/%s", model)
+		}
+	}
+}
+
+// TestPerTierCandidateRoutesViaSameHarness asserts every per-tier candidate
+// emitted for a multi-tier subscription harness stays on the same harness
+// instead of falling back to fiz/openrouter.
+func TestPerTierCandidateRoutesViaSameHarness(t *testing.T) {
+	in := multiTierSubscriptionInputs()
+	dec, err := Resolve(Request{Policy: "default"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	tierModels := map[string]bool{"opus-4.7": true, "sonnet-4.6": true}
+	for _, c := range dec.Candidates {
+		if !tierModels[c.Model] {
+			continue
+		}
+		if c.Harness != "claude" {
+			t.Errorf("tier candidate model=%s routed via harness=%q, want claude", c.Model, c.Harness)
+		}
+	}
 }
 
 // TestRouteRequest_ExcludedRoutesSkipsCandidate asserts that a candidate
