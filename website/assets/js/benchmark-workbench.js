@@ -4,42 +4,23 @@ import "@perspective-dev/viewer-datagrid/dist/esm/perspective-viewer-datagrid.js
 import { DuckDBHandler } from "@perspective-dev/client/dist/esm/virtual_servers/duckdb.js";
 
 const DEFAULT_COLUMNS = [
-  "suite",
   "task",
-  "task_subsets",
+  "task_category",
+  "task_difficulty",
   "result_state",
-  "passed",
-  "grader_passed",
-  "final_status",
-  "invalid_class",
-  "harness",
-  "harness_label",
-  "provider_type",
-  "provider_surface",
   "model_display_name",
-  "model",
-  "model_quant",
+  "provider_type",
+  "harness_label",
   "quant_display",
-  "weight_bits",
-  "kv_cache_quant",
-  "k_quant",
-  "v_quant",
-  "runtime_mtp_enabled",
   "engine",
-  "engine_version",
-  "gpu_model",
-  "gpu_ram_gb",
-  "hardware_vram_gb",
-  "machine",
-  "rep",
+  "effective_gpu_model",
   "turns",
-  "input_tokens",
-  "output_tokens",
-  "reasoning_tokens",
   "total_tokens",
   "cost_usd",
   "wall_seconds",
-  "started_at",
+  "profile_ttft_p50_s",
+  "profile_decode_tps_p50",
+  "profile_timing_turns",
   "finished_at",
 ];
 
@@ -53,7 +34,7 @@ const FILTER_FIELDS = [
   { key: "provider_type", label: "Provider", allLabel: "All providers" },
   { key: "provider_surface", label: "Surface", allLabel: "All surfaces" },
   { key: "harness_label", label: "Harness", allLabel: "All harnesses" },
-  { key: "lane_label", label: "Lane", allLabel: "All lanes" },
+  { key: "profile_id", label: "Profile", allLabel: "All profiles" },
   { key: "task_category", label: "Task category", allLabel: "All categories" },
   { key: "task_difficulty", label: "Difficulty", allLabel: "All difficulties" },
   { key: "deployment_class", label: "Deployment", allLabel: "All deployments" },
@@ -183,6 +164,16 @@ function normalizeScalar(value) {
   if (typeof value === "string" && /^-?\d+n$/.test(value)) return Number(value.slice(0, -1));
   if (value && typeof value.toJSON === "function") return normalizeScalar(value.toJSON());
   return value;
+}
+
+function sqlNumber(value) {
+  const num = Number(normalizeScalar(value));
+  return Number.isFinite(num) ? String(num) : "NULL";
+}
+
+function sqlInteger(value) {
+  const num = Number(normalizeScalar(value));
+  return Number.isSafeInteger(num) ? String(num) : "NULL";
 }
 
 function normalizeRow(row) {
@@ -381,6 +372,7 @@ class BenchmarkWorkbench {
       [...root.querySelectorAll("[data-bw-chart]")].map((el) => [el.dataset.bwChart, el]),
     );
     this.cellsUrl = absolutize(root.dataset.cellsUrl || "/data/cells.parquet");
+    this.timingUrl = absolutize(root.dataset.timingUrl || "/data/profile-timing.json");
     this.manifestUrl = absolutize(root.dataset.manifestUrl || "/data/benchmark-data-manifest.json");
     this.duckdbBase = absolutize(root.dataset.duckdbBase || "/vendor/duckdb/");
     this.activePreset = "all";
@@ -392,6 +384,8 @@ class BenchmarkWorkbench {
     this.comboReloadTimer = null;
     this.taskLinkUnsubscribe = null;
     this.taskLinkTable = null;
+    this.gridConfig = null;
+    this.gridConfigReady = false;
   }
 
   async init() {
@@ -404,6 +398,7 @@ class BenchmarkWorkbench {
 
     this.setStatus("Loading artifact manifest...");
     await this.loadManifest();
+    await this.loadTiming();
 
     this.setStatus("Starting DuckDB-WASM...");
     await this.initDuckDB();
@@ -427,6 +422,35 @@ class BenchmarkWorkbench {
       this.manifest = await response.json();
     } catch {
       this.manifest = null;
+    }
+  }
+
+  async loadTiming() {
+    this.profileTiming = {};
+    try {
+      const response = await fetch(this.timingUrl);
+      if (!response.ok) return;
+      const payload = await response.json();
+      const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.rows)
+        ? payload.rows
+        : Object.entries(payload || {}).map(([profileID, timing]) => ({
+            profile_id: profileID,
+            profile_ttft_p50_s: timing?.ttft_p50,
+            profile_decode_tps_p50: timing?.decode_tps_p50,
+            profile_timing_turns: timing?.n_turns,
+          }));
+      for (const row of rows) {
+        if (!row?.profile_id) continue;
+        this.profileTiming[String(row.profile_id)] = {
+          profile_ttft_p50_s: normalizeScalar(row.profile_ttft_p50_s),
+          profile_decode_tps_p50: normalizeScalar(row.profile_decode_tps_p50),
+          profile_timing_turns: normalizeScalar(row.profile_timing_turns),
+        };
+      }
+    } catch {
+      this.profileTiming = {};
     }
   }
 
@@ -457,10 +481,15 @@ class BenchmarkWorkbench {
       SELECT * FROM read_parquet('cells.parquet')
     `);
 
+    await this.createProfileTimingTable();
+
     await this.conn.query(`
       CREATE OR REPLACE VIEW cells_enriched AS
       SELECT
-        *,
+        c.* EXCLUDE (internal_lane_id, lane_label),
+        COALESCE(pt_profile.profile_ttft_p50_s, pt_internal.profile_ttft_p50_s, pt_report.profile_ttft_p50_s) AS profile_ttft_p50_s,
+        COALESCE(pt_profile.profile_decode_tps_p50, pt_internal.profile_decode_tps_p50, pt_report.profile_decode_tps_p50) AS profile_decode_tps_p50,
+        COALESCE(pt_profile.profile_timing_turns, pt_internal.profile_timing_turns, pt_report.profile_timing_turns) AS profile_timing_turns,
         COALESCE(NULLIF(gpu_model, ''), NULLIF(hardware_chip, ''), NULLIF(hardware_profile, ''), NULLIF(machine, ''), 'unknown') AS effective_gpu_model,
         COALESCE(gpu_ram_gb, hardware_vram_gb, hardware_memory_gb) AS effective_gpu_ram_gb,
         CASE
@@ -496,7 +525,7 @@ class BenchmarkWorkbench {
           COALESCE(CAST(hardware_memory_type AS VARCHAR), ''),
           COALESCE(CAST(task_category AS VARCHAR), ''),
           COALESCE(CAST(task_difficulty AS VARCHAR), ''),
-          COALESCE(CAST(lane_label AS VARCHAR), ''),
+          COALESCE(CAST(c.profile_id AS VARCHAR), ''),
           COALESCE(CAST(deployment_class AS VARCHAR), ''),
           COALESCE(CAST(sampling_reasoning AS VARCHAR), ''),
           COALESCE(CAST(sampling_temperature AS VARCHAR), ''),
@@ -510,13 +539,37 @@ class BenchmarkWorkbench {
           COALESCE(CAST(invalid_class AS VARCHAR), ''),
           COALESCE(CAST(descriptor AS VARCHAR), '')
         )) AS search_text
-      FROM cells_raw
+      FROM cells_raw AS c
+      LEFT JOIN profile_timing AS pt_profile ON c.profile_id = pt_profile.profile_id
+      LEFT JOIN profile_timing AS pt_internal ON c.internal_lane_id = pt_internal.profile_id
+      LEFT JOIN profile_timing AS pt_report ON c.report_profile_id = pt_report.profile_id
     `);
 
     await this.conn.query("CREATE OR REPLACE TABLE workbench_cells AS SELECT * FROM cells_enriched");
 
     const mod = customElements.get("perspective-viewer").__wasm_module__;
     this.perspectiveClient = await makePerspectiveClient(new DuckDBHandler(this.conn, mod), mod);
+  }
+
+  async createProfileTimingTable() {
+    await this.conn.query(`
+      CREATE OR REPLACE TABLE profile_timing (
+        profile_id VARCHAR,
+        profile_ttft_p50_s DOUBLE,
+        profile_decode_tps_p50 DOUBLE,
+        profile_timing_turns BIGINT
+      )
+    `);
+
+    const values = Object.entries(this.profileTiming || {}).map(([profileID, timing]) => `(
+      ${sqlString(profileID)},
+      ${sqlNumber(timing.profile_ttft_p50_s)},
+      ${sqlNumber(timing.profile_decode_tps_p50)},
+      ${sqlInteger(timing.profile_timing_turns)}
+    )`);
+    if (values.length) {
+      await this.conn.query(`INSERT INTO profile_timing VALUES ${values.join(",")}`);
+    }
   }
 
   async populateControls() {
@@ -670,10 +723,19 @@ class BenchmarkWorkbench {
     this.openConfig?.addEventListener("click", () => {
       this.viewer.toggleConfig();
     });
+    this.viewer?.addEventListener("perspective-config-update", () => {
+      this.saveGridConfig().catch((error) => this.fail(error));
+    });
 
     this.clearFilters?.addEventListener("click", () => {
       this.resetFilters();
       this.reloadRaw().catch((error) => this.fail(error));
+    });
+
+    this.root.querySelector("[data-bw-reset-view]")?.addEventListener("click", () => {
+      this.gridConfig = null;
+      this.gridConfigReady = false;
+      this.loadGrid().catch((error) => this.fail(error));
     });
 
     this.comparison.addEventListener("click", (event) => {
@@ -715,6 +777,10 @@ class BenchmarkWorkbench {
       window.history.pushState(null, "", targetHash);
     } else if (options.replace && window.location.hash !== targetHash) {
       window.history.replaceState(null, "", targetHash);
+    }
+
+    if (options.push) {
+      requestAnimationFrame(() => this.root.scrollIntoView({ block: "start" }));
     }
 
     if (nextRoute === "data") {
@@ -773,6 +839,9 @@ class BenchmarkWorkbench {
     this.enumFilters.forEach((select) => {
       select.value = "";
     });
+    if (this.gridConfig) {
+      this.gridConfig = this.sanitizeGridConfig(this.gridConfig, { clearFilters: true });
+    }
   }
 
   filterClauses(options = {}) {
@@ -1037,24 +1106,61 @@ class BenchmarkWorkbench {
   }
 
   async loadGrid() {
+    await this.saveGridConfig();
     const tableNames = await this.perspectiveClient.get_hosted_table_names();
     const tableName = tableNames.find((name) => name.endsWith(".workbench_cells")) || "memory.workbench_cells";
     const table = await this.perspectiveClient.open_table(tableName);
     const schema = await table.schema();
-    const columns = DEFAULT_COLUMNS.filter((column) => Object.prototype.hasOwnProperty.call(schema, column));
+    const config = this.gridConfigReady
+      ? this.sanitizeGridConfig(this.gridConfig, { schema })
+      : this.defaultGridConfig(schema);
 
     await this.viewer.load(table);
-    await this.viewer.restore({
+    await this.viewer.restore(config);
+    this.gridConfig = config;
+    this.gridConfigReady = true;
+    await this.viewer.flush?.();
+    await this.installTaskLinks();
+  }
+
+  defaultGridConfig(schema) {
+    return {
       plugin: "Datagrid",
-      columns,
-      sort: [["finished_at", "desc"]],
+      columns: DEFAULT_COLUMNS.filter((column) => Object.prototype.hasOwnProperty.call(schema, column)),
+      sort: Object.prototype.hasOwnProperty.call(schema, "finished_at") ? [["finished_at", "desc"]] : [],
       group_by: [],
       split_by: [],
       filter: [],
       settings: false,
-    });
-    await this.viewer.flush?.();
-    await this.installTaskLinks();
+    };
+  }
+
+  async saveGridConfig() {
+    if (!this.gridConfigReady || !this.viewer?.save) return;
+    try {
+      this.gridConfig = this.sanitizeGridConfig(await this.viewer.save(), { clearFilters: true });
+    } catch {
+      // Keep the last known-good config; Perspective can reject save() while reloading.
+    }
+  }
+
+  sanitizeGridConfig(config, options = {}) {
+    const next = { ...(config || {}) };
+    next.plugin = next.plugin || "Datagrid";
+    next.settings = Boolean(next.settings);
+    if (options.clearFilters) next.filter = [];
+    if (!Array.isArray(next.filter)) next.filter = [];
+
+    if (options.schema) {
+      const hasColumn = (column) => Object.prototype.hasOwnProperty.call(options.schema, column);
+      next.columns = Array.isArray(next.columns) ? next.columns.filter(hasColumn) : [];
+      next.sort = Array.isArray(next.sort) ? next.sort.filter(([column]) => hasColumn(column)) : [];
+      next.group_by = Array.isArray(next.group_by) ? next.group_by.filter(hasColumn) : [];
+      next.split_by = Array.isArray(next.split_by) ? next.split_by.filter(hasColumn) : [];
+      if (!next.columns.length) return this.defaultGridConfig(options.schema);
+    }
+
+    return next;
   }
 
   async installTaskLinks() {

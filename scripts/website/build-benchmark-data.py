@@ -30,6 +30,7 @@ DEFAULT_CELLS_ROOT = REPO / "bench/results/fiz-tools-v1/cells"
 DEFAULT_PROFILES_DIR = REPO / "scripts/benchmark/profiles"
 DEFAULT_MACHINES_FILE = REPO / "scripts/benchmark/machines.yaml"
 DEFAULT_SUBSET_GLOB = "scripts/benchmark/task-subset-tb21-*.yaml"
+DEFAULT_TIMING_FILE = REPO / "docs/benchmarks/data/timing.json"
 DEFAULT_TASK_METADATA_FILES = (
     REPO / "scripts/beadbench/external/termbench-full.json",
 )
@@ -1047,12 +1048,31 @@ def parse_formats(value: str) -> set[str]:
     return formats
 
 
+def build_profile_timing_rows(timing_file: Path) -> list[dict[str, Any]]:
+    if not timing_file.is_file():
+        return []
+    with open(timing_file, encoding="utf-8") as f:
+        raw = json.load(f)
+    rows = []
+    for profile_id, timing in sorted((raw or {}).items()):
+        if not isinstance(timing, dict):
+            continue
+        rows.append({
+            "profile_id": profile_id,
+            "profile_ttft_p50_s": number(timing.get("ttft_p50")),
+            "profile_decode_tps_p50": number(timing.get("decode_tps_p50")),
+            "profile_timing_turns": integer(timing.get("n_turns")),
+        })
+    return rows
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cells-root", type=Path, default=DEFAULT_CELLS_ROOT)
     parser.add_argument("--profiles-dir", type=Path, default=DEFAULT_PROFILES_DIR)
     parser.add_argument("--machines-file", type=Path, default=DEFAULT_MACHINES_FILE)
     parser.add_argument("--subset-glob", default=DEFAULT_SUBSET_GLOB)
+    parser.add_argument("--timing-file", type=Path, default=DEFAULT_TIMING_FILE)
     parser.add_argument("--suite", action="append", dest="suites", default=None, help="Suite id below cells root. Repeatable.")
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
@@ -1087,6 +1107,7 @@ def main() -> int:
         "excluded_grading_outcomes": diagnostics["excluded_grading_outcomes"],
     }
     aggregates = build_task_combinations(rows)
+    profile_timing_rows = build_profile_timing_rows(args.timing_file)
     artifacts: list[dict[str, Any]] = []
     if "json" in args.formats:
         write_json(args.out_dir / "cells.json", feed(source, rows, generated_at))
@@ -1102,6 +1123,17 @@ def main() -> int:
             },
         )
         artifacts.append({"path": "task-combinations.json", "kind": "task_combinations", "format": "json", "rows": len(aggregates)})
+        if profile_timing_rows:
+            write_json(
+                args.out_dir / "profile-timing.json",
+                {
+                    "schema_version": 1,
+                    "generated_at": generated_at,
+                    "source": {"timing_file": relpath(args.timing_file)},
+                    "rows": profile_timing_rows,
+                },
+            )
+            artifacts.append({"path": "profile-timing.json", "kind": "profile_timing", "format": "json", "rows": len(profile_timing_rows)})
     if args.schema.is_file():
         args.out_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(args.schema, args.out_dir / "cells.schema.json")

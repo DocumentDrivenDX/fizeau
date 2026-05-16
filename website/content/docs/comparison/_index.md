@@ -63,10 +63,10 @@ date is the date we last refreshed the cache.
 
 Fizeau's row is sourced differently: it is `tasks_passed_any /
 tasks_touched` from our local `per_profile` aggregate
-(`fiz-openrouter-qwen3-6-27b` is the lane with the most graded reps). That
+(`fiz-openrouter-qwen3-6-27b` is the profile with the most graded reps). That
 is **pass@k** with `k=5` reps per task, not the per-rep `pass@1` that the
 external leaderboard implicitly reports. The two numbers are not directly
-comparable; we report Fizeau's anyway because it is the dominant lane in
+comparable; we report Fizeau's anyway because it is the dominant profile in
 the data and a single-number summary is more useful than no summary. For
 apples-to-apples comparison see the
 [Terminal-Bench 2.1 page](/benchmarks/terminal-bench-2-1/), which exposes

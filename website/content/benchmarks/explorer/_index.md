@@ -3,7 +3,7 @@ title: "Explorer"
 weight: 2
 toc: false
 ---
-<div class="bench-workbench" data-benchmark-workbench data-cells-url="../../data/cells.parquet" data-combinations-url="../../data/task-combinations.parquet" data-manifest-url="../../data/benchmark-data-manifest.json" data-duckdb-base="../../vendor/duckdb/">
+<div class="bench-workbench" data-benchmark-workbench data-cells-url="../../data/cells.parquet" data-combinations-url="../../data/task-combinations.parquet" data-timing-url="../../data/profile-timing.json" data-manifest-url="../../data/benchmark-data-manifest.json" data-duckdb-base="../../vendor/duckdb/">
   <section class="bench-workbench__header" aria-labelledby="benchmark-workbench-title">
     <div>
       <p class="bench-workbench__eyebrow">Browser Analytical Workbench</p>
@@ -116,7 +116,10 @@ toc: false
             <p class="bench-workbench__eyebrow">Raw Database</p>
             <h2 id="benchmark-data-title">Benchmark Cells</h2>
           </div>
-          <button type="button" data-bw-open-config>Columns / filters</button>
+          <div class="bench-workbench__head-actions">
+            <button type="button" data-bw-open-config>Columns</button>
+            <button type="button" data-bw-reset-view>Reset view</button>
+          </div>
         </div>
         <section class="bench-workbench__controls" aria-label="Raw benchmark filters">
           <label class="bench-workbench__control bench-workbench__control--wide">
@@ -202,8 +205,8 @@ toc: false
               <select data-bw-filter-field="harness_label"><option value="">All harnesses</option></select>
             </label>
             <label class="bench-workbench__control">
-              <span>Lane</span>
-              <select data-bw-filter-field="lane_label"><option value="">All lanes</option></select>
+              <span>Profile</span>
+              <select data-bw-filter-field="profile_id"><option value="">All profiles</option></select>
             </label>
             <label class="bench-workbench__control">
               <span>Task category</span>

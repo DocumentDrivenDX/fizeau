@@ -1,5 +1,5 @@
 {{- /*
-  runtime-props-grid — filterable/sortable table of per-lane runtime_props.
+  runtime-props-grid — filterable/sortable table of per-profile runtime_props.
 
   Data source: website/static/benchmarks/runtime-props.json is read at Hugo
   build time via readFile and inlined as a <script type="application/json">
@@ -11,7 +11,7 @@
   landed yet.
 
   Columns:
-    Lane, Provider, Extractor, Base model, Model quant, KV quant,
+    Profile, Provider, Extractor, Base model, Model quant, KV quant,
     Draft model, Draft mode, Max context, MTP enabled, Temp
 
   Filtering: per-column text inputs (string cols) / number range (max_context)
@@ -36,7 +36,7 @@
 
   <div class="rp-filters" id="rp-filters">
     <div class="rp-filter-row">
-      <label class="rp-filter-label">Lane <input class="rp-filter" data-col="0" type="text" placeholder="filter…"></label>
+      <label class="rp-filter-label">Profile <input class="rp-filter" data-col="0" type="text" placeholder="filter…"></label>
       <label class="rp-filter-label">Provider <input class="rp-filter" data-col="1" type="text" placeholder="filter…"></label>
       <label class="rp-filter-label">Extractor <input class="rp-filter" data-col="2" type="text" placeholder="filter…"></label>
       <label class="rp-filter-label">Base model <input class="rp-filter" data-col="3" type="text" placeholder="filter…"></label>
@@ -64,7 +64,7 @@
     <table class="rp-table" id="rp-table">
       <thead>
         <tr>
-          <th class="rp-th" data-col="0" title="Click to sort; shift-click for secondary sort">Lane <span class="rp-sort-icon"></span></th>
+          <th class="rp-th" data-col="0" title="Click to sort; shift-click for secondary sort">Profile <span class="rp-sort-icon"></span></th>
           <th class="rp-th" data-col="1">Provider <span class="rp-sort-icon"></span></th>
           <th class="rp-th" data-col="2">Extractor <span class="rp-sort-icon"></span></th>
           <th class="rp-th" data-col="3">Base model <span class="rp-sort-icon"></span></th>
@@ -142,7 +142,7 @@
         });
         tbodyEl.appendChild(tr);
       });
-      countEl.textContent = visible.length + ' of ' + allRows.length + ' lanes';
+      countEl.textContent = visible.length + ' of ' + allRows.length + ' profiles';
       updateSortIcons();
     }
 

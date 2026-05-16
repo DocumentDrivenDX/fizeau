@@ -10,8 +10,8 @@ Fizeau exists because we wanted a single agent runtime where the *harness* and t
 
 Each benchmark exercises the agent loop the same way — same prompts, same tools, same compaction policy, same tool-call accounting. We then permute the variables:
 
-- **Same model, different provider/runtime.** The Qwen3.6-27B lanes route the same model through OpenRouter (cloud), vLLM int4 on a local GPU (sindri), and oMLX 8-bit on Apple silicon (vidar). A pass-rate or wall-time delta between these lanes is *provider/runtime loss* — the cost of how the bytes reach the model, not what the model is.
-- **Same model, different harness.** The `fiz-harness-*` lanes wrap Claude Code, Codex, Pi, and OpenCode through fiz so the model and the API stay constant while the agent loop changes. A delta here is *harness loss*.
+- **Same model, different provider/runtime.** The Qwen3.6-27B profiles route the same model through OpenRouter (cloud), vLLM int4 on a local GPU (sindri), and oMLX 8-bit on Apple silicon (vidar). A pass-rate or wall-time delta between these profiles is *provider/runtime loss* — the cost of how the bytes reach the model, not what the model is.
+- **Same model, different harness.** The `fiz-harness-*` profiles wrap Claude Code, Codex, Pi, and OpenCode through fiz so the model and the API stay constant while the agent loop changes. A delta here is *harness loss*.
 - **Different models, same task.** The leaderboard rows on each report page show how frontier hosted models (Claude Opus 4.6, GPT-5.4, Gemini 3 Pro) score on the same task set. That's the upper bound a small open-weight model is measured against.
 
 Every per-turn timing — first-token latency, decode rate, prefill time — lands on disk in line-delimited JSON. The reports below come from those logs via [`scripts/benchmark/generate-report.py`](https://github.com/easel/fizeau/blob/master/scripts/benchmark/generate-report.py); rerunning the script regenerates every chart and table here.
@@ -33,7 +33,7 @@ The [benchmark workbench](explorer/) exposes every collected cell as a browser-s
 | decode tok/s (p50) | per-turn `llm.response.ts` − first delta | steady-state generation rate post-prefill |
 | wall (p50) | trial start → trial end | total time the agent took, end-to-end |
 | turns (p50) | count of `llm.request` per trial | how much the agent loop iterated |
-| cost ($) | provider pricing × tokens | only meaningful for paid lanes |
+| cost ($) | provider pricing × tokens | only meaningful for paid profiles |
 
 A turn-by-turn breakdown bucketed by input-token length (prefill scaling) is on each per-benchmark page.
 
