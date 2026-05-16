@@ -4,42 +4,23 @@ import "@perspective-dev/viewer-datagrid/dist/esm/perspective-viewer-datagrid.js
 import { DuckDBHandler } from "@perspective-dev/client/dist/esm/virtual_servers/duckdb.js";
 
 const DEFAULT_COLUMNS = [
-  "suite",
   "task",
-  "task_subsets",
+  "task_category",
+  "task_difficulty",
   "result_state",
-  "passed",
-  "grader_passed",
-  "final_status",
-  "invalid_class",
-  "harness",
-  "harness_label",
-  "provider_type",
-  "provider_surface",
   "model_display_name",
-  "model",
-  "model_quant",
+  "provider_type",
+  "harness_label",
   "quant_display",
-  "weight_bits",
-  "kv_cache_quant",
-  "k_quant",
-  "v_quant",
-  "runtime_mtp_enabled",
   "engine",
-  "engine_version",
-  "gpu_model",
-  "gpu_ram_gb",
-  "hardware_vram_gb",
-  "machine",
-  "rep",
+  "effective_gpu_model",
   "turns",
-  "input_tokens",
-  "output_tokens",
-  "reasoning_tokens",
   "total_tokens",
   "cost_usd",
   "wall_seconds",
-  "started_at",
+  "profile_ttft_p50_s",
+  "profile_decode_tps_p50",
+  "profile_timing_turns",
   "finished_at",
 ];
 
@@ -53,7 +34,7 @@ const FILTER_FIELDS = [
   { key: "provider_type", label: "Provider", allLabel: "All providers" },
   { key: "provider_surface", label: "Surface", allLabel: "All surfaces" },
   { key: "harness_label", label: "Harness", allLabel: "All harnesses" },
-  { key: "lane_label", label: "Lane", allLabel: "All lanes" },
+  { key: "profile_id", label: "Profile", allLabel: "All profiles" },
   { key: "task_category", label: "Task category", allLabel: "All categories" },
   { key: "task_difficulty", label: "Difficulty", allLabel: "All difficulties" },
   { key: "deployment_class", label: "Deployment", allLabel: "All deployments" },
@@ -158,6 +139,37 @@ const USD_FORMAT = new Intl.NumberFormat(undefined, {
 const TERMINAL_BENCH_TASK_BASE = "https://www.tbench.ai/registry/terminal-bench-core/head/";
 const RESULT_STATE_PASSED = "passed";
 
+const RAW_STATE_KEYS = {
+  preset: "preset",
+  search: "q",
+  resultState: "outcome",
+  task: "task",
+  model: "model",
+  engine: "engine",
+  gpu: "gpu",
+  maxRam: "max_ram",
+  passedOnly: "passed",
+};
+
+const COMPARE_STATE_KEYS = {
+  a: "a",
+  b: "b",
+  dimension: "dim",
+  maxRam: "max_ram",
+  sort: "sort",
+};
+
+const COMBINATION_STATE_KEYS = {
+  task: "task",
+  model: "model",
+  gpu: "gpu",
+  passedOnly: "passed",
+  sort: "sort",
+};
+
+const RAW_FILTER_PREFIX = "f.";
+const COMPARE_FILTER_PREFIX = "cf.";
+
 function ready(fn) {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", fn, { once: true });
@@ -183,6 +195,16 @@ function normalizeScalar(value) {
   if (typeof value === "string" && /^-?\d+n$/.test(value)) return Number(value.slice(0, -1));
   if (value && typeof value.toJSON === "function") return normalizeScalar(value.toJSON());
   return value;
+}
+
+function sqlNumber(value) {
+  const num = Number(normalizeScalar(value));
+  return Number.isFinite(num) ? String(num) : "NULL";
+}
+
+function sqlInteger(value) {
+  const num = Number(normalizeScalar(value));
+  return Number.isSafeInteger(num) ? String(num) : "NULL";
 }
 
 function normalizeRow(row) {
@@ -248,6 +270,28 @@ function sortRows(rows, sort, sortDefs) {
 function nextSort(current, key) {
   if (current.key !== key) return { key, direction: "asc" };
   return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+}
+
+function parseSort(value, sortDefs, fallback) {
+  const [key, direction] = String(value || "").split(":");
+  if (!Object.prototype.hasOwnProperty.call(sortDefs, key)) return { ...fallback };
+  return { key, direction: direction === "asc" ? "asc" : "desc" };
+}
+
+function encodeSort(sort) {
+  return `${sort.key}:${sort.direction === "asc" ? "asc" : "desc"}`;
+}
+
+function setControlValue(control, value) {
+  if (!control || value === null || value === undefined) return;
+  const next = String(value);
+  if (control.tagName === "SELECT" && ![...control.options].some((option) => option.value === next)) return;
+  control.value = next;
+}
+
+function setCheckboxValue(control, value) {
+  if (!control) return;
+  control.checked = value === "1" || value === "true";
 }
 
 function sortHeader(label, key, state) {
@@ -381,6 +425,7 @@ class BenchmarkWorkbench {
       [...root.querySelectorAll("[data-bw-chart]")].map((el) => [el.dataset.bwChart, el]),
     );
     this.cellsUrl = absolutize(root.dataset.cellsUrl || "/data/cells.parquet");
+    this.timingUrl = absolutize(root.dataset.timingUrl || "/data/profile-timing.json");
     this.manifestUrl = absolutize(root.dataset.manifestUrl || "/data/benchmark-data-manifest.json");
     this.duckdbBase = absolutize(root.dataset.duckdbBase || "/vendor/duckdb/");
     this.activePreset = "all";
@@ -392,6 +437,9 @@ class BenchmarkWorkbench {
     this.comboReloadTimer = null;
     this.taskLinkUnsubscribe = null;
     this.taskLinkTable = null;
+    this.gridConfig = null;
+    this.gridConfigReady = false;
+    this.restoringRouteState = false;
   }
 
   async init() {
@@ -404,6 +452,7 @@ class BenchmarkWorkbench {
 
     this.setStatus("Loading artifact manifest...");
     await this.loadManifest();
+    await this.loadTiming();
 
     this.setStatus("Starting DuckDB-WASM...");
     await this.initDuckDB();
@@ -414,7 +463,7 @@ class BenchmarkWorkbench {
     this.setStatus("Preparing controls...");
     await this.populateControls();
     this.bindEvents();
-    this.activateRoute(this.routeFromHash(), { replace: true });
+    this.applyRouteFromLocation({ replace: true });
 
     this.setStatus("Loading analytical grid...");
     await this.reload();
@@ -427,6 +476,35 @@ class BenchmarkWorkbench {
       this.manifest = await response.json();
     } catch {
       this.manifest = null;
+    }
+  }
+
+  async loadTiming() {
+    this.profileTiming = {};
+    try {
+      const response = await fetch(this.timingUrl);
+      if (!response.ok) return;
+      const payload = await response.json();
+      const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.rows)
+        ? payload.rows
+        : Object.entries(payload || {}).map(([profileID, timing]) => ({
+            profile_id: profileID,
+            profile_ttft_p50_s: timing?.ttft_p50,
+            profile_decode_tps_p50: timing?.decode_tps_p50,
+            profile_timing_turns: timing?.n_turns,
+          }));
+      for (const row of rows) {
+        if (!row?.profile_id) continue;
+        this.profileTiming[String(row.profile_id)] = {
+          profile_ttft_p50_s: normalizeScalar(row.profile_ttft_p50_s),
+          profile_decode_tps_p50: normalizeScalar(row.profile_decode_tps_p50),
+          profile_timing_turns: normalizeScalar(row.profile_timing_turns),
+        };
+      }
+    } catch {
+      this.profileTiming = {};
     }
   }
 
@@ -457,10 +535,15 @@ class BenchmarkWorkbench {
       SELECT * FROM read_parquet('cells.parquet')
     `);
 
+    await this.createProfileTimingTable();
+
     await this.conn.query(`
       CREATE OR REPLACE VIEW cells_enriched AS
       SELECT
-        *,
+        c.* EXCLUDE (internal_lane_id, lane_label),
+        COALESCE(pt_profile.profile_ttft_p50_s, pt_internal.profile_ttft_p50_s, pt_report.profile_ttft_p50_s) AS profile_ttft_p50_s,
+        COALESCE(pt_profile.profile_decode_tps_p50, pt_internal.profile_decode_tps_p50, pt_report.profile_decode_tps_p50) AS profile_decode_tps_p50,
+        COALESCE(pt_profile.profile_timing_turns, pt_internal.profile_timing_turns, pt_report.profile_timing_turns) AS profile_timing_turns,
         COALESCE(NULLIF(gpu_model, ''), NULLIF(hardware_chip, ''), NULLIF(hardware_profile, ''), NULLIF(machine, ''), 'unknown') AS effective_gpu_model,
         COALESCE(gpu_ram_gb, hardware_vram_gb, hardware_memory_gb) AS effective_gpu_ram_gb,
         CASE
@@ -496,7 +579,7 @@ class BenchmarkWorkbench {
           COALESCE(CAST(hardware_memory_type AS VARCHAR), ''),
           COALESCE(CAST(task_category AS VARCHAR), ''),
           COALESCE(CAST(task_difficulty AS VARCHAR), ''),
-          COALESCE(CAST(lane_label AS VARCHAR), ''),
+          COALESCE(CAST(c.profile_id AS VARCHAR), ''),
           COALESCE(CAST(deployment_class AS VARCHAR), ''),
           COALESCE(CAST(sampling_reasoning AS VARCHAR), ''),
           COALESCE(CAST(sampling_temperature AS VARCHAR), ''),
@@ -510,13 +593,37 @@ class BenchmarkWorkbench {
           COALESCE(CAST(invalid_class AS VARCHAR), ''),
           COALESCE(CAST(descriptor AS VARCHAR), '')
         )) AS search_text
-      FROM cells_raw
+      FROM cells_raw AS c
+      LEFT JOIN profile_timing AS pt_profile ON c.profile_id = pt_profile.profile_id
+      LEFT JOIN profile_timing AS pt_internal ON c.internal_lane_id = pt_internal.profile_id
+      LEFT JOIN profile_timing AS pt_report ON c.report_profile_id = pt_report.profile_id
     `);
 
     await this.conn.query("CREATE OR REPLACE TABLE workbench_cells AS SELECT * FROM cells_enriched");
 
     const mod = customElements.get("perspective-viewer").__wasm_module__;
     this.perspectiveClient = await makePerspectiveClient(new DuckDBHandler(this.conn, mod), mod);
+  }
+
+  async createProfileTimingTable() {
+    await this.conn.query(`
+      CREATE OR REPLACE TABLE profile_timing (
+        profile_id VARCHAR,
+        profile_ttft_p50_s DOUBLE,
+        profile_decode_tps_p50 DOUBLE,
+        profile_timing_turns BIGINT
+      )
+    `);
+
+    const values = Object.entries(this.profileTiming || {}).map(([profileID, timing]) => `(
+      ${sqlString(profileID)},
+      ${sqlNumber(timing.profile_ttft_p50_s)},
+      ${sqlNumber(timing.profile_decode_tps_p50)},
+      ${sqlInteger(timing.profile_timing_turns)}
+    )`);
+    if (values.length) {
+      await this.conn.query(`INSERT INTO profile_timing VALUES ${values.join(",")}`);
+    }
   }
 
   async populateControls() {
@@ -616,21 +723,24 @@ class BenchmarkWorkbench {
   }
 
   bindEvents() {
-    const scheduleRaw = () => {
+    const scheduleRaw = (options = {}) => {
+      if (!this.restoringRouteState) this.syncRouteState({ replace: true });
       clearTimeout(this.reloadTimer);
-      this.reloadTimer = window.setTimeout(() => this.reloadRaw().catch((error) => this.fail(error)), 180);
+      this.reloadTimer = window.setTimeout(() => this.reloadRaw(options).catch((error) => this.fail(error)), 180);
     };
     const scheduleComparison = () => {
+      if (!this.restoringRouteState) this.syncRouteState({ replace: true });
       clearTimeout(this.compareReloadTimer);
       this.compareReloadTimer = window.setTimeout(() => this.loadComparison().catch((error) => this.fail(error)), 180);
     };
     const scheduleCombinations = () => {
+      if (!this.restoringRouteState) this.syncRouteState({ replace: true });
       clearTimeout(this.comboReloadTimer);
       this.comboReloadTimer = window.setTimeout(() => this.loadCombinationAggregates().catch((error) => this.fail(error)), 180);
     };
 
-    window.addEventListener("hashchange", () => this.activateRoute(this.routeFromHash()));
-    window.addEventListener("popstate", () => this.activateRoute(this.routeFromHash()));
+    window.addEventListener("hashchange", () => this.applyRouteFromLocation());
+    window.addEventListener("popstate", () => this.applyRouteFromLocation());
     this.routes.forEach((link, route) => {
       link.addEventListener("click", (event) => {
         event.preventDefault();
@@ -670,16 +780,28 @@ class BenchmarkWorkbench {
     this.openConfig?.addEventListener("click", () => {
       this.viewer.toggleConfig();
     });
+    this.viewer?.addEventListener("perspective-config-update", () => {
+      if (!this.restoringRouteState) this.syncRouteState({ replace: true });
+      this.saveGridConfig().catch((error) => this.fail(error));
+    });
 
     this.clearFilters?.addEventListener("click", () => {
       this.resetFilters();
+      this.syncRouteState({ replace: true });
       this.reloadRaw().catch((error) => this.fail(error));
+    });
+
+    this.root.querySelector("[data-bw-reset-view]")?.addEventListener("click", () => {
+      this.gridConfig = null;
+      this.gridConfigReady = false;
+      this.loadGrid().catch((error) => this.fail(error));
     });
 
     this.comparison.addEventListener("click", (event) => {
       const button = event.target instanceof Element ? event.target.closest("button[data-bw-sort]") : null;
       if (!button) return;
       this.comparisonSort = nextSort(this.comparisonSort, button.dataset.bwSort);
+      this.syncRouteState({ replace: true });
       this.loadComparison().catch((error) => this.fail(error));
     });
 
@@ -687,12 +809,23 @@ class BenchmarkWorkbench {
       const button = event.target instanceof Element ? event.target.closest("button[data-bw-sort]") : null;
       if (!button) return;
       this.combinationSort = nextSort(this.combinationSort, button.dataset.bwSort);
+      this.syncRouteState({ replace: true });
       this.loadCombinationAggregates().catch((error) => this.fail(error));
     });
   }
 
+  routeStateFromHash() {
+    const raw = window.location.hash.replace(/^#/, "");
+    const [routePart, query = ""] = raw.split("?");
+    const route = decodeURIComponent(routePart || "");
+    return {
+      route: Object.prototype.hasOwnProperty.call(ROUTES, route) ? route : "summary",
+      params: new URLSearchParams(query),
+    };
+  }
+
   routeFromHash() {
-    const route = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+    const route = this.routeStateFromHash().route;
     return Object.prototype.hasOwnProperty.call(ROUTES, route) ? route : "summary";
   }
 
@@ -709,12 +842,15 @@ class BenchmarkWorkbench {
         link.removeAttribute("aria-current");
       }
     });
-
-    const targetHash = `#${nextRoute}`;
+    const targetHash = options.hash || this.hashForRoute(nextRoute);
     if (options.push && window.location.hash !== targetHash) {
       window.history.pushState(null, "", targetHash);
     } else if (options.replace && window.location.hash !== targetHash) {
       window.history.replaceState(null, "", targetHash);
+    }
+
+    if (options.push) {
+      requestAnimationFrame(() => this.root.scrollIntoView({ block: "start" }));
     }
 
     if (nextRoute === "data") {
@@ -723,6 +859,59 @@ class BenchmarkWorkbench {
         if (this.taskLinkTable) this.linkVisibleTaskCells(this.taskLinkTable);
       });
     }
+  }
+
+  applyRouteFromLocation(options = {}) {
+    const { route, params } = this.routeStateFromHash();
+    this.restoringRouteState = true;
+    try {
+      this.applyStateParams(route, params);
+      this.activateRoute(route, { ...options, hash: this.hashForRoute(route) });
+    } finally {
+      this.restoringRouteState = false;
+    }
+
+    if (!this.conn) return;
+    if (route === "data") {
+      this.reloadRaw().catch((error) => this.fail(error));
+    } else if (route === "compare") {
+      this.loadComparison().catch((error) => this.fail(error));
+    } else if (route === "combinations") {
+      this.loadCombinationAggregates().catch((error) => this.fail(error));
+    }
+  }
+
+  applyStateParams(route, params) {
+    if (route === "data") {
+      this.applyRawState(params);
+    } else if (route === "compare") {
+      this.applyComparisonState(params);
+    } else if (route === "combinations") {
+      this.applyCombinationState(params);
+    }
+  }
+
+  syncRouteState(options = {}) {
+    const targetHash = this.hashForRoute(this.activePane);
+    if (options.push && window.location.hash !== targetHash) {
+      window.history.pushState(null, "", targetHash);
+    } else if (window.location.hash !== targetHash) {
+      window.history.replaceState(null, "", targetHash);
+    }
+  }
+
+  hashForRoute(route) {
+    const nextRoute = Object.prototype.hasOwnProperty.call(ROUTES, route) ? route : "summary";
+    const params = this.paramsForRoute(nextRoute);
+    const query = params.toString();
+    return `#${encodeURIComponent(nextRoute)}${query ? `?${query}` : ""}`;
+  }
+
+  paramsForRoute(route) {
+    if (route === "data") return this.rawStateParams();
+    if (route === "compare") return this.comparisonStateParams();
+    if (route === "combinations") return this.combinationStateParams();
+    return new URLSearchParams();
   }
 
   applyPreset(preset) {
@@ -739,6 +928,7 @@ class BenchmarkWorkbench {
       this.resultState.value = RESULT_STATE_PASSED;
     }
 
+    this.syncRouteState({ replace: true });
     this.reloadRaw().catch((error) => this.fail(error));
   }
 
@@ -773,6 +963,103 @@ class BenchmarkWorkbench {
     this.enumFilters.forEach((select) => {
       select.value = "";
     });
+    if (this.gridConfig) {
+      this.gridConfig = this.sanitizeGridConfig(this.gridConfig, { clearFilters: true });
+    }
+  }
+
+  applyRawState(params) {
+    const preset = params.get(RAW_STATE_KEYS.preset) || "all";
+    const presetExists = [...this.root.querySelectorAll("[data-bw-preset]")].some((button) => button.dataset.bwPreset === preset);
+    this.activePreset = presetExists ? preset : "all";
+    this.root.querySelectorAll("[data-bw-preset]").forEach((button) => {
+      button.setAttribute("aria-pressed", button.dataset.bwPreset === this.activePreset ? "true" : "false");
+    });
+    setControlValue(this.search, params.get(RAW_STATE_KEYS.search) || "");
+    setControlValue(this.resultState, params.get(RAW_STATE_KEYS.resultState) || "");
+    setControlValue(this.task, params.get(RAW_STATE_KEYS.task) || "");
+    setControlValue(this.model, params.get(RAW_STATE_KEYS.model) || "");
+    setControlValue(this.engine, params.get(RAW_STATE_KEYS.engine) || "");
+    setControlValue(this.gpu, params.get(RAW_STATE_KEYS.gpu) || "");
+    setControlValue(this.maxRam, params.get(RAW_STATE_KEYS.maxRam) || "");
+    setCheckboxValue(this.passedOnly, params.get(RAW_STATE_KEYS.passedOnly) || "");
+    this.enumFilters.forEach((select, key) => {
+      setControlValue(select, params.get(`${RAW_FILTER_PREFIX}${key}`) || "");
+    });
+    if (this.gridConfig) {
+      this.gridConfig = this.sanitizeGridConfig(this.gridConfig, { clearFilters: true });
+    }
+  }
+
+  rawStateParams() {
+    const params = new URLSearchParams();
+    if (this.activePreset !== "all") params.set(RAW_STATE_KEYS.preset, this.activePreset);
+    if (this.search.value.trim()) params.set(RAW_STATE_KEYS.search, this.search.value.trim());
+    if (this.resultState.value) params.set(RAW_STATE_KEYS.resultState, this.resultState.value);
+    if (this.task.value) params.set(RAW_STATE_KEYS.task, this.task.value);
+    if (this.model.value) params.set(RAW_STATE_KEYS.model, this.model.value);
+    if (this.engine.value) params.set(RAW_STATE_KEYS.engine, this.engine.value);
+    if (this.gpu.value) params.set(RAW_STATE_KEYS.gpu, this.gpu.value);
+    if (this.maxRam.value !== "") params.set(RAW_STATE_KEYS.maxRam, this.maxRam.value);
+    if (this.passedOnly.checked) params.set(RAW_STATE_KEYS.passedOnly, "1");
+    this.enumFilters.forEach((select, key) => {
+      if (select.value) params.set(`${RAW_FILTER_PREFIX}${key}`, select.value);
+    });
+    return params;
+  }
+
+  applyComparisonState(params) {
+    setControlValue(this.compareA, params.get(COMPARE_STATE_KEYS.a));
+    setControlValue(this.compareB, params.get(COMPARE_STATE_KEYS.b));
+    setControlValue(this.compareDimension, params.get(COMPARE_STATE_KEYS.dimension) || "task_category");
+    setControlValue(this.compareMaxRam, params.get(COMPARE_STATE_KEYS.maxRam) || "");
+    this.comparisonSort = parseSort(params.get(COMPARE_STATE_KEYS.sort), COMPARISON_SORTS, {
+      key: "gap_pp",
+      direction: "desc",
+    });
+    this.compareFilters.forEach((select, key) => {
+      setControlValue(select, params.get(`${COMPARE_FILTER_PREFIX}${key}`) || "");
+    });
+  }
+
+  comparisonStateParams() {
+    const params = new URLSearchParams();
+    if (this.compareA.value) params.set(COMPARE_STATE_KEYS.a, this.compareA.value);
+    if (this.compareB.value) params.set(COMPARE_STATE_KEYS.b, this.compareB.value);
+    if (this.compareDimension.value && this.compareDimension.value !== "task_category") {
+      params.set(COMPARE_STATE_KEYS.dimension, this.compareDimension.value);
+    }
+    if (this.compareMaxRam && this.compareMaxRam.value !== "") params.set(COMPARE_STATE_KEYS.maxRam, this.compareMaxRam.value);
+    if (this.comparisonSort.key !== "gap_pp" || this.comparisonSort.direction !== "desc") {
+      params.set(COMPARE_STATE_KEYS.sort, encodeSort(this.comparisonSort));
+    }
+    this.compareFilters.forEach((select, key) => {
+      if (select.value) params.set(`${COMPARE_FILTER_PREFIX}${key}`, select.value);
+    });
+    return params;
+  }
+
+  applyCombinationState(params) {
+    setControlValue(this.comboTask, params.get(COMBINATION_STATE_KEYS.task) || "");
+    setControlValue(this.comboModel, params.get(COMBINATION_STATE_KEYS.model) || "");
+    setControlValue(this.comboGpu, params.get(COMBINATION_STATE_KEYS.gpu) || "");
+    setCheckboxValue(this.comboPassedOnly, params.get(COMBINATION_STATE_KEYS.passedOnly) || "");
+    this.combinationSort = parseSort(params.get(COMBINATION_STATE_KEYS.sort), COMBINATION_SORTS, {
+      key: "n_pass",
+      direction: "desc",
+    });
+  }
+
+  combinationStateParams() {
+    const params = new URLSearchParams();
+    if (this.comboTask?.value) params.set(COMBINATION_STATE_KEYS.task, this.comboTask.value);
+    if (this.comboModel?.value) params.set(COMBINATION_STATE_KEYS.model, this.comboModel.value);
+    if (this.comboGpu?.value) params.set(COMBINATION_STATE_KEYS.gpu, this.comboGpu.value);
+    if (this.comboPassedOnly?.checked) params.set(COMBINATION_STATE_KEYS.passedOnly, "1");
+    if (this.combinationSort.key !== "n_pass" || this.combinationSort.direction !== "desc") {
+      params.set(COMBINATION_STATE_KEYS.sort, encodeSort(this.combinationSort));
+    }
+    return params;
   }
 
   filterClauses(options = {}) {
@@ -1037,24 +1324,61 @@ class BenchmarkWorkbench {
   }
 
   async loadGrid() {
+    await this.saveGridConfig();
     const tableNames = await this.perspectiveClient.get_hosted_table_names();
     const tableName = tableNames.find((name) => name.endsWith(".workbench_cells")) || "memory.workbench_cells";
     const table = await this.perspectiveClient.open_table(tableName);
     const schema = await table.schema();
-    const columns = DEFAULT_COLUMNS.filter((column) => Object.prototype.hasOwnProperty.call(schema, column));
+    const config = this.gridConfigReady
+      ? this.sanitizeGridConfig(this.gridConfig, { schema })
+      : this.defaultGridConfig(schema);
 
     await this.viewer.load(table);
-    await this.viewer.restore({
+    await this.viewer.restore(config);
+    this.gridConfig = config;
+    this.gridConfigReady = true;
+    await this.viewer.flush?.();
+    await this.installTaskLinks();
+  }
+
+  defaultGridConfig(schema) {
+    return {
       plugin: "Datagrid",
-      columns,
-      sort: [["finished_at", "desc"]],
+      columns: DEFAULT_COLUMNS.filter((column) => Object.prototype.hasOwnProperty.call(schema, column)),
+      sort: Object.prototype.hasOwnProperty.call(schema, "finished_at") ? [["finished_at", "desc"]] : [],
       group_by: [],
       split_by: [],
       filter: [],
       settings: false,
-    });
-    await this.viewer.flush?.();
-    await this.installTaskLinks();
+    };
+  }
+
+  async saveGridConfig() {
+    if (!this.gridConfigReady || !this.viewer?.save) return;
+    try {
+      this.gridConfig = this.sanitizeGridConfig(await this.viewer.save(), { clearFilters: true });
+    } catch {
+      // Keep the last known-good config; Perspective can reject save() while reloading.
+    }
+  }
+
+  sanitizeGridConfig(config, options = {}) {
+    const next = { ...(config || {}) };
+    next.plugin = next.plugin || "Datagrid";
+    next.settings = Boolean(next.settings);
+    if (options.clearFilters) next.filter = [];
+    if (!Array.isArray(next.filter)) next.filter = [];
+
+    if (options.schema) {
+      const hasColumn = (column) => Object.prototype.hasOwnProperty.call(options.schema, column);
+      next.columns = Array.isArray(next.columns) ? next.columns.filter(hasColumn) : [];
+      next.sort = Array.isArray(next.sort) ? next.sort.filter(([column]) => hasColumn(column)) : [];
+      next.group_by = Array.isArray(next.group_by) ? next.group_by.filter(hasColumn) : [];
+      next.split_by = Array.isArray(next.split_by) ? next.split_by.filter(hasColumn) : [];
+      if (!next.columns.length) return this.defaultGridConfig(options.schema);
+    }
+
+    return next;
   }
 
   async installTaskLinks() {

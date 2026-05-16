@@ -17,68 +17,68 @@ toc: true
 <h2>Performance vs context length</h2>
 <div class="narrative"><p>Per-turn TTFT (first-token latency) and steady-state decode tok/s, bucketed by <strong>input-token length of that turn</strong>. We bucket per turn rather than per task because the agent loop's input grows monotonically inside a single task — buckets reveal how each provider scales prefill and decode under increasing context.</p>
 <p>Buckets: 0–10k, 10–30k, 30–60k, 60–120k, 120k+ tokens. Buckets with fewer than 5 turns of data are dropped to avoid noise.</p>
-<p>Read this as: a lane that holds steady across buckets has a working KV-cache / prefix-cache; a lane whose TTFT slopes up sharply is recomputing prefill on every turn.</p></div>
+<p>Read this as: a profile that holds steady across buckets has a working KV-cache / prefix-cache; a profile whose TTFT slopes up sharply is recomputing prefill on every turn.</p></div>
 <h3>TTFT (seconds, lower is better)</h3><div class="chart"><img src="/benchmarks/terminal-bench-2-1/charts/ttft-by-context.svg" alt="ttft-by-context.svg"></div>
 <h3>Decode tok/s (higher is better)</h3><div class="chart"><img src="/benchmarks/terminal-bench-2-1/charts/decode-by-context.svg" alt="decode-by-context.svg"></div>
 <h2>Provider details</h2>
-<div class="narrative"><p>Provider details below use public lane labels. They publish enough information to interpret the benchmark results: provider surface, runtime family, model or quantization, sampling policy, context limits, and broad hardware class for self-hosted lanes.</p>
+<div class="narrative"><p>Provider details below use public profile labels. They publish enough information to interpret the benchmark results: provider surface, runtime family, model or quantization, sampling policy, context limits, and broad hardware class for self-hosted profiles.</p>
 <h3>OpenRouter Qwen3.6-27B</h3>
 <ul>
-<li><strong>Lane:</strong> <code>fiz-openrouter-qwen3-6-27b</code></li>
+<li><strong>Profile:</strong> <code>fiz-openrouter-qwen3-6-27b</code></li>
 <li><strong>Surface:</strong> managed OpenAI-compatible API through OpenRouter.</li>
 <li><strong>Model:</strong> <code>qwen/qwen3-6-27b-instruct</code>.</li>
 <li><strong>Sampling:</strong> <code>temperature=0.6</code>, <code>top_p=0.95</code>, <code>top_k=20</code>, reasoning <code>low</code>.</li>
 <li><strong>Limits:</strong> 128k advertised context, 32k max output.</li>
-<li><strong>Cost profile:</strong> low cash cost per run; current medians put it near the budget end of the hosted lanes.</li>
-<li><strong>Notes:</strong> provider-side routing and caching are opaque, so this lane is best read as the managed throughput reference for Qwen3.6-27B.</li>
+<li><strong>Cost profile:</strong> low cash cost per run; current medians put it near the budget end of the hosted profiles.</li>
+<li><strong>Notes:</strong> provider-side routing and caching are opaque, so this profile is best read as the managed throughput reference for Qwen3.6-27B.</li>
 </ul>
 <h3>sindri-vllm</h3>
 <ul>
-<li><strong>Lane:</strong> <code>sindri-vllm</code></li>
+<li><strong>Profile:</strong> <code>sindri-vllm</code></li>
 <li><strong>Surface:</strong> self-hosted vLLM on a local RTX-class CUDA workstation.</li>
 <li><strong>Model:</strong> Qwen3.6-27B AutoRound int4.</li>
 <li><strong>Sampling:</strong> <code>temperature=0.6</code>, <code>top_p=0.95</code>, <code>top_k=20</code>, reasoning <code>low</code>.</li>
 <li><strong>Limits:</strong> 180k advertised context, 32k max output; effective usable context depends on runtime memory pressure.</li>
-<li><strong>Notes:</strong> decode throughput is strong, but TTFT rises with long context. Prefix caching is the main performance lever for this lane.</li>
+<li><strong>Notes:</strong> decode throughput is strong, but TTFT rises with long context. Prefix caching is the main performance lever for this profile.</li>
 </ul>
 <h3>sindri-llamacpp</h3>
 <ul>
-<li><strong>Lane:</strong> <code>sindri-llamacpp</code></li>
+<li><strong>Profile:</strong> <code>sindri-llamacpp</code></li>
 <li><strong>Surface:</strong> self-hosted llama.cpp on the same local CUDA hardware class as <code>sindri-vllm</code>.</li>
 <li><strong>Model:</strong> Qwen3.6-27B Q3_K_XL quantization.</li>
 <li><strong>Sampling:</strong> <code>temperature=0.6</code>, <code>top_p=0.95</code>, <code>top_k=20</code>; provider-specific reasoning hints are not sent to llama.cpp.</li>
-<li><strong>Notes:</strong> this lane isolates runtime and quantization differences against the same broad hardware class as the vLLM lane.</li>
+<li><strong>Notes:</strong> this profile isolates runtime and quantization differences against the same broad hardware class as the vLLM profile.</li>
 </ul>
 <h3>local-vllm-rtx3090</h3>
 <ul>
-<li><strong>Lane:</strong> <code>local-vllm-rtx3090</code></li>
+<li><strong>Profile:</strong> <code>local-vllm-rtx3090</code></li>
 <li><strong>Surface:</strong> self-hosted vLLM on a mobile RTX-class CUDA system.</li>
 <li><strong>Model:</strong> Qwen3.6-27B AutoRound int4.</li>
 <li><strong>Sampling:</strong> same as <code>sindri-vllm</code>.</li>
-<li><strong>Notes:</strong> this lane is wired up but not yet producing enough real reps for a comparable benchmark read.</li>
+<li><strong>Notes:</strong> this profile is wired up but not yet producing enough real reps for a comparable benchmark read.</li>
 </ul>
 <h3>local-omlx-qwen3-6-27b</h3>
 <ul>
-<li><strong>Lane:</strong> <code>local-omlx-qwen3-6-27b</code></li>
+<li><strong>Profile:</strong> <code>local-omlx-qwen3-6-27b</code></li>
 <li><strong>Surface:</strong> self-hosted oMLX on an Apple silicon workstation class.</li>
 <li><strong>Model:</strong> Qwen3.6-27B MLX 8-bit.</li>
 <li><strong>Sampling:</strong> <code>temperature=0.6</code>, <code>top_p=0.95</code>, <code>top_k=20</code>, reasoning <code>low</code>.</li>
 <li><strong>Limits:</strong> 128k advertised context, 32k max output.</li>
-<li><strong>Notes:</strong> current results show slower TTFT and decode than the CUDA lanes at this model size.</li>
+<li><strong>Notes:</strong> current results show slower TTFT and decode than the CUDA profiles at this model size.</li>
 </ul>
 <h3>local-rapidmlx-qwen3-6-27b</h3>
 <ul>
-<li><strong>Lane:</strong> <code>local-rapidmlx-qwen3-6-27b</code></li>
+<li><strong>Profile:</strong> <code>local-rapidmlx-qwen3-6-27b</code></li>
 <li><strong>Surface:</strong> self-hosted Rapid-MLX on an Apple silicon workstation class.</li>
 <li><strong>Model:</strong> Qwen3.6-27B MLX 8-bit.</li>
-<li><strong>Sampling:</strong> same as the oMLX lane.</li>
-<li><strong>Notes:</strong> this lane is not yet producing comparable real reps.</li>
+<li><strong>Sampling:</strong> same as the oMLX profile.</li>
+<li><strong>Notes:</strong> this profile is not yet producing comparable real reps.</li>
 </ul>
 <h3>local-lmstudio-qwen3-6-27b</h3>
 <ul>
-<li><strong>Lane:</strong> <code>local-lmstudio-qwen3-6-27b</code></li>
+<li><strong>Profile:</strong> <code>local-lmstudio-qwen3-6-27b</code></li>
 <li><strong>Surface:</strong> LM Studio alternate runtime.</li>
 <li><strong>Model:</strong> Qwen3.6-27B class local model.</li>
-<li><strong>Notes:</strong> this lane is a placeholder until it produces real reps.</li>
+<li><strong>Notes:</strong> this profile is a placeholder until it produces real reps.</li>
 </ul></div>
 </div>

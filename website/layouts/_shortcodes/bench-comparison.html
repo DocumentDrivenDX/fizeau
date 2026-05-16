@@ -35,11 +35,11 @@
   <div class="bench-comparison__block">
     <div class="bench-comparison__title">Same model, three providers — Qwen3.6-27B on TB-2.1 'all'</div>
     <div class="bench-comparison__caption">
-      The provider/runtime stack is the only variable here. A 3.6× pass-rate gap and a 23× TTFT gap are the cost of self-hosting at this quantization. The vLLM int4 lane has the fastest decode but the slowest prefill; the OpenRouter cloud lane wins by being uniformly responsive.
+      The provider/runtime stack is the only variable here. A 3.6× pass-rate gap and a 23× TTFT gap are the cost of self-hosting at this quantization. The vLLM int4 profile has the fastest decode but the slowest prefill; the OpenRouter cloud profile wins by being uniformly responsive.
     </div>
     <table class="bench-comparison__table">
       <thead>
-        <tr><th>Lane</th><th>pass@k</th><th>p50 TTFT</th><th>p50 decode</th><th>p50 wall</th><th>avg cost</th></tr>
+        <tr><th>Profile</th><th>pass@k</th><th>p50 TTFT</th><th>p50 decode</th><th>p50 wall</th><th>avg cost</th></tr>
       </thead>
       <tbody>
         {{ range $b.qwen_across_providers }}

@@ -689,6 +689,7 @@ body.bench-table-lock {
   width: min(1880px, calc(100vw - var(--space-6)));
   max-width: none;
   margin: 0 auto var(--space-7);
+  scroll-margin-top: var(--space-4);
   color: var(--ink-primary);
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums slashed-zero;
@@ -853,6 +854,13 @@ body.bench-table-lock {
   min-height: 50px;
   padding: var(--space-3);
   background: var(--surface-sunken);
+}
+
+.bench-workbench__head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .bench-workbench__summary-copy {
@@ -1153,8 +1161,8 @@ body.bench-table-lock {
 
 .bench-workbench perspective-viewer {
   display: block;
-  height: min(82vh, 980px);
-  min-height: 680px;
+  height: clamp(460px, calc(100vh - 360px), 820px);
+  min-height: 0;
   width: 100%;
   overflow: hidden;
   --psp--font-family: var(--font-mono);
@@ -1418,8 +1426,8 @@ body.bench-table-lock {
   }
 
   .bench-workbench perspective-viewer {
-    height: 72vh;
-    min-height: 480px;
+    height: min(68vh, 620px);
+    min-height: 420px;
   }
 }
 
@@ -2290,7 +2298,7 @@ article dd, main dd {
 }
 
 /* ====================================================================
- * RUNTIME-PROPS GRID — filterable/sortable per-lane runtime properties
+ * RUNTIME-PROPS GRID — filterable/sortable per-profile runtime properties
  * ==================================================================== */
 
 .rp-filters {

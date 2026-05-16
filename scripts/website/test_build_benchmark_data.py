@@ -345,6 +345,36 @@ class BenchmarkDataBuilderTests(unittest.TestCase):
         self.assertEqual(2, len(aggregates))
         self.assertEqual([False, True], sorted(agg["runtime_mtp_enabled"] for agg in aggregates))
 
+    def test_profile_timing_rows_use_website_metric_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            timing_file = Path(tmp) / "timing.json"
+            timing_file.write_text(
+                json.dumps(
+                    {
+                        "profile-a": {
+                            "n_turns": 12,
+                            "ttft_p50": 1.25,
+                            "decode_tps_p50": 42.5,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            rows = build_benchmark_data.build_profile_timing_rows(timing_file)
+
+        self.assertEqual(
+            [
+                {
+                    "profile_id": "profile-a",
+                    "profile_ttft_p50_s": 1.25,
+                    "profile_decode_tps_p50": 42.5,
+                    "profile_timing_turns": 12,
+                }
+            ],
+            rows,
+        )
+
     def test_parquet_values_preserve_queryable_scalar_types(self) -> None:
         self.assertEqual(True, build_benchmark_data.parquet_cell_value(True))
         self.assertEqual(42, build_benchmark_data.parquet_cell_value(42))

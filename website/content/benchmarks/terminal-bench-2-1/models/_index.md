@@ -5,7 +5,7 @@ toc: true
 ---
 
 <div class="br-body">
-<div class="meta">Snapshot: 2026-05-13 15:38:48 UTC · 13 model lanes shown</div>
+<div class="meta">Snapshot: 2026-05-13 15:38:48 UTC · 13 model profiles shown</div>
 <div class="narrative">
 <p>Each row is fiz running its own built-in agent loop against a different model. Where possible we report on the <code>openai-cheap</code> subset (35 tasks) so the cost gate doesn't bias the model selection — frontier hosted models are typically too expensive to run with k=5 reps across all 89 TB-2.1 tasks.</p>
 </div>
@@ -14,13 +14,13 @@ toc: true
 <h2>Detailed metrics</h2>
 <table><thead><tr><th>Profile</th><th>Harness</th><th>Attempts</th><th>Real</th><th>pass@1</th><th>pass@k</th><th>med turns</th><th>med in</th><th>med out</th><th>med wall (s)</th><th>cost ($)</th><th>p50 TTFT (s)</th><th>p50 decode (tok/s)</th></tr></thead><tbody><tr><td>claude-native-sonnet-4-6</td><td><span class="meta">Claude Code (native CLI)</span></td><td>15</td><td>0</td><td>0.0%</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>claude-sonnet-4-6</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>102</td><td>0</td><td>14.0%</td><td>3.4%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>1.95</td><td>824.5</td></tr><tr><td>codex-native-gpt-5-4-mini</td><td><span class="meta">Codex (native CLI)</span></td><td>15</td><td>0</td><td>91.7%</td><td>100.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>fiz-openai-gpt-5-5</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>521</td><td>98</td><td>24.9%</td><td>24.7%</td><td>12</td><td>42,581</td><td>2,398</td><td>179</td><td>0.840</td><td>0.07</td><td>292.5</td></tr><tr><td>fiz-openrouter-claude-sonnet-4-6</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>91</td><td>15</td><td>22.2%</td><td>20.0%</td><td>11</td><td>166,505</td><td>2,182</td><td>135</td><td>0.574</td><td>1.89</td><td>1474.7</td></tr><tr><td>fiz-openrouter-gpt-5-4-mini</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>91</td><td>14</td><td>6.9%</td><td>13.3%</td><td>8</td><td>32,542</td><td>886</td><td>108</td><td>0.053</td><td>0.78</td><td>177.7</td></tr><tr><td>gpt-5-3-mini</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>14</td><td>0</td><td>—</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>gpt-5-4-mini-openrouter</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>15</td><td>0</td><td>46.7%</td><td>100.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>1.04</td><td>194.4</td></tr><tr><td>gpt-5-mini</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>17</td><td>0</td><td>—</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>—</td><td>—</td></tr><tr><td>sindri-vllm</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>197</td><td>104</td><td>28.7%</td><td>34.1%</td><td>11</td><td>62,940</td><td>3,623</td><td>845</td><td>0.000</td><td>18.98</td><td>66.3</td></tr><tr><td>sindri-llamacpp</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>53</td><td>39</td><td>49.1%</td><td>71.0%</td><td>23</td><td>222,806</td><td>3,319</td><td>444</td><td>0.000</td><td>2.40</td><td>20.3</td></tr><tr><td>local-ds4-deepseek-v4-flash</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>52</td><td>41</td><td>43.5%</td><td>44.4%</td><td>31</td><td>537,487</td><td>10,530</td><td>2489</td><td>0.000</td><td>30.40</td><td>23.3</td></tr><tr><td>local-omlx-qwen3-6-27b-openai-compat</td><td><span class="meta">fiz (built-in agent loop)</span></td><td>276</td><td>0</td><td>5.4%</td><td>3.4%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>0.000</td><td>9.44</td><td>18.1</td></tr></tbody></table>
 <h2>Cost to extend coverage</h2>
-<div class="narrative"><p><em>Estimates below use observed per-run costs from lanes that already produced real reps. Prices come from the benchmark profile registry. Where a lane has no real reps yet, the estimate is a back-of-envelope <code>pricing × median-tokens</code> from a comparable lane on the same model.</em></p>
+<div class="narrative"><p><em>Estimates below use observed per-run costs from profiles that already produced real reps. Prices come from the benchmark profile registry. Where a profile has no real reps yet, the estimate is a back-of-envelope <code>pricing × median-tokens</code> from a comparable profile on the same model.</em></p>
 <h3>What it would cost to close the gaps</h3>
-<p>Three of the model rows on the table above carry zero real reps because their setups never produced a non-<code>invalid_setup</code> trial in the latest sweep (<code>claude-native-sonnet-4-6</code>, <code>claude-sonnet-4-6</code> openrouter built-in, <code>gpt-5-mini</code>). Two other rows (<code>fiz-openai-gpt-5-5</code>, <code>fiz-openrouter-claude-sonnet-4-6</code>) have partial coverage on the 35-task <code>openai-cheap</code> subset but have not run <code>--reps 5</code> against the full subset. The estimates below are what it would take in pure model spend to bring each lane to a full <code>--reps 5 × 35-task</code> cell on the cheap subset.</p>
+<p>Three of the model rows on the table above carry zero real reps because their setups never produced a non-<code>invalid_setup</code> trial in the latest sweep (<code>claude-native-sonnet-4-6</code>, <code>claude-sonnet-4-6</code> openrouter built-in, <code>gpt-5-mini</code>). Two other rows (<code>fiz-openai-gpt-5-5</code>, <code>fiz-openrouter-claude-sonnet-4-6</code>) have partial coverage on the 35-task <code>openai-cheap</code> subset but have not run <code>--reps 5</code> against the full subset. The estimates below are what it would take in pure model spend to bring each profile to a full <code>--reps 5 × 35-task</code> cell on the cheap subset.</p>
 <table>
 <thead>
 <tr>
-<th>Lane</th>
+<th>Profile</th>
 <th>Source $/run</th>
 <th>Subset cost (35 × 5 reps)</th>
 <th>Notes</th>
@@ -49,7 +49,7 @@ toc: true
 <td><code>fiz-harness-claude-sonnet-4-6</code></td>
 <td>unknown (0 real reps)</td>
 <td><strong>≈ $100</strong> est.</td>
-<td>Wrapper path; assume same token profile as the direct OpenRouter Sonnet lane. Currently blocked on <code>invalid_setup</code>, not on cost.</td>
+<td>Wrapper path; assume same token profile as the direct OpenRouter Sonnet profile. Currently blocked on <code>invalid_setup</code>, not on cost.</td>
 </tr>
 <tr>
 <td><code>fiz-openrouter-gpt-5-4-mini</code></td>
@@ -61,13 +61,13 @@ toc: true
 <td><code>fiz-harness-codex-gpt-5-4-mini</code></td>
 <td>unknown (0 real reps)</td>
 <td><strong>≈ $9</strong> est.</td>
-<td>Same model + pricing as the direct mini lane. Reliability gating, not cost.</td>
+<td>Same model + pricing as the direct mini profile. Reliability gating, not cost.</td>
 </tr>
 </tbody>
 </table>
 <p>To extend everything outside Qwen to a full <code>--reps 5 × 35-task</code> cell on <code>openai-cheap</code>, total spend is <strong>≈ $510</strong> in API costs (Sonnet ≈ $200 across two paths, GPT-5.5 ≈ $295 across two paths, mini ≈ $18 across two paths). The <code>all</code> (89-task) subset for the GPT-5.5 / Sonnet rows would be roughly 2.5× that — <strong>≈ $1.3k</strong> for the frontier hosted models, which is why those rows stay on the cheap subset by default.</p>
 <p>The cheap rows (mini, Qwen via OpenRouter) are not budget-gated; they are blocked on the same <code>invalid_setup</code> issues that produced 108 of 199 attempts in the table above. Fixing that infrastructure issue unlocks coverage, not money.</p></div>
 <h2>Model power vs pass-rate</h2>
-<div class="narrative"><p>Each marker is a lane (or external submission) plotted at its model-power score (1 = weak, 10 = frontier per <code>scripts/benchmark/terminalbench_model_power.json</code>) against pass@k on the <code>all</code> subset. Marker size scales with median turns (larger = the agent worked harder before converging or giving up). Distance below the trend line at a given x-value is the <em>harness loss</em> for that lane: how much pass-rate the lane leaves on the floor relative to what the underlying model delivers elsewhere.</p></div>
+<div class="narrative"><p>Each marker is a profile (or external submission) plotted at its model-power score (1 = weak, 10 = frontier per <code>scripts/benchmark/terminalbench_model_power.json</code>) against pass@k on the <code>all</code> subset. Marker size scales with median turns (larger = the agent worked harder before converging or giving up). Distance below the trend line at a given x-value is the <em>harness loss</em> for that profile: how much pass-rate the profile leaves on the floor relative to what the underlying model delivers elsewhere.</p></div>
 <div class="chart"><img src="/benchmarks/terminal-bench-2-1/charts/model-power-scatter.svg" alt="model-power-scatter.svg"></div>
 </div>

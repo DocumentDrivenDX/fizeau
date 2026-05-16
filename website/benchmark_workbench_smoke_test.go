@@ -49,6 +49,7 @@ type workbenchSnapshot struct {
 	ComparisonTaskLinkHref  string   `json:"comparisonTaskLinkHref"`
 	CurrentRoute            string   `json:"currentRoute"`
 	LocationHash            string   `json:"locationHash"`
+	LegacyLaneFilterPresent bool     `json:"legacyLaneFilterPresent"`
 	ModelOptionCount        int      `json:"modelOptionCount"`
 	ModelOptions            []string `json:"modelOptions"`
 	ProviderOptionCount     int      `json:"providerOptionCount"`
@@ -57,6 +58,8 @@ type workbenchSnapshot struct {
 	Rows                    string   `json:"rows"`
 	SummaryChartCount       int      `json:"summaryChartCount"`
 	SummaryRows             string   `json:"summaryRows"`
+	SettingsColumnCount     int      `json:"settingsColumnCount"`
+	SettingsOpen            bool     `json:"settingsOpen"`
 	Status                  string   `json:"status"`
 	TaskOptionCount         int      `json:"taskOptionCount"`
 	VisibleColumns          []string `json:"visibleColumns"`
@@ -121,23 +124,91 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 
 	click(t, browserCtx, "[data-bw-route=\"data\"]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CurrentRoute == "data" && current.LocationHash == "#data" && len(current.VisibleColumns) > 0
+		return current.CurrentRoute == "data" && strings.HasPrefix(current.LocationHash, "#data") && len(current.VisibleColumns) > 0
 	})
 	snapshot = captureWorkbenchSnapshot(t, browserCtx)
 	if len(snapshot.VisibleColumns) == 0 {
 		t.Fatal("expected perspective viewer to expose visible columns")
 	}
-	if !contains(snapshot.VisibleColumns, "task") {
-		t.Fatalf("expected task to remain visible by default, got %v", snapshot.VisibleColumns)
+	expectedDefaultColumns := []string{
+		"task",
+		"task_category",
+		"task_difficulty",
+		"result_state",
+		"model_display_name",
+		"provider_type",
+		"harness_label",
+		"quant_display",
+		"engine",
+		"effective_gpu_model",
+		"turns",
+		"total_tokens",
+		"cost_usd",
+		"wall_seconds",
+		"profile_ttft_p50_s",
+		"profile_decode_tps_p50",
+		"profile_timing_turns",
+		"finished_at",
+	}
+	for _, column := range expectedDefaultColumns {
+		if !contains(snapshot.VisibleColumns, column) {
+			t.Fatalf("expected %s to be visible by default, got %v", column, snapshot.VisibleColumns)
+		}
+	}
+	if len(snapshot.VisibleColumns) > len(expectedDefaultColumns) {
+		t.Fatalf("expected focused default columns, got %d columns: %v", len(snapshot.VisibleColumns), snapshot.VisibleColumns)
 	}
 	if contains(snapshot.VisibleColumns, "terminalbench_task_url") {
 		t.Fatalf("terminalbench_task_url must stay hidden by default, got %v", snapshot.VisibleColumns)
 	}
+	for _, column := range []string{"suite", "final_status", "invalid_class", "k_quant", "v_quant"} {
+		if contains(snapshot.VisibleColumns, column) {
+			t.Fatalf("%s must stay hidden by default, got %v", column, snapshot.VisibleColumns)
+		}
+	}
+	if snapshot.LegacyLaneFilterPresent {
+		t.Fatal("raw database filter UI must use profile terminology, not lane terminology")
+	}
+
+	click(t, browserCtx, "[data-bw-open-config]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.SettingsOpen && current.SettingsColumnCount > 0
+	})
+	clickViewerShadow(t, browserCtx, "#active-columns .column-selector-column span.is_column_active")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.SettingsOpen && len(current.VisibleColumns) == len(expectedDefaultColumns)-1
+	})
+	click(t, browserCtx, "[data-bw-open-config]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return !current.SettingsOpen
+	})
+
+	customColumns := []string{"task", "result_state"}
+	setViewerColumns(t, browserCtx, customColumns)
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return sameStrings(current.VisibleColumns, customColumns)
+	})
+
+	setSelectValue(t, browserCtx, "[data-bw-model]", snapshot.ModelOptions[0])
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return parseCount(t, current.Rows) < expectedRows && sameStrings(current.VisibleColumns, customColumns)
+	})
+
+	click(t, browserCtx, "[data-bw-reset-view]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return contains(current.VisibleColumns, "profile_ttft_p50_s") && len(current.VisibleColumns) == len(expectedDefaultColumns)
+	})
+	click(t, browserCtx, "[data-bw-clear-filters]")
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return parseCount(t, current.Rows) == expectedRows && !hasFilterPrefix(current.ActiveFilters, "Model:")
+	})
 
 	setSelectValue(t, browserCtx, "[data-bw-compare-dimension]", "task")
 	click(t, browserCtx, "[data-bw-route=\"compare\"]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CurrentRoute == "compare" && current.LocationHash == "#compare"
+		return current.CurrentRoute == "compare" &&
+			strings.HasPrefix(current.LocationHash, "#compare") &&
+			strings.Contains(current.LocationHash, "dim=task")
 	})
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
 		return current.ComparisonTaskLinkHref != ""
@@ -148,16 +219,19 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 	}
 	click(t, browserCtx, "[data-bw-comparison] th:nth-child(4) button")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.ComparisonGapSort == "ascending"
+		return current.ComparisonGapSort == "ascending" &&
+			strings.Contains(current.LocationHash, "sort=gap_pp%3Aasc")
 	})
+	comparisonBookmark := captureWorkbenchSnapshot(t, browserCtx).LocationHash
 
 	click(t, browserCtx, "[data-bw-route=\"combinations\"]")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CurrentRoute == "combinations" && current.LocationHash == "#combinations"
+		return current.CurrentRoute == "combinations" && strings.HasPrefix(current.LocationHash, "#combinations")
 	})
 	click(t, browserCtx, "[data-bw-combinations] th:first-child button")
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return current.CombinationTaskSort == "ascending"
+		return current.CombinationTaskSort == "ascending" &&
+			strings.Contains(current.LocationHash, "sort=task%3Aasc")
 	})
 
 	click(t, browserCtx, "[data-bw-route=\"data\"]")
@@ -176,7 +250,25 @@ func TestBenchmarkWorkbenchSmoke(t *testing.T) {
 
 	setSelectValue(t, browserCtx, "[data-bw-filter-field=\"provider_type\"]", snapshot.ProviderOptions[0])
 	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
-		return parseCount(t, current.Rows) < expectedRows && hasFilterPrefix(current.ActiveFilters, "Provider:")
+		return parseCount(t, current.Rows) < expectedRows &&
+			hasFilterPrefix(current.ActiveFilters, "Provider:") &&
+			strings.Contains(current.LocationHash, "f.provider_type=")
+	})
+	rawBookmark := captureWorkbenchSnapshot(t, browserCtx).LocationHash
+
+	waitForWorkbenchReady(t, browserCtx, workbenchURL+comparisonBookmark)
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "compare" &&
+			current.ComparisonGapSort == "ascending" &&
+			current.ComparisonTaskLinkHref != "" &&
+			strings.Contains(current.LocationHash, "dim=task")
+	})
+
+	waitForWorkbenchReady(t, browserCtx, workbenchURL+rawBookmark)
+	waitForCondition(t, browserCtx, 30*time.Second, func(current workbenchSnapshot) bool {
+		return current.CurrentRoute == "data" &&
+			parseCount(t, current.Rows) < expectedRows &&
+			hasFilterPrefix(current.ActiveFilters, "Provider:")
 	})
 }
 
@@ -369,6 +461,60 @@ func click(t *testing.T, ctx context.Context, selector string) {
 	}
 }
 
+func clickViewerShadow(t *testing.T, ctx context.Context, selector string) {
+	t.Helper()
+
+	script := fmt.Sprintf(`(() => {
+		const viewer = document.querySelector('[data-bw-viewer]');
+		const el = viewer?.shadowRoot?.querySelector(%q);
+		if (!el) {
+			throw new Error("missing viewer shadow element: " + %q);
+		}
+		el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+		el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+		el.click();
+		return true;
+	})()`, selector, selector)
+
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, nil)); err != nil {
+		t.Fatalf("click viewer shadow %s: %v", selector, err)
+	}
+}
+
+func setViewerColumns(t *testing.T, ctx context.Context, columns []string) {
+	t.Helper()
+
+	raw, err := json.Marshal(columns)
+	if err != nil {
+		t.Fatalf("marshal columns: %v", err)
+	}
+	script := fmt.Sprintf(`(async () => {
+		const viewer = document.querySelector('[data-bw-viewer]');
+		if (!viewer) throw new Error('missing viewer');
+		const config = await viewer.save();
+		await viewer.restore({
+			...config,
+			columns: %s,
+			sort: [],
+			group_by: [],
+			split_by: [],
+			filter: [],
+			settings: false,
+		});
+		viewer.dispatchEvent(new CustomEvent('perspective-config-update', { bubbles: true }));
+		await viewer.flush?.();
+		return (await viewer.save()).columns;
+	})()`, string(raw))
+
+	var applied []string
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, &applied, awaitPromise)); err != nil {
+		t.Fatalf("set viewer columns to %v: %v", columns, err)
+	}
+	if !sameStrings(applied, columns) {
+		t.Fatalf("set viewer columns to %v, got %v", columns, applied)
+	}
+}
+
 func parseCount(t *testing.T, value string) int {
 	t.Helper()
 
@@ -387,6 +533,18 @@ func contains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func hasFilterPrefix(values []string, prefix string) bool {
@@ -443,6 +601,7 @@ const workbenchSnapshotJS = `(async () => {
     comparisonTaskLinkHref: comparisonTaskLink?.href ?? '',
     currentRoute,
     locationHash: window.location.hash,
+    legacyLaneFilterPresent: Boolean(root?.querySelector('[data-bw-filter-field="lane_label"]')),
     modelOptionCount: options('[data-bw-model]').length,
     modelOptions: values('[data-bw-model]'),
     providerOptionCount: options('[data-bw-filter-field="provider_type"]').length,
@@ -451,6 +610,8 @@ const workbenchSnapshotJS = `(async () => {
     rows: text('[data-bw-metric="rows"]'),
     summaryChartCount: root?.querySelectorAll('.bench-workbench__pie, .bench-workbench__bar-row').length ?? 0,
     summaryRows: text('[data-bw-summary-metric="rows"]'),
+    settingsColumnCount: viewer?.shadowRoot?.querySelectorAll('#active-columns .column-selector-column, #sub-columns .column-selector-column').length ?? 0,
+    settingsOpen: Boolean(viewer?.hasAttribute('settings')),
     status: text('[data-bw-status]'),
     taskOptionCount: options('[data-bw-task]').length,
     visibleColumns: config?.columns ?? [],

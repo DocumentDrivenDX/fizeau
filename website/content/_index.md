@@ -40,11 +40,11 @@ layout: hextra-home
 
   <h2 class="what-is__title" style="margin-top: 2.5rem;">What it is</h2>
 
-  <p>Fizeau is an agent runtime with a built-in agent loop (the <code>fiz</code> harness): it manages the prompt, tool-call protocol, file/edit/bash tooling, planning, compaction, retries, sampling, reasoning, quotas, and session log. It is not an LLM serving runtime — it does not host weights. Upstream model traffic goes to whatever provider the lane points at (OpenAI, Anthropic, OpenRouter, vLLM, oMLX, RapidMLX, native local).</p>
+  <p>Fizeau is an agent runtime with a built-in agent loop (the <code>fiz</code> harness): it manages the prompt, tool-call protocol, file/edit/bash tooling, planning, compaction, retries, sampling, reasoning, quotas, and session log. It is not an LLM serving runtime — it does not host weights. Upstream model traffic goes to whatever provider the profile points at (OpenAI, Anthropic, OpenRouter, vLLM, oMLX, RapidMLX, native local).</p>
 
-  <p>Fizeau can also run <em>as a wrapper</em> around a different agent CLI (Claude Code, Codex, Pi, OpenCode) — the <code>fiz-harness-*</code> lanes in the <a href="benchmarks/profiles/">profile catalog</a> use this mode, where fiz handles configuration, environment, tool-call accounting, and session logging while delegating the reasoning loop to the wrapped agent. This isolates "is the agent loop hurting?" from "is the model hurting?" — same model, different harness, different lane.</p>
+  <p>Fizeau can also run <em>as a wrapper</em> around a different agent CLI (Claude Code, Codex, Pi, OpenCode) — the <code>fiz-harness-*</code> profiles in the <a href="benchmarks/profiles/">profile catalog</a> use this mode, where fiz handles configuration, environment, tool-call accounting, and session logging while delegating the reasoning loop to the wrapped agent. This isolates "is the agent loop hurting?" from "is the model hurting?" — same model, different harness, different profile.</p>
 
-  <p>For <a href="benchmarks/">benchmark purposes</a>, each lane in the catalog holds either axis constant and varies the other. A delta between two lanes that share a model but differ in harness is <em>harness loss</em>; a delta between two lanes that share a harness but differ in provider is <em>provider/runtime loss</em>.</p>
+  <p>For <a href="benchmarks/">benchmark purposes</a>, each profile in the catalog holds either axis constant and varies the other. A delta between two profiles that share a model but differ in harness is <em>harness loss</em>; a delta between two profiles that share a harness but differ in provider is <em>provider/runtime loss</em>.</p>
 </section>
 
 <section class="features">
@@ -64,7 +64,7 @@ layout: hextra-home
   <div class="feature">
   <div class="feature__label">PROVIDERS</div>
   <h3>One surface, many backends</h3>
-  <p>OpenAI, Anthropic, OpenRouter, vLLM, oMLX, RapidMLX, native local. Lane definitions are YAML; benchmark deltas reflect provider/runtime, not harness drift.</p>
+  <p>OpenAI, Anthropic, OpenRouter, vLLM, oMLX, RapidMLX, native local. Profile definitions are YAML; benchmark deltas reflect provider/runtime, not harness drift.</p>
   </div>
 
   <div class="feature">
@@ -76,7 +76,7 @@ layout: hextra-home
   <div class="feature">
   <div class="feature__label">HARNESS-AS-WRAPPER</div>
   <h3>Wrap Claude Code, Codex, Pi, OpenCode</h3>
-  <p><code>fiz-harness-*</code> lanes route through fiz as a measurement wrapper around another agent CLI. Holds the model constant; varies the harness; isolates "is the loop hurting?" from "is the model hurting?"</p>
+  <p><code>fiz-harness-*</code> profiles route through fiz as a measurement wrapper around another agent CLI. Holds the model constant; varies the harness; isolates "is the loop hurting?" from "is the model hurting?"</p>
   </div>
 
   <div class="feature">
