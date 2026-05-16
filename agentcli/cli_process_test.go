@@ -3,7 +3,6 @@ package agentcli_test
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -114,9 +113,9 @@ func newSlowOpenAIServer(t *testing.T, delay time.Duration) *httptest.Server {
 	}))
 }
 
-// newToolLoopStreamingServer returns a fake SSE streaming server that always
-// responds with a bash tool call, forcing the agent to exhaust its iteration
-// limit when max-iter is small.
+// newToolLoopStreamingServer returns a fake provider that always responds
+// with a bash tool call, forcing the agent to exhaust its iteration limit
+// when max-iter is small.
 func newToolLoopStreamingServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -125,26 +124,15 @@ func newToolLoopStreamingServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"id":"stub-model"}]}`))
 		case "/v1/chat/completions":
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Set("Transfer-Encoding", "chunked")
-			flusher, _ := w.(http.Flusher)
-			// Emit SSE chunks that assemble a bash tool call.
-			chunks := []string{
-				`{"id":"c1","object":"chat.completion.chunk","created":1712534400,"model":"stub-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call1","type":"function","function":{"name":"bash","arguments":""}}]},"finish_reason":null}]}`,
-				`{"id":"c1","object":"chat.completion.chunk","created":1712534400,"model":"stub-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":\"echo hi\"}"}}]},"finish_reason":null}]}`,
-				`{"id":"c1","object":"chat.completion.chunk","created":1712534400,"model":"stub-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`,
-			}
-			for _, chunk := range chunks {
-				_, _ = fmt.Fprintf(w, "data: %s\n\n", chunk)
-				if flusher != nil {
-					flusher.Flush()
-				}
-			}
-			_, _ = fmt.Fprintf(w, "data: [DONE]\n\n")
-			if flusher != nil {
-				flusher.Flush()
-			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"id":"chatcmpl-loop",
+				"object":"chat.completion",
+				"created":1712534400,
+				"model":"stub-model",
+				"choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call1","type":"function","function":{"name":"bash","arguments":"{\"command\":\"echo hi\"}"}}]},"finish_reason":"tool_calls"}],
+				"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}
+			}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -290,12 +278,30 @@ func TestCLI_ConfigPrecedence_GlobalProjectEnvAndFlagModel(t *testing.T) {
 	exe := buildAgentCLI(t)
 	home := t.TempDir()
 	workDir := t.TempDir()
+	manifestPath := filepath.Join(workDir, "models.yaml")
+	writeTempManifest(t, manifestPath, `
+version: 5
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+models:
+  qwen3.5-27b:
+    status: active
+    provider_system: openai
+    power: 8
+    surfaces:
+      agent.openai: qwen3.5-27b
+`)
 
 	globalFake := newFakeOpenAIServer(t)
 	projectFake := newFakeOpenAIServer(t)
 	envFake := newFakeOpenAIServer(t)
 
-	writeGlobalConfig(t, home, `
+writeGlobalConfig(t, home, `
+model_catalog:
+  manifest: `+manifestPath+`
 providers:
   local:
     type: lmstudio
@@ -305,7 +311,9 @@ providers:
 default: local
 `)
 
-	writeTempConfig(t, workDir, `
+writeTempConfig(t, workDir, `
+model_catalog:
+  manifest: `+manifestPath+`
 providers:
   local:
     type: lmstudio
@@ -326,9 +334,9 @@ default: local
 	assert.Equal(t, "", projectFake.lastModel())
 	assert.Equal(t, "", globalFake.lastModel())
 
-	second := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "--provider", "local", "--model", "cli-model", "-p", "second")
+	second := runBuiltCLI(t, exe, workDir, env, "--work-dir", workDir, "--provider", "local", "--model", "qwen3.5-27b", "-p", "second")
 	require.Equal(t, 0, second.exitCode, "stderr=%s", second.stderr)
-	assert.Equal(t, "cli-model", envFake.lastModel(), "CLI --model should override env/config model")
+	assert.Equal(t, "qwen3.5-27b", envFake.lastModel(), "CLI --model should override env/config model")
 }
 
 func TestCLI_Providers_JSON_RedactsSecrets(t *testing.T) {

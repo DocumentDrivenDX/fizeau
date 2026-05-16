@@ -77,17 +77,21 @@ func TestBuildServiceExecuteRequest_HarnessPolicyLeavesModelAndProviderUnsetUnle
 		Harness:          "codex",
 		Policy:           "default",
 		SelectedProvider: "local",
+		SelectedRoute:    "local",
 		RequestedModel:   "qwen3.6-27b",
 		ResolvedModel:    "Qwen3.6-27B-MLX-8bit",
 	})
 	if req.Harness != "codex" {
 		t.Fatalf("Harness=%q, want codex", req.Harness)
 	}
-	if req.Model != "" {
-		t.Fatalf("Model=%q, want empty so the service can resolve within codex", req.Model)
+	if req.Model != "Qwen3.6-27B-MLX-8bit" {
+		t.Fatalf("Model=%q, want resolved model", req.Model)
 	}
-	if req.Provider != "" {
-		t.Fatalf("Provider=%q, want empty so the service does not inherit the default local provider", req.Provider)
+	if req.Provider != "local" {
+		t.Fatalf("Provider=%q, want local", req.Provider)
+	}
+	if req.SelectedRoute != "local" {
+		t.Fatalf("SelectedRoute=%q, want local", req.SelectedRoute)
 	}
 
 	explicit := buildServiceExecuteRequest(serviceExecuteRequestParams{
@@ -161,7 +165,7 @@ routing:
 	if code != 0 {
 		t.Fatalf("Run exit = %d, want 0; stdout=%s stderr=%s", code, stdout, stderr)
 	}
-	if gotReq.Harness != "" || gotReq.Provider != "" || gotReq.Model != "qwen3.5-27b" || gotReq.SelectedRoute != "qwen3.5-27b" {
+	if gotReq.Harness != "" || gotReq.Provider != "" || gotReq.Model != "" || gotReq.SelectedRoute != "" {
 		t.Fatalf("request = harness %q provider %q model %q selected_route %q, want service-owned default model intent", gotReq.Harness, gotReq.Provider, gotReq.Model, gotReq.SelectedRoute)
 	}
 	if providerCalls != 0 {

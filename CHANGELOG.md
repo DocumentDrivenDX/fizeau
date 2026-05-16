@@ -5,6 +5,8 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
 
 ## [Unreleased]
 
+## [v0.14.30] — 2026-05-15
+
 ### Fixed
 
 - Route resolution is cache-first for local provider liveness and model
@@ -14,6 +16,10 @@ Dates use the repo convention (`YYYY-MM-DD`); versions follow semver.
   still gates known-dead local providers with `endpoint_unreachable`, and
   all-dead cached provider sets fail fast with a no-live-provider route error.
   Tracks `fizeau-f02ada30` and `fizeau-a77e62b6`.
+- CLI `run` now passes raw model/provider intent through to service-owned
+  routing instead of preselecting candidates client-side, and the regression
+  tests now assert the service contract rather than legacy backend-pool or
+  alias-resolution behavior.
 
 ### Changed
 

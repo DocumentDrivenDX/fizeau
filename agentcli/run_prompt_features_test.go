@@ -28,11 +28,11 @@ func TestBuildServiceExecuteRequest_ForwardsPromptFeatures(t *testing.T) {
 	if req.Harness != "codex" {
 		t.Fatalf("Harness=%q, want codex", req.Harness)
 	}
-	if req.Model != "" {
-		t.Fatalf("Model=%q, want empty so the service can resolve within codex", req.Model)
+	if req.Model != "Qwen3.5-27B-MLX-8bit" {
+		t.Fatalf("Model=%q, want resolved model", req.Model)
 	}
-	if req.Provider != "" {
-		t.Fatalf("Provider=%q, want empty so the service can resolve within codex", req.Provider)
+	if req.Provider != "local" {
+		t.Fatalf("Provider=%q, want local", req.Provider)
 	}
 	if req.EstimatedPromptTokens != 321 {
 		t.Fatalf("EstimatedPromptTokens=%d, want 321", req.EstimatedPromptTokens)

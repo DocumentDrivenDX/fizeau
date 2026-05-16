@@ -8,68 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestResolveRouteTarget_ExplicitProvider(t *testing.T) {
-	cfg := &agentConfig.Config{}
-	routeKey, legacyBackend := resolveRouteTarget(cfg, "cloud", agentConfig.ProviderOverrides{})
-	assert.Equal(t, "", routeKey)
-	assert.Equal(t, "", legacyBackend)
-}
-
-func TestResolveRouteTarget_ExplicitModel(t *testing.T) {
-	cfg := &agentConfig.Config{}
-	routeKey, legacyBackend := resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
-	assert.Equal(t, "qwen3.5-27b", routeKey)
-	assert.Equal(t, "", legacyBackend)
-}
-
-func TestResolveRouteTarget_DefaultBackendFallback(t *testing.T) {
-	cfg := &agentConfig.Config{
-		DefaultBackend: "fallback-pool",
-	}
-	routeKey, legacyBackend := resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{})
-	assert.Equal(t, "", routeKey)
-	assert.Equal(t, "fallback-pool", legacyBackend)
-}
-
-func TestResolveRouteTarget_RoutingDefaultModel(t *testing.T) {
-	cfg := &agentConfig.Config{
-		Routing: agentConfig.RoutingConfig{
-			DefaultModel: "qwen3.5-27b",
-		},
-	}
-	routeKey, legacyBackend := resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{})
-	assert.Equal(t, "qwen3.5-27b", routeKey)
-	assert.Equal(t, "", legacyBackend)
-}
-
-func TestResolveRouteTarget_ProviderTakesPrecedenceOverModel(t *testing.T) {
-	cfg := &agentConfig.Config{}
-	routeKey, legacyBackend := resolveRouteTarget(cfg, "cloud", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
-	assert.Equal(t, "", routeKey)
-	assert.Equal(t, "", legacyBackend)
-}
-
-func TestResolveRouteTarget_PrecedenceOrder(t *testing.T) {
-	cfg := &agentConfig.Config{
-		DefaultBackend: "fallback-pool",
-		Routing: agentConfig.RoutingConfig{
-			DefaultModel: "default-route",
-		},
-	}
-
-	// Provider wins
-	routeKey, _ := resolveRouteTarget(cfg, "cloud", agentConfig.ProviderOverrides{})
-	assert.Equal(t, "", routeKey)
-
-	// Model wins over routing defaults
-	routeKey, _ = resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{Model: "qwen3.5-27b"})
-	assert.Equal(t, "qwen3.5-27b", routeKey)
-
-	// Routing default model wins over backend fallback
-	routeKey, _ = resolveRouteTarget(cfg, "", agentConfig.ProviderOverrides{})
-	assert.Equal(t, "default-route", routeKey)
-}
-
 // TestShouldFailover_* and the testError helper were removed as part of
 // ADR-005 step 3. The CLI no longer hosts a Chat-level failover wrapper;
 // transient-error retry policy moved to the service-side smart-routing

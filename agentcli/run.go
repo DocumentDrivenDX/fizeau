@@ -259,21 +259,24 @@ func runWithOptions(opts Options) int {
 		return 2
 	}
 
+	requestedModel := strings.TrimSpace(*model)
+	providerName := strings.TrimSpace(*providerFlag)
+	harnessName := strings.TrimSpace(*harnessFlag)
 	overrides := agentConfig.ProviderOverrides{
-		Model:           *model,
+		Model:           requestedModel,
 		AllowDeprecated: *allowDeprecatedModel,
 	}
-	delegateProviderSelection := shouldDelegateRunProviderSelection(cfg, runSubcommand, *providerFlag, *harnessFlag, overrides)
-	selection := delegatedRunProviderSelection(cfg, overrides)
-	var pc agentConfig.ProviderConfig
-	if !delegateProviderSelection {
-		selection, _, pc, err = resolveProviderForRun(cfg, wd, *providerFlag, overrides)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			return 2
-		}
+
+	selection, pc, err := resolveRunSelection(cfg, wd, providerName, requestedModel, overrides)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		return 2
 	}
-	resolvedReasoning, err := resolveRunReasoning(cfg, selection, *reasoningFlag)
+	resolvedModel := requestedModel
+	if selection.ResolvedModel != "" {
+		resolvedModel = selection.ResolvedModel
+	}
+	resolvedReasoning, err := resolveRunReasoning(cfg, resolvedModel, selection.ReasoningDefault, *reasoningFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		return 2
@@ -331,25 +334,13 @@ func runWithOptions(opts Options) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	// Resolve model limits. Precedence:
-	//   1. Explicit config (pc.ContextWindow / pc.MaxTokens)
-	//   2. Live provider API (LookupModelLimits)
-	//   3. Model catalog context_window (for servers like LM Studio that omit
-	//      context_length from /v1/models entirely)
-	resolvedContextWindow := pc.ContextWindow
-	resolvedMaxTokens := pc.MaxTokens
-	if !delegateProviderSelection && (resolvedContextWindow == 0 || resolvedMaxTokens == 0) {
-		limits := agentConfig.LookupModelLimits(ctx, pc, selection.ResolvedModel)
-		if resolvedContextWindow == 0 {
-			resolvedContextWindow = limits.ContextLength
-		}
-		if resolvedMaxTokens == 0 {
-			resolvedMaxTokens = limits.MaxCompletionTokens
-		}
-	}
-	if resolvedContextWindow == 0 && selection.ResolvedModel != "" {
+	resolvedContextWindow := 0
+	resolvedMaxTokens := 0
+	resolvedContextWindow = pc.ContextWindow
+	resolvedMaxTokens = pc.MaxTokens
+	if resolvedContextWindow == 0 && resolvedModel != "" {
 		if catalog, err := cfg.LoadModelCatalog(); err == nil && catalog != nil {
-			resolvedContextWindow = catalog.ContextWindowForModel(selection.ResolvedModel)
+			resolvedContextWindow = catalog.ContextWindowForModel(resolvedModel)
 		}
 	}
 
@@ -384,9 +375,9 @@ func runWithOptions(opts Options) int {
 		if catalog, err := cfg.LoadModelCatalog(); err == nil && catalog != nil {
 			lookup = catalog
 		}
-		res := sampling.Resolve(lookup, selection.ResolvedModel, "code", pc.Sampling)
+		res := sampling.Resolve(lookup, resolvedModel, "code", pc.Sampling)
 		samplingSource = sampling.SourceSummary(res.Sources)
-		if res.MissingProfile && !delegateProviderSelection {
+		if res.MissingProfile && selection.Provider != "" {
 			// ADR-007 §7 rule 4: tone the nudge by provider capability.
 			// Servers that auto-load generation_config.json (vLLM) get the
 			// soft note; servers that do not (omlx, lmstudio, lucebox) get
@@ -413,43 +404,41 @@ func runWithOptions(opts Options) int {
 	estimatedPromptTokens := estimateRunPromptTokens(promptText, sysPrompt)
 	requiresTools := runRequiresTools(*harnessFlag, preset, flagWasSet(fs, "preset"), anchorsEnabled)
 	req := buildServiceExecuteRequest(serviceExecuteRequestParams{
-		Prompt:                    promptText,
-		SystemPrompt:              sysPrompt,
-		WorkDir:                   wd,
-		Metadata:                  promptMetadata,
-		Tools:                     tools,
-		ToolPreset:                preset,
-		SelectedProvider:          selection.Provider,
-		SelectedRoute:             selection.Route,
-		RequestedModel:            selection.RequestedModel,
-		ResolvedModel:             selection.ResolvedModel,
-		ExplicitProvider:          *providerFlag != "",
-		ExplicitModel:             *model != "",
-		DelegateProviderSelection: delegateProviderSelection,
-		Policy:                    *policyFlag,
-		Harness:                   *harnessFlag,
-		Reasoning:                 resolvedReasoning,
-		EstimatedPromptTokens:     estimatedPromptTokens,
-		RequiresTools:             requiresTools,
-		NoStream:                  selection.NoStream,
-		MinPower:                  *minPower,
-		MaxPower:                  *maxPower,
-		MaxIterations:             iterations,
-		MaxTokens:                 resolvedMaxTokens,
-		ReasoningByteLimit:        cfg.ReasoningByteLimit,
-		CostCapUSD:                costCapUSD,
-		CompactionContextWindow:   resolvedContextWindow,
-		CompactionReserveTokens:   compactionCfg.ReserveTokens,
-		Temperature:               sTemp,
-		TopP:                      sTopP,
-		TopK:                      sTopK,
-		MinP:                      sMinP,
-		RepetitionPenalty:         sRep,
-		Seed:                      sSeed,
-		SamplingSource:            samplingSource,
-		PlanningMode:              *planFlag,
+		Prompt:                  promptText,
+		SystemPrompt:            sysPrompt,
+		WorkDir:                 wd,
+		Metadata:                promptMetadata,
+		Tools:                   tools,
+		ToolPreset:              preset,
+		SelectedProvider:        selection.Provider,
+		SelectedRoute:           selection.Route,
+		RequestedModel:          requestedModel,
+		ResolvedModel:           selection.ResolvedModel,
+		ExplicitProvider:        providerName != "",
+		ExplicitModel:           requestedModel != "",
+		Policy:                  *policyFlag,
+		Harness:                 harnessName,
+		Reasoning:               resolvedReasoning,
+		EstimatedPromptTokens:   estimatedPromptTokens,
+		RequiresTools:           requiresTools,
+		NoStream:                false,
+		MinPower:                *minPower,
+		MaxPower:                *maxPower,
+		MaxIterations:           iterations,
+		MaxTokens:               resolvedMaxTokens,
+		ReasoningByteLimit:      cfg.ReasoningByteLimit,
+		CostCapUSD:              costCapUSD,
+		CompactionContextWindow: resolvedContextWindow,
+		CompactionReserveTokens: compactionCfg.ReserveTokens,
+		Temperature:             sTemp,
+		TopP:                    sTopP,
+		TopK:                    sTopK,
+		MinP:                    sMinP,
+		RepetitionPenalty:       sRep,
+		Seed:                    sSeed,
+		SamplingSource:          samplingSource,
+		PlanningMode:            *planFlag,
 	})
-
 	result, err := executeViaServiceFn(ctx, req, selection, sessionLogDir(wd, cfg), agentConfig.NewServiceConfig(cfg, wd))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
@@ -518,13 +507,8 @@ func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, se
 	}
 
 	result := cliExecutionResult{
-		Status:           "failed",
-		SelectedProvider: req.Provider,
-		SelectedRoute:    req.SelectedRoute,
-		RequestedModel:   selection.RequestedModel,
-		ResolvedModel:    req.Model,
-		Model:            req.Model,
-		Reasoning:        req.Reasoning,
+		Status:    "failed",
+		Reasoning: req.Reasoning,
 	}
 	var sawFinal bool
 	for ev := range ch {
@@ -584,37 +568,42 @@ func executeViaService(ctx context.Context, req fizeau.ServiceExecuteRequest, se
 		}
 		return result, fmt.Errorf("service execution ended without final event")
 	}
+	if result.Status != "success" && len(result.AttemptedProviders) == 0 {
+		result.SelectedProvider = ""
+		result.SelectedRoute = ""
+		result.ResolvedModel = ""
+		result.Model = ""
+	}
 	return result, nil
 }
 
 type serviceExecuteRequestParams struct {
-	Prompt                    string
-	SystemPrompt              string
-	WorkDir                   string
-	Metadata                  map[string]string
-	Tools                     []fizeau.Tool
-	ToolPreset                string
-	Permissions               string
-	SelectedProvider          string
-	SelectedRoute             string
-	RequestedModel            string
-	ResolvedModel             string
-	ExplicitProvider          bool
-	ExplicitModel             bool
-	DelegateProviderSelection bool
-	Policy                    string
-	Harness                   string
-	Reasoning                 fizeau.Reasoning
-	EstimatedPromptTokens     int
-	RequiresTools             bool
-	NoStream                  bool
-	MinPower                  int
-	MaxPower                  int
-	MaxIterations             int
-	MaxTokens                 int
-	ReasoningByteLimit        int
-	CompactionContextWindow   int
-	CompactionReserveTokens   int
+	Prompt                  string
+	SystemPrompt            string
+	WorkDir                 string
+	Metadata                map[string]string
+	Tools                   []fizeau.Tool
+	ToolPreset              string
+	Permissions             string
+	SelectedProvider        string
+	SelectedRoute           string
+	RequestedModel          string
+	ResolvedModel           string
+	ExplicitProvider        bool
+	ExplicitModel           bool
+	Policy                  string
+	Harness                 string
+	Reasoning               fizeau.Reasoning
+	EstimatedPromptTokens   int
+	RequiresTools           bool
+	NoStream                bool
+	MinPower                int
+	MaxPower                int
+	MaxIterations           int
+	MaxTokens               int
+	ReasoningByteLimit      int
+	CompactionContextWindow int
+	CompactionReserveTokens int
 
 	// CostCapUSD is the per-run cost cap (USD). Zero means no cap. Threaded
 	// straight into ServiceExecuteRequest.CostCapUSD; see FEAT-005 §26-29.
@@ -664,47 +653,22 @@ type cliTokenUsage struct {
 }
 
 func buildServiceExecuteRequest(params serviceExecuteRequestParams) fizeau.ServiceExecuteRequest {
-	// Prefer the catalog-resolved concrete model when present so the
-	// service issues chat completions against the actual model id (not
-	// the user-facing alias / routeKey). Falls back to the requested
-	// model for direct provider pins where no catalog resolution ran.
-	model := params.RequestedModel
-	if params.ResolvedModel != "" {
-		model = params.ResolvedModel
+	model := params.ResolvedModel
+	if model == "" {
+		model = params.RequestedModel
 	}
 	provider := params.SelectedProvider
-	harness := ""
+	harness := params.Harness
 	selectedRoute := params.SelectedRoute
-	if params.DelegateProviderSelection {
-		provider = ""
-		harness = params.Harness
-		model = params.RequestedModel
-		if model == "" {
-			model = params.SelectedRoute
-		}
-		if params.Harness != "" {
-			selectedRoute = ""
-			if !params.ExplicitModel {
-				model = ""
-			}
-		}
-	} else if params.Harness != "" {
-		harness = params.Harness
-		if !params.ExplicitModel {
-			model = ""
-		}
-		if !params.ExplicitProvider {
-			provider = ""
-		}
-	} else if params.SelectedProvider != "" {
-		harness = "fiz"
-	}
 	permissions := params.Permissions
 	if permissions == "" {
 		permissions = "unrestricted"
 	}
-	if !params.DelegateProviderSelection && params.Harness != "" {
-		selectedRoute = ""
+	if selectedRoute == "" && provider != "" {
+		selectedRoute = provider
+	}
+	if selectedRoute == "" && model != "" {
+		selectedRoute = model
 	}
 	req := fizeau.ServiceExecuteRequest{
 		Prompt:                  params.Prompt,
@@ -835,12 +799,8 @@ func normalizeRunSubcommand(args []string) (bool, []string) {
 	return false, args
 }
 
-// resolveProviderForRun selects and builds the provider for a run.
-//
-// Resolution order (matching SD-005):
-//  1. If cfg.DefaultBackend is set and providerName is empty, resolve
-//     the default backend pool.
-//  2. Else fall back to direct provider selection (providerName or cfg.DefaultName).
+// providerSelection records the raw routing intent and the service-visible
+// fields that the CLI passes through for logging and request construction.
 type providerSelection struct {
 	Route            string
 	Provider         string
@@ -850,29 +810,101 @@ type providerSelection struct {
 	NoStream         bool
 }
 
-func resolveRunReasoning(cfg *agentConfig.Config, selection providerSelection, flagValue string) (fizeau.Reasoning, error) {
+func resolveRunSelection(cfg *agentConfig.Config, workDir, providerName, requestedModel string, overrides agentConfig.ProviderOverrides) (providerSelection, agentConfig.ProviderConfig, error) {
+	if cfg == nil {
+		return providerSelection{}, agentConfig.ProviderConfig{}, nil
+	}
+	if providerName != "" {
+		p, pc, resolved, err := cfg.BuildProviderWithOverrides(providerName, overrides)
+		if err != nil {
+			return providerSelection{}, agentConfig.ProviderConfig{}, err
+		}
+		_ = p
+		effectiveModel := pc.Model
+		if effectiveModel == "" {
+			effectiveModel = requestedModel
+		}
+		selection := providerSelection{
+			Route:          providerName,
+			Provider:       providerName,
+			RequestedModel: requestedModel,
+			ResolvedModel:  effectiveModel,
+		}
+		if resolved != nil {
+			selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
+			if resolved.ConcreteModel != "" {
+				selection.ResolvedModel = resolved.ConcreteModel
+			}
+		}
+		return selection, pc, nil
+	}
+	if cfg.DefaultBackend != "" && requestedModel == "" {
+		counter, err := readAndIncrementRouteCounter(workDir, legacyRouteCounterName(cfg.DefaultBackend))
+		if err != nil {
+			counter = 0
+		}
+		p, pc, resolved, err := cfg.ResolveBackend(cfg.DefaultBackend, counter, overrides)
+		if err != nil {
+			return providerSelection{}, agentConfig.ProviderConfig{}, err
+		}
+		_ = p
+		effectiveModel := pc.Model
+		if effectiveModel == "" {
+			effectiveModel = requestedModel
+		}
+		selection := providerSelection{
+			Route:          cfg.DefaultBackend,
+			RequestedModel: requestedModel,
+			ResolvedModel:  effectiveModel,
+			NoStream:       true,
+		}
+		if bc, ok := cfg.GetBackend(cfg.DefaultBackend); ok && len(bc.Providers) > 0 {
+			idx := selectBackendProviderIndex(bc.Strategy, counter, len(bc.Providers))
+			selection.Provider = bc.Providers[idx]
+		}
+		if resolved != nil {
+			selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
+			if resolved.ConcreteModel != "" {
+				selection.ResolvedModel = resolved.ConcreteModel
+			}
+		}
+		return selection, pc, nil
+	}
+	if requestedModel != "" {
+		selection := providerSelection{
+			Route:          requestedModel,
+			Provider:       "",
+			RequestedModel: requestedModel,
+			ResolvedModel:  requestedModel,
+		}
+		return selection, agentConfig.ProviderConfig{}, nil
+	}
+	return providerSelection{}, agentConfig.ProviderConfig{}, nil
+}
+
+func resolveRunReasoning(cfg *agentConfig.Config, model string, defaultReasoning fizeau.Reasoning, flagValue string) (fizeau.Reasoning, error) {
 	explicit := strings.TrimSpace(flagValue) != ""
 	if !explicit {
-		return selection.ReasoningDefault, nil
+		return defaultReasoning, nil
 	}
 	policy, err := reasoning.ParseString(flagValue)
 	if err != nil {
 		return "", err
 	}
 	if policy.Kind == reasoning.KindAuto {
-		if selection.ReasoningDefault != "" {
-			return selection.ReasoningDefault, nil
+		if defaultReasoning != "" {
+			return defaultReasoning, nil
 		}
 		return fizeau.ReasoningAuto, nil
 	}
 	if policy.Kind == reasoning.KindTokens || policy.Value == reasoning.ReasoningMax {
-		maxTokens := lookupReasoningMaxTokens(cfg, selection.ResolvedModel)
+		maxTokens := lookupReasoningMaxTokens(cfg, model)
 		if maxTokens > 0 {
 			if policy.Value == reasoning.ReasoningMax {
 				return fizeau.ReasoningTokens(maxTokens), nil
 			}
 			if policy.Tokens > maxTokens {
-				return "", fmt.Errorf("reasoning: token budget %d exceeds maximum %d for model %q", policy.Tokens, maxTokens, selection.ResolvedModel)
+				return "", fmt.Errorf("reasoning: token budget %d exceeds maximum %d for model %q", policy.Tokens, maxTokens, model)
 			}
 		}
 	}
@@ -891,151 +923,6 @@ func lookupReasoningMaxTokens(cfg *agentConfig.Config, model string) int {
 		return entry.ReasoningMaxTokens
 	}
 	return 0
-}
-
-func shouldDelegateRunProviderSelection(cfg *agentConfig.Config, runSubcommand bool, providerName, harnessName string, overrides agentConfig.ProviderOverrides) bool {
-	if strings.TrimSpace(providerName) != "" {
-		return false
-	}
-	if strings.TrimSpace(harnessName) != "" {
-		return true
-	}
-	if !runSubcommand {
-		return false
-	}
-	if strings.TrimSpace(overrides.Model) != "" {
-		return true
-	}
-	if cfg != nil {
-		if strings.TrimSpace(cfg.Routing.DefaultModel) != "" {
-			return true
-		}
-		if strings.TrimSpace(cfg.DefaultBackend) != "" {
-			return false
-		}
-	}
-	return true
-}
-
-func delegatedRunProviderSelection(cfg *agentConfig.Config, overrides agentConfig.ProviderOverrides) providerSelection {
-	routeKey := strings.TrimSpace(overrides.Model)
-	if routeKey == "" && cfg != nil {
-		routeKey = strings.TrimSpace(cfg.Routing.DefaultModel)
-	}
-	return providerSelection{
-		Route:          routeKey,
-		RequestedModel: routeKey,
-		ResolvedModel:  routeKey,
-	}
-}
-
-func resolveProviderForRun(cfg *agentConfig.Config, workDir, providerName string, overrides agentConfig.ProviderOverrides) (providerSelection, any, agentConfig.ProviderConfig, error) {
-	routeKey, useLegacyBackend := resolveRouteTarget(cfg, providerName, overrides)
-	if routeKey != "" {
-		selection, p, pc, err := buildRouteSelection(cfg, workDir, routeKey, overrides.AllowDeprecated)
-		if err != nil {
-			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-		}
-		return selection, p, pc, nil
-	}
-	if useLegacyBackend != "" {
-		counter, err := readAndIncrementRouteCounter(workDir, legacyRouteCounterName(useLegacyBackend))
-		if err != nil {
-			counter = 0
-		}
-		p, pc, resolved, err := cfg.ResolveBackend(useLegacyBackend, counter, overrides)
-		if err != nil {
-			return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-		}
-		selection := providerSelection{
-			Route:         useLegacyBackend,
-			ResolvedModel: pc.Model,
-			NoStream:      true,
-		}
-		if bc, ok := cfg.GetBackend(useLegacyBackend); ok && len(bc.Providers) > 0 {
-			idx := selectBackendProviderIndex(bc.Strategy, counter, len(bc.Providers))
-			selection.Provider = bc.Providers[idx]
-		}
-		if resolved != nil {
-			selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
-			if resolved.ConcreteModel != "" {
-				selection.ResolvedModel = resolved.ConcreteModel
-			}
-		}
-		return selection, p, pc, nil
-	}
-
-	// Direct provider selection or exact model pin.
-	if providerName == "" {
-		providerName = cfg.DefaultName()
-	}
-	p, pc, resolved, err := cfg.BuildProviderWithOverrides(providerName, overrides)
-	if err != nil {
-		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-	}
-	selection := providerSelection{
-		Route:          providerName,
-		Provider:       providerName,
-		RequestedModel: overrides.Model,
-		ResolvedModel:  pc.Model,
-	}
-	if resolved != nil {
-		selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
-		if resolved.ConcreteModel != "" {
-			selection.ResolvedModel = resolved.ConcreteModel
-		}
-	}
-	return selection, p, pc, nil
-}
-
-func resolveRouteTarget(cfg *agentConfig.Config, providerName string, overrides agentConfig.ProviderOverrides) (routeKey string, legacyBackend string) {
-	if providerName != "" {
-		return "", ""
-	}
-	if overrides.Model != "" {
-		return overrides.Model, ""
-	}
-	if cfg.Routing.DefaultModel != "" {
-		return cfg.Routing.DefaultModel, ""
-	}
-	if cfg.DefaultBackend != "" {
-		return "", cfg.DefaultBackend
-	}
-	return "", ""
-}
-
-func buildRouteSelection(cfg *agentConfig.Config, workDir, routeKey string, allowDeprecated bool) (providerSelection, any, agentConfig.ProviderConfig, error) {
-	plan, err := buildSmartRoutePlan(cfg, workDir, routeKey, allowDeprecated, nil, nil)
-	if err != nil {
-		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-	}
-	if len(plan.Order) == 0 {
-		return providerSelection{}, nil, agentConfig.ProviderConfig{}, fmt.Errorf("config: no route candidates available for %q", routeKey)
-	}
-	selected := plan.Candidates[plan.Order[0]]
-	p, pc, resolved, err := cfg.BuildProviderWithOverrides(selected.Provider, agentConfig.ProviderOverrides{
-		Model:           selected.Model,
-		AllowDeprecated: allowDeprecated,
-	})
-	if err != nil {
-		return providerSelection{}, nil, agentConfig.ProviderConfig{}, err
-	}
-	pc.Model = selected.Model
-
-	selection := providerSelection{
-		Route:          routeKey,
-		Provider:       selected.Provider,
-		RequestedModel: routeKey,
-		ResolvedModel:  pc.Model,
-		NoStream:       true,
-	}
-	if resolved != nil {
-		selection.ReasoningDefault = fizeau.Reasoning(resolved.SurfacePolicy.ReasoningDefault)
-		if resolved.ConcreteModel != "" {
-			selection.ResolvedModel = resolved.ConcreteModel
-		}
-	}
-	return selection, p, pc, nil
 }
 
 func selectBackendProviderIndex(strategy string, counter, n int) int {
