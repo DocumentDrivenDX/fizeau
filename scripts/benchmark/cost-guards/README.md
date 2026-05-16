@@ -1,7 +1,16 @@
 # Matrix Cost Guards
 
-This directory records the Step 5 procedure for deriving SD-010 matrix cost
-caps from observation rather than from a formula guessed before a run.
+> **Historical note (2026-05-16)**: This procedure ran against the
+> retired `fiz-bench matrix` execution path and its `--budget-usd` /
+> `--per-run-budget-usd` flags. ADR-016 retired the budget-cap machinery
+> entirely; the simplified `./benchmark` runner is not responsible for
+> spend caps. The procedure is preserved below as the audit trail for
+> how SD-010's matrix cost caps were originally derived. Operators do
+> not run these commands anymore.
+
+This directory records the Step 5 procedure that originally derived SD-010
+matrix cost caps from observation rather than from a formula guessed before
+a run.
 
 ## Procedure
 

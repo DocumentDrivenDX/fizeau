@@ -107,7 +107,7 @@ each being rebuilt per tool, with local backends as an afterthought.
 |--------|--------|--------------------|
 | Embeddable adoption | ≥1 external tool (DDx, benchmark runner) consumes Fizeau as a library through CONTRACT-003 | Integration test + downstream consumer wiring |
 | Measurement coverage | Every `llm.request → llm.response` chain emits TTFT, prefill, decode, four token streams, and known-or-unknown cost; no silent gaps | CONTRACT-001 conformance tests |
-| Local-vs-cloud parity | Local serving runtimes (vLLM, MLX, LM Studio, Ollama) and cloud providers expose the same provider-shaped surface so benchmark deltas are honest | Benchmark catalog lane definitions |
+| Local-vs-cloud parity | Local serving runtimes (vLLM, MLX, LM Studio, Ollama) and cloud providers expose the same provider-shaped surface so benchmark deltas are honest | Benchmark catalog profile definitions |
 | Local model completion rate | ≥70% of routine coding tasks succeed on local 7B+ under `cheap`/`default` policies | HELIX/build-pass logs |
 | Cost per task (blended) | <$0.05 average for routine coding tasks | `fiz usage` report |
 | Agent loop overhead | <10ms beyond model inference time | Benchmark suite |
@@ -402,6 +402,6 @@ canonical analytics surface per ADR-001.
 - Per-turn timing (TTFT, prefill, decode), four-stream token usage, and
   known-or-unknown cost are reported for every successful execution on both
   local and cloud backends, conforming to CONTRACT-001
-- Benchmark lanes that share a model but differ in harness produce a
-  measurable delta attributable to harness; lanes that share a harness but
+- Benchmark profiles that share a model but differ in harness produce a
+  measurable delta attributable to harness; profiles that share a harness but
   differ in provider produce a measurable delta attributable to provider/runtime
