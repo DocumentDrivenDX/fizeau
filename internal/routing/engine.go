@@ -302,6 +302,12 @@ const (
 	// Distinct from FilterReasonUnhealthy (route-attempt failure cooldowns).
 	// An explicit provider pin bypasses this gate.
 	FilterReasonEndpointUnreachable FilterReason = "endpoint_unreachable"
+	// FilterReasonCredentialMissing: provider needs an API key to authenticate
+	// but none is configured (or the configured key is obviously malformed).
+	// Synchronous and network-free: the gate runs every routing pass without
+	// issuing any HTTP request. Distinct from FilterReasonUnhealthy and from
+	// any future credential_invalid reason reserved for server-side rejection.
+	FilterReasonCredentialMissing FilterReason = "credential_missing"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -439,6 +445,14 @@ type Inputs struct {
 	// missing or stale. It is a scoring input, not a hard gate: healthy cached
 	// alternatives should win, but local-only deployments can still route.
 	ProbeUnknown map[string]time.Time
+
+	// ProviderCredentialMissing maps provider name → human-readable evidence of
+	// the credential gap (which env var / config field was inspected). Hard
+	// gate: a candidate listed here is disqualified with
+	// FilterReasonCredentialMissing before any network I/O is attempted. The
+	// service layer populates the map synchronously from config; the gate is
+	// O(1) and side-effect free.
+	ProviderCredentialMissing map[string]string
 
 	Now              time.Time // injected for deterministic testing; default time.Now()
 	ModelEligibility func(model string) (ModelEligibility, bool)
@@ -1354,6 +1368,20 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				}
 			}
 
+			// Credential gate: providers that need an API key but lack one (or
+			// hold an obviously malformed value) are disqualified before any
+			// dispatch so the operator sees the root cause instead of a 401.
+			// The gate runs even when the operator pins the provider — there is
+			// no fallback path that could possibly authenticate.
+			if eligible && len(in.ProviderCredentialMissing) > 0 {
+				identity := candidateProviderIdentity(h, p)
+				if location, ok := lookupCredentialMissing(in.ProviderCredentialMissing, identity); ok {
+					eligible = false
+					candidateReason = fmt.Sprintf("provider %s credential missing (%s)", identity, location)
+					filterReason = FilterReasonCredentialMissing
+				}
+			}
+
 			localHealthUnknown := false
 			if eligible && p.Name != "" && req.Provider != candidateProviderIdentity(h, p) && candidateIsLocal(h, p) {
 				_, localHealthUnknown = in.ProbeUnknown[p.Name]
@@ -1492,6 +1520,25 @@ func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
 		return p.Name
 	}
 	return h.Name
+}
+
+// lookupCredentialMissing resolves a credential-missing record for a routing
+// identity. It accepts both the raw identity and the base provider name
+// (stripped of any "@endpoint" suffix) so service config keyed by base name
+// still matches endpoint-split candidates.
+func lookupCredentialMissing(m map[string]string, identity string) (string, bool) {
+	if len(m) == 0 || identity == "" {
+		return "", false
+	}
+	if location, ok := m[identity]; ok {
+		return location, true
+	}
+	if i := strings.IndexByte(identity, '@'); i > 0 {
+		if location, ok := m[identity[:i]]; ok {
+			return location, true
+		}
+	}
+	return "", false
 }
 
 func candidateBillingKind(h HarnessEntry, p ProviderEntry) modelcatalog.BillingModel {

@@ -718,7 +718,7 @@ func routeAttemptTestService(t *testing.T, cooldown time.Duration) *service {
 	sc := &fakeServiceConfig{
 		providers: map[string]ServiceProviderEntry{
 			"bragi":      {Type: "lmstudio", BaseURL: "http://127.0.0.1:9999/v1", Model: "qwen"},
-			"openrouter": {Type: "openrouter", BaseURL: "https://openrouter.invalid/v1", Model: "qwen"},
+			"openrouter": {Type: "openrouter", BaseURL: "https://openrouter.invalid/v1", APIKey: "sk-or-v1-route-attempt-fixture-key", Model: "qwen"},
 		},
 		names:          []string{"bragi", "openrouter"},
 		defaultName:    "bragi",

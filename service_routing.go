@@ -769,6 +769,12 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		probeUnknown = s.probeUnknownProviders(now)
 	}
 
+	// Credential gate (synchronous, network-free): providers that need an API
+	// key but lack one are filtered out before any HTTP I/O can occur, so the
+	// operator sees the missing-credential root cause instead of a 401 from
+	// the dispatch path.
+	providerCredentialMissing := providerCredentialMissingMap(s.opts.ServiceConfig)
+
 	return routing.Inputs{
 		Harnesses:                    entries,
 		ProviderSuccessRate:          successRate,
@@ -777,6 +783,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ProviderUnreachable:          providerUnreachable,
 		ProbeUnreachable:             probeUnreachable,
 		ProbeUnknown:                 probeUnknown,
+		ProviderCredentialMissing:    providerCredentialMissing,
 		CooldownDuration:             healthCooldownTTL,
 		Now:                          now,
 		ModelEligibility:             serviceRoutingModelEligibility(entries, cat),
@@ -784,6 +791,87 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		EndpointLoadResolver:         s.routeEndpointLoadsResolver(now),
 		StickyServerInstanceResolver: s.routeStickyServerInstanceResolver(now),
 	}, snapshot
+}
+
+// providerCredentialMissingMap inspects each configured provider that
+// authenticates with an API key and reports the ones whose credential is
+// missing or obviously malformed. The map's value is the credential location
+// (env var / config field) that was inspected, so operator-facing evidence
+// can show WHICH key location was checked.
+//
+// The check is synchronous and side-effect free: it never issues an HTTP
+// request. Server-side credential rejection (401 after dispatch) is a
+// separate failure mode reserved for a future filter reason.
+func providerCredentialMissingMap(cfg ServiceConfigSource) map[string]string {
+	if cfg == nil {
+		return nil
+	}
+	names := cfg.ProviderNames()
+	if len(names) == 0 {
+		return nil
+	}
+	provider, ok := cfg.(interface {
+		Provider(name string) (ServiceProviderEntry, bool)
+	})
+	if !ok {
+		return nil
+	}
+	out := make(map[string]string)
+	for _, name := range names {
+		pcfg, ok := provider.Provider(name)
+		if !ok {
+			continue
+		}
+		location, missing := credentialMissingForProvider(name, pcfg)
+		if missing {
+			out[name] = location
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// credentialMissingForProvider returns (location, true) when the named
+// provider needs an API key but the configured value is empty or obviously
+// malformed. location names the field the operator should set.
+//
+// The malformed heuristic is intentionally narrow: it catches blatant typos
+// (wrong prefix or length far below any plausible key) without ever calling
+// the provider. Server-side validity is out of scope here — the rejection
+// path will materialize the credential_invalid reason separately.
+func credentialMissingForProvider(name string, pcfg ServiceProviderEntry) (string, bool) {
+	if normalizeServiceProviderType(pcfg.Type) != "openrouter" {
+		return "", false
+	}
+	key := strings.TrimSpace(pcfg.APIKey)
+	location := fmt.Sprintf("providers.%s.api_key (or OPENROUTER_API_KEY env)", name)
+	if key == "" {
+		return location, true
+	}
+	if !openrouterAPIKeyWellFormed(key) {
+		return location, true
+	}
+	return "", false
+}
+
+// openrouterAPIKeyWellFormed reports whether s plausibly resembles a real
+// OpenRouter API key. The heuristic checks the well-known "sk-or-" prefix and
+// a minimum length floor that excludes obvious typos. It does NOT confirm
+// server-side validity.
+func openrouterAPIKeyWellFormed(s string) bool {
+	const (
+		expectedPrefix  = "sk-or-"
+		minPlausibleLen = 20
+	)
+	if !strings.HasPrefix(s, expectedPrefix) {
+		return false
+	}
+	if len(s) < minPlausibleLen {
+		return false
+	}
+	return true
 }
 
 // isSnapshotDialFailure preserved as a back-compat alias for the v0.13.0

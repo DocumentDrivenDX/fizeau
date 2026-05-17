@@ -198,6 +198,9 @@ func buildSnapshotAutoroutingServiceConfig(t *testing.T, fixture snapshotAutorou
 			IncludeByDefault:    p.IncludeByDefault,
 			IncludeByDefaultSet: p.IncludeByDefaultSet,
 		}
+		if strings.EqualFold(p.Type, "openrouter") {
+			provider.APIKey = "sk-or-v1-snapshot-autorouting-fixture-key"
+		}
 		provider.Endpoints = []ServiceProviderEndpoint{{
 			Name:           p.EndpointName,
 			BaseURL:        baseURL,

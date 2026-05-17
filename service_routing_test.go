@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1911,5 +1912,222 @@ func TestDecisionWithCandidatesCopiesInput(t *testing.T) {
 	got := traced.RouteCandidates()
 	if len(got) != 1 || got[0].Reason != "original" {
 		t.Fatalf("RouteCandidates=%#v, want copied original candidate", got)
+	}
+}
+
+// openrouterCredentialGateCatalog returns a minimal catalog with one
+// openrouter-surfaced model so the credential gate has a candidate to
+// evaluate. Power 5 keeps it inside the default 1..10 policy bounds.
+func openrouterCredentialGateCatalog(t *testing.T) *modelcatalog.Catalog {
+	t.Helper()
+	return loadRoutingFixtureCatalog(t, `
+version: 5
+generated_at: 2026-05-12T00:00:00Z
+catalog_version: test
+policies:
+  default:
+    min_power: 1
+    max_power: 10
+    allow_local: true
+models:
+  openrouter/test-model:
+    family: gpt
+    status: active
+    provider_system: openrouter
+    deployment_class: managed_cloud_frontier
+    power: 5
+    surfaces:
+      agent.openai: openrouter/test-model
+`)
+}
+
+// openrouterCredentialGateService wires a service whose only configured
+// provider is openrouter pointing at an httptest server. The server's hit
+// counter must stay 0 through every credential-gate test: the gate is
+// synchronous and must not trigger discovery or dispatch.
+//
+// A fresh discovery cache fixture pre-seeds the snapshot path so background
+// /v1/models refresh has nothing to do — the only HTTP I/O an unfiltered
+// openrouter candidate could trigger is dispatch, which the credential gate
+// must block.
+func openrouterCredentialGateService(t *testing.T, apiKey string) (*service, *atomic.Int32) {
+	t.Helper()
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	t.Cleanup(srv.Close)
+
+	cacheDir := t.TempDir()
+	t.Setenv("FIZEAU_CACHE_DIR", cacheDir)
+	t.Setenv("PATH", "")
+	cache := &discoverycache.Cache{Root: cacheDir}
+	writeSnapshotDiscoveryFixture(
+		t,
+		cache,
+		testDiscoverySourceName("openrouter", "openrouter", srv.URL+"/v1", ""),
+		time.Now().UTC(),
+		[]string{"openrouter/test-model"},
+	)
+
+	t.Cleanup(replaceRoutingCatalogForTest(t, openrouterCredentialGateCatalog(t)))
+
+	sc := &fakeServiceConfig{
+		providers: map[string]ServiceProviderEntry{
+			"openrouter": {
+				Type:    "openrouter",
+				BaseURL: srv.URL + "/v1",
+				APIKey:  apiKey,
+				Model:   "openrouter/test-model",
+			},
+		},
+		names:       []string{"openrouter"},
+		defaultName: "openrouter",
+	}
+	svc := newTestService(t, ServiceOptions{
+		ServiceConfig:       sc,
+		QuotaRefreshContext: canceledRefreshContext(),
+	})
+	return svc, &hits
+}
+
+// installPanickingOpenRouterTransport replaces http.DefaultClient.Transport
+// with a roundtripper that panics on any request directed at the openrouter
+// host. Routing should never call out before the credential gate fires; if
+// it does, the panic fails the test immediately rather than masking the
+// regression behind a recovered error.
+func installPanickingOpenRouterTransport(t *testing.T, host string) {
+	t.Helper()
+	prev := http.DefaultClient.Transport
+	http.DefaultClient.Transport = &openrouterPanicTransport{t: t, host: host, base: prev}
+	t.Cleanup(func() { http.DefaultClient.Transport = prev })
+}
+
+type openrouterPanicTransport struct {
+	t    *testing.T
+	host string
+	base http.RoundTripper
+}
+
+func (p *openrouterPanicTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req != nil && req.URL != nil && p.host != "" && req.URL.Host == p.host {
+		p.t.Fatalf("unexpected HTTP call to openrouter host %s while credential gate should have filtered the candidate: %s %s", p.host, req.Method, req.URL)
+	}
+	base := p.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(req)
+}
+
+func findOpenRouterCandidate(t *testing.T, dec *RouteDecision) *RouteCandidate {
+	t.Helper()
+	if dec == nil {
+		t.Fatal("ResolveRoute returned nil decision")
+	}
+	for i := range dec.Candidates {
+		if dec.Candidates[i].Provider == "openrouter" {
+			return &dec.Candidates[i]
+		}
+	}
+	t.Fatalf("openrouter candidate missing from decision %#v", dec.Candidates)
+	return nil
+}
+
+func TestOpenrouterCredentialMissingNoNetwork(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+
+	svc, hits := openrouterCredentialGateService(t, "")
+	pcfg, _ := svc.opts.ServiceConfig.Provider("openrouter")
+	srvURL, err := url.Parse(pcfg.BaseURL)
+	if err != nil {
+		t.Fatalf("parse base URL %q: %v", pcfg.BaseURL, err)
+	}
+	installPanickingOpenRouterTransport(t, srvURL.Host)
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+	if err == nil {
+		// no eligible candidates is fine: the gate emits an ineligible row
+		// in the trace, which is what AC1 asks us to inspect. A surfaced
+		// error is also acceptable as long as the candidate is in the
+		// candidate list. The decision pointer may still be non-nil with
+		// the rejected candidates attached, depending on the error path.
+		_ = dec
+	}
+	var traced DecisionWithCandidates
+	if dec == nil && errors.As(err, &traced) {
+		candidates := traced.RouteCandidates()
+		dec = &RouteDecision{Candidates: candidates}
+	}
+	candidate := findOpenRouterCandidate(t, dec)
+	if candidate.Eligible {
+		t.Fatalf("openrouter candidate eligible with no API key: %#v", *candidate)
+	}
+	if candidate.FilterReason != string(routing.FilterReasonCredentialMissing) {
+		t.Fatalf("openrouter FilterReason=%q, want %q", candidate.FilterReason, routing.FilterReasonCredentialMissing)
+	}
+	if !strings.Contains(candidate.Reason, "credential missing") {
+		t.Fatalf("openrouter Reason=%q, want evidence body to mention credential location", candidate.Reason)
+	}
+	if !strings.Contains(candidate.Reason, "api_key") {
+		t.Fatalf("openrouter Reason=%q, want evidence to name the inspected key location", candidate.Reason)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("openrouter HTTP hits=%d, want zero — credential gate must not issue any network I/O", hits.Load())
+	}
+}
+
+func TestOpenrouterMalformedKeyTreatedAsMissing(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{"wrong prefix", "abc-not-a-real-openrouter-key-1234567890"},
+		{"too short", "sk-or-x"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("OPENROUTER_API_KEY", "")
+			svc, hits := openrouterCredentialGateService(t, tc.key)
+			pcfg, _ := svc.opts.ServiceConfig.Provider("openrouter")
+			srvURL, err := url.Parse(pcfg.BaseURL)
+			if err != nil {
+				t.Fatalf("parse base URL %q: %v", pcfg.BaseURL, err)
+			}
+			installPanickingOpenRouterTransport(t, srvURL.Host)
+
+			dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+			_ = err
+			var traced DecisionWithCandidates
+			if dec == nil && errors.As(err, &traced) {
+				dec = &RouteDecision{Candidates: traced.RouteCandidates()}
+			}
+			candidate := findOpenRouterCandidate(t, dec)
+			if candidate.Eligible {
+				t.Fatalf("openrouter candidate eligible with malformed key %q: %#v", tc.key, *candidate)
+			}
+			if candidate.FilterReason != string(routing.FilterReasonCredentialMissing) {
+				t.Fatalf("openrouter FilterReason=%q, want %q", candidate.FilterReason, routing.FilterReasonCredentialMissing)
+			}
+			if hits.Load() != 0 {
+				t.Fatalf("openrouter HTTP hits=%d, want zero", hits.Load())
+			}
+		})
+	}
+}
+
+func TestOpenrouterValidKeyPassesCredentialGate(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	svc, _ := openrouterCredentialGateService(t, "sk-or-v1-"+strings.Repeat("a", 32))
+
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+	var traced DecisionWithCandidates
+	if dec == nil && errors.As(err, &traced) {
+		dec = &RouteDecision{Candidates: traced.RouteCandidates()}
+	}
+	candidate := findOpenRouterCandidate(t, dec)
+	if candidate.FilterReason == string(routing.FilterReasonCredentialMissing) {
+		t.Fatalf("openrouter candidate gated by credential_missing despite well-formed key: %#v", *candidate)
 	}
 }

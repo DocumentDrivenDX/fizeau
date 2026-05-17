@@ -185,6 +185,7 @@ func TestFilterReasonStringsAreStable(t *testing.T) {
 		FilterReasonMeteredOptInRequired:        {},
 		FilterReasonCallerExcluded:              {},
 		FilterReasonEndpointUnreachable:         {},
+		FilterReasonCredentialMissing:           {},
 	}
 	sawIneligible := false
 	for _, c := range dec.Candidates {
