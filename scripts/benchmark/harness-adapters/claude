@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# SUMMARY: claude wrapper-harness adapter. install stages the claude binary into /installed-agent/claude; command emits ANTHROPIC_API_KEY + model selection env consumed by harbor_adapters.claude:ClaudeAgent inside the harbor-runner.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  claude install <agent-artifact-path>
+  claude command  (reads profile JSON on stdin)
+EOF
+  return 2
+}
+
+cmd_install() {
+  local artifact="${1:-}"
+  if [[ -z "$artifact" ]]; then
+    echo "claude install: missing <agent-artifact-path>" >&2
+    return 2
+  fi
+  local binary="/installed-agent/claude"
+  jq -cn \
+    --arg src "$artifact" \
+    --arg bin "$binary" \
+    --arg cmd "install -m 0755 $artifact $binary" \
+    --arg plugin "scripts.benchmark.harbor_adapters.claude:ClaudeAgent" \
+    '{install_command:$cmd, artifact_source:$src, binary_path:$bin, harbor_plugin:$plugin}'
+}
+
+cmd_command() {
+  jq -c '
+    . as $p
+    | ($p.provider // {}) as $prov
+    | ($p.sampling // {}) as $sampling
+    | ($prov.api_key_env // "") as $keyenv
+    | ($prov.model       // "sonnet") as $model
+    | (
+        {
+          ANTHROPIC_API_KEY: ("${" + $keyenv + "}"),
+          FIZEAU_API_KEY:    ("${" + $keyenv + "}"),
+          FIZEAU_MODEL:      $model
+        }
+        + ( if ($sampling.reasoning // "") != "" then {FIZEAU_REASONING: $sampling.reasoning} else {} end )
+      ) as $env
+    | {
+        command: [
+          "/installed-agent/claude",
+          "--print","-p","--verbose",
+          "--output-format","stream-json",
+          "--permission-mode","acceptEdits",
+          "--model", $model,
+          "$HARBOR_INSTRUCTION"
+        ],
+        env: $env,
+        secret_env_keys: ["ANTHROPIC_API_KEY","FIZEAU_API_KEY"]
+      }
+  '
+}
+
+main() {
+  local sub="${1:-}"
+  case "$sub" in
+    install) shift; cmd_install "$@";;
+    command) shift; cmd_command;;
+    -h|--help|"") usage;;
+    *) echo "claude: unknown subcommand: $sub" >&2; usage;;
+  esac
+}
+
+main "$@"

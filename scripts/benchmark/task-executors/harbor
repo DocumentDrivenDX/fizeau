@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# SUMMARY: harbor task-executor. Reads task-spec.json on stdin; runs `docker run --rm fizeau-harbor-runner:latest run --agent-import-path … --task-id … --output /output …`; writes cell_dir/result.json. The docker socket is mounted so harbor can spawn the task container.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  harbor  (reads task-spec.json on stdin)
+
+task-spec.json fields (see scripts/benchmark/task-executors/CONTRACT.md):
+  task_id         string  TerminalBench task id
+  tasks_dir       string  host dir holding task definitions; bind-mounted at /tasks (ro)
+  cell_dir        string  host dir for cell artifacts; bind-mounted at /output (rw)
+  harbor_plugin   string  e.g. "scripts.benchmark.harbor_agent:FizeauAgent"
+  image           string  default "fizeau-harbor-runner:latest"
+  env             object  env to forward into the container
+  secret_env_keys [str]   subset of env keys whose values are secrets (redacted in logs)
+  extra_args      [str]   passthrough trailing args appended after --output /output
+EOF
+  return 2
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+fi
+
+spec="$(cat)"
+if [[ -z "$spec" ]]; then
+  echo "harbor: empty task-spec on stdin" >&2
+  exit 2
+fi
+
+task_id="$(jq -r '.task_id // ""' <<<"$spec")"
+tasks_dir="$(jq -r '.tasks_dir // ""' <<<"$spec")"
+cell_dir="$(jq -r '.cell_dir // ""' <<<"$spec")"
+plugin="$(jq -r '.harbor_plugin // ""' <<<"$spec")"
+image="$(jq -r '.image // "fizeau-harbor-runner:latest"' <<<"$spec")"
+
+if [[ -z "$task_id" || -z "$tasks_dir" || -z "$cell_dir" || -z "$plugin" ]]; then
+  echo "harbor: task-spec missing one of {task_id, tasks_dir, cell_dir, harbor_plugin}" >&2
+  exit 2
+fi
+if [[ ! -d "$tasks_dir" ]]; then
+  echo "harbor: tasks_dir does not exist: $tasks_dir" >&2
+  exit 2
+fi
+mkdir -p "$cell_dir"
+
+declare -a docker_args=(
+  run --rm
+  -v /var/run/docker.sock:/var/run/docker.sock
+  -v "$cell_dir:/output"
+  -v "$tasks_dir:/tasks:ro"
+)
+
+while IFS=$'\t' read -r key val; do
+  [[ -z "$key" ]] && continue
+  docker_args+=(-e "$key=$val")
+done < <(jq -r '(.env // {}) | to_entries[] | "\(.key)\t\(.value)"' <<<"$spec")
+
+docker_args+=("$image" run
+  --agent-import-path "$plugin"
+  --task-id "$task_id"
+  --tasks-dir /tasks
+  --output /output
+)
+
+while IFS= read -r arg; do
+  [[ -z "$arg" ]] && continue
+  docker_args+=("$arg")
+done < <(jq -r '(.extra_args // []) | .[]' <<<"$spec")
+
+result_path="$cell_dir/result.json"
+
+if [[ "${HARBOR_TASK_EXECUTOR_DRY_RUN:-0}" == "1" ]]; then
+  jq -n \
+    --arg image "$image" \
+    --arg task "$task_id" \
+    --arg plugin "$plugin" \
+    --argjson argv "$(printf '%s\n' "${docker_args[@]}" | jq -R . | jq -s .)" \
+    '{dry_run:true, image:$image, task_id:$task, harbor_plugin:$plugin, docker_argv:$argv}' \
+    >"$result_path"
+  cat "$result_path"
+  exit 0
+fi
+
+set +e
+docker "${docker_args[@]}"
+status=$?
+set -e
+
+if [[ ! -s "$result_path" ]]; then
+  jq -n \
+    --arg task "$task_id" \
+    --arg image "$image" \
+    --arg plugin "$plugin" \
+    --argjson exit_code "$status" \
+    '{task_id:$task, image:$image, harbor_plugin:$plugin, exit_code:$exit_code, status:"missing_result"}' \
+    >"$result_path"
+fi
+
+exit "$status"

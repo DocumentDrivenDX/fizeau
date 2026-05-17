@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# SUMMARY: noop calibration adapter. install is a no-op; command returns a true(1) command with no env. Reports reward=0 to anchor the calibration matrix.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  noop install <agent-artifact-path>
+  noop command  (reads profile JSON on stdin)
+EOF
+  return 2
+}
+
+cmd_install() {
+  local artifact="${1:-}"
+  jq -cn \
+    --arg src "$artifact" \
+    '{install_command:"true", artifact_source:$src, binary_path:"", harbor_plugin:null}'
+}
+
+cmd_command() {
+  cat >/dev/null
+  jq -cn '{command:["sh","-c","true"], env:{}, secret_env_keys:[]}'
+}
+
+main() {
+  local sub="${1:-}"
+  case "$sub" in
+    install) shift; cmd_install "$@";;
+    command) shift; cmd_command;;
+    -h|--help|"") usage;;
+    *) echo "noop: unknown subcommand: $sub" >&2; usage;;
+  esac
+}
+
+main "$@"

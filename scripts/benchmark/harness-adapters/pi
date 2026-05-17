@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# SUMMARY: pi wrapper-harness adapter. install records the npm-installed pi binary; command emits PI_CODING_AGENT_DIR + provider/model selection env consumed by harbor_adapters.pi:PiAgent inside the harbor-runner.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  pi install <agent-artifact-path>
+  pi command  (reads profile JSON on stdin)
+EOF
+  return 2
+}
+
+cmd_install() {
+  local artifact="${1:-}"
+  if [[ -z "$artifact" ]]; then
+    echo "pi install: missing <agent-artifact-path>" >&2
+    return 2
+  fi
+  local binary="/installed-agent/pi"
+  jq -cn \
+    --arg src "$artifact" \
+    --arg bin "$binary" \
+    --arg cmd "install -m 0755 $artifact $binary" \
+    --arg plugin "scripts.benchmark.harbor_adapters.pi:PiAgent" \
+    '{install_command:$cmd, artifact_source:$src, binary_path:$bin, harbor_plugin:$plugin}'
+}
+
+cmd_command() {
+  jq -c '
+    . as $p
+    | ($p.provider // {}) as $prov
+    | ($p.sampling // {}) as $sampling
+    | ($prov.api_key_env // "") as $keyenv
+    | ($prov.model       // "") as $model
+    | ($prov.base_url    // "") as $burl
+    | ($prov.type        // "") as $ptype
+    | (
+        if $ptype == "openai-compat" then
+          (if ($burl | test("openrouter")) then "openrouter" else "openai-compat" end)
+        else $ptype end
+      ) as $resolved
+    | (
+        if $resolved == "openrouter" then {OPENROUTER_API_KEY: ("${" + $keyenv + "}")}
+        elif $resolved == "openai-compat" then ({($keyenv): ("${" + $keyenv + "}")})
+        elif $resolved == "openai"     then {OPENAI_API_KEY:    ("${" + $keyenv + "}")}
+        elif $resolved == "anthropic"  then {ANTHROPIC_API_KEY: ("${" + $keyenv + "}")}
+        elif $resolved == "google"     then {GEMINI_API_KEY:    ("${" + $keyenv + "}")}
+        else {} end
+      ) as $base_env
+    | (
+        if $resolved == "openai-compat" then {PI_CODING_AGENT_DIR: "/installed-agent/pi-agent"} else {} end
+      ) as $pi_dir_env
+    | ($base_env + $pi_dir_env + {FIZEAU_MODEL: $model}) as $env
+    | {
+        command: (
+          ["/installed-agent/pi","--mode","json","--print","--no-session",
+           "--no-extensions","--no-skills","--no-prompt-templates","--no-themes",
+           "--provider", $resolved, "--model", $model]
+          + ( if ($sampling.reasoning // "") != "" then ["--thinking", $sampling.reasoning] else [] end )
+          + ["$HARBOR_INSTRUCTION"]
+        ),
+        env: $env,
+        secret_env_keys: [
+          "OPENROUTER_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","GEMINI_API_KEY",$keyenv
+        ] | unique | map(select(. != ""))
+      }
+  '
+}
+
+main() {
+  local sub="${1:-}"
+  case "$sub" in
+    install) shift; cmd_install "$@";;
+    command) shift; cmd_command;;
+    -h|--help|"") usage;;
+    *) echo "pi: unknown subcommand: $sub" >&2; usage;;
+  esac
+}
+
+main "$@"
