@@ -262,7 +262,7 @@ func RunNative(ctx context.Context, req NativeRequest, cb NativeCallbacks) {
 		ReasoningByteLimit: req.ReasoningByteLimit,
 		Compactor:          compactor,
 		CachePolicy:        req.CachePolicy,
-		PlanningMode:       req.PlanningMode || req.ToolPreset == "benchmark",
+		PlanningMode:       req.PlanningMode,
 		CostCapUSD:         req.CostCapUSD,
 	}
 	result, runErr := agentcore.Run(cancelCtx, loopReq)

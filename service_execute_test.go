@@ -1178,11 +1178,14 @@ func firstUserMessageContent(fr fizeau.FakeRequest) string {
 	return ""
 }
 
-// TestRunNative_BenchmarkPresetEnablesPlanning asserts that ToolPreset="benchmark"
-// auto-enables the planning turn even when ServiceExecuteRequest.PlanningMode
-// is false. The first Provider.Chat call must carry no tools and the planning
-// prompt; the second call (the main loop turn) must carry the configured tool set.
-func TestRunNative_BenchmarkPresetEnablesPlanning(t *testing.T) {
+// TestRunNative_BenchmarkPresetDoesNotEnablePlanning asserts that
+// ToolPreset="benchmark" by itself no longer triggers planning mode. The
+// implicit coupling was removed so benchmark profiles must opt in explicitly
+// via the profile's sampling.planning_mode field (which surfaces as
+// ServiceExecuteRequest.PlanningMode=true). With PlanningMode false the first
+// Provider.Chat call must be the main-loop turn, carrying the configured tool
+// set and not the planning prompt.
+func TestRunNative_BenchmarkPresetDoesNotEnablePlanning(t *testing.T) {
 	calls, _ := runNativePlanningCase(t, fizeau.ServiceExecuteRequest{
 		Prompt:       "implement feature X",
 		Harness:      "fiz",
@@ -1191,17 +1194,14 @@ func TestRunNative_BenchmarkPresetEnablesPlanning(t *testing.T) {
 		ToolPreset:   "benchmark",
 		PlanningMode: false,
 	})
-	if len(calls) < 2 {
-		t.Fatalf("expected >=2 provider calls (planning + main loop), got %d", len(calls))
+	if len(calls) < 1 {
+		t.Fatalf("expected >=1 provider call, got 0")
 	}
-	if got := len(calls[0].Tools); got != 0 {
-		t.Errorf("planning call: want 0 tools, got %d (%v)", got, calls[0].Tools)
+	if got := len(calls[0].Tools); got == 0 {
+		t.Errorf("first call: expected main-loop tool set, got 0 tools (planning leaked on)")
 	}
-	if msg := firstUserMessageContent(calls[0]); !strings.Contains(msg, "concise plan") {
-		t.Errorf("planning call: user message missing planning prompt; got %q", msg)
-	}
-	if got := len(calls[1].Tools); got == 0 {
-		t.Errorf("main-loop call: expected non-empty tool set, got 0 tools")
+	if msg := firstUserMessageContent(calls[0]); strings.Contains(msg, "concise plan") {
+		t.Errorf("first call: unexpected planning prompt for benchmark preset alone; got %q", msg)
 	}
 }
 
