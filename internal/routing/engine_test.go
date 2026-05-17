@@ -1885,6 +1885,50 @@ func TestPerTierCandidateRoutesViaSameHarness(t *testing.T) {
 	}
 }
 
+// TestSameHarnessTierEmitsPowerMissingFilterReason locks in the
+// bead-fizeau-b11da788 contract directly in engine_test.go: when a tier of a
+// multi-tier subscription harness is enumerated in AutoRoutingModels but the
+// ModelEligibility lookup returns Power=0 with AutoRoutable=false (broken
+// catalog metadata), buildHarnessCandidates must emit a Candidate row for
+// that tier with Eligible=false and FilterReason=FilterReasonPowerMissing —
+// never drop it silently. Sibling assertions covering the full multi-tier
+// matrix live in excluded_tier_filter_reason_test.go.
+func TestSameHarnessTierEmitsPowerMissingFilterReason(t *testing.T) {
+	in := multiTierSubscriptionInputs()
+	in.ModelEligibility = func(model string) (ModelEligibility, bool) {
+		switch model {
+		case "opus-4.7":
+			return ModelEligibility{Power: 10, AutoRoutable: true}, true
+		case "sonnet-4.6":
+			// Catalog knows the tier but power metadata was stripped.
+			return ModelEligibility{Power: 0, AutoRoutable: false}, true
+		default:
+			return ModelEligibility{}, false
+		}
+	}
+	dec, err := Resolve(Request{Policy: "default"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	var sonnet *Candidate
+	for i := range dec.Candidates {
+		c := &dec.Candidates[i]
+		if c.Harness == "claude" && c.Model == "sonnet-4.6" {
+			sonnet = c
+			break
+		}
+	}
+	if sonnet == nil {
+		t.Fatalf("claude/sonnet-4.6 row missing from candidates (silent drop); got %#v", dec.Candidates)
+	}
+	if sonnet.Eligible {
+		t.Errorf("claude/sonnet-4.6 Eligible=true, want false (broken catalog metadata)")
+	}
+	if sonnet.FilterReason != FilterReasonPowerMissing {
+		t.Errorf("claude/sonnet-4.6 FilterReason=%q, want %q", sonnet.FilterReason, FilterReasonPowerMissing)
+	}
+}
+
 // TestRouteRequest_ExcludedRoutesSkipsCandidate asserts that a candidate
 // matching an entry in RouteRequest.ExcludedRoutes is filtered out of the
 // route decision with FilterReasonCallerExcluded.
