@@ -294,8 +294,15 @@ func scoreComponents(policy string, cand candidateInternal) map[string]float64 {
 		}
 	}
 	if cand.Power >= 9 && cand.IsSubscription && candidateWithinPowerBounds(cand) && cand.QuotaOK && !cand.QuotaStale && cand.QuotaPercentUsed < 80 {
-		base += 20
-		add("power", 20)
+		// Why: an explicit sub-9 MinPower hint (e.g. role=implementer at
+		// power=8) means a cheaper in-bounds tier already clears the band, so
+		// rewarding a higher tier here would let opus systematically outrank a
+		// peer sonnet on cost-aware policies. Smart policy is quality-first and
+		// keeps the bonus.
+		if policy == "smart" || cand.MinPower == 0 || cand.MinPower >= 9 {
+			base += 20
+			add("power", 20)
+		}
 	}
 
 	// Context headroom is a ranking signal for otherwise eligible candidates.
