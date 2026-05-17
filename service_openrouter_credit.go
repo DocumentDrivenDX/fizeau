@@ -3,6 +3,7 @@ package fizeau
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +11,27 @@ import (
 	"time"
 
 	"github.com/easel/fizeau/internal/routing"
+)
+
+// openrouterCreditFailureMode classifies why a credit probe attempt did not
+// return a balance reading. Sibling failure-mode bead surfaces these as
+// distinct routing filter reasons so operators can distinguish "key rotated
+// out" from "openrouter.ai unreachable".
+type openrouterCreditFailureMode string
+
+const (
+	// openrouterCreditFailureNone is the zero value — probe succeeded, or
+	// no attempt has been recorded yet.
+	openrouterCreditFailureNone openrouterCreditFailureMode = ""
+	// openrouterCreditFailureCredentialInvalid signals a 401 (or 403) from
+	// /api/v1/credits: the key is present but rejected. Maps to
+	// FilterReasonCredentialInvalid.
+	openrouterCreditFailureCredentialInvalid openrouterCreditFailureMode = "credential_invalid"
+	// openrouterCreditFailureProviderUnreachable signals a transient
+	// transport error or a non-401 server-side failure (4xx/5xx). Maps to
+	// FilterReasonProviderUnreachable and recovers on the next successful
+	// probe.
+	openrouterCreditFailureProviderUnreachable openrouterCreditFailureMode = "provider_unreachable"
 )
 
 // DefaultOpenrouterCreditBalanceThresholdUSD is the floor below which a
@@ -34,16 +56,24 @@ const openrouterCreditFreshnessSource = "openrouter_credits_probe"
 
 // openrouterCreditRecord is one cached balance reading. The store keeps the
 // last attempt timestamp (regardless of success) so probe failures still
-// honor the TTL — see openrouter-probe-failure-modes-and-surfacing for the
-// sibling bead that surfaces failure as a distinct filter reason.
+// honor the TTL.
 type openrouterCreditRecord struct {
 	BalanceUSD float64
 	ObservedAt time.Time
 	// HasBalance is false when the most recent probe attempt did not return
-	// a balance reading (transport error, non-200, or empty response). In
-	// that case the credit gate stays silent — failure surfacing is owned
-	// by a separate bead.
+	// a balance reading (transport error, non-200, or empty response). The
+	// failure-mode fields below classify the failure so the service layer
+	// can project distinct routing filter reasons.
 	HasBalance bool
+	// FailureMode classifies the most recent probe failure (zero value =
+	// no failure on the cached attempt). FailureHTTPStatus and FailureMessage
+	// carry the originating evidence so routing_decision rows can surface
+	// status code or transport error class without log spelunking. The cache
+	// retains a single record per provider; a successful probe clears the
+	// failure fields (FailureMode = "", HasBalance = true).
+	FailureMode       openrouterCreditFailureMode
+	FailureHTTPStatus int
+	FailureMessage    string
 }
 
 // openrouterCreditStore caches openrouter account balance readings with a
@@ -119,29 +149,57 @@ func (s *openrouterCreditStore) EnsureFresh(ctx context.Context, provider, baseU
 		s.mu.Unlock()
 	}()
 
-	balance, ok := s.probe(ctx, baseURL, apiKey)
+	result := s.probe(ctx, baseURL, apiKey)
 	next := openrouterCreditRecord{ObservedAt: now}
-	if ok {
-		next.BalanceUSD = balance
+	if result.OK {
+		next.BalanceUSD = result.Balance
 		next.HasBalance = true
+	} else {
+		next.FailureMode = result.FailureMode
+		next.FailureHTTPStatus = result.HTTPStatus
+		next.FailureMessage = result.Message
 	}
 	s.mu.Lock()
 	s.records[provider] = next
 	s.mu.Unlock()
 }
 
-// probe issues one /api/v1/credits request and parses the balance. Returns
-// (balance, true) on success; (0, false) on transport or decode failure.
-// Failure surfacing is intentionally out of scope here — sibling bead
-// [[openrouter-probe-failure-modes-and-surfacing]] owns the credential_invalid
-// and provider_unreachable filter reasons.
-func (s *openrouterCreditStore) probe(ctx context.Context, baseURL, apiKey string) (float64, bool) {
+// openrouterCreditProbeResult is the classified outcome of one /api/v1/credits
+// request. On OK=true the Balance is populated; otherwise FailureMode plus
+// HTTPStatus or Message describe the failure so the projection layer can
+// surface a typed filter reason.
+type openrouterCreditProbeResult struct {
+	OK          bool
+	Balance     float64
+	FailureMode openrouterCreditFailureMode
+	HTTPStatus  int    // 0 when the failure happened before a response arrived
+	Message     string // short evidence form for routing_decision
+}
+
+// probe issues one /api/v1/credits request and classifies the outcome.
+//
+//   - 200 with a decodable body → OK=true with Balance populated.
+//   - 401 / 403 → FailureMode=credential_invalid with HTTPStatus set so the
+//     evidence body can name the rejection code (key present but rejected).
+//   - any other non-2xx (5xx, 4xx other than 401/403) → provider_unreachable
+//     with HTTPStatus populated. Soft fail-open semantics live in the cache
+//     layer: the entry only gates routing for the current freshness window.
+//   - transport-level errors (DNS, TCP, TLS, timeout, request build failure)
+//     → provider_unreachable with HTTPStatus=0 and Message carrying a short
+//     form of the error class so operators can triage without log spelunking.
+//   - decode failure on a 200 body → provider_unreachable (the upstream
+//     returned a malformed payload; that's a remote-side issue, not a key
+//     issue).
+func (s *openrouterCreditStore) probe(ctx context.Context, baseURL, apiKey string) openrouterCreditProbeResult {
 	endpoint := openrouterCreditsEndpoint(baseURL)
 	probeCtx, cancel := context.WithTimeout(ctx, openrouterCreditProbeTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return 0, false
+		return openrouterCreditProbeResult{
+			FailureMode: openrouterCreditFailureProviderUnreachable,
+			Message:     "request build failed: " + err.Error(),
+		}
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -152,18 +210,41 @@ func (s *openrouterCreditStore) probe(ctx context.Context, baseURL, apiKey strin
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, false
+		return openrouterCreditProbeResult{
+			FailureMode: openrouterCreditFailureProviderUnreachable,
+			Message:     "transport error: " + err.Error(),
+		}
 	}
 	defer resp.Body.Close() //nolint:errcheck
-	if resp.StatusCode != http.StatusOK {
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		var parsed openrouterCreditsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+			return openrouterCreditProbeResult{
+				FailureMode: openrouterCreditFailureProviderUnreachable,
+				HTTPStatus:  resp.StatusCode,
+				Message:     "decode error: " + err.Error(),
+			}
+		}
+		return openrouterCreditProbeResult{
+			OK:      true,
+			Balance: parsed.balanceUSD(),
+		}
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return 0, false
+		return openrouterCreditProbeResult{
+			FailureMode: openrouterCreditFailureCredentialInvalid,
+			HTTPStatus:  resp.StatusCode,
+			Message:     fmt.Sprintf("HTTP %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+		}
+	default:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return openrouterCreditProbeResult{
+			FailureMode: openrouterCreditFailureProviderUnreachable,
+			HTTPStatus:  resp.StatusCode,
+			Message:     fmt.Sprintf("HTTP %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)),
+		}
 	}
-	var parsed openrouterCreditsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return 0, false
-	}
-	return parsed.balanceUSD(), true
 }
 
 // openrouterCreditsResponse decodes /api/v1/credits. OpenRouter returns
@@ -209,25 +290,44 @@ func openrouterCreditTTLFor(pcfg ServiceProviderEntry) time.Duration {
 	return DefaultOpenrouterCreditProbeTTL
 }
 
-// openrouterCreditExhaustedMap refreshes the per-provider credit cache (one
-// HTTP call at most, per TTL window, per provider) and returns the routing
-// engine's view of which providers are currently below threshold.
+// openrouterProbeProjection is the routing engine's view of the openrouter
+// credit-probe cache: a credit-exhausted map plus the two failure-mode maps
+// surfaced by the failure-classification gate. All three maps share the
+// same probe pass so the freshness cache is consulted exactly once per
+// provider per routing call.
+type openrouterProbeProjection struct {
+	CreditExhausted     map[string]routing.ProviderCreditExhaustedEvidence
+	CredentialInvalid   map[string]routing.ProviderCredentialInvalidEvidence
+	ProviderUnreachable map[string]routing.ProviderProbeUnreachableEvidence
+}
+
+// openrouterProbeMaps refreshes the per-provider credit cache (one HTTP call
+// at most, per TTL window, per provider) and returns the routing engine's
+// view of credit-exhausted, credential-invalid, and provider-unreachable
+// evidence in a single pass.
 //
 // Cache misses and TTL-expired entries trigger a synchronous probe; entries
 // still inside the TTL are reused. Providers without an api key are skipped
-// (the credential gate already surfaces that case). Providers whose probe
-// returns no balance reading are skipped as well — sibling bead
-// [[openrouter-probe-failure-modes-and-surfacing]] owns surfacing failure.
-func (s *service) openrouterCreditExhaustedMap(ctx context.Context, now time.Time) map[string]routing.ProviderCreditExhaustedEvidence {
+// (the credential gate already surfaces that case).
+//
+// Failure-mode semantics:
+//   - HasBalance=true and balance < threshold → CreditExhausted entry.
+//   - FailureMode=credential_invalid → CredentialInvalid entry carrying the
+//     originating HTTP status.
+//   - FailureMode=provider_unreachable → ProviderUnreachable entry. The entry
+//     persists only until the next probe pass: when the TTL elapses (or a
+//     fresh attempt succeeds) the cache record is overwritten with the new
+//     outcome, so a transient blip clears automatically (fail-open).
+func (s *service) openrouterProbeMaps(ctx context.Context, now time.Time) openrouterProbeProjection {
+	var out openrouterProbeProjection
 	if s == nil || s.openrouterCredit == nil || s.opts.ServiceConfig == nil {
-		return nil
+		return out
 	}
 	cfg := s.opts.ServiceConfig
 	names := cfg.ProviderNames()
 	if len(names) == 0 {
-		return nil
+		return out
 	}
-	out := map[string]routing.ProviderCreditExhaustedEvidence{}
 	for _, name := range names {
 		pcfg, ok := cfg.Provider(name)
 		if !ok {
@@ -244,23 +344,56 @@ func (s *service) openrouterCreditExhaustedMap(ctx context.Context, now time.Tim
 		ttl := openrouterCreditTTLFor(pcfg)
 		s.openrouterCredit.EnsureFresh(ctx, name, pcfg.BaseURL, apiKey, now, ttl)
 		rec, ok := s.openrouterCredit.Lookup(name)
-		if !ok || !rec.HasBalance {
+		if !ok {
 			continue
 		}
-		threshold := openrouterCreditThresholdFor(pcfg)
-		if rec.BalanceUSD >= threshold {
+		if rec.HasBalance {
+			threshold := openrouterCreditThresholdFor(pcfg)
+			if rec.BalanceUSD < threshold {
+				if out.CreditExhausted == nil {
+					out.CreditExhausted = map[string]routing.ProviderCreditExhaustedEvidence{}
+				}
+				out.CreditExhausted[name] = routing.ProviderCreditExhaustedEvidence{
+					BalanceUSD:   rec.BalanceUSD,
+					ThresholdUSD: threshold,
+					ObservedAt:   rec.ObservedAt,
+				}
+			}
 			continue
 		}
-		out[name] = routing.ProviderCreditExhaustedEvidence{
-			BalanceUSD:   rec.BalanceUSD,
-			ThresholdUSD: threshold,
-			ObservedAt:   rec.ObservedAt,
+		switch rec.FailureMode {
+		case openrouterCreditFailureCredentialInvalid:
+			if out.CredentialInvalid == nil {
+				out.CredentialInvalid = map[string]routing.ProviderCredentialInvalidEvidence{}
+			}
+			out.CredentialInvalid[name] = routing.ProviderCredentialInvalidEvidence{
+				HTTPStatus: rec.FailureHTTPStatus,
+				ObservedAt: rec.ObservedAt,
+			}
+		case openrouterCreditFailureProviderUnreachable:
+			if out.ProviderUnreachable == nil {
+				out.ProviderUnreachable = map[string]routing.ProviderProbeUnreachableEvidence{}
+			}
+			errClass := ""
+			if rec.FailureHTTPStatus == 0 {
+				errClass = "transport_error"
+			}
+			out.ProviderUnreachable[name] = routing.ProviderProbeUnreachableEvidence{
+				StatusCode: rec.FailureHTTPStatus,
+				ErrorClass: errClass,
+				Message:    rec.FailureMessage,
+				ObservedAt: rec.ObservedAt,
+			}
 		}
-	}
-	if len(out) == 0 {
-		return nil
 	}
 	return out
+}
+
+// openrouterCreditExhaustedMap is a thin compatibility wrapper that returns
+// only the credit-exhausted projection from openrouterProbeMaps. Retained
+// for callers that haven't been moved to the projection struct.
+func (s *service) openrouterCreditExhaustedMap(ctx context.Context, now time.Time) map[string]routing.ProviderCreditExhaustedEvidence {
+	return s.openrouterProbeMaps(ctx, now).CreditExhausted
 }
 
 // annotateOpenrouterCreditFreshness overlays QuotaFreshnessAt/QuotaFreshnessSource
