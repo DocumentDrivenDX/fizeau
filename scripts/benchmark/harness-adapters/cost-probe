@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# SUMMARY: cost-probe calibration adapter. install is a no-op; command returns a true(1) command with no env. Used by cost-guard smokes; produces no real model traffic.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  cost-probe install <agent-artifact-path>
+  cost-probe command  (reads profile JSON on stdin)
+EOF
+  return 2
+}
+
+cmd_install() {
+  local artifact="${1:-}"
+  jq -cn \
+    --arg src "$artifact" \
+    '{install_command:"true", artifact_source:$src, binary_path:"", harbor_plugin:null}'
+}
+
+cmd_command() {
+  cat >/dev/null
+  jq -cn '{command:["sh","-c","true"], env:{}, secret_env_keys:[]}'
+}
+
+main() {
+  local sub="${1:-}"
+  case "$sub" in
+    install) shift; cmd_install "$@";;
+    command) shift; cmd_command;;
+    -h|--help|"") usage;;
+    *) echo "cost-probe: unknown subcommand: $sub" >&2; usage;;
+  esac
+}
+
+main "$@"

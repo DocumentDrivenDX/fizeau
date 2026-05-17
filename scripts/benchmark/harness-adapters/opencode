@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# SUMMARY: opencode wrapper-harness adapter. install records the npm-installed opencode binary; command emits OPENCODE_* env (including the synthesized opencode.json provider config) consumed by harbor_adapters.opencode:OpencodeAgent inside the harbor-runner.
+set -euo pipefail
+
+OPENCODE_VERSION="${OPENCODE_VERSION:-1.3.17}"
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  opencode install <agent-artifact-path>
+  opencode command  (reads profile JSON on stdin)
+EOF
+  return 2
+}
+
+cmd_install() {
+  local artifact="${1:-}"
+  if [[ -z "$artifact" ]]; then
+    echo "opencode install: missing <agent-artifact-path>" >&2
+    return 2
+  fi
+  local binary="/installed-agent/opencode"
+  jq -cn \
+    --arg src "$artifact" \
+    --arg bin "$binary" \
+    --arg cmd "install -m 0755 $artifact $binary" \
+    --arg plugin "scripts.benchmark.harbor_adapters.opencode:OpencodeAgent" \
+    '{install_command:$cmd, artifact_source:$src, binary_path:$bin, harbor_plugin:$plugin}'
+}
+
+cmd_command() {
+  jq -c '
+    . as $p
+    | ($p.provider // {}) as $prov
+    | ($p.sampling // {}) as $sampling
+    | ($p.limits   // {}) as $limits
+    | ($prov.api_key_env // "") as $keyenv
+    | ($prov.model       // "") as $model
+    | ($prov.base_url    // "") as $burl
+    | ($prov.type        // "") as $ptype
+    | (
+        if $ptype == "openai-compat" then
+          (if ($burl | test("openrouter")) then "openrouter" else "openai-compat" end)
+        else
+          $ptype
+        end
+      ) as $provider_id
+    | ($provider_id + "/" + $model) as $provider_model
+    | {
+        provider: {
+          ($provider_id): {
+            npm: "@ai-sdk/openai-compatible",
+            name: $provider_id,
+            options: (
+              {
+                baseURL: $burl,
+                apiKey:  ("{env:" + $keyenv + "}")
+              }
+              + ( if ($sampling.temperature // null)     != null then {temperature: $sampling.temperature} else {} end )
+              + ( if ($limits.max_output_tokens // null) != null then {maxTokens:   $limits.max_output_tokens} else {} end )
+            ),
+            models: {
+              ($model): {
+                limit: {
+                  context: ($limits.context_tokens     // 128000),
+                  output:  ($limits.max_output_tokens // 32768)
+                }
+              }
+            }
+          }
+        }
+      } as $opencode_config
+    | (
+        {
+          OPENCODE_DISABLE_AUTOUPDATE: "1",
+          OPENCODE_CONFIG_CONTENT: ($opencode_config | tostring),
+          ($keyenv): ("${" + $keyenv + "}"),
+          FIZEAU_MODEL: $provider_model
+        }
+      ) as $env
+    | {
+        command: (
+          ["/installed-agent/opencode","run","--format","json","--pure","--port","0","-m", $provider_model]
+          + ( if ($sampling.reasoning // "") != "" then ["--variant", $sampling.reasoning] else [] end )
+          + ["--","$HARBOR_INSTRUCTION"]
+        ),
+        env: $env,
+        secret_env_keys: [$keyenv]
+      }
+  '
+}
+
+main() {
+  local sub="${1:-}"
+  case "$sub" in
+    install) shift; cmd_install "$@";;
+    command) shift; cmd_command;;
+    -h|--help|"") usage;;
+    *) echo "opencode: unknown subcommand: $sub" >&2; usage;;
+  esac
+}
+
+main "$@"

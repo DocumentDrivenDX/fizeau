@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# SUMMARY: dumb-script calibration adapter. install is a no-op; command hard-codes the TerminalBench hello-world solution; useful for verifying grading path without any model traffic.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  dumb-script install <agent-artifact-path>
+  dumb-script command  (reads profile JSON on stdin)
+EOF
+  return 2
+}
+
+cmd_install() {
+  local artifact="${1:-}"
+  jq -cn \
+    --arg src "$artifact" \
+    '{install_command:"true", artifact_source:$src, binary_path:"", harbor_plugin:null}'
+}
+
+cmd_command() {
+  cat >/dev/null
+  jq -cn '{
+    command: ["sh","-c","printf \"hello world\\n\" > hello.txt"],
+    env: {},
+    secret_env_keys: []
+  }'
+}
+
+main() {
+  local sub="${1:-}"
+  case "$sub" in
+    install) shift; cmd_install "$@";;
+    command) shift; cmd_command;;
+    -h|--help|"") usage;;
+    *) echo "dumb-script: unknown subcommand: $sub" >&2; usage;;
+  esac
+}
+
+main "$@"

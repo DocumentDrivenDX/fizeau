@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# SUMMARY: fiz native-harness adapter. install stages the fiz binary into /installed-agent/fiz; command emits FIZEAU_* env from the profile and an argv that invokes fiz --json directly.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  fiz install <agent-artifact-path>
+  fiz command  (reads profile JSON on stdin)
+EOF
+  return 2
+}
+
+cmd_install() {
+  local artifact="${1:-}"
+  if [[ -z "$artifact" ]]; then
+    echo "fiz install: missing <agent-artifact-path>" >&2
+    return 2
+  fi
+  local binary="/installed-agent/fiz"
+  jq -cn \
+    --arg src "$artifact" \
+    --arg bin "$binary" \
+    --arg cmd "install -m 0755 $artifact $binary" \
+    --arg plugin "scripts.benchmark.harbor_agent:FizeauAgent" \
+    '{install_command:$cmd, artifact_source:$src, binary_path:$bin, harbor_plugin:$plugin}'
+}
+
+cmd_command() {
+  jq -c '
+    . as $p
+    | ($p.provider // {}) as $prov
+    | ($p.sampling // {}) as $sampling
+    | ($p.limits // {}) as $limits
+    | ($prov.api_key_env // "") as $keyenv
+    | ($prov.base_url   // "") as $burl
+    | ($prov.model      // "") as $model
+    | ($prov.type       // "") as $ptype
+    | (
+        if ($burl | test("openrouter")) then "openrouter"
+        elif $ptype == "openai-compat" then ""
+        else $ptype
+        end
+      ) as $fprov
+    | (
+        {
+          FIZEAU_BASE_URL: $burl,
+          FIZEAU_MODEL:    $model,
+          FIZEAU_API_KEY:  ("${" + $keyenv + "}")
+        }
+        + ( if $fprov != "" then {FIZEAU_PROVIDER: $fprov} else {} end )
+        + ( if ($sampling.temperature // null) != null then {FIZEAU_TEMPERATURE: ($sampling.temperature|tostring)} else {} end )
+        + ( if ($sampling.top_p // null)        != null then {FIZEAU_TOP_P:       ($sampling.top_p|tostring)}       else {} end )
+        + ( if ($sampling.top_k // null)        != null then {FIZEAU_TOP_K:       ($sampling.top_k|tostring)}       else {} end )
+        + ( if ($sampling.min_p // null)        != null then {FIZEAU_MIN_P:       ($sampling.min_p|tostring)}       else {} end )
+        + ( if ($sampling.reasoning // "") != "" then {FIZEAU_REASONING: $sampling.reasoning} else {} end )
+        + ( if ($limits.max_output_tokens // null) != null then {FIZEAU_MAX_OUTPUT_TOKENS: ($limits.max_output_tokens|tostring)} else {} end )
+        + ( if ($sampling.planning_mode // false) == true then {FIZEAU_PLANNING_MODE: "1"} else {} end )
+      ) as $env
+    | {
+        command: (
+          ["/installed-agent/fiz","--json","--preset","default"]
+          + ( if ($sampling.planning_mode // false) == true then ["--plan"] else [] end )
+          + ["-p","$HARBOR_INSTRUCTION"]
+        ),
+        env: $env,
+        secret_env_keys: ["FIZEAU_API_KEY"]
+      }
+  '
+}
+
+main() {
+  local sub="${1:-}"
+  case "$sub" in
+    install) shift; cmd_install "$@";;
+    command) shift; cmd_command;;
+    -h|--help|"") usage;;
+    *) echo "fiz: unknown subcommand: $sub" >&2; usage;;
+  esac
+}
+
+main "$@"
