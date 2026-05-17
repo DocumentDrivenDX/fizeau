@@ -582,6 +582,7 @@ func Resolve(req Request, in Inputs) (*Decision, error) {
 		ranked[i].out.Reason = fmt.Sprintf("policy=%s; score=%.1f", req.Policy, ranked[i].out.Score)
 	}
 	applyMaxPowerExclusion(ranked, req)
+	applyModelPinSubscriptionPreference(ranked, req, in)
 	neutralCost, hasKnownCost := neutralKnownCost(ranked)
 
 	// Sort: eligible first, then descending score, then cost, then locality,
@@ -689,6 +690,50 @@ func applyMaxPowerExclusion(ranked []rankedCandidate, req Request) {
 		}
 		ranked[i].out.ScoreComponents["power"] -= aboveMaxPowerExclusionPenalty
 		ranked[i].out.Score -= aboveMaxPowerExclusionPenalty
+	}
+}
+
+// applyModelPinSubscriptionPreference enforces that an explicit --model pin
+// (with no --harness/--provider override) is honored by a configured
+// subscription harness whose SupportedModels covers the pinned model,
+// rather than by a provider-routed fallback such as fiz/openrouter.
+//
+// Why: when the operator says "give me sonnet on the same auth I already
+// have," a catalog-known openrouter route for the same concrete model can
+// otherwise outscore the subscription harness on perf/cost signals and
+// silently switch the dispatch destination to a per-token provider that
+// likely lacks an auth header. The preference only fires when at least one
+// subscription-harness candidate is still eligible and lists the pin in
+// its SupportedModels — if no subscription advertises the model, the
+// engine falls back to fiz/openrouter as before.
+func applyModelPinSubscriptionPreference(ranked []rankedCandidate, req Request, in Inputs) {
+	if req.Model == "" || req.Harness != "" || req.Provider != "" {
+		return
+	}
+	hasEligibleSubscriptionMatch := false
+	for i := range ranked {
+		if !ranked[i].out.Eligible || !ranked[i].internal.IsSubscription {
+			continue
+		}
+		h, ok := findHarness(in.Harnesses, ranked[i].out.Harness)
+		if !ok || len(h.SupportedModels) == 0 {
+			continue
+		}
+		if harnessSupportsModel(h.SupportedModels, req.Model) {
+			hasEligibleSubscriptionMatch = true
+			break
+		}
+	}
+	if !hasEligibleSubscriptionMatch {
+		return
+	}
+	for i := range ranked {
+		if !ranked[i].out.Eligible || ranked[i].internal.IsSubscription {
+			continue
+		}
+		ranked[i].out.Eligible = false
+		ranked[i].out.FilterReason = FilterReasonScoredBelowTop
+		ranked[i].out.Reason = fmt.Sprintf("model pin %q satisfied by configured subscription harness; non-subscription fallback suppressed", req.Model)
 	}
 }
 
