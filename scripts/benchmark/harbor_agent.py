@@ -352,8 +352,44 @@ class FizeauAgent(BaseInstalledAgent):
             'append_arg --model-ref "${FIZEAU_MODEL_REF:-}"; '
             'append_arg --reasoning "${FIZEAU_REASONING:-}"; '
             'cmd+=(--work-dir "$work_dir" -p "$HARBOR_INSTRUCTION"); '
-            f'"${{cmd[@]}}" 2>&1 | stdbuf -oL tee {_OUTPUT_LOG}; '
-            'fiz_rc=${PIPESTATUS[0]}; '
+            # Run fiz in the background so we keep its PID. If we used a bare
+            # foreground pipeline (`fiz ... | tee`), a TERM delivered to this
+            # wrapper shell on Harbor cancellation would kill the shell while
+            # leaving fiz and its wrapped harness (gemini/codex/claude)
+            # orphaned in the container. The trap below SIGTERMs the whole
+            # process group, waits a short grace interval, then SIGKILLs any
+            # survivors so no harness CLI subprocess outlives a cancelled
+            # Harbor trial.
+            'fiz_cleanup() { '
+            '  trap - TERM INT EXIT; '
+            '  if [ -n "${fiz_pid:-}" ] && kill -0 "$fiz_pid" 2>/dev/null; then '
+            f'    {{ echo "warning: cancellation received; terminating fiz process tree pid=$fiz_pid"; }} >> {_OUTPUT_LOG} 2>/dev/null || true; '
+            '    kill -TERM -"$fiz_pid" 2>/dev/null || kill -TERM "$fiz_pid" 2>/dev/null || true; '
+            '    for _ in 1 2 3 4 5 6 7 8 9 10; do '
+            '      kill -0 "$fiz_pid" 2>/dev/null || break; '
+            '      sleep 1; '
+            '    done; '
+            '    if kill -0 "$fiz_pid" 2>/dev/null; then '
+            f'      {{ echo "warning: fiz pid=$fiz_pid still alive after SIGTERM grace; sending SIGKILL"; }} >> {_OUTPUT_LOG} 2>/dev/null || true; '
+            '      kill -KILL -"$fiz_pid" 2>/dev/null || kill -KILL "$fiz_pid" 2>/dev/null || true; '
+            '    fi; '
+            '  fi; '
+            '}; '
+            'trap fiz_cleanup TERM INT EXIT; '
+            # Enable job control (`set -m`) so the backgrounded fiz lands in
+            # its own process group with PGID == fiz_pid. That lets the
+            # cleanup trap signal the whole tree with `kill -TERM -$fiz_pid`,
+            # reaching any wrapped harness CLI (gemini/codex/claude/pi)
+            # forked by fiz. Tee runs via process substitution so log capture
+            # is preserved without a foreground pipeline that would lose the
+            # child PID if the shell were killed.
+            'set -m; '
+            f'"${{cmd[@]}}" > >(stdbuf -oL tee {_OUTPUT_LOG}) 2>&1 & '
+            'fiz_pid=$!; '
+            'set +m; '
+            'wait "$fiz_pid"; '
+            'fiz_rc=$?; '
+            'trap - TERM INT EXIT; '
             f'if ! find {_SESSION_LOG_DIR} -type f -name "*.jsonl" -print -quit | grep -q .; then '
             f'  {{ echo "warning: no fiz session JSONL found after run; expected fiz to write to {_SESSION_LOG_DIR} via symlinks at $work_dir/.fizeau/sessions and $HOME/.fizeau/sessions"; '
             '    echo "warning: /logs/agent contents:"; '

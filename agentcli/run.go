@@ -336,8 +336,12 @@ func runWithOptions(opts Options) int {
 
 	sysPrompt := buildSystemPromptForRun(preset, tools, skillCatalog, prompt.LoadContextFiles(wd), wd, anchorsEnabled, *sysPromptFlag)
 
-	// Signal context is created early so discovery can be cancelled on interrupt.
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	// Signal context is created early so discovery can be cancelled on interrupt
+	// or termination. SIGTERM is included so Harbor/benchmark runners that send
+	// TERM on AgentTimeout flow through the same cancellation path as Ctrl-C
+	// and harness runners get a chance to kill their subprocess trees before
+	// fiz exits.
+	ctx, cancel := signal.NotifyContext(context.Background(), runCancelSignals()...)
 	defer cancel()
 
 	resolvedContextWindow := 0
