@@ -2085,6 +2085,16 @@ func TestOpenrouterMalformedKeyTreatedAsMissing(t *testing.T) {
 	}{
 		{"wrong prefix", "abc-not-a-real-openrouter-key-1234567890"},
 		{"too short", "sk-or-x"},
+		// Bare unexpanded env placeholder: config load preserves the
+		// literal "${OPENROUTER_API_KEY}" when the env var is unset
+		// (internal/config/config_test.go TestLoad_EnvExpansion_Unset).
+		// The gate must catch this before any dispatch attempts a 401.
+		{"unexpanded placeholder", "${OPENROUTER_API_KEY}"},
+		// Partial env substitution: the value carries the well-known
+		// "sk-or-" prefix and clears the length floor, but contains an
+		// unexpanded placeholder fragment that would still produce a
+		// 401 at dispatch. The literal "${" substring is the signal.
+		{"partial placeholder substitution", "sk-or-v1-${KEY_SUFFIX_UNSET}"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
