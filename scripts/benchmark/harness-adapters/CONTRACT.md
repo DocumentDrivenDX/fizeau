@@ -83,6 +83,24 @@ keys are passed through and may be referenced by individual adapters):
 }
 ```
 
+`sampling` field schema (all keys optional; adapters omit env vars for
+unset keys):
+
+| key              | type    | default | meaning                                                            |
+| ---------------- | ------- | ------- | ------------------------------------------------------------------ |
+| `temperature`    | float   | unset   | sampler temperature                                                |
+| `top_p`          | float   | unset   | nucleus-sampling cutoff                                            |
+| `top_k`          | int     | unset   | top-k cutoff                                                       |
+| `min_p`          | float   | unset   | minimum-probability cutoff                                         |
+| `reasoning`      | string  | `""`    | reasoning effort hint (`""`, `low`, `medium`, `high`)              |
+| `planning_mode`  | bool    | `false` | run one pre-execution decomposition pass before the main tool loop |
+
+`planning_mode` is an explicit, per-profile opt-in. The `fiz` adapter
+appends `--plan` to the agent argv and exports `FIZEAU_PLANNING_MODE=1`
+when this field is `true`. There is no implicit coupling to any tool
+preset (e.g. `benchmark`); profiles that want planning must set
+`sampling.planning_mode: true`.
+
 Output:
 
 ```json
