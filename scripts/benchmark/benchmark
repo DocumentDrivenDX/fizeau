@@ -1,219 +1,347 @@
 #!/usr/bin/env bash
 # scripts/benchmark/benchmark — operator-facing benchmark driver.
 #
-# Replaces `fiz-bench sweep` execution. cmd/bench survives only as analytics
-# tooling (aggregate, import-evidence, validate). Authored under
-# ADR-016 + docs/helix/02-design/plan-2026-05-15-benchmark-runner-simplification.md
-# (PR 1d). Manifest parsing happens in one place: `fiz-bench plan --json`.
-# This script consumes JSON, never YAML.
+# Replaces `fiz-bench sweep` / `fiz-bench matrix` execution. Pure shell:
+# yq + jq + sha256sum + docker. No Go bridge, no Python.
+#
+# Bead fizeau-fe87a3ac: skeleton + listing subcommands + --plan mode +
+# preflight rebuild gate. The cell execution loop (resume, retry, signal
+# handling, concurrency, budget) lands in a follow-up bead.
 #
 # Operator contract:
-#   ./benchmark --profile P --bench-set B
-#   ./benchmark --profile P --bench-set B --plan
-#   ./benchmark validate
-#   ./benchmark preflight --profile P
 #   ./benchmark profiles
 #   ./benchmark bench-sets
+#   ./benchmark harness-adapters
+#   ./benchmark task-executors
+#   ./benchmark validate                            # placeholder; see PR C
+#   ./benchmark preflight                           # rebuild harbor-runner if sha drifted
+#   ./benchmark --profile P[,P2,...] --bench-set B[,B2,...] --plan
+#   ./benchmark --profile P[,P2,...] --bench-set B[,B2,...]   # run path; PR A4
 #
 # Rules:
-#   1. --plan is pure: no file writes, no Docker pulls, no preflight, no
-#      benchmark-results/ directory creation.
-#   2. Cell directory created only when the cell is about to start.
-#   3. --profile and --bench-set both required (no implicit defaults).
-#   4. validate is fast and offline (schema + cross-reference only).
-#   5. preflight is the only command that probes endpoints.
-#   6. Manifest reading: fiz-bench plan --json emits JSON; shell consumes JSON.
+#   1. --plan is pure: no file writes, no Docker pulls/builds, no
+#      benchmark-results/ creation. Prints one matrix line per cell.
+#   2. --profile and --bench-set are both required for --plan and run.
+#   3. preflight is the only command that touches Docker.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PROFILES_DIR="${SCRIPT_DIR}/profiles"
 BENCH_SETS_DIR="${SCRIPT_DIR}/bench-sets"
-CONCURRENCY_GROUPS="${SCRIPT_DIR}/concurrency-groups.yaml"
+HARNESS_ADAPTERS_DIR="${SCRIPT_DIR}/harness-adapters"
+TASK_EXECUTORS_DIR="${SCRIPT_DIR}/task-executors"
+HARBOR_BUILD_SCRIPT="${SCRIPT_DIR}/build-harbor-runner.sh"
+HARBOR_IMAGE_TAG="${HARBOR_IMAGE_TAG:-fizeau-harbor-runner:latest}"
 
-die() { echo "benchmark: $*" >&2; exit 1; }
+die() { printf 'benchmark: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'benchmark: %s\n' "$*" >&2; }
+
+require_tool() {
+  command -v "$1" >/dev/null 2>&1 || die "required tool not found: $1"
+}
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./benchmark [--profile P[,P2,...]] [--bench-set B] [--plan]
-       ./benchmark validate
-       ./benchmark preflight --profile P[,P2,...]
-       ./benchmark profiles
-       ./benchmark bench-sets
+Usage:
+  ./benchmark profiles
+  ./benchmark bench-sets
+  ./benchmark harness-adapters
+  ./benchmark task-executors
+  ./benchmark validate
+  ./benchmark preflight
+  ./benchmark --profile P[,P2,...] --bench-set B[,B2,...] [--plan] [--out DIR]
 
 Flags (run mode):
-  --profile P[,P2,...]     Comma-separated profile IDs (required for run/--plan/preflight)
-  --bench-set B            Bench-set ID (required for run/--plan)
-  --reps N                 Override default_reps from the bench-set
-  --out DIR                Output root (default: benchmark-results)
-  --plan                   Validate + print matrix; pure, no side effects
-  --force-rerun            Re-run cells whose final_status is terminal
-  --retry-invalid          Re-run cells whose final_status == invalid
+  --profile P[,P2,...]   Comma-separated profile IDs (required)
+  --bench-set B[,B2,...] Comma-separated bench-set IDs (required)
+  --plan                 Validate + print matrix; pure, no side effects
+  --out DIR              Output root (default: benchmark-results); ignored under --plan
 EOF
 }
 
-# resolve_fiz_bench prints the path to a usable `fiz-bench` binary.
-#   1. $FIZ_BENCH if set and executable
-#   2. .local/share/fizeau/benchmark-bin/fiz-bench (repo-built artifact)
-#   3. fiz-bench on PATH (may lag behind repo HEAD)
-#   4. fall back to `go run ./cmd/bench`
-resolve_fiz_bench() {
-  if [[ -n "${FIZ_BENCH:-}" && -x "${FIZ_BENCH}" ]]; then
-    printf '%s\n' "${FIZ_BENCH}"
-    return
-  fi
-  local cached="${REPO_ROOT}/.local/share/fizeau/benchmark-bin/fiz-bench"
-  if [[ -x "${cached}" ]]; then
-    printf '%s\n' "${cached}"
-    return
-  fi
-  if command -v fiz-bench >/dev/null 2>&1; then
-    command -v fiz-bench
-    return
-  fi
-  # Last resort: `go run` from repo root. Slower, but works in CI.
-  printf 'GO_RUN\n'
-}
-
-# fiz_bench dispatches to either an executable or `go run`.
-fiz_bench() {
-  local resolved
-  resolved="$(resolve_fiz_bench)"
-  if [[ "${resolved}" == "GO_RUN" ]]; then
-    ( cd "${REPO_ROOT}" && go run ./cmd/bench "$@" )
-  else
-    "${resolved}" "$@"
-  fi
-}
+# ---------------------------------------------------------------------------
+# Listing subcommands
+# ---------------------------------------------------------------------------
 
 cmd_profiles() {
+  local f
   local entries=()
   shopt -s nullglob
   for f in "${PROFILES_DIR}"/*.yaml "${PROFILES_DIR}"/*.yml; do
-    [[ -e "${f}" ]] || continue
     entries+=("$(basename "${f%.*}")")
   done
   shopt -u nullglob
   if [[ ${#entries[@]} -eq 0 ]]; then
-    echo "No profiles found in ${PROFILES_DIR}." >&2
+    warn "no profiles found in ${PROFILES_DIR}"
     return 0
   fi
   printf '%s\n' "${entries[@]}" | LC_ALL=C sort -u
 }
 
 cmd_bench_sets() {
+  local f
   local entries=()
   shopt -s nullglob
   for f in "${BENCH_SETS_DIR}"/*.yaml "${BENCH_SETS_DIR}"/*.yml; do
-    [[ -e "${f}" ]] || continue
     entries+=("$(basename "${f%.*}")")
   done
   shopt -u nullglob
   if [[ ${#entries[@]} -eq 0 ]]; then
-    echo "No bench-sets found in ${BENCH_SETS_DIR}." >&2
+    warn "no bench-sets found in ${BENCH_SETS_DIR}"
     return 0
   fi
   printf '%s\n' "${entries[@]}" | LC_ALL=C sort -u
 }
 
-cmd_validate() {
-  # Fast offline schema + cross-reference check. Walks every profile and
-  # bench-set; cross-checks concurrency groups. No network calls.
-  local rc=0
-  shopt -s nullglob
-  for f in "${PROFILES_DIR}"/*.yaml "${PROFILES_DIR}"/*.yml; do
-    [[ -e "${f}" ]] || continue
-    local id; id="$(basename "${f%.*}")"
-    if ! fiz_bench profiles list --dir "${PROFILES_DIR}" --json >/dev/null 2>&1; then
-      echo "validate: profile load failed: ${f}" >&2
-      rc=1
-      break
-    fi
-    # Inline per-id load via plan helper would require a bench-set; skip
-    # per-id pass once the bulk loader succeeds.
-    : "${id}"
+# list_adapter_dir prints one "<name>\t<summary>" line per executable file.
+# Files without a `# SUMMARY:` line on line 2 print "(no summary)" so the
+# omission is visible. CONTRACT.md and other non-executables are skipped.
+list_adapter_dir() {
+  local dir="$1"
+  [[ -d "${dir}" ]] || { warn "directory missing: ${dir}"; return 0; }
+  local f name summary
+  local rows=()
+  shopt -s nullglob dotglob
+  for f in "${dir}"/*; do
+    [[ -f "${f}" && -x "${f}" ]] || continue
+    name="$(basename "${f}")"
+    summary="$(sed -n '2{/^# SUMMARY:[[:space:]]*/{s///;p;};q;}' "${f}")"
+    [[ -n "${summary}" ]] || summary="(no summary)"
+    rows+=("$(printf '%s\t%s' "${name}" "${summary}")")
   done
-  for f in "${BENCH_SETS_DIR}"/*.yaml "${BENCH_SETS_DIR}"/*.yml; do
-    [[ -e "${f}" ]] || continue
-    local id; id="$(basename "${f%.*}")"
-    if ! fiz_bench bench-sets list --dir "${BENCH_SETS_DIR}" --json >/dev/null 2>&1; then
-      echo "validate: bench-set load failed: ${f}" >&2
-      rc=1
-      break
-    fi
-    : "${id}"
-  done
-  shopt -u nullglob
-  if [[ ${rc} -eq 0 ]]; then
-    echo "validate: ok"
+  shopt -u nullglob dotglob
+  if [[ ${#rows[@]} -eq 0 ]]; then
+    warn "no adapters found in ${dir}"
+    return 0
   fi
-  return ${rc}
+  printf '%s\n' "${rows[@]}" | LC_ALL=C sort -u
 }
 
-# cmd_plan calls fiz-bench plan and prints the matrix; pure.
-cmd_plan() {
-  local profile="$1"; shift
-  local bench_set="$1"; shift
-  local reps="${1:-0}"
-  local args=( plan --profile "${profile}" --bench-set "${bench_set}"
-               --profiles-dir "${PROFILES_DIR}"
-               --bench-sets-dir "${BENCH_SETS_DIR}"
-               --concurrency-groups "${CONCURRENCY_GROUPS}" )
-  if [[ "${reps}" -gt 0 ]]; then
-    args+=( --reps "${reps}" )
-  fi
-  fiz_bench "${args[@]}"
+cmd_harness_adapters() { list_adapter_dir "${HARNESS_ADAPTERS_DIR}"; }
+cmd_task_executors() { list_adapter_dir "${TASK_EXECUTORS_DIR}"; }
+
+# ---------------------------------------------------------------------------
+# Matrix expansion (yq -o=json + jq)
+# ---------------------------------------------------------------------------
+
+resolve_profile_file() {
+  local id="$1" f
+  for f in "${PROFILES_DIR}/${id}.yaml" "${PROFILES_DIR}/${id}.yml"; do
+    if [[ -f "${f}" ]]; then printf '%s\n' "${f}"; return 0; fi
+  done
+  die "profile not found: ${id} (looked in ${PROFILES_DIR})"
 }
 
-cmd_plan_json() {
-  local profile="$1"; shift
-  local bench_set="$1"; shift
-  local reps="${1:-0}"
-  local args=( plan --profile "${profile}" --bench-set "${bench_set}" --json
-               --profiles-dir "${PROFILES_DIR}"
-               --bench-sets-dir "${BENCH_SETS_DIR}"
-               --concurrency-groups "${CONCURRENCY_GROUPS}" )
-  if [[ "${reps}" -gt 0 ]]; then
-    args+=( --reps "${reps}" )
+resolve_bench_set_file() {
+  local id="$1" f
+  for f in "${BENCH_SETS_DIR}/${id}.yaml" "${BENCH_SETS_DIR}/${id}.yml"; do
+    if [[ -f "${f}" ]]; then printf '%s\n' "${f}"; return 0; fi
+  done
+  die "bench-set not found: ${id} (looked in ${BENCH_SETS_DIR})"
+}
+
+# bench_set_json emits the bench-set as JSON.
+bench_set_json() {
+  local file="$1"
+  yq -o=json '.' "${file}"
+}
+
+# resolve_tasks emits one task id per line for a bench-set.
+# Handles three shapes:
+#   tasks: [id, id, ...]         inline list
+#   tasks: all                   defer to harness dataset; emit "*all*"
+#   tasks_from: <path>           load tasks[].id from a sibling YAML
+resolve_tasks() {
+  local bs_file="$1"
+  local bs_json tasks_kind tasks_from
+  bs_json="$(bench_set_json "${bs_file}")"
+
+  tasks_kind="$(jq -r '
+    if (.tasks // null) == null then "none"
+    elif (.tasks | type) == "array" then "list"
+    elif (.tasks | type) == "string" then ("string:" + .tasks)
+    else "other"
+    end' <<<"${bs_json}")"
+
+  tasks_from="$(jq -r '.tasks_from // ""' <<<"${bs_json}")"
+
+  if [[ "${tasks_kind}" == "list" ]]; then
+    jq -r '.tasks[]' <<<"${bs_json}"
+    return 0
   fi
-  fiz_bench "${args[@]}"
+  if [[ "${tasks_kind}" == "string:all" ]]; then
+    # Defer to the harness dataset. The plan path emits a sentinel so
+    # operators see the contract; the run path (PR A4) expands at execution.
+    printf '*all*\n'
+    return 0
+  fi
+  if [[ -n "${tasks_from}" ]]; then
+    local resolved
+    resolved="$(cd "$(dirname "${bs_file}")" && cd "$(dirname "${tasks_from}")" && pwd)/$(basename "${tasks_from}")"
+    [[ -f "${resolved}" ]] || die "tasks_from path not found: ${tasks_from} (resolved to ${resolved})"
+    yq -o=json '.' "${resolved}" \
+      | jq -r '
+          if (.tasks | type) == "array" then
+            .tasks[] | (if type == "object" then .id else . end)
+          else
+            empty
+          end'
+    return 0
+  fi
+  die "bench-set ${bs_file}: no .tasks list, .tasks: all, or .tasks_from set"
+}
+
+# bench_set_framework prints the framework name for the bench-set.
+bench_set_framework() {
+  local bs_json
+  bs_json="$(bench_set_json "$1")"
+  jq -r '.framework // "unknown"' <<<"${bs_json}"
+}
+
+# bench_set_dataset prints the dataset name for the bench-set.
+bench_set_dataset() {
+  local bs_json
+  bs_json="$(bench_set_json "$1")"
+  jq -r '.dataset // "unknown"' <<<"${bs_json}"
+}
+
+# bench_set_reps prints the resolved rep count (default_reps, fallback 1).
+bench_set_reps() {
+  local bs_json
+  bs_json="$(bench_set_json "$1")"
+  jq -r '.default_reps // 1' <<<"${bs_json}"
+}
+
+# default_task_executor: harbor when terminal-bench, else "unknown".
+default_task_executor_for_framework() {
+  case "$1" in
+    terminal-bench) printf 'harbor\n' ;;
+    *)              printf 'unknown\n' ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# --plan: print matrix
+# ---------------------------------------------------------------------------
+
+# print_plan emits one line per (profile, task, rep) cell. Pure: no writes.
+print_plan() {
+  local profiles_csv="$1" bench_sets_csv="$2"
+  IFS=',' read -r -a profile_ids <<<"${profiles_csv}"
+  IFS=',' read -r -a bench_set_ids <<<"${bench_sets_csv}"
+
+  local profile_id bs_id bs_file framework dataset reps task_executor tasks
+  local rep i n
+
+  for profile_id in "${profile_ids[@]}"; do
+    [[ -n "${profile_id}" ]] || continue
+    resolve_profile_file "${profile_id}" >/dev/null  # existence check
+    for bs_id in "${bench_set_ids[@]}"; do
+      [[ -n "${bs_id}" ]] || continue
+      bs_file="$(resolve_bench_set_file "${bs_id}")"
+      framework="$(bench_set_framework "${bs_file}")"
+      dataset="$(bench_set_dataset "${bs_file}")"
+      reps="$(bench_set_reps "${bs_file}")"
+      task_executor="$(default_task_executor_for_framework "${framework}")"
+      tasks="$(resolve_tasks "${bs_file}")"
+      i=0
+      while IFS= read -r task; do
+        [[ -n "${task}" ]] || continue
+        i=$((i + 1))
+        for ((rep = 1; rep <= reps; rep++)); do
+          n=$((rep))
+          printf 'profile=%s\tbench_set=%s\tframework=%s\tdataset=%s\ttask=%s\trep=%d/%d\ttask_executor=%s\n' \
+            "${profile_id}" "${bs_id}" "${framework}" "${dataset}" \
+            "${task}" "${n}" "${reps}" "${task_executor}"
+        done
+      done <<<"${tasks}"
+      [[ "${i}" -gt 0 ]] || die "bench-set ${bs_id}: no tasks resolved"
+    done
+  done
+}
+
+# ---------------------------------------------------------------------------
+# preflight: rebuild harbor-runner if image-content-sha drifted
+# ---------------------------------------------------------------------------
+
+# compute_harbor_source_sha mirrors build-harbor-runner.sh's algorithm: a
+# sha256 over harbor_adapters/* + harbor_agent.py + Dockerfile.harbor-runner.
+# Kept in sync by re-computing the same inputs; the two scripts MUST agree.
+compute_harbor_source_sha() {
+  local adapters_dir="${SCRIPT_DIR}/harbor_adapters"
+  local agent_file="${SCRIPT_DIR}/harbor_agent.py"
+  local dockerfile="${SCRIPT_DIR}/Dockerfile.harbor-runner"
+  [[ -d "${adapters_dir}" ]] || die "preflight: harbor_adapters/ missing (${adapters_dir})"
+  [[ -f "${agent_file}" ]] || die "preflight: harbor_agent.py missing (${agent_file})"
+  [[ -f "${dockerfile}" ]] || die "preflight: Dockerfile.harbor-runner missing (${dockerfile})"
+  {
+    LC_ALL=C find "${adapters_dir}" -type f \
+      | LC_ALL=C sort \
+      | while IFS= read -r f; do
+          printf '%s  %s\n' "$(sha256sum "${f}" | awk '{print $1}')" "${f#"${SCRIPT_DIR}/"}"
+        done
+    printf '%s  %s\n' "$(sha256sum "${agent_file}" | awk '{print $1}')" "harbor_agent.py"
+    printf '%s  %s\n' "$(sha256sum "${dockerfile}" | awk '{print $1}')" "Dockerfile.harbor-runner"
+  } | sha256sum | awk '{print $1}'
+}
+
+# cached_harbor_image_sha prints the image-content-sha label of the cached
+# image, or empty if the image is absent / the label is missing.
+cached_harbor_image_sha() {
+  local tag="$1"
+  command -v docker >/dev/null 2>&1 || { printf ''; return 0; }
+  docker image inspect --format '{{ index .Config.Labels "image-content-sha" }}' "${tag}" 2>/dev/null || printf ''
 }
 
 cmd_preflight() {
-  # Explicit endpoint probe — the only command that touches the network.
-  # PR 1d limits this to a placeholder that reuses `fiz-bench` once the
-  # `preflight` subcommand lands. Until then, surface a clear "not yet
-  # implemented" message rather than silently masking with --plan.
-  local profile="$1"
-  echo "preflight: endpoint probe for ${profile} (delegated to fiz-bench preflight; see PR 4 of plan-2026-05-15)" >&2
-  if fiz_bench preflight --profile "${profile}" 2>/dev/null; then
+  require_tool sha256sum
+  local source_sha cached_sha
+  source_sha="$(compute_harbor_source_sha)"
+  cached_sha="$(cached_harbor_image_sha "${HARBOR_IMAGE_TAG}")"
+  printf 'preflight: source image-content-sha=%s\n' "${source_sha}"
+  printf 'preflight: cached image-content-sha=%s\n' "${cached_sha:-<none>}"
+  if [[ -n "${cached_sha}" && "${cached_sha}" == "${source_sha}" ]]; then
+    printf 'preflight: harbor-runner image up to date; skipping rebuild\n'
     return 0
   fi
-  echo "preflight: fiz-bench preflight subcommand not yet wired; rerun once PR 4 lands" >&2
-  return 1
+  [[ -x "${HARBOR_BUILD_SCRIPT}" ]] || die "preflight: build script missing or not executable: ${HARBOR_BUILD_SCRIPT}"
+  require_tool docker
+  printf 'preflight: rebuilding harbor-runner (source sha differs)\n'
+  IMAGE_TAG="${HARBOR_IMAGE_TAG}" "${HARBOR_BUILD_SCRIPT}"
 }
 
-# main subcommand dispatch.
+# ---------------------------------------------------------------------------
+# validate (placeholder until PR C)
+# ---------------------------------------------------------------------------
+
+cmd_validate() {
+  warn "validate: schema + cross-reference checks land in PR C; this is a placeholder"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# main dispatch
+# ---------------------------------------------------------------------------
+
 main() {
-  local profile=""
-  local bench_set=""
-  local reps=0
+  if [[ $# -eq 0 ]]; then
+    usage
+    exit 2
+  fi
+
+  local profile_csv=""
+  local bench_set_csv=""
   local plan=0
-  local force_rerun=0  # reserved for run path
-  local retry_invalid=0
   local out=""
   local positional=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --profile)        profile="$2"; shift 2 ;;
-      --bench-set)      bench_set="$2"; shift 2 ;;
-      --reps)           reps="$2"; shift 2 ;;
-      --out)            out="$2"; shift 2 ;;
+      --profile)        profile_csv="${2:?--profile requires a value}"; shift 2 ;;
+      --bench-set)      bench_set_csv="${2:?--bench-set requires a value}"; shift 2 ;;
       --plan)           plan=1; shift ;;
-      --force-rerun)    force_rerun=1; shift ;;
-      --retry-invalid)  retry_invalid=1; shift ;;
+      --out)            out="${2:?--out requires a value}"; shift 2 ;;
       -h|--help|help)   usage; exit 0 ;;
       --)               shift; positional+=("$@"); break ;;
       -*)               die "unknown flag: $1" ;;
@@ -224,39 +352,28 @@ main() {
   local sub=""
   if [[ ${#positional[@]} -gt 0 ]]; then
     sub="${positional[0]}"
-    positional=("${positional[@]:1}")
   fi
 
   case "${sub}" in
-    profiles)
-      cmd_profiles
-      ;;
-    bench-sets|bench_sets)
-      cmd_bench_sets
-      ;;
-    validate)
-      cmd_validate
-      ;;
-    preflight)
-      [[ -n "${profile}" ]] || die "preflight: --profile is required"
-      cmd_preflight "${profile}"
-      ;;
-    ""|run)
-      [[ -n "${profile}" ]] || die "--profile is required"
-      [[ -n "${bench_set}" ]] || die "--bench-set is required"
+    profiles)          cmd_profiles ;;
+    bench-sets)        cmd_bench_sets ;;
+    harness-adapters)  cmd_harness_adapters ;;
+    task-executors)    cmd_task_executors ;;
+    validate)          cmd_validate ;;
+    preflight)         cmd_preflight ;;
+    "")
+      require_tool yq
+      require_tool jq
+      [[ -n "${profile_csv}" ]]   || die "--profile is required"
+      [[ -n "${bench_set_csv}" ]] || die "--bench-set is required"
       if [[ ${plan} -eq 1 ]]; then
-        cmd_plan "${profile}" "${bench_set}" "${reps}"
+        print_plan "${profile_csv}" "${bench_set_csv}"
         exit 0
       fi
-      # Run path lands in a later PR; until then, we print the matrix and
-      # exit with a clear message so operators see the new contract without
-      # the runner silently no-op'ing.
-      echo "benchmark: run path not yet wired (see plan PR 1d follow-ups); use --plan, validate, or preflight" >&2
-      echo "(executing --plan output for context)" >&2
-      cmd_plan "${profile}" "${bench_set}" "${reps}"
-      # Acknowledge unused-but-parsed flags so shellcheck stays quiet and
-      # future maintainers see the contract.
-      : "${force_rerun}" "${retry_invalid}" "${out}"
+      # Run path lands in a follow-up bead (A4). Acknowledge --out so it
+      # is consumed in this skeleton without tripping shellcheck on unused.
+      : "${out}"
+      warn "run path not yet wired (lands in bead A4); use --plan, preflight, or a listing subcommand"
       exit 2
       ;;
     *)
