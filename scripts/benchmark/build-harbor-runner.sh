@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 IMAGE_TAG="${IMAGE_TAG:-fizeau-harbor-runner:latest}"
 DOCKERFILE="${SCRIPT_DIR}/Dockerfile.harbor-runner"
 ADAPTERS_DIR="${SCRIPT_DIR}/harbor_adapters"
-AGENT_FILE="${SCRIPT_DIR}/harbor_agent.py"
+HARBOR_AGENT_PATH="${SCRIPT_DIR}/harbor_agent.py"
 
 compute_content_sha() {
   {
@@ -20,7 +20,7 @@ compute_content_sha() {
       | while IFS= read -r f; do
           printf '%s  %s\n' "$(sha256sum "$f" | awk '{print $1}')" "${f#${SCRIPT_DIR}/}"
         done
-    printf '%s  %s\n' "$(sha256sum "${AGENT_FILE}" | awk '{print $1}')" "harbor_agent.py"
+    printf '%s  %s\n' "$(sha256sum "${HARBOR_AGENT_PATH}" | awk '{print $1}')" "harbor_agent.py"
     printf '%s  %s\n' "$(sha256sum "${DOCKERFILE}" | awk '{print $1}')" "Dockerfile.harbor-runner"
   } | sha256sum | awk '{print $1}'
 }

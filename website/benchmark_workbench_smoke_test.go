@@ -503,6 +503,7 @@ func newBrowserContext(t *testing.T, chromePath string) context.Context {
 			chromedp.Flag("headless", true),
 			chromedp.Flag("disable-gpu", true),
 			chromedp.Flag("no-sandbox", true),
+			chromedp.WSURLReadTimeout(90*time.Second),
 		)...,
 	)
 	t.Cleanup(allocCancel)
