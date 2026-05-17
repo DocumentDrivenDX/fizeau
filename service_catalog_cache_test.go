@@ -334,6 +334,156 @@ func TestNewCatalogCacheKey_EmptyHeadersHashZero(t *testing.T) {
 	assert.Equal(t, k1, k2, "nil and empty headers must produce identical keys")
 }
 
+// TestCatalogCacheRecordsDispatchFailureAsUnreachable verifies that a chat-
+// completions dispatch failure with a transport-class error feeds back into
+// the cache as UnreachableAt, even when probeOpenAIModels was never called.
+// Reproduces the bug from fizeau-e8f12982: probe-only feedback made
+// dial-failed endpoints stay "available" until the next /v1/models probe.
+func TestCatalogCacheRecordsDispatchFailureAsUnreachable(t *testing.T) {
+	clock := newStubClock()
+	cache := testCache(clock)
+	key := testKey("http://bragi:8020/v1")
+
+	// T0: probe succeeds; entry exists with FetchedAt = T0, UnreachableAt zero.
+	_, err := cache.Get(context.Background(), key, func(context.Context) ([]string, error) {
+		return []string{"model-a"}, nil
+	})
+	require.NoError(t, err)
+	cache.mu.Lock()
+	before := cache.mem[key]
+	assert.False(t, before.FetchedAt.IsZero(), "probe must seed FetchedAt")
+	assert.True(t, before.UnreachableAt.IsZero(), "successful probe must leave UnreachableAt zero")
+	cache.mu.Unlock()
+
+	// T1: dispatch fails with i/o timeout — mimic the bragi:8020 symptom.
+	clock.advance(2 * time.Second)
+	t1 := clock.Now()
+	dispatchErr := errors.New(`Post "http://bragi:8020/v1/chat/completions": dial tcp 100.127.38.115:8020: i/o timeout`)
+	cache.RecordDispatchError(key, dispatchErr)
+
+	cache.mu.Lock()
+	after := cache.mem[key]
+	cache.mu.Unlock()
+	assert.Equal(t, t1, after.UnreachableAt, "dispatch failure must stamp UnreachableAt at T1")
+	require.Error(t, after.LastErr)
+	assert.Contains(t, after.LastErr.Error(), "i/o timeout", "LastErr must carry the dispatch error")
+}
+
+// TestCatalogCache_NoSilentRecoveryFromUnreachable verifies that after a
+// dispatch failure marks an endpoint unreachable, the next Get within the
+// UnreachableCooldown does NOT re-probe and does NOT silently return a
+// fresh/stale cached success — even though the prior successful FetchedAt
+// is still within StaleTTL.
+func TestCatalogCache_NoSilentRecoveryFromUnreachable(t *testing.T) {
+	clock := newStubClock()
+	cache := testCache(clock) // FreshTTL=10s, StaleTTL=60s, UnreachableCooldown=5s
+	key := testKey("http://host/v1")
+
+	var probeCalls atomic.Int32
+	probe := func(ctx context.Context) ([]string, error) {
+		probeCalls.Add(1)
+		return []string{"model-a"}, nil
+	}
+
+	// Seed with a successful probe.
+	_, err := cache.Get(context.Background(), key, probe)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, probeCalls.Load())
+
+	// Record a dispatch failure (no probe runs).
+	clock.advance(1 * time.Second)
+	dispatchErr := errors.New("dial tcp 1.2.3.4:5: connection refused")
+	cache.RecordDispatchError(key, dispatchErr)
+	assert.EqualValues(t, 1, probeCalls.Load(), "RecordDispatchError must not re-probe")
+
+	// Within UnreachableCooldown (5s) the next Get returns the cached
+	// dispatch error and does NOT re-probe — even though FetchedAt is
+	// still within FreshTTL (10s) and StaleTTL (60s).
+	clock.advance(2 * time.Second)
+	r, err := cache.Get(context.Background(), key, probe)
+	require.Error(t, err, "Get within cooldown must return the dispatch error, not a stale success")
+	assert.Contains(t, err.Error(), "connection refused")
+	assert.True(t, r.FromCache)
+	assert.EqualValues(t, 1, probeCalls.Load(), "must not silently recover by re-probing within cooldown")
+
+	// Past cooldown, re-probe is allowed.
+	clock.advance(10 * time.Second)
+	_, err = cache.Get(context.Background(), key, probe)
+	require.NoError(t, err, "after cooldown probe re-runs and succeeds")
+	assert.EqualValues(t, 2, probeCalls.Load(), "must re-probe after cooldown expires")
+}
+
+// TestCatalogCache_RecordDispatchErrorIgnoresNonReachabilityErrors verifies
+// that auth/protocol errors don't poison the cache as endpoint-unreachable.
+// Probe-only path semantics are preserved (AC6).
+func TestCatalogCache_RecordDispatchErrorIgnoresNonReachabilityErrors(t *testing.T) {
+	clock := newStubClock()
+	cache := testCache(clock)
+	key := testKey("http://host/v1")
+
+	_, err := cache.Get(context.Background(), key, func(context.Context) ([]string, error) {
+		return []string{"model-a"}, nil
+	})
+	require.NoError(t, err)
+
+	// Auth error — not a reachability failure.
+	cache.RecordDispatchError(key, errors.New("HTTP 401: invalid api key"))
+	cache.mu.Lock()
+	e := cache.mem[key]
+	cache.mu.Unlock()
+	assert.True(t, e.UnreachableAt.IsZero(), "non-reachability error must not mark UnreachableAt")
+}
+
+// TestCatalogCache_RecordDispatchErrorOnReachabilityError verifies that
+// callers wrapping their dispatch error as *openai.ReachabilityError are
+// also recognized — defensive for adapter layers that wrap before returning.
+func TestCatalogCache_RecordDispatchErrorOnReachabilityError(t *testing.T) {
+	clock := newStubClock()
+	cache := testCache(clock)
+	key := testKey("http://host/v1")
+
+	reachErr := &openai.ReachabilityError{
+		Endpoint: "http://host/v1", Operation: "chat_completions", StatusCode: 502,
+		Cause: errors.New("upstream 502"),
+	}
+	cache.RecordDispatchError(key, reachErr)
+	cache.mu.Lock()
+	e := cache.mem[key]
+	cache.mu.Unlock()
+	assert.False(t, e.UnreachableAt.IsZero(), "ReachabilityError dispatch must stamp UnreachableAt")
+}
+
+// TestCatalogCache_FreshTTLLocalDefault verifies AC5: local deployment_class
+// providers resolve to a ≤15s FreshTTL (default 10s) while cloud providers
+// keep the default 60s. The bug this guards: a sleeping LMStudio on a
+// laptop stayed "available" in the cache for a full 60s window because the
+// default FreshTTL ignored deployment class.
+func TestCatalogCache_FreshTTLLocalDefault(t *testing.T) {
+	cache := newCatalogCache(catalogCacheOptions{})
+
+	localTTL := cache.freshTTLFor("local_free")
+	assert.LessOrEqual(t, localTTL, 15*time.Second,
+		"local-class FreshTTL must be ≤15s; got %v", localTTL)
+	assert.Greater(t, localTTL, time.Duration(0), "local-class FreshTTL must be positive")
+
+	for _, alias := range []string{"local", "community_self_hosted"} {
+		assert.Equal(t, localTTL, cache.freshTTLFor(alias),
+			"alias %q must resolve to the same local FreshTTL", alias)
+	}
+
+	assert.Equal(t, defaultCatalogFreshTTL, cache.freshTTLFor("managed_cloud_frontier"),
+		"cloud-class FreshTTL must remain the default")
+	assert.Equal(t, defaultCatalogFreshTTL, cache.freshTTLFor(""),
+		"unknown class must fall back to the default")
+}
+
+// TestCatalogCache_FreshTTLLocalConfigurable verifies the LocalFreshTTL
+// option overrides the default for operators that want a tighter window.
+func TestCatalogCache_FreshTTLLocalConfigurable(t *testing.T) {
+	cache := newCatalogCache(catalogCacheOptions{LocalFreshTTL: 3 * time.Second})
+	assert.Equal(t, 3*time.Second, cache.freshTTLFor("local_free"))
+}
+
 // Ensure helper functions don't cause data races under concurrent Get calls.
 func TestCatalogCache_RaceSafety(t *testing.T) {
 	clock := newStubClock()

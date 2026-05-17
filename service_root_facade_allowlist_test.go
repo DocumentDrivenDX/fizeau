@@ -42,6 +42,7 @@ func TestRootFacadeSourceAllowlist(t *testing.T) {
 		"service_capabilities.go",
 		"service_catalog_cache.go",
 		"service_catalog_impl_adapters.go",
+		"service_dispatch_feedback.go",
 		"service_events.go",
 		"service_execute.go",
 		"service_execute_dispatch.go",
