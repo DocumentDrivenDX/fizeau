@@ -1940,3 +1940,50 @@ func TestRouteRequest_ExcludedRoutesAllowsOtherCandidates(t *testing.T) {
 		t.Errorf("want model MiniMax-M2.5-MLX-4bit, got %q", dec.Model)
 	}
 }
+
+// TestPinnedModelRoutesThroughSubscriptionHarnessOverOpenrouterEntry pins
+// fizeau-59df1d15: when a caller pins --model sonnet-4.6 (no --harness /
+// --provider override) and Inputs include both a healthy claude subscription
+// harness whose SupportedModels covers sonnet-4.6 and an openrouter
+// HarnessEntry whose DiscoveredIDs cover anthropic/claude-sonnet-4-6, the
+// engine must dispatch through the claude subscription harness rather than
+// silently falling through to the per-token openrouter route. Both harnesses
+// must remain visible in the candidate list so the operator can see the
+// alternative was considered, not silently dropped.
+func TestPinnedModelRoutesThroughSubscriptionHarnessOverOpenrouterEntry(t *testing.T) {
+	in := modelPinSubscriptionFixture()
+
+	dec, err := Resolve(Request{Model: "sonnet-4.6"}, in)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if dec.Harness != "claude" {
+		t.Fatalf("Decision.Harness=%q, want claude; candidates=%+v", dec.Harness, dec.Candidates)
+	}
+	if dec.Model != "sonnet-4.6" {
+		t.Fatalf("Decision.Model=%q, want sonnet-4.6", dec.Model)
+	}
+
+	var (
+		claudeCandidate     *Candidate
+		openrouterCandidate *Candidate
+	)
+	for i := range dec.Candidates {
+		c := &dec.Candidates[i]
+		switch {
+		case c.Harness == "claude":
+			claudeCandidate = c
+		case c.Harness == "fiz" && c.Provider == "openrouter":
+			openrouterCandidate = c
+		}
+	}
+	if claudeCandidate == nil {
+		t.Fatalf("claude harness missing from candidate list; candidates=%+v", dec.Candidates)
+	}
+	if !claudeCandidate.Eligible {
+		t.Errorf("claude harness candidate silently excluded on pinned-by-name request: %+v", *claudeCandidate)
+	}
+	if openrouterCandidate == nil {
+		t.Fatalf("openrouter HarnessEntry missing from candidate list; candidates=%+v", dec.Candidates)
+	}
+}
