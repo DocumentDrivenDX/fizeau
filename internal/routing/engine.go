@@ -315,6 +315,21 @@ const (
 	// headers) — credit_exhausted is an account-spend ceiling that does not
 	// recover on a fixed retry_after.
 	FilterReasonCreditExhausted FilterReason = "credit_exhausted"
+	// FilterReasonCredentialInvalid: provider rejected the configured API key
+	// (e.g. a 401 from openrouter's /api/v1/credits endpoint). Distinct from
+	// FilterReasonCredentialMissing — a present-but-rejected key requires
+	// rotation, not configuration. Evidence body carries the originating HTTP
+	// status code so operators can triage from routing_decision without grepping
+	// logs.
+	FilterReasonCredentialInvalid FilterReason = "credential_invalid"
+	// FilterReasonProviderUnreachable: a best-effort probe against the
+	// provider's account endpoint failed transiently (DNS, TCP, TLS, or non-401
+	// 5xx). The candidate is gated only for the current freshness window; the
+	// next successful probe restores eligibility automatically, so a single bad
+	// minute does not hard-exclude the provider. Distinct from
+	// FilterReasonEndpointUnreachable, which gates on the routing aliveness
+	// probe rather than account-state probes.
+	FilterReasonProviderUnreachable FilterReason = "provider_unreachable"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -468,6 +483,21 @@ type Inputs struct {
 	// no network I/O ever happens here.
 	ProviderCreditExhausted map[string]ProviderCreditExhaustedEvidence
 
+	// ProviderCredentialInvalid maps provider name → evidence that the
+	// configured API key was rejected by the provider (e.g. a 401 from a
+	// credit/account-state probe). Hard gate: a listed candidate is
+	// disqualified with FilterReasonCredentialInvalid. Distinct from
+	// ProviderCredentialMissing — the key is present, just not accepted.
+	ProviderCredentialInvalid map[string]ProviderCredentialInvalidEvidence
+
+	// ProviderProbeUnreachable maps provider name → evidence of a transient
+	// probe failure against the provider's account endpoint (transport error
+	// or non-401 5xx). Soft gate per the current freshness window: a listed
+	// candidate is disqualified with FilterReasonProviderUnreachable, but the
+	// next successful probe pass clears the entry. Distinct from
+	// ProbeUnreachable, which tracks routing-aliveness probes.
+	ProviderProbeUnreachable map[string]ProviderProbeUnreachableEvidence
+
 	Now              time.Time // injected for deterministic testing; default time.Now()
 	ModelEligibility func(model string) (ModelEligibility, bool)
 
@@ -489,6 +519,38 @@ type ProviderCreditExhaustedEvidence struct {
 	// ThresholdUSD is the configured floor; balance below this triggers the gate.
 	ThresholdUSD float64
 	// ObservedAt is when the balance reading was taken by the credit probe.
+	ObservedAt time.Time
+}
+
+// ProviderCredentialInvalidEvidence is the per-provider account-probe
+// rejection that fed the credential_invalid gate. The originating HTTP
+// status (typically 401) is carried so routing_decision evidence rows
+// surface the root cause directly.
+type ProviderCredentialInvalidEvidence struct {
+	// HTTPStatus is the status code returned by the provider's account
+	// endpoint. Typically 401 (Unauthorized) or 403 (Forbidden).
+	HTTPStatus int
+	// ObservedAt is when the rejection was observed by the probe.
+	ObservedAt time.Time
+}
+
+// ProviderProbeUnreachableEvidence is the per-provider account-probe
+// transient failure that fed the provider_unreachable gate. The evidence
+// distinguishes HTTP failures (StatusCode != 0) from transport errors
+// (ErrorClass set, StatusCode == 0) so the operator can triage without
+// log spelunking.
+type ProviderProbeUnreachableEvidence struct {
+	// StatusCode is the HTTP status code observed on a non-401 server-side
+	// failure (e.g. 502, 503, 504). Zero when the failure happened before any
+	// HTTP response was received.
+	StatusCode int
+	// ErrorClass is the transport-failure category for non-HTTP failures
+	// (e.g. "transport_error"). Empty when StatusCode != 0.
+	ErrorClass string
+	// Message is a short human-readable form of the original error or status
+	// line, suitable for inclusion in evidence text.
+	Message string
+	// ObservedAt is when the failed probe attempt returned.
 	ObservedAt time.Time
 }
 
@@ -1429,6 +1491,59 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				}
 			}
 
+			// Credential-invalid gate: account-state probe returned 401, meaning
+			// the configured API key is present but rejected. The fix is key
+			// rotation, distinct from FilterReasonCredentialMissing (configure a
+			// key).
+			if eligible && len(in.ProviderCredentialInvalid) > 0 {
+				identity := candidateProviderIdentity(h, p)
+				if ev, ok := lookupCredentialInvalid(in.ProviderCredentialInvalid, identity); ok {
+					eligible = false
+					candidateReason = fmt.Sprintf(
+						"provider %s credential rejected (HTTP %d from credit probe, observed %s)",
+						identity,
+						ev.HTTPStatus,
+						ev.ObservedAt.UTC().Format(time.RFC3339),
+					)
+					filterReason = FilterReasonCredentialInvalid
+				}
+			}
+
+			// Provider-unreachable gate (account-state probe): transient
+			// transport failure or non-401 5xx from the provider's account
+			// endpoint. Soft fail-open: the entry only lasts for the current
+			// freshness window, so the next successful probe restores
+			// eligibility automatically.
+			if eligible && len(in.ProviderProbeUnreachable) > 0 {
+				identity := candidateProviderIdentity(h, p)
+				if ev, ok := lookupProbeUnreachable(in.ProviderProbeUnreachable, identity); ok {
+					eligible = false
+					detail := ev.Message
+					if ev.StatusCode != 0 {
+						candidateReason = fmt.Sprintf(
+							"provider %s unreachable (HTTP %d from credit probe: %s, observed %s)",
+							identity,
+							ev.StatusCode,
+							detail,
+							ev.ObservedAt.UTC().Format(time.RFC3339),
+						)
+					} else {
+						class := ev.ErrorClass
+						if class == "" {
+							class = "transport_error"
+						}
+						candidateReason = fmt.Sprintf(
+							"provider %s unreachable (%s from credit probe: %s, observed %s)",
+							identity,
+							class,
+							detail,
+							ev.ObservedAt.UTC().Format(time.RFC3339),
+						)
+					}
+					filterReason = FilterReasonProviderUnreachable
+				}
+			}
+
 			localHealthUnknown := false
 			if eligible && p.Name != "" && req.Provider != candidateProviderIdentity(h, p) && candidateIsLocal(h, p) {
 				_, localHealthUnknown = in.ProbeUnknown[p.Name]
@@ -1604,6 +1719,44 @@ func lookupCredentialMissing(m map[string]string, identity string) (string, bool
 		}
 	}
 	return "", false
+}
+
+// lookupCredentialInvalid resolves credential-invalid evidence for a routing
+// identity. Mirrors lookupCreditExhausted's @endpoint-aware fallback so
+// service config keyed by base provider name still matches endpoint-split
+// candidate identities.
+func lookupCredentialInvalid(m map[string]ProviderCredentialInvalidEvidence, identity string) (ProviderCredentialInvalidEvidence, bool) {
+	if len(m) == 0 || identity == "" {
+		return ProviderCredentialInvalidEvidence{}, false
+	}
+	if ev, ok := m[identity]; ok {
+		return ev, true
+	}
+	if i := strings.IndexByte(identity, '@'); i > 0 {
+		if ev, ok := m[identity[:i]]; ok {
+			return ev, true
+		}
+	}
+	return ProviderCredentialInvalidEvidence{}, false
+}
+
+// lookupProbeUnreachable resolves provider-unreachable evidence for a routing
+// identity. Mirrors lookupCreditExhausted's @endpoint-aware fallback so
+// service config keyed by base provider name still matches endpoint-split
+// candidate identities.
+func lookupProbeUnreachable(m map[string]ProviderProbeUnreachableEvidence, identity string) (ProviderProbeUnreachableEvidence, bool) {
+	if len(m) == 0 || identity == "" {
+		return ProviderProbeUnreachableEvidence{}, false
+	}
+	if ev, ok := m[identity]; ok {
+		return ev, true
+	}
+	if i := strings.IndexByte(identity, '@'); i > 0 {
+		if ev, ok := m[identity[:i]]; ok {
+			return ev, true
+		}
+	}
+	return ProviderProbeUnreachableEvidence{}, false
 }
 
 func candidateBillingKind(h HarnessEntry, p ProviderEntry) modelcatalog.BillingModel {

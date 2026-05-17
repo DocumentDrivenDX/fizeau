@@ -777,11 +777,12 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	// the dispatch path.
 	providerCredentialMissing := providerCredentialMissingMap(s.opts.ServiceConfig)
 
-	// Credit-balance gate: openrouter providers whose cached account
-	// balance fell below the configured threshold are filtered out before
-	// dispatch. The probe is cached per-provider with a TTL so back-to-back
-	// Execute calls within the window share one /api/v1/credits round-trip.
-	providerCreditExhausted := s.openrouterCreditExhaustedMap(ctx, now)
+	// Credit-balance gate plus failure-mode classification: the credit probe
+	// produces credit_exhausted, credential_invalid, and provider_unreachable
+	// evidence in one cache pass. The probe is cached per-provider with a TTL
+	// so back-to-back Execute calls within the window share one
+	// /api/v1/credits round-trip.
+	probeMaps := s.openrouterProbeMaps(ctx, now)
 
 	return routing.Inputs{
 		Harnesses:                    entries,
@@ -792,7 +793,9 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ProbeUnreachable:             probeUnreachable,
 		ProbeUnknown:                 probeUnknown,
 		ProviderCredentialMissing:    providerCredentialMissing,
-		ProviderCreditExhausted:      providerCreditExhausted,
+		ProviderCreditExhausted:      probeMaps.CreditExhausted,
+		ProviderCredentialInvalid:    probeMaps.CredentialInvalid,
+		ProviderProbeUnreachable:     probeMaps.ProviderUnreachable,
 		CooldownDuration:             healthCooldownTTL,
 		Now:                          now,
 		ModelEligibility:             serviceRoutingModelEligibility(entries, cat),
