@@ -862,6 +862,14 @@ func credentialMissingForProvider(name string, pcfg ServiceProviderEntry) (strin
 	if key == "" {
 		return location, true
 	}
+	// Unexpanded env placeholder: config load preserves the literal
+	// "${VAR}" verbatim when VAR is unset (internal/config/config_test.go
+	// TestLoad_EnvExpansion_Unset). This catches both the bare placeholder
+	// and partial substitutions like "sk-or-${KEY_SUFFIX}" that would
+	// otherwise sneak past the prefix/length heuristic.
+	if strings.Contains(key, "${") {
+		return location, true
+	}
 	if !openrouterAPIKeyWellFormed(key) {
 		return location, true
 	}
