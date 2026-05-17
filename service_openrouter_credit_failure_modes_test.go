@@ -185,6 +185,87 @@ func TestOpenrouterRecoversFromTransientProbeFailure(t *testing.T) {
 	}
 }
 
+// TestOpenrouterTransportFailureThenRecoveryReleasesGate is the AC#4 test:
+// a transport failure (the bead phrases it as "server.Close before the first
+// probe", emulated here by a roundTripper that returns net.OpError) gates the
+// candidate as provider_unreachable for the freshness window; once the stub
+// recovers (transport flipped back to the real server) and the TTL elapses,
+// the next routing pass issues a fresh probe and the candidate returns to
+// eligible=true. Both observations are asserted in one test, exactly as the
+// AC requires.
+func TestOpenrouterTransportFailureThenRecoveryReleasesGate(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+
+	const ttl = 30 * time.Second
+
+	// The test server's handler responds with ample balance. The store's
+	// transport is initially gated so the first probe never reaches it; once
+	// "failing" flips, the default transport hits the live server.
+	var failing atomic.Bool
+	failing.Store(true)
+	svc, _, credits := openrouterCreditGateService(t, func(p *ServiceProviderEntry) {
+		p.CreditProbeTTL = ttl
+	}, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(openrouterCreditFixtureResponse(25.0)))
+	})
+	svc.openrouterCredit.transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if failing.Load() {
+			return nil, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
+		}
+		return http.DefaultTransport.RoundTrip(r)
+	})
+
+	// First observation: transport failure → provider_unreachable for the
+	// freshness window. The handler must not have been reached.
+	dec, err := svc.ResolveRoute(context.Background(), RouteRequest{})
+	dec = openrouterDecisionCandidates(t, dec, err)
+	candidate := findOpenRouterCandidate(t, dec)
+	if candidate.Eligible {
+		t.Fatalf("openrouter candidate eligible during transport-failure window: %#v", *candidate)
+	}
+	if candidate.FilterReason != string(routing.FilterReasonProviderUnreachable) {
+		t.Fatalf("openrouter FilterReason=%q after transport failure, want %q",
+			candidate.FilterReason, routing.FilterReasonProviderUnreachable)
+	}
+	if got := credits.Load(); got != 0 {
+		t.Fatalf("credits handler hits=%d after transport failure, want 0", got)
+	}
+
+	// Within the freshness window the cached unreachable record must be
+	// reused without issuing another probe.
+	_, _ = svc.ResolveRoute(context.Background(), RouteRequest{})
+	if got := credits.Load(); got != 0 {
+		t.Fatalf("credits handler hits=%d during freshness window, want 0 (must not re-probe)", got)
+	}
+
+	// Stub recovers: flip the transport to pass-through and rewind the cache
+	// past the TTL so the next routing pass triggers a fresh probe.
+	failing.Store(false)
+	rec, ok := svc.openrouterCredit.Lookup("openrouter")
+	if !ok {
+		t.Fatalf("expected cached unreachable record after first pass")
+	}
+	rec.ObservedAt = rec.ObservedAt.Add(-2 * ttl)
+	svc.openrouterCredit.Record("openrouter", rec)
+
+	// Second observation: a fresh probe after recovery flips the candidate
+	// back to eligible=true.
+	dec, err = svc.ResolveRoute(context.Background(), RouteRequest{})
+	dec = openrouterDecisionCandidates(t, dec, err)
+	candidate = findOpenRouterCandidate(t, dec)
+	if !candidate.Eligible {
+		t.Fatalf("openrouter candidate still ineligible after recovery probe (FilterReason=%q): %#v",
+			candidate.FilterReason, *candidate)
+	}
+	if candidate.FilterReason == string(routing.FilterReasonProviderUnreachable) {
+		t.Fatalf("openrouter still gated as provider_unreachable after recovery: %#v", *candidate)
+	}
+	if got := credits.Load(); got != 1 {
+		t.Fatalf("credits handler hits=%d after recovery probe, want 1 (one fresh probe expected)", got)
+	}
+}
+
 // roundTripFunc adapts a plain function into a http.RoundTripper. Used by
 // the transport-failure test to drive client.Do() down its error path.
 type roundTripFunc func(*http.Request) (*http.Response, error)
