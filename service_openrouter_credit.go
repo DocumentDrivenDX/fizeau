@@ -26,7 +26,9 @@ const (
 	// openrouterCreditFailureCredentialInvalid signals a 401 (or 403) from
 	// /api/v1/credits: the key is present but rejected. Maps to
 	// FilterReasonCredentialInvalid.
-	openrouterCreditFailureCredentialInvalid openrouterCreditFailureMode = "credential_invalid"
+	openrouterCreditFailureCredentialInvalid openrouterCreditFailureMode = openrouterCreditFailureMode(
+		routing.FilterReasonCredentialInvalid,
+	)
 	// openrouterCreditFailureProviderUnreachable signals a transient
 	// transport error or a non-401 server-side failure (4xx/5xx). Maps to
 	// FilterReasonProviderUnreachable and recovers on the next successful

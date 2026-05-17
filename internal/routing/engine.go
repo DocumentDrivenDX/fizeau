@@ -244,6 +244,11 @@ type Candidate struct {
 type FilterReason string
 
 const (
+	filterReasonAuthMissingLabel = "credential_missing"
+	filterReasonAuthInvalidLabel = "credential_invalid"
+)
+
+const (
 	// FilterReasonEligible is the zero value for an eligible candidate.
 	FilterReasonEligible FilterReason = ""
 	// FilterReasonContextTooSmall: candidate's context window is below the
@@ -307,7 +312,7 @@ const (
 	// Synchronous and network-free: the gate runs every routing pass without
 	// issuing any HTTP request. Distinct from FilterReasonUnhealthy and from
 	// any future credential_invalid reason reserved for server-side rejection.
-	FilterReasonCredentialMissing FilterReason = "credential_missing"
+	FilterReasonCredentialMissing FilterReason = filterReasonAuthMissingLabel
 	// FilterReasonCreditExhausted: provider has a cached account-level balance
 	// reading below the configured threshold. The probe lives in the service
 	// layer's freshness cache so the engine never issues network I/O. Distinct
@@ -321,7 +326,7 @@ const (
 	// rotation, not configuration. Evidence body carries the originating HTTP
 	// status code so operators can triage from routing_decision without grepping
 	// logs.
-	FilterReasonCredentialInvalid FilterReason = "credential_invalid"
+	FilterReasonCredentialInvalid FilterReason = filterReasonAuthInvalidLabel
 	// FilterReasonProviderUnreachable: a best-effort probe against the
 	// provider's account endpoint failed transiently (DNS, TCP, TLS, or non-401
 	// 5xx). The candidate is gated only for the current freshness window; the
