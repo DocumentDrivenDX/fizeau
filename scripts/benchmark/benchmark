@@ -55,7 +55,7 @@ Usage:
   ./benchmark validate
   ./benchmark preflight
   ./benchmark --profile P[,P2,...] --bench-set B[,B2,...] [--plan] [--out DIR]
-              [--force-rerun] [--retry-invalid] [--reps N]
+              [--force-rerun] [--retry-invalid] [--reps N] [--max-cost-usd X]
 
 Flags (run mode):
   --profile P[,P2,...]   Comma-separated profile IDs (required)
@@ -68,6 +68,11 @@ Flags (run mode):
                          (mid-run crash). New cell links via attempt_of; the
                          prior cell is back-written with superseded_by.
   --reps N               Override bench-set default_reps for every cell
+  --max-cost-usd X       USD cap on cumulative cost_usd_at_run_time. When the
+                         accumulator reaches the cap, the runner halts before
+                         the next cell; remaining cells are written as
+                         placeholders with final_status=budget_halted,
+                         process_outcome=setup_failed, and a note.
 EOF
 }
 
@@ -523,6 +528,177 @@ inspect_existing_cells() {
   shopt -u nullglob
 }
 
+# compute_cell_cost prints the cost_usd_at_run_time for a single cell. Uses
+# profile.pricing × token streams pulled from the cell's result.json. Token
+# field names follow the canonical report-level naming
+# (input_tokens / output_tokens / cached_input_tokens) and are also probed
+# under the harbor totals naming (total_prompt_tokens / total_completion_tokens
+# / total_cached_input_tokens) so harness-native token reporters land in the
+# same accumulator.
+#
+# When profile.pricing is all zero (or unset) and the executor wrote an
+# explicit cost_usd / total_cost_usd in result.json, the explicit value is
+# honored — that lets harnesses that observe API-reported cost directly
+# participate in budget enforcement.
+compute_cell_cost() {
+  local result_json="${1:-}" profile_json="${2:-}"
+  [[ -n "${result_json}" ]] || result_json='{}'
+  [[ -n "${profile_json}" ]] || profile_json='{}'
+  jq -nr \
+    --argjson result "${result_json}" \
+    --argjson profile "${profile_json}" \
+    '
+      def num(v): if (v == null) then 0 else (v | tonumber? // 0) end;
+      ($profile.pricing // {}) as $p
+      | num($p.input_usd_per_mtok)         as $pi
+      | num($p.output_usd_per_mtok)        as $po
+      | num($p.cached_input_usd_per_mtok)  as $pc
+      | num($result.input_tokens
+            // $result.total_prompt_tokens
+            // $result.n_input_tokens
+            // 0)                          as $ti
+      | num($result.output_tokens
+            // $result.total_completion_tokens
+            // $result.n_output_tokens
+            // 0)                          as $to
+      | num($result.cached_input_tokens
+            // $result.total_cached_input_tokens
+            // $result.n_cached_input_tokens
+            // 0)                          as $tc
+      | num($result.cost_usd // $result.total_cost_usd // 0) as $reported
+      | (($ti * $pi) + ($to * $po) + ($tc * $pc)) / 1000000  as $priced
+      | (if $priced > 0 then $priced
+         elif ($pi + $po + $pc) == 0 then $reported
+         else 0
+         end)
+      | tostring
+    '
+}
+
+# budget_path prints the canonical budget.json path under <out>.
+budget_path() {
+  printf '%s\n' "$1/budget.json"
+}
+
+# init_budget writes <out>/budget.json with the configured cap and an empty
+# accumulator. Idempotent: preserves existing cells/total when the cap
+# matches (resume case).
+init_budget() {
+  local out="$1" cap="$2"
+  local bp
+  bp="$(budget_path "${out}")"
+  if [[ -f "${bp}" ]]; then
+    local prev_cap
+    prev_cap="$(jq -r '.max_cost_usd // ""' "${bp}" 2>/dev/null || true)"
+    if [[ "${prev_cap}" == "${cap}" ]]; then
+      return 0
+    fi
+  fi
+  jq -n \
+    --argjson cap "${cap}" \
+    '{max_cost_usd:$cap, total_cost_usd:0, halted:false, cells:[]}' \
+    >"${bp}.tmp"
+  mv "${bp}.tmp" "${bp}"
+}
+
+# append_budget_cell folds one closed cell's cost into budget.json and prints
+# the post-update total_cost_usd. Halted flag flips true when the running
+# total meets or exceeds the cap.
+append_budget_cell() {
+  local out="$1" cell_id="$2" task="$3" profile_id="$4" cost="$5"
+  local bp tmp
+  bp="$(budget_path "${out}")"
+  tmp="$(mktemp)"
+  jq \
+    --arg cell_id "${cell_id}" \
+    --arg task "${task}" \
+    --arg profile "${profile_id}" \
+    --argjson cost "${cost}" \
+    '
+      .cells += [{cell_id:$cell_id, task:$task, profile:$profile, cost_usd:$cost}]
+      | .total_cost_usd = ((.total_cost_usd // 0) + $cost)
+      | .halted = ((.total_cost_usd >= (.max_cost_usd // 0))
+                   and ((.max_cost_usd // 0) > 0))
+    ' "${bp}" >"${tmp}"
+  mv "${tmp}" "${bp}"
+  jq -r '.total_cost_usd' "${bp}"
+}
+
+# budget_is_halted exits 0 when the budget cap has been hit (halted=true in
+# budget.json). Used by run_sweep to gate cells before invoking the executor.
+budget_is_halted() {
+  local bp
+  bp="$(budget_path "$1")"
+  [[ -f "${bp}" ]] || return 1
+  local halted
+  halted="$(jq -r '.halted // false' "${bp}")"
+  [[ "${halted}" == "true" ]]
+}
+
+# write_budget_halted_cell writes a placeholder cell that did not execute
+# because the budget cap had already been hit. final_status=budget_halted,
+# process_outcome=setup_failed, plus a 'note' that quotes the cap.
+write_budget_halted_cell() {
+  local out="$1" profile_id="$2" profile_file="$3"
+  local framework="$4" dataset="$5" dataset_dir="$6" task="$7"
+  local rep_idx="$8" total_reps="$9" cap="${10}"
+  local te_ver="${11}" hd="${12}"
+
+  local cell_id cell_dir
+  cell_id="$(new_cell_id)"
+  cell_dir="${out}/cells/${dataset_dir}/${task}/${cell_id}"
+  mkdir -p "${cell_dir}/session"
+  : >"${cell_dir}/fiz.txt"
+  : >"${cell_dir}/fiz.err"
+
+  local profile_json bp total
+  profile_json="$(yq -o=json '.' "${profile_file}")"
+  bp="$(budget_path "${out}")"
+  total="$(jq -r '.total_cost_usd // 0' "${bp}" 2>/dev/null || printf '0')"
+
+  local now rep_str note
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  rep_str="$(printf '%d/%d' "${rep_idx}" "${total_reps}")"
+  note="$(printf 'halted before cell: --max-cost-usd=%s reached (cumulative cost_usd_at_run_time=%s)' \
+                  "${cap}" "${total}")"
+
+  jq -n \
+    --argjson profile "${profile_json}" \
+    --arg task_id "${task}" \
+    --arg framework "${framework}" \
+    --arg dataset "${dataset}" \
+    --arg cell_id "${cell_id}" \
+    --arg now "${now}" \
+    --arg rep "${rep_str}" \
+    --arg te_ver "${te_ver}" \
+    --arg hd "${hd}" \
+    --arg note "${note}" \
+    --argjson cost 0 \
+    '{
+       task_id:$task_id,
+       framework:$framework,
+       dataset:$dataset,
+       cell_id:$cell_id,
+       started_at:$now,
+       finished_at:$now,
+       rep:$rep,
+       profile:$profile,
+       command:[],
+       env_redacted:{},
+       artifacts:{fiz_txt:"fiz.txt", fiz_err:"fiz.err", session_dir:"session"},
+       result:{},
+       final_status:"budget_halted",
+       invalid_class:"",
+       process_outcome:"setup_failed",
+       note:$note,
+       cost_usd_at_run_time:$cost,
+       task_executor_version:$te_ver,
+       harbor_runner_image_digest:$hd
+     }' >"${cell_dir}/report.json.tmp"
+  mv "${cell_dir}/report.json.tmp" "${cell_dir}/report.json"
+  printf '%s\n' "${cell_dir}"
+}
+
 # Run one cell start-to-finish: cell-state sentinel, harness-adapter command,
 # task-spec composition, task-executor invocation with retry, report.json
 # composition, sentinel cleanup, optional back-write of superseded_by into
@@ -619,6 +795,10 @@ run_one_cell() {
   local rep_str
   rep_str="$(printf '%d/%d' "${rep_idx}" "${total_reps}")"
 
+  local cost_usd
+  cost_usd="$(compute_cell_cost "${result_json}" "${profile_json}")"
+  [[ -n "${cost_usd}" ]] || cost_usd="0"
+
   local report
   report="$(jq -n \
     --argjson profile "${profile_json}" \
@@ -637,6 +817,7 @@ run_one_cell() {
     --arg hd "${hd}" \
     --arg rep "${rep_str}" \
     --arg attempt_of "${attempt_of}" \
+    --argjson cost "${cost_usd}" \
     '{
        task_id:$task_id,
        framework:$framework,
@@ -652,6 +833,7 @@ run_one_cell() {
        result:$result,
        final_status:$final_status,
        invalid_class:$invalid_class,
+       cost_usd_at_run_time:$cost,
        task_executor_version:$te_ver,
        harbor_runner_image_digest:$hd
      } | if $attempt_of != "" then . + {attempt_of:$attempt_of} else . end')"
@@ -681,11 +863,46 @@ run_one_cell() {
   printf '%s\n' "${cell_dir}"
 }
 
+# budget_or_run_cell either writes a budget-halted placeholder (when the
+# budget cap has been hit) or invokes run_one_cell. On success it appends the
+# cell's cost into <out>/budget.json so the halt flag flips for the next
+# cell. cap="" disables budget machinery entirely.
+budget_or_run_cell() {
+  local out="$1" profile_id="$2" profile_file="$3"
+  local framework="$4" dataset="$5" dataset_dir="$6" task="$7"
+  local rep_idx="$8" total_reps="$9" adapter="${10}" attempt_of="${11}"
+  local te_ver="${12}" hd="${13}" cap="${14}"
+
+  local cell_dir
+  if [[ -n "${cap}" ]] && budget_is_halted "${out}"; then
+    cell_dir="$(write_budget_halted_cell "${out}" "${profile_id}" "${profile_file}" \
+                  "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
+                  "${rep_idx}" "${total_reps}" "${cap}" "${te_ver}" "${hd}")"
+    printf '%s\n' "${cell_dir}"
+    return 0
+  fi
+
+  cell_dir="$(run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+                "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
+                "${rep_idx}" "${total_reps}" "${adapter}" "${attempt_of}" \
+                "${te_ver}" "${hd}")"
+
+  if [[ -n "${cap}" && -f "${cell_dir}/report.json" ]]; then
+    local cell_id cost
+    cell_id="$(jq -r '.cell_id // ""' "${cell_dir}/report.json")"
+    cost="$(jq -r '.cost_usd_at_run_time // 0' "${cell_dir}/report.json")"
+    [[ -n "${cost}" ]] || cost=0
+    append_budget_cell "${out}" "${cell_id}" "${task}" "${profile_id}" "${cost}" >/dev/null
+  fi
+  printf '%s\n' "${cell_dir}"
+}
+
 # run_sweep walks the (profile, bench-set, task, rep) matrix, applies resume /
 # retry rules, and runs one cell per slot.
 run_sweep() {
   local profiles_csv="$1" bench_sets_csv="$2" out="$3"
   local force_rerun="$4" retry_invalid="$5" reps_override="$6"
+  local max_cost_usd="$7"
 
   require_tool yq
   require_tool jq
@@ -697,6 +914,10 @@ run_sweep() {
   te_ver="$(task_executor_version)"
   hd="$(harbor_runner_image_digest)"
   write_sweep_metadata "${out}" "${te_ver}" "${hd}"
+
+  if [[ -n "${max_cost_usd}" ]]; then
+    init_budget "${out}" "${max_cost_usd}"
+  fi
 
   IFS=',' read -r -a profile_ids <<<"${profiles_csv}"
   IFS=',' read -r -a bench_set_ids <<<"${bench_sets_csv}"
@@ -743,23 +964,26 @@ run_sweep() {
         if [[ ${force_rerun} -eq 1 ]]; then
           local r
           for ((r = 1; r <= reps; r++)); do
-            run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+            budget_or_run_cell "${out}" "${profile_id}" "${profile_file}" \
               "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
-              "${r}" "${reps}" "${adapter}" "" "${te_ver}" "${hd}" >/dev/null
+              "${r}" "${reps}" "${adapter}" "" "${te_ver}" "${hd}" \
+              "${max_cost_usd}" >/dev/null
           done
         elif [[ ${retry_invalid} -eq 1 ]]; then
           local prior
           while IFS= read -r prior; do
             [[ -n "${prior}" ]] || continue
-            run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+            budget_or_run_cell "${out}" "${profile_id}" "${profile_file}" \
               "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
-              "1" "${reps}" "${adapter}" "${prior}" "${te_ver}" "${hd}" >/dev/null
+              "1" "${reps}" "${adapter}" "${prior}" "${te_ver}" "${hd}" \
+              "${max_cost_usd}" >/dev/null
           done <"${invalid_file}"
           while IFS= read -r prior; do
             [[ -n "${prior}" ]] || continue
-            run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+            budget_or_run_cell "${out}" "${profile_id}" "${profile_file}" \
               "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
-              "1" "${reps}" "${adapter}" "${prior}" "${te_ver}" "${hd}" >/dev/null
+              "1" "${reps}" "${adapter}" "${prior}" "${te_ver}" "${hd}" \
+              "${max_cost_usd}" >/dev/null
           done <"${orphan_file}"
           warn "retry-invalid: profile=${profile_id} task=${task} reran invalid=${invalid_count} orphan=${orphan_count}"
         else
@@ -770,9 +994,10 @@ run_sweep() {
             need=$((reps - terminal_count))
             idx=$((terminal_count + 1))
             for ((r = 1; r <= need; r++)); do
-              run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+              budget_or_run_cell "${out}" "${profile_id}" "${profile_file}" \
                 "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
-                "${idx}" "${reps}" "${adapter}" "" "${te_ver}" "${hd}" >/dev/null
+                "${idx}" "${reps}" "${adapter}" "" "${te_ver}" "${hd}" \
+                "${max_cost_usd}" >/dev/null
               idx=$((idx + 1))
             done
           fi
@@ -810,6 +1035,7 @@ main() {
   local force_rerun=0
   local retry_invalid=0
   local reps_override=""
+  local max_cost_usd=""
   local positional=()
 
   while [[ $# -gt 0 ]]; do
@@ -821,6 +1047,7 @@ main() {
       --force-rerun)    force_rerun=1; shift ;;
       --retry-invalid)  retry_invalid=1; shift ;;
       --reps)           reps_override="${2:?--reps requires a value}"; shift 2 ;;
+      --max-cost-usd)   max_cost_usd="${2:?--max-cost-usd requires a value}"; shift 2 ;;
       -h|--help|help)   usage; exit 0 ;;
       --)               shift; positional+=("$@"); break ;;
       -*)               die "unknown flag: $1" ;;
@@ -855,8 +1082,16 @@ main() {
       if [[ ${force_rerun} -eq 1 && ${retry_invalid} -eq 1 ]]; then
         die "--force-rerun and --retry-invalid are mutually exclusive"
       fi
+      if [[ -n "${max_cost_usd}" ]]; then
+        # Validate numeric and non-negative; jq parses with no locale surprises.
+        if ! printf '%s' "${max_cost_usd}" \
+              | jq -e 'tonumber | . >= 0' >/dev/null 2>&1; then
+          die "--max-cost-usd requires a non-negative number (got: ${max_cost_usd})"
+        fi
+      fi
       run_sweep "${profile_csv}" "${bench_set_csv}" "${out}" \
-        "${force_rerun}" "${retry_invalid}" "${reps_override}"
+        "${force_rerun}" "${retry_invalid}" "${reps_override}" \
+        "${max_cost_usd}"
       ;;
     *)
       die "unknown subcommand: ${sub}"
