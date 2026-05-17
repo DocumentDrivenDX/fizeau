@@ -167,6 +167,24 @@ Endpoint fields:
 Provider-specific wire terms such as `thinking`, `effort`, `variant`, and token
 budgets are adapter implementation details, not public config.
 
+### OpenRouter Credit Probe
+
+OpenRouter providers expose two source-level knobs that control the proactive
+account-balance probe used by the routing engine's `credit_exhausted` gate.
+Routing reads a per-provider cached balance; when the cached value is below
+threshold, the candidate is filtered with `filter_reason: credit_exhausted`
+and the evidence body carries the observed balance plus the probe timestamp.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `credit_balance_threshold_usd` | float (USD) | `0.50` | Minimum acceptable cached account balance. Cached readings below this value disqualify the candidate with `filter_reason: credit_exhausted` before any dispatch is attempted. |
+| `credit_probe_ttl` | duration | `10m` | Lifetime of one cached `/api/v1/credits` reading. Back-to-back routing passes within the TTL share a single round-trip; the next pass after expiry re-probes synchronously. Operator-tunable in the 5–15 minute band so the cache amortizes across drains without missing top-ups. |
+
+Both knobs are openrouter-specific. The credit gate runs only for providers
+whose `type: openrouter`. Server-side credential rejection (401) and
+transport failures are handled separately and surface as distinct filter
+reasons (`credential_invalid` / `provider_unreachable`).
+
 ### Reasoning Values
 
 `reasoning` is one scalar rather than separate public level and budget fields.

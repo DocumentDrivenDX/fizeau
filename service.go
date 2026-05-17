@@ -80,6 +80,16 @@ type ServiceProviderEntry struct {
 	// (request + response) for this provider. Zero means no local burn-rate
 	// prediction; the provider's own quota signal still applies.
 	DailyTokenBudget int
+	// CreditBalanceThresholdUSD is the openrouter-specific minimum cached
+	// account balance below which the credit-balance gate disqualifies the
+	// candidate with FilterReasonCreditExhausted. Zero means use the package
+	// default (DefaultOpenrouterCreditBalanceThresholdUSD).
+	CreditBalanceThresholdUSD float64
+	// CreditProbeTTL is the lifetime of a cached openrouter credit-balance
+	// reading before the next routing pass issues a fresh /api/v1/credits
+	// probe. Zero means use the package default
+	// (DefaultOpenrouterCreditProbeTTL).
+	CreditProbeTTL time.Duration
 }
 
 // ServiceProviderEndpoint is one configured provider serving endpoint.
@@ -959,6 +969,11 @@ type service struct {
 	providerProbe                *routehealth.ProbeStore
 	providerProbeRefreshInFlight atomic.Bool
 
+	// openrouterCredit caches per-provider openrouter account balance
+	// readings with a per-provider TTL so the routing-quality credit gate
+	// never blocks on the provider's /api/v1/credits endpoint per request.
+	openrouterCredit *openrouterCreditStore
+
 	runtime serviceimpl.Runtime
 }
 
@@ -1032,6 +1047,7 @@ func New(opts ServiceOptions) (FizeauService, error) {
 		providerBurnRate: NewProviderBurnRateTracker(),
 	}
 	svc.providerProbe = routehealth.NewProbeStore()
+	svc.openrouterCredit = newOpenrouterCreditStore()
 	// Hydrate per-provider daily_token_budget from ServiceConfig so the
 	// burn-rate tracker can predict exhaustion before the upstream quota
 	// signal arrives.

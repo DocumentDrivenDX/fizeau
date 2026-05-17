@@ -117,6 +117,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 		result.RequestedPolicy = req.Policy
 		result.PowerPolicy = powerPolicy
 		s.annotateRouteDecisionEvidence(result)
+		s.annotateOpenrouterCreditFreshness(result)
 		return result, publicRoutingError(err, result.Candidates, req.Policy)
 	}
 	s.applyStickyRouteLease(req.CorrelationID, result)
@@ -126,6 +127,7 @@ func (s *service) ResolveRoute(ctx context.Context, req RouteRequest) (*RouteDec
 	}
 	s.annotateRouteDecisionSnapshotEvidence(result, snapshot)
 	s.annotateRouteDecisionEvidence(result)
+	s.annotateOpenrouterCreditFreshness(result)
 	// Cache the decision so RouteStatus can surface LastDecision.
 	if result != nil {
 		result.RequestedPolicy = req.Policy
@@ -775,6 +777,12 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 	// the dispatch path.
 	providerCredentialMissing := providerCredentialMissingMap(s.opts.ServiceConfig)
 
+	// Credit-balance gate: openrouter providers whose cached account
+	// balance fell below the configured threshold are filtered out before
+	// dispatch. The probe is cached per-provider with a TTL so back-to-back
+	// Execute calls within the window share one /api/v1/credits round-trip.
+	providerCreditExhausted := s.openrouterCreditExhaustedMap(ctx, now)
+
 	return routing.Inputs{
 		Harnesses:                    entries,
 		ProviderSuccessRate:          successRate,
@@ -784,6 +792,7 @@ func (s *service) buildRoutingInputsWithCatalog(ctx context.Context, cat *modelc
 		ProbeUnreachable:             probeUnreachable,
 		ProbeUnknown:                 probeUnknown,
 		ProviderCredentialMissing:    providerCredentialMissing,
+		ProviderCreditExhausted:      providerCreditExhausted,
 		CooldownDuration:             healthCooldownTTL,
 		Now:                          now,
 		ModelEligibility:             serviceRoutingModelEligibility(entries, cat),

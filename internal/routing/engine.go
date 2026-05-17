@@ -308,6 +308,13 @@ const (
 	// issuing any HTTP request. Distinct from FilterReasonUnhealthy and from
 	// any future credential_invalid reason reserved for server-side rejection.
 	FilterReasonCredentialMissing FilterReason = "credential_missing"
+	// FilterReasonCreditExhausted: provider has a cached account-level balance
+	// reading below the configured threshold. The probe lives in the service
+	// layer's freshness cache so the engine never issues network I/O. Distinct
+	// from FilterReasonQuotaExhausted (per-window quota signal from request
+	// headers) — credit_exhausted is an account-spend ceiling that does not
+	// recover on a fixed retry_after.
+	FilterReasonCreditExhausted FilterReason = "credit_exhausted"
 )
 
 // NoViableCandidateError reports that routing evaluated candidates but every
@@ -454,6 +461,13 @@ type Inputs struct {
 	// O(1) and side-effect free.
 	ProviderCredentialMissing map[string]string
 
+	// ProviderCreditExhausted maps provider name → observed account-balance
+	// evidence. Hard gate: a candidate listed here is disqualified with
+	// FilterReasonCreditExhausted. The service layer maintains the credit
+	// probe and its TTL cache; the engine reads only the projected map, so
+	// no network I/O ever happens here.
+	ProviderCreditExhausted map[string]ProviderCreditExhaustedEvidence
+
 	Now              time.Time // injected for deterministic testing; default time.Now()
 	ModelEligibility func(model string) (ModelEligibility, bool)
 
@@ -464,6 +478,18 @@ type Inputs struct {
 	// (e.g. an off-only variant under a policy whose default is
 	// "high") are correctly disqualified instead of slipping through.
 	ReasoningResolver func(policy, surface string) (resolved string, ok bool)
+}
+
+// ProviderCreditExhaustedEvidence is the per-provider account-balance reading
+// that fed the credit_exhausted gate. The service layer populates one entry
+// per provider whose cached balance fell below the configured threshold.
+type ProviderCreditExhaustedEvidence struct {
+	// BalanceUSD is the observed account balance, in USD, as of ObservedAt.
+	BalanceUSD float64
+	// ThresholdUSD is the configured floor; balance below this triggers the gate.
+	ThresholdUSD float64
+	// ObservedAt is when the balance reading was taken by the credit probe.
+	ObservedAt time.Time
 }
 
 // EndpointLoad is the routing engine's normalized view of endpoint load for a
@@ -1382,6 +1408,27 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				}
 			}
 
+			// Credit-balance gate: providers whose cached account balance fell
+			// below the configured threshold are disqualified before dispatch
+			// so the operator sees the root cause instead of an
+			// insufficient-credit response. The probe runs in the service
+			// layer's freshness cache; the engine reads only the projected
+			// evidence map, so the gate is O(1) and side-effect free.
+			if eligible && len(in.ProviderCreditExhausted) > 0 {
+				identity := candidateProviderIdentity(h, p)
+				if ev, ok := lookupCreditExhausted(in.ProviderCreditExhausted, identity); ok {
+					eligible = false
+					candidateReason = fmt.Sprintf(
+						"provider %s credit exhausted (balance $%.4f below threshold $%.2f, observed %s)",
+						identity,
+						ev.BalanceUSD,
+						ev.ThresholdUSD,
+						ev.ObservedAt.UTC().Format(time.RFC3339),
+					)
+					filterReason = FilterReasonCreditExhausted
+				}
+			}
+
 			localHealthUnknown := false
 			if eligible && p.Name != "" && req.Provider != candidateProviderIdentity(h, p) && candidateIsLocal(h, p) {
 				_, localHealthUnknown = in.ProbeUnknown[p.Name]
@@ -1520,6 +1567,24 @@ func candidateProviderIdentity(h HarnessEntry, p ProviderEntry) string {
 		return p.Name
 	}
 	return h.Name
+}
+
+// lookupCreditExhausted resolves the credit-balance evidence for a routing
+// identity, accepting either the raw identity or its base provider name
+// (stripped of any "@endpoint" suffix).
+func lookupCreditExhausted(m map[string]ProviderCreditExhaustedEvidence, identity string) (ProviderCreditExhaustedEvidence, bool) {
+	if len(m) == 0 || identity == "" {
+		return ProviderCreditExhaustedEvidence{}, false
+	}
+	if ev, ok := m[identity]; ok {
+		return ev, true
+	}
+	if i := strings.IndexByte(identity, '@'); i > 0 {
+		if ev, ok := m[identity[:i]]; ok {
+			return ev, true
+		}
+	}
+	return ProviderCreditExhaustedEvidence{}, false
 }
 
 // lookupCredentialMissing resolves a credential-missing record for a routing

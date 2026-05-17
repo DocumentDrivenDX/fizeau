@@ -52,6 +52,7 @@ func TestRootFacadeSourceAllowlist(t *testing.T) {
 		"service_model_resolution.go",
 		"service_models.go",
 		"service_native_provider.go",
+		"service_openrouter_credit.go",
 		"service_override.go",
 		"service_policies.go",
 		"service_probe.go",
