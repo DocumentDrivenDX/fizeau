@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -414,6 +415,21 @@ func TestCLI_Log_UnknownSession_StrictError(t *testing.T) {
 }
 
 func TestCLI_CancelSignal_WritesSessionEndEvent(t *testing.T) {
+	assertCancelSignalWritesSessionEnd(t, os.Interrupt)
+}
+
+// TestCLI_TermSignal_WritesSessionEndEvent verifies that SIGTERM (sent by
+// Harbor / benchmark runners on AgentTimeout) cancels the run cleanly the
+// same way Ctrl-C does, producing a `[cancelled]` session.end event. Without
+// this, Harbor cancellation can leave fiz (and its wrapped harness
+// subprocess tree — gemini/codex/claude) running after the parent shell
+// dies, eating RAM until OOM.
+func TestCLI_TermSignal_WritesSessionEndEvent(t *testing.T) {
+	assertCancelSignalWritesSessionEnd(t, syscall.SIGTERM)
+}
+
+func assertCancelSignalWritesSessionEnd(t *testing.T, sig os.Signal) {
+	t.Helper()
 	exe := buildAgentCLI(t)
 	workDir := t.TempDir()
 	home := t.TempDir()
@@ -433,9 +449,9 @@ session_log_dir: .fizeau/sessions
 
 	cmd, _, stderr := runBuiltCLIAsync(t, exe, workDir, testEnvWithHome(home, nil), "--work-dir", workDir, "--provider", "local", "-p", "slow request")
 	time.Sleep(200 * time.Millisecond)
-	require.NoError(t, cmd.Process.Signal(os.Interrupt))
+	require.NoError(t, cmd.Process.Signal(sig))
 	err := cmd.Wait()
-	require.Error(t, err, "expected non-zero exit after interrupt")
+	require.Error(t, err, "expected non-zero exit after %v", sig)
 
 	exitErr, ok := err.(*exec.ExitError)
 	require.True(t, ok, "expected ExitError, got %T", err)

@@ -158,6 +158,62 @@ class FizeauAgentTest(unittest.TestCase):
         # Diagnostic warning still fires if no JSONL appears.
         self.assertIn("warning: no fiz session JSONL found after run", command)
 
+    def test_build_command_traps_term_and_kills_fiz_process_tree(self) -> None:
+        """Harbor cancellation must not leave fiz / wrapped harness orphaned.
+
+        The generated bash must trap TERM/INT/EXIT, retain the fiz child PID
+        (so a bare-pipeline shell kill does not lose it), preserve tee
+        logging, wait on the child via PID (not just pipeline status), and
+        SIGKILL the process tree if SIGTERM grace expires. This guards
+        against the OrbStack-OOM-2026-05-16 incident where ~610 orphaned
+        gemini processes consumed ~70 GiB after Harbor AgentTimeout.
+        """
+        with patch.dict(
+            os.environ,
+            {
+                "FIZEAU_HARNESS": "gemini",
+                "FIZEAU_PROVIDER": "openrouter",
+                "FIZEAU_MODEL": "qwen/qwen3.6-plus",
+            },
+            clear=False,
+        ):
+            self.agent.exec_as_agent = AsyncMock(return_value=None)
+            asyncio.run(self.agent.run("solve task", object(), AgentContext()))
+
+        command = self.agent.exec_as_agent.await_args.kwargs["command"]
+
+        # Trap registered for TERM/INT/EXIT — the three signals Harbor or a
+        # parent runner can deliver on cancellation.
+        self.assertIn("trap fiz_cleanup TERM INT EXIT", command)
+
+        # fiz runs in the background and its PID is retained. A bare
+        # foreground pipeline (`fiz ... | tee`) would let the shell die on
+        # SIGTERM with no way to address the surviving fiz child.
+        self.assertIn("fiz_pid=$!", command)
+        self.assertNotRegex(
+            command,
+            r'"\$\{cmd\[@\]\}"\s*2>&1\s*\|\s*stdbuf',
+            "fiz must not run as a foreground pipeline that loses the child PID on shell kill",
+        )
+
+        # Tee logging is preserved via process substitution so the fiz output
+        # still lands in /logs/agent/fiz.txt while the wrapper keeps fiz_pid.
+        self.assertIn("stdbuf -oL tee /logs/agent/fiz.txt", command)
+
+        # Wait by PID so we capture fiz's true exit status, not a pipeline's.
+        self.assertIn('wait "$fiz_pid"', command)
+        self.assertIn("fiz_rc=$?", command)
+
+        # Cleanup signals the whole process group (kill -TERM -$fiz_pid) so
+        # the wrapped harness CLI (gemini/codex/claude/pi) forked by fiz is
+        # also terminated, then escalates to SIGKILL after a grace interval.
+        self.assertIn('kill -TERM -"$fiz_pid"', command)
+        self.assertIn('kill -KILL -"$fiz_pid"', command)
+
+        # Job control is enabled so the background fiz lands in its own
+        # process group (PGID == fiz_pid) — required for the group-kill above.
+        self.assertIn("set -m", command)
+
     def test_run_preserves_provider_model_model_ref_and_reasoning_pins(self) -> None:
         with patch.dict(
             os.environ,
