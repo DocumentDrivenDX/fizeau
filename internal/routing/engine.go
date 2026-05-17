@@ -498,6 +498,16 @@ type Inputs struct {
 	// ProbeUnreachable, which tracks routing-aliveness probes.
 	ProviderProbeUnreachable map[string]ProviderProbeUnreachableEvidence
 
+	// ProviderEligibilityOverrides is a generic, provider-agnostic plumbing
+	// path for marking any provider eligible=false with a typed FilterReason
+	// and freshness timestamp. The engine consults this map inside
+	// buildHarnessCandidates after the ProbeUnreachable gate; the explicit
+	// provider pin bypasses it, mirroring the endpoint_unreachable gate.
+	// Service-layer health checks (credential, credit, account probes) feed
+	// the map so the engine never has to know about a specific provider's
+	// authentication or billing scheme.
+	ProviderEligibilityOverrides map[string]ProviderEligibilityOverride
+
 	Now              time.Time // injected for deterministic testing; default time.Now()
 	ModelEligibility func(model string) (ModelEligibility, bool)
 
@@ -552,6 +562,23 @@ type ProviderProbeUnreachableEvidence struct {
 	Message string
 	// ObservedAt is when the failed probe attempt returned.
 	ObservedAt time.Time
+}
+
+// ProviderEligibilityOverride records a service-layer eligibility verdict
+// for one provider identity. The engine consults the override after the
+// ProbeUnreachable gate and applies FilterReason verbatim, so callers can
+// extend the health story (credentials, billing, account state) without
+// adding provider-specific code paths to the engine.
+type ProviderEligibilityOverride struct {
+	// FilterReason is the typed disqualification category recorded on the
+	// candidate when this override fires. Must be a non-empty FilterReason*
+	// value; an empty reason is treated as "no override".
+	FilterReason FilterReason
+	// ProbeAt is the freshness timestamp the service layer recorded when it
+	// produced this override (e.g. when the credit probe last ran). It is
+	// surfaced in the candidate Reason so operators can see how stale the
+	// signal is.
+	ProbeAt time.Time
 }
 
 // EndpointLoad is the routing engine's normalized view of endpoint load for a
@@ -1456,6 +1483,20 @@ func buildHarnessCandidates(h HarnessEntry, req Request, in Inputs) []rankedCand
 				}
 			}
 
+			// Generic provider-eligibility override: the service layer can mark
+			// any provider ineligible with a typed FilterReason and freshness
+			// timestamp without baking provider-specific knowledge into the
+			// engine. Mirrors the endpoint_unreachable gate's explicit-pin
+			// bypass so operators can still force a route intentionally.
+			if eligible && p.Name != "" && req.Provider != candidateProviderIdentity(h, p) {
+				identity := candidateProviderIdentity(h, p)
+				if ov, ok := lookupEligibilityOverride(in.ProviderEligibilityOverrides, identity); ok && ov.FilterReason != FilterReasonEligible {
+					eligible = false
+					candidateReason = formatEligibilityOverrideReason(identity, ov)
+					filterReason = ov.FilterReason
+				}
+			}
+
 			// Credential gate: providers that need an API key but lack one (or
 			// hold an obviously malformed value) are disqualified before any
 			// dispatch so the operator sees the root cause instead of a 401.
@@ -1757,6 +1798,37 @@ func lookupProbeUnreachable(m map[string]ProviderProbeUnreachableEvidence, ident
 		}
 	}
 	return ProviderProbeUnreachableEvidence{}, false
+}
+
+// lookupEligibilityOverride resolves a generic eligibility override for a
+// routing identity. Mirrors the @endpoint-aware fallback used by the typed
+// evidence maps so service-layer config keyed by base provider name still
+// matches endpoint-split candidate identities. Returns ok=false when the
+// map is nil/empty or the identity is unset.
+func lookupEligibilityOverride(m map[string]ProviderEligibilityOverride, identity string) (ProviderEligibilityOverride, bool) {
+	if len(m) == 0 || identity == "" {
+		return ProviderEligibilityOverride{}, false
+	}
+	if ov, ok := m[identity]; ok {
+		return ov, true
+	}
+	if i := strings.IndexByte(identity, '@'); i > 0 {
+		if ov, ok := m[identity[:i]]; ok {
+			return ov, true
+		}
+	}
+	return ProviderEligibilityOverride{}, false
+}
+
+// formatEligibilityOverrideReason produces the stable human-readable Reason
+// string surfaced on a candidate disqualified by a ProviderEligibilityOverride.
+// The freshness timestamp is included when populated so operators can see how
+// stale the underlying probe signal is.
+func formatEligibilityOverrideReason(identity string, ov ProviderEligibilityOverride) string {
+	if ov.ProbeAt.IsZero() {
+		return fmt.Sprintf("provider %s ineligible (%s)", identity, ov.FilterReason)
+	}
+	return fmt.Sprintf("provider %s ineligible (%s, observed %s)", identity, ov.FilterReason, ov.ProbeAt.UTC().Format(time.RFC3339))
 }
 
 func candidateBillingKind(h HarnessEntry, p ProviderEntry) modelcatalog.BillingModel {
