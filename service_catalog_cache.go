@@ -31,6 +31,7 @@ type CatalogProbeFunc func(ctx context.Context) (ids []string, err error)
 // Default cache timings. Overridable via catalogCacheOptions.
 const (
 	defaultCatalogFreshTTL            = 60 * time.Second
+	defaultCatalogLocalFreshTTL       = 10 * time.Second
 	defaultCatalogStaleTTL            = 10 * time.Minute
 	defaultCatalogUnreachableCooldown = 30 * time.Second
 	defaultCatalogUnreachableJitter   = 5 * time.Second
@@ -95,7 +96,14 @@ type catalogCache struct {
 // catalogCacheOptions controls timings + test hooks. Production uses
 // defaults via newCatalogCache().
 type catalogCacheOptions struct {
-	FreshTTL            time.Duration
+	FreshTTL time.Duration
+	// LocalFreshTTL overrides FreshTTL for endpoints whose provider
+	// deployment_class is local (local_free / community_self_hosted).
+	// Local servers — LMStudio on a laptop, vLLM on a workstation —
+	// suspend/resume far more often than managed clouds, so the cache
+	// must re-probe sooner than the default 60s. Zero falls back to
+	// defaultCatalogLocalFreshTTL.
+	LocalFreshTTL       time.Duration
 	StaleTTL            time.Duration
 	UnreachableCooldown time.Duration
 	UnreachableJitter   time.Duration
@@ -107,6 +115,9 @@ type catalogCacheOptions struct {
 func (o catalogCacheOptions) withDefaults() catalogCacheOptions {
 	if o.FreshTTL <= 0 {
 		o.FreshTTL = defaultCatalogFreshTTL
+	}
+	if o.LocalFreshTTL <= 0 {
+		o.LocalFreshTTL = defaultCatalogLocalFreshTTL
 	}
 	if o.StaleTTL <= 0 {
 		o.StaleTTL = defaultCatalogStaleTTL
@@ -356,4 +367,78 @@ func isReachabilityErr(err error) bool {
 		return false
 	}
 	return errors.Is(err, openai.ErrEndpointUnreachable)
+}
+
+// isDispatchReachabilityFailure reports whether a chat-completions dispatch
+// error should be treated as endpoint-unreachable evidence. Mirrors the
+// classifier in probeOpenAIModels so probe-time and dispatch-time signals
+// agree on what counts as an unreachable endpoint.
+func isDispatchReachabilityFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isReachabilityErr(err) {
+		return true
+	}
+	if isNetworkFailure(err) {
+		return true
+	}
+	return isServerError(err.Error())
+}
+
+// RecordDispatchError feeds a chat-completions dispatch failure back into the
+// cache so the next routing pass can skip the endpoint instead of replaying
+// the timeout. Errors that don't classify as reachability failures (auth 401,
+// malformed body, etc.) are ignored — they're cheap signals from the dispatch
+// layer that don't indicate the endpoint is down.
+//
+// The bug this closes: probeOpenAIModels was the sole writer for
+// UnreachableAt, so a dead endpoint discovered only at dispatch time stayed
+// "available" in the cache until the next /v1/models probe — costing every
+// concurrent caller within FreshTTL a 5-second i/o timeout.
+func (c *catalogCache) RecordDispatchError(key catalogCacheKey, err error) {
+	if c == nil || err == nil {
+		return
+	}
+	if !isDispatchReachabilityFailure(err) {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.opts.Now()
+	e, ok := c.mem[key]
+	if !ok {
+		e = &catalogEntry{DiscoverySupported: true}
+		c.mem[key] = e
+	}
+	e.LastErr = err
+	e.UnreachableAt = now
+}
+
+// freshTTLFor resolves the freshness window for a given deployment_class.
+// Local-class endpoints (laptop/workstation servers) get LocalFreshTTL
+// because their up/down state changes far more often than managed-cloud
+// endpoints. Unknown classes get the default FreshTTL.
+func (c *catalogCache) freshTTLFor(deploymentClass string) time.Duration {
+	if c == nil {
+		return defaultCatalogFreshTTL
+	}
+	if isLocalDeploymentClass(deploymentClass) {
+		return c.opts.LocalFreshTTL
+	}
+	return c.opts.FreshTTL
+}
+
+// isLocalDeploymentClass reports whether deployment_class names a
+// laptop/workstation-class endpoint that may suspend/resume between
+// dispatches. Matches the local_free / community_self_hosted values produced
+// by the model catalog (see internal/modelcatalog/power.go) plus the
+// shorthand "local" for callers that don't carry the full class string.
+func isLocalDeploymentClass(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "local", "local_free", "community_self_hosted":
+		return true
+	default:
+		return false
+	}
 }

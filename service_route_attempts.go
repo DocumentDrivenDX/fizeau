@@ -36,6 +36,13 @@ func (s *service) recordRouteAttemptFromFinal(final harnesses.FinalData) {
 		return
 	}
 	_ = s.RecordRouteAttempt(context.Background(), attempt)
+	// Dispatch reachability failures (transport-class errors) also feed the
+	// catalog cache and probe store so the next routing pass within the
+	// freshness/cooldown window hard-gates the endpoint with
+	// FilterReasonEndpointUnreachable instead of replaying the timeout.
+	if provider, endpoint, dispatchErr := dispatchFailureFromFinal(attempt); dispatchErr != nil {
+		s.recordDispatchFailure(provider, endpoint, dispatchErr)
+	}
 }
 
 func routeAttemptFromFinal(final harnesses.FinalData) (RouteAttempt, bool) {
