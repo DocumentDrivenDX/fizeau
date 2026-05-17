@@ -27,12 +27,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROFILES_DIR="${SCRIPT_DIR}/profiles"
-BENCH_SETS_DIR="${SCRIPT_DIR}/bench-sets"
-HARNESS_ADAPTERS_DIR="${SCRIPT_DIR}/harness-adapters"
-TASK_EXECUTORS_DIR="${SCRIPT_DIR}/task-executors"
+PROFILES_DIR="${PROFILES_DIR:-${SCRIPT_DIR}/profiles}"
+BENCH_SETS_DIR="${BENCH_SETS_DIR:-${SCRIPT_DIR}/bench-sets}"
+HARNESS_ADAPTERS_DIR="${HARNESS_ADAPTERS_DIR:-${SCRIPT_DIR}/harness-adapters}"
+TASK_EXECUTORS_DIR="${TASK_EXECUTORS_DIR:-${SCRIPT_DIR}/task-executors}"
 HARBOR_BUILD_SCRIPT="${SCRIPT_DIR}/build-harbor-runner.sh"
 HARBOR_IMAGE_TAG="${HARBOR_IMAGE_TAG:-fizeau-harbor-runner:latest}"
+DEFAULT_OUT_ROOT="${DEFAULT_OUT_ROOT:-bench/results/fiz-tools-v1}"
+BENCH_TASKS_DIR_DEFAULT="${SCRIPT_DIR}/external/terminal-bench-2/tasks"
+BENCH_RETRY_MAX_ATTEMPTS="${BENCH_RETRY_MAX_ATTEMPTS:-4}"
+BENCH_RETRY_BACKOFF_BASE="${BENCH_RETRY_BACKOFF_BASE:-1}"
 
 die() { printf 'benchmark: %s\n' "$*" >&2; exit 1; }
 warn() { printf 'benchmark: %s\n' "$*" >&2; }
@@ -42,7 +46,7 @@ require_tool() {
 }
 
 usage() {
-  cat >&2 <<'EOF'
+  cat >&2 <<EOF
 Usage:
   ./benchmark profiles
   ./benchmark bench-sets
@@ -51,12 +55,19 @@ Usage:
   ./benchmark validate
   ./benchmark preflight
   ./benchmark --profile P[,P2,...] --bench-set B[,B2,...] [--plan] [--out DIR]
+              [--force-rerun] [--retry-invalid] [--reps N]
 
 Flags (run mode):
   --profile P[,P2,...]   Comma-separated profile IDs (required)
   --bench-set B[,B2,...] Comma-separated bench-set IDs (required)
   --plan                 Validate + print matrix; pure, no side effects
-  --out DIR              Output root (default: benchmark-results); ignored under --plan
+  --out DIR              Output root (default: ${DEFAULT_OUT_ROOT}); ignored under --plan
+  --force-rerun          Always mint reps fresh cells; ignore terminal report.json
+  --retry-invalid        Re-run cells whose final_status is invalid (non-empty
+                         invalid_class) or whose cell-state.json is orphan
+                         (mid-run crash). New cell links via attempt_of; the
+                         prior cell is back-written with superseded_by.
+  --reps N               Override bench-set default_reps for every cell
 EOF
 }
 
@@ -312,6 +323,468 @@ cmd_preflight() {
 }
 
 # ---------------------------------------------------------------------------
+# Run path: per-cell execution loop, resume, retry, sweep metadata
+# ---------------------------------------------------------------------------
+
+# Terminal final_status values that satisfy resume coverage. Non-terminal
+# statuses (running, transient_exhausted, missing_result) do not count as
+# coverage; --retry-invalid surfaces invalid_class != "" or orphan state.
+is_terminal_status() {
+  case "$1" in
+    completed|pass|fail|timeout|invalid|completed_no_grade) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Map the profile's `harness:` field to a harness-adapter file name.
+# `none` (or absent) means native fiz.
+resolve_adapter_for_harness() {
+  case "${1:-}" in
+    ""|none) printf 'fiz\n' ;;
+    *)       printf '%s\n' "$1" ;;
+  esac
+}
+
+# Mint a fresh cell-id: UTC timestamp + 4 random hex chars.
+new_cell_id() {
+  local ts rand
+  ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  rand="$(LC_ALL=C tr -dc 'a-f0-9' </dev/urandom 2>/dev/null | head -c 4 || true)"
+  if [[ -z "${rand}" || ${#rand} -lt 4 ]]; then
+    rand="$(printf '%04x' $((RANDOM & 0xFFFF)))"
+  fi
+  printf '%s-%s\n' "${ts}" "${rand}"
+}
+
+# task_executor_version: sha256 of the harbor task-executor script. The
+# task-executor is shell, so the script bytes are the version of record.
+task_executor_version() {
+  local f="${TASK_EXECUTORS_DIR}/harbor"
+  if [[ -f "${f}" ]]; then
+    sha256sum "${f}" | awk '{print $1}'
+  else
+    printf 'unknown\n'
+  fi
+}
+
+# harbor_runner_image_digest: docker image Id for fizeau-harbor-runner. When
+# docker is absent (CI / dry-run), fall back to the source-content sha so the
+# sweep manifest is still well-defined.
+harbor_runner_image_digest() {
+  # Test/operator override wins so suites can pin the recorded digest.
+  if [[ -n "${BENCH_HARBOR_DIGEST_OVERRIDE:-}" ]]; then
+    printf '%s\n' "${BENCH_HARBOR_DIGEST_OVERRIDE}"
+    return 0
+  fi
+  local tag="${HARBOR_IMAGE_TAG}"
+  if command -v docker >/dev/null 2>&1; then
+    local d
+    d="$(docker image inspect --format '{{.Id}}' "${tag}" 2>/dev/null || true)"
+    if [[ -n "${d}" ]]; then
+      printf '%s\n' "${d}"
+      return 0
+    fi
+  fi
+  # No docker (or image absent). Derive from the source-content sha used by
+  # preflight.
+  if compute_harbor_source_sha >/dev/null 2>&1; then
+    printf 'src:%s\n' "$(compute_harbor_source_sha)"
+  else
+    printf 'unknown\n'
+  fi
+}
+
+# Write <out>/sweep.json with the executor + image identifiers. Called once
+# per ./benchmark invocation; each cell's report.json embeds the same values.
+write_sweep_metadata() {
+  local out="$1" te_ver="$2" hd="$3"
+  mkdir -p "${out}"
+  local started
+  started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  jq -n \
+    --arg te_ver "${te_ver}" \
+    --arg hd "${hd}" \
+    --arg started "${started}" \
+    '{task_executor_version:$te_ver, harbor_runner_image_digest:$hd, started_at:$started}' \
+    >"${out}/sweep.json.tmp"
+  mv "${out}/sweep.json.tmp" "${out}/sweep.json"
+}
+
+# compose_env_redacted prints command-spec env with secret_env_keys replaced
+# by a redaction sentinel. Order-insensitive; entries missing from env are
+# ignored.
+compose_env_redacted() {
+  local env_json="$1" secret_keys_json="$2"
+  jq -c --argjson secrets "${secret_keys_json}" '
+    . as $env
+    | reduce ($secrets[]? | tostring) as $k
+        ($env; if has($k) then .[$k] = "***REDACTED***" else . end)
+  ' <<<"${env_json}"
+}
+
+# is_transient_stderr greps the executor's stderr for known transient error
+# signatures: connection refused/reset, HTTP 5xx, unexpected/EOF parse.
+is_transient_stderr() {
+  local f="$1"
+  [[ -s "${f}" ]] || return 1
+  LC_ALL=C grep -qE 'connection refused|connection reset|HTTP 5[0-9][0-9]|status[ =:]?5[0-9][0-9]|status_code=5[0-9][0-9]|unexpected EOF|EOF parse|EOF while|temporarily unavailable' "${f}"
+}
+
+# Invoke the task-executor with bounded exponential backoff on transient
+# errors. Returns 0 on success; non-zero on terminal failure after retries.
+# Captures attempts log to ${cell_dir}/retry-log.txt for forensics.
+run_executor_with_retry() {
+  local task_spec="$1" cell_dir="$2" executor="$3"
+  local stderr_file
+  stderr_file="$(mktemp)"
+  local max_attempts="${BENCH_RETRY_MAX_ATTEMPTS}"
+  local backoff="${BENCH_RETRY_BACKOFF_BASE}"
+  local attempt=1
+  local status=0
+  local retry_log="${cell_dir}/retry-log.txt"
+  : >"${retry_log}"
+  while :; do
+    : >"${stderr_file}"
+    set +e
+    printf '%s' "${task_spec}" | "${executor}" 2>"${stderr_file}" >/dev/null
+    status=$?
+    set -e
+    printf 'attempt=%d status=%d\n' "${attempt}" "${status}" >>"${retry_log}"
+    if [[ ${status} -eq 0 ]]; then
+      rm -f "${stderr_file}"
+      return 0
+    fi
+    cat "${stderr_file}" >>"${retry_log}"
+    if (( attempt > max_attempts )) || ! is_transient_stderr "${stderr_file}"; then
+      cat "${stderr_file}" >&2
+      rm -f "${stderr_file}"
+      return "${status}"
+    fi
+    warn "cell $(basename "${cell_dir}"): transient error (attempt ${attempt}); sleeping ${backoff}s"
+    sleep "${backoff}"
+    backoff=$((backoff * 2))
+    attempt=$((attempt + 1))
+  done
+}
+
+# resolve_tasks_dir derives the host tasks dir for terminal-bench cells.
+# Honors BENCH_TASKS_DIR override (used by tests).
+resolve_tasks_dir() {
+  local framework="$1"
+  if [[ -n "${BENCH_TASKS_DIR:-}" ]]; then
+    printf '%s\n' "${BENCH_TASKS_DIR}"
+    return 0
+  fi
+  case "${framework}" in
+    terminal-bench) printf '%s\n' "${BENCH_TASKS_DIR_DEFAULT}" ;;
+    *)              printf '%s\n' "${BENCH_TASKS_DIR_DEFAULT}" ;;
+  esac
+}
+
+# Count existing terminal cells matching (profile_id, task) under <out>; also
+# emit lists of invalid cells and orphan cells (cells with cell-state.json
+# and no terminal report.json). Lines are written to the named output paths.
+inspect_existing_cells() {
+  local out="$1" dataset_dir="$2" task="$3" profile_id="$4"
+  local terminal_out="$5" invalid_out="$6" orphan_out="$7"
+  : >"${terminal_out}"
+  : >"${invalid_out}"
+  : >"${orphan_out}"
+  local task_dir="${out}/cells/${dataset_dir}/${task}"
+  [[ -d "${task_dir}" ]] || return 0
+  local cell
+  shopt -s nullglob
+  for cell in "${task_dir}"/*/; do
+    local cdir="${cell%/}"
+    local report="${cdir}/report.json"
+    local state="${cdir}/cell-state.json"
+    if [[ -f "${report}" ]]; then
+      local pid status inv
+      pid="$(jq -r '.profile.id // ""' "${report}" 2>/dev/null || true)"
+      [[ "${pid}" == "${profile_id}" ]] || continue
+      status="$(jq -r '.final_status // ""' "${report}" 2>/dev/null || true)"
+      inv="$(jq -r '.invalid_class // ""' "${report}" 2>/dev/null || true)"
+      if [[ -n "${inv}" ]]; then
+        printf '%s\n' "${cdir}" >>"${invalid_out}"
+        continue
+      fi
+      if is_terminal_status "${status}"; then
+        printf '%s\n' "${cdir}" >>"${terminal_out}"
+      fi
+      continue
+    fi
+    if [[ -f "${state}" ]]; then
+      local pid
+      pid="$(jq -r '.profile // ""' "${state}" 2>/dev/null || true)"
+      [[ -z "${pid}" || "${pid}" == "${profile_id}" ]] || continue
+      printf '%s\n' "${cdir}" >>"${orphan_out}"
+    fi
+  done
+  shopt -u nullglob
+}
+
+# Run one cell start-to-finish: cell-state sentinel, harness-adapter command,
+# task-spec composition, task-executor invocation with retry, report.json
+# composition, sentinel cleanup, optional back-write of superseded_by into
+# the prior (attempt_of) cell.
+run_one_cell() {
+  local out="$1" profile_id="$2" profile_file="$3"
+  local framework="$4" dataset="$5" dataset_dir="$6" task="$7"
+  local rep_idx="$8" total_reps="$9" harness_adapter="${10}"
+  local attempt_of="${11}"
+  local te_ver="${12}" hd="${13}"
+
+  local cell_id cell_dir
+  cell_id="$(new_cell_id)"
+  cell_dir="${out}/cells/${dataset_dir}/${task}/${cell_id}"
+  mkdir -p "${cell_dir}"
+
+  local started_at
+  started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  jq -n \
+    --arg cell_id "${cell_id}" \
+    --arg task "${task}" \
+    --arg profile "${profile_id}" \
+    --arg started "${started_at}" \
+    '{cell_id:$cell_id, task:$task, profile:$profile, started_at:$started, status:"running"}' \
+    >"${cell_dir}/cell-state.json"
+
+  local profile_json
+  profile_json="$(yq -o=json '.' "${profile_file}")"
+
+  local adapter_path="${HARNESS_ADAPTERS_DIR}/${harness_adapter}"
+  [[ -x "${adapter_path}" ]] || die "harness-adapter missing/not executable: ${adapter_path}"
+
+  local command_spec install_spec harbor_plugin
+  install_spec="$("${adapter_path}" install "/installed-agent/${harness_adapter}")" \
+    || die "harness-adapter ${harness_adapter} install failed"
+  harbor_plugin="$(jq -r '.harbor_plugin // ""' <<<"${install_spec}")"
+  command_spec="$(printf '%s' "${profile_json}" | "${adapter_path}" command)" \
+    || die "harness-adapter ${harness_adapter} command failed"
+
+  local env_json secret_keys_json command_json env_redacted
+  env_json="$(jq -c '.env // {}' <<<"${command_spec}")"
+  secret_keys_json="$(jq -c '.secret_env_keys // []' <<<"${command_spec}")"
+  command_json="$(jq -c '.command // []' <<<"${command_spec}")"
+  env_redacted="$(compose_env_redacted "${env_json}" "${secret_keys_json}")"
+
+  local tasks_dir
+  tasks_dir="$(resolve_tasks_dir "${framework}")"
+
+  local task_spec
+  task_spec="$(jq -nc \
+    --arg task_id "${task}" \
+    --arg tasks_dir "${tasks_dir}" \
+    --arg cell_dir "${cell_dir}" \
+    --arg plugin "${harbor_plugin}" \
+    --arg image "${HARBOR_IMAGE_TAG}" \
+    --argjson env "${env_json}" \
+    --argjson secret_env_keys "${secret_keys_json}" \
+    '{task_id:$task_id, tasks_dir:$tasks_dir, cell_dir:$cell_dir,
+      harbor_plugin:$plugin, image:$image, env:$env,
+      secret_env_keys:$secret_env_keys, extra_args:[]}')"
+
+  local executor="${TASK_EXECUTORS_DIR}/harbor"
+  if [[ -n "${BENCH_TASK_EXECUTOR_OVERRIDE:-}" ]]; then
+    executor="${BENCH_TASK_EXECUTOR_OVERRIDE}"
+  fi
+  [[ -x "${executor}" ]] || die "task-executor missing/not executable: ${executor}"
+
+  local exec_status=0
+  run_executor_with_retry "${task_spec}" "${cell_dir}" "${executor}" || exec_status=$?
+
+  local finished_at
+  finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  local result_json="{}"
+  if [[ -s "${cell_dir}/result.json" ]]; then
+    if jq -e '.' "${cell_dir}/result.json" >/dev/null 2>&1; then
+      result_json="$(cat "${cell_dir}/result.json")"
+    fi
+  fi
+
+  local final_status invalid_class
+  if [[ ${exec_status} -eq 0 ]]; then
+    final_status="$(jq -r '.final_status // .status // "completed"' <<<"${result_json}")"
+    invalid_class="$(jq -r '.invalid_class // ""' <<<"${result_json}")"
+  else
+    final_status="transient_exhausted"
+    invalid_class="$(jq -r '.invalid_class // "transient_exhausted"' <<<"${result_json}")"
+  fi
+
+  [[ -f "${cell_dir}/fiz.txt" ]] || : >"${cell_dir}/fiz.txt"
+  [[ -f "${cell_dir}/fiz.err" ]] || : >"${cell_dir}/fiz.err"
+  mkdir -p "${cell_dir}/session"
+
+  local rep_str
+  rep_str="$(printf '%d/%d' "${rep_idx}" "${total_reps}")"
+
+  local report
+  report="$(jq -n \
+    --argjson profile "${profile_json}" \
+    --argjson command "${command_json}" \
+    --argjson env_redacted "${env_redacted}" \
+    --argjson result "${result_json}" \
+    --arg task_id "${task}" \
+    --arg framework "${framework}" \
+    --arg dataset "${dataset}" \
+    --arg cell_id "${cell_id}" \
+    --arg started_at "${started_at}" \
+    --arg finished_at "${finished_at}" \
+    --arg final_status "${final_status}" \
+    --arg invalid_class "${invalid_class}" \
+    --arg te_ver "${te_ver}" \
+    --arg hd "${hd}" \
+    --arg rep "${rep_str}" \
+    --arg attempt_of "${attempt_of}" \
+    '{
+       task_id:$task_id,
+       framework:$framework,
+       dataset:$dataset,
+       cell_id:$cell_id,
+       started_at:$started_at,
+       finished_at:$finished_at,
+       rep:$rep,
+       profile:$profile,
+       command:$command,
+       env_redacted:$env_redacted,
+       artifacts:{fiz_txt:"fiz.txt", fiz_err:"fiz.err", session_dir:"session"},
+       result:$result,
+       final_status:$final_status,
+       invalid_class:$invalid_class,
+       task_executor_version:$te_ver,
+       harbor_runner_image_digest:$hd
+     } | if $attempt_of != "" then . + {attempt_of:$attempt_of} else . end')"
+
+  printf '%s\n' "${report}" >"${cell_dir}/report.json.tmp"
+  mv "${cell_dir}/report.json.tmp" "${cell_dir}/report.json"
+
+  rm -f "${cell_dir}/cell-state.json"
+
+  if [[ -n "${attempt_of}" && -f "${attempt_of}/report.json" ]]; then
+    local tmp
+    tmp="$(mktemp)"
+    jq --arg sup "${cell_id}" '. + {superseded_by:$sup}' \
+      "${attempt_of}/report.json" >"${tmp}"
+    mv "${tmp}" "${attempt_of}/report.json"
+  elif [[ -n "${attempt_of}" ]]; then
+    # Orphan prior cell with no report.json: write a minimal stub so the
+    # superseded_by back-link is recorded.
+    jq -n \
+      --arg sup "${cell_id}" \
+      --arg orphan_of "$(basename "${attempt_of}")" \
+      '{final_status:"orphan", invalid_class:"orphan_cell_state", cell_id:$orphan_of, superseded_by:$sup}' \
+      >"${attempt_of}/report.json"
+    rm -f "${attempt_of}/cell-state.json"
+  fi
+
+  printf '%s\n' "${cell_dir}"
+}
+
+# run_sweep walks the (profile, bench-set, task, rep) matrix, applies resume /
+# retry rules, and runs one cell per slot.
+run_sweep() {
+  local profiles_csv="$1" bench_sets_csv="$2" out="$3"
+  local force_rerun="$4" retry_invalid="$5" reps_override="$6"
+
+  require_tool yq
+  require_tool jq
+  require_tool sha256sum
+
+  mkdir -p "${out}"
+
+  local te_ver hd
+  te_ver="$(task_executor_version)"
+  hd="$(harbor_runner_image_digest)"
+  write_sweep_metadata "${out}" "${te_ver}" "${hd}"
+
+  IFS=',' read -r -a profile_ids <<<"${profiles_csv}"
+  IFS=',' read -r -a bench_set_ids <<<"${bench_sets_csv}"
+
+  local profile_id bs_id bs_file profile_file
+  local framework dataset dataset_dir reps tasks harness adapter
+  local terminal_file invalid_file orphan_file
+
+  for profile_id in "${profile_ids[@]}"; do
+    [[ -n "${profile_id}" ]] || continue
+    profile_file="$(resolve_profile_file "${profile_id}")"
+    local profile_json_full harness
+    profile_json_full="$(yq -o=json '.' "${profile_file}")"
+    harness="$(jq -r '.harness // "none"' <<<"${profile_json_full}")"
+    adapter="$(resolve_adapter_for_harness "${harness}")"
+
+    for bs_id in "${bench_set_ids[@]}"; do
+      [[ -n "${bs_id}" ]] || continue
+      bs_file="$(resolve_bench_set_file "${bs_id}")"
+      framework="$(bench_set_framework "${bs_file}")"
+      dataset="$(bench_set_dataset "${bs_file}")"
+      dataset_dir="${dataset}"
+      if [[ -n "${reps_override}" ]]; then
+        reps="${reps_override}"
+      else
+        reps="$(bench_set_reps "${bs_file}")"
+      fi
+      tasks="$(resolve_tasks "${bs_file}")"
+
+      local task
+      while IFS= read -r task; do
+        [[ -n "${task}" ]] || continue
+        [[ "${task}" != "*all*" ]] || die "bench-set ${bs_id}: tasks: all is not supported by run path yet"
+
+        terminal_file="$(mktemp)"; invalid_file="$(mktemp)"; orphan_file="$(mktemp)"
+        inspect_existing_cells "${out}" "${dataset_dir}" "${task}" "${profile_id}" \
+          "${terminal_file}" "${invalid_file}" "${orphan_file}"
+
+        local terminal_count invalid_count orphan_count
+        terminal_count="$(wc -l <"${terminal_file}" | tr -d ' ')"
+        invalid_count="$(wc -l <"${invalid_file}" | tr -d ' ')"
+        orphan_count="$(wc -l <"${orphan_file}" | tr -d ' ')"
+
+        if [[ ${force_rerun} -eq 1 ]]; then
+          local r
+          for ((r = 1; r <= reps; r++)); do
+            run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+              "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
+              "${r}" "${reps}" "${adapter}" "" "${te_ver}" "${hd}" >/dev/null
+          done
+        elif [[ ${retry_invalid} -eq 1 ]]; then
+          local prior
+          while IFS= read -r prior; do
+            [[ -n "${prior}" ]] || continue
+            run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+              "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
+              "1" "${reps}" "${adapter}" "${prior}" "${te_ver}" "${hd}" >/dev/null
+          done <"${invalid_file}"
+          while IFS= read -r prior; do
+            [[ -n "${prior}" ]] || continue
+            run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+              "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
+              "1" "${reps}" "${adapter}" "${prior}" "${te_ver}" "${hd}" >/dev/null
+          done <"${orphan_file}"
+          warn "retry-invalid: profile=${profile_id} task=${task} reran invalid=${invalid_count} orphan=${orphan_count}"
+        else
+          if [[ ${terminal_count} -ge ${reps} ]]; then
+            warn "skip: profile=${profile_id} task=${task} (terminal_cells=${terminal_count} >= reps=${reps})"
+          else
+            local need r idx
+            need=$((reps - terminal_count))
+            idx=$((terminal_count + 1))
+            for ((r = 1; r <= need; r++)); do
+              run_one_cell "${out}" "${profile_id}" "${profile_file}" \
+                "${framework}" "${dataset}" "${dataset_dir}" "${task}" \
+                "${idx}" "${reps}" "${adapter}" "" "${te_ver}" "${hd}" >/dev/null
+              idx=$((idx + 1))
+            done
+          fi
+        fi
+
+        rm -f "${terminal_file}" "${invalid_file}" "${orphan_file}"
+      done <<<"${tasks}"
+    done
+  done
+}
+
+# ---------------------------------------------------------------------------
 # validate (placeholder until PR C)
 # ---------------------------------------------------------------------------
 
@@ -334,6 +807,9 @@ main() {
   local bench_set_csv=""
   local plan=0
   local out=""
+  local force_rerun=0
+  local retry_invalid=0
+  local reps_override=""
   local positional=()
 
   while [[ $# -gt 0 ]]; do
@@ -342,6 +818,9 @@ main() {
       --bench-set)      bench_set_csv="${2:?--bench-set requires a value}"; shift 2 ;;
       --plan)           plan=1; shift ;;
       --out)            out="${2:?--out requires a value}"; shift 2 ;;
+      --force-rerun)    force_rerun=1; shift ;;
+      --retry-invalid)  retry_invalid=1; shift ;;
+      --reps)           reps_override="${2:?--reps requires a value}"; shift 2 ;;
       -h|--help|help)   usage; exit 0 ;;
       --)               shift; positional+=("$@"); break ;;
       -*)               die "unknown flag: $1" ;;
@@ -370,11 +849,14 @@ main() {
         print_plan "${profile_csv}" "${bench_set_csv}"
         exit 0
       fi
-      # Run path lands in a follow-up bead (A4). Acknowledge --out so it
-      # is consumed in this skeleton without tripping shellcheck on unused.
-      : "${out}"
-      warn "run path not yet wired (lands in bead A4); use --plan, preflight, or a listing subcommand"
-      exit 2
+      if [[ -z "${out}" ]]; then
+        out="${DEFAULT_OUT_ROOT}"
+      fi
+      if [[ ${force_rerun} -eq 1 && ${retry_invalid} -eq 1 ]]; then
+        die "--force-rerun and --retry-invalid are mutually exclusive"
+      fi
+      run_sweep "${profile_csv}" "${bench_set_csv}" "${out}" \
+        "${force_rerun}" "${retry_invalid}" "${reps_override}"
       ;;
     *)
       die "unknown subcommand: ${sub}"
